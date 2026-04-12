@@ -2,10 +2,11 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { AppShell } from '@/components/shared/app-shell'
-import { BookOpen, User, HelpCircle, Bell } from 'lucide-react'
+import { BookOpen, User, HelpCircle, Bell, MessageSquare } from 'lucide-react'
 
 const clientNav = [
   { href: '/my-diary', label: 'My Diary', icon: BookOpen },
+  { href: '/messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-profile', label: 'My Profile', icon: User },
   { href: '/notifications', label: 'Notifications', icon: Bell },
   { href: '/help', label: 'Help', icon: HelpCircle },
