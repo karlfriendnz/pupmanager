@@ -1,0 +1,341 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  TRAINER
+  CLIENT
+  ADMIN
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  TRIALING
+  CANCELLED
+}
+
+enum ShareType {
+  READ_ONLY
+  TRANSFER
+}
+
+enum SessionType {
+  IN_PERSON
+  VIRTUAL
+}
+
+enum MessageChannel {
+  TRAINER_CLIENT   // visible to client
+  TRAINER_TRAINER  // private between trainers
+}
+
+// ─── Core User ───────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  role          Role
+  emailVerified DateTime?
+  image         String?
+  timezone      String    @default("Pacific/Auckland")
+
+  notifyEmail Boolean @default(true)
+  notifyPush  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Auth
+  accounts Account[]
+  sessions Session[]
+
+  // Role-specific profiles
+  trainerProfile TrainerProfile?
+  clientProfile  ClientProfile?
+
+  // Messages sent by this user
+  sentMessages Message[]
+
+  @@map("users")
+}
+
+// ─── NextAuth Models ─────────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─── Trainer Profile ─────────────────────────────────────────────────────────
+
+model TrainerProfile {
+  id              String  @id @default(cuid())
+  userId          String  @unique
+  businessName    String
+  phone           String?
+  logoUrl         String?
+  inviteTemplate  String? @db.Text // customisable invite email template
+
+  // Google Calendar integration
+  googleCalendarRefreshToken String? @db.Text
+  googleCalendarConnected    Boolean @default(false)
+
+  // Subscription
+  subscriptionPlanId String?
+  subscriptionStatus SubscriptionStatus @default(TRIALING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionPlan  SubscriptionPlan? @relation(fields: [subscriptionPlanId], references: [id])
+  clients           ClientProfile[]
+  sharedClients     ClientShare[]     @relation("SharedByTrainer")
+  receivedClients   ClientShare[]     @relation("SharedWithTrainer")
+  trainingSessions  TrainingSession[]
+  trainingTemplates TrainingTemplate[]
+
+  @@map("trainer_profiles")
+}
+
+// ─── Client & Dog ────────────────────────────────────────────────────────────
+
+model ClientProfile {
+  id        String  @id @default(cuid())
+  userId    String  @unique
+  trainerId String  // primary trainer
+  dogId     String? // set after onboarding
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id])
+  dog     Dog?           @relation(fields: [dogId], references: [id])
+
+  diaryEntries TrainingTask[]
+  shares       ClientShare[]
+  messages     Message[]      @relation("ClientMessages")
+
+  @@map("client_profiles")
+}
+
+model Dog {
+  id      String  @id @default(cuid())
+  name    String
+  breed   String?
+  weight  Float?  // kg
+  dob     DateTime?
+  photoUrl String?
+  notes   String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clientProfiles ClientProfile[]
+  sessions       TrainingSession[]
+
+  @@map("dogs")
+}
+
+// ─── Client Sharing ───────────────────────────────────────────────────────────
+
+model ClientShare {
+  id           String    @id @default(cuid())
+  clientId     String
+  sharedById   String
+  sharedWithId String
+  shareType    ShareType
+  acceptedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  client     ClientProfile  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sharedBy   TrainerProfile @relation("SharedByTrainer", fields: [sharedById], references: [id])
+  sharedWith TrainerProfile @relation("SharedWithTrainer", fields: [sharedWithId], references: [id])
+
+  @@map("client_shares")
+}
+
+// ─── Training Diary & Tasks ───────────────────────────────────────────────────
+
+model TrainingTask {
+  id          String   @id @default(cuid())
+  clientId    String
+  date        DateTime @db.Date
+  title       String
+  description String?  @db.Text
+  repetitions Int?
+  videoUrl    String?  // trainer-provided instructional link
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client     ClientProfile  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  completion TaskCompletion?
+
+  @@map("training_tasks")
+}
+
+model TaskCompletion {
+  id          String   @id @default(cuid())
+  taskId      String   @unique
+  completedAt DateTime @default(now())
+  note        String?  @db.Text
+  videoUrl    String?  // client-submitted link
+  videoS3Key  String?  // native video upload (S3)
+
+  task TrainingTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("task_completions")
+}
+
+// ─── Scheduling ──────────────────────────────────────────────────────────────
+
+model TrainingSession {
+  id          String      @id @default(cuid())
+  trainerId   String
+  dogId       String?
+  title       String
+  description String?     @db.Text
+  scheduledAt DateTime
+  durationMins Int        @default(60)
+  sessionType SessionType @default(IN_PERSON)
+  location    String?
+  virtualLink String?
+
+  googleCalendarEventId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  dog     Dog?           @relation(fields: [dogId], references: [id])
+
+  @@map("training_sessions")
+}
+
+// ─── Training Templates ───────────────────────────────────────────────────────
+
+model TrainingTemplate {
+  id          String  @id @default(cuid())
+  trainerId   String
+  name        String
+  description String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  tasks   TemplateTask[]
+
+  @@map("training_templates")
+}
+
+model TemplateTask {
+  id          String  @id @default(cuid())
+  templateId  String
+  dayOffset   Int     // day 1, 2, 3... from program start
+  title       String
+  description String? @db.Text
+  repetitions Int?
+  videoUrl    String?
+  order       Int     @default(0)
+
+  template TrainingTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@map("template_tasks")
+}
+
+// ─── Messaging ────────────────────────────────────────────────────────────────
+
+model Message {
+  id        String         @id @default(cuid())
+  channel   MessageChannel
+  clientId  String         // the client this message thread relates to
+  senderId  String
+  body      String         @db.Text
+  readAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  client ClientProfile @relation("ClientMessages", fields: [clientId], references: [id], onDelete: Cascade)
+  sender User          @relation(fields: [senderId], references: [id])
+
+  @@map("messages")
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+// ─── Subscription Plans ───────────────────────────────────────────────────────
+
+model SubscriptionPlan {
+  id              String  @id @default(cuid())
+  name            String
+  description     String? @db.Text
+  priceMonthly    Float
+  maxClients      Int?    // null = unlimited
+  featureFlags    Json    @default("{}")
+  isActive        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainers TrainerProfile[]
+
+  @@map("subscription_plans")
+}

@@ -1,0 +1,43 @@
+import type { Metadata, Viewport } from 'next'
+import { Geist } from 'next/font/google'
+import './globals.css'
+
+const geist = Geist({
+  variable: '--font-geist',
+  subsets: ['latin'],
+})
+
+export const metadata: Metadata = {
+  title: {
+    template: '%s | K9Tracker',
+    default: 'K9Tracker — Dog Training Made Simple',
+  },
+  description: 'Assign daily training tasks, track compliance, and keep your clients on track between sessions.',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'K9Tracker',
+  },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: '#2563eb',
+}
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode
+}>) {
+  return (
+    <html lang="en-NZ" className={`${geist.variable} h-full antialiased`}>
+      <body className="min-h-full bg-slate-50 text-slate-900 flex flex-col">
+        {children}
+      </body>
+    </html>
+  )
+}

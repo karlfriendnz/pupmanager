@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist);
+
+  /* K9Tracker brand palette — calm blues with warm amber accents */
+  --color-brand-50:  #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+
+  --color-accent-400: #fbbf24;
+  --color-accent-500: #f59e0b;
+}
+
+/* Smooth scroll & comfortable tap targets on mobile */
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Minimum touch target size */
+button, a, [role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
