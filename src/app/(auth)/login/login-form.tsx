@@ -119,7 +119,7 @@ export function LoginForm({ error, callbackUrl }: { error?: string; callbackUrl?
             </Button>
             <p className="text-center text-sm text-slate-500">
               New trainer?{' '}
-              <Link href="/register" className="text-blue-600 font-medium hover:underline">
+              <Link href="/register" className="text-red-600 font-medium hover:underline">
                 Create an account
               </Link>
             </p>
