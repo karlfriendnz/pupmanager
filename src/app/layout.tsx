@@ -16,8 +16,12 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
     title: 'K9Tracker',
+    startupImage: '/apple-icon',
+  },
+  icons: {
+    apple: '/apple-icon',
   },
 }
 
