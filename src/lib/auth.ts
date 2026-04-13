@@ -15,17 +15,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.role = (user as { role?: string }).role
         token.id = user.id
-        // Fetch trainer profile once on sign-in and cache in JWT
-        if ((user as { role?: string }).role === 'TRAINER') {
-          const tp = await prisma.trainerProfile.findUnique({
-            where: { userId: user.id as string },
-            select: { id: true, businessName: true, logoUrl: true },
-          })
-          if (tp) {
-            token.trainerId = tp.id
-            token.businessName = tp.businessName
-            token.logoUrl = tp.logoUrl
-          }
+      }
+      // Fetch trainer profile and cache in JWT (runs on sign-in and backfills old JWTs missing trainerId)
+      if (token.role === 'TRAINER' && token.id && !token.trainerId) {
+        const tp = await prisma.trainerProfile.findUnique({
+          where: { userId: token.id as string },
+          select: { id: true, businessName: true, logoUrl: true },
+        })
+        if (tp) {
+          token.trainerId = tp.id
+          token.businessName = tp.businessName
+          token.logoUrl = tp.logoUrl
         }
       }
       return token
