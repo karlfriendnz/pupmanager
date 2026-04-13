@@ -8,8 +8,8 @@ export const metadata: Metadata = { title: 'Schedule' }
 
 function getWeekBounds(dateStr: string): { weekStart: Date; weekEnd: Date } {
   const d = new Date(dateStr)
-  const day = d.getDay() // 0=Sun, 1=Mon...
-  const diff = day === 0 ? -6 : 1 - day // shift to Monday
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
   const weekStart = new Date(d)
   weekStart.setDate(d.getDate() + diff)
   weekStart.setHours(0, 0, 0, 0)
@@ -39,27 +39,40 @@ export default async function SchedulePage({
 
   const { weekStart, weekEnd } = getWeekBounds(selectedDate)
 
-  const sessions = await prisma.trainingSession.findMany({
-    where: {
-      trainerId: trainerProfile.id,
-      scheduledAt: { gte: weekStart, lte: weekEnd },
-    },
-    include: {
-      dog: {
-        select: {
-          name: true,
-          primaryFor: { take: 1, select: { id: true, user: { select: { name: true, email: true } } } },
+  const [sessions, availabilitySlots] = await Promise.all([
+    prisma.trainingSession.findMany({
+      where: {
+        trainerId: trainerProfile.id,
+        scheduledAt: { gte: weekStart, lte: weekEnd },
+      },
+      include: {
+        dog: {
+          select: {
+            name: true,
+            primaryFor: {
+              take: 1,
+              select: { id: true, user: { select: { name: true, email: true } } },
+            },
+          },
         },
       },
-    },
-    orderBy: { scheduledAt: 'asc' },
-  })
+      orderBy: { scheduledAt: 'asc' },
+    }),
+    prisma.availabilitySlot.findMany({
+      where: { trainerId: trainerProfile.id },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    }),
+  ])
 
   return (
     <ScheduleView
       sessions={sessions.map(s => ({
         ...s,
         scheduledAt: s.scheduledAt.toISOString(),
+      }))}
+      availabilitySlots={availabilitySlots.map(s => ({
+        ...s,
+        date: s.date ? s.date.toISOString().split('T')[0] : null,
       }))}
       selectedDate={selectedDate}
       today={today}

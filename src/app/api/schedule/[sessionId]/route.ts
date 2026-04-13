@@ -1,6 +1,45 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { z } from 'zod'
+
+const patchSchema = z.object({
+  scheduledAt: z.string(),
+  durationMins: z.number().int().positive().optional(),
+})
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const session = await auth()
+  if (!session || session.user.role !== 'TRAINER') {
+    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  }
+
+  const { sessionId } = await params
+  const body = await req.json()
+  const parsed = patchSchema.safeParse(body)
+  if (!parsed.success) return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
+
+  const trainerId = session.user.trainerId
+  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+
+  const existing = await prisma.trainingSession.findFirst({
+    where: { id: sessionId, trainerId },
+  })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const updated = await prisma.trainingSession.update({
+    where: { id: sessionId },
+    data: {
+      scheduledAt: new Date(parsed.data.scheduledAt),
+      ...(parsed.data.durationMins !== undefined && { durationMins: parsed.data.durationMins }),
+    },
+  })
+
+  return NextResponse.json(updated)
+}
 
 export async function DELETE(
   _req: Request,
@@ -24,7 +63,6 @@ export async function DELETE(
   })
   if (!trainingSession) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Remove from Google Calendar if synced
   if (trainingSession.googleCalendarEventId && trainerProfile.googleCalendarRefreshToken) {
     try {
       const { deleteGoogleCalendarEvent } = await import('@/lib/google-calendar')

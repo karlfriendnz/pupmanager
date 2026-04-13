@@ -152,6 +152,7 @@ model TrainerProfile {
   libraryTypes       LibraryType[]
   embedForms         EmbedForm[]
   sentNotifications  ClientNotification[]
+  availabilitySlots  AvailabilitySlot[]
 
   @@map("trainer_profiles")
 }
@@ -478,6 +479,24 @@ model ClientNotification {
 
   @@index([clientId])
   @@map("client_notifications")
+}
+
+// ─── Trainer Availability ─────────────────────────────────────────────────────
+
+model AvailabilitySlot {
+  id          String    @id @default(cuid())
+  trainerId   String
+  title       String?
+  dayOfWeek   Int?      // 1=Mon … 7=Sun; null = one-off date
+  date        DateTime? @db.Date
+  startTime   String    // "HH:MM" 24-hr
+  endTime     String    // "HH:MM" 24-hr
+  createdAt   DateTime  @default(now())
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId])
+  @@map("availability_slots")
 }
 
 // ─── Embed Forms ──────────────────────────────────────────────────────────────
