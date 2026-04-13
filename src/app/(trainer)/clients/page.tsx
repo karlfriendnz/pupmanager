@@ -26,10 +26,11 @@ export default async function ClientsPage({
 
   const sp = await searchParams
   const query = sp.q ?? ''
-  const tab = sp.tab === 'inactive' ? 'inactive' : 'active'
-  const status = tab === 'active' ? 'ACTIVE' : 'INACTIVE'
+  const tab = sp.tab === 'inactive' ? 'inactive' : sp.tab === 'new' ? 'new' : 'active'
+  const status = tab === 'active' ? 'ACTIVE' : tab === 'inactive' ? 'INACTIVE' : 'NEW'
 
-  const [activeCount, inactiveCount] = await Promise.all([
+  const [newCount, activeCount, inactiveCount] = await Promise.all([
+    prisma.clientProfile.count({ where: { trainerId: trainerProfile.id, status: 'NEW' } }),
     prisma.clientProfile.count({ where: { trainerId: trainerProfile.id, status: 'ACTIVE' } }),
     prisma.clientProfile.count({ where: { trainerId: trainerProfile.id, status: 'INACTIVE' } }),
   ])
@@ -54,7 +55,7 @@ export default async function ClientsPage({
   })
 
   // CO_MANAGE shared clients (only show in active tab)
-  const sharedClients = tab === 'active' ? await prisma.clientShare.findMany({
+  const sharedClients = (tab === 'active') ? await prisma.clientShare.findMany({
     where: {
       sharedWithId: trainerProfile.id,
       shareType: 'CO_MANAGE',
@@ -83,6 +84,8 @@ export default async function ClientsPage({
     return `/clients${p.toString() ? `?${p}` : ''}`
   }
 
+  const isNew = tab === 'new'
+
   function ClientCard({ client, shared }: {
     client: typeof ownedClients[0],
     shared?: boolean,
@@ -93,7 +96,7 @@ export default async function ClientsPage({
 
     return (
       <Link key={client.id} href={`/clients/${client.id}`}>
-        <Card className={`p-4 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer ${tab === 'inactive' ? 'opacity-70' : ''}`}>
+        <Card className={`p-4 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer ${tab === 'inactive' ? 'opacity-70' : ''} ${tab === 'new' ? 'border-amber-200 bg-amber-50/30' : ''}`}>
           <div className="flex items-center gap-4">
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold text-sm flex-shrink-0">
               {getInitials(client.user.name ?? client.user.email)}
@@ -137,7 +140,7 @@ export default async function ClientsPage({
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Clients</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {activeCount} active · {inactiveCount} inactive
+            {newCount > 0 && <>{newCount} new · </>}{activeCount} active · {inactiveCount} inactive
           </p>
         </div>
         <Link href="/clients/invite">
@@ -150,6 +153,18 @@ export default async function ClientsPage({
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-6">
+        {newCount > 0 && (
+          <Link
+            href={tabHref('new')}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-medium text-center transition-all duration-150 ${
+              tab === 'new'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            New<span className="ml-1.5 text-xs opacity-60">{newCount}</span>
+          </Link>
+        )}
         <Link
           href={tabHref('active')}
           className={`flex-1 py-2.5 rounded-xl text-sm font-medium text-center transition-all duration-150 ${
@@ -168,7 +183,7 @@ export default async function ClientsPage({
               : 'text-slate-500 hover:text-slate-700'
           }`}
         >
-          Not active{inactiveCount > 0 && <span className="ml-1.5 text-xs opacity-60">{inactiveCount}</span>}
+          Inactive{inactiveCount > 0 && <span className="ml-1.5 text-xs opacity-60">{inactiveCount}</span>}
         </Link>
       </div>
 
@@ -189,7 +204,15 @@ export default async function ClientsPage({
       {ownedClients.length === 0 && sharedClients.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
           <Dog className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          {tab === 'active' ? (
+          {tab === 'new' ? (
+            <>
+              <p className="font-medium">No new registrations</p>
+              <p className="text-sm mt-1">Clients who register via your embed forms will appear here</p>
+              <Link href="/forms" className="mt-4 inline-block text-sm font-medium text-blue-600 hover:text-blue-700">
+                Manage embed forms →
+              </Link>
+            </>
+          ) : tab === 'active' ? (
             <>
               <p className="font-medium">No active clients</p>
               <p className="text-sm mt-1">Invite your first client to get started</p>

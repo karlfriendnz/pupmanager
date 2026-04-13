@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import {
   Plus, Trash2, CheckCircle, Circle, X, BookOpen, Pencil,
-  ChevronRight, Layers, Tag, Check, Loader2,
+  ChevronRight, Layers, Tag, Check, Loader2, Save,
 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 
@@ -470,6 +470,99 @@ function AddTaskPanel({
   )
 }
 
+// ─── Inline task editor ───────────────────────────────────────────────────────
+
+function TaskEditor({
+  task,
+  clientDogs,
+  onSave,
+  onCancel,
+}: {
+  task: Task
+  clientDogs: Dog[]
+  onSave: (data: Partial<Task>) => Promise<void>
+  onCancel: () => void
+}) {
+  const [title, setTitle] = useState(task.title)
+  const [description, setDescription] = useState(task.description ?? '')
+  const [repetitions, setRepetitions] = useState(task.repetitions?.toString() ?? '')
+  const [videoUrl, setVideoUrl] = useState(task.videoUrl ?? '')
+  const [dogId, setDogId] = useState(task.dogId ?? '')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!title.trim()) return
+    setSaving(true)
+    await onSave({
+      title: title.trim(),
+      description: description.trim() || null,
+      repetitions: repetitions ? parseInt(repetitions) : null,
+      videoUrl: videoUrl.trim() || null,
+      dogId: dogId || null,
+    })
+    setSaving(false)
+  }
+
+  return (
+    <div className="flex flex-col gap-2 p-3 bg-blue-50 rounded-xl border border-blue-200">
+      <input
+        autoFocus
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') onCancel() }}
+        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      {clientDogs.length > 1 && (
+        <select
+          value={dogId}
+          onChange={e => setDogId(e.target.value)}
+          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">All dogs</option>
+          {clientDogs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      )}
+      <textarea
+        value={description}
+        onChange={e => setDescription(e.target.value)}
+        rows={2}
+        placeholder="Description (optional)"
+        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+      />
+      <div className="flex gap-2">
+        <input
+          type="number"
+          value={repetitions}
+          onChange={e => setRepetitions(e.target.value)}
+          placeholder="Reps"
+          min={1}
+          className="h-9 w-24 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <input
+          type="url"
+          value={videoUrl}
+          onChange={e => setVideoUrl(e.target.value)}
+          placeholder="Video URL (optional)"
+          className="h-9 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving || !title.trim()}
+          className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+        >
+          <Save className="h-3.5 w-3.5" />
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button onClick={onCancel} className="h-8 px-3 rounded-lg text-xs text-slate-500 hover:text-slate-700">
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main view ───────────────────────────────────────────────────────────────
 
 export function TrainerDiaryView({
@@ -485,6 +578,7 @@ export function TrainerDiaryView({
 }) {
   const router = useRouter()
   const [showPanel, setShowPanel] = useState(false)
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
 
   const selectedClient = clients.find(c => c.id === selectedClientId) ?? null
   const clientDogs: Dog[] = selectedClient
@@ -505,6 +599,16 @@ export function TrainerDiaryView({
 
   async function deleteTask(taskId: string) {
     await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+    router.refresh()
+  }
+
+  async function saveTask(taskId: string, data: Partial<Task>) {
+    await fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    setEditingTaskId(null)
     router.refresh()
   }
 
@@ -559,45 +663,62 @@ export function TrainerDiaryView({
           {tasks.map(task => (
             <Card key={task.id} className={task.completion ? 'border-green-100 bg-green-50/30' : ''}>
               <CardBody className="pt-4 pb-4">
-                <div className="flex items-start gap-3">
-                  {task.completion ? (
-                    <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-slate-300 mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium text-slate-900">{task.title}</p>
-                      {task.dogId && getDogName(task.dogId) && (
-                        <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
-                          {getDogName(task.dogId)}
-                        </span>
+                {editingTaskId === task.id ? (
+                  <TaskEditor
+                    task={task}
+                    clientDogs={clientDogs}
+                    onSave={data => saveTask(task.id, data)}
+                    onCancel={() => setEditingTaskId(null)}
+                  />
+                ) : (
+                  <div className="flex items-start gap-3 group">
+                    {task.completion ? (
+                      <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <Circle className="h-5 w-5 text-slate-300 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium text-slate-900">{task.title}</p>
+                        {task.dogId && getDogName(task.dogId) && (
+                          <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
+                            {getDogName(task.dogId)}
+                          </span>
+                        )}
+                      </div>
+                      {task.repetitions && <p className="text-xs text-slate-500">{task.repetitions} reps</p>}
+                      {task.description && <p className="text-sm text-slate-600 mt-1">{task.description}</p>}
+                      {task.videoUrl && (
+                        <a href={task.videoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline mt-1 block">
+                          📹 Instructional video
+                        </a>
+                      )}
+                      {task.completion && (
+                        <div className="mt-2 pl-3 border-l-2 border-green-200">
+                          {task.completion.note && <p className="text-sm text-slate-600 italic">&ldquo;{task.completion.note}&rdquo;</p>}
+                          {task.completion.videoUrl && (
+                            <a href={task.completion.videoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                              📹 Client video
+                            </a>
+                          )}
+                        </div>
                       )}
                     </div>
-                    {task.repetitions && <p className="text-xs text-slate-500">{task.repetitions} reps</p>}
-                    {task.description && <p className="text-sm text-slate-600 mt-1">{task.description}</p>}
-                    {task.videoUrl && (
-                      <a href={task.videoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline mt-1 block">
-                        📹 Instructional video
-                      </a>
-                    )}
-                    {task.completion && (
-                      <div className="mt-2 pl-3 border-l-2 border-green-200">
-                        {task.completion.note && <p className="text-sm text-slate-600 italic">&ldquo;{task.completion.note}&rdquo;</p>}
-                        {task.completion.videoUrl && (
-                          <a href={task.completion.videoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
-                            📹 Client video
-                          </a>
-                        )}
+                    {!task.completion && (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => { setEditingTaskId(task.id); setShowPanel(false) }}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-blue-500 p-1"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => deleteTask(task.id)} className="text-slate-300 hover:text-red-400 transition-colors p-1">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     )}
                   </div>
-                  {!task.completion && (
-                    <button onClick={() => deleteTask(task.id)} className="text-slate-300 hover:text-red-400 transition-colors">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
+                )}
               </CardBody>
             </Card>
           ))}

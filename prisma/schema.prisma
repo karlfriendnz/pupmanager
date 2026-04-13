@@ -148,6 +148,7 @@ model TrainerProfile {
   trainingTemplates TrainingTemplate[]
   customFields      CustomField[]
   libraryTypes      LibraryType[]
+  embedForms        EmbedForm[]
 
   @@map("trainer_profiles")
 }
@@ -454,4 +455,27 @@ model LibraryTask {
 
   @@index([themeId])
   @@map("library_tasks")
+}
+
+// ─── Embed Forms ──────────────────────────────────────────────────────────────
+
+model EmbedForm {
+  id              String   @id @default(cuid())
+  trainerId       String
+  title           String
+  description     String?  @db.Text
+  // JSON array of { key: string, required: boolean } for standard fields
+  // Keys: phone | dogName | dogBreed | dogWeight | dogDob | message
+  fields          Json     @default("[]")
+  // JSON string[] of CustomField ids to include
+  customFieldIds  Json     @default("[]")
+  thankYouMessage String?  @db.Text
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId])
+  @@map("embed_forms")
 }
