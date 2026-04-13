@@ -6,6 +6,19 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Schedule' }
 
+function getWeekBounds(dateStr: string): { weekStart: Date; weekEnd: Date } {
+  const d = new Date(dateStr)
+  const day = d.getDay() // 0=Sun, 1=Mon...
+  const diff = day === 0 ? -6 : 1 - day // shift to Monday
+  const weekStart = new Date(d)
+  weekStart.setDate(d.getDate() + diff)
+  weekStart.setHours(0, 0, 0, 0)
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+  weekEnd.setHours(23, 59, 59, 999)
+  return { weekStart, weekEnd }
+}
+
 export default async function SchedulePage({
   searchParams,
 }: {
@@ -24,25 +37,30 @@ export default async function SchedulePage({
   const sp = await searchParams
   const selectedDate = sp.date ?? today
 
-  const dayStart = new Date(selectedDate)
-  dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(selectedDate)
-  dayEnd.setHours(23, 59, 59, 999)
+  const { weekStart, weekEnd } = getWeekBounds(selectedDate)
 
   const sessions = await prisma.trainingSession.findMany({
     where: {
       trainerId: trainerProfile.id,
-      scheduledAt: { gte: dayStart, lte: dayEnd },
+      scheduledAt: { gte: weekStart, lte: weekEnd },
     },
     include: {
-      dog: { select: { name: true, primaryFor: { take: 1, select: { user: { select: { name: true, email: true } } } } } },
+      dog: {
+        select: {
+          name: true,
+          primaryFor: { take: 1, select: { id: true, user: { select: { name: true, email: true } } } },
+        },
+      },
     },
     orderBy: { scheduledAt: 'asc' },
   })
 
   return (
     <ScheduleView
-      sessions={sessions}
+      sessions={sessions.map(s => ({
+        ...s,
+        scheduledAt: s.scheduledAt.toISOString(),
+      }))}
       selectedDate={selectedDate}
       today={today}
       googleCalendarConnected={trainerProfile.googleCalendarConnected}
