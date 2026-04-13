@@ -38,6 +38,20 @@ enum MessageChannel {
   TRAINER_TRAINER  // private between trainers
 }
 
+enum FieldType {
+  TEXT
+  MULTIPLE_CHOICE
+  DROPDOWN
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  ARCHIVED
+  REJECTED
+  CONVERTED
+}
+
 // ─── Core User ───────────────────────────────────────────────────────────────
 
 model User {
@@ -139,6 +153,7 @@ model TrainerProfile {
   receivedClients   ClientShare[]     @relation("SharedWithTrainer")
   trainingSessions  TrainingSession[]
   trainingTemplates TrainingTemplate[]
+  intakeForms       IntakeForm[]
 
   @@map("trainer_profiles")
 }
@@ -329,6 +344,75 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@map("notifications")
+}
+
+// ─── Custom Forms & Intake ────────────────────────────────────────────────────
+
+model IntakeForm {
+  id          String  @id @default(cuid())
+  trainerId   String
+  name        String
+  description String? @db.Text
+  isPublished Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer     TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  sections    FormSection[]
+  submissions FormSubmission[]
+
+  @@index([trainerId])
+  @@map("intake_forms")
+}
+
+model FormSection {
+  id     String @id @default(cuid())
+  formId String
+  title  String
+  order  Int    @default(0)
+
+  form   IntakeForm  @relation(fields: [formId], references: [id], onDelete: Cascade)
+  fields FormField[]
+
+  @@index([formId])
+  @@map("form_sections")
+}
+
+model FormField {
+  id        String    @id @default(cuid())
+  sectionId String
+  type      FieldType
+  label     String
+  required  Boolean   @default(false)
+  options   Json?     // string[] for MULTIPLE_CHOICE / DROPDOWN
+  order     Int       @default(0)
+
+  section FormSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId])
+  @@map("form_fields")
+}
+
+model FormSubmission {
+  id      String     @id @default(cuid())
+  formId  String
+  answers Json       // { fieldId: string; value: string | string[] }[]
+  status  LeadStatus @default(NEW)
+
+  // Top-level contact info for quick display
+  name    String?
+  email   String?
+  dogName String?
+  notes   String? @db.Text
+
+  submittedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  form IntakeForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId])
+  @@map("form_submissions")
 }
 
 // ─── Subscription Plans ───────────────────────────────────────────────────────

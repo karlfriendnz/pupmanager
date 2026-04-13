@@ -6,7 +6,7 @@ import { signOut } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Users, BookOpen, BarChart2, Calendar, Layers,
-  MessageSquare, Settings, HelpCircle, Sparkles, User, Bell,
+  MessageSquare, Settings, HelpCircle, Sparkles, User, Bell, ClipboardList,
 } from 'lucide-react'
 
 const TRAINER_NAV = [
@@ -15,6 +15,7 @@ const TRAINER_NAV = [
   { href: '/diary', label: 'Training Diary', icon: BookOpen },
   { href: '/schedule', label: 'Schedule', icon: Calendar },
   { href: '/templates', label: 'Templates', icon: Layers },
+  { href: '/forms', label: 'Intake Forms', icon: ClipboardList },
   { href: '/progress', label: 'Progress', icon: BarChart2 },
   { href: '/messages', label: 'Messages', icon: MessageSquare },
   { href: '/ai-tools', label: 'AI Tools', icon: Sparkles },

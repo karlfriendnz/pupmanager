@@ -1,12 +1,12 @@
 import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/verify-email', '/invite', '/api/auth']
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/verify-email', '/invite', '/api/auth', '/f/']
 
 // Trainer-only route prefixes
 const TRAINER_PATHS = [
   '/dashboard', '/clients', '/diary', '/schedule', '/templates',
-  '/progress', '/messages', '/ai-tools', '/settings', '/help',
+  '/forms', '/progress', '/messages', '/ai-tools', '/settings', '/help',
 ]
 
 // Client-only route prefixes
