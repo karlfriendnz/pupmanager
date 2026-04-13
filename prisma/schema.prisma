@@ -162,6 +162,7 @@ model ClientProfile {
   shares       ClientShare[]
   messages     Message[]      @relation("ClientMessages")
 
+  @@index([trainerId])
   @@map("client_profiles")
 }
 
@@ -198,6 +199,8 @@ model ClientShare {
   sharedBy   TrainerProfile @relation("SharedByTrainer", fields: [sharedById], references: [id])
   sharedWith TrainerProfile @relation("SharedWithTrainer", fields: [sharedWithId], references: [id])
 
+  @@index([clientId])
+  @@index([sharedWithId])
   @@map("client_shares")
 }
 
@@ -218,6 +221,8 @@ model TrainingTask {
   client     ClientProfile  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   completion TaskCompletion?
 
+  @@index([clientId])
+  @@index([date])
   @@map("training_tasks")
 }
 
@@ -256,6 +261,8 @@ model TrainingSession {
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   dog     Dog?           @relation(fields: [dogId], references: [id])
 
+  @@index([trainerId])
+  @@index([scheduledAt])
   @@map("training_sessions")
 }
 
@@ -306,6 +313,8 @@ model Message {
   client ClientProfile @relation("ClientMessages", fields: [clientId], references: [id], onDelete: Cascade)
   sender User          @relation(fields: [senderId], references: [id])
 
+  @@index([clientId])
+  @@index([createdAt])
   @@map("messages")
 }
 

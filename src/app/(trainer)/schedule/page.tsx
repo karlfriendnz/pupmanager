@@ -34,7 +34,7 @@ export default async function SchedulePage({
       scheduledAt: { gte: dayStart, lte: dayEnd },
     },
     include: {
-      dog: { include: { clientProfiles: { include: { user: { select: { name: true, email: true } } } } } },
+      dog: { select: { name: true, clientProfiles: { take: 1, select: { user: { select: { name: true, email: true } } } } } },
     },
     orderBy: { scheduledAt: 'asc' },
   })

@@ -31,7 +31,7 @@ export default async function DashboardPage() {
       dog: { select: { name: true } },
       diaryEntries: {
         where: { date: { gte: sevenDaysAgo, lte: today } },
-        include: { completion: true },
+        select: { id: true, completion: { select: { id: true } } },
       },
     },
     orderBy: { createdAt: 'desc' },

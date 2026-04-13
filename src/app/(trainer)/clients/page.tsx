@@ -39,7 +39,7 @@ export default async function ClientsPage({
       dog: { select: { name: true, breed: true } },
       diaryEntries: {
         where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-        include: { completion: true },
+        select: { id: true, completion: { select: { id: true } } },
       },
     },
     orderBy: { createdAt: 'desc' },
