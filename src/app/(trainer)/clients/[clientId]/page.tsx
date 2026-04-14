@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, BookOpen, Pencil } from 'lucide-react'
+import { ArrowLeft, Pencil } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { ShareClientModal } from './share-client-modal'
 import { DeleteClientButton } from './delete-client-button'
@@ -46,6 +46,15 @@ export default async function ClientDetailPage({
   })
 
   if (!client) notFound()
+
+  const trainingSessions = await prisma.trainingSession.findMany({
+    where: { clientId },
+    orderBy: { scheduledAt: 'desc' },
+    take: 20,
+    include: {
+      dog: { select: { name: true } },
+    },
+  })
 
   // Fetch custom fields from the client's primary trainer
   const customFields = await prisma.customField.findMany({
@@ -104,12 +113,7 @@ export default async function ClientDetailPage({
               </Button>
             </Link>
           )}
-          <Link href={`/diary?clientId=${client.id}`}>
-            <Button variant="secondary" size="sm">
-              <BookOpen className="h-4 w-4" />
-              Diary
-            </Button>
-          </Link>
+
           {isPrimaryTrainer && (
             <>
               <ShareClientModal clientId={client.id} clientName={client.user.name ?? client.user.email} />
@@ -140,6 +144,18 @@ export default async function ClientDetailPage({
           date: t.date.toISOString(),
           dogId: t.dogId,
           completed: !!t.completion,
+        }))}
+        sessions={trainingSessions.map(s => ({
+          id: s.id,
+          title: s.title,
+          scheduledAt: s.scheduledAt.toISOString(),
+          durationMins: s.durationMins,
+          sessionType: s.sessionType,
+          status: s.status,
+          location: s.location,
+          virtualLink: s.virtualLink,
+          description: s.description,
+          dogName: s.dog?.name ?? null,
         }))}
         customFields={customFields.map(f => ({
           id: f.id,

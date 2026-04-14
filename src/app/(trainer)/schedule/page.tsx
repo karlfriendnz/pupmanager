@@ -81,7 +81,6 @@ export default async function SchedulePage({
       sessions={sessions.map(s => ({
         ...s,
         scheduledAt: s.scheduledAt.toISOString(),
-        clientId: s.clientId,
       }))}
       availabilitySlots={availabilitySlots.map(s => ({
         ...s,

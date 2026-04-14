@@ -34,6 +34,13 @@ enum SessionType {
   VIRTUAL
 }
 
+enum SessionStatus {
+  UPCOMING
+  COMPLETED
+  COMMENTED
+  INVOICED
+}
+
 enum MessageChannel {
   TRAINER_CLIENT   // visible to client
   TRAINER_TRAINER  // private between trainers
@@ -233,6 +240,7 @@ model TrainingTask {
   id          String   @id @default(cuid())
   clientId    String
   dogId       String?  // optional: which dog this task is for
+  sessionId   String?  // optional: linked training session
   date        DateTime @db.Date
   title       String
   description String?  @db.Text
@@ -242,12 +250,14 @@ model TrainingTask {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  client     ClientProfile  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  dog        Dog?           @relation(fields: [dogId], references: [id])
+  client     ClientProfile   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dog        Dog?            @relation(fields: [dogId], references: [id])
+  session    TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   completion TaskCompletion?
 
   @@index([clientId])
   @@index([date])
+  @@index([sessionId])
   @@map("training_tasks")
 }
 
@@ -275,7 +285,8 @@ model TrainingSession {
   description String?     @db.Text
   scheduledAt DateTime
   durationMins Int        @default(60)
-  sessionType SessionType @default(IN_PERSON)
+  sessionType SessionType   @default(IN_PERSON)
+  status      SessionStatus @default(UPCOMING)
   location    String?
   virtualLink String?
 
@@ -287,6 +298,7 @@ model TrainingSession {
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   client  ClientProfile? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   dog     Dog?           @relation(fields: [dogId], references: [id])
+  tasks   TrainingTask[]
 
   @@index([trainerId])
   @@index([clientId])

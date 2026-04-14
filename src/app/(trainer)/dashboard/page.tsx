@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { UserPlus, BookOpen, TrendingUp, Calendar } from 'lucide-react'
+import { UserPlus, TrendingUp, Calendar } from 'lucide-react'
 import { formatDate, getInitials } from '@/lib/utils'
 import type { Metadata } from 'next'
 
@@ -106,7 +106,7 @@ export default async function DashboardPage() {
       {/* Quick actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
         <QuickAction href="/clients/invite" icon={<UserPlus className="h-5 w-5" />} label="Invite client" />
-        <QuickAction href="/diary" icon={<BookOpen className="h-5 w-5" />} label="Assign tasks" />
+        <QuickAction href="/schedule" icon={<Calendar className="h-5 w-5" />} label="Book session" />
         <QuickAction href="/progress" icon={<TrendingUp className="h-5 w-5" />} label="View progress" />
         <QuickAction href="/schedule" icon={<Calendar className="h-5 w-5" />} label="Schedule" />
       </div>

@@ -55,8 +55,8 @@ export async function GET(req: Request) {
               ${pendingTasks.map(t => `<li>${t.title}${t.repetitions ? ` (${t.repetitions} reps)` : ''}</li>`).join('')}
             </ul>
             <p style="margin-top:24px;">
-              <a href="${process.env.NEXT_PUBLIC_APP_URL}/my-diary" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;">
-                Complete today's tasks →
+              <a href="${process.env.NEXT_PUBLIC_APP_URL}/my-profile" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;">
+                View your training →
               </a>
             </p>
             <p style="color:#94a3b8;font-size:12px;margin-top:32px;">

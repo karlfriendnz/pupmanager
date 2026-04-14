@@ -11,7 +11,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, LayoutGrid, List,
-  Clock, Trash2, X, Settings,
+  Clock, Trash2, X, Settings, MapPin, Video, ExternalLink, Loader2,
 } from 'lucide-react'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -50,16 +50,20 @@ type AvailForm      = z.infer<typeof availSchema>
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type SessionStatus = 'UPCOMING' | 'COMPLETED' | 'COMMENTED' | 'INVOICED'
+
 interface Session {
   id: string
   title: string
   scheduledAt: string
   durationMins: number
   sessionType: string
+  status: SessionStatus
   location: string | null
   virtualLink: string | null
   description: string | null
   clientId: string | null
+  client: { id: string; user: { name: string | null; email: string } } | null
   dog: {
     name: string
     primaryFor: { id: string; user: { name: string | null; email: string } }[]
@@ -186,45 +190,66 @@ function AvailStrip({ slot, dayDate, onDelete }: {
   )
 }
 
+// ─── Status helpers ───────────────────────────────────────────────────────────
+
+const STATUS_META: Record<SessionStatus, { label: string; bg: string; hover: string; fadedBg: string; dot: string }> = {
+  UPCOMING:  { label: 'Upcoming',  bg: 'bg-blue-500',   hover: 'hover:bg-blue-600',   fadedBg: 'bg-blue-300',   dot: 'bg-white/60' },
+  COMPLETED: { label: 'Completed', bg: 'bg-green-500',  hover: 'hover:bg-green-600',  fadedBg: 'bg-green-300',  dot: 'bg-white/60' },
+  COMMENTED: { label: 'Commented', bg: 'bg-amber-500',  hover: 'hover:bg-amber-600',  fadedBg: 'bg-amber-300',  dot: 'bg-white/60' },
+  INVOICED:  { label: 'Invoiced',  bg: 'bg-purple-500', hover: 'hover:bg-purple-600', fadedBg: 'bg-purple-300', dot: 'bg-white/60' },
+}
+
 // ─── Session block ────────────────────────────────────────────────────────────
 
 function SessionBlock({
   session,
   isDragging,
   dragTop,
+  faded,
   onPointerDown,
   onClick,
 }: {
   session: Session
   isDragging: boolean
   dragTop: number | null
+  faded?: boolean
   onPointerDown: (e: React.PointerEvent) => void
   onClick: () => void
 }) {
   const top    = isDragging && dragTop !== null ? dragTop : sessionTop(session.scheduledAt)
   const height = sessionHeight(session.durationMins)
-  const client = session.dog?.primaryFor[0]?.user
+  // Prefer direct client link, fall back to client via dog's primaryFor
+  const clientUser = session.client?.user ?? session.dog?.primaryFor[0]?.user
+  const clientName = clientUser ? (clientUser.name ?? clientUser.email) : null
+  const meta = STATUS_META[session.status] ?? STATUS_META.UPCOMING
 
   return (
     <div
       className={`absolute left-0.5 right-0.5 rounded-lg px-2 overflow-hidden select-none touch-none z-10 transition-shadow ${
         isDragging
-          ? 'bg-blue-600 shadow-2xl opacity-90 cursor-grabbing z-20'
-          : 'bg-blue-500 hover:bg-blue-600 cursor-grab shadow-sm hover:shadow-md'
+          ? `${meta.bg} shadow-2xl opacity-90 cursor-grabbing z-20`
+          : faded
+          ? `${meta.fadedBg} opacity-40 cursor-grabbing z-10`
+          : `${meta.bg} ${meta.hover} cursor-grab shadow-sm hover:shadow-md`
       }`}
       style={{ top, height }}
       onPointerDown={onPointerDown}
       onClick={onClick}
     >
-      <p className="text-[10px] font-semibold text-white leading-tight pt-1 truncate">
-        {fmtTime(session.scheduledAt)}
-      </p>
+      <div className="flex items-center gap-1 pt-1">
+        <p className="text-[10px] font-semibold text-white leading-tight truncate flex-1">
+          {fmtTime(session.scheduledAt)}
+        </p>
+        <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${meta.dot}`} title={meta.label} />
+      </div>
       {height > 34 && (
-        <p className="text-[10px] text-blue-100 leading-tight truncate">{session.title}</p>
+        <p className="text-[10px] text-white/90 leading-tight truncate">
+          {clientName ?? session.title}
+        </p>
       )}
-      {height > 50 && client && (
-        <p className="text-[10px] text-blue-100 leading-tight truncate opacity-80">
-          {session.dog?.name} · {client.name ?? client.email}
+      {height > 50 && clientName && (
+        <p className="text-[10px] text-white/70 leading-tight truncate">
+          {session.title}
         </p>
       )}
     </div>
@@ -260,18 +285,21 @@ function WeekGrid({
   // ── Drag state ──────────────────────────────────────────────────────────────
   const [dragging, setDragging] = useState<{
     session: Session
-    dayIndex: number
-    offsetY: number    // pointer Y within the block when drag started
+    originalDayIndex: number  // which column the session lives in
+    dayIndex: number          // current target column (may change as pointer moves)
+    offsetY: number           // pointer Y within the block when drag started
     currentTop: number
     moved: boolean
   } | null>(null)
 
   const handlePointerDown = useCallback((e: React.PointerEvent, session: Session, dayIndex: number) => {
     if (e.button !== 0) return
-    e.currentTarget.setPointerCapture(e.pointerId)
+    // Do NOT setPointerCapture — we need pointer events to reach other columns
+    e.preventDefault()
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     setDragging({
       session,
+      originalDayIndex: dayIndex,
       dayIndex,
       offsetY: e.clientY - rect.top,
       currentTop: sessionTop(session.scheduledAt),
@@ -283,23 +311,31 @@ function WeekGrid({
     if (!dragging || !gridRef.current) return
     e.preventDefault()
 
-    // Find the day column el for this day index
-    const cols = gridRef.current.querySelectorAll('[data-day-col]')
-    const col  = cols[dragging.dayIndex] as HTMLElement | undefined
-    if (!col) return
+    // Detect which column the pointer is currently over by checking X
+    const cols = Array.from(gridRef.current.querySelectorAll('[data-day-col]')) as HTMLElement[]
+    let targetColIndex = dragging.dayIndex
+    for (let i = 0; i < cols.length; i++) {
+      const r = cols[i].getBoundingClientRect()
+      if (e.clientX >= r.left && e.clientX <= r.right) {
+        targetColIndex = i
+        break
+      }
+    }
 
+    const col = cols[targetColIndex] as HTMLElement | undefined
+    if (!col) return
     const colRect = col.getBoundingClientRect()
     const rawY    = e.clientY - colRect.top - dragging.offsetY
     const snapped = Math.round(rawY / (PX_PER_HOUR / (60 / SNAP_MINS))) * (PX_PER_HOUR / (60 / SNAP_MINS))
     const clamped = Math.max(0, Math.min(snapped, (END_HOUR - START_HOUR - dragging.session.durationMins / 60) * PX_PER_HOUR))
 
-    setDragging(prev => prev ? { ...prev, currentTop: clamped, moved: true } : null)
+    setDragging(prev => prev ? { ...prev, dayIndex: targetColIndex, currentTop: clamped, moved: true } : null)
   }, [dragging])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (!dragging) return
     if (dragging.moved) {
-      // Build new ISO string
+      // Build new ISO string from target column + snapped top
       const day = weekDays[dragging.dayIndex]
       const timeStr = yToTime(dragging.currentTop)
       const [h, m]  = timeStr.split(':').map(Number)
@@ -311,6 +347,14 @@ function WeekGrid({
     }
     setDragging(null)
   }, [dragging, weekDays, onSessionClick, onSessionDrop])
+
+  // Cancel drag if pointer released outside the grid
+  useEffect(() => {
+    if (!dragging) return
+    function onGlobalUp() { setDragging(null) }
+    document.addEventListener('pointerup', onGlobalUp)
+    return () => document.removeEventListener('pointerup', onGlobalUp)
+  }, [dragging])
 
   function handleColumnClick(e: React.MouseEvent, dayDate: Date, dayIndex: number) {
     // Ignore if clicking on a session block
@@ -357,6 +401,8 @@ function WeekGrid({
           ref={gridRef}
           className="relative grid"
           style={{ gridTemplateColumns: '48px repeat(7, 1fr)', height: totalHeight }}
+          onPointerMove={dragging ? handlePointerMove : undefined}
+          onPointerUp={dragging ? handlePointerUp : undefined}
         >
           {/* Time labels */}
           <div className="relative border-r border-slate-100 pointer-events-none">
@@ -383,8 +429,6 @@ function WeekGrid({
                 data-day-col={dayIndex}
                 className={`relative border-r border-slate-100 last:border-r-0 cursor-crosshair ${isToday ? 'bg-blue-50/20' : ''}`}
                 onClick={(e) => handleColumnClick(e, d, dayIndex)}
-                onPointerMove={dragging?.dayIndex === dayIndex ? handlePointerMove : undefined}
-                onPointerUp={dragging ? handlePointerUp : undefined}
               >
                 {/* Hour lines */}
                 {hours.map((h) => (
@@ -408,21 +452,37 @@ function WeekGrid({
                   <AvailStrip key={slot.id} slot={slot} dayDate={d} onDelete={onDeleteAvail} />
                 ))}
 
-                {/* Sessions */}
+                {/* Sessions that belong to this day */}
                 {daySessions.map((s) => {
-                  const isDragging = dragging?.session.id === s.id
+                  const isBeingDragged = dragging?.session.id === s.id
+                  // Target column is this column (same-day drag or cross-day target)
+                  const targetHere = dragging?.dayIndex === dayIndex
                   return (
                     <div key={s.id} data-session>
                       <SessionBlock
                         session={s}
-                        isDragging={isDragging}
-                        dragTop={isDragging ? dragging!.currentTop : null}
+                        isDragging={isBeingDragged && targetHere}
+                        dragTop={isBeingDragged && targetHere ? dragging!.currentTop : null}
+                        faded={isBeingDragged && !targetHere}
                         onPointerDown={(e) => handlePointerDown(e, s, dayIndex)}
                         onClick={() => { /* handled in pointerUp */ }}
                       />
                     </div>
                   )
                 })}
+
+                {/* Ghost in target column when session dragged in from a different day */}
+                {dragging && dragging.dayIndex === dayIndex && dragging.originalDayIndex !== dayIndex && (
+                  <div data-session>
+                    <SessionBlock
+                      session={dragging.session}
+                      isDragging
+                      dragTop={dragging.currentTop}
+                      onPointerDown={() => {}}
+                      onClick={() => {}}
+                    />
+                  </div>
+                )}
               </div>
             )
           })}
@@ -712,6 +772,474 @@ function AddSessionModal({
   )
 }
 
+// ─── Session detail modal ─────────────────────────────────────────────────────
+
+const STATUS_OPTIONS_MODAL = [
+  { value: 'UPCOMING',  label: 'Upcoming',  colour: 'bg-blue-100 text-blue-700 border-blue-200' },
+  { value: 'COMPLETED', label: 'Completed', colour: 'bg-green-100 text-green-700 border-green-200' },
+  { value: 'COMMENTED', label: 'Commented', colour: 'bg-amber-100 text-amber-700 border-amber-200' },
+  { value: 'INVOICED',  label: 'Invoiced',  colour: 'bg-purple-100 text-purple-700 border-purple-200' },
+] as const
+
+interface SessionTask {
+  id: string
+  title: string
+  description: string | null
+  repetitions: number | null
+  videoUrl: string | null
+  dogId: string | null
+}
+
+interface LibraryTask {
+  id: string
+  title: string
+  description: string | null
+  repetitions: number | null
+  videoUrl: string | null
+}
+
+interface LibraryTheme {
+  id: string
+  name: string
+  tasks: LibraryTask[]
+}
+
+interface LibraryType {
+  id: string
+  name: string
+  themes: LibraryTheme[]
+}
+
+function SessionModal({
+  session: initialSession,
+  clients,
+  onClose,
+  onStatusChange,
+  onSessionsUpdate,
+}: {
+  session: Session
+  clients: ClientOption[]
+  onClose: () => void
+  onStatusChange: (id: string, status: SessionStatus) => void
+  onSessionsUpdate: (id: string, updates: Partial<Session>) => void
+}) {
+  const router = useRouter()
+  const [session, setSession] = useState(initialSession)
+  const [tasks, setTasks] = useState<SessionTask[]>([])
+  const [savingStatus, setSavingStatus] = useState(false)
+  const [addingTask, setAddingTask] = useState<string | null>(null) // taskId or 'custom' being added
+  const [taskError, setTaskError] = useState<string | null>(null)
+
+  // Add panel visibility + mode
+  const [showAddPanel, setShowAddPanel] = useState(false)
+  const [addMode, setAddMode] = useState<'library' | 'custom'>('library')
+  const [library, setLibrary] = useState<LibraryType[]>([])
+  const [libraryLoaded, setLibraryLoaded] = useState(false)
+  const [librarySearch, setLibrarySearch] = useState('')
+
+  // Custom task form fields
+  const [newTaskTitle, setNewTaskTitle] = useState('')
+  const [newTaskDesc, setNewTaskDesc] = useState('')
+  const [newTaskReps, setNewTaskReps] = useState('')
+  const [selectedDogId, setSelectedDogId] = useState<string | null>(null)
+
+  const d = new Date(session.scheduledAt)
+  const clientUser = session.client?.user ?? session.dog?.primaryFor[0]?.user
+  const clientName = clientUser ? (clientUser.name ?? clientUser.email) : null
+  const clientId   = session.clientId ?? session.dog?.primaryFor[0]?.id
+  const dateStr    = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+  // Dogs for this client (for task assignment)
+  const clientDogs = clients.find(c => c.id === clientId)?.dogs ?? []
+
+  useEffect(() => {
+    fetch(`/api/schedule/${session.id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.tasks) setTasks(data.tasks) })
+      .catch(() => {})
+  }, [session.id])
+
+  useEffect(() => {
+    if (showAddPanel && !libraryLoaded) {
+      fetch('/api/library/types')
+        .then(r => r.ok ? r.json() : [])
+        .then(data => { setLibrary(data) })
+        .catch(() => {})
+        .finally(() => setLibraryLoaded(true))
+    }
+  }, [showAddPanel, libraryLoaded])
+
+  async function handleStatusChange(status: SessionStatus) {
+    setSavingStatus(true)
+    setSession(prev => ({ ...prev, status }))
+    onStatusChange(session.id, status)
+    try {
+      await fetch(`/api/schedule/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+    } finally {
+      setSavingStatus(false)
+    }
+  }
+
+  async function saveTask(key: string, data: { title: string; description?: string | null; repetitions?: number | null; videoUrl?: string | null }) {
+    if (!clientId) return
+    setTaskError(null)
+    setAddingTask(key)
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId,
+          sessionId: session.id,
+          date: dateStr,
+          title: data.title,
+          description: data.description ?? null,
+          repetitions: data.repetitions ?? null,
+          videoUrl: data.videoUrl ?? null,
+          dogId: selectedDogId ?? null,
+        }),
+      })
+      if (!res.ok) { setTaskError('Failed to add task'); return }
+      const task = await res.json()
+      setTasks(prev => [...prev, task])
+    } catch {
+      setTaskError('Failed to add task')
+    } finally {
+      setAddingTask(null)
+    }
+  }
+
+  async function handleAddCustomTask(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newTaskTitle.trim()) return
+    await saveTask('custom', {
+      title: newTaskTitle.trim(),
+      description: newTaskDesc.trim() || null,
+      repetitions: newTaskReps ? parseInt(newTaskReps, 10) : null,
+    })
+    setNewTaskTitle('')
+    setNewTaskDesc('')
+    setNewTaskReps('')
+  }
+
+  async function handleAddLibraryTask(lt: LibraryTask) {
+    await saveTask(lt.id, {
+      title: lt.title,
+      description: lt.description,
+      repetitions: lt.repetitions,
+      videoUrl: lt.videoUrl,
+    })
+  }
+
+  async function handleDeleteTask(taskId: string) {
+    await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+      <div
+        className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className={`px-6 py-5 flex-shrink-0 ${session.sessionType === 'VIRTUAL' ? 'bg-purple-50 border-b border-purple-100' : 'bg-blue-50 border-b border-blue-100'}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span className={`text-xs font-semibold uppercase tracking-wide ${session.sessionType === 'VIRTUAL' ? 'text-purple-500' : 'text-blue-500'}`}>
+                {session.sessionType === 'VIRTUAL' ? '💻 Virtual' : '📍 In person'}
+              </span>
+              <h2 className="text-lg font-bold text-slate-900 mt-0.5 truncate">{session.title}</h2>
+              {clientName && <p className="text-sm text-slate-500 mt-0.5">{clientName}</p>}
+            </div>
+            <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 flex-shrink-0 mt-0.5">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
+
+          {/* Status */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Status</p>
+            <div className="flex gap-2 flex-wrap">
+              {STATUS_OPTIONS_MODAL.map(opt => (
+                <button
+                  key={opt.value}
+                  disabled={savingStatus}
+                  onClick={() => handleStatusChange(opt.value as SessionStatus)}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-all disabled:opacity-50 ${
+                    session.status === opt.value
+                      ? `${opt.colour} ring-2 ring-offset-1 ring-current`
+                      : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* When */}
+          <div className="flex flex-col gap-2.5 text-sm">
+            <div className="flex items-center gap-3">
+              <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
+              <span className="text-slate-700">
+                {d.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Clock className="h-4 w-4 text-slate-400 flex-shrink-0" />
+              <span className="text-slate-700">
+                {d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })} · {session.durationMins} min
+              </span>
+            </div>
+            {session.location && (
+              <div className="flex items-center gap-3">
+                <MapPin className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                <span className="text-slate-700">{session.location}</span>
+              </div>
+            )}
+            {session.virtualLink && (
+              <div className="flex items-center gap-3">
+                <Video className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                <a href={session.virtualLink} target="_blank" rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline truncate">
+                  {session.virtualLink}
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Notes */}
+          {session.description && (
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Notes</p>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap">{session.description}</p>
+            </div>
+          )}
+
+          {/* Tasks */}
+          <div className="border-t border-slate-100 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Tasks for this session</p>
+              {clientId && (
+                <button
+                  onClick={() => setShowAddPanel(v => !v)}
+                  className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors ${
+                    showAddPanel ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <Plus className="h-3 w-3" /> Add task
+                </button>
+              )}
+            </div>
+
+            {/* Existing tasks */}
+            {tasks.length === 0 && !showAddPanel ? (
+              <p className="text-sm text-slate-400">No tasks yet. Click "Add task" to get started.</p>
+            ) : (
+              <div className="flex flex-col gap-2 mb-3">
+                {tasks.map(t => {
+                  const dogName = t.dogId ? clientDogs.find(d => d.id === t.dogId)?.name : null
+                  return (
+                    <div key={t.id} className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900">{t.title}</p>
+                        {t.description && <p className="text-xs text-slate-500 mt-0.5">{t.description}</p>}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {t.repetitions && <p className="text-xs text-slate-400">{t.repetitions} reps</p>}
+                          {dogName && <p className="text-xs text-blue-500">🐕 {dogName}</p>}
+                        </div>
+                      </div>
+                      <button onClick={() => handleDeleteTask(t.id)}
+                        className="p-1 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Add panel */}
+            {showAddPanel && clientId && (() => {
+              // Flatten library for search
+              const allLibraryTasks = library.flatMap(type =>
+                type.themes.flatMap(theme =>
+                  theme.tasks.map(lt => ({ ...lt, typeName: type.name, themeName: theme.name }))
+                )
+              )
+              const query = librarySearch.trim().toLowerCase()
+              const filteredTasks = query
+                ? allLibraryTasks.filter(lt =>
+                    lt.title.toLowerCase().includes(query) ||
+                    lt.themeName.toLowerCase().includes(query) ||
+                    lt.typeName.toLowerCase().includes(query)
+                  )
+                : allLibraryTasks
+
+              return (
+                <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                  {/* Dog picker — only when client has multiple dogs */}
+                  {clientDogs.length > 1 && (
+                    <div className="px-3 pt-3 pb-2 border-b border-slate-100">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Assign to dog</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        <button
+                          onClick={() => setSelectedDogId(null)}
+                          className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                            selectedDogId === null
+                              ? 'bg-slate-800 text-white border-slate-800'
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                          }`}
+                        >
+                          Any dog
+                        </button>
+                        {clientDogs.map(dog => (
+                          <button
+                            key={dog.id}
+                            onClick={() => setSelectedDogId(dog.id)}
+                            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                              selectedDogId === dog.id
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
+                            }`}
+                          >
+                            🐕 {dog.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mode toggle */}
+                  <div className="flex p-1 bg-slate-50 border-b border-slate-200 gap-0.5">
+                    <button
+                      onClick={() => setAddMode('library')}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${addMode === 'library' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      From library
+                    </button>
+                    <button
+                      onClick={() => setAddMode('custom')}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${addMode === 'custom' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Custom task
+                    </button>
+                  </div>
+
+                  {taskError && <p className="text-xs text-red-500 px-3 pt-2">{taskError}</p>}
+
+                  {/* Library */}
+                  {addMode === 'library' && (
+                    <div>
+                      {/* Search */}
+                      <div className="px-3 pt-3 pb-2">
+                        <input
+                          type="text"
+                          placeholder="Search tasks…"
+                          value={librarySearch}
+                          onChange={e => setLibrarySearch(e.target.value)}
+                          autoFocus
+                          className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      {/* Results */}
+                      <div className="max-h-56 overflow-y-auto divide-y divide-slate-50">
+                        {!libraryLoaded ? (
+                          <div className="flex items-center gap-2 text-sm text-slate-400 px-3 py-3">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Loading library…
+                          </div>
+                        ) : filteredTasks.length === 0 ? (
+                          <p className="text-sm text-slate-400 px-3 py-3">
+                            {query ? 'No matching tasks.' : 'No library items yet.'}
+                          </p>
+                        ) : (
+                          filteredTasks.map(lt => (
+                            <div key={lt.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-800 truncate">{lt.title}</p>
+                                <p className="text-[10px] text-slate-400 truncate">{lt.typeName} · {lt.themeName}{lt.repetitions ? ` · ${lt.repetitions} reps` : ''}</p>
+                              </div>
+                              <button
+                                onClick={() => handleAddLibraryTask(lt)}
+                                disabled={addingTask === lt.id}
+                                className="flex-shrink-0 h-7 w-7 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center disabled:opacity-50 transition-colors"
+                              >
+                                {addingTask === lt.id
+                                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  : <Plus className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Custom task form */}
+                  {addMode === 'custom' && (
+                    <form onSubmit={handleAddCustomTask} className="flex flex-col gap-2.5 p-3">
+                      <input
+                        type="text"
+                        placeholder="Task title…"
+                        value={newTaskTitle}
+                        onChange={e => setNewTaskTitle(e.target.value)}
+                        autoFocus
+                        className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Description (optional)"
+                        value={newTaskDesc}
+                        onChange={e => setNewTaskDesc(e.target.value)}
+                        className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          placeholder="Reps (optional)"
+                          value={newTaskReps}
+                          onChange={e => setNewTaskReps(e.target.value)}
+                          className="h-10 w-28 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <Button type="submit" size="sm" loading={addingTask === 'custom'} disabled={!newTaskTitle.trim()} className="flex-1">
+                          <Plus className="h-3.5 w-3.5" /> Add
+                        </Button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+
+        {/* Footer */}
+        {clientId && (
+          <div className="flex-shrink-0 px-6 py-4 border-t border-slate-100 bg-slate-50">
+            <button
+              onClick={() => router.push(`/clients/${clientId}`)}
+              className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+            >
+              <ExternalLink className="h-4 w-4" /> View client profile
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ScheduleView({
@@ -741,10 +1269,29 @@ export function ScheduleView({
   const [availSlots, setAvailSlots]     = useState(initialAvailSlots)
   const [showAvail, setShowAvail]       = useState(false)
   const [addModal, setAddModal]         = useState<string | null>(null) // datetime-local string
+  const [activeSession, setActiveSession] = useState<Session | null>(null)
 
   // Keep sessions in sync with server data on refresh
   useEffect(() => { setSessions(initialSessions) }, [initialSessions])
   useEffect(() => { setAvailSlots(initialAvailSlots) }, [initialAvailSlots])
+
+  // Auto-mark sessions as COMPLETED once their scheduled time has passed
+  useEffect(() => {
+    const now = new Date()
+    setSessions(prev => prev.map(s => {
+      if (s.status === 'UPCOMING' && new Date(s.scheduledAt) < now) {
+        // Fire-and-forget PATCH — non-critical
+        fetch(`/api/schedule/${s.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'COMPLETED' }),
+        })
+        return { ...s, status: 'COMPLETED' as SessionStatus }
+      }
+      return s
+    }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSessions])
 
   const weekStart = getMondayOf(selectedDate)
   const weekDays  = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
@@ -805,8 +1352,12 @@ export function ScheduleView({
   }
 
   function handleSessionClick(s: Session) {
-    const clientId = s.clientId ?? s.dog?.primaryFor[0]?.id
-    if (clientId) router.push(`/clients/${clientId}`)
+    setActiveSession(s)
+  }
+
+  function handleSessionStatusChange(id: string, status: SessionStatus) {
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, status } : s))
+    setActiveSession(prev => prev?.id === id ? { ...prev, status } : prev)
   }
 
   async function handleAddAvail(slot: AvailSlot) {
@@ -939,6 +1490,18 @@ export function ScheduleView({
           onAdd={handleAddAvail}
           onDelete={handleDeleteAvail}
           onClose={() => setShowAvail(false)}
+        />
+      )}
+
+      {activeSession && (
+        <SessionModal
+          session={activeSession}
+          clients={clients}
+          onClose={() => setActiveSession(null)}
+          onStatusChange={handleSessionStatusChange}
+          onSessionsUpdate={(id, updates) =>
+            setSessions(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
+          }
         />
       )}
     </div>

@@ -12,6 +12,7 @@ const schema = z.object({
   repetitions: z.number().int().positive().nullable().optional(),
   videoUrl: z.string().url().nullable().optional(),
   dogId: z.string().nullable().optional(),
+  sessionId: z.string().nullable().optional(),
 })
 
 export async function POST(req: Request) {
@@ -30,16 +31,18 @@ export async function POST(req: Request) {
   if (!access) return NextResponse.json({ error: 'Client not found' }, { status: 404 })
   if (!access.canEdit) return NextResponse.json({ error: 'Read-only access' }, { status: 403 })
 
+  const baseData = {
+    clientId: parsed.data.clientId,
+    date: new Date(parsed.data.date),
+    title: parsed.data.title,
+    description: parsed.data.description ?? null,
+    repetitions: parsed.data.repetitions ?? null,
+    videoUrl: parsed.data.videoUrl ?? null,
+    dogId: parsed.data.dogId ?? null,
+  }
+
   const task = await prisma.trainingTask.create({
-    data: {
-      clientId: parsed.data.clientId,
-      date: new Date(parsed.data.date),
-      title: parsed.data.title,
-      description: parsed.data.description ?? null,
-      repetitions: parsed.data.repetitions ?? null,
-      videoUrl: parsed.data.videoUrl ?? null,
-      dogId: parsed.data.dogId ?? null,
-    },
+    data: { ...baseData, sessionId: parsed.data.sessionId ?? null },
   })
 
   return NextResponse.json(task, { status: 201 })

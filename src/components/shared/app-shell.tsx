@@ -5,14 +5,13 @@ import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, Users, BookOpen, BarChart2, Calendar, Layers,
+  LayoutDashboard, Users, BarChart2, Calendar, Layers,
   MessageSquare, Settings, HelpCircle, Sparkles, User, Bell, Globe,
 } from 'lucide-react'
 
 const TRAINER_NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/clients', label: 'Clients', icon: Users },
-  { href: '/diary', label: 'Training Diary', icon: BookOpen },
   { href: '/schedule', label: 'Schedule', icon: Calendar },
   { href: '/templates', label: 'Library', icon: Layers },
   { href: '/forms', label: 'Forms', icon: Globe },
@@ -24,7 +23,6 @@ const TRAINER_NAV = [
 ]
 
 const CLIENT_NAV = [
-  { href: '/my-diary', label: 'My Diary', icon: BookOpen },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-profile', label: 'My Profile', icon: User },
   { href: '/notifications', label: 'Notifications', icon: Bell },

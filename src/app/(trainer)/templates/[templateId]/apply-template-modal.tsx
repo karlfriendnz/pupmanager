@@ -50,7 +50,7 @@ export function ApplyTemplateModal({
     })
     if (!res.ok) { setError('Failed to apply template.'); return }
     setSuccess(true)
-    setTimeout(() => { setOpen(false); setSuccess(false); router.push(`/diary?clientId=${data.clientId}`) }, 1500)
+    setTimeout(() => { setOpen(false); setSuccess(false); router.push(`/clients/${data.clientId}`) }, 1500)
   }
 
   return (

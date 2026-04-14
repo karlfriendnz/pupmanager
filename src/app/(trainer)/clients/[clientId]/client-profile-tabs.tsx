@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate } from '@/lib/utils'
+import { X, MapPin, Video, Clock, Calendar } from 'lucide-react'
 
-type Tab = 'overview' | 'dogs' | 'details'
+type Tab = 'overview' | 'sessions' | 'dogs' | 'details'
 
 interface Dog {
   id: string
@@ -21,6 +23,28 @@ interface Task {
   date: string         // pre-serialised ISO string
   dogId: string | null
   completed: boolean
+}
+
+type SessionStatus = 'UPCOMING' | 'COMPLETED' | 'COMMENTED' | 'INVOICED'
+
+const STATUS_OPTIONS: { value: SessionStatus; label: string; colour: string }[] = [
+  { value: 'UPCOMING',  label: 'Upcoming',  colour: 'bg-blue-100 text-blue-700 border-blue-200' },
+  { value: 'COMPLETED', label: 'Completed', colour: 'bg-green-100 text-green-700 border-green-200' },
+  { value: 'COMMENTED', label: 'Commented', colour: 'bg-amber-100 text-amber-700 border-amber-200' },
+  { value: 'INVOICED',  label: 'Invoiced',  colour: 'bg-purple-100 text-purple-700 border-purple-200' },
+]
+
+interface TrainingSession {
+  id: string
+  title: string
+  scheduledAt: string   // ISO string
+  durationMins: number
+  sessionType: string
+  status: SessionStatus
+  location: string | null
+  virtualLink: string | null
+  description: string | null
+  dogName: string | null
 }
 
 interface CustomField {
@@ -40,6 +64,7 @@ interface Props {
   stats: Stats
   dogs: Dog[]
   tasks: Task[]
+  sessions: TrainingSession[]
   customFields: CustomField[]
   fieldValueMap: Record<string, string>
   dogNames: Record<string, string>  // dogId → name
@@ -58,16 +83,58 @@ function groupByCategory<T extends { category: string | null }>(items: T[]) {
   return groups
 }
 
-export function ClientProfileTabs({ stats, dogs, tasks, customFields, fieldValueMap, dogNames }: Props) {
+export function ClientProfileTabs({ stats, dogs, tasks, sessions: initialSessions, customFields, fieldValueMap, dogNames }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
+  const [sessions, setSessions] = useState(initialSessions)
+  const [activeSession, setActiveSession] = useState<TrainingSession | null>(null)
+  const [savingStatus, setSavingStatus] = useState(false)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  // Auto-open session modal when ?sessionId= is in the URL
+  useEffect(() => {
+    const sessionId = searchParams.get('sessionId')
+    if (sessionId) {
+      const found = sessions.find(s => s.id === sessionId) ?? null
+      if (found) {
+        setTab('sessions')
+        setActiveSession(found)
+      }
+    }
+  }, [searchParams, sessions])
+
+  function closeModal() {
+    setActiveSession(null)
+    // Remove sessionId from URL without a full navigation
+    const url = new URL(window.location.href)
+    url.searchParams.delete('sessionId')
+    router.replace(url.pathname + (url.search || ''), { scroll: false })
+  }
+
+  async function handleStatusChange(sessionId: string, status: SessionStatus) {
+    setSavingStatus(true)
+    // Optimistic update
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status } : s))
+    setActiveSession(prev => prev ? { ...prev, status } : null)
+    try {
+      await fetch(`/api/schedule/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+    } finally {
+      setSavingStatus(false)
+    }
+  }
 
   const ownerFields = customFields.filter(f => f.appliesTo === 'OWNER')
   const dogFields   = customFields.filter(f => f.appliesTo === 'DOG')
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'dogs',     label: dogs.length > 1 ? `Dogs (${dogs.length})` : 'Dog' },
-    { id: 'details',  label: 'Details' },
+    { id: 'overview',  label: 'Overview' },
+    { id: 'sessions',  label: sessions.length > 0 ? `Sessions (${sessions.length})` : 'Sessions' },
+    { id: 'dogs',      label: dogs.length > 1 ? `Dogs (${dogs.length})` : 'Dog' },
+    { id: 'details',   label: 'Details' },
   ]
 
   return (
@@ -161,6 +228,178 @@ export function ClientProfileTabs({ stats, dogs, tasks, customFields, fieldValue
           </Card>
         </div>
       )}
+
+      {/* ── Sessions ─────────────────────────────────────────────────────── */}
+      {tab === 'sessions' && (
+        <div className="flex flex-col gap-3">
+          {sessions.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              <p>No sessions scheduled for this client yet.</p>
+            </div>
+          ) : (
+            sessions.map(s => {
+              const d = new Date(s.scheduledAt)
+              const isPast = d < new Date()
+              return (
+                <Card
+                  key={s.id}
+                  className={`cursor-pointer hover:border-blue-200 hover:shadow-md transition-all ${isPast ? 'opacity-70' : ''}`}
+                  onClick={() => setActiveSession(s)}
+                >
+                  <CardBody className="pt-4 pb-4">
+                    <div className="flex items-start gap-4">
+                      <div className="flex-shrink-0 text-center min-w-[52px]">
+                        <p className="text-xs font-bold text-blue-600">
+                          {d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                        </p>
+                        <p className="text-xs text-slate-400">{s.durationMins}m</p>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-900 truncate">{s.title}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {d.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                          {s.dogName ? ` · 🐕 ${s.dogName}` : ''}
+                        </p>
+                        {s.location && <p className="text-xs text-slate-400 mt-0.5">{s.location}</p>}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          s.sessionType === 'VIRTUAL'
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {s.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'}
+                        </span>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
+                          STATUS_OPTIONS.find(o => o.value === s.status)?.colour ?? 'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
+                          {STATUS_OPTIONS.find(o => o.value === s.status)?.label ?? s.status}
+                        </span>
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+              )
+            })
+          )}
+        </div>
+      )}
+
+      {/* ── Session detail modal ──────────────────────────────────────────── */}
+      {activeSession && (() => {
+        const s = activeSession
+        const d = new Date(s.scheduledAt)
+        const isPast = d < new Date()
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={closeModal}>
+            <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+            <div
+              className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className={`px-6 py-5 ${s.sessionType === 'VIRTUAL' ? 'bg-purple-50 border-b border-purple-100' : 'bg-blue-50 border-b border-blue-100'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className={`text-xs font-semibold uppercase tracking-wide ${s.sessionType === 'VIRTUAL' ? 'text-purple-500' : 'text-blue-500'}`}>
+                      {s.sessionType === 'VIRTUAL' ? '💻 Virtual session' : '📍 In-person session'}
+                    </span>
+                    <h2 className="text-lg font-bold text-slate-900 mt-0.5">{s.title}</h2>
+                    {isPast && (
+                      <span className="inline-block mt-1 text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Past</span>
+                    )}
+                  </div>
+                  <button onClick={closeModal} className="p-1 text-slate-400 hover:text-slate-600 flex-shrink-0">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 py-5 flex flex-col gap-4">
+                {/* Status picker */}
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Status</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {STATUS_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        disabled={savingStatus}
+                        onClick={() => handleStatusChange(s.id, opt.value)}
+                        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
+                          s.status === opt.value
+                            ? `${opt.colour} ring-2 ring-offset-1 ring-current`
+                            : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                        } disabled:opacity-50`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Date & time */}
+                <div className="flex items-start gap-3">
+                  <Calendar className="h-4 w-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">
+                      {d.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      {d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Duration */}
+                <div className="flex items-center gap-3">
+                  <Clock className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                  <p className="text-sm text-slate-700">{s.durationMins} minutes</p>
+                </div>
+
+                {/* Location */}
+                {s.location && (
+                  <div className="flex items-start gap-3">
+                    <MapPin className="h-4 w-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-slate-700">{s.location}</p>
+                  </div>
+                )}
+
+                {/* Virtual link */}
+                {s.virtualLink && (
+                  <div className="flex items-center gap-3">
+                    <Video className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                    <a
+                      href={s.virtualLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline truncate"
+                    >
+                      {s.virtualLink}
+                    </a>
+                  </div>
+                )}
+
+                {/* Dog */}
+                {s.dogName && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-base leading-none flex-shrink-0">🐕</span>
+                    <p className="text-sm text-slate-700">{s.dogName}</p>
+                  </div>
+                )}
+
+                {/* Description */}
+                {s.description && (
+                  <div className="pt-1 border-t border-slate-100">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Notes</p>
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{s.description}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Dogs ─────────────────────────────────────────────────────────── */}
       {tab === 'dogs' && (

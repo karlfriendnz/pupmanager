@@ -2,17 +2,18 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useForm } from 'react-hook-form'
+import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
+import { Plus, X } from 'lucide-react'
 
 const schema = z.object({
   clientName: z.string().min(2, 'Client name is required'),
-  dogName: z.string().min(1, "Dog's name is required"),
+  dogs: z.array(z.object({ name: z.string().min(1, "Dog's name is required") })).min(1),
   clientEmail: z.string().email('Please enter a valid email address'),
   emailBody: z.string().optional(),
 })
@@ -22,6 +23,7 @@ type FormData = z.infer<typeof schema>
 export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
+  const [emailWarning, setEmailWarning] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
   const [sendInvite, setSendInvite] = useState(true)
 
@@ -29,23 +31,47 @@ export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string 
     register,
     handleSubmit,
     watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
-    defaultValues: { emailBody: defaultTemplate },
+    defaultValues: {
+      emailBody: defaultTemplate,
+      dogs: [{ name: '' }],
+    },
   })
 
+  const { fields, append, remove } = useFieldArray({ control, name: 'dogs' })
+
   const clientName = watch('clientName') || '{{clientName}}'
-  const dogName = watch('dogName') || '{{dogName}}'
+  const dogs = watch('dogs')
+
+  const dogNamesList = dogs
+    ?.map(d => d.name.trim())
+    .filter(Boolean) ?? []
+
+  const dogNamesFormatted = dogNamesList.length === 0
+    ? '{{dogName}}'
+    : dogNamesList.length === 1
+      ? dogNamesList[0]
+      : dogNamesList.slice(0, -1).join(', ') + ' and ' + dogNamesList[dogNamesList.length - 1]
+
   const emailBody = watch('emailBody')
     ?.replace(/{{clientName}}/g, clientName)
-    ?.replace(/{{dogName}}/g, dogName)
+    ?.replace(/{{dogName}}/g, dogNamesFormatted)
 
   async function onSubmit(data: FormData) {
     setError(null)
+    setEmailWarning(null)
     const res = await fetch('/api/clients/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...data, sendInvite }),
+      body: JSON.stringify({
+        clientName: data.clientName,
+        dogNames: data.dogs.map(d => d.name),
+        clientEmail: data.clientEmail,
+        emailBody: data.emailBody,
+        sendInvite,
+      }),
     })
 
     if (!res.ok) {
@@ -54,16 +80,24 @@ export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string 
       return
     }
 
+    const body = await res.json()
+    if (body.emailError) {
+      setEmailWarning(`Client added, but the invitation email failed to send: ${body.emailError}`)
+    }
+
     setSent(true)
     setTimeout(() => router.push('/clients'), 2000)
   }
 
   if (sent) {
     return (
-      <Alert variant="success" className="text-center py-6">
-        <p className="text-lg font-semibold">{sendInvite ? 'Invitation sent! 🎉' : 'Client added!'}</p>
-        <p className="text-sm mt-1">Redirecting to your client list…</p>
-      </Alert>
+      <div className="flex flex-col gap-3">
+        {emailWarning && <Alert variant="error">{emailWarning}</Alert>}
+        <Alert variant="success" className="text-center py-6">
+          <p className="text-lg font-semibold">{sendInvite && !emailWarning ? 'Invitation sent! 🎉' : 'Client added!'}</p>
+          <p className="text-sm mt-1">Redirecting to your client list…</p>
+        </Alert>
+      </div>
     )
   }
 
@@ -81,18 +115,51 @@ export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string 
             {...register('clientName')}
           />
           <Input
-            label="Dog's name"
-            placeholder="Buddy"
-            error={errors.dogName?.message}
-            {...register('dogName')}
-          />
-          <Input
             label="Client's email address"
             type="email"
             placeholder="jane@example.com"
             error={errors.clientEmail?.message}
             {...register('clientEmail')}
           />
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardBody className="pt-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-slate-900">Dogs</h2>
+            <button
+              type="button"
+              onClick={() => append({ name: '' })}
+              className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              Add another dog
+            </button>
+          </div>
+
+          {fields.map((field, index) => (
+            <div key={field.id} className="flex items-start gap-2">
+              <div className="flex-1">
+                <Input
+                  label={fields.length > 1 ? `Dog ${index + 1} name` : "Dog's name"}
+                  placeholder="Buddy"
+                  error={errors.dogs?.[index]?.name?.message}
+                  {...register(`dogs.${index}.name`)}
+                />
+              </div>
+              {fields.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => remove(index)}
+                  className="mt-7 p-2 text-slate-400 hover:text-red-500 transition-colors"
+                  aria-label="Remove dog"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ))}
         </CardBody>
       </Card>
 

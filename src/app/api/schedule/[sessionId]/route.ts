@@ -4,9 +4,44 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
 const patchSchema = z.object({
-  scheduledAt: z.string(),
+  scheduledAt: z.string().optional(),
   durationMins: z.number().int().positive().optional(),
+  status: z.enum(['UPCOMING', 'COMPLETED', 'COMMENTED', 'INVOICED']).optional(),
 })
+
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const session = await auth()
+  if (!session || session.user.role !== 'TRAINER') {
+    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  }
+
+  const trainerId = session.user.trainerId
+  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+
+  const { sessionId } = await params
+
+  const trainingSession = await prisma.trainingSession.findFirst({
+    where: { id: sessionId, trainerId },
+    include: {
+      tasks: {
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, title: true, description: true, repetitions: true, videoUrl: true, dogId: true },
+      },
+      client: { select: { id: true, user: { select: { name: true, email: true } } } },
+      dog: { select: { name: true } },
+    },
+  })
+
+  if (!trainingSession) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  return NextResponse.json({
+    ...trainingSession,
+    scheduledAt: trainingSession.scheduledAt.toISOString(),
+  })
+}
 
 export async function PATCH(
   req: Request,
@@ -33,8 +68,9 @@ export async function PATCH(
   const updated = await prisma.trainingSession.update({
     where: { id: sessionId },
     data: {
-      scheduledAt: new Date(parsed.data.scheduledAt),
+      ...(parsed.data.scheduledAt !== undefined && { scheduledAt: new Date(parsed.data.scheduledAt) }),
       ...(parsed.data.durationMins !== undefined && { durationMins: parsed.data.durationMins }),
+      ...(parsed.data.status !== undefined && { status: parsed.data.status }),
     },
   })
 

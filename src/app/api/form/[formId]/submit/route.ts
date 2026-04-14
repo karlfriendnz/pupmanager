@@ -114,7 +114,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
   const reqUrl = new URL(req.url)
   const appUrl = `${reqUrl.protocol}//${reqUrl.host}`
   const magicLink = `${appUrl}/api/auth/callback/resend?${new URLSearchParams({
-    callbackUrl: '/my-diary',
+    callbackUrl: '/my-profile',
     token: plainToken,
     email,
   })}`
