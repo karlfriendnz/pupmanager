@@ -293,10 +293,14 @@ function WeekGrid({
   } | null>(null)
 
   const handlePointerDown = useCallback((e: React.PointerEvent, session: Session, dayIndex: number) => {
-    if (e.button !== 0) return
-    // Do NOT setPointerCapture — we need pointer events to reach other columns
+    if (e.pointerType === 'mouse' && e.button !== 0) return
     e.preventDefault()
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const blockEl = e.currentTarget as HTMLElement
+    // Capture so touch pointermove/up keep firing on the block (and bubble to the grid)
+    // even when the finger drifts outside it. Hit-testing for the target column uses
+    // clientX/clientY, so capture does NOT prevent cross-column drags.
+    try { blockEl.setPointerCapture(e.pointerId) } catch {}
+    const rect = blockEl.getBoundingClientRect()
     setDragging({
       session,
       originalDayIndex: dayIndex,
@@ -348,12 +352,18 @@ function WeekGrid({
     setDragging(null)
   }, [dragging, weekDays, onSessionClick, onSessionDrop])
 
-  // Cancel drag if pointer released outside the grid
+  // Cancel drag if pointer released outside the grid, or if iOS cancels the gesture
+  // (e.g. multi-touch zoom, scroll arbitration) — without pointercancel cleanup the
+  // dragging state would stick on iPad.
   useEffect(() => {
     if (!dragging) return
-    function onGlobalUp() { setDragging(null) }
-    document.addEventListener('pointerup', onGlobalUp)
-    return () => document.removeEventListener('pointerup', onGlobalUp)
+    function onGlobalEnd() { setDragging(null) }
+    document.addEventListener('pointerup', onGlobalEnd)
+    document.addEventListener('pointercancel', onGlobalEnd)
+    return () => {
+      document.removeEventListener('pointerup', onGlobalEnd)
+      document.removeEventListener('pointercancel', onGlobalEnd)
+    }
   }, [dragging])
 
   function handleColumnClick(e: React.MouseEvent, dayDate: Date, dayIndex: number) {
