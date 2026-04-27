@@ -18,9 +18,14 @@ interface PkgRow {
   weeksBetween: number
   durationMins: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
+  priceCents: number | null
+  specialPriceCents: number | null
   assignments: number
 }
 
+// We collect price as a decimal string from the user (e.g. "120" or "120.50")
+// then convert to cents server-side. This keeps the input UX natural without
+// pulling in a money/decimal library.
 const formSchema = z.object({
   name: z.string().min(1, 'Name required'),
   description: z.string().optional(),
@@ -28,7 +33,27 @@ const formSchema = z.object({
   weeksBetween: z.number().int().min(0).max(52),
   durationMins: z.number().int().min(15).max(480),
   sessionType: z.enum(['IN_PERSON', 'VIRTUAL']),
+  price: z.string().optional(),
+  specialPrice: z.string().optional(),
 })
+
+function dollarsToCents(s: string | undefined): number | null {
+  if (!s || !s.trim()) return null
+  const n = parseFloat(s)
+  if (Number.isNaN(n) || n < 0) return null
+  return Math.round(n * 100)
+}
+
+function centsToDollars(cents: number | null): string {
+  if (cents === null || cents === undefined) return ''
+  return (cents / 100).toFixed(2).replace(/\.00$/, '')
+}
+
+function formatPrice(cents: number | null): string | null {
+  if (cents === null || cents === undefined) return null
+  // Locale-friendly: "$120" or "$120.50"
+  return new Intl.NumberFormat('en-NZ', { style: 'currency', currency: 'NZD' }).format(cents / 100)
+}
 
 type FormValues = z.infer<typeof formSchema>
 
@@ -120,7 +145,21 @@ export function PackagesView({ initialPackages }: { initialPackages: PkgRow[] })
                       <PackageIcon className="h-5 w-5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-900">{p.name}</p>
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <p className="font-semibold text-slate-900">{p.name}</p>
+                        {p.priceCents !== null && (
+                          <span className="text-sm font-medium text-slate-700">
+                            {p.specialPriceCents !== null ? (
+                              <>
+                                <span className="text-emerald-600">{formatPrice(p.specialPriceCents)}</span>
+                                <span className="text-slate-400 line-through ml-1.5 text-xs">{formatPrice(p.priceCents)}</span>
+                              </>
+                            ) : (
+                              formatPrice(p.priceCents)
+                            )}
+                          </span>
+                        )}
+                      </div>
                       {p.description && <p className="text-sm text-slate-500 mt-0.5">{p.description}</p>}
                       <div className="flex items-center gap-3 text-xs text-slate-400 mt-1.5 flex-wrap">
                         <span>{p.sessionCount} sessions</span>
@@ -193,18 +232,28 @@ function PackageModal({
           weeksBetween: existing.weeksBetween,
           durationMins: existing.durationMins,
           sessionType: existing.sessionType,
+          price: centsToDollars(existing.priceCents),
+          specialPrice: centsToDollars(existing.specialPriceCents),
         }
-      : { sessionCount: 3, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON' },
+      : { sessionCount: 3, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', price: '', specialPrice: '' },
   })
 
   async function onSubmit(values: FormValues) {
     setError(null)
     const url = existing ? `/api/packages/${existing.id}` : '/api/packages'
     const method = existing ? 'PATCH' : 'POST'
+    // Convert the dollar-string price fields into cents before sending; the
+    // server stores cents to dodge floating-point math.
+    const { price, specialPrice, ...rest } = values
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...values, description: values.description || null }),
+      body: JSON.stringify({
+        ...rest,
+        description: values.description || null,
+        priceCents: dollarsToCents(price),
+        specialPriceCents: dollarsToCents(specialPrice),
+      }),
     })
     if (!res.ok) { setError('Failed to save.'); return }
     const saved = await res.json()
@@ -217,6 +266,8 @@ function PackageModal({
         weeksBetween: saved.weeksBetween,
         durationMins: saved.durationMins,
         sessionType: saved.sessionType,
+        priceCents: saved.priceCents ?? null,
+        specialPriceCents: saved.specialPriceCents ?? null,
         assignments: existing?.assignments ?? 0,
       },
       !existing
@@ -281,6 +332,25 @@ function PackageModal({
                 </label>
               ))}
             </div>
+          </div>
+
+          {/* Pricing — leave price blank for "no price set". The special price
+              is independent and only shown when populated. */}
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Price"
+              type="text"
+              inputMode="decimal"
+              placeholder="120"
+              {...register('price')}
+            />
+            <Input
+              label="Special price (optional)"
+              type="text"
+              inputMode="decimal"
+              placeholder="—"
+              {...register('specialPrice')}
+            />
           </div>
 
           <div className="flex gap-2 pt-2">

@@ -4,26 +4,46 @@ import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { UserPlus, TrendingUp, Calendar, MapPin, Video } from 'lucide-react'
+import { UserPlus, TrendingUp, Calendar, MapPin, Video, ChevronLeft, ChevronRight, Play } from 'lucide-react'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
-export default async function DashboardPage() {
+function parseLocalDate(s: string): Date | null {
+  const [y, m, d] = s.split('-').map(Number)
+  if (!y || !m || !d) return null
+  return new Date(y, m - 1, d, 12, 0, 0)
+}
+
+function toDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>
+}) {
   const session = await auth()
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/onboarding')
 
+  const sp = await searchParams
+  const todayDateStr = toDateStr(new Date())
+  const focusDate = (sp.date && parseLocalDate(sp.date)) || parseLocalDate(todayDateStr)!
+  const focusStart = new Date(focusDate); focusStart.setHours(0, 0, 0, 0)
+  const focusEnd = new Date(focusDate); focusEnd.setHours(23, 59, 59, 999)
+  const isToday = toDateStr(focusDate) === todayDateStr
+
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-  const today = new Date()
-  today.setHours(23, 59, 59, 999)
-  const todayStart = new Date()
-  todayStart.setHours(0, 0, 0, 0)
 
   const todaysSessions = await prisma.trainingSession.findMany({
-    where: { trainerId, scheduledAt: { gte: todayStart, lte: today } },
+    where: { trainerId, scheduledAt: { gte: focusStart, lte: focusEnd } },
     include: {
       client: { select: { user: { select: { name: true, email: true } } } },
       dog: {
@@ -36,13 +56,19 @@ export default async function DashboardPage() {
     orderBy: { scheduledAt: 'asc' },
   })
 
+  const prevDate = new Date(focusDate); prevDate.setDate(prevDate.getDate() - 1)
+  const nextDate = new Date(focusDate); nextDate.setDate(nextDate.getDate() + 1)
+  const prevHref = `/dashboard?date=${toDateStr(prevDate)}`
+  const nextHref = `/dashboard?date=${toDateStr(nextDate)}`
+  const todayHref = `/dashboard`
+
   const clients = await prisma.clientProfile.findMany({
     where: { trainerId },
     include: {
       user: { select: { name: true, email: true } },
       dog: { select: { name: true } },
       diaryEntries: {
-        where: { date: { gte: sevenDaysAgo, lte: today } },
+        where: { date: { gte: sevenDaysAgo } },
         select: { id: true, completion: { select: { id: true } } },
       },
     },
@@ -126,18 +152,46 @@ export default async function DashboardPage() {
         <QuickAction href="/schedule" icon={<Calendar className="h-5 w-5" />} label="Schedule" />
       </div>
 
-      {/* Today's sessions */}
+      {/* Day-scoped session list */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-slate-900">Coming up today</h2>
-          <Link href="/schedule" className="text-sm text-blue-600 hover:underline">
-            View schedule
-          </Link>
+        <div className="flex items-center justify-between mb-3 gap-2">
+          <h2 className="font-semibold text-slate-900">
+            {isToday ? 'Coming up today' : `Sessions on ${focusDate.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' })}`}
+          </h2>
+          <div className="flex items-center gap-1">
+            <Link
+              href={prevHref}
+              aria-label="Previous day"
+              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Link>
+            {!isToday && (
+              <Link
+                href={todayHref}
+                className="text-xs font-medium px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
+              >
+                Today
+              </Link>
+            )}
+            <Link
+              href={nextHref}
+              aria-label="Next day"
+              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+            <Link href="/schedule" className="text-sm text-blue-600 hover:underline ml-2">
+              View schedule
+            </Link>
+          </div>
         </div>
         {todaysSessions.length === 0 ? (
           <Card className="p-6 text-center">
             <Calendar className="h-8 w-8 mx-auto mb-2 text-slate-300" />
-            <p className="text-sm text-slate-500">No sessions scheduled for today.</p>
+            <p className="text-sm text-slate-500">
+              {isToday ? 'No sessions scheduled for today.' : 'No sessions on this day.'}
+            </p>
           </Card>
         ) : (
           <div className="flex flex-col gap-2">
@@ -148,35 +202,40 @@ export default async function DashboardPage() {
               const isPast = start.getTime() + s.durationMins * 60_000 < new Date().getTime()
               const meta = STATUS_META[s.status]
               return (
-                <Link key={s.id} href="/schedule">
-                  <Card className={`p-3 hover:border-blue-100 transition-all cursor-pointer ${isPast ? 'opacity-60' : ''}`}>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0 text-center min-w-[56px]">
-                        <p className="text-sm font-bold text-blue-600">
-                          {start.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                        </p>
-                        <p className="text-[10px] text-slate-400">{s.durationMins}m</p>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">{s.title}</p>
-                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                          {clientName && <span className="truncate">{clientName}</span>}
-                          {s.dog && <span className="text-slate-400 truncate">🐕 {s.dog.name}</span>}
-                        </div>
-                        <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5">
-                          {s.sessionType === 'VIRTUAL' ? (
-                            <span className="flex items-center gap-1"><Video className="h-3 w-3" />Virtual</span>
-                          ) : (
-                            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{s.location ?? 'In person'}</span>
-                          )}
-                        </div>
-                      </div>
-                      <span className={`flex-shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border ${meta.colour}`}>
-                        {meta.label}
-                      </span>
+                <Card key={s.id} className={`p-3 transition-all ${isPast ? 'opacity-60' : ''}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-shrink-0 text-center min-w-[56px]">
+                      <p className="text-sm font-bold text-blue-600">
+                        {start.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                      </p>
+                      <p className="text-[10px] text-slate-400">{s.durationMins}m</p>
                     </div>
-                  </Card>
-                </Link>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">{s.title}</p>
+                      <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                        {clientName && <span className="truncate">{clientName}</span>}
+                        {s.dog && <span className="text-slate-400 truncate">🐕 {s.dog.name}</span>}
+                      </div>
+                      <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5">
+                        {s.sessionType === 'VIRTUAL' ? (
+                          <span className="flex items-center gap-1"><Video className="h-3 w-3" />Virtual</span>
+                        ) : (
+                          <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{s.location ?? 'In person'}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className={`flex-shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border ${meta.colour}`}>
+                      {meta.label}
+                    </span>
+                    <Link
+                      href={`/sessions/${s.id}`}
+                      className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors flex-shrink-0"
+                    >
+                      <Play className="h-3 w-3" />
+                      Start
+                    </Link>
+                  </div>
+                </Card>
               )
             })}
           </div>

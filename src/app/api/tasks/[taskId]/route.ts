@@ -7,10 +7,14 @@ import { z } from 'zod'
 const patchSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
-  repetitions: z.number().int().positive().nullable().optional(),
+  // Allow 0 here since the trainer might intentionally clear reps to "0".
+  // The original POST validates positive, but PATCH-after-the-fact is laxer.
+  repetitions: z.number().int().min(0).nullable().optional(),
   videoUrl: z.string().url().nullable().optional().or(z.literal('')),
   dogId: z.string().nullable().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  trainerNote: z.string().nullable().optional(),
+  imageUrls: z.array(z.string().url()).optional(),
 })
 
 async function resolveAccess(taskId: string, userId: string) {
@@ -45,6 +49,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ taskId
       ...(parsed.data.videoUrl !== undefined && { videoUrl: parsed.data.videoUrl || null }),
       ...(parsed.data.dogId !== undefined && { dogId: parsed.data.dogId }),
       ...(parsed.data.date !== undefined && { date: new Date(parsed.data.date) }),
+      ...(parsed.data.trainerNote !== undefined && { trainerNote: parsed.data.trainerNote }),
+      ...(parsed.data.imageUrls !== undefined && { imageUrls: parsed.data.imageUrls }),
     },
   })
   return NextResponse.json(updated)

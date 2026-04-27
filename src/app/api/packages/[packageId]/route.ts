@@ -10,6 +10,8 @@ const updateSchema = z.object({
   weeksBetween: z.number().int().min(0).max(52).optional(),
   durationMins: z.number().int().min(15).max(480).optional(),
   sessionType: z.enum(['IN_PERSON', 'VIRTUAL']).optional(),
+  priceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  specialPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
 })
 
 async function ownPackage(packageId: string, trainerId: string) {

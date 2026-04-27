@@ -161,6 +161,7 @@ model TrainerProfile {
   sentNotifications  ClientNotification[]
   availabilitySlots  AvailabilitySlot[]
   packages           Package[]
+  sessionForms       SessionForm[]
 
   @@map("trainer_profiles")
 }
@@ -248,6 +249,9 @@ model TrainingTask {
   description String?  @db.Text
   repetitions Int?
   videoUrl    String?  // trainer-provided instructional link
+  trainerNote String?  @db.Text   // per-task comment from the trainer
+  imageUrls   Json     @default("[]") // string[] of public image URLs
+  order       Int      @default(0) // display order within a session
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -303,6 +307,7 @@ model TrainingSession {
   dog     Dog?           @relation(fields: [dogId], references: [id])
   clientPackage ClientPackage? @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
   tasks   TrainingTask[]
+  formResponses SessionFormResponse[]
 
   @@index([trainerId])
   @@index([clientId])
@@ -322,6 +327,10 @@ model Package {
   weeksBetween Int      @default(2)   // gap between sessions, in weeks
   durationMins Int      @default(60)  // default duration applied to created sessions
   sessionType  SessionType @default(IN_PERSON)
+  // Prices in cents to avoid float precision issues. specialPriceCents is an
+  // optional discounted price the trainer can offer for promotions, etc.
+  priceCents        Int? // null = unpriced
+  specialPriceCents Int? // null = no special price
   order        Int      @default(0)   // display order, lowest first
 
   createdAt DateTime @default(now())
@@ -348,6 +357,60 @@ model ClientPackage {
   @@index([clientId])
   @@index([packageId])
   @@map("client_packages")
+}
+
+// ─── Session report forms ─────────────────────────────────────────────────────
+
+// Trainer-defined questionnaire that can be attached to any TrainingSession to
+// capture a structured report. Questions live as a JSON array so the trainer
+// can reorder/add/remove without schema migrations:
+//   [{ id, label, type: 'SHORT_TEXT'|'LONG_TEXT'|'NUMBER'|'RATING_1_5', required }]
+model SessionForm {
+  id          String   @id @default(cuid())
+  trainerId   String
+  name        String
+  description String?  @db.Text
+  introText   String?  @db.Text   // shown above the questions during fill + on the report
+  closingText String?  @db.Text   // shown below the questions during fill + on the report
+  questions   Json     @default("[]")
+  order       Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer   TrainerProfile        @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  responses SessionFormResponse[]
+
+  @@index([trainerId])
+  @@map("session_forms")
+}
+
+// One trainer-filled response per (session, form). A session can have many
+// responses (multiple forms attached). `answers` is a JSON object keyed by
+// question id → string (we store everything as text; rendering interprets it).
+model SessionFormResponse {
+  id        String   @id @default(cuid())
+  sessionId String
+  formId    String
+  answers   Json     @default("{}")
+  // Per-question image lists, keyed by question id → string[] of URLs
+  imagesByQuestion Json @default("{}")
+  // Trainer-authored top/bottom messages for the report. Optional and
+  // independent of the form template's introText/closingText (which act as
+  // suggested defaults the trainer can copy in).
+  introMessage   String? @db.Text
+  closingMessage String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  form    SessionForm     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, formId])
+  @@index([sessionId])
+  @@index([formId])
+  @@map("session_form_responses")
 }
 
 // ─── Training Templates ───────────────────────────────────────────────────────

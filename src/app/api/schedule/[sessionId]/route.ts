@@ -27,8 +27,12 @@ export async function GET(
     where: { id: sessionId, trainerId },
     include: {
       tasks: {
-        orderBy: { createdAt: 'asc' },
-        select: { id: true, title: true, description: true, repetitions: true, videoUrl: true, dogId: true },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          id: true, title: true, description: true, repetitions: true,
+          videoUrl: true, dogId: true, trainerNote: true, order: true,
+          imageUrls: true,
+        },
       },
       client: { select: { id: true, user: { select: { name: true, email: true } } } },
       dog: { select: { name: true } },

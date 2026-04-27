@@ -1,13 +1,14 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { FormsManager } from './forms-manager'
-import { FormsTabs } from './forms-tabs'
+import { SessionFormsManager } from './session-forms-manager'
+import type { Question } from './session-forms-manager'
+import { FormsTabs } from '../forms-tabs'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Embed Forms' }
+export const metadata: Metadata = { title: 'Session Forms' }
 
-export default async function FormsPage() {
+export default async function SessionFormsPage() {
   const session = await auth()
   if (!session) redirect('/login')
 
@@ -15,9 +16,10 @@ export default async function FormsPage() {
   if (!trainerId) redirect('/onboarding')
 
   const [forms, customFields] = await Promise.all([
-    prisma.embedForm.findMany({
+    prisma.sessionForm.findMany({
       where: { trainerId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+      include: { _count: { select: { responses: true } } },
     }),
     prisma.customField.findMany({
       where: { trainerId },
@@ -34,22 +36,22 @@ export default async function FormsPage() {
         </p>
       </div>
       <FormsTabs />
-      <FormsManager
+      <SessionFormsManager
         initialForms={forms.map(f => ({
           id: f.id,
-          title: f.title,
+          name: f.name,
           description: f.description,
-          fields: Array.isArray(f.fields) ? f.fields as { key: string; required: boolean }[] : [],
-          customFieldIds: Array.isArray(f.customFieldIds) ? f.customFieldIds as string[] : [],
-          thankYouMessage: f.thankYouMessage,
-          isActive: f.isActive,
+          introText: f.introText,
+          closingText: f.closingText,
+          questions: Array.isArray(f.questions) ? f.questions as unknown as Question[] : [],
+          responses: f._count.responses,
         }))}
         customFields={customFields.map(f => ({
           id: f.id,
           label: f.label,
           type: f.type as 'TEXT' | 'NUMBER' | 'DROPDOWN',
-          required: f.required,
           appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
+          category: f.category,
         }))}
       />
     </div>

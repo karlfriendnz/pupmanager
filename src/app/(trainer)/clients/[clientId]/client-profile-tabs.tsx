@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle } from 'lucide-react'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { SessionFormReport } from '@/components/session-form-report'
+import Link from 'next/link'
 
 type Tab = 'overview' | 'sessions' | 'dogs' | 'details'
 
@@ -371,6 +373,15 @@ export function ClientProfileTabs({ stats, dogs, tasks, sessions: initialSession
                           {STATUS_OPTIONS.find(o => o.value === s.status)?.label ?? s.status}
                         </span>
                       </div>
+                      {/* Start session — opens the full-page form view */}
+                      <Link
+                        href={`/sessions/${s.id}`}
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors flex-shrink-0"
+                      >
+                        <Play className="h-3 w-3" />
+                        Start session
+                      </Link>
                       {/* Per-card delete */}
                       <button
                         onClick={e => { e.stopPropagation(); setConfirmDelete({ ids: [s.id] }) }}
@@ -536,6 +547,11 @@ export function ClientProfileTabs({ stats, dogs, tasks, sessions: initialSession
                     <p className="text-sm text-slate-700 whitespace-pre-wrap">{s.description}</p>
                   </div>
                 )}
+
+                {/* Session report (forms) */}
+                <div className="pt-3 border-t border-slate-100">
+                  <SessionFormReport sessionId={s.id} />
+                </div>
               </div>
             </div>
           </div>

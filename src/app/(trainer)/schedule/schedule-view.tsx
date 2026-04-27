@@ -9,14 +9,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
+import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, LayoutGrid, List,
-  Clock, Trash2, X, Settings, MapPin, Video, ExternalLink, Loader2,
+  Clock, Trash2, X, Settings, MapPin, Video, ExternalLink, Loader2, Play,
 } from 'lucide-react'
 import {
   AssignPackageFromScheduleButton,
   AssignPackageFromScheduleModal,
 } from './assign-package-from-schedule'
+import { SessionFormReport } from '@/components/session-form-report'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -538,6 +540,14 @@ function DayList({
                     <p className="text-xs text-slate-400 mt-1">{s.location}</p>
                   )}
                 </div>
+                <Link
+                  href={`/sessions/${s.id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors flex-shrink-0"
+                >
+                  <Play className="h-3 w-3" />
+                  Start session
+                </Link>
                 <button
                   onClick={(e) => { e.stopPropagation(); onDelete(s.id) }}
                   className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
@@ -934,6 +944,11 @@ function SessionModal({
             </div>
           )}
 
+          {/* Session report (forms) */}
+          <div className="border-t border-slate-100 pt-4">
+            <SessionFormReport sessionId={session.id} />
+          </div>
+
           {/* Tasks */}
           <div className="border-t border-slate-100 pt-4">
             <div className="flex items-center justify-between mb-3">
@@ -1188,10 +1203,11 @@ export function ScheduleView({
   const [sessions, setSessions]         = useState(initialSessions)
   const [availSlots, setAvailSlots]     = useState(initialAvailSlots)
   const [showAvail, setShowAvail]       = useState(false)
-  // YYYY-MM-DD for the package-assign modal's start day. Sessions can only be
-  // created via package assignment, so this drives the only session-creation
-  // flow on this screen.
-  const [assignAt, setAssignAt]         = useState<string | null>(null)
+  // For the package-assign modal: { date: YYYY-MM-DD, time?: HH:mm }. When
+  // opened from a calendar slot, time is the exact slot time so session 1 is
+  // pinned to it. When opened from the header button, time is undefined and
+  // session 1 uses availability search like the others.
+  const [assignAt, setAssignAt]         = useState<{ date: string; time?: string } | null>(null)
   const [activeSession, setActiveSession] = useState<Session | null>(null)
 
   // Keep sessions in sync with server data on refresh
@@ -1239,10 +1255,8 @@ export function ScheduleView({
     }
   }
 
-  function openAssignModal(dateStr: string) {
-    // The modal now picks the time from availability slots, so we ignore the
-    // exact click time and just take the day.
-    setAssignAt(dateStr)
+  function openAssignModal(dateStr: string, time?: string) {
+    setAssignAt({ date: dateStr, time })
   }
 
   async function handleDeleteSession(id: string) {
@@ -1395,7 +1409,8 @@ export function ScheduleView({
           clients={clients.map(c => ({ id: c.id, name: c.name }))}
           packages={packages}
           availability={availSlots}
-          defaultStartDate={assignAt}
+          defaultStartDate={assignAt.date}
+          defaultStartTime={assignAt.time}
           onClose={() => setAssignAt(null)}
         />
       )}

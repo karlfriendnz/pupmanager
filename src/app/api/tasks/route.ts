@@ -41,8 +41,19 @@ export async function POST(req: Request) {
     dogId: parsed.data.dogId ?? null,
   }
 
+  // Append to the end of the session's existing task order. Tasks not linked
+  // to a session keep order=0 — they're not part of any reorderable list.
+  let nextOrder = 0
+  if (parsed.data.sessionId) {
+    const max = await prisma.trainingTask.aggregate({
+      where: { sessionId: parsed.data.sessionId },
+      _max: { order: true },
+    })
+    nextOrder = (max._max.order ?? -1) + 1
+  }
+
   const task = await prisma.trainingTask.create({
-    data: { ...baseData, sessionId: parsed.data.sessionId ?? null },
+    data: { ...baseData, sessionId: parsed.data.sessionId ?? null, order: nextOrder },
   })
 
   return NextResponse.json(task, { status: 201 })

@@ -29,11 +29,13 @@ export function AssignPackageFromScheduleButton({
   packages,
   availability,
   defaultStartDate,
+  defaultStartTime,
 }: {
   clients: ClientOption[]
   packages: PkgOption[]
   availability: AvailabilityRow[]
   defaultStartDate?: string  // YYYY-MM-DD
+  defaultStartTime?: string  // HH:mm — when set, pins session 1 to that exact time
 }) {
   const [open, setOpen] = useState(false)
 
@@ -62,6 +64,7 @@ export function AssignPackageFromScheduleButton({
           packages={packages}
           availability={availability}
           defaultStartDate={defaultStartDate}
+          defaultStartTime={defaultStartTime}
           onClose={() => setOpen(false)}
         />
       )}
@@ -74,52 +77,55 @@ export function AssignPackageFromScheduleModal({
   packages,
   availability,
   defaultStartDate,
+  defaultStartTime,
   onClose,
 }: {
   clients: ClientOption[]
   packages: PkgOption[]
   availability: AvailabilityRow[]
   defaultStartDate?: string
+  defaultStartTime?: string
   onClose: () => void
 }) {
   const router = useRouter()
   const [clientId, setClientId] = useState(clients[0].id)
   const [packageId, setPackageId] = useState(packages[0].id)
   const [startDate, setStartDate] = useState(() => defaultStartDate ?? defaultTomorrow())
+  // Empty string = "auto-find via availability"; HH:MM = "pin session 1 here"
+  const [startTime, setStartTime] = useState(() => defaultStartTime ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const pkg = packages.find(p => p.id === packageId)!
 
-  // Compute proposed session datetimes by walking the trainer's availability.
-  // Each session's search starts the day AFTER the previous session was placed,
-  // shifted by weeksBetween — so a Monday slot pushed to Wednesday will pull
-  // session 2 to Wednesday + N weeks too, keeping spacing roughly even.
+  // Compute proposed session datetimes. Session 1 is either pinned to the
+  // user-supplied time or auto-placed; sessions 2..N always availability-search
+  // forward by weeksBetween from the previous session.
   const proposals = useMemo<({ at: Date | null })[]>(() => {
     const out: ({ at: Date | null })[] = []
     const start = parseDate(startDate)
     if (!start) return Array.from({ length: pkg.sessionCount }, () => ({ at: null }))
 
-    let cursor = start
+    let cursor: Date = start
+
     for (let i = 0; i < pkg.sessionCount; i++) {
-      const found = findNextAvailable(availability, cursor, pkg.durationMins, SLOT_SEARCH_DAYS)
-      out.push({ at: found })
-      if (!found) {
-        // Advance the target by weeksBetween so we keep stepping forward through
-        // the calendar; otherwise every later session would also fail at the
-        // same date and we'd report N×"no availability" for what is really one
-        // gap in the trainer's calendar.
-        const next = new Date(cursor)
-        next.setDate(next.getDate() + pkg.weeksBetween * 7)
-        cursor = next
+      let placed: Date | null
+      if (i === 0 && startTime) {
+        const [h, m] = startTime.split(':').map(Number)
+        placed = new Date(start)
+        placed.setHours(h, m, 0, 0)
       } else {
-        const next = new Date(found)
-        next.setDate(next.getDate() + pkg.weeksBetween * 7)
-        cursor = next
+        placed = findNextAvailable(availability, cursor, pkg.durationMins, SLOT_SEARCH_DAYS)
       }
+      out.push({ at: placed })
+
+      const base = placed ?? cursor
+      const next = new Date(base)
+      next.setDate(next.getDate() + pkg.weeksBetween * 7)
+      cursor = next
     }
     return out
-  }, [availability, pkg, startDate])
+  }, [availability, pkg, startDate, startTime])
 
   const placedCount = proposals.filter(p => p.at !== null).length
   const allPlaced = placedCount === pkg.sessionCount
@@ -197,18 +203,33 @@ export function AssignPackageFromScheduleModal({
             )}
           </div>
 
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Start day</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Each session is auto-placed in your next available slot from this day onward.
-            </p>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Start day</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="w-36">
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">
+                First time <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={e => setStartTime(e.target.value)}
+                className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
+          <p className="text-[11px] text-slate-400 -mt-2">
+            {startTime
+              ? `Session 1 pinned to ${startTime}. Later sessions auto-place in your next available slots.`
+              : 'Each session is auto-placed in your next available slot from this day onward.'}
+          </p>
 
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">

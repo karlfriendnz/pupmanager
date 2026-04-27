@@ -397,12 +397,11 @@ export function FormsManager({
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Embed Forms</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Create forms to embed on your website — registrations land in your Clients list as New</p>
-        </div>
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-slate-500">
+          Forms to embed on your website — submissions land in your Clients list as New.
+        </p>
         <Button size="sm" onClick={() => setBuilding('new')}>
           <Plus className="h-4 w-4" />
           New form
@@ -529,6 +528,6 @@ export function FormsManager({
           onClose={() => setBuilding(null)}
         />
       )}
-    </div>
+    </>
   )
 }

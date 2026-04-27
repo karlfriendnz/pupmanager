@@ -29,6 +29,8 @@ export default async function PackagesPage() {
         weeksBetween: p.weeksBetween,
         durationMins: p.durationMins,
         sessionType: p.sessionType,
+        priceCents: p.priceCents,
+        specialPriceCents: p.specialPriceCents,
         assignments: p._count.assignments,
       }))}
     />

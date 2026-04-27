@@ -10,6 +10,9 @@ const schema = z.object({
   weeksBetween: z.number().int().min(0).max(52),
   durationMins: z.number().int().min(15).max(480),
   sessionType: z.enum(['IN_PERSON', 'VIRTUAL']).optional(),
+  // Prices stored in cents. Accept 0 (free) up to a sane upper bound.
+  priceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  specialPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
 })
 
 export async function GET() {
@@ -55,6 +58,8 @@ export async function POST(req: Request) {
       weeksBetween: parsed.data.weeksBetween,
       durationMins: parsed.data.durationMins,
       sessionType: parsed.data.sessionType ?? 'IN_PERSON',
+      priceCents: parsed.data.priceCents ?? null,
+      specialPriceCents: parsed.data.specialPriceCents ?? null,
       order: nextOrder,
     },
   })
