@@ -13,6 +13,10 @@ import {
   ChevronLeft, ChevronRight, Plus, Calendar, LayoutGrid, List,
   Clock, Trash2, X, Settings, MapPin, Video, ExternalLink, Loader2,
 } from 'lucide-react'
+import {
+  AssignPackageFromScheduleButton,
+  AssignPackageFromScheduleModal,
+} from './assign-package-from-schedule'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -24,18 +28,6 @@ const DRAG_THRESHOLD = 6   // px moved before considered a drag
 
 // ─── Zod schemas ──────────────────────────────────────────────────────────────
 
-const sessionSchema = z.object({
-  title: z.string().min(2, 'Title required'),
-  scheduledAt: z.string(),
-  durationMins: z.number().int().positive(),
-  sessionType: z.enum(['IN_PERSON', 'VIRTUAL']),
-  location: z.string().optional(),
-  virtualLink: z.string().url().optional().or(z.literal('')),
-  description: z.string().optional(),
-  clientId: z.string().optional(),
-  dogId: z.string().optional(),
-})
-
 const availSchema = z.object({
   title: z.string().optional(),
   type: z.enum(['repeating', 'oneoff']),
@@ -45,7 +37,6 @@ const availSchema = z.object({
   endTime: z.string().regex(/^\d{2}:\d{2}$/),
 })
 
-type SessionForm    = z.infer<typeof sessionSchema>
 type AvailForm      = z.infer<typeof availSchema>
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -518,7 +509,7 @@ function DayList({
       <div className="text-center py-12 text-slate-400">
         <Calendar className="h-12 w-12 mx-auto mb-3 opacity-30" />
         <p>No sessions scheduled for this day</p>
-        <p className="text-xs mt-1">Click a time slot in week view, or use "Add session"</p>
+        <p className="text-xs mt-1">Click a time slot in week view, or use the &ldquo;Assign package&rdquo; button</p>
       </div>
     )
   }
@@ -682,99 +673,6 @@ function AvailabilityManager({
             </div>
 
             <Button type="submit" loading={isSubmitting}>Add slot</Button>
-          </form>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Add session modal ────────────────────────────────────────────────────────
-
-function AddSessionModal({
-  defaultDateTime,
-  clients,
-  onSave,
-  onClose,
-}: {
-  defaultDateTime: string
-  clients: ClientOption[]
-  onSave: (data: SessionForm) => Promise<void>
-  onClose: () => void
-}) {
-  const [error, setError] = useState<string | null>(null)
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<SessionForm>({
-    resolver: zodResolver(sessionSchema),
-    defaultValues: { sessionType: 'IN_PERSON', durationMins: 60, scheduledAt: defaultDateTime },
-  })
-
-  const selectedClientId = watch('clientId')
-  const selectedClient   = clients.find(c => c.id === selectedClientId)
-
-  async function onSubmit(data: SessionForm) {
-    setError(null)
-    try { await onSave(data) } catch { setError('Failed to save.') }
-  }
-
-  return (
-    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-      <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900">New session</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
-        </div>
-        <div className="p-5">
-          {error && <Alert variant="error" className="mb-3">{error}</Alert>}
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
-            <Input label="Session title" placeholder="Foundation training" error={errors.title?.message} {...register('title')} />
-
-            {/* Client selector */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Client (optional)</label>
-              <select {...register('clientId')} className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">No client</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Dog selector — only when client selected and has dogs */}
-            {selectedClient && selectedClient.dogs.length > 0 && (
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1.5">Dog (optional)</label>
-                <select {...register('dogId')} className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">No dog selected</option>
-                  {selectedClient.dogs.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <div className="flex flex-col gap-1.5 flex-[2]">
-                <label className="text-sm font-medium text-slate-700">Date & time</label>
-                <input type="datetime-local" className="h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" {...register('scheduledAt')} />
-              </div>
-              <Input label="Duration (mins)" type="number" className="flex-1" {...register('durationMins', { valueAsNumber: true })} />
-            </div>
-            <div className="flex gap-2">
-              {(['IN_PERSON', 'VIRTUAL'] as const).map((t) => (
-                <label key={t} className="flex-1">
-                  <input type="radio" value={t} className="sr-only peer" {...register('sessionType')} />
-                  <div className="text-center py-2 rounded-xl border border-slate-200 text-sm cursor-pointer peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 transition-colors">
-                    {t === 'IN_PERSON' ? '📍 In person' : '💻 Virtual'}
-                  </div>
-                </label>
-              ))}
-            </div>
-            <Input label="Location / address" placeholder="123 Main St" {...register('location')} />
-            <div className="flex gap-2 pt-1">
-              <Button type="submit" loading={isSubmitting}>Save session</Button>
-              <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-            </div>
           </form>
         </div>
       </div>
@@ -1054,7 +952,7 @@ function SessionModal({
 
             {/* Existing tasks */}
             {tasks.length === 0 && !showAddPanel ? (
-              <p className="text-sm text-slate-400">No tasks yet. Click "Add task" to get started.</p>
+              <p className="text-sm text-slate-400">No tasks yet. Click &ldquo;Add task&rdquo; to get started.</p>
             ) : (
               <div className="flex flex-col gap-2 mb-3">
                 {tasks.map(t => {
@@ -1252,10 +1150,21 @@ function SessionModal({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+interface PkgOption {
+  id: string
+  name: string
+  description: string | null
+  sessionCount: number
+  weeksBetween: number
+  durationMins: number
+  sessionType: 'IN_PERSON' | 'VIRTUAL'
+}
+
 export function ScheduleView({
   sessions: initialSessions,
   availabilitySlots: initialAvailSlots,
   clients,
+  packages,
   selectedDate,
   today,
   googleCalendarConnected,
@@ -1263,6 +1172,7 @@ export function ScheduleView({
   sessions: Session[]
   availabilitySlots: AvailSlot[]
   clients: ClientOption[]
+  packages: PkgOption[]
   selectedDate: string
   today: string
   googleCalendarConnected: boolean
@@ -1278,7 +1188,10 @@ export function ScheduleView({
   const [sessions, setSessions]         = useState(initialSessions)
   const [availSlots, setAvailSlots]     = useState(initialAvailSlots)
   const [showAvail, setShowAvail]       = useState(false)
-  const [addModal, setAddModal]         = useState<string | null>(null) // datetime-local string
+  // YYYY-MM-DD for the package-assign modal's start day. Sessions can only be
+  // created via package assignment, so this drives the only session-creation
+  // flow on this screen.
+  const [assignAt, setAssignAt]         = useState<string | null>(null)
   const [activeSession, setActiveSession] = useState<Session | null>(null)
 
   // Keep sessions in sync with server data on refresh
@@ -1326,20 +1239,10 @@ export function ScheduleView({
     }
   }
 
-  function openAddModal(dateStr: string, time: string) {
-    setAddModal(`${dateStr}T${time}`)
-  }
-
-  async function handleAddSession(data: SessionForm) {
-    const res = await fetch('/api/schedule', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
-    if (!res.ok) throw new Error('Failed')
-    const newSession = await res.json()
-    setSessions(prev => [...prev, { ...newSession, scheduledAt: new Date(newSession.scheduledAt).toISOString() }])
-    setAddModal(null)
+  function openAssignModal(dateStr: string) {
+    // The modal now picks the time from availability slots, so we ignore the
+    // exact click time and just take the day.
+    setAssignAt(dateStr)
   }
 
   async function handleDeleteSession(id: string) {
@@ -1420,9 +1323,11 @@ export function ScheduleView({
             </button>
           </div>
 
-          <Button size="sm" onClick={() => openAddModal(selectedDate, '09:00')}>
-            <Plus className="h-4 w-4" /> Add session
-          </Button>
+          <AssignPackageFromScheduleButton
+            clients={clients.map(c => ({ id: c.id, name: c.name }))}
+            packages={packages}
+            availability={availSlots}
+          />
         </div>
       </div>
 
@@ -1454,7 +1359,7 @@ export function ScheduleView({
       {/* ── Hint bar (week view only) ────────────────────────────────────────── */}
       {view === 'week' && (
         <div className="flex items-center gap-4 px-4 md:px-6 py-1.5 text-[10px] text-slate-400 bg-slate-50 border-b border-slate-100">
-          <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Click empty slot to add</span>
+          <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Click empty slot to assign a package</span>
           <span>· Drag sessions to reschedule</span>
           <span>· Click session to open client</span>
           <span className="flex items-center gap-1 ml-auto"><span className="w-3 h-3 rounded-sm bg-emerald-200 inline-block" /> Availability</span>
@@ -1470,7 +1375,7 @@ export function ScheduleView({
             availSlots={availSlots}
             today={today}
             selectedDate={selectedDate}
-            onSlotClick={openAddModal}
+            onSlotClick={openAssignModal}
             onSessionClick={handleSessionClick}
             onSessionDrop={handleSessionDrop}
             onDeleteAvail={handleDeleteAvail}
@@ -1485,12 +1390,13 @@ export function ScheduleView({
       </div>
 
       {/* ── Modals ───────────────────────────────────────────────────────────── */}
-      {addModal && (
-        <AddSessionModal
-          defaultDateTime={addModal}
-          clients={clients}
-          onSave={handleAddSession}
-          onClose={() => setAddModal(null)}
+      {assignAt && (
+        <AssignPackageFromScheduleModal
+          clients={clients.map(c => ({ id: c.id, name: c.name }))}
+          packages={packages}
+          availability={availSlots}
+          defaultStartDate={assignAt}
+          onClose={() => setAssignAt(null)}
         />
       )}
 

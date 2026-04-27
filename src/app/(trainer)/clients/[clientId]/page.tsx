@@ -10,6 +10,7 @@ import { ShareClientModal } from './share-client-modal'
 import { DeleteClientButton } from './delete-client-button'
 import { ClientProfileTabs } from './client-profile-tabs'
 import { StatusToggle } from './status-toggle'
+import { AssignPackageButton } from './assign-package-modal'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Client profile' }
@@ -62,6 +63,21 @@ export default async function ClientDetailPage({
     orderBy: { order: 'asc' },
   })
 
+  // Packages owned by the *current* trainer (so co-managers see their own packages)
+  const packages = canEdit
+    ? await prisma.package.findMany({
+        where: { trainerId: access.trainerId },
+        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+      })
+    : []
+
+  const availabilitySlots = canEdit
+    ? await prisma.availabilitySlot.findMany({
+        where: { trainerId: access.trainerId },
+        orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+      })
+    : []
+
   const fieldValueMap = Object.fromEntries(client.customFieldValues.map(v => [
     v.dogId ? `${v.fieldId}:${v.dogId}` : v.fieldId,
     v.value,
@@ -106,12 +122,33 @@ export default async function ClientDetailPage({
         </div>
         <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
           {canEdit && (
-            <Link href={`/clients/${client.id}/edit`}>
-              <Button variant="secondary" size="sm">
-                <Pencil className="h-4 w-4" />
-                Edit
-              </Button>
-            </Link>
+            <>
+              <AssignPackageButton
+                clientId={client.id}
+                packages={packages.map(p => ({
+                  id: p.id,
+                  name: p.name,
+                  description: p.description,
+                  sessionCount: p.sessionCount,
+                  weeksBetween: p.weeksBetween,
+                  durationMins: p.durationMins,
+                  sessionType: p.sessionType,
+                }))}
+                availability={availabilitySlots.map(s => ({
+                  id: s.id,
+                  dayOfWeek: s.dayOfWeek,
+                  date: s.date ? s.date.toISOString().split('T')[0] : null,
+                  startTime: s.startTime,
+                  endTime: s.endTime,
+                }))}
+              />
+              <Link href={`/clients/${client.id}/edit`}>
+                <Button variant="secondary" size="sm">
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+              </Link>
+            </>
           )}
 
           {isPrimaryTrainer && (

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { UserPlus, Search, Dog } from 'lucide-react'
+import { UserPlus, Search, Dog, Calendar } from 'lucide-react'
 import { getInitials } from '@/lib/utils'
 import type { Metadata } from 'next'
 
@@ -48,7 +48,7 @@ export default async function ClientsPage({
         select: { id: true, completion: { select: { id: true } } },
       },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { user: { name: 'asc' } },
   })
 
   // CO_MANAGE shared clients (only show in active tab)
@@ -74,6 +74,36 @@ export default async function ClientsPage({
     },
   }) : []
 
+  // SQL ASCII-sorts strings ('Z' before 'a'); apply a locale-aware case-
+  // insensitive sort so display order matches user expectations.
+  const labelOf = (c: { user: { name: string | null; email: string } }) =>
+    (c.user.name ?? c.user.email).toLocaleLowerCase('en-NZ')
+  ownedClients.sort((a, b) => labelOf(a).localeCompare(labelOf(b)))
+  sharedClients.sort((a, b) => labelOf(a.client).localeCompare(labelOf(b.client)))
+
+  // Fetch the next upcoming session per client (across all trainers — a shared
+  // client's "next session" is whichever comes soonest, regardless of who
+  // scheduled it). One query, distinct on clientId after sorting ascending.
+  const allClientIds = [
+    ...ownedClients.map(c => c.id),
+    ...sharedClients.map(s => s.client.id),
+  ]
+  const upcomingSessions = allClientIds.length > 0
+    ? await prisma.trainingSession.findMany({
+        where: {
+          clientId: { in: allClientIds },
+          scheduledAt: { gte: new Date() },
+        },
+        orderBy: { scheduledAt: 'asc' },
+        distinct: ['clientId'],
+        select: { clientId: true, scheduledAt: true },
+      })
+    : []
+  const nextSessionByClient = new Map<string, Date>()
+  for (const s of upcomingSessions) {
+    if (s.clientId) nextSessionByClient.set(s.clientId, s.scheduledAt)
+  }
+
   function tabHref(t: string) {
     const p = new URLSearchParams()
     if (query) p.set('q', query)
@@ -90,6 +120,7 @@ export default async function ClientsPage({
     const taskCount = client.diaryEntries.length
     const completedCount = client.diaryEntries.filter(t => t.completion).length
     const complianceRate = taskCount > 0 ? Math.round((completedCount / taskCount) * 100) : null
+    const nextSession = nextSessionByClient.get(client.id) ?? null
 
     return (
       <Link key={client.id} href={`/clients/${client.id}`}>
@@ -112,6 +143,14 @@ export default async function ClientsPage({
               <p className="text-sm text-slate-500 truncate">
                 {client.dog ? `🐕 ${client.dog.name}${client.dog.breed ? ` · ${client.dog.breed}` : ''}` : 'No dog added yet'}
               </p>
+              {nextSession && (
+                <p className="text-xs text-blue-600 mt-0.5 flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Next: {nextSession.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  {' · '}
+                  {nextSession.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                </p>
+              )}
             </div>
             <div className="text-right flex-shrink-0">
               {complianceRate !== null ? (

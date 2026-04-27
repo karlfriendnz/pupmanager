@@ -160,6 +160,7 @@ model TrainerProfile {
   embedForms         EmbedForm[]
   sentNotifications  ClientNotification[]
   availabilitySlots  AvailabilitySlot[]
+  packages           Package[]
 
   @@map("trainer_profiles")
 }
@@ -187,6 +188,7 @@ model ClientProfile {
   customFieldValues CustomFieldValue[]
   dogs              Dog[]              @relation("AdditionalDogs")
   notifications     ClientNotification[]
+  clientPackages    ClientPackage[]
 
   @@index([trainerId])
   @@map("client_profiles")
@@ -281,6 +283,7 @@ model TrainingSession {
   trainerId   String
   clientId    String?     // direct client link (optional, in addition to dogId)
   dogId       String?
+  clientPackageId String? // membership in an assigned package
   title       String
   description String?     @db.Text
   scheduledAt DateTime
@@ -298,12 +301,53 @@ model TrainingSession {
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   client  ClientProfile? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   dog     Dog?           @relation(fields: [dogId], references: [id])
+  clientPackage ClientPackage? @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
   tasks   TrainingTask[]
 
   @@index([trainerId])
   @@index([clientId])
   @@index([scheduledAt])
+  @@index([clientPackageId])
   @@map("training_sessions")
+}
+
+// ─── Packages ─────────────────────────────────────────────────────────────────
+
+model Package {
+  id           String   @id @default(cuid())
+  trainerId    String
+  name         String
+  description  String?  @db.Text
+  sessionCount Int      @default(3)
+  weeksBetween Int      @default(2)   // gap between sessions, in weeks
+  durationMins Int      @default(60)  // default duration applied to created sessions
+  sessionType  SessionType @default(IN_PERSON)
+  order        Int      @default(0)   // display order, lowest first
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer     TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  assignments ClientPackage[]
+
+  @@index([trainerId])
+  @@map("packages")
+}
+
+model ClientPackage {
+  id         String   @id @default(cuid())
+  packageId  String
+  clientId   String
+  startDate  DateTime
+  assignedAt DateTime @default(now())
+
+  package  Package           @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  client   ClientProfile     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sessions TrainingSession[]
+
+  @@index([clientId])
+  @@index([packageId])
+  @@map("client_packages")
 }
 
 // ─── Training Templates ───────────────────────────────────────────────────────

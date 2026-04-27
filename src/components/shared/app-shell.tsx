@@ -1,11 +1,12 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, Users, BarChart2, Calendar, Layers,
+  LayoutDashboard, Users, BarChart2, Calendar, Layers, Package,
   MessageSquare, Settings, HelpCircle, Sparkles, User, Bell, Globe,
 } from 'lucide-react'
 
@@ -13,6 +14,7 @@ const TRAINER_NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/clients', label: 'Clients', icon: Users },
   { href: '/schedule', label: 'Schedule', icon: Calendar },
+  { href: '/packages', label: 'Packages', icon: Package },
   { href: '/templates', label: 'Library', icon: Layers },
   { href: '/forms', label: 'Forms', icon: Globe },
   { href: '/progress', label: 'Progress', icon: BarChart2 },
@@ -33,6 +35,7 @@ interface AppShellProps {
   role: 'TRAINER' | 'CLIENT'
   children: React.ReactNode
   userName?: string
+  userEmail?: string
   trainerLogo?: string | null
   businessName?: string
 }
@@ -41,11 +44,13 @@ export function AppShell({
   role,
   children,
   userName,
+  userEmail,
   trainerLogo,
   businessName,
 }: AppShellProps) {
   const pathname = usePathname()
   const navItems = role === 'TRAINER' ? TRAINER_NAV : CLIENT_NAV
+  const [showEmail, setShowEmail] = useState(false)
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -90,12 +95,23 @@ export function AppShell({
 
         {/* Footer */}
         <div className="border-t border-slate-100 p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+          <button
+            type="button"
+            onClick={() => setShowEmail(v => !v)}
+            className="flex items-center gap-3 w-full text-left mb-2 rounded-lg hover:bg-slate-50 px-1 py-1 -mx-1 transition-colors"
+            aria-expanded={showEmail}
+            aria-label={showEmail ? 'Hide email address' : 'Show email address'}
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600 flex-shrink-0">
               {userName?.[0]?.toUpperCase() ?? '?'}
             </div>
             <span className="text-sm font-medium text-slate-700 truncate">{userName}</span>
-          </div>
+          </button>
+          {showEmail && userEmail && (
+            <p className="text-xs text-slate-500 truncate mb-2 px-1" title={userEmail}>
+              {userEmail}
+            </p>
+          )}
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
             className="w-full text-left text-xs text-slate-400 hover:text-slate-600 transition-colors"

@@ -4,8 +4,7 @@ import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { UserPlus, TrendingUp, Calendar } from 'lucide-react'
-import { formatDate, getInitials } from '@/lib/utils'
+import { UserPlus, TrendingUp, Calendar, MapPin, Video } from 'lucide-react'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Dashboard' }
@@ -20,6 +19,22 @@ export default async function DashboardPage() {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   const today = new Date()
   today.setHours(23, 59, 59, 999)
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
+
+  const todaysSessions = await prisma.trainingSession.findMany({
+    where: { trainerId, scheduledAt: { gte: todayStart, lte: today } },
+    include: {
+      client: { select: { user: { select: { name: true, email: true } } } },
+      dog: {
+        select: {
+          name: true,
+          primaryFor: { select: { user: { select: { name: true, email: true } } } },
+        },
+      },
+    },
+    orderBy: { scheduledAt: 'asc' },
+  })
 
   const clients = await prisma.clientProfile.findMany({
     where: { trainerId },
@@ -111,48 +126,71 @@ export default async function DashboardPage() {
         <QuickAction href="/schedule" icon={<Calendar className="h-5 w-5" />} label="Schedule" />
       </div>
 
-      {/* Client list preview */}
-      {clients.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-slate-900">Your clients</h2>
-            <Link href="/clients" className="text-sm text-blue-600 hover:underline">
-              View all
-            </Link>
-          </div>
+      {/* Today's sessions */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-slate-900">Coming up today</h2>
+          <Link href="/schedule" className="text-sm text-blue-600 hover:underline">
+            View schedule
+          </Link>
+        </div>
+        {todaysSessions.length === 0 ? (
+          <Card className="p-6 text-center">
+            <Calendar className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+            <p className="text-sm text-slate-500">No sessions scheduled for today.</p>
+          </Card>
+        ) : (
           <div className="flex flex-col gap-2">
-            {clients.slice(0, 5).map((c) => {
-              const assigned = c.diaryEntries.length
-              const completed = c.diaryEntries.filter(t => t.completion).length
-              const rate = assigned > 0 ? Math.round((completed / assigned) * 100) : null
+            {todaysSessions.map((s) => {
+              const clientUser = s.client?.user ?? s.dog?.primaryFor[0]?.user
+              const clientName = clientUser ? (clientUser.name ?? clientUser.email) : null
+              const start = new Date(s.scheduledAt)
+              const isPast = start.getTime() + s.durationMins * 60_000 < new Date().getTime()
+              const meta = STATUS_META[s.status]
               return (
-                <Link key={c.id} href={`/clients/${c.id}`}>
-                  <Card className="p-3 hover:border-blue-100 transition-all cursor-pointer">
+                <Link key={s.id} href="/schedule">
+                  <Card className={`p-3 hover:border-blue-100 transition-all cursor-pointer ${isPast ? 'opacity-60' : ''}`}>
                     <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold">
-                        {getInitials(c.user.name ?? c.user.email)}
+                      <div className="flex-shrink-0 text-center min-w-[56px]">
+                        <p className="text-sm font-bold text-blue-600">
+                          {start.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                        </p>
+                        <p className="text-[10px] text-slate-400">{s.durationMins}m</p>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">
-                          {c.user.name ?? c.user.email}
-                        </p>
-                        {c.dog && <p className="text-xs text-slate-400">🐕 {c.dog.name}</p>}
+                        <p className="text-sm font-medium text-slate-900 truncate">{s.title}</p>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                          {clientName && <span className="truncate">{clientName}</span>}
+                          {s.dog && <span className="text-slate-400 truncate">🐕 {s.dog.name}</span>}
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5">
+                          {s.sessionType === 'VIRTUAL' ? (
+                            <span className="flex items-center gap-1"><Video className="h-3 w-3" />Virtual</span>
+                          ) : (
+                            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{s.location ?? 'In person'}</span>
+                          )}
+                        </div>
                       </div>
-                      {rate !== null && (
-                        <span className={`text-sm font-bold flex-shrink-0 ${rate >= 70 ? 'text-green-600' : rate >= 40 ? 'text-amber-600' : 'text-red-500'}`}>
-                          {rate}%
-                        </span>
-                      )}
+                      <span className={`flex-shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full border ${meta.colour}`}>
+                        {meta.label}
+                      </span>
                     </div>
                   </Card>
                 </Link>
               )
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
+}
+
+const STATUS_META: Record<'UPCOMING' | 'COMPLETED' | 'COMMENTED' | 'INVOICED', { label: string; colour: string }> = {
+  UPCOMING:  { label: 'Upcoming',  colour: 'bg-blue-50 text-blue-700 border-blue-200' },
+  COMPLETED: { label: 'Completed', colour: 'bg-green-50 text-green-700 border-green-200' },
+  COMMENTED: { label: 'Commented', colour: 'bg-amber-50 text-amber-700 border-amber-200' },
+  INVOICED:  { label: 'Invoiced',  colour: 'bg-purple-50 text-purple-700 border-purple-200' },
 }
 
 function StatCard({

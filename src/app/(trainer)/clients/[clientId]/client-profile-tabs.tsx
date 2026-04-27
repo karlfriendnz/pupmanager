@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar } from 'lucide-react'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 type Tab = 'overview' | 'sessions' | 'dogs' | 'details'
 
@@ -88,6 +89,9 @@ export function ClientProfileTabs({ stats, dogs, tasks, sessions: initialSession
   const [sessions, setSessions] = useState(initialSessions)
   const [activeSession, setActiveSession] = useState<TrainingSession | null>(null)
   const [savingStatus, setSavingStatus] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [confirmDelete, setConfirmDelete] = useState<{ ids: string[] } | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const searchParams = useSearchParams()
   const router = useRouter()
 
@@ -102,6 +106,23 @@ export function ClientProfileTabs({ stats, dogs, tasks, sessions: initialSession
       }
     }
   }, [searchParams, sessions])
+
+  // Keep the local sessions list in sync with server-fetched data after router.refresh()
+  // (e.g. after assigning a package, deleting outside this component, etc.)
+  useEffect(() => {
+    setSessions(initialSessions)
+  }, [initialSessions])
+
+  // External callers (e.g. the AssignPackage modal) can request a tab switch
+  // by navigating to ?tab=sessions. We honour it once and strip the param.
+  useEffect(() => {
+    if (searchParams.get('tab') === 'sessions') {
+      setTab('sessions')
+      const url = new URL(window.location.href)
+      url.searchParams.delete('tab')
+      router.replace(url.pathname + (url.search || ''), { scroll: false })
+    }
+  }, [searchParams, router])
 
   function closeModal() {
     setActiveSession(null)
@@ -125,6 +146,37 @@ export function ClientProfileTabs({ stats, dogs, tasks, sessions: initialSession
     } finally {
       setSavingStatus(false)
     }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  async function handleDelete(ids: string[]) {
+    setDeleting(true)
+    const results = await Promise.allSettled(
+      ids.map(id => fetch(`/api/schedule/${id}`, { method: 'DELETE' }))
+    )
+    const successful = ids.filter((_, i) => {
+      const r = results[i]
+      return r.status === 'fulfilled' && r.value.ok
+    })
+    setSessions(prev => prev.filter(s => !successful.includes(s.id)))
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      for (const id of successful) next.delete(id)
+      return next
+    })
+    setDeleting(false)
+    setConfirmDelete(null)
   }
 
   const ownerFields = customFields.filter(f => f.appliesTo === 'OWNER')
@@ -232,6 +284,31 @@ export function ClientProfileTabs({ stats, dogs, tasks, sessions: initialSession
       {/* ── Sessions ─────────────────────────────────────────────────────── */}
       {tab === 'sessions' && (
         <div className="flex flex-col gap-3">
+          {/* Selection toolbar */}
+          {selectedIds.size > 0 && (
+            <div className="sticky top-2 z-10 flex items-center justify-between gap-3 bg-white border border-blue-200 rounded-xl px-4 py-2.5 shadow-sm">
+              <div className="flex items-center gap-3 text-sm">
+                <span className="font-medium text-slate-900">
+                  {selectedIds.size} selected
+                </span>
+                <button
+                  onClick={clearSelection}
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                >
+                  Clear
+                </button>
+              </div>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setConfirmDelete({ ids: Array.from(selectedIds) })}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
+            </div>
+          )}
+
           {sessions.length === 0 ? (
             <div className="text-center py-12 text-slate-400">
               <p>No sessions scheduled for this client yet.</p>
@@ -240,14 +317,32 @@ export function ClientProfileTabs({ stats, dogs, tasks, sessions: initialSession
             sessions.map(s => {
               const d = new Date(s.scheduledAt)
               const isPast = d < new Date()
+              const isSelected = selectedIds.has(s.id)
               return (
                 <Card
                   key={s.id}
-                  className={`cursor-pointer hover:border-blue-200 hover:shadow-md transition-all ${isPast ? 'opacity-70' : ''}`}
+                  className={`cursor-pointer transition-all ${
+                    isSelected
+                      ? 'border-blue-400 ring-2 ring-blue-100'
+                      : 'hover:border-blue-200 hover:shadow-md'
+                  } ${isPast ? 'opacity-70' : ''}`}
                   onClick={() => setActiveSession(s)}
                 >
                   <CardBody className="pt-4 pb-4">
                     <div className="flex items-start gap-4">
+                      {/* Selection checkbox */}
+                      <label
+                        className="flex-shrink-0 mt-0.5 cursor-pointer"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(s.id)}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </label>
+
                       <div className="flex-shrink-0 text-center min-w-[52px]">
                         <p className="text-xs font-bold text-blue-600">
                           {d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
@@ -276,12 +371,58 @@ export function ClientProfileTabs({ stats, dogs, tasks, sessions: initialSession
                           {STATUS_OPTIONS.find(o => o.value === s.status)?.label ?? s.status}
                         </span>
                       </div>
+                      {/* Per-card delete */}
+                      <button
+                        onClick={e => { e.stopPropagation(); setConfirmDelete({ ids: [s.id] }) }}
+                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                        aria-label="Delete session"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </CardBody>
                 </Card>
               )
             })
           )}
+        </div>
+      )}
+
+      {/* ── Delete confirmation modal ─────────────────────────────────────── */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => !deleting && setConfirmDelete(null)}
+        >
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+          <div
+            className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 flex-shrink-0">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-slate-900">
+                    Delete {confirmDelete.ids.length === 1 ? 'this session' : `${confirmDelete.ids.length} sessions`}?
+                  </h3>
+                  <p className="text-sm text-slate-500 mt-1">
+                    This can&apos;t be undone. Any tasks attached to {confirmDelete.ids.length === 1 ? 'it' : 'them'} will be unlinked.
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)} disabled={deleting}>
+                  Cancel
+                </Button>
+                <Button variant="danger" size="sm" loading={deleting} onClick={() => handleDelete(confirmDelete.ids)}>
+                  Delete
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

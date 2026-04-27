@@ -57,6 +57,7 @@ export default async function ClientLayout({ children }: { children: React.React
     <AppShell
       role="CLIENT"
       userName={session.user.name ?? ''}
+      userEmail={session.user.email ?? ''}
       trainerLogo={clientProfile.trainer.logoUrl}
       businessName={clientProfile.trainer.businessName}
     >

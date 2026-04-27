@@ -10,6 +10,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     <AppShell
       role="TRAINER"
       userName={session.user.name ?? ''}
+      userEmail={session.user.email ?? ''}
       trainerLogo={session.user.logoUrl}
       businessName={session.user.businessName}
     >

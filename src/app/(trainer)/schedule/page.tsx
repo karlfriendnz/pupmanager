@@ -39,7 +39,7 @@ export default async function SchedulePage({
 
   const { weekStart, weekEnd } = getWeekBounds(selectedDate)
 
-  const [sessions, availabilitySlots, clients] = await Promise.all([
+  const [sessions, availabilitySlots, clients, packages] = await Promise.all([
     prisma.trainingSession.findMany({
       where: {
         trainerId: trainerProfile.id,
@@ -74,6 +74,10 @@ export default async function SchedulePage({
       },
       orderBy: { createdAt: 'asc' },
     }),
+    prisma.package.findMany({
+      where: { trainerId: trainerProfile.id },
+      orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+    }),
   ])
 
   return (
@@ -93,6 +97,15 @@ export default async function SchedulePage({
           ...(c.dog ? [c.dog] : []),
           ...c.dogs,
         ],
+      }))}
+      packages={packages.map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        sessionCount: p.sessionCount,
+        weeksBetween: p.weeksBetween,
+        durationMins: p.durationMins,
+        sessionType: p.sessionType,
       }))}
       selectedDate={selectedDate}
       today={today}
