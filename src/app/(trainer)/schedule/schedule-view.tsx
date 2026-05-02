@@ -301,34 +301,41 @@ function SessionBlock({
         )}
         <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${meta.dot}`} title={meta.label} />
       </div>
-      {height > 34 && (
-        <p className="text-[10px] text-white/90 leading-tight truncate">
-          {isBuddyWalk
-            ? (allDogNames.length > 0 ? `🐕 ${allDogNames.join(', ')}` : 'Buddy walk')
-            : session.dog?.name ? `🐕 ${session.dog.name}` : (clientName ?? session.title)}
-        </p>
-      )}
-      {/* Third line shows the client name (or fallback title) for regular
-          sessions, but buddy walks intentionally hide the client to keep the
-          focus on dogs only. */}
-      {!isBuddyWalk && height > 50 && (clientName || (session.dog?.name && clientName !== session.title)) && (
-        <p className="text-[10px] text-white/70 leading-tight truncate">
-          {session.dog?.name && clientName ? clientName : session.title}
-        </p>
-      )}
-      {/* Trainer-configurable extra fields. Each rendered line needs ~12px;
-          gate on remaining height so we don't overflow short blocks. */}
-      {extraFields.map((field, idx) => {
-        const value = extraFieldValue(field, session)
-        if (!value) return null
-        const minHeight = 50 + (idx + 1) * 12
-        if (height <= minHeight) return null
-        return (
-          <p key={field} className="text-[10px] text-white/70 leading-tight truncate">
-            {value}
-          </p>
-        )
-      })}
+      {/* Build the list of secondary lines and render in priority order.
+          Trainer-chosen extras outrank the client-name fallback, so a tight
+          block prefers the user's explicit field over the redundant line. */}
+      {(() => {
+        const lines: { key: string; text: string; tone: 'strong' | 'soft' }[] = []
+        // Primary: dog name (or buddy walk dogs / fallback to client).
+        const primary = isBuddyWalk
+          ? (allDogNames.length > 0 ? `🐕 ${allDogNames.join(', ')}` : 'Buddy walk')
+          : session.dog?.name ? `🐕 ${session.dog.name}` : (clientName ?? session.title)
+        if (primary) lines.push({ key: 'primary', text: primary, tone: 'strong' })
+        // Trainer-chosen extras.
+        for (const field of extraFields) {
+          const value = extraFieldValue(field, session)
+          if (value) lines.push({ key: `extra:${field}`, text: value, tone: 'soft' })
+        }
+        // Secondary client name (only for non-buddy sessions, lowest priority).
+        if (!isBuddyWalk && (clientName || (session.dog?.name && clientName !== session.title))) {
+          const text = session.dog?.name && clientName ? clientName : session.title
+          if (text) lines.push({ key: 'client', text, tone: 'soft' })
+        }
+        // ~12px per line + 16px first-row offset (time + pt-1). Render only
+        // those that fit so blocks never overflow.
+        return lines.map((line, idx) => {
+          const minHeight = 16 + (idx + 1) * 12
+          if (height <= minHeight) return null
+          return (
+            <p
+              key={line.key}
+              className={`text-[10px] leading-tight truncate ${line.tone === 'strong' ? 'text-white/90' : 'text-white/70'}`}
+            >
+              {line.text}
+            </p>
+          )
+        })
+      })()}
     </div>
   )
 }
