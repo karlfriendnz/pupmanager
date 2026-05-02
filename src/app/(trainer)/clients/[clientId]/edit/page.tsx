@@ -28,8 +28,8 @@ export default async function EditClientPage({
     select: {
       id: true,
       user: { select: { name: true, email: true } },
-      dog: { select: { id: true, name: true, breed: true, weight: true, dob: true, notes: true } },
-      dogs: { select: { id: true, name: true, breed: true, weight: true, dob: true, notes: true } },
+      dog: { select: { id: true, name: true, breed: true, weight: true, dob: true, notes: true, photoUrl: true } },
+      dogs: { select: { id: true, name: true, breed: true, weight: true, dob: true, notes: true, photoUrl: true } },
     },
   })
 
