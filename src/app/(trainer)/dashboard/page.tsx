@@ -150,77 +150,9 @@ export default async function DashboardPage({
         <p className="text-slate-500 text-sm mt-1">{session.user.businessName}</p>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Clients" value={String(totalClients)} />
-        <WeeklyTasksStat tasks={weeklyTasks} />
-        <StatCard label="Completed" value={String(weeklyTasksCompleted)} />
-        <StatCard
-          label="Compliance"
-          value={overallCompliance != null ? `${overallCompliance}%` : '—'}
-          highlight={overallCompliance != null}
-          highlightGood={overallCompliance != null && overallCompliance >= 70}
-        />
-      </div>
-
-      {/* Pending product requests */}
-      <PendingRequestsPanel
-        requests={pendingProductRequests.map(r => ({
-          id: r.id,
-          createdAt: r.createdAt.toISOString(),
-          note: r.note,
-          client: {
-            id: r.client.id,
-            name: r.client.user.name ?? r.client.user.email,
-          },
-          product: {
-            id: r.product.id,
-            name: r.product.name,
-            kind: r.product.kind as 'PHYSICAL' | 'DIGITAL',
-            imageUrl: r.product.imageUrl,
-          },
-        }))}
-      />
-
-      {/* Low compliance alert */}
-      {lowComplianceClients.length > 0 && (
-        <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-100 p-4">
-          <p className="font-semibold text-amber-900 mb-2">
-            ⚠️ {lowComplianceClients.length} client{lowComplianceClients.length > 1 ? 's' : ''} need attention
-          </p>
-          <div className="flex flex-col gap-2">
-            {lowComplianceClients.map((c) => {
-              const rate = Math.round(
-                (c.diaryEntries.filter(t => t.completion).length / c.diaryEntries.length) * 100
-              )
-              return (
-                <Link
-                  key={c.id}
-                  href={`/clients/${c.id}`}
-                  className="flex items-center justify-between bg-white rounded-xl px-4 py-2.5 hover:border-amber-200 border border-transparent transition-colors"
-                >
-                  <span className="text-sm font-medium text-slate-700">
-                    {c.user.name ?? c.user.email}
-                    {c.dog && <span className="text-slate-400"> · {c.dog.name}</span>}
-                  </span>
-                  <span className="text-sm font-bold text-red-500">{rate}%</span>
-                </Link>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Quick actions */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-        <QuickAction href="/clients/invite" icon={<UserPlus className="h-5 w-5" />} label="Invite client" />
-        <QuickAction href="/schedule" icon={<Calendar className="h-5 w-5" />} label="Book session" />
-        <QuickAction href="/progress" icon={<TrendingUp className="h-5 w-5" />} label="View progress" />
-        <QuickAction href="/schedule" icon={<Calendar className="h-5 w-5" />} label="Schedule" />
-      </div>
-
-      {/* Day-scoped session list */}
-      <div>
+      {/* Day-scoped session list — surfaced first so the trainer sees what's
+          on today before scrolling past stats and quick actions. */}
+      <div className="mb-8">
         <div className="flex items-center justify-between mb-3 gap-2">
           <h2 className="font-semibold text-slate-900">
             {isToday ? 'Coming up today' : `Sessions on ${focusDate.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' })}`}
@@ -325,6 +257,75 @@ export default async function DashboardPage({
             })}
           </div>
         )}
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <StatCard label="Clients" value={String(totalClients)} />
+        <WeeklyTasksStat tasks={weeklyTasks} />
+        <StatCard label="Completed" value={String(weeklyTasksCompleted)} />
+        <StatCard
+          label="Compliance"
+          value={overallCompliance != null ? `${overallCompliance}%` : '—'}
+          highlight={overallCompliance != null}
+          highlightGood={overallCompliance != null && overallCompliance >= 70}
+        />
+      </div>
+
+      {/* Pending product requests */}
+      <PendingRequestsPanel
+        requests={pendingProductRequests.map(r => ({
+          id: r.id,
+          createdAt: r.createdAt.toISOString(),
+          note: r.note,
+          client: {
+            id: r.client.id,
+            name: r.client.user.name ?? r.client.user.email,
+          },
+          product: {
+            id: r.product.id,
+            name: r.product.name,
+            kind: r.product.kind as 'PHYSICAL' | 'DIGITAL',
+            imageUrl: r.product.imageUrl,
+          },
+        }))}
+      />
+
+      {/* Low compliance alert */}
+      {lowComplianceClients.length > 0 && (
+        <div className="mb-6 rounded-2xl bg-amber-50 border border-amber-100 p-4">
+          <p className="font-semibold text-amber-900 mb-2">
+            ⚠️ {lowComplianceClients.length} client{lowComplianceClients.length > 1 ? 's' : ''} need attention
+          </p>
+          <div className="flex flex-col gap-2">
+            {lowComplianceClients.map((c) => {
+              const rate = Math.round(
+                (c.diaryEntries.filter(t => t.completion).length / c.diaryEntries.length) * 100
+              )
+              return (
+                <Link
+                  key={c.id}
+                  href={`/clients/${c.id}`}
+                  className="flex items-center justify-between bg-white rounded-xl px-4 py-2.5 hover:border-amber-200 border border-transparent transition-colors"
+                >
+                  <span className="text-sm font-medium text-slate-700">
+                    {c.user.name ?? c.user.email}
+                    {c.dog && <span className="text-slate-400"> · {c.dog.name}</span>}
+                  </span>
+                  <span className="text-sm font-bold text-red-500">{rate}%</span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <QuickAction href="/clients/invite" icon={<UserPlus className="h-5 w-5" />} label="Invite client" />
+        <QuickAction href="/schedule" icon={<Calendar className="h-5 w-5" />} label="Book session" />
+        <QuickAction href="/progress" icon={<TrendingUp className="h-5 w-5" />} label="View progress" />
+        <QuickAction href="/schedule" icon={<Calendar className="h-5 w-5" />} label="Schedule" />
       </div>
     </div>
   )
