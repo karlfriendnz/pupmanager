@@ -98,6 +98,14 @@ export async function PATCH(
     }
   }
 
+  // ?scope=following propagates the patch to this session and every later
+  // session in the same package assignment. For scheduledAt we apply a
+  // delta (so each subsequent session keeps its own day, just shifted by
+  // the same amount of time as this one moved).
+  const url = new URL(req.url)
+  const scope = url.searchParams.get('scope')
+  const propagate = scope === 'following' && existing.clientPackageId
+
   const updated = await prisma.trainingSession.update({
     where: { id: sessionId },
     data: {
@@ -108,11 +116,36 @@ export async function PATCH(
     },
   })
 
+  if (propagate) {
+    const followers = await prisma.trainingSession.findMany({
+      where: {
+        trainerId,
+        clientPackageId: existing.clientPackageId,
+        scheduledAt: { gt: existing.scheduledAt },
+      },
+      select: { id: true, scheduledAt: true },
+    })
+    const deltaMs = parsed.data.scheduledAt
+      ? new Date(parsed.data.scheduledAt).getTime() - existing.scheduledAt.getTime()
+      : 0
+    await Promise.all(followers.map(f =>
+      prisma.trainingSession.update({
+        where: { id: f.id },
+        data: {
+          ...(deltaMs !== 0 && { scheduledAt: new Date(f.scheduledAt.getTime() + deltaMs) }),
+          ...(parsed.data.durationMins !== undefined && { durationMins: parsed.data.durationMins }),
+          ...(parsed.data.status !== undefined && { status: parsed.data.status }),
+          ...(nextDogId !== undefined && { dogId: nextDogId }),
+        },
+      })
+    ))
+  }
+
   return NextResponse.json(updated)
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   const session = await auth()
@@ -133,15 +166,40 @@ export async function DELETE(
   })
   if (!trainingSession) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  if (trainingSession.googleCalendarEventId && trainerProfile.googleCalendarRefreshToken) {
-    try {
-      const { deleteGoogleCalendarEvent } = await import('@/lib/google-calendar')
-      await deleteGoogleCalendarEvent(trainerProfile.googleCalendarRefreshToken, trainingSession.googleCalendarEventId)
-    } catch {
-      // Non-critical
+  // ?scope=following also deletes every later session in the same package.
+  const url = new URL(req.url)
+  const scope = url.searchParams.get('scope')
+  const propagate = scope === 'following' && trainingSession.clientPackageId
+
+  let followers: { id: string; googleCalendarEventId: string | null }[] = []
+  if (propagate) {
+    followers = await prisma.trainingSession.findMany({
+      where: {
+        trainerId: trainerProfile.id,
+        clientPackageId: trainingSession.clientPackageId,
+        scheduledAt: { gt: trainingSession.scheduledAt },
+      },
+      select: { id: true, googleCalendarEventId: true },
+    })
+  }
+
+  // Best-effort calendar cleanup — non-critical.
+  if (trainerProfile.googleCalendarRefreshToken) {
+    const eventIds = [
+      ...(trainingSession.googleCalendarEventId ? [trainingSession.googleCalendarEventId] : []),
+      ...followers.map(f => f.googleCalendarEventId).filter((id): id is string => !!id),
+    ]
+    if (eventIds.length > 0) {
+      try {
+        const { deleteGoogleCalendarEvent } = await import('@/lib/google-calendar')
+        await Promise.all(eventIds.map(id => deleteGoogleCalendarEvent(trainerProfile.googleCalendarRefreshToken!, id)))
+      } catch {
+        // Non-critical
+      }
     }
   }
 
-  await prisma.trainingSession.delete({ where: { id: sessionId } })
-  return NextResponse.json({ ok: true })
+  const idsToDelete = [sessionId, ...followers.map(f => f.id)]
+  await prisma.trainingSession.deleteMany({ where: { id: { in: idsToDelete } } })
+  return NextResponse.json({ ok: true, deletedIds: idsToDelete })
 }

@@ -75,6 +75,7 @@ interface Session {
   description: string | null
   clientId: string | null
   dogId: string | null
+  clientPackageId: string | null
   packageColor: PackageColor | null
   client: { id: string; user: { name: string | null; email: string } } | null
   dog: {
@@ -1014,6 +1015,55 @@ interface LibraryType {
   themes: LibraryTheme[]
 }
 
+function DeleteSessionMenu({ deleting, canDeleteFollowing, onConfirm }: {
+  deleting: boolean
+  canDeleteFollowing: boolean
+  onConfirm: (scope: 'this' | 'following') => void
+}) {
+  const [open, setOpen] = useState(false)
+  if (!canDeleteFollowing) {
+    return (
+      <button
+        disabled={deleting}
+        onClick={() => onConfirm('this')}
+        className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 transition-colors"
+      >
+        <Trash2 className="h-4 w-4" /> {deleting ? 'Deleting…' : 'Delete session'}
+      </button>
+    )
+  }
+  return (
+    <div className="relative">
+      <button
+        disabled={deleting}
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 transition-colors"
+      >
+        <Trash2 className="h-4 w-4" /> {deleting ? 'Deleting…' : 'Delete'}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 bottom-full mb-1 w-56 z-40 bg-white rounded-xl border border-slate-200 shadow-lg p-1.5">
+            <button
+              onClick={() => { setOpen(false); onConfirm('this') }}
+              className="w-full text-left px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50"
+            >
+              Delete this session
+            </button>
+            <button
+              onClick={() => { setOpen(false); onConfirm('following') }}
+              className="w-full text-left px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50"
+            >
+              Delete this + following
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function SessionModal({
   session: initialSession,
   clients,
@@ -1027,7 +1077,7 @@ function SessionModal({
   onClose: () => void
   onStatusChange: (id: string, status: SessionStatus) => void
   onSessionsUpdate: (id: string, updates: Partial<Session>) => void
-  onDelete: (id: string) => Promise<void> | void
+  onDelete: (id: string, scope?: 'this' | 'following') => Promise<void> | void
 }) {
   const router = useRouter()
   const [session, setSession] = useState(initialSession)
@@ -1083,35 +1133,71 @@ function SessionModal({
     }
   }, [showAddPanel, libraryLoaded])
 
-  // Time/date/duration override. Trainer can always reschedule from the
-  // popup, even outside the visible-hours window enforced by drag-and-drop.
-  async function patchScheduling(updates: { scheduledAt?: string; durationMins?: number }) {
-    const before = { scheduledAt: session.scheduledAt, durationMins: session.durationMins }
-    setSession(prev => ({ ...prev, ...updates }))
-    onSessionsUpdate(session.id, updates)
-    const res = await fetch(`/api/schedule/${session.id}`, {
+  // Date/time/duration are staged in the modal so the trainer can choose
+  // whether to apply changes only to this session or to this session plus
+  // every later one in the same package. Other fields (status, dog, buddies)
+  // remain auto-saved since they're meaningful per-session.
+  const [draftDate, setDraftDate] = useState(localDateStr(initialSession.scheduledAt))
+  const [draftTime, setDraftTime] = useState(localTimeStr(initialSession.scheduledAt))
+  const [draftDuration, setDraftDuration] = useState(initialSession.durationMins)
+  const [savingDraft, setSavingDraft] = useState(false)
+  const [draftError, setDraftError] = useState<string | null>(null)
+
+  // If the parent swaps the session out (e.g. opening a different one),
+  // re-seed the draft from the new source.
+  useEffect(() => {
+    setDraftDate(localDateStr(initialSession.scheduledAt))
+    setDraftTime(localTimeStr(initialSession.scheduledAt))
+    setDraftDuration(initialSession.durationMins)
+    setDraftError(null)
+  }, [initialSession.id, initialSession.scheduledAt, initialSession.durationMins])
+
+  function buildDraftIso(): string | null {
+    const [yyyy, mm, dd] = draftDate.split('-').map(Number)
+    const [hh, mi] = draftTime.split(':').map(Number)
+    if (!yyyy || !mm || !dd || isNaN(hh) || isNaN(mi)) return null
+    const next = new Date(session.scheduledAt)
+    next.setFullYear(yyyy, mm - 1, dd)
+    next.setHours(hh, mi, 0, 0)
+    return next.toISOString()
+  }
+
+  const draftIso = buildDraftIso()
+  const dirty =
+    (draftIso !== null && draftIso !== new Date(session.scheduledAt).toISOString()) ||
+    draftDuration !== session.durationMins
+
+  async function saveDraft(scope: 'this' | 'following') {
+    setDraftError(null)
+    if (!Number.isFinite(draftDuration) || draftDuration <= 0) {
+      setDraftError('Duration must be positive')
+      return
+    }
+    const iso = buildDraftIso()
+    if (!iso) {
+      setDraftError('Invalid date or time')
+      return
+    }
+    setSavingDraft(true)
+    const updates = { scheduledAt: iso, durationMins: draftDuration }
+    const url = `/api/schedule/${session.id}${scope === 'following' ? '?scope=following' : ''}`
+    const res = await fetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
     })
+    setSavingDraft(false)
     if (!res.ok) {
-      setSession(prev => ({ ...prev, ...before }))
-      onSessionsUpdate(session.id, before)
+      setDraftError('Failed to save')
+      return
     }
-  }
-  function handleScheduledChange(parts: { date?: string; time?: string }) {
-    const cur = new Date(session.scheduledAt)
-    const [yyyy, mm, dd] = (parts.date ?? localDateStr(session.scheduledAt)).split('-').map(Number)
-    const [hh, mi] = (parts.time ?? localTimeStr(session.scheduledAt)).split(':').map(Number)
-    if (!yyyy || !mm || !dd || isNaN(hh) || isNaN(mi)) return
-    const next = new Date(cur)
-    next.setFullYear(yyyy, mm - 1, dd)
-    next.setHours(hh, mi, 0, 0)
-    patchScheduling({ scheduledAt: next.toISOString() })
-  }
-  function handleDurationChange(mins: number) {
-    if (!Number.isFinite(mins) || mins <= 0) return
-    patchScheduling({ durationMins: mins })
+    setSession(prev => ({ ...prev, ...updates }))
+    onSessionsUpdate(session.id, updates)
+    if (scope === 'following') {
+      // Following sessions changed too; reload page data so the calendar
+      // reflects all the shifted blocks at once.
+      router.refresh()
+    }
   }
 
   async function handleStatusChange(status: SessionStatus) {
@@ -1533,14 +1619,14 @@ function SessionModal({
             </div>
           )}
 
-          {/* When — editable so trainers can override the calendar grid. */}
+          {/* When — staged edits, saved with the buttons below. */}
           <div className="flex flex-col gap-2.5 text-sm">
             <div className="flex items-center gap-3">
               <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <input
                 type="date"
-                value={localDateStr(session.scheduledAt)}
-                onChange={e => handleScheduledChange({ date: e.target.value })}
+                value={draftDate}
+                onChange={e => setDraftDate(e.target.value)}
                 className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -1548,8 +1634,8 @@ function SessionModal({
               <Clock className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <input
                 type="time"
-                value={localTimeStr(session.scheduledAt)}
-                onChange={e => handleScheduledChange({ time: e.target.value })}
+                value={draftTime}
+                onChange={e => setDraftTime(e.target.value)}
                 className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <span className="text-slate-400">·</span>
@@ -1557,12 +1643,36 @@ function SessionModal({
                 type="number"
                 min={5}
                 step={5}
-                value={session.durationMins}
-                onChange={e => handleDurationChange(parseInt(e.target.value, 10) || 0)}
+                value={draftDuration}
+                onChange={e => setDraftDuration(parseInt(e.target.value, 10) || 0)}
                 className="h-8 w-16 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <span className="text-slate-500 text-xs">min</span>
             </div>
+            {dirty && (
+              <div className="flex flex-col gap-1.5 mt-1">
+                {draftError && <p className="text-xs text-red-600">{draftError}</p>}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" disabled={savingDraft} onClick={() => saveDraft('this')}>
+                    {savingDraft ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    Save this session
+                  </Button>
+                  {session.clientPackageId && (
+                    <Button size="sm" variant="secondary" disabled={savingDraft} onClick={() => saveDraft('following')}>
+                      Save this + following
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" disabled={savingDraft} onClick={() => {
+                    setDraftDate(localDateStr(session.scheduledAt))
+                    setDraftTime(localTimeStr(session.scheduledAt))
+                    setDraftDuration(session.durationMins)
+                    setDraftError(null)
+                  }}>
+                    Reset
+                  </Button>
+                </div>
+              </div>
+            )}
             {session.location && (
               <div className="flex items-center gap-3">
                 <MapPin className="h-4 w-4 text-slate-400 flex-shrink-0" />
@@ -1806,22 +1916,23 @@ function SessionModal({
               <ExternalLink className="h-4 w-4" /> View client profile
             </button>
           ) : <span />}
-          <button
-            disabled={deleting}
-            onClick={async () => {
-              if (!confirm('Delete this session? This cannot be undone.')) return
+          <DeleteSessionMenu
+            deleting={deleting}
+            canDeleteFollowing={!!session.clientPackageId}
+            onConfirm={async (scope) => {
+              const message = scope === 'following'
+                ? 'Delete this session and every later one in the same package? This cannot be undone.'
+                : 'Delete this session? This cannot be undone.'
+              if (!confirm(message)) return
               setDeleting(true)
               try {
-                await onDelete(session.id)
+                await onDelete(session.id, scope)
                 onClose()
               } finally {
                 setDeleting(false)
               }
             }}
-            className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 transition-colors"
-          >
-            <Trash2 className="h-4 w-4" /> {deleting ? 'Deleting…' : 'Delete session'}
-          </button>
+          />
         </div>
       </div>
     </div>
@@ -1953,9 +2064,17 @@ export function ScheduleView({
     setAssignAt({ date: dateStr, time })
   }
 
-  async function handleDeleteSession(id: string) {
-    await fetch(`/api/schedule/${id}`, { method: 'DELETE' })
-    setSessions(prev => prev.filter(s => s.id !== id))
+  async function handleDeleteSession(id: string, scope: 'this' | 'following' = 'this') {
+    const url = `/api/schedule/${id}${scope === 'following' ? '?scope=following' : ''}`
+    const res = await fetch(url, { method: 'DELETE' })
+    if (scope === 'following' && res.ok) {
+      // Server returns the full list of deleted ids so we can prune locally.
+      const body = await res.json().catch(() => ({}))
+      const deletedIds: string[] = Array.isArray(body?.deletedIds) ? body.deletedIds : [id]
+      setSessions(prev => prev.filter(s => !deletedIds.includes(s.id)))
+    } else {
+      setSessions(prev => prev.filter(s => s.id !== id))
+    }
   }
 
   async function handleSessionDrop(sessionId: string, newIso: string) {
