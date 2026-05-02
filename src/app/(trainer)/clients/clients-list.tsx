@@ -351,61 +351,57 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate }: {
   gridTemplate: string
 }) {
   const showShared = visible.has('shared') && client.shared
+  const identity = (
+    <div className="flex items-center gap-3 min-w-0">
+      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold text-xs flex-shrink-0">
+        {getInitials(client.name ?? client.email)}
+      </div>
+      <div className="min-w-0 flex items-center gap-1.5">
+        <p className="font-semibold text-slate-900 truncate text-sm">
+          {client.name ?? client.email}
+        </p>
+        {showShared && (
+          <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">
+            Shared
+          </span>
+        )}
+      </div>
+    </div>
+  )
 
   return (
     <Link href={`/clients/${client.id}`}>
-      <Card className={`p-4 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer ${tab === 'inactive' ? 'opacity-70' : ''} ${tab === 'new' ? 'border-amber-200 bg-amber-50/30' : ''}`}>
-        {/* md+: tabular grid. <md: stacked, label-prefixed cells for context. */}
+      <Card className={`px-4 py-3 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer ${tab === 'inactive' ? 'opacity-70' : ''} ${tab === 'new' ? 'border-amber-200 bg-amber-50/30' : ''}`}>
+        {/* md+: single-row grid that lines up with the header. */}
         <div
-          className="md:grid md:items-center md:gap-4 flex items-center gap-4"
+          className="hidden md:grid items-center gap-4"
           style={{ gridTemplateColumns: gridTemplate }}
         >
-          {/* Identity column (always) */}
-          <div className="flex items-center gap-3 min-w-0 flex-1 md:flex-initial">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold text-xs flex-shrink-0">
-              {getInitials(client.name ?? client.email)}
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="font-semibold text-slate-900 truncate text-sm">
-                  {client.name ?? client.email}
-                </p>
-                {showShared && (
-                  <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                    Shared
-                  </span>
-                )}
-              </div>
-              {/* On mobile, surface email as secondary line if name and email differ */}
-              {client.name && client.email && client.name !== client.email && (
-                <p className="md:hidden text-xs text-slate-400 truncate">{client.email}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Mobile: stacked label/value rows. Desktop: grid cells. */}
-          <div className="md:contents flex-shrink-0 hidden md:flex" />
+          {identity}
           {dataColumns.map(c => (
             <div
               key={c.key}
-              className={`hidden md:flex min-w-0 text-sm ${c.align === 'right' ? 'justify-end' : ''}`}
+              className={`min-w-0 text-sm flex items-center ${c.align === 'right' ? 'justify-end' : ''}`}
             >
               {c.render(client)}
             </div>
           ))}
         </div>
 
-        {/* <md: stacked label/value rows under the identity row */}
-        {dataColumns.length > 0 && (
-          <dl className="md:hidden mt-3 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
-            {dataColumns.map(c => (
-              <div key={c.key} className="contents">
-                <dt className="text-slate-400 uppercase tracking-wide text-[10px] self-center">{c.label}</dt>
-                <dd className="text-slate-700 min-w-0 truncate">{c.render(client)}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
+        {/* <md: stacked label/value rows under the identity row. */}
+        <div className="md:hidden">
+          {identity}
+          {dataColumns.length > 0 && (
+            <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
+              {dataColumns.map(c => (
+                <div key={c.key} className="contents">
+                  <dt className="text-slate-400 uppercase tracking-wide text-[10px] self-center">{c.label}</dt>
+                  <dd className="text-slate-700 min-w-0 truncate flex items-center">{c.render(client)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
       </Card>
     </Link>
   )
