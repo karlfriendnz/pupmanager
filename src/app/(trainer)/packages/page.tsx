@@ -31,6 +31,7 @@ export default async function PackagesPage() {
         sessionType: p.sessionType,
         priceCents: p.priceCents,
         specialPriceCents: p.specialPriceCents,
+        color: (p.color ?? null) as 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan' | null,
         assignments: p._count.assignments,
       }))}
     />

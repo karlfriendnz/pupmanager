@@ -14,6 +14,9 @@ const schema = z.object({
   // Prices stored in cents. Accept 0 (free) up to a sane upper bound.
   priceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   specialPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  // Tailwind palette key. Keep this list in sync with PACKAGE_COLORS in
+  // schedule-view.tsx — both must include any new option.
+  color: z.enum(['blue', 'emerald', 'amber', 'rose', 'purple', 'orange', 'teal', 'indigo', 'pink', 'cyan']).nullable().optional(),
 })
 
 export async function GET() {
@@ -61,6 +64,7 @@ export async function POST(req: Request) {
       sessionType: parsed.data.sessionType ?? 'IN_PERSON',
       priceCents: parsed.data.priceCents ?? null,
       specialPriceCents: parsed.data.specialPriceCents ?? null,
+      color: parsed.data.color ?? null,
       order: nextOrder,
     },
   })

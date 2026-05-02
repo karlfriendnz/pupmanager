@@ -444,6 +444,9 @@ model Package {
   // optional discounted price the trainer can offer for promotions, etc.
   priceCents        Int? // null = unpriced
   specialPriceCents Int? // null = no special price
+  // Optional schedule colour (Tailwind palette key, eg "blue"). When set,
+  // sessions assigned to this package render in that colour on the calendar.
+  color        String?
   order        Int      @default(0)   // display order, lowest first
 
   createdAt DateTime @default(now())

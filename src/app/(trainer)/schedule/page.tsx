@@ -74,6 +74,9 @@ export default async function SchedulePage({
         client: {
           select: { id: true, user: { select: { name: true, email: true } } },
         },
+        clientPackage: {
+          select: { package: { select: { color: true } } },
+        },
         buddies: {
           select: {
             id: true,
@@ -181,6 +184,7 @@ export default async function SchedulePage({
       sessions={sessions.map(s => ({
         ...s,
         scheduledAt: s.scheduledAt.toISOString(),
+        packageColor: (s.clientPackage?.package?.color ?? null) as 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan' | null,
       }))}
       availabilitySlots={availabilitySlots.map(s => ({
         ...s,

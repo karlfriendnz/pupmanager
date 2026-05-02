@@ -61,6 +61,8 @@ interface Buddy {
   dog: { id: string; name: string } | null
 }
 
+type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan'
+
 interface Session {
   id: string
   title: string
@@ -73,12 +75,28 @@ interface Session {
   description: string | null
   clientId: string | null
   dogId: string | null
+  packageColor: PackageColor | null
   client: { id: string; user: { name: string | null; email: string } } | null
   dog: {
     name: string
     primaryFor: { id: string; user: { name: string | null; email: string } }[]
   } | null
   buddies: Buddy[]
+}
+
+// Static class map for package-coloured blocks (Tailwind purges dynamic
+// class names so each option needs its own pair listed here).
+const PACKAGE_COLOR_CLASSES: Record<PackageColor, { bg: string; hover: string; fadedBg: string }> = {
+  blue:    { bg: 'bg-blue-500',    hover: 'hover:bg-blue-600',    fadedBg: 'bg-blue-300' },
+  emerald: { bg: 'bg-emerald-500', hover: 'hover:bg-emerald-600', fadedBg: 'bg-emerald-300' },
+  amber:   { bg: 'bg-amber-500',   hover: 'hover:bg-amber-600',   fadedBg: 'bg-amber-300' },
+  rose:    { bg: 'bg-rose-500',    hover: 'hover:bg-rose-600',    fadedBg: 'bg-rose-300' },
+  purple:  { bg: 'bg-purple-500',  hover: 'hover:bg-purple-600',  fadedBg: 'bg-purple-300' },
+  orange:  { bg: 'bg-orange-500',  hover: 'hover:bg-orange-600',  fadedBg: 'bg-orange-300' },
+  teal:    { bg: 'bg-teal-500',    hover: 'hover:bg-teal-600',    fadedBg: 'bg-teal-300' },
+  indigo:  { bg: 'bg-indigo-500',  hover: 'hover:bg-indigo-600',  fadedBg: 'bg-indigo-300' },
+  pink:    { bg: 'bg-pink-500',    hover: 'hover:bg-pink-600',    fadedBg: 'bg-pink-300' },
+  cyan:    { bg: 'bg-cyan-500',    hover: 'hover:bg-cyan-600',    fadedBg: 'bg-cyan-300' },
 }
 
 interface ClientOption {
@@ -329,6 +347,13 @@ function SessionBlock({
     ? `${session.title} · 🐕 ${allDogNames.join(', ')}`
     : undefined
 
+  // Package-coloured blocks override the status colour so trainers can spot
+  // a package's sessions at a glance. Buddy walks still take orange precedence.
+  const pkg = session.packageColor ? PACKAGE_COLOR_CLASSES[session.packageColor] : null
+  const blockBg      = pkg?.bg ?? meta.bg
+  const blockHover   = pkg?.hover ?? meta.hover
+  const blockFadedBg = pkg?.fadedBg ?? meta.fadedBg
+
   // Buddy walks get an orange background instead of the status colour, so
   // they're visually distinct from regular 1:1 sessions at a glance.
   const buddyBg      = 'bg-orange-500'
@@ -339,12 +364,12 @@ function SessionBlock({
     <div
       className={`absolute left-0.5 right-0.5 rounded-lg px-2 overflow-hidden select-none touch-none z-10 transition-shadow ${
         isDragging
-          ? `${isBuddyWalk ? buddyBg : meta.bg} shadow-2xl opacity-90 cursor-grabbing z-20`
+          ? `${isBuddyWalk ? buddyBg : blockBg} shadow-2xl opacity-90 cursor-grabbing z-20`
           : faded
-          ? `${isBuddyWalk ? buddyFaded : meta.fadedBg} opacity-40 cursor-grabbing z-10`
+          ? `${isBuddyWalk ? buddyFaded : blockFadedBg} opacity-40 cursor-grabbing z-10`
           : isBuddyWalk
           ? `${buddyBg} ${buddyHover} cursor-grab shadow-sm hover:shadow-md`
-          : `${meta.bg} ${meta.hover} cursor-grab shadow-sm hover:shadow-md`
+          : `${blockBg} ${blockHover} cursor-grab shadow-sm hover:shadow-md`
       }`}
       style={{ top, height }}
       title={tooltip}
