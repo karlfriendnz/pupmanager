@@ -12,7 +12,7 @@ import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, LayoutGrid, List,
-  Clock, Trash2, X, Settings, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle,
+  Clock, Trash2, X, Settings, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search,
 } from 'lucide-react'
 import {
   AssignPackageFromScheduleButton,
@@ -478,6 +478,8 @@ function WeekGrid({
   extraFields,
   clientExtras,
   customFields,
+  matchedIds,
+  searchActive,
 }: {
   weekDays: Date[]
   sessions: Session[]
@@ -494,6 +496,8 @@ function WeekGrid({
   extraFields: string[]
   clientExtras: Record<string, ClientExtra>
   customFields: CustomFieldMeta[]
+  matchedIds: Set<string>
+  searchActive: boolean
 }) {
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -701,8 +705,13 @@ function WeekGrid({
                   const isBeingDragged = dragging?.session.id === s.id
                   // Target column is this column (same-day drag or cross-day target)
                   const targetHere = dragging?.dayIndex === dayIndex
+                  const dimmedBySearch = searchActive && !matchedIds.has(s.id)
                   return (
-                    <div key={s.id} data-session>
+                    <div
+                      key={s.id}
+                      data-session
+                      className={dimmedBySearch ? 'opacity-20 transition-opacity' : 'transition-opacity'}
+                    >
                       <SessionBlock
                         session={s}
                         isDragging={isBeingDragged && targetHere}
@@ -750,10 +759,14 @@ function DayList({
   sessions,
   onDelete,
   onNavigateClient,
+  matchedIds,
+  searchActive,
 }: {
   sessions: Session[]
   onDelete: (id: string) => void
   onNavigateClient: (clientId: string) => void
+  matchedIds: Set<string>
+  searchActive: boolean
 }) {
   if (sessions.length === 0) {
     return (
@@ -770,8 +783,9 @@ function DayList({
       {sessions.map((s) => {
         const client   = s.dog?.primaryFor[0]?.user
         const clientId = s.dog?.primaryFor[0]?.id
+        const dimmed = searchActive && !matchedIds.has(s.id)
         return (
-          <Card key={s.id} className="cursor-pointer hover:border-blue-200 transition-all" onClick={() => clientId && onNavigateClient(clientId)}>
+          <Card key={s.id} className={`cursor-pointer hover:border-blue-200 transition-all ${dimmed ? 'opacity-20' : ''}`} onClick={() => clientId && onNavigateClient(clientId)}>
             <CardBody className="pt-4 pb-4">
               <div className="flex items-start gap-4">
                 <div className="flex-shrink-0 text-center min-w-[48px]">
@@ -2293,6 +2307,24 @@ export function ScheduleView({
   const [availSlots, setAvailSlots]     = useState(initialAvailSlots)
   const [blackouts, setBlackouts]       = useState<Blackout[]>([])
   const [showAvail, setShowAvail]       = useState(false)
+  // Free-text search across visible sessions. Non-matching blocks fade to
+  // 20% opacity until the search is cleared.
+  const [search, setSearch] = useState('')
+  const searchTokens = search.trim().toLocaleLowerCase('en-NZ').split(/\s+/).filter(Boolean)
+  function sessionMatchesSearch(s: Session): boolean {
+    if (searchTokens.length === 0) return true
+    const clientUser = s.client?.user ?? s.dog?.primaryFor[0]?.user
+    const haystack = [
+      s.title,
+      clientUser?.name ?? '',
+      clientUser?.email ?? '',
+      s.dog?.name ?? '',
+      s.location ?? '',
+      ...s.buddies.flatMap(b => [b.client.user.name ?? '', b.client.user.email, b.dog?.name ?? '']),
+    ].join(' ').toLocaleLowerCase('en-NZ')
+    return searchTokens.every(t => haystack.includes(t))
+  }
+  const matchedIds = new Set(sessions.filter(sessionMatchesSearch).map(s => s.id))
   // Lazy-load blackouts the first time the schedule mounts so the calendar
   // can grey out holiday days. Cheap query (small per-trainer table).
   useEffect(() => {
@@ -2598,6 +2630,34 @@ export function ScheduleView({
         </button>
       </div>
 
+      {/* Search — fades non-matching blocks to 20% opacity until cleared. */}
+      <div className="flex items-center gap-2 px-4 md:px-6 py-2 bg-white border-b border-slate-100">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <input
+            type="search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search sessions by client, dog, title, location…"
+            className="w-full h-9 pl-9 pr-9 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        {searchTokens.length > 0 && (
+          <span className="text-xs text-slate-500">
+            {matchedIds.size} match{matchedIds.size === 1 ? '' : 'es'}
+          </span>
+        )}
+      </div>
+
       {/* ── Hint bar (week view only) ────────────────────────────────────────── */}
       {view === 'week' && (
         <div className="flex items-center gap-4 px-4 md:px-6 py-1.5 text-[10px] text-slate-400 bg-slate-50 border-b border-slate-100">
@@ -2649,12 +2709,16 @@ export function ScheduleView({
             extraFields={extraFields}
             clientExtras={clientExtras}
             customFields={customFields}
+            matchedIds={matchedIds}
+            searchActive={searchTokens.length > 0}
           />
         ) : (
           <DayList
             sessions={daySessions}
             onDelete={handleDeleteSession}
             onNavigateClient={(clientId) => router.push(`/clients/${clientId}`)}
+            matchedIds={matchedIds}
+            searchActive={searchTokens.length > 0}
           />
         )}
       </div>
