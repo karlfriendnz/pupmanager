@@ -14,7 +14,8 @@ const patchSchema = z.object({
   scheduleEndHour: z.number().int().min(1).max(24).optional(),
   scheduleDays: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional(),
   scheduleExtraFields: z.array(z.enum(['location', 'description', 'sessionType', 'duration', 'title'])).max(2).optional(),
-  clientListColumns: z.array(z.enum(['email', 'dog', 'extraDogs', 'nextSession', 'compliance', 'shared'])).optional(),
+  // Built-in column ids OR "custom:<cuid>" for trainer-defined custom fields.
+  clientListColumns: z.array(z.string().regex(/^(email|dog|extraDogs|nextSession|compliance|shared|custom:[a-z0-9]+)$/)).optional(),
 })
 
 export async function GET() {

@@ -131,6 +131,42 @@ export default async function ClientsPage({
       .localeCompare((b.name ?? b.email).toLocaleLowerCase('en-NZ'))
   )
 
+  // Custom-field columns. The picker shows every custom field defined by the
+  // trainer; we only fetch values for fields actually selected (via the
+  // "custom:<id>" entries in clientListColumns) to keep page payloads small.
+  const customFields = await prisma.customField.findMany({
+    where: { trainerId },
+    select: { id: true, label: true, appliesTo: true },
+    orderBy: [{ category: 'asc' }, { order: 'asc' }, { label: 'asc' }],
+  })
+  const selectedCustomIds = clientListColumns
+    .filter(c => c.startsWith('custom:'))
+    .map(c => c.slice('custom:'.length))
+    .filter(id => customFields.some(f => f.id === id))
+  const customValues = (selectedCustomIds.length > 0 && allClientIds.length > 0)
+    ? await prisma.customFieldValue.findMany({
+        where: { fieldId: { in: selectedCustomIds }, clientId: { in: allClientIds } },
+        select: { fieldId: true, clientId: true, dogId: true, value: true },
+      })
+    : []
+  // For DOG-applied fields, prefer the value tied to the client's primary dog;
+  // for OWNER fields, dogId is null. Key by `${clientId}:${fieldId}`.
+  const primaryDogIdByClient = new Map<string, string | null>([
+    ...ownedClients.map(c => [c.id, c.dogId] as const),
+    ...sharedClients.map(s => [s.client.id, s.client.dogId] as const),
+  ])
+  const customValueMap: Record<string, string> = {}
+  for (const v of customValues) {
+    const key = `${v.clientId}:${v.fieldId}`
+    const field = customFields.find(f => f.id === v.fieldId)
+    if (field?.appliesTo === 'DOG') {
+      const primary = primaryDogIdByClient.get(v.clientId)
+      if (v.dogId && primary && v.dogId !== primary) continue
+    }
+    // Last-write wins; fine since DOG fields are filtered above.
+    customValueMap[key] = v.value
+  }
+
   function tabHref(t: string) {
     return t === 'active' ? '/clients' : `/clients?tab=${t}`
   }
@@ -188,7 +224,13 @@ export default async function ClientsPage({
         </Link>
       </div>
 
-      <ClientsList clients={flatClients} tab={tab} columns={clientListColumns} />
+      <ClientsList
+        clients={flatClients}
+        tab={tab}
+        columns={clientListColumns}
+        customFields={customFields}
+        customValues={customValueMap}
+      />
     </div>
   )
 }

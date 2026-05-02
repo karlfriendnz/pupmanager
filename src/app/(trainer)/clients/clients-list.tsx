@@ -8,9 +8,9 @@ import { Card } from '@/components/ui/card'
 import { UserPlus, Search, Dog, Calendar, Columns3, X, Check } from 'lucide-react'
 import { getInitials } from '@/lib/utils'
 
-type ColumnId = 'email' | 'dog' | 'extraDogs' | 'nextSession' | 'compliance' | 'shared'
+type BuiltinColumnId = 'email' | 'dog' | 'extraDogs' | 'nextSession' | 'compliance' | 'shared'
 
-const COLUMN_OPTIONS: { id: ColumnId; label: string }[] = [
+const BUILTIN_OPTIONS: { id: BuiltinColumnId; label: string }[] = [
   { id: 'email',       label: 'Email' },
   { id: 'dog',         label: 'Primary dog' },
   { id: 'extraDogs',   label: 'Additional dogs' },
@@ -19,10 +19,16 @@ const COLUMN_OPTIONS: { id: ColumnId; label: string }[] = [
   { id: 'shared',      label: 'Shared badge' },
 ]
 
-const COLUMN_IDS = COLUMN_OPTIONS.map(o => o.id) as ColumnId[]
+const BUILTIN_IDS = BUILTIN_OPTIONS.map(o => o.id) as BuiltinColumnId[]
 
-function isColumnId(value: string): value is ColumnId {
-  return (COLUMN_IDS as string[]).includes(value)
+function isBuiltinId(value: string): value is BuiltinColumnId {
+  return (BUILTIN_IDS as string[]).includes(value)
+}
+
+interface CustomFieldMeta {
+  id: string
+  label: string
+  appliesTo: string  // "OWNER" | "DOG"
 }
 
 interface ClientRow {
@@ -42,21 +48,32 @@ interface Props {
   clients: ClientRow[]
   tab: 'new' | 'active' | 'inactive'
   columns: string[]
+  customFields: CustomFieldMeta[]
+  customValues: Record<string, string>  // key: `${clientId}:${fieldId}`
 }
 
-export function ClientsList({ clients, tab, columns }: Props) {
-  const initialCols = columns.filter(isColumnId)
-  const [visible, setVisible] = useState<Set<ColumnId>>(new Set(initialCols))
+export function ClientsList({ clients, tab, columns, customFields, customValues }: Props) {
+  const validCustomIds = new Set(customFields.map(f => f.id))
+  const initial = columns.filter(c => isBuiltinId(c) || (c.startsWith('custom:') && validCustomIds.has(c.slice(7))))
+  const [visible, setVisible] = useState<Set<string>>(new Set(initial))
   const [pickerOpen, setPickerOpen] = useState(false)
   const router = useRouter()
   const [savingCols, setSavingCols] = useState(false)
 
-  async function toggleColumn(id: ColumnId) {
+  function orderedSelection(set: Set<string>): string[] {
+    // Built-ins first (in declaration order), then custom fields (in metadata
+    // order). Stable order keeps card layout consistent regardless of click
+    // sequence.
+    const builtins = BUILTIN_IDS.filter(c => set.has(c))
+    const customs = customFields.filter(f => set.has(`custom:${f.id}`)).map(f => `custom:${f.id}`)
+    return [...builtins, ...customs]
+  }
+
+  async function toggleColumn(id: string) {
     setVisible(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id); else next.add(id)
-      // Fire-and-forget save so the choice persists across reloads.
-      const ordered = COLUMN_IDS.filter(c => next.has(c))
+      const ordered = orderedSelection(next)
       setSavingCols(true)
       fetch('/api/trainer/profile', {
         method: 'PATCH',
@@ -116,14 +133,14 @@ export function ClientsList({ clients, tab, columns }: Props) {
           {pickerOpen && (
             <>
               <div className="fixed inset-0 z-30" onClick={() => setPickerOpen(false)} />
-              <div className="absolute right-0 mt-2 w-60 z-40 bg-white rounded-xl border border-slate-200 shadow-lg p-1.5">
+              <div className="absolute right-0 mt-2 w-64 max-h-[70vh] overflow-y-auto z-40 bg-white rounded-xl border border-slate-200 shadow-lg p-1.5">
                 <div className="flex items-center justify-between px-2 py-1.5">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Show fields</p>
                   <button onClick={() => setPickerOpen(false)} className="p-0.5 text-slate-400 hover:text-slate-600">
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
-                {COLUMN_OPTIONS.map(opt => {
+                {BUILTIN_OPTIONS.map(opt => {
                   const active = visible.has(opt.id)
                   return (
                     <button
@@ -139,6 +156,29 @@ export function ClientsList({ clients, tab, columns }: Props) {
                     </button>
                   )
                 })}
+                {customFields.length > 0 && (
+                  <>
+                    <p className="px-2 pt-2 pb-1 text-xs font-semibold text-slate-500 uppercase tracking-wide border-t border-slate-100 mt-1">Custom fields</p>
+                    {customFields.map(f => {
+                      const id = `custom:${f.id}`
+                      const active = visible.has(id)
+                      return (
+                        <button
+                          key={f.id}
+                          onClick={() => toggleColumn(id)}
+                          disabled={savingCols}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          <span className={`flex h-4 w-4 items-center justify-center rounded border ${active ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300'}`}>
+                            {active && <Check className="h-3 w-3" />}
+                          </span>
+                          <span className="flex-1 truncate text-left">{f.label}</span>
+                          <span className="text-[10px] text-slate-400 uppercase">{f.appliesTo === 'DOG' ? 'Dog' : 'Owner'}</span>
+                        </button>
+                      )
+                    })}
+                  </>
+                )}
               </div>
             </>
           )}
@@ -154,7 +194,14 @@ export function ClientsList({ clients, tab, columns }: Props) {
       ) : (
         <div className="flex flex-col gap-3">
           {filtered.map(c => (
-            <ClientCard key={c.id} client={c} tab={tab} visible={visible} />
+            <ClientCard
+              key={c.id}
+              client={c}
+              tab={tab}
+              visible={visible}
+              customFields={customFields}
+              customValues={customValues}
+            />
           ))}
         </div>
       )}
@@ -162,7 +209,13 @@ export function ClientsList({ clients, tab, columns }: Props) {
   )
 }
 
-function ClientCard({ client, tab, visible }: { client: ClientRow; tab: Props['tab']; visible: Set<ColumnId> }) {
+function ClientCard({ client, tab, visible, customFields, customValues }: {
+  client: ClientRow
+  tab: Props['tab']
+  visible: Set<string>
+  customFields: CustomFieldMeta[]
+  customValues: Record<string, string>
+}) {
   const complianceRate = client.taskCount > 0
     ? Math.round((client.completedCount / client.taskCount) * 100)
     : null
@@ -213,6 +266,18 @@ function ClientCard({ client, tab, visible }: { client: ClientRow; tab: Props['t
                 {nextSession!.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
               </p>
             )}
+            {customFields
+              .filter(f => visible.has(`custom:${f.id}`))
+              .map(f => {
+                const value = customValues[`${client.id}:${f.id}`]
+                if (!value) return null
+                return (
+                  <p key={f.id} className="text-xs text-slate-500 truncate">
+                    <span className="text-slate-400">{f.label}: </span>
+                    {value}
+                  </p>
+                )
+              })}
           </div>
           {showCompliance && (
             <div className="text-right flex-shrink-0">
