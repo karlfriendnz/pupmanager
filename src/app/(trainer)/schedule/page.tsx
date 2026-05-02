@@ -40,22 +40,33 @@ export default async function SchedulePage({
   })
   if (!trainerProfile) redirect('/onboarding')
 
-  // Picker now mirrors the trainer's CustomField list. Load metadata so the
-  // schedule-settings popover can offer the same custom fields available on
-  // the /clients column selector.
-  const customFields = await prisma.customField.findMany({
-    where: { trainerId: trainerProfile.id },
-    select: { id: true, label: true, appliesTo: true },
-    orderBy: [{ category: 'asc' }, { order: 'asc' }, { label: 'asc' }],
-  })
-
   const today = new Date().toISOString().split('T')[0]
   const sp = await searchParams
   const selectedDate = sp.date ?? today
 
   const { weekStart, weekEnd } = getWeekBounds(selectedDate)
 
-  const [sessions, availabilitySlots, clients, packages] = await Promise.all([
+  // Inspect the trainer's selected schedule-extra fields up-front so we can
+  // skip expensive lookups (session client compliance, custom values) when
+  // nothing on the block depends on them.
+  const scheduleSelections = Array.isArray(trainerProfile.scheduleExtraFields)
+    ? trainerProfile.scheduleExtraFields as string[]
+    : []
+  const needsClientExtras = scheduleSelections.some(f =>
+    f === 'email' || f === 'extraDogs' || f === 'compliance' || f.startsWith('custom:'),
+  )
+  const needsCompliance = scheduleSelections.includes('compliance')
+  const wantedCustomIds = scheduleSelections
+    .filter(c => c.startsWith('custom:'))
+    .map(c => c.slice('custom:'.length))
+
+  // Single parallel fan-out instead of three sequential awaits.
+  const [customFields, sessions, availabilitySlots, clients, packages] = await Promise.all([
+    prisma.customField.findMany({
+      where: { trainerId: trainerProfile.id },
+      select: { id: true, label: true, appliesTo: true },
+      orderBy: [{ category: 'asc' }, { order: 'asc' }, { label: 'asc' }],
+    }),
     prisma.trainingSession.findMany({
       where: {
         trainerId: trainerProfile.id,
@@ -109,8 +120,7 @@ export default async function SchedulePage({
   ])
 
   // Resolve a clientId for every session (direct link or via primary-dog
-  // owner) so we can attach client-level extras (email, dogs, compliance,
-  // custom values) used by the block renderer.
+  // owner) so we can attach client-level extras used by the block renderer.
   const sessionClientIds = new Set<string>()
   for (const s of sessions) {
     const cid = s.clientId ?? s.dog?.primaryFor[0]?.id ?? null
@@ -118,37 +128,43 @@ export default async function SchedulePage({
   }
   const sessionClientList = Array.from(sessionClientIds)
 
-  const sessionClients = sessionClientList.length > 0
-    ? await prisma.clientProfile.findMany({
-        where: { id: { in: sessionClientList } },
-        select: {
-          id: true,
-          dogId: true,
-          user: { select: { email: true } },
-          dogs: { select: { name: true } },
-          diaryEntries: {
-            where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-            select: { id: true, completion: { select: { id: true } } },
-          },
-        },
-      })
-    : []
+  // Validate custom-field IDs against the metadata we just loaded so we don't
+  // query for stale selections.
+  const selectedCustomIds = wantedCustomIds.filter(id => customFields.some(f => f.id === id))
 
-  // Load CustomFieldValue rows only for fields that are actually selected
-  // on the schedule block — keeps the payload tight.
-  const scheduleSelections = Array.isArray(trainerProfile.scheduleExtraFields)
-    ? trainerProfile.scheduleExtraFields as string[]
-    : []
-  const selectedCustomIds = scheduleSelections
-    .filter(c => c.startsWith('custom:'))
-    .map(c => c.slice('custom:'.length))
-    .filter(id => customFields.some(f => f.id === id))
-  const customValues = (selectedCustomIds.length > 0 && sessionClientList.length > 0)
-    ? await prisma.customFieldValue.findMany({
-        where: { fieldId: { in: selectedCustomIds }, clientId: { in: sessionClientList } },
-        select: { fieldId: true, clientId: true, dogId: true, value: true },
-      })
-    : []
+  // Last fan-out: skip both queries entirely when nothing requires them.
+  const [sessionClients, customValues] = await Promise.all([
+    needsClientExtras && sessionClientList.length > 0
+      ? prisma.clientProfile.findMany({
+          where: { id: { in: sessionClientList } },
+          select: {
+            id: true,
+            dogId: true,
+            user: { select: { email: true } },
+            dogs: { select: { name: true } },
+            // Only join recent diary entries when compliance is actually shown.
+            ...(needsCompliance && {
+              diaryEntries: {
+                where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+                select: { id: true, completion: { select: { id: true } } },
+              },
+            }),
+          },
+        })
+      : Promise.resolve([] as Array<{
+          id: string
+          dogId: string | null
+          user: { email: string }
+          dogs: { name: string }[]
+          diaryEntries?: { id: string; completion: { id: string } | null }[]
+        }>),
+    selectedCustomIds.length > 0 && sessionClientList.length > 0
+      ? prisma.customFieldValue.findMany({
+          where: { fieldId: { in: selectedCustomIds }, clientId: { in: sessionClientList } },
+          select: { fieldId: true, clientId: true, dogId: true, value: true },
+        })
+      : Promise.resolve([] as Array<{ fieldId: string; clientId: string; dogId: string | null; value: string }>),
+  ])
 
   const clientExtras: Record<string, {
     email: string
@@ -158,11 +174,13 @@ export default async function SchedulePage({
     customValues: Record<string, string>
   }> = {}
   for (const c of sessionClients) {
+    // diaryEntries is only present when needsCompliance was true at query time.
+    const diaryEntries = ((c as { diaryEntries?: { id: string; completion: { id: string } | null }[] }).diaryEntries) ?? []
     clientExtras[c.id] = {
       email: c.user.email,
       extraDogNames: c.dogs.map(d => d.name),
-      taskCount: c.diaryEntries.length,
-      completedCount: c.diaryEntries.filter(t => t.completion).length,
+      taskCount: diaryEntries.length,
+      completedCount: diaryEntries.filter(t => t.completion).length,
       customValues: {},
     }
   }
