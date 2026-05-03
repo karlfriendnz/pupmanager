@@ -12,13 +12,14 @@ import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, LayoutGrid, List,
-  Clock, Trash2, X, Settings, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search,
+  Clock, Trash2, X, Settings, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, BarChart2,
 } from 'lucide-react'
 import {
   AssignPackageFromScheduleButton,
   AssignPackageFromScheduleModal,
 } from './assign-package-from-schedule'
 import { ScheduleSettings } from './schedule-settings'
+import { ScheduleReport } from './schedule-report'
 import { SessionFormReport } from '@/components/session-form-report'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -2326,6 +2327,7 @@ export function ScheduleView({
   const [availSlots, setAvailSlots]     = useState(initialAvailSlots)
   const [blackouts, setBlackouts]       = useState<Blackout[]>([])
   const [showAvail, setShowAvail]       = useState(false)
+  const [showReport, setShowReport]     = useState(false)
   // Free-text search across visible sessions. Non-matching blocks fade to
   // 20% opacity until the search is cleared.
   const [search, setSearch] = useState('')
@@ -2587,6 +2589,11 @@ export function ScheduleView({
             </span>
           )}
 
+          {/* Reports button */}
+          <Button variant="secondary" size="sm" onClick={() => setShowReport(true)}>
+            <BarChart2 className="h-4 w-4" /> Reports
+          </Button>
+
           {/* Availability button */}
           <Button variant="secondary" size="sm" onClick={() => setShowAvail(true)}>
             <Settings className="h-4 w-4" /> Availability
@@ -2751,6 +2758,13 @@ export function ScheduleView({
           defaultStartDate={assignAt.date}
           defaultStartTime={assignAt.time}
           onClose={() => setAssignAt(null)}
+        />
+      )}
+
+      {showReport && (
+        <ScheduleReport
+          weekStart={toDateStr(weekStart)}
+          onClose={() => setShowReport(false)}
         />
       )}
 
