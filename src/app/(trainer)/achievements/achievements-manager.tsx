@@ -23,12 +23,62 @@ const COLORS: { key: Color; bgChip: string; ring: string; text: string }[] = [
 
 const COLOR_BY_KEY = Object.fromEntries(COLORS.map(c => [c.key, c])) as Record<Color, typeof COLORS[number]>
 
+type TriggerType =
+  | 'MANUAL'
+  | 'FIRST_SESSION'
+  | 'SESSIONS_COMPLETED'
+  | 'IN_PERSON_SESSIONS'
+  | 'VIRTUAL_SESSIONS'
+  | 'CONSECUTIVE_SESSIONS_ATTENDED'
+  | 'FIRST_PACKAGE_ASSIGNED'
+  | 'PACKAGES_COMPLETED'
+  | 'FIRST_HOMEWORK_DONE'
+  | 'HOMEWORK_TASKS_DONE'
+  | 'HOMEWORK_STREAK_DAYS'
+  | 'PERFECT_WEEK'
+  | 'CLIENT_ANNIVERSARY_DAYS'
+  | 'MESSAGES_SENT'
+  | 'PRODUCTS_PURCHASED'
+  | 'PROFILE_COMPLETED'
+
+interface TriggerMeta {
+  type: TriggerType
+  label: string
+  group: 'Sessions' | 'Packages' | 'Homework' | 'Other' | 'Manual'
+  needsValue: boolean
+  valueLabel?: string
+  preview: (n: number) => string
+}
+
+const TRIGGERS: TriggerMeta[] = [
+  { type: 'MANUAL', label: 'Manual — trainer awards', group: 'Manual', needsValue: false, preview: () => 'Awarded by hand from the client profile' },
+  { type: 'FIRST_SESSION', label: 'First session attended', group: 'Sessions', needsValue: false, preview: () => 'Awarded after the first completed session' },
+  { type: 'SESSIONS_COMPLETED', label: 'Total sessions completed', group: 'Sessions', needsValue: true, valueLabel: 'Sessions', preview: n => `Awarded after ${n} completed session${n === 1 ? '' : 's'}` },
+  { type: 'IN_PERSON_SESSIONS', label: 'In-person sessions completed', group: 'Sessions', needsValue: true, valueLabel: 'Sessions', preview: n => `Awarded after ${n} in-person session${n === 1 ? '' : 's'}` },
+  { type: 'VIRTUAL_SESSIONS', label: 'Virtual sessions completed', group: 'Sessions', needsValue: true, valueLabel: 'Sessions', preview: n => `Awarded after ${n} virtual session${n === 1 ? '' : 's'}` },
+  { type: 'CONSECUTIVE_SESSIONS_ATTENDED', label: 'Consecutive sessions attended', group: 'Sessions', needsValue: true, valueLabel: 'In a row', preview: n => `Awarded for ${n} sessions attended in a row` },
+  { type: 'FIRST_PACKAGE_ASSIGNED', label: 'First package signed up', group: 'Packages', needsValue: false, preview: () => 'Awarded when the first package is assigned' },
+  { type: 'PACKAGES_COMPLETED', label: 'Packages completed', group: 'Packages', needsValue: true, valueLabel: 'Packages', preview: n => `Awarded after ${n} completed package${n === 1 ? '' : 's'}` },
+  { type: 'FIRST_HOMEWORK_DONE', label: 'First homework done', group: 'Homework', needsValue: false, preview: () => 'Awarded the first time a homework task is completed' },
+  { type: 'HOMEWORK_TASKS_DONE', label: 'Homework tasks done', group: 'Homework', needsValue: true, valueLabel: 'Tasks', preview: n => `Awarded after ${n} completed task${n === 1 ? '' : 's'}` },
+  { type: 'HOMEWORK_STREAK_DAYS', label: 'Homework streak (days)', group: 'Homework', needsValue: true, valueLabel: 'Days in a row', preview: n => `Awarded for ${n} day${n === 1 ? '' : 's'} of perfect homework in a row` },
+  { type: 'PERFECT_WEEK', label: 'Perfect weeks', group: 'Homework', needsValue: true, valueLabel: 'Weeks', preview: n => `Awarded after ${n} week${n === 1 ? '' : 's'} where every task was completed` },
+  { type: 'CLIENT_ANNIVERSARY_DAYS', label: 'Client anniversary', group: 'Other', needsValue: true, valueLabel: 'Days as a client', preview: n => `Awarded after ${n} day${n === 1 ? '' : 's'} on the books` },
+  { type: 'MESSAGES_SENT', label: 'Messages sent', group: 'Other', needsValue: true, valueLabel: 'Messages', preview: n => `Awarded after the client sends ${n} message${n === 1 ? '' : 's'}` },
+  { type: 'PRODUCTS_PURCHASED', label: 'Products purchased', group: 'Other', needsValue: true, valueLabel: 'Products', preview: n => `Awarded after ${n} product purchase${n === 1 ? '' : 's'}` },
+  { type: 'PROFILE_COMPLETED', label: 'Profile fully completed', group: 'Other', needsValue: false, preview: () => 'Awarded once every required custom field has a value' },
+]
+
+const TRIGGER_META = Object.fromEntries(TRIGGERS.map(t => [t.type, t])) as Record<TriggerType, TriggerMeta>
+
 interface Achievement {
   id: string
   name: string
   description: string | null
   icon: string | null
   color: string | null
+  triggerType: TriggerType
+  triggerValue: number | null
 }
 
 const COMMON_ICONS = ['🏆', '⭐', '🥇', '🎖️', '🐾', '🦴', '💯', '🚀', '🔥', '🎯', '🌟', '👑']
@@ -46,12 +96,18 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
   const [draftDesc, setDraftDesc] = useState('')
   const [draftIcon, setDraftIcon] = useState<string>('🏆')
   const [draftColor, setDraftColor] = useState<Color>(DEFAULT_COLOR)
+  const [draftMode, setDraftMode] = useState<'manual' | 'auto'>('manual')
+  const [draftTrigger, setDraftTrigger] = useState<TriggerType>('SESSIONS_COMPLETED')
+  const [draftValue, setDraftValue] = useState<string>('5')
 
   function resetDraft() {
     setDraftName('')
     setDraftDesc('')
     setDraftIcon('🏆')
     setDraftColor(DEFAULT_COLOR)
+    setDraftMode('manual')
+    setDraftTrigger('SESSIONS_COMPLETED')
+    setDraftValue('5')
     setError(null)
   }
 
@@ -68,6 +124,9 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
     setDraftDesc(a.description ?? '')
     setDraftIcon(a.icon ?? '🏆')
     setDraftColor(((a.color ?? DEFAULT_COLOR) as Color) in COLOR_BY_KEY ? (a.color as Color) : DEFAULT_COLOR)
+    setDraftMode(a.triggerType === 'MANUAL' ? 'manual' : 'auto')
+    setDraftTrigger(a.triggerType === 'MANUAL' ? 'SESSIONS_COMPLETED' : a.triggerType)
+    setDraftValue(a.triggerValue != null ? String(a.triggerValue) : '5')
     setError(null)
   }
 
@@ -82,6 +141,17 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
       setError('Name is required')
       return
     }
+    const triggerType: TriggerType = draftMode === 'manual' ? 'MANUAL' : draftTrigger
+    const meta = TRIGGER_META[triggerType]
+    let triggerValue: number | null = null
+    if (meta.needsValue) {
+      const n = Number(draftValue)
+      if (!Number.isInteger(n) || n < 1) {
+        setError(`${meta.valueLabel ?? 'Threshold'} must be a positive whole number`)
+        return
+      }
+      triggerValue = n
+    }
     setSaving(true)
     setError(null)
     const body = {
@@ -89,6 +159,8 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
       description: draftDesc.trim() || null,
       icon: draftIcon || null,
       color: draftColor,
+      triggerType,
+      triggerValue,
     }
     const res = editingId
       ? await fetch(`/api/achievements/${editingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -142,6 +214,11 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
                     {a.description && (
                       <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{a.description}</p>
                     )}
+                    <p className="text-[10px] text-slate-400 mt-1.5 uppercase tracking-wide font-medium">
+                      {a.triggerType === 'MANUAL'
+                        ? 'Manual'
+                        : TRIGGER_META[a.triggerType]?.preview(a.triggerValue ?? 1) ?? 'Auto'}
+                    </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
@@ -250,6 +327,70 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
                 />
               ))}
             </div>
+          </div>
+
+          {/* How is this earned? */}
+          <div className="rounded-xl border border-slate-200 p-3 flex flex-col gap-3">
+            <p className="text-sm font-medium text-slate-700">How is this earned?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['manual', 'auto'] as const).map(mode => {
+                const active = draftMode === mode
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setDraftMode(mode)}
+                    className={`text-left rounded-lg border px-3 py-2 transition-colors ${
+                      active ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold text-slate-900">{mode === 'manual' ? 'Manual' : 'Automatic'}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {mode === 'manual' ? 'You award from the client profile' : 'System awards when a milestone is hit'}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+
+            {draftMode === 'auto' && (
+              <>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Trigger</label>
+                  <select
+                    value={draftTrigger}
+                    onChange={e => setDraftTrigger(e.target.value as TriggerType)}
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {(['Sessions', 'Packages', 'Homework', 'Other'] as const).map(group => (
+                      <optgroup key={group} label={group}>
+                        {TRIGGERS.filter(t => t.group === group).map(t => (
+                          <option key={t.type} value={t.type}>{t.label}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                {TRIGGER_META[draftTrigger].needsValue && (
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 block mb-1">
+                      {TRIGGER_META[draftTrigger].valueLabel ?? 'Threshold'}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={draftValue}
+                      onChange={e => setDraftValue(e.target.value)}
+                      className="h-10 w-32 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
+                <p className="text-xs text-blue-700 bg-blue-50 rounded-lg px-3 py-2 border border-blue-100">
+                  {TRIGGER_META[draftTrigger].preview(Number(draftValue) || 1)}
+                </p>
+              </>
+            )}
           </div>
 
           <div className="flex gap-2 pt-1">

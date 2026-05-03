@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { safeEvaluate } from '@/lib/achievements'
 import { z } from 'zod'
 
 const patchSchema = z.object({
@@ -165,6 +166,17 @@ export async function PATCH(
         },
       })
     ))
+  }
+
+  // Re-evaluate achievements when the status changes — completion is a counter
+  // input. Resolve the session's clientId (direct or via dog's primary owner).
+  if (parsed.data.status !== undefined) {
+    const ctx = await prisma.trainingSession.findUnique({
+      where: { id: sessionId },
+      select: { clientId: true, dog: { select: { primaryFor: { take: 1, select: { id: true } } } } },
+    })
+    const cid = ctx?.clientId ?? ctx?.dog?.primaryFor[0]?.id ?? null
+    await safeEvaluate(cid)
   }
 
   return NextResponse.json(updated)

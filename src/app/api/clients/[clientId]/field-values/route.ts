@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { safeEvaluate } from '@/lib/achievements'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -47,6 +48,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ clientI
       await prisma.customFieldValue.create({ data: { fieldId, clientId, dogId: resolvedDogId, value } })
     }
   }))
+
+  await safeEvaluate(clientId)
 
   return NextResponse.json({ ok: true })
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { safeEvaluate } from '@/lib/achievements'
 import { z } from 'zod'
 
 const patchSchema = z.object({
@@ -48,5 +49,10 @@ export async function PATCH(
       fulfilledAt: parsed.data.status === 'FULFILLED' ? new Date() : null,
     },
   })
+
+  if (parsed.data.status === 'FULFILLED') {
+    await safeEvaluate(updated.clientId)
+  }
+
   return NextResponse.json(updated)
 }

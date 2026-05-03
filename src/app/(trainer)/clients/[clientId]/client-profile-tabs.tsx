@@ -7,9 +7,10 @@ import { formatDate } from '@/lib/utils'
 import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SessionFormReport } from '@/components/session-form-report'
+import { ClientAchievementsPanel } from './client-achievements-panel'
 import Link from 'next/link'
 
-type Tab = 'overview' | 'sessions' | 'dogs' | 'details'
+type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements'
 
 interface Dog {
   id: string
@@ -263,6 +264,7 @@ export function ClientProfileTabs({
     { id: 'overview',  label: 'Overview' },
     { id: 'sessions',  label: sessions.length > 0 ? `Sessions (${sessions.length})` : 'Sessions' },
     { id: 'dogs',      label: dogs.length > 1 ? `Dogs (${dogs.length})` : 'Dog' },
+    { id: 'achievements', label: 'Achievements' },
     { id: 'details',   label: 'Details' },
   ]
 
@@ -753,6 +755,11 @@ export function ClientProfileTabs({
             )
           })}
         </div>
+      )}
+
+      {/* ── Achievements ─────────────────────────────────────────────────── */}
+      {tab === 'achievements' && (
+        <ClientAchievementsPanel clientId={clientId} canEdit={canEdit} />
       )}
 
       {/* ── Details ──────────────────────────────────────────────────────── */}

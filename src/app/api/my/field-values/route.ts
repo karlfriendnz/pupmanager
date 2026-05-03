@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { safeEvaluate } from '@/lib/achievements'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -52,6 +53,8 @@ export async function POST(req: Request) {
         }
       })
   )
+
+  await safeEvaluate(clientProfile.id)
 
   return NextResponse.json({ ok: true })
 }

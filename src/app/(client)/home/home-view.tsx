@@ -72,6 +72,14 @@ interface PendingRequest {
   productName: string
 }
 
+interface AchievementBadge {
+  id: string
+  name: string
+  icon: string | null
+  color: string | null
+  earned: boolean
+}
+
 interface Props {
   clientName: string
   businessName: string
@@ -86,6 +94,7 @@ interface Props {
   featuredProducts: FeaturedProduct[]
   libraryItems: LibraryItem[]
   pendingRequests: PendingRequest[]
+  achievements?: AchievementBadge[]
 }
 
 // ─── Gamification mocks (rules TBD) ──────────────────────────────────────────
@@ -162,6 +171,7 @@ export function ClientHomeView({
   featuredProducts,
   libraryItems,
   pendingRequests,
+  achievements = [],
 }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -437,35 +447,37 @@ export function ClientHomeView({
         <ConfettiBurst key={confettiKey} />
       </section>
 
-      {/* ─── Badges (mock) ─── */}
-      <section className="px-5 lg:px-0 lg:col-span-1">
-        <SectionHeader title="Achievements" subtitle="Earn badges as you train" />
-        <div className="mt-3 grid grid-cols-3 gap-3">
-          {MOCK_BADGES.map(badge => (
-            <div
-              key={badge.id}
-              className={cn(
-                'aspect-square rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border transition-all',
-                badge.earned
-                  ? 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200'
-                  : 'bg-slate-50 border-slate-100 opacity-60'
-              )}
-            >
-              <span className="text-2xl relative">
-                {badge.earned ? badge.icon : <Lock className="h-5 w-5 text-slate-400" />}
-              </span>
-              <p
+      {/* ─── Achievements ─── */}
+      {achievements.length > 0 && (
+        <section className="px-5 lg:px-0 lg:col-span-1">
+          <SectionHeader title="Achievements" subtitle="Earn badges as you train" />
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            {achievements.map(badge => (
+              <div
+                key={badge.id}
                 className={cn(
-                  'text-[10px] font-medium text-center leading-tight',
-                  badge.earned ? 'text-amber-900' : 'text-slate-400'
+                  'aspect-square rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border transition-all',
+                  badge.earned
+                    ? 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200'
+                    : 'bg-slate-50 border-slate-100 opacity-60',
                 )}
               >
-                {badge.label}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
+                <span className="text-2xl relative">
+                  {badge.earned ? (badge.icon || '🏆') : <Lock className="h-5 w-5 text-slate-400" />}
+                </span>
+                <p
+                  className={cn(
+                    'text-[10px] font-medium text-center leading-tight',
+                    badge.earned ? 'text-amber-900' : 'text-slate-400',
+                  )}
+                >
+                  {badge.name}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ─── Recent sessions ─── */}
       {recentSessions.length > 0 && (

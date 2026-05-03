@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/daily-reminders",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/evaluate-achievements",
+      "schedule": "30 18 * * *"
     }
   ]
 }

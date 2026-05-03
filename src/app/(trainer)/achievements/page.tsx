@@ -35,6 +35,8 @@ export default async function AchievementsPage() {
           description: a.description,
           icon: a.icon,
           color: a.color,
+          triggerType: a.triggerType,
+          triggerValue: a.triggerValue,
         }))}
       />
     </div>

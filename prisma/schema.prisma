@@ -222,6 +222,7 @@ model ClientProfile {
   clientPackages    ClientPackage[]
   productRequests   ProductRequest[]
   buddySessions     SessionBuddy[]
+  achievements      ClientAchievement[]
 
   @@index([trainerId])
   @@map("client_profiles")
@@ -769,26 +770,69 @@ model BlackoutPeriod {
 
 // ─── Trainer-defined Achievements ────────────────────────────────────────────
 
-// Trainer-curated catalogue of achievements / badges they want clients to earn.
-// Award rules and per-client awarding live elsewhere; this is just the catalogue.
+enum AchievementTrigger {
+  MANUAL
+  FIRST_SESSION
+  SESSIONS_COMPLETED
+  IN_PERSON_SESSIONS
+  VIRTUAL_SESSIONS
+  CONSECUTIVE_SESSIONS_ATTENDED
+  FIRST_PACKAGE_ASSIGNED
+  PACKAGES_COMPLETED
+  FIRST_HOMEWORK_DONE
+  HOMEWORK_TASKS_DONE
+  HOMEWORK_STREAK_DAYS
+  PERFECT_WEEK
+  CLIENT_ANNIVERSARY_DAYS
+  MESSAGES_SENT
+  PRODUCTS_PURCHASED
+  PROFILE_COMPLETED
+}
+
+// Trainer-curated catalogue of achievements / badges. Each row is *either* a
+// MANUAL achievement (trainer awards from the client profile) *or* an automatic
+// rule with a trigger type and threshold (system awards via evaluateAchievementsFor).
 model Achievement {
   id          String   @id @default(cuid())
   trainerId   String
   name        String
   description String?  @db.Text
-  // Short emoji or symbol shown on the badge (eg "🏆", "⭐", "🐾").
   icon        String?
-  // Tailwind palette key chosen by the trainer for the badge accent
-  // (eg "blue", "emerald", "amber"). Renderer falls back to a default.
   color       String?
   order       Int      @default(0)
+  // Auto-award rule. MANUAL = no auto-award; the rest are evaluated by the
+  // awarder helper when relevant counters change. triggerValue is the integer
+  // threshold (eg 5 for "5 sessions"); null for binary triggers.
+  triggerType  AchievementTrigger @default(MANUAL)
+  triggerValue Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  trainer TrainerProfile      @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  awards  ClientAchievement[]
 
   @@index([trainerId])
   @@map("achievements")
+}
+
+// Per-client award log. Unique on (clientId, achievementId) so the awarder is
+// idempotent — re-evaluating a client never double-awards. earnedValue captures
+// the snapshot counter at award time so the UI can render "5 sessions".
+model ClientAchievement {
+  id            String   @id @default(cuid())
+  clientId      String
+  achievementId String
+  awardedAt     DateTime @default(now())
+  // "system" for automatic awards, the trainer's userId for manual awards.
+  awardedBy     String
+  earnedValue   Int?
+
+  client      ClientProfile @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  achievement Achievement   @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, achievementId])
+  @@index([clientId])
+  @@map("client_achievements")
 }
 
 // ─── Embed Forms ──────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { safeEvaluate } from '@/lib/achievements'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -95,6 +96,11 @@ export async function POST(req: Request) {
     },
     include: { sender: { select: { name: true, email: true } } },
   })
+
+  // MESSAGES_SENT trigger only counts client-authored messages.
+  if (channel === 'TRAINER_CLIENT' && !trainerProfile) {
+    await safeEvaluate(clientId)
+  }
 
   return NextResponse.json(message, { status: 201 })
 }

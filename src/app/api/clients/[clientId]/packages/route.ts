@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { safeEvaluate } from '@/lib/achievements'
 import { z } from 'zod'
 
 // Returns the client's active package assignments. Used by the session
@@ -129,6 +130,9 @@ export async function POST(
     })
     return assignment
   })
+
+  // FIRST_PACKAGE_ASSIGNED trigger fires here.
+  await safeEvaluate(clientId)
 
   return NextResponse.json(
     { ok: true, assignmentId: created.id, count: sessionDates.length },

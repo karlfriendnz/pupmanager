@@ -56,6 +56,8 @@ export default async function ClientHomePage() {
     featuredProducts,
     libraryProducts,
     pendingRequests,
+    allAchievements,
+    earnedAchievements,
   ] = await Promise.all([
     prisma.trainingSession.findFirst({
       where: {
@@ -145,7 +147,18 @@ export default async function ClientHomePage() {
         product: { select: { id: true, name: true } },
       },
     }),
+    prisma.achievement.findMany({
+      where: { trainerId: clientProfile.trainer.id },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, name: true, icon: true, color: true },
+    }),
+    prisma.clientAchievement.findMany({
+      where: { clientId: clientProfile.id },
+      select: { achievementId: true },
+    }),
   ])
+
+  const earnedSet = new Set(earnedAchievements.map(e => e.achievementId))
 
   // Package progress = sessions that aren't UPCOMING.
   const packageProgress = activeClientPackage
@@ -211,6 +224,13 @@ export default async function ClientHomePage() {
         id: r.id,
         productId: r.product.id,
         productName: r.product.name,
+      }))}
+      achievements={allAchievements.map(a => ({
+        id: a.id,
+        name: a.name,
+        icon: a.icon,
+        color: a.color,
+        earned: earnedSet.has(a.id),
       }))}
     />
   )
