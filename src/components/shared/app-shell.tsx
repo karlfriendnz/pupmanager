@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, Users, BarChart2, Calendar, Layers, Package,
+  LayoutDashboard, Users, BarChart2, Calendar, CalendarClock, Layers, Package,
   MessageSquare, Settings, HelpCircle, Sparkles, User, Bell, Globe,
   Home, LogOut, ShoppingBag,
 } from 'lucide-react'
@@ -29,6 +29,7 @@ const TRAINER_NAV = [
 const CLIENT_NAV = [
   { href: '/home', label: 'Home', icon: Home },
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
+  { href: '/my-availability', label: 'Available', icon: CalendarClock },
   { href: '/my-shop', label: 'Shop', icon: ShoppingBag },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-profile', label: 'Profile', icon: User },
