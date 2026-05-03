@@ -51,11 +51,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         await resend.emails.send({
           from: process.env.RESEND_FROM_EMAIL!,
           to: identifier,
-          subject: 'Your K9Tracker login link',
+          subject: 'Your PupManager login link',
           html: `
-            <p>Click the link below to log in to K9Tracker. This link expires in 15 minutes.</p>
+            <p>Click the link below to log in to PupManager. This link expires in 15 minutes.</p>
             <a href="${url}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;">
-              Log in to K9Tracker
+              Log in to PupManager
             </a>
             <p>If you didn't request this, you can safely ignore it.</p>
           `,

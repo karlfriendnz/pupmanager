@@ -7,7 +7,7 @@ async function main() {
   console.log('Seeding database...')
 
   // Admin user
-  const adminEmail = 'admin@k9tracker.app'
+  const adminEmail = 'admin@pupmanager.app'
   const existing = await prisma.user.findUnique({ where: { email: adminEmail } })
 
   if (!existing) {

@@ -13,7 +13,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       <header className="flex items-center justify-between gap-6 px-6 h-14 border-b border-slate-700 bg-slate-800">
         <div className="flex items-center gap-3 shrink-0">
           <span className="text-lg">🐾</span>
-          <span className="font-semibold">K9Tracker Admin</span>
+          <span className="font-semibold">PupManager Admin</span>
           <span className="text-xs bg-red-600 px-2 py-0.5 rounded-full">Super Admin</span>
         </div>
         <AdminTabNav />

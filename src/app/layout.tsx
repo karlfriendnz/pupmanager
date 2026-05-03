@@ -9,15 +9,15 @@ const geist = Geist({
 
 export const metadata: Metadata = {
   title: {
-    template: '%s | K9Tracker',
-    default: 'K9Tracker — Dog Training Made Simple',
+    template: '%s | PupManager',
+    default: 'PupManager — Dog Training Made Simple',
   },
   description: 'Assign daily training tasks, track compliance, and keep your clients on track between sessions.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'K9Tracker',
+    title: 'PupManager',
     startupImage: '/apple-icon',
   },
   icons: {

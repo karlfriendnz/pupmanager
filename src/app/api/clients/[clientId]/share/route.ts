@@ -73,8 +73,8 @@ export async function POST(
   await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL!,
     to: partnerEmail,
-    subject: `A client has been ${shareType === 'TRANSFER' ? 'transferred' : 'shared'} with you on K9Tracker`,
-    html: `<p>Log in to K9Tracker to view the client's profile and training history.</p>`,
+    subject: `A client has been ${shareType === 'TRANSFER' ? 'transferred' : 'shared'} with you on PupManager`,
+    html: `<p>Log in to PupManager to view the client's profile and training history.</p>`,
   }).catch(() => null) // non-critical
 
   return NextResponse.json({ ok: true })

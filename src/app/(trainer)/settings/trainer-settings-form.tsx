@@ -37,7 +37,7 @@ type TemplateData = z.infer<typeof templateSchema>
 
 const DEFAULT_TEMPLATE = `Hi {{clientName}},
 
-I'd like to invite you to K9Tracker to help us track {{dogName}}'s training progress.
+I'd like to invite you to PupManager to help us track {{dogName}}'s training progress.
 
 Click below to get started!
 

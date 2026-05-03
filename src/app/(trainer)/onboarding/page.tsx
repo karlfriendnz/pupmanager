@@ -25,7 +25,7 @@ export default async function OnboardingPage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-3xl shadow-lg">
             🐾
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">Welcome to K9Tracker!</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Welcome to PupManager!</h1>
           <p className="mt-2 text-slate-500">
             Let&apos;s set up your business profile. Your clients will see this information.
           </p>

@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL!,
     to: process.env.RESEND_FROM_EMAIL!, // send to self / support inbox
-    subject: `[K9Tracker ${parsed.data.type}] ${parsed.data.category}: ${parsed.data.subject}`,
+    subject: `[PupManager ${parsed.data.type}] ${parsed.data.category}: ${parsed.data.subject}`,
     html: `
       <p><strong>From:</strong> ${session.user.name ?? 'Unknown'} (${session.user.email})</p>
       <p><strong>Role:</strong> ${session.user.role}</p>
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
   await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL!,
     to: session.user.email!,
-    subject: `We received your ${parsed.data.type === 'support' ? 'support ticket' : 'feedback'} — K9Tracker`,
+    subject: `We received your ${parsed.data.type === 'support' ? 'support ticket' : 'feedback'} — PupManager`,
     html: `<p>Thanks ${session.user.name ?? ''}! We've received your message and will follow up if needed.</p>`,
   }).catch(() => null)
 

@@ -15,7 +15,7 @@ export default function VerifyEmailPage() {
       </div>
       <Card>
         <CardBody className="pt-6 text-center text-sm text-slate-600 flex flex-col gap-3">
-          <p>Click the link in your email to sign in to K9Tracker.</p>
+          <p>Click the link in your email to sign in to PupManager.</p>
           <p className="text-slate-400 text-xs">
             The link expires in 15 minutes. Check your spam folder if you don&apos;t see it.
           </p>

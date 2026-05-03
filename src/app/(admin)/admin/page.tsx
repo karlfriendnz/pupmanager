@@ -36,7 +36,7 @@ export default async function AdminDashboardPage() {
     <div>
       <div className="mb-8">
         <h1 className="text-2xl font-bold">Platform Dashboard</h1>
-        <p className="text-slate-400 text-sm mt-1">Overview of K9Tracker platform metrics</p>
+        <p className="text-slate-400 text-sm mt-1">Overview of PupManager platform metrics</p>
       </div>
 
       {/* Stats */}

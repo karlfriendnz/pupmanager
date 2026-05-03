@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { Card, CardBody } from '@/components/ui/card'
 import { AcceptInviteButton } from './accept-invite-button'
 
-export const metadata: Metadata = { title: 'Accept your invitation — K9Tracker' }
+export const metadata: Metadata = { title: 'Accept your invitation — PupManager' }
 
 export default async function InvitePage({
   searchParams,
@@ -36,7 +36,7 @@ export default async function InvitePage({
   return (
     <div className="flex flex-col gap-6">
       <div className="text-center">
-        <h1 className="text-2xl font-bold text-slate-900">Welcome to K9Tracker</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Welcome to PupManager</h1>
         {user?.name && (
           <p className="mt-1 text-sm text-slate-500">Hi {user.name}, your account is ready.</p>
         )}

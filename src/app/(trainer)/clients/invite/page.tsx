@@ -19,7 +19,7 @@ export default async function InviteClientPage() {
     trainerProfile?.inviteTemplate ??
     `Hi {{clientName}},
 
-I'd like to invite you to join K9Tracker — an app I use to assign daily training exercises for {{dogName}} and track your progress between our sessions.
+I'd like to invite you to join PupManager — an app I use to assign daily training exercises for {{dogName}} and track your progress between our sessions.
 
 Click the link below to create your account and get started!
 

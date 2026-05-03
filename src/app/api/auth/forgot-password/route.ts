@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL!,
       to: email,
-      subject: 'Reset your K9Tracker password',
+      subject: 'Reset your PupManager password',
       html: `
         <p>Click the link below to reset your password. This link expires in 1 hour.</p>
         <a href="${resetUrl}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;">

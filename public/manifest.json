@@ -1,6 +1,6 @@
 {
-  "name": "K9Tracker",
-  "short_name": "K9Tracker",
+  "name": "PupManager",
+  "short_name": "PupManager",
   "description": "Dog training made simple",
   "start_url": "/",
   "display": "standalone",

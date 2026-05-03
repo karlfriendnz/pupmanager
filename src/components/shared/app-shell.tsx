@@ -73,7 +73,7 @@ function ClientShell({ children, trainerLogo, businessName }: AppShellProps) {
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-sm lg:text-base font-semibold text-slate-900 truncate leading-tight">{businessName ?? 'K9Tracker'}</p>
+            <p className="text-sm lg:text-base font-semibold text-slate-900 truncate leading-tight">{businessName ?? 'PupManager'}</p>
             <p className="text-[11px] text-slate-400 leading-tight lg:hidden">Your training home</p>
           </div>
 
@@ -194,7 +194,7 @@ function TrainerShell({
           )}
           {!collapsed && (
             <span className="font-semibold text-slate-900 truncate">
-              {businessName ?? 'K9Tracker'}
+              {businessName ?? 'PupManager'}
             </span>
           )}
         </div>

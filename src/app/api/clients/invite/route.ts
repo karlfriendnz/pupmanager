@@ -111,13 +111,13 @@ export async function POST(req: Request) {
       const result = await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL!,
         to: clientEmail,
-        subject: `You've been invited to K9Tracker by ${trainerProfile.user.name ?? trainerProfile.businessName}`,
+        subject: `You've been invited to PupManager by ${trainerProfile.user.name ?? trainerProfile.businessName}`,
         html: `
           <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
             <pre style="font-family:sans-serif;white-space:pre-wrap;">${escapeHtml(personalised)}</pre>
             <p style="margin-top:24px;">
               <a href="${inviteUrl}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;">
-                Join K9Tracker
+                Join PupManager
               </a>
             </p>
           </div>
