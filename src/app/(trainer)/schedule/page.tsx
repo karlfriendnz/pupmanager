@@ -20,6 +20,27 @@ function getWeekBounds(dateStr: string): { weekStart: Date; weekEnd: Date } {
   return { weekStart, weekEnd }
 }
 
+// Walk forward from `dateStr` (YYYY-MM-DD) until we hit a day the trainer
+// works. scheduleDays uses 1=Mon..7=Sun. Returns dateStr unchanged if the
+// trainer has no working days configured.
+function nextWorkingDay(dateStr: string, scheduleDays: number[]): string {
+  if (scheduleDays.length === 0) return dateStr
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d, 12, 0, 0)
+  for (let i = 0; i < 7; i++) {
+    const js = date.getDay()
+    const iso = js === 0 ? 7 : js
+    if (scheduleDays.includes(iso)) {
+      const yy = date.getFullYear()
+      const mm = String(date.getMonth() + 1).padStart(2, '0')
+      const dd = String(date.getDate()).padStart(2, '0')
+      return `${yy}-${mm}-${dd}`
+    }
+    date.setDate(date.getDate() + 1)
+  }
+  return dateStr
+}
+
 export default async function SchedulePage({
   searchParams,
 }: {
@@ -47,7 +68,10 @@ export default async function SchedulePage({
 
   const today = new Date().toISOString().split('T')[0]
   const sp = await searchParams
-  const selectedDate = sp.date ?? today
+  const scheduleDaysArr = Array.isArray(trainerProfile.scheduleDays)
+    ? trainerProfile.scheduleDays as number[]
+    : [1, 2, 3, 4, 5, 6, 7]
+  const selectedDate = sp.date ?? nextWorkingDay(today, scheduleDaysArr)
 
   const { weekStart, weekEnd } = getWeekBounds(selectedDate)
 
@@ -236,7 +260,7 @@ export default async function SchedulePage({
       googleCalendarConnected={trainerProfile.googleCalendarConnected}
       scheduleStartHour={trainerProfile.scheduleStartHour}
       scheduleEndHour={trainerProfile.scheduleEndHour}
-      scheduleDays={Array.isArray(trainerProfile.scheduleDays) ? trainerProfile.scheduleDays as number[] : [1, 2, 3, 4, 5, 6, 7]}
+      scheduleDays={scheduleDaysArr}
       scheduleExtraFields={scheduleSelections}
       customFields={customFields}
       clientExtras={clientExtras}
