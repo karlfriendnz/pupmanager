@@ -91,7 +91,29 @@ model User {
   // Messages sent by this user
   sentMessages Message[]
 
+  // Push notification device tokens (one user can have multiple devices)
+  deviceTokens DeviceToken[]
+
   @@map("users")
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+}
+
+model DeviceToken {
+  id        String         @id @default(cuid())
+  userId    String
+  token     String         @unique
+  platform  DevicePlatform
+  createdAt DateTime       @default(now())
+  lastSeenAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("device_tokens")
 }
 
 // ─── NextAuth Models ─────────────────────────────────────────────────────────
@@ -332,6 +354,10 @@ model TrainingSession {
   virtualLink String?
 
   googleCalendarEventId String?
+
+  // Set when the "starting in ~20 min" push reminder has been delivered to the
+  // trainer, so the cron loop never sends two pushes for the same session.
+  reminderPushSentAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
