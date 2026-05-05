@@ -9,13 +9,14 @@ import {
   LayoutDashboard, Users, Calendar, CalendarClock, Layers, Package,
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag, ChevronsLeft, ChevronsRight,
-  MoreHorizontal, X,
+  MoreHorizontal, X, Inbox,
 } from 'lucide-react'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
 
 const TRAINER_NAV = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
+  { href: '/enquiries',    label: 'Enquiries',    icon: Inbox },
   { href: '/clients',      label: 'Clients',      icon: Users },
   { href: '/schedule',     label: 'Schedule',     icon: Calendar },
   { href: '/packages',     label: 'Packages',     icon: Package },

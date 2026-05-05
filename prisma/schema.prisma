@@ -259,6 +259,7 @@ model TrainerProfile {
   customFields       CustomField[]
   libraryTypes       LibraryType[]
   embedForms         EmbedForm[]
+  enquiries          Enquiry[]
   sentNotifications  ClientNotification[]
   availabilitySlots  AvailabilitySlot[]
   blackoutPeriods    BlackoutPeriod[]
@@ -297,6 +298,7 @@ model ClientProfile {
   productRequests   ProductRequest[]
   buddySessions     SessionBuddy[]
   achievements      ClientAchievement[]
+  enquiry           Enquiry?
 
   @@index([trainerId])
   @@map("client_profiles")
@@ -932,8 +934,77 @@ model EmbedForm {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  trainer   TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  enquiries Enquiry[]
 
   @@index([trainerId])
   @@map("embed_forms")
+}
+
+// ─── Enquiries (lead funnel) ──────────────────────────────────────────────────
+// Form submissions land here in NEW state. Trainer can Reply, then Accept
+// (creates User + ClientProfile + Dog + magic-link email) or Decline.
+// Form values are snapshotted as columns + JSON so an enquiry stays readable
+// even if the embed form's field config changes later.
+
+model Enquiry {
+  id        String   @id @default(cuid())
+  trainerId String
+  formId    String?  // null if the source form was deleted
+
+  // Snapshot of form values at submit time
+  name      String
+  email     String
+  phone     String?
+  dogName   String?
+  dogBreed  String?
+  dogWeight Float?
+  dogDob    DateTime?
+  message   String?  @db.Text
+  // { customFieldId: value } map of custom-field answers, snapshotted
+  customFieldValues Json @default("{}")
+
+  status         EnquiryStatus @default(NEW)
+  // Set when the trainer first opens the enquiry — drives the dashboard badge.
+  viewedAt       DateTime?
+  // Populated after Accept; gives a forward link to the resulting client.
+  clientProfileId String?      @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer       TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  form          EmbedForm?     @relation(fields: [formId], references: [id], onDelete: SetNull)
+  clientProfile ClientProfile? @relation(fields: [clientProfileId], references: [id], onDelete: SetNull)
+  messages      EnquiryMessage[]
+
+  @@index([trainerId, status])
+  @@index([trainerId, createdAt])
+  @@map("enquiries")
+}
+
+enum EnquiryStatus {
+  NEW
+  ACCEPTED
+  DECLINED
+  ARCHIVED
+}
+
+// Outbound replies the trainer sent to the enquirer. v1 is one-way (no
+// inbound threading) so direction is implicit-outbound; we still keep the
+// column to make v2 (Gmail/Microsoft OAuth, two-way) a non-breaking change.
+model EnquiryMessage {
+  id          String   @id @default(cuid())
+  enquiryId   String
+  direction   String   @default("OUTBOUND") // "OUTBOUND" | "INBOUND"
+  subject     String
+  bodyText    String   @db.Text
+  // Trainer (User) who composed and sent this. Null if system-generated.
+  sentByUserId String?
+  createdAt   DateTime @default(now())
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId, createdAt])
+  @@map("enquiry_messages")
 }

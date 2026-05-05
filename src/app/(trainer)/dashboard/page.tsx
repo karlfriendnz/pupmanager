@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { UserPlus, TrendingUp, Calendar, MapPin, Video, ChevronLeft, ChevronRight, ArrowRight, ShoppingBag, Dog, Users, CheckCircle2, type LucideIcon } from 'lucide-react'
+import { UserPlus, TrendingUp, Calendar, MapPin, Video, ChevronLeft, ChevronRight, ArrowRight, ShoppingBag, Dog, Users, CheckCircle2, Inbox, type LucideIcon } from 'lucide-react'
 import { WeeklyTasksStat, type WeeklyTask } from './weekly-tasks-stat'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
@@ -139,6 +139,25 @@ export default async function DashboardPage({
     if (assigned === 0) return false
     const completed = c.diaryEntries.filter(t => t.completion).length
     return completed / assigned < 0.4
+  })
+
+  // New enquiries — embed-form submissions awaiting trainer review. The
+  // badge counts unviewed NEW rows; the card shows the latest few inline so
+  // the trainer can scan names without leaving the dashboard.
+  const newEnquiries = await prisma.enquiry.findMany({
+    where: { trainerId, status: 'NEW' },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      name: true,
+      dogName: true,
+      createdAt: true,
+      viewedAt: true,
+    },
+    take: 5,
+  })
+  const unviewedEnquiryCount = await prisma.enquiry.count({
+    where: { trainerId, status: 'NEW', viewedAt: null },
   })
 
   // Pending product requests across this trainer's clients — shown as a panel
@@ -333,6 +352,52 @@ export default async function DashboardPage({
         )}
       </div>
 
+      {/* New enquiries — surface fresh leads above the lower-priority panels
+          so the trainer sees them immediately. */}
+      {newEnquiries.length > 0 && (
+        <Link
+          href="/enquiries"
+          className="mb-6 block rounded-2xl bg-violet-50 border border-violet-100 p-4 hover:border-violet-200 transition-colors"
+        >
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 text-violet-700 flex-shrink-0">
+                <Inbox className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold text-violet-900 text-sm leading-tight">
+                  {unviewedEnquiryCount > 0
+                    ? `${unviewedEnquiryCount} new ${unviewedEnquiryCount === 1 ? 'enquiry' : 'enquiries'}`
+                    : `${newEnquiries.length} ${newEnquiries.length === 1 ? 'enquiry' : 'enquiries'} awaiting decision`}
+                </p>
+                <p className="text-xs text-violet-700/80 mt-0.5">
+                  Review and accept to onboard them as a client.
+                </p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-violet-700 flex-shrink-0 mt-1" />
+          </div>
+          <div className="flex flex-col gap-1.5 mt-3">
+            {newEnquiries.slice(0, 3).map((e) => (
+              <div
+                key={e.id}
+                className="flex items-center justify-between bg-white rounded-xl px-3.5 py-2 border border-transparent"
+              >
+                <span className="text-sm text-slate-700 truncate">
+                  <span className={cn('font-medium', !e.viewedAt && 'text-violet-900')}>
+                    {e.name}
+                  </span>
+                  {e.dogName && <span className="text-slate-400"> · {e.dogName}</span>}
+                </span>
+                <span className="text-[11px] text-slate-400 tabular-nums flex-shrink-0 ml-2">
+                  {timeAgo(e.createdAt)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Link>
+      )}
+
       {/* Pending product requests */}
       <PendingRequestsPanel
         requests={pendingProductRequests.map(r => ({
@@ -490,4 +555,16 @@ function getGreeting() {
   if (h < 12) return 'morning'
   if (h < 17) return 'afternoon'
   return 'evening'
+}
+
+function timeAgo(date: Date): string {
+  const ms = Date.now() - date.getTime()
+  const m = Math.floor(ms / 60_000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  if (d < 7) return `${d}d ago`
+  return date.toLocaleDateString()
 }

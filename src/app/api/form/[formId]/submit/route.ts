@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import crypto from 'crypto'
 
 const schema = z.object({
   name: z.string().min(1),
@@ -15,12 +14,16 @@ const schema = z.object({
   customFields: z.record(z.string(), z.string()).optional(),
 })
 
+// Public form submission. Creates an Enquiry in NEW state — the trainer
+// reviews it and then Accepts (creates the User + ClientProfile + Dog) or
+// Declines. We deliberately don't create any account here so spam and
+// drive-by submissions don't pollute the user table.
 export async function POST(req: Request, { params }: { params: Promise<{ formId: string }> }) {
   const { formId } = await params
 
   const form = await prisma.embedForm.findFirst({
     where: { id: formId, isActive: true },
-    include: { trainer: { select: { id: true, businessName: true, user: { select: { name: true } } } } },
+    select: { id: true, trainerId: true, customFieldIds: true },
   })
   if (!form) return NextResponse.json({ error: 'Form not found' }, { status: 404 })
 
@@ -30,13 +33,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
 
   const { name, email, phone, dogName, dogBreed, dogWeight, dogDob, message, customFields } = parsed.data
 
-  // Prevent duplicate submissions
-  const existingUser = await prisma.user.findUnique({ where: { email } })
-  if (existingUser) {
-    return NextResponse.json({ error: 'An account with this email already exists. Please contact your trainer.' }, { status: 409 })
-  }
-
-  // Validate required custom fields
   const enabledCustomFieldIds = Array.isArray(form.customFieldIds) ? form.customFieldIds as string[] : []
   if (enabledCustomFieldIds.length > 0) {
     const requiredFields = await prisma.customField.findMany({
@@ -49,104 +45,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
     }
   }
 
-  // Generate a NextAuth-compatible magic link token.
-  // NextAuth stores SHA256(token + AUTH_SECRET) in the DB; plain token goes in the URL.
-  const plainToken = crypto.randomBytes(32).toString('hex')
-  const secret = process.env.AUTH_SECRET ?? ''
-  const hashedToken = crypto.createHash('sha256').update(`${plainToken}${secret}`).digest('hex')
-  const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) // 14 days
-
-  await prisma.$transaction(async tx => {
-    const clientUser = await tx.user.create({
-      data: { name, email, role: 'CLIENT' },
-    })
-
-    // Create dog if any dog fields provided
-    let dogId: string | null = null
-    if (dogName?.trim()) {
-      const dog = await tx.dog.create({
-        data: {
-          name: dogName.trim(),
-          breed: dogBreed?.trim() || null,
-          weight: dogWeight ? parseFloat(dogWeight) : null,
-          dob: dogDob ? new Date(dogDob) : null,
-        },
-      })
-      dogId = dog.id
-    }
-
-    const clientProfile = await tx.clientProfile.create({
-      data: {
-        userId: clientUser.id,
-        trainerId: form.trainer.id,
-        dogId,
-        status: 'NEW',
-      },
-    })
-
-    // Save custom field values
-    if (customFields && enabledCustomFieldIds.length > 0) {
-      const entries = Object.entries(customFields).filter(([, v]) => v?.trim())
-      if (entries.length > 0) {
-        await tx.customFieldValue.createMany({
-          data: entries.map(([fieldId, value]) => ({
-            fieldId,
-            clientId: clientProfile.id,
-            value,
-          })),
-        })
+  // Snapshot only the answers for fields actually enabled on this form, so a
+  // later edit to the trainer's custom-field config doesn't surface stray
+  // values when the enquiry is reopened.
+  const customFieldSnapshot: Record<string, string> = {}
+  if (customFields) {
+    for (const [fieldId, value] of Object.entries(customFields)) {
+      if (enabledCustomFieldIds.includes(fieldId) && value?.trim()) {
+        customFieldSnapshot[fieldId] = value.trim()
       }
     }
-
-    // Store phone in a custom field if trainer has one, or just ignore for now
-    // (phone is stored as a note in message if no custom field exists)
-
-    // Delete any existing verification token for this email before creating a new one
-    await tx.verificationToken.deleteMany({ where: { identifier: email } })
-
-    // Store hashed token (NextAuth Resend provider format)
-    await tx.verificationToken.create({
-      data: { identifier: email, token: hashedToken, expires },
-    })
-  })
-
-  // Build magic link — uses NextAuth Resend callback so the client is logged in immediately on click
-  const reqUrl = new URL(req.url)
-  const appUrl = `${reqUrl.protocol}//${reqUrl.host}`
-  const magicLink = `${appUrl}/api/auth/callback/resend?${new URLSearchParams({
-    callbackUrl: '/my-profile',
-    token: plainToken,
-    email,
-  })}`
-  const businessName = form.trainer.businessName
-
-  try {
-    const { Resend } = await import('resend')
-    const resend = new Resend(process.env.RESEND_API_KEY)
-    await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL!,
-      to: email,
-      subject: `Welcome to ${businessName} — finish setting up your account`,
-      html: `
-        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
-          <h2 style="color:#0f172a;margin-bottom:8px;">Hi ${name}!</h2>
-          <p style="color:#475569;margin-bottom:24px;">
-            Thanks for registering with <strong>${businessName}</strong>.
-            Click the button below to access your training diary — no password needed, the link logs you in automatically. This link expires in 14 days.
-          </p>
-          ${message ? `<p style="color:#475569;background:#f8fafc;border-left:3px solid #e2e8f0;padding:12px 16px;margin-bottom:24px;"><em>"${message}"</em></p>` : ''}
-          <a href="${magicLink}" style="display:inline-block;background:#2563eb;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;">
-            Access my training diary
-          </a>
-          <p style="color:#94a3b8;font-size:13px;margin-top:32px;">
-            This link expires in 14 days. If you didn't submit this form, you can safely ignore this email.
-          </p>
-        </div>
-      `,
-    })
-  } catch {
-    // Non-critical — client is still created
   }
+
+  const dogWeightNum = dogWeight ? parseFloat(dogWeight) : null
+
+  await prisma.enquiry.create({
+    data: {
+      trainerId: form.trainerId,
+      formId: form.id,
+      name,
+      email,
+      phone: phone?.trim() || null,
+      dogName: dogName?.trim() || null,
+      dogBreed: dogBreed?.trim() || null,
+      dogWeight: dogWeightNum != null && !Number.isNaN(dogWeightNum) ? dogWeightNum : null,
+      dogDob: dogDob ? new Date(dogDob) : null,
+      message: message?.trim() || null,
+      customFieldValues: customFieldSnapshot,
+    },
+  })
 
   return NextResponse.json({ ok: true }, { status: 201 })
 }
