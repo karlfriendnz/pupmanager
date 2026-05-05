@@ -112,13 +112,16 @@
       function tryLoad() {
         if (retrying) return;
         retrying = true;
-        // Use a tiny HEAD probe so we can distinguish "no internet" from
-        // "remote app is up but slow". navigator.onLine alone is unreliable
+        // The shell runs at https://localhost (Capacitor's iOS origin), so a
+        // normal fetch to app.pupmanager.com is cross-origin. Use `no-cors` so
+        // we get an opaque success without needing CORS headers — we only care
+        // whether the host is reachable. navigator.onLine alone is unreliable
         // (returns true for hotel WiFi captive portals etc.).
         var controller = new AbortController();
         var timeout = setTimeout(function () { controller.abort(); }, 5000);
-        fetch(REMOTE_URL + '/api/auth/session', {
+        fetch(REMOTE_URL + '/manifest.json', {
           method: 'GET',
+          mode: 'no-cors',
           cache: 'no-store',
           signal: controller.signal,
         }).then(function () {
