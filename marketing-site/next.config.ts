@@ -4,9 +4,10 @@ import createMDX from '@next/mdx'
 
 const nextConfig: NextConfig = {
   pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
-  turbopack: {
-    root: path.resolve(__dirname),
-  },
+  // Pin tracing root to this subdirectory so Vercel's monorepo detection
+  // doesn't pull files from the sibling main app (which has next-auth etc.
+  // that aren't in this project's deps).
+  outputFileTracingRoot: path.resolve(__dirname),
 }
 
 const withMDX = createMDX({
