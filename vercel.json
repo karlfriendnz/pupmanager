@@ -8,10 +8,6 @@
     {
       "path": "/api/cron/evaluate-achievements",
       "schedule": "30 18 * * *"
-    },
-    {
-      "path": "/api/cron/session-reminders",
-      "schedule": "*/5 * * * *"
     }
   ]
 }
