@@ -52,9 +52,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, reason: 'no-devices', message: 'No iOS devices registered. Open the app on iPhone, allow notifications, then try again.' })
     }
 
+    // Pick a realistic deep-link path so tapping the test push lands on the
+    // page the real notification would. For session-related types, link to the
+    // user's most recent session (or fall back to /dashboard if none exist).
+    const path = await deepLinkFor(session.user.id, meta.type)
+
     const results = await sendApns(tokens.map(t => t.token), {
       alert: { title, body },
-      customData: { type: 'preview', notificationType: meta.type },
+      customData: { type: 'preview', notificationType: meta.type, path },
     })
 
     const stale = results.filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason)).map(r => r.token)
@@ -71,5 +76,37 @@ export async function POST(req: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ ok: false, reason: 'crash', message }, { status: 500 })
+  }
+}
+
+// Pick a representative deep-link target for a test push so tapping the
+// notification on iPhone navigates to a realistic destination.
+async function deepLinkFor(userId: string, type: NotificationType): Promise<string> {
+  switch (type) {
+    case 'SESSION_REMINDER':
+    case 'SESSION_NOTES_REMINDER': {
+      const trainerProfile = await prisma.trainerProfile.findUnique({
+        where: { userId }, select: { id: true },
+      })
+      if (!trainerProfile) return '/dashboard'
+      const recent = await prisma.trainingSession.findFirst({
+        where: { trainerId: trainerProfile.id },
+        orderBy: { scheduledAt: 'desc' },
+        select: { id: true },
+      })
+      if (!recent) return '/schedule'
+      return type === 'SESSION_NOTES_REMINDER'
+        ? `/sessions/${recent.id}#notes`
+        : `/sessions/${recent.id}`
+    }
+    case 'NEW_MESSAGE':
+      return '/messages'
+    case 'NEW_CLIENT_INVITE_ACCEPTED':
+      return '/clients'
+    case 'CLIENT_COMPLETED_TASKS':
+      return '/dashboard'
+    case 'DAILY_SUMMARY':
+    default:
+      return '/dashboard'
   }
 }
