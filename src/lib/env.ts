@@ -42,9 +42,17 @@ const schema = z.object({
   APNS_BUNDLE_ID: z.string().min(1),
   APNS_PRIVATE_KEY: z.string().includes('BEGIN PRIVATE KEY', { message: 'APNS_PRIVATE_KEY must be the full .p8 contents' }),
 
-  // Google Calendar — optional integration; trainers can opt in.
+  // Google OAuth — used for both Sign in with Google AND Calendar API.
+  // Optional: providers register only when both ID and secret are present.
   GOOGLE_CLIENT_ID: optionalString,
   GOOGLE_CLIENT_SECRET: optionalString,
+
+  // Sign in with Apple. APPLE_CLIENT_ID is the Services ID identifier (not the
+  // app bundle ID). All four are required together for the provider to register.
+  APPLE_CLIENT_ID: optionalString,
+  APPLE_TEAM_ID: optionalString,
+  APPLE_KEY_ID: optionalString,
+  APPLE_PRIVATE_KEY: optionalString,
 
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 })

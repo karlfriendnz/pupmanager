@@ -3,28 +3,150 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>PupManager</title>
     <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #0f172a;
+        --muted: #64748b;
+        --primary: #2563eb;
+        --primary-pressed: #1d4ed8;
+        --border: #e2e8f0;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b1220;
+          --fg: #f8fafc;
+          --muted: #94a3b8;
+          --border: #1e293b;
+        }
+      }
       html, body {
         margin: 0;
         height: 100%;
-        background: #0b0b0c;
-        color: #f5f5f5;
+        background: var(--bg);
+        color: var(--fg);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      body {
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         text-align: center;
-        padding: 2rem;
+        padding: max(2rem, env(safe-area-inset-top)) 2rem max(2rem, env(safe-area-inset-bottom));
+        gap: 1.25rem;
       }
-      h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
-      p { font-size: 0.95rem; opacity: 0.7; margin: 0; }
+      .logo {
+        width: 64px; height: 64px;
+        border-radius: 16px;
+        background: var(--primary);
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 32px;
+      }
+      h1 { font-size: 1.25rem; margin: 0; font-weight: 600; }
+      p { font-size: 0.95rem; margin: 0; color: var(--muted); max-width: 28rem; line-height: 1.5; }
+      button {
+        appearance: none;
+        background: var(--primary);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        padding: 0.875rem 1.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        min-width: 10rem;
+        transition: background 0.15s ease;
+      }
+      button:active { background: var(--primary-pressed); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      .spinner {
+        width: 32px; height: 32px;
+        border: 3px solid var(--border);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
-    <div>
-      <h1>PupManager</h1>
-      <p>Connecting&hellip;</p>
+    <div class="logo">🐾</div>
+
+    <div id="loading">
+      <div class="spinner" aria-hidden="true"></div>
+      <p style="margin-top: 1rem;">Connecting…</p>
     </div>
+
+    <div id="offline" hidden>
+      <h1>You&rsquo;re offline</h1>
+      <p>PupManager needs an internet connection. We&rsquo;ll keep checking — or tap retry once you&rsquo;re back online.</p>
+      <button id="retry" type="button" style="margin-top: 1.25rem;">Retry</button>
+    </div>
+
+    <script>
+      // The native shell loads this bundled file first, then redirects into
+      // the live web app. If we can't reach the network we show the offline
+      // UI here instead of letting the WebView render a confusing blank page.
+
+      var REMOTE_URL = 'https://app.pupmanager.com';
+      var loading = document.getElementById('loading');
+      var offline = document.getElementById('offline');
+      var retry = document.getElementById('retry');
+      var retrying = false;
+
+      function showOffline() {
+        loading.hidden = true;
+        offline.hidden = false;
+      }
+      function showLoading() {
+        offline.hidden = true;
+        loading.hidden = false;
+      }
+
+      function tryLoad() {
+        if (retrying) return;
+        retrying = true;
+        // Use a tiny HEAD probe so we can distinguish "no internet" from
+        // "remote app is up but slow". navigator.onLine alone is unreliable
+        // (returns true for hotel WiFi captive portals etc.).
+        var controller = new AbortController();
+        var timeout = setTimeout(function () { controller.abort(); }, 5000);
+        fetch(REMOTE_URL + '/api/auth/session', {
+          method: 'GET',
+          cache: 'no-store',
+          signal: controller.signal,
+        }).then(function () {
+          clearTimeout(timeout);
+          window.location.replace(REMOTE_URL);
+        }).catch(function () {
+          clearTimeout(timeout);
+          retrying = false;
+          showOffline();
+        });
+      }
+
+      retry.addEventListener('click', function () {
+        showLoading();
+        tryLoad();
+      });
+
+      // Kick off load. Auto-retry every 5s while we're showing offline.
+      tryLoad();
+      window.addEventListener('online', function () {
+        if (!offline.hidden) {
+          showLoading();
+          tryLoad();
+        }
+      });
+      setInterval(function () {
+        if (!offline.hidden) tryLoad();
+      }, 5000);
+    </script>
   </body>
 </html>

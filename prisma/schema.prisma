@@ -73,7 +73,10 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   name          String?
-  role          Role
+  // Defaults to TRAINER so PrismaAdapter can create rows for OAuth (Apple/Google)
+  // sign-ins which don't supply a role. Existing flows (Credentials sign-up,
+  // invite acceptance) set role explicitly and override the default.
+  role          Role      @default(TRAINER)
   emailVerified DateTime?
   image         String?
   timezone      String    @default("Pacific/Auckland")
