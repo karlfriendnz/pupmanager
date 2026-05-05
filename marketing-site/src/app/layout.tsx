@@ -23,7 +23,12 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#2563eb',
+  themeColor: '#2a9da9',
+}
+
+export const icons = {
+  icon: '/icon-1024.png',
+  apple: '/icon-1024.png',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
