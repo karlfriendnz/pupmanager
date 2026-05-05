@@ -255,6 +255,8 @@ export function TrainerSettingsForm({
               <span className="text-sm font-medium text-slate-700">Push notifications</span>
               <input type="checkbox" className="h-5 w-5" {...notifForm.register('notifyPush')} />
             </label>
+            <TestPushButton />
+
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-slate-700">Timezone</label>
               <select className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" {...notifForm.register('timezone')}>
@@ -316,3 +318,38 @@ export function TrainerSettingsForm({
     </div>
   )
 }
+
+function TestPushButton() {
+  const [state, setState] = useState<{ kind: 'idle' } | { kind: 'sending' } | { kind: 'sent'; sent: number } | { kind: 'noDevices' } | { kind: 'error'; message: string }>({ kind: 'idle' })
+
+  async function send() {
+    setState({ kind: 'sending' })
+    try {
+      const r = await fetch('/api/devices/test-push', { method: 'POST' })
+      const data = await r.json()
+      if (data.reason === 'no-devices') return setState({ kind: 'noDevices' })
+      if (!data.ok) return setState({ kind: 'error', message: `${data.failed ?? 0} push${data.failed === 1 ? '' : 'es'} failed — check Vercel logs` })
+      setState({ kind: 'sent', sent: data.sent })
+    } catch (e) {
+      setState({ kind: 'error', message: e instanceof Error ? e.message : 'Network error' })
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-dashed border-slate-200 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-700">Test push notification</p>
+          <p className="text-xs text-slate-500">Sends a one-off push to every iOS device signed in to this account.</p>
+        </div>
+        <Button type="button" size="sm" variant="secondary" loading={state.kind === 'sending'} onClick={send}>
+          Send test
+        </Button>
+      </div>
+      {state.kind === 'sent' && <Alert variant="success">Sent to {state.sent} device{state.sent === 1 ? '' : 's'}. Check your iPhone.</Alert>}
+      {state.kind === 'noDevices' && <Alert variant="info">No iOS devices registered yet. Open the app on iPhone, allow notifications, then try again.</Alert>}
+      {state.kind === 'error' && <Alert variant="error">{state.message}</Alert>}
+    </div>
+  )
+}
+
