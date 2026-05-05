@@ -4,21 +4,28 @@
 @theme inline {
   --font-sans: var(--font-geist);
 
-  /* Mirrors src/app/globals.css in the main app — keep in sync. */
-  --color-brand-50:  #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
+  /* Brand teal — sampled from the app icon (#6EC0CA average). */
+  --color-brand-50:  #effcfd;
+  --color-brand-100: #d4f5f8;
+  --color-brand-200: #aae8ee;
+  --color-brand-300: #7fd5dd;
+  --color-brand-400: #6ec0ca;
+  --color-brand-500: #4ab1bd;
+  --color-brand-600: #2a9da9;
+  --color-brand-700: #1f818c;
+  --color-brand-800: #1a6770;
+  --color-brand-900: #154f57;
 
+  /* Warm accent for highlights / illustrations. */
   --color-accent-400: #fbbf24;
   --color-accent-500: #f59e0b;
 
-  --color-ink-900: #0f172a;
-  --color-ink-700: #334155;
-  --color-ink-500: #64748b;
-  --color-ink-300: #cbd5e1;
+  --color-ink-900: #0f1f24;
+  --color-ink-700: #2d4751;
+  --color-ink-500: #5b7682;
+  --color-ink-300: #b8cdd4;
+  --color-ink-100: #e6eef1;
+  --color-ink-50:  #f5f8f9;
 }
 
 html {
