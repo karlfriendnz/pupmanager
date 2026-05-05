@@ -13,5 +13,6 @@ pod --version
 
 npm ci
 
-cd ios/App
-pod install --repo-update
+# Copies webDir into ios/App/App/public, generates capacitor.config.json + config.xml,
+# and runs `pod install` for Capacitor plugins.
+npx cap sync ios
