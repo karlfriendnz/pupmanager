@@ -51,10 +51,28 @@ async function main() {
     update: { businessName: DEMO_BUSINESS },
   })
 
-  // 2. Wipe prior demo-owned clients/dogs/sessions/tasks. Cascades clean up
-  //    related rows (sessions, tasks, diary entries, etc.).
-  await prisma.clientProfile.deleteMany({ where: { trainerId: trainerProfile.id } })
+  // 2. Wipe prior demo-owned data. Order matters because dogs aren't cascaded
+  //    when their ClientProfile is deleted — collect their IDs first so we can
+  //    drop them after the profiles are gone.
+  const priorClientProfiles = await prisma.clientProfile.findMany({
+    where: { trainerId: trainerProfile.id },
+    select: { id: true, dogId: true, userId: true },
+  })
+  const priorDogIds = priorClientProfiles.map(c => c.dogId).filter((x): x is string => Boolean(x))
+  const priorClientUserIds = priorClientProfiles.map(c => c.userId)
+
   await prisma.trainingSession.deleteMany({ where: { trainerId: trainerProfile.id } })
+  await prisma.clientProfile.deleteMany({ where: { trainerId: trainerProfile.id } })
+  if (priorDogIds.length > 0) {
+    await prisma.dog.deleteMany({ where: { id: { in: priorDogIds } } })
+  }
+  // Also remove the demo client User rows so re-runs don't leave a growing
+  // pile of orphan users with no client profile.
+  if (priorClientUserIds.length > 0) {
+    await prisma.user.deleteMany({
+      where: { id: { in: priorClientUserIds }, email: { endsWith: '@pupmanager.test' } },
+    })
+  }
 
   // 3. Three demo clients with one dog each
   const clients = [
