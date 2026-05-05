@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Container } from './Container'
 
 const links = [
+  { href: '/vs/duct-tape-stack', label: 'Compare' },
   { href: '/pricing', label: 'Pricing' },
   { href: '/blog', label: 'Blog' },
 ]
