@@ -7,6 +7,7 @@ const { auth } = NextAuth(authConfig)
 const PUBLIC_PATHS = [
   '/login', '/register', '/forgot-password', '/verify-email', '/invite',
   '/api/auth',
+  '/api/cron',   // Bearer-token authed inside the route handler
   '/form',       // public embed forms
   '/api/form',   // public form submission API
 ]
