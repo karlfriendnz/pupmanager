@@ -51,6 +51,29 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
       minutesBefore: '20',
     },
   },
+  SESSION_NOTES_REMINDER: {
+    type: 'SESSION_NOTES_REMINDER',
+    label: 'Wrap up & write notes',
+    // Sentinel "time-before-event" trigger here means "before session END"
+    // — interpretation lives in the cron, not in this metadata.
+    description: 'Nudge to write session notes near the end of a session, while it\'s still fresh.',
+    trigger: 'time-before-event',
+    channels: ['PUSH'],
+    defaults: {
+      enabled: true,
+      minutesBefore: 5,
+      title: 'Wrap-up time — {{dogName}}',
+      body: 'Add notes for {{title}} now while it\'s fresh. Session ends in ~{{minutesBefore}} min.',
+    },
+    placeholders: ['dogName', 'clientName', 'title', 'endTime', 'minutesBefore'],
+    sampleValues: {
+      dogName: 'Tilly',
+      clientName: 'Grace Wilshaw',
+      title: 'Recall practice',
+      endTime: '5:15 pm',
+      minutesBefore: '5',
+    },
+  },
   DAILY_SUMMARY: {
     type: 'DAILY_SUMMARY',
     label: 'Morning summary',

@@ -63,6 +63,18 @@ export function NativeBootstrap() {
       });
 
       await PushNotifications.addListener('registrationError', () => {});
+
+      // Deep-link tap handling: every push payload from the server includes a
+      // `path` in its custom data. When the user taps the notification, we
+      // navigate the WebView to that path so they land directly on the page
+      // the notification was about (e.g. session detail for a notes reminder).
+      await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        const path = (action.notification.data as { path?: string } | undefined)?.path;
+        if (typeof path === 'string' && path.startsWith('/')) {
+          window.location.href = path;
+        }
+      });
+
       await PushNotifications.register();
       registered = true;
     }

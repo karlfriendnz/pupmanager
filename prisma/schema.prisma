@@ -116,6 +116,7 @@ enum DevicePlatform {
 // more triggers — the preference matrix UI renders one row per type.
 enum NotificationType {
   SESSION_REMINDER             // n minutes before a TrainingSession starts
+  SESSION_NOTES_REMINDER       // n minutes before a TrainingSession ends — prompts the trainer to write session notes
   NEW_CLIENT_INVITE_ACCEPTED   // a client used the invite link to sign up
   CLIENT_COMPLETED_TASKS       // a client completed all of today's tasks
   NEW_MESSAGE                  // a new in-app message landed
@@ -409,6 +410,8 @@ model TrainingSession {
   // Set when the "starting in ~20 min" push reminder has been delivered to the
   // trainer, so the cron loop never sends two pushes for the same session.
   reminderPushSentAt DateTime?
+  // Same idea for the "ends in ~5 min — write session notes" reminder.
+  notesReminderPushSentAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
