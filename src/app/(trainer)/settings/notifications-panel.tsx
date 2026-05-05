@@ -29,7 +29,14 @@ export function NotificationsPanel() {
 
   useEffect(() => {
     fetch('/api/notification-preferences')
-      .then(r => r.json())
+      .then(async r => {
+        const text = await r.text()
+        try {
+          return JSON.parse(text)
+        } catch {
+          throw new Error(`HTTP ${r.status} — non-JSON body: ${text.slice(0, 200) || '(empty)'}`)
+        }
+      })
       .then(d => {
         if (d.error) throw new Error(d.error)
         setRows(d.preferences)
