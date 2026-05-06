@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
 const fieldSchema = z.object({
-  key: z.enum(['phone', 'dogName', 'dogBreed', 'dogWeight', 'dogDob', 'message']),
+  key: z.enum(['phone', 'message']),
   required: z.boolean(),
 })
 

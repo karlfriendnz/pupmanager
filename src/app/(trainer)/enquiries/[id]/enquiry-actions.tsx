@@ -23,6 +23,10 @@ export function EnquiryActions({ enquiryId, status, clientProfileId, defaultSubj
   const [composing, setComposing] = useState(false)
   const [subject, setSubject] = useState(defaultSubject)
   const [body, setBody] = useState(`${defaultGreeting}\n\n`)
+  // Accept modal — opt-in to the magic-link email so the trainer can decide
+  // whether to onboard them silently or invite them to the diary right away.
+  const [showAcceptModal, setShowAcceptModal] = useState(false)
+  const [sendMagicLink, setSendMagicLink] = useState(false)
 
   if (status === 'ACCEPTED') {
     return (
@@ -53,23 +57,41 @@ export function EnquiryActions({ enquiryId, status, clientProfileId, defaultSubj
     )
   }
 
-  async function act(kind: 'accept' | 'decline') {
-    if (kind === 'accept' && !confirm('Accept this enquiry? This will create a client account and email them a magic link to set up their training diary.')) return
-    if (kind === 'decline' && !confirm('Decline this enquiry? They won\'t be notified — this just removes it from your new-enquiries list.')) return
-
-    setBusy(kind)
+  async function decline() {
+    if (!confirm('Decline this enquiry? They won\'t be notified — this just removes it from your new-enquiries list.')) return
+    setBusy('decline')
     setError(null)
     try {
-      const res = await fetch(`/api/enquiries/${enquiryId}/${kind}`, { method: 'POST' })
+      const res = await fetch(`/api/enquiries/${enquiryId}/decline`, { method: 'POST' })
       const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.error ?? `Failed to ${kind}`)
-      if (kind === 'accept' && data?.clientProfileId) {
+      if (!res.ok) throw new Error(data?.error ?? 'Failed to decline')
+      router.refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to decline')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function confirmAccept() {
+    setBusy('accept')
+    setError(null)
+    try {
+      const res = await fetch(`/api/enquiries/${enquiryId}/accept`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sendMagicLink }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error ?? 'Failed to accept')
+      setShowAcceptModal(false)
+      if (data?.clientProfileId) {
         router.push(`/clients/${data.clientProfileId}`)
       } else {
         router.refresh()
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : `Failed to ${kind}`)
+      setError(e instanceof Error ? e.message : 'Failed to accept')
     } finally {
       setBusy(null)
     }
@@ -107,19 +129,18 @@ export function EnquiryActions({ enquiryId, status, clientProfileId, defaultSubj
         </Card>
       )}
 
-      {!composing ? (
+      {!composing && (
         <Card className="p-5">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Decide</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Button
               type="button"
-              onClick={() => act('accept')}
+              onClick={() => { setError(null); setShowAcceptModal(true) }}
               disabled={busy != null}
-              loading={busy === 'accept'}
               className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800"
             >
-              {busy !== 'accept' && <CheckCircle2 className="h-4 w-4" />}
-              Accept &amp; create client
+              <CheckCircle2 className="h-4 w-4" />
+              Accept
             </Button>
             <Button
               type="button"
@@ -133,7 +154,7 @@ export function EnquiryActions({ enquiryId, status, clientProfileId, defaultSubj
             <Button
               type="button"
               variant="secondary"
-              onClick={() => act('decline')}
+              onClick={decline}
               disabled={busy != null}
               loading={busy === 'decline'}
               className="text-rose-600 hover:bg-rose-50"
@@ -146,7 +167,69 @@ export function EnquiryActions({ enquiryId, status, clientProfileId, defaultSubj
             Replies come from your business name with your email as Reply-To, so any response from them lands in your inbox.
           </p>
         </Card>
-      ) : (
+      )}
+      {/* duplicate-render guard — modal lives outside the !composing branch
+          so it doesn't unmount when the trainer opens the reply composer. */}
+      {showAcceptModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40"
+          onClick={() => busy === null && setShowAcceptModal(false)}
+        >
+          <div
+            className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h2 className="text-base font-semibold text-slate-900">Accept this enquiry?</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Creates a client account so you can book sessions, log notes, and track progress.
+              </p>
+            </div>
+            <div className="px-5 py-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sendMagicLink}
+                  onChange={e => setSendMagicLink(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className="text-sm">
+                  <span className="font-medium text-slate-900">Email them a magic link to access their training diary now</span>
+                  <span className="block text-xs text-slate-500 mt-0.5">
+                    Leave unchecked to onboard them quietly — you can send the invite later from their client page.
+                  </span>
+                </span>
+              </label>
+            </div>
+            {error && (
+              <div className="px-5 pb-2">
+                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-md px-3 py-2">{error}</p>
+              </div>
+            )}
+            <div className="px-5 py-4 border-t border-slate-100 flex gap-2 justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowAcceptModal(false)}
+                disabled={busy != null}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={confirmAccept}
+                disabled={busy != null}
+                loading={busy === 'accept'}
+                className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800"
+              >
+                {busy !== 'accept' && <CheckCircle2 className="h-4 w-4" />}
+                Accept
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {composing && (
         <Card className="p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-slate-900">Reply by email</h2>

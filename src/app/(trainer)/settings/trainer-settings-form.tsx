@@ -19,7 +19,11 @@ const profileSchema = z.object({
   phone: z.string().optional(),
   logoUrl: z.string().url().optional().or(z.literal('')),
   dashboardBgUrl: z.string().url().optional().or(z.literal('')),
+  // Hex (#rgb / #rrggbb) — empty string clears to default.
+  emailAccentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
 })
+
+const DEFAULT_EMAIL_ACCENT = '#7c3aed'
 
 const notifSchema = z.object({
   notifyEmail: z.boolean(),
@@ -48,7 +52,7 @@ export function TrainerSettingsForm({
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string; notifyEmail: boolean; notifyPush: boolean }
-  profile: { businessName: string; phone: string | null; logoUrl: string | null; dashboardBgUrl: string | null; inviteTemplate: string | null }
+  profile: { businessName: string; phone: string | null; logoUrl: string | null; dashboardBgUrl: string | null; inviteTemplate: string | null; emailAccentColor: string | null }
 }) {
   const router = useRouter()
   const [profileMsg, setProfileMsg] = useState<string | null>(null)
@@ -66,11 +70,13 @@ export function TrainerSettingsForm({
       phone: profile.phone ?? '',
       logoUrl: profile.logoUrl ?? '',
       dashboardBgUrl: profile.dashboardBgUrl ?? '',
+      emailAccentColor: profile.emailAccentColor ?? '',
     },
   })
 
   const logoUrl = profileForm.watch('logoUrl')
   const dashboardBgUrl = profileForm.watch('dashboardBgUrl')
+  const emailAccentColor = profileForm.watch('emailAccentColor')
   const logoInputRef = useRef<HTMLInputElement>(null)
   const bgInputRef = useRef<HTMLInputElement>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
@@ -115,7 +121,7 @@ export function TrainerSettingsForm({
     setProfileMsg(null)
     const [r1, r2] = await Promise.all([
       fetch('/api/user', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: data.name }) }),
-      fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, logoUrl: data.logoUrl, dashboardBgUrl: data.dashboardBgUrl }) }),
+      fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, logoUrl: data.logoUrl, dashboardBgUrl: data.dashboardBgUrl, emailAccentColor: data.emailAccentColor }) }),
     ])
     setProfileMsg(r1.ok && r2.ok ? 'Saved!' : 'Failed to save.')
     router.refresh()
@@ -232,6 +238,44 @@ export function TrainerSettingsForm({
                   }}
                 />
               </div>
+            </div>
+
+            {/* Email accent / top-border colour. */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-700">Reply email border colour</label>
+              <p className="text-xs text-slate-400 -mt-1">The thin accent strip across the top of the email card. Match it to your brand.</p>
+              <div className="flex items-center gap-3">
+                <div
+                  className="h-12 w-12 rounded-xl border border-slate-200 flex-shrink-0"
+                  style={{ background: emailAccentColor || DEFAULT_EMAIL_ACCENT }}
+                />
+                <input
+                  type="color"
+                  value={emailAccentColor || DEFAULT_EMAIL_ACCENT}
+                  onChange={e => profileForm.setValue('emailAccentColor', e.target.value, { shouldDirty: true })}
+                  className="h-10 w-14 rounded border border-slate-200 cursor-pointer"
+                  aria-label="Email accent colour"
+                />
+                <Input
+                  type="text"
+                  value={emailAccentColor ?? ''}
+                  onChange={e => profileForm.setValue('emailAccentColor', e.target.value, { shouldDirty: true })}
+                  placeholder={DEFAULT_EMAIL_ACCENT}
+                  className="w-32 font-mono text-sm"
+                />
+                {emailAccentColor && (
+                  <button
+                    type="button"
+                    onClick={() => profileForm.setValue('emailAccentColor', '', { shouldDirty: true })}
+                    className="text-xs text-slate-400 hover:text-red-500"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+              {profileForm.formState.errors.emailAccentColor && (
+                <p className="text-xs text-red-500">Use a hex colour like #7c3aed or #fff.</p>
+              )}
             </div>
 
             {uploadError && <Alert variant="error">{uploadError}</Alert>}

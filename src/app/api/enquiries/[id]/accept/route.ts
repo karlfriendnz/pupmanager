@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { acceptEnquiry, EnquiryError } from '@/lib/enquiries'
 import { env } from '@/lib/env'
+
+const schema = z.object({
+  sendMagicLink: z.boolean().default(false),
+})
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -19,10 +24,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   })
   if (!enquiry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  const body = await req.json().catch(() => ({}))
+  const parsed = schema.safeParse(body)
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+
   try {
     const reqUrl = new URL(req.url)
     const appUrl = env.NEXT_PUBLIC_APP_URL || `${reqUrl.protocol}//${reqUrl.host}`
-    const clientProfileId = await acceptEnquiry(id, { appUrl })
+    const clientProfileId = await acceptEnquiry(id, { appUrl, sendMagicLink: parsed.data.sendMagicLink })
     return NextResponse.json({ ok: true, clientProfileId })
   } catch (err) {
     if (err instanceof EnquiryError) {

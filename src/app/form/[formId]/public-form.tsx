@@ -21,10 +21,6 @@ interface Props {
 
 const FIELD_LABELS: Record<string, string> = {
   phone: 'Phone number',
-  dogName: "Dog's name",
-  dogBreed: 'Breed',
-  dogWeight: 'Weight (kg)',
-  dogDob: 'Date of birth',
   message: 'Message',
 }
 
@@ -79,10 +75,6 @@ export function PublicForm({
         name: values.name?.trim(),
         email: values.email?.trim(),
         phone: values.phone?.trim() || null,
-        dogName: values.dogName?.trim() || null,
-        dogBreed: values.dogBreed?.trim() || null,
-        dogWeight: values.dogWeight?.trim() || null,
-        dogDob: values.dogDob || null,
         message: values.message?.trim() || null,
         customFields: Object.keys(customFieldValues).length > 0 ? customFieldValues : undefined,
       }),
@@ -98,8 +90,9 @@ export function PublicForm({
     setSubmitted(true)
   }
 
-  const dogFields = fields.filter(f => ['dogName', 'dogBreed', 'dogWeight', 'dogDob'].includes(f.key))
-  const otherFields = fields.filter(f => !['dogName', 'dogBreed', 'dogWeight', 'dogDob'].includes(f.key))
+  // Strip any legacy dog* keys that might still be in saved form configs from
+  // before those were removed as standard fields.
+  const otherFields = fields.filter(f => f.key !== 'dogName' && f.key !== 'dogBreed' && f.key !== 'dogWeight' && f.key !== 'dogDob')
 
   if (submitted) {
     return (
@@ -168,26 +161,6 @@ export function PublicForm({
               </Field>
             ))}
           </div>
-
-          {/* Dog fields */}
-          {dogFields.length > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-4">
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">About your dog</h2>
-              {dogFields.map(f => (
-                <Field key={f.key} label={FIELD_LABELS[f.key]} required={f.required}>
-                  <input
-                    type={f.key === 'dogWeight' ? 'number' : f.key === 'dogDob' ? 'date' : 'text'}
-                    value={values[f.key] ?? ''}
-                    onChange={e => set(f.key, e.target.value)}
-                    placeholder={f.required ? 'Required' : 'Optional'}
-                    min={f.key === 'dogWeight' ? '0' : undefined}
-                    step={f.key === 'dogWeight' ? '0.1' : undefined}
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </Field>
-              ))}
-            </div>
-          )}
 
           {/* Custom fields */}
           {customFields.length > 0 && (

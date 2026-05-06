@@ -10,15 +10,11 @@ import { Button } from '@/components/ui/button'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type FieldKey = 'phone' | 'dogName' | 'dogBreed' | 'dogWeight' | 'dogDob' | 'message'
+type FieldKey = 'phone' | 'message'
 
-const STANDARD_FIELDS: { key: FieldKey; label: string; group: 'owner' | 'dog' }[] = [
-  { key: 'phone', label: 'Phone number', group: 'owner' },
-  { key: 'message', label: 'Message / notes', group: 'owner' },
-  { key: 'dogName', label: "Dog's name", group: 'dog' },
-  { key: 'dogBreed', label: 'Breed', group: 'dog' },
-  { key: 'dogWeight', label: 'Weight (kg)', group: 'dog' },
-  { key: 'dogDob', label: 'Date of birth', group: 'dog' },
+const STANDARD_FIELDS: { key: FieldKey; label: string }[] = [
+  { key: 'phone', label: 'Phone number' },
+  { key: 'message', label: 'Message / notes' },
 ]
 
 interface EmbedForm {
@@ -148,8 +144,6 @@ function FormBuilder({
     onClose()
   }
 
-  const ownerStandard = STANDARD_FIELDS.filter(f => f.group === 'owner')
-  const dogStandard = STANDARD_FIELDS.filter(f => f.group === 'dog')
   const ownerCustom = customFields.filter(f => f.appliesTo === 'OWNER')
   const dogCustom = customFields.filter(f => f.appliesTo === 'DOG')
 
@@ -195,12 +189,12 @@ function FormBuilder({
             </div>
           </div>
 
-          {/* Standard fields — Owner */}
+          {/* Standard fields */}
           <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Owner fields</p>
-            <p className="text-xs text-slate-400 mb-3">Name and email are always included.</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Fields</p>
+            <p className="text-xs text-slate-400 mb-3">Name and email are always included. Add custom fields below for anything dog-specific (breed, vax status, etc.).</p>
             <div className="flex flex-col gap-2">
-              {ownerStandard.map(f => (
+              {STANDARD_FIELDS.map(f => (
                 <FieldToggleRow
                   key={f.key}
                   label={f.label}
@@ -217,23 +211,6 @@ function FormBuilder({
                   required={cf.required}
                   enabled={enabledCustomIds.has(cf.id)}
                   onToggle={() => toggleCustom(cf.id)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Standard fields — Dog */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Dog fields</p>
-            <div className="flex flex-col gap-2">
-              {dogStandard.map(f => (
-                <FieldToggleRow
-                  key={f.key}
-                  label={f.label}
-                  enabled={fieldConfig[f.key]?.enabled ?? false}
-                  required={fieldConfig[f.key]?.required ?? false}
-                  onToggleEnabled={() => toggleField(f.key, 'enabled')}
-                  onToggleRequired={() => toggleField(f.key, 'required')}
                 />
               ))}
               {dogCustom.map(cf => (

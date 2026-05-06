@@ -45,7 +45,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   const labelById = Object.fromEntries(fields.map(f => [f.id, f.label]))
 
   return (
-    <div className="p-4 md:p-8 max-w-2xl mx-auto">
+    <div className="p-4 md:p-8 max-w-3xl mx-auto">
       <Link href="/enquiries" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-4">
         <ArrowLeft className="h-4 w-4" />
         Back to enquiries

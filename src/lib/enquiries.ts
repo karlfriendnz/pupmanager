@@ -9,12 +9,13 @@ import { sendEmail } from './email'
 //   2. Create Dog if dog details were captured
 //   3. Create ClientProfile linking user → trainer → dog
 //   4. Materialise the snapshotted customFieldValues into CustomFieldValue rows
-//   5. Issue a NextAuth-compatible magic-link token + welcome email
+//   5. (Opt-in) Issue a NextAuth-compatible magic-link token + welcome email
 //   6. Mark the enquiry ACCEPTED with a back-link to the ClientProfile
 //
-// Returns the new ClientProfile id. Throws if a User already exists with
-// the enquirer's email — the trainer should link manually in that case.
-export async function acceptEnquiry(enquiryId: string, options: { appUrl: string }) {
+// `sendMagicLink` is opt-in — most trainers want to onboard manually first
+// and send the diary invite later. Returns the new ClientProfile id. Throws
+// if a User already exists with the enquirer's email.
+export async function acceptEnquiry(enquiryId: string, options: { appUrl: string; sendMagicLink: boolean }) {
   const enquiry = await prisma.enquiry.findUnique({
     where: { id: enquiryId },
     include: {
@@ -27,11 +28,17 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
   const existingUser = await prisma.user.findUnique({ where: { email: enquiry.email }, select: { id: true } })
   if (existingUser) throw new EnquiryError('USER_EXISTS', `An account already exists for ${enquiry.email}.`)
 
-  const plainToken = crypto.randomBytes(32).toString('hex')
-  const hashedToken = crypto.createHash('sha256').update(`${plainToken}${env.AUTH_SECRET}`).digest('hex')
-  const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
-
   const customFieldSnapshot = (enquiry.customFieldValues ?? {}) as Record<string, string>
+
+  // Magic-link token is only generated when the trainer asked us to email it.
+  const magicLinkToken = options.sendMagicLink
+    ? (() => {
+        const plain = crypto.randomBytes(32).toString('hex')
+        const hashed = crypto.createHash('sha256').update(`${plain}${env.AUTH_SECRET}`).digest('hex')
+        const expires = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+        return { plain, hashed, expires }
+      })()
+    : null
 
   const clientProfileId = await prisma.$transaction(async tx => {
     const clientUser = await tx.user.create({
@@ -71,10 +78,12 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
       })
     }
 
-    await tx.verificationToken.deleteMany({ where: { identifier: enquiry.email } })
-    await tx.verificationToken.create({
-      data: { identifier: enquiry.email, token: hashedToken, expires },
-    })
+    if (magicLinkToken) {
+      await tx.verificationToken.deleteMany({ where: { identifier: enquiry.email } })
+      await tx.verificationToken.create({
+        data: { identifier: enquiry.email, token: magicLinkToken.hashed, expires: magicLinkToken.expires },
+      })
+    }
 
     await tx.enquiry.update({
       where: { id: enquiry.id },
@@ -84,39 +93,41 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
     return clientProfile.id
   })
 
-  // Magic link goes via NextAuth's Resend callback so the client lands logged
-  // in on first click. URL host comes from the request so dev/prod both work.
-  const magicLink = `${options.appUrl}/api/auth/callback/resend?${new URLSearchParams({
-    callbackUrl: '/my-profile',
-    token: plainToken,
-    email: enquiry.email,
-  })}`
-  const businessName = enquiry.trainer.businessName
+  if (magicLinkToken) {
+    // Magic link goes via NextAuth's Resend callback so the client lands logged
+    // in on first click. URL host comes from the request so dev/prod both work.
+    const magicLink = `${options.appUrl}/api/auth/callback/resend?${new URLSearchParams({
+      callbackUrl: '/my-profile',
+      token: magicLinkToken.plain,
+      email: enquiry.email,
+    })}`
+    const businessName = enquiry.trainer.businessName
 
-  try {
-    await sendEmail({
-      to: enquiry.email,
-      subject: `Welcome to ${businessName} — finish setting up your account`,
-      html: `
-        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
-          <h2 style="color:#0f172a;margin-bottom:8px;">Hi ${escapeHtml(enquiry.name)}!</h2>
-          <p style="color:#475569;margin-bottom:24px;">
-            Thanks for registering with <strong>${escapeHtml(businessName)}</strong>.
-            Click the button below to access your training diary — no password needed, the link logs you in automatically. This link expires in 14 days.
-          </p>
-          ${enquiry.message ? `<p style="color:#475569;background:#f8fafc;border-left:3px solid #e2e8f0;padding:12px 16px;margin-bottom:24px;"><em>"${escapeHtml(enquiry.message)}"</em></p>` : ''}
-          <a href="${magicLink}" style="display:inline-block;background:#2563eb;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;">
-            Access my training diary
-          </a>
-          <p style="color:#94a3b8;font-size:13px;margin-top:32px;">
-            This link expires in 14 days. If you didn't submit this form, you can safely ignore this email.
-          </p>
-        </div>
-      `,
-    })
-  } catch {
-    // Welcome email is best-effort. The client + token already exist so the
-    // trainer can resend later.
+    try {
+      await sendEmail({
+        to: enquiry.email,
+        subject: `Welcome to ${businessName} — finish setting up your account`,
+        html: `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
+            <h2 style="color:#0f172a;margin-bottom:8px;">Hi ${escapeHtml(enquiry.name)}!</h2>
+            <p style="color:#475569;margin-bottom:24px;">
+              Thanks for registering with <strong>${escapeHtml(businessName)}</strong>.
+              Click the button below to access your training diary — no password needed, the link logs you in automatically. This link expires in 14 days.
+            </p>
+            ${enquiry.message ? `<p style="color:#475569;background:#f8fafc;border-left:3px solid #e2e8f0;padding:12px 16px;margin-bottom:24px;"><em>"${escapeHtml(enquiry.message)}"</em></p>` : ''}
+            <a href="${magicLink}" style="display:inline-block;background:#2563eb;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;">
+              Access my training diary
+            </a>
+            <p style="color:#94a3b8;font-size:13px;margin-top:32px;">
+              This link expires in 14 days. If you didn't submit this form, you can safely ignore this email.
+            </p>
+          </div>
+        `,
+      })
+    } catch {
+      // Welcome email is best-effort. The client + token already exist so the
+      // trainer can resend later.
+    }
   }
 
   return clientProfileId

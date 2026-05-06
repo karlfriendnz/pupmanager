@@ -6,10 +6,6 @@ const schema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   phone: z.string().optional().nullable(),
-  dogName: z.string().optional().nullable(),
-  dogBreed: z.string().optional().nullable(),
-  dogWeight: z.string().optional().nullable(),
-  dogDob: z.string().optional().nullable(),
   message: z.string().optional().nullable(),
   customFields: z.record(z.string(), z.string()).optional(),
 })
@@ -31,7 +27,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const { name, email, phone, dogName, dogBreed, dogWeight, dogDob, message, customFields } = parsed.data
+  const { name, email, phone, message, customFields } = parsed.data
 
   const enabledCustomFieldIds = Array.isArray(form.customFieldIds) ? form.customFieldIds as string[] : []
   if (enabledCustomFieldIds.length > 0) {
@@ -57,8 +53,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
     }
   }
 
-  const dogWeightNum = dogWeight ? parseFloat(dogWeight) : null
-
   await prisma.enquiry.create({
     data: {
       trainerId: form.trainerId,
@@ -66,10 +60,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
       name,
       email,
       phone: phone?.trim() || null,
-      dogName: dogName?.trim() || null,
-      dogBreed: dogBreed?.trim() || null,
-      dogWeight: dogWeightNum != null && !Number.isNaN(dogWeightNum) ? dogWeightNum : null,
-      dogDob: dogDob ? new Date(dogDob) : null,
       message: message?.trim() || null,
       customFieldValues: customFieldSnapshot,
     },

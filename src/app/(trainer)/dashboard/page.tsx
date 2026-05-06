@@ -141,18 +141,19 @@ export default async function DashboardPage({
     return completed / assigned < 0.4
   })
 
-  // New enquiries — embed-form submissions awaiting trainer review. The
-  // badge counts unviewed NEW rows; the card shows the latest few inline so
-  // the trainer can scan names without leaving the dashboard.
-  const newEnquiries = await prisma.enquiry.findMany({
+  // Recent enquiries — only NEW (still pending decision). Accepted and
+  // declined ones drop off the dashboard once actioned; trainer can find
+  // them under the respective tabs on /enquiries.
+  const recentEnquiries = await prisma.enquiry.findMany({
     where: { trainerId, status: 'NEW' },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
       name: true,
       dogName: true,
-      createdAt: true,
+      status: true,
       viewedAt: true,
+      createdAt: true,
     },
     take: 5,
   })
@@ -352,42 +353,67 @@ export default async function DashboardPage({
         )}
       </div>
 
-      {/* New enquiries — surface fresh leads above the lower-priority panels
-          so the trainer sees them immediately. */}
-      {newEnquiries.length > 0 && (
+      {/* Recent enquiries — only shown when there's actually been recent
+          inbound activity, so the dashboard doesn't carry an empty card. */}
+      {recentEnquiries.length > 0 && (
         <Link
           href="/enquiries"
-          className="mb-6 block rounded-2xl bg-violet-50 border border-violet-100 p-4 hover:border-violet-200 transition-colors"
+          className={cn(
+            'mb-6 block rounded-2xl border p-4 transition-colors',
+            unviewedEnquiryCount > 0
+              ? 'bg-violet-50 border-violet-100 hover:border-violet-200'
+              : 'bg-white border-slate-200 hover:border-slate-300',
+          )}
         >
           <div className="flex items-start justify-between gap-3 mb-2">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 text-violet-700 flex-shrink-0">
+              <span className={cn(
+                'flex h-8 w-8 items-center justify-center rounded-lg flex-shrink-0',
+                unviewedEnquiryCount > 0 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500',
+              )}>
                 <Inbox className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <p className="font-semibold text-violet-900 text-sm leading-tight">
+                <p className={cn(
+                  'font-semibold text-sm leading-tight',
+                  unviewedEnquiryCount > 0 ? 'text-violet-900' : 'text-slate-900',
+                )}>
                   {unviewedEnquiryCount > 0
                     ? `${unviewedEnquiryCount} new ${unviewedEnquiryCount === 1 ? 'enquiry' : 'enquiries'}`
-                    : `${newEnquiries.length} ${newEnquiries.length === 1 ? 'enquiry' : 'enquiries'} awaiting decision`}
+                    : 'Recent enquiries'}
                 </p>
-                <p className="text-xs text-violet-700/80 mt-0.5">
-                  Review and accept to onboard them as a client.
+                <p className={cn(
+                  'text-xs mt-0.5',
+                  unviewedEnquiryCount > 0 ? 'text-violet-700/80' : 'text-slate-500',
+                )}>
+                  Review, reply, accept or decline.
                 </p>
               </div>
             </div>
-            <ArrowRight className="h-4 w-4 text-violet-700 flex-shrink-0 mt-1" />
+            <ArrowRight className={cn(
+              'h-4 w-4 flex-shrink-0 mt-1',
+              unviewedEnquiryCount > 0 ? 'text-violet-700' : 'text-slate-400',
+            )} />
           </div>
           <div className="flex flex-col gap-1.5 mt-3">
-            {newEnquiries.slice(0, 3).map((e) => (
+            {recentEnquiries.map((e) => (
               <div
                 key={e.id}
-                className="flex items-center justify-between bg-white rounded-xl px-3.5 py-2 border border-transparent"
+                className="flex items-center justify-between bg-white rounded-xl px-3.5 py-2 border border-slate-100"
               >
-                <span className="text-sm text-slate-700 truncate">
-                  <span className={cn('font-medium', !e.viewedAt && 'text-violet-900')}>
+                <span className="text-sm text-slate-700 truncate flex items-center gap-2 min-w-0">
+                  <span className={cn(
+                    'font-medium truncate',
+                    !e.viewedAt && 'text-violet-900',
+                  )}>
                     {e.name}
                   </span>
-                  {e.dogName && <span className="text-slate-400"> · {e.dogName}</span>}
+                  {e.dogName && <span className="text-slate-400 truncate">· {e.dogName}</span>}
+                  {!e.viewedAt && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-600 text-white uppercase tracking-wide flex-shrink-0">
+                      New
+                    </span>
+                  )}
                 </span>
                 <span className="text-[11px] text-slate-400 tabular-nums flex-shrink-0 ml-2">
                   {timeAgo(e.createdAt)}
@@ -508,7 +534,7 @@ function StatCard({
   progress?: number
 }) {
   return (
-    <Card className="p-4 flex flex-col gap-2">
+    <Card className="p-4 h-full flex flex-col gap-2">
       <div className="flex items-start justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
         <span className={cn(
@@ -527,14 +553,14 @@ function StatCard({
         </p>
         {sub && <p className="text-xs text-slate-500">{sub}</p>}
       </div>
-      {progress != null && (
-        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-          <div
-            className={cn('h-full transition-all', progress >= 70 ? 'bg-emerald-500' : 'bg-rose-400')}
-            style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-          />
-        </div>
-      )}
+      {/* mt-auto pins the progress bar to the bottom; cards without a bar
+          end with the value pinned to the top, so heights match. */}
+      <div className="mt-auto h-1.5 rounded-full bg-slate-100 overflow-hidden" style={{ visibility: progress != null ? 'visible' : 'hidden' }}>
+        <div
+          className={cn('h-full transition-all', progress != null && progress >= 70 ? 'bg-emerald-500' : 'bg-rose-400')}
+          style={{ width: progress != null ? `${Math.min(100, Math.max(0, progress))}%` : '0%' }}
+        />
+      </div>
     </Card>
   )
 }

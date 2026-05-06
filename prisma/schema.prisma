@@ -222,6 +222,9 @@ model TrainerProfile {
   logoUrl         String?
   dashboardBgUrl  String? // background image shown on the client home dashboard
   inviteTemplate  String? @db.Text // customisable invite email template
+  // Hex colour for the accent strip across the top of outbound emails.
+  // Falls back to a violet default when null.
+  emailAccentColor String?
 
   // Google Calendar integration
   googleCalendarRefreshToken String? @db.Text

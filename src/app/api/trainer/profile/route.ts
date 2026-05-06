@@ -9,6 +9,8 @@ const patchSchema = z.object({
   logoUrl: z.string().url().optional().or(z.literal('')),
   dashboardBgUrl: z.string().url().optional().or(z.literal('')),
   inviteTemplate: z.string().optional(),
+  // 3- or 6-digit hex (with leading #), or empty string to clear.
+  emailAccentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
   // Schedule view prefs. Hours 0–23, days 1=Mon..7=Sun, end > start.
   scheduleStartHour: z.number().int().min(0).max(23).optional(),
   scheduleEndHour: z.number().int().min(1).max(24).optional(),
@@ -48,9 +50,14 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
+  const data = { ...parsed.data }
+  // Empty string from the colour input means "clear this" — store as null
+  // so the email template falls back to the default.
+  if (data.emailAccentColor === '') data.emailAccentColor = null as unknown as string
+
   const profile = await prisma.trainerProfile.update({
     where: { userId: session.user.id },
-    data: parsed.data,
+    data,
   })
 
   return NextResponse.json(profile)
