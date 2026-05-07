@@ -321,31 +321,29 @@ function TrainerShell({
         </div>
       </aside>
 
-      {/* Mobile sticky brand header — logo centred, avatar tucked right. */}
+      {/* Mobile sticky header — slim row with logo on the left and avatar on
+          the right. The brand text is dropped on mobile because each page has
+          its own h1 (Clients, Schedule, etc.) that already names the section,
+          and showing the trainer their own brand on every screen wastes the
+          tight vertical real estate above the fold. */}
       <header
-        className="md:hidden sticky top-0 z-30 grid grid-cols-[40px_1fr_40px] items-center px-5 h-14 bg-white/85 backdrop-blur border-b border-slate-100"
+        className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 h-12 bg-white/90 backdrop-blur border-b border-slate-100"
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
-        <div />
-        <div className="flex flex-col items-center min-w-0">
+        <Link href="/dashboard" aria-label="Dashboard" className="flex items-center">
           {trainerLogo ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-8 rounded-lg object-cover" />
+            <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-7 w-7 rounded-lg object-cover" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg" />
+            <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-7 w-7 rounded-lg" />
           )}
-          <p className="text-[10px] font-medium text-slate-500 truncate leading-tight mt-0.5 max-w-[60vw]">
-            {businessName ?? 'PupManager'}
-          </p>
-        </div>
-        <div className="flex justify-end">
-          <div
-            className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600"
-            title={userName ?? undefined}
-          >
-            {userName?.[0]?.toUpperCase() ?? '?'}
-          </div>
+        </Link>
+        <div
+          className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600"
+          title={userName ?? undefined}
+        >
+          {userName?.[0]?.toUpperCase() ?? '?'}
         </div>
       </header>
 
