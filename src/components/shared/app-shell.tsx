@@ -440,10 +440,12 @@ function TrainerShell({
 
       <main
         className={cn('flex-1 pb-20 md:pb-0 transition-all duration-200', mainOffset)}
-        // Mobile only: pad the top by the device's safe-area-inset so the
-        // first line of page content (h1 etc) sits below the notch instead
-        // of clipping into it. Desktop has the full sidebar handling chrome.
-        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+        // Capped safe-area pad on mobile: the iOS Capacitor WebView reports
+        // a large env(safe-area-inset-top) that, when added to each page's
+        // own p-4, produced a ~120px blank strip above every heading. Cap
+        // at 1rem so the status bar text (Style.Dark, light bg) clears the
+        // page heading without burning vertical real estate.
+        style={{ paddingTop: 'min(env(safe-area-inset-top, 0px), 1rem)' }}
       >
         {children}
       </main>
