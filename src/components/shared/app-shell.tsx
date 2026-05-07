@@ -321,31 +321,12 @@ function TrainerShell({
         </div>
       </aside>
 
-      {/* Mobile sticky header — slim row with logo on the left and avatar on
-          the right. The brand text is dropped on mobile because each page has
-          its own h1 (Clients, Schedule, etc.) that already names the section,
-          and showing the trainer their own brand on every screen wastes the
-          tight vertical real estate above the fold. */}
-      <header
-        className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 h-12 bg-white/90 backdrop-blur border-b border-slate-100"
-        style={{ paddingTop: 'env(safe-area-inset-top)' }}
-      >
-        <Link href="/dashboard" aria-label="Dashboard" className="flex items-center">
-          {trainerLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-7 w-7 rounded-lg object-cover" />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-7 w-7 rounded-lg" />
-          )}
-        </Link>
-        <div
-          className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600"
-          title={userName ?? undefined}
-        >
-          {userName?.[0]?.toUpperCase() ?? '?'}
-        </div>
-      </header>
+      {/* No mobile header on the trainer side: the avatar wasn't actionable
+          and showing the trainer their own logo on every screen burnt the
+          top-of-fold real estate. Bottom tab bar + More sheet cover all nav
+          and account actions. Page content gets the safe-area-inset-top
+          padding via the main element below so the first row of content
+          (page heading, etc.) sits cleanly under the notch. */}
 
       {/* Mobile bottom tab bar — 4 primary destinations + More */}
       <nav
@@ -457,7 +438,13 @@ function TrainerShell({
         </div>
       )}
 
-      <main className={cn('flex-1 pb-20 md:pb-0 transition-all duration-200', mainOffset)}>
+      <main
+        className={cn('flex-1 pb-20 md:pb-0 transition-all duration-200', mainOffset)}
+        // Mobile only: pad the top by the device's safe-area-inset so the
+        // first line of page content (h1 etc) sits below the notch instead
+        // of clipping into it. Desktop has the full sidebar handling chrome.
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
         {children}
       </main>
     </div>
