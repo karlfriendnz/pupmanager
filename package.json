@@ -13,7 +13,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-demo": "tsx prisma/seed-demo.ts",
     "test": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "smoke:prod": "./scripts/smoke-prod.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",

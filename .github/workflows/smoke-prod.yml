@@ -1,0 +1,32 @@
+name: Smoke prod
+
+# Runs scripts/smoke-prod.sh against the live prod URL after every successful
+# production deploy. Vercel emits a deployment_status event when a deploy
+# transitions to ready/error — we hook into the success case for production.
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Base URL to smoke (default: app.pupmanager.com)'
+        required: false
+        default: 'https://app.pupmanager.com'
+
+concurrency:
+  group: smoke-prod
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run prod smoke
+        run: ./scripts/smoke-prod.sh "${{ inputs.base_url || 'https://app.pupmanager.com' }}"
