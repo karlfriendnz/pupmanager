@@ -8,12 +8,15 @@ interface BasicQuestion {
   type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'
   label: string
   required?: boolean
+  // When true: visible to the trainer only (filtered out of the client report).
+  isPrivate?: boolean
 }
 interface CustomFieldQuestion {
   id: string
   type: 'CUSTOM_FIELD'
   customFieldId: string
   required?: boolean
+  isPrivate?: boolean
 }
 export type ReportQuestion = BasicQuestion | CustomFieldQuestion
 
@@ -53,6 +56,9 @@ export interface SessionReportProps {
   // Map of customFieldId → label, resolved by the caller (only the caller has
   // access to the trainer's CustomField records).
   customFieldLabels?: Map<string, string>
+  // Who's looking at this report. 'client' filters out private questions
+  // entirely; 'trainer' shows them with a "Private" badge.
+  audience?: 'trainer' | 'client'
 }
 
 export function SessionReport({
@@ -63,6 +69,7 @@ export function SessionReport({
   formResponses,
   tasks,
   customFieldLabels = new Map(),
+  audience = 'client',
 }: SessionReportProps) {
   const d = new Date(scheduledAt)
 
@@ -100,15 +107,19 @@ export function SessionReport({
 
       {/* Q&A blocks */}
       {formResponses.map(r => {
-        const questions = r.form.questions
+        // Filter private questions out for clients; trainers see all but with
+        // a "Private" badge so they know it's not in the client's view.
+        const visibleQuestions = audience === 'client'
+          ? r.form.questions.filter(q => !q.isPrivate)
+          : r.form.questions
         const answers = r.answers ?? {}
-        const hasAnyAnswer = questions.some(q => (answers[q.id] ?? '') !== '')
+        const hasAnyAnswer = visibleQuestions.some(q => (answers[q.id] ?? '') !== '')
         if (!hasAnyAnswer) return null
         return (
           <Card key={r.id} className="mb-6 rounded-none">
             <CardBody className="py-6">
               <div className="flex flex-col gap-4">
-                {questions.map(q => {
+                {visibleQuestions.map(q => {
                   const value = answers[q.id] ?? ''
                   if (!value) return null
                   const label = q.type === 'CUSTOM_FIELD'
@@ -116,8 +127,13 @@ export function SessionReport({
                     : q.label
                   return (
                     <div key={q.id}>
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
-                        {label}
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1 flex items-center gap-2">
+                        <span>{label}</span>
+                        {q.isPrivate && audience === 'trainer' && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[9px] font-semibold normal-case tracking-normal">
+                            Private
+                          </span>
+                        )}
                       </p>
                       <ReportAnswer
                         type={q.type === 'CUSTOM_FIELD' ? 'SHORT_TEXT' : q.type}

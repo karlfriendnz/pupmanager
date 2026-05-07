@@ -9,7 +9,7 @@ const schema = z.object({
   required: z.boolean().default(false),
   options: z.array(z.string()).optional(),
   order: z.number().default(0),
-  category: z.string().optional(),
+  category: z.string().nullable().optional(),
   appliesTo: z.enum(['OWNER', 'DOG']).default('OWNER'),
 })
 

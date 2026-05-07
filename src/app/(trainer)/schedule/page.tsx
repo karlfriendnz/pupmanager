@@ -60,7 +60,7 @@ export default async function SchedulePage({
       scheduleExtraFields: true,
     },
   })
-  if (!trainerProfile) redirect('/onboarding')
+  if (!trainerProfile) redirect('/login')
 
   // Top up forever-ongoing assignments before fetching sessions, so the
   // current view always includes any newly-generated bookings.

@@ -1,17 +1,17 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 import { MessageThread } from './message-thread'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Messages' }
 
 export default async function ClientMessagesPage() {
-  const session = await auth()
-  if (!session) redirect('/login')
+  const active = await getActiveClient()
+  if (!active) redirect('/login')
 
   const clientProfile = await prisma.clientProfile.findFirst({
-    where: { userId: session.user.id },
+    where: { id: active.clientId },
     include: {
       trainer: { include: { user: { select: { name: true, email: true } } } },
     },
@@ -24,10 +24,14 @@ export default async function ClientMessagesPage() {
     orderBy: { createdAt: 'asc' },
   })
 
-  // Mark unread messages as read for client
-  const unreadIds = messages.filter(m => !m.readAt && m.senderId !== session.user.id).map(m => m.id)
-  if (unreadIds.length > 0) {
-    await prisma.message.updateMany({ where: { id: { in: unreadIds } }, data: { readAt: new Date() } })
+  // Mark unread messages as read — but only when the real client is viewing.
+  // Trainer-in-preview should leave the read state untouched so it still
+  // reflects the client's true unread badge.
+  if (!active.isPreview) {
+    const unreadIds = messages.filter(m => !m.readAt && m.senderId !== active.userId).map(m => m.id)
+    if (unreadIds.length > 0) {
+      await prisma.message.updateMany({ where: { id: { in: unreadIds } }, data: { readAt: new Date() } })
+    }
   }
 
   const trainerName = clientProfile.trainer.user.name ?? clientProfile.trainer.user.email
@@ -47,7 +51,7 @@ export default async function ClientMessagesPage() {
 
       <MessageThread
         clientId={clientProfile.id}
-        currentUserId={session.user.id}
+        currentUserId={active.userId}
         initialMessages={messages.map(m => ({
           id: m.id,
           body: m.body,

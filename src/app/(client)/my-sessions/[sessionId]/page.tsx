@@ -1,8 +1,8 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Clock, MapPin, Video } from 'lucide-react'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 import {
   SessionReport,
   reportBackgroundStyle,
@@ -18,15 +18,16 @@ export default async function ClientSessionPage({
 }: {
   params: Promise<{ sessionId: string }>
 }) {
-  const session = await auth()
-  if (!session || session.user.role !== 'CLIENT') redirect('/login')
+  const active = await getActiveClient()
+  if (!active) redirect('/login')
 
   const { sessionId } = await params
 
   // Resolve the calling client's profile so we can scope the session lookup
-  // to their own records (no cross-client leakage).
+  // to their own records (no cross-client leakage). Trainer-in-preview gets
+  // their previewed client here via getActiveClient.
   const profile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: active.clientId },
     select: { id: true, trainerId: true },
   })
   if (!profile) redirect('/login')

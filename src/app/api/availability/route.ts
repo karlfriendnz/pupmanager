@@ -4,7 +4,9 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
 const schema = z.object({
-  title: z.string().optional(),
+  // The form sends `null` when the title is empty — accept both null and
+  // undefined so the body parses cleanly either way.
+  title: z.string().nullable().optional(),
   dayOfWeek: z.number().int().min(1).max(7).optional().nullable(),
   date: z.string().optional().nullable(),       // ISO date string for one-off
   startTime: z.string().regex(/^\d{2}:\d{2}$/),
@@ -49,7 +51,7 @@ export async function POST(req: Request) {
   const slot = await prisma.availabilitySlot.create({
     data: {
       trainerId,
-      title: parsed.data.title ?? null,
+      title: parsed.data.title?.trim() || null,
       dayOfWeek: parsed.data.dayOfWeek ?? null,
       date: parsed.data.date ? new Date(parsed.data.date) : null,
       startTime: parsed.data.startTime,

@@ -13,11 +13,14 @@ import { TIMEZONES } from '@/lib/timezones'
 import { ImagePlus, Loader2 } from 'lucide-react'
 
 const profileSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  businessName: z.string().min(2),
-  phone: z.string().optional(),
-  timezone: z.string(),
+  name: z.string().min(2, 'Your name is required'),
+  email: z.string().email('Email is required'),
+  businessName: z
+    .string()
+    .min(2, 'Business name is required')
+    .refine(s => s.trim().toLowerCase() !== 'my business', { message: 'Please enter your real business name' }),
+  phone: z.string().min(5, 'Phone number is required'),
+  timezone: z.string().min(1, 'Timezone is required'),
   logoUrl: z.string().url().optional().or(z.literal('')),
   dashboardBgUrl: z.string().url().optional().or(z.literal('')),
   // Hex (#rgb / #rrggbb) — empty string clears to default.
@@ -136,13 +139,13 @@ export function TrainerSettingsForm({
           <h2 className="font-semibold text-slate-900 mb-4">Profile</h2>
           {profileMsg && <Alert variant={profileMsg === 'Saved!' ? 'success' : 'error'} className="mb-3">{profileMsg}</Alert>}
           <form onSubmit={profileForm.handleSubmit(saveProfile)} className="flex flex-col gap-4">
-            <Input label="Your name" error={profileForm.formState.errors.name?.message} {...profileForm.register('name')} />
-            <Input label="Email address" type="email" disabled error={profileForm.formState.errors.email?.message} {...profileForm.register('email')} />
-            <Input label="Business name" error={profileForm.formState.errors.businessName?.message} {...profileForm.register('businessName')} />
-            <Input label="Phone number" type="tel" error={profileForm.formState.errors.phone?.message} {...profileForm.register('phone')} />
+            <Input label="Your name *" error={profileForm.formState.errors.name?.message} {...profileForm.register('name')} />
+            <Input label="Email address *" type="email" disabled error={profileForm.formState.errors.email?.message} {...profileForm.register('email')} />
+            <Input label="Business name *" error={profileForm.formState.errors.businessName?.message} {...profileForm.register('businessName')} />
+            <Input label="Phone number *" type="tel" error={profileForm.formState.errors.phone?.message} {...profileForm.register('phone')} />
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Timezone</label>
+              <label className="text-sm font-medium text-slate-700">Timezone *</label>
               <select className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" {...profileForm.register('timezone')}>
                 {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
               </select>

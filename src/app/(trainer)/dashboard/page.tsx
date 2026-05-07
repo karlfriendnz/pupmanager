@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button'
 import { UserPlus, TrendingUp, Calendar, MapPin, Video, ChevronLeft, ChevronRight, ArrowRight, ShoppingBag, Dog, Users, CheckCircle2, Inbox, type LucideIcon } from 'lucide-react'
 import { WeeklyTasksStat, type WeeklyTask } from './weekly-tasks-stat'
 import { PendingRequestsPanel } from './pending-requests-panel'
+import { OnboardingPanel } from './onboarding-panel'
+import { initTrainerOnboarding } from '@/lib/onboarding/init'
+import { getOnboardingState } from '@/lib/onboarding/state'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
 import type { Metadata } from 'next'
 
@@ -35,7 +38,12 @@ export default async function DashboardPage({
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
+
+  // Idempotent: creates the TrainerOnboardingProgress row + seeds default
+  // achievements on first visit. Cheap (one indexed lookup) on every load after.
+  await initTrainerOnboarding(trainerId)
+  const onboardingState = await getOnboardingState(trainerId)
 
   // Trainer's timezone drives all day-bounds and time formatting on this
   // server-rendered page. Vercel runs Node in UTC so without this every
@@ -193,6 +201,8 @@ export default async function DashboardPage({
         <p className="hidden sm:block text-slate-500 text-sm mt-1">{session.user.businessName}</p>
       </div>
 
+      <OnboardingPanel state={onboardingState} />
+
       {/* Quick actions — top-of-page so primary jobs-to-be-done are one tap away. */}
       <div className="grid grid-cols-4 gap-2 sm:gap-3 mb-8">
         <QuickAction href="/clients/invite" icon={<UserPlus className="h-5 w-5" />} label="Invite client" />
@@ -269,9 +279,11 @@ export default async function DashboardPage({
                     <div className="h-px flex-1 bg-slate-200" />
                   </div>
                 )}
-                <Card
+                <Link
+                  href={`/sessions/${s.id}`}
+                  aria-label={`Open session: ${s.title}`}
                   className={cn(
-                    'p-0 overflow-hidden transition-all hover:shadow-md hover:-translate-y-px',
+                    'block rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden transition-all hover:shadow-md hover:-translate-y-px hover:border-blue-200',
                     isPast && 'opacity-60'
                   )}
                 >
@@ -334,17 +346,17 @@ export default async function DashboardPage({
                       )}
                     </div>
 
-                    {/* Action rail */}
-                    <Link
-                      href={`/sessions/${s.id}`}
-                      aria-label={`Start session: ${s.title}`}
-                      className="group flex-shrink-0 w-14 sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-0 sm:px-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors"
+                    {/* Action rail — visual only, the parent Link handles
+                        navigation now (whole card is clickable). */}
+                    <div
+                      aria-hidden
+                      className="group flex-shrink-0 w-14 sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 px-0 sm:px-3 bg-blue-600 text-white transition-colors"
                     >
                       <span className="hidden sm:inline text-xs font-semibold">Start</span>
-                      <ArrowRight className="h-4 w-4 sm:h-3.5 sm:w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
-                    </Link>
+                      <ArrowRight className="h-4 w-4 sm:h-3.5 sm:w-3.5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
                   </div>
-                </Card>
+                </Link>
                 </div>
               )
             })

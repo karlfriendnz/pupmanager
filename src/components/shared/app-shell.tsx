@@ -39,7 +39,8 @@ const CLIENT_NAV = [
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
   { href: '/my-availability', label: 'Available', icon: CalendarClock },
   { href: '/my-shop', label: 'Shop', icon: ShoppingBag },
-  { href: '/my-messages', label: 'Messages', icon: MessageSquare },
+  // Messaging tab hidden for now — route still works for direct deep links.
+  // { href: '/my-messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-profile', label: 'Profile', icon: User },
 ]
 
@@ -67,65 +68,76 @@ function ClientShell({ children, trainerLogo, businessName }: AppShellProps) {
   return (
     <div className="min-h-[100dvh] bg-slate-50">
       <div className="mx-auto w-full max-w-md md:max-w-2xl lg:max-w-6xl bg-slate-50 min-h-[100dvh] flex flex-col relative">
-        {/* Top brand header */}
+        {/* Top brand header — sticky background spans the page, but the
+            inner row is constrained to the same max-w-3xl as the feed below
+            so logo/menu align with the content column. */}
         <header
-          className="sticky top-0 z-40 flex items-center gap-3 px-5 lg:px-8 h-14 lg:h-16 bg-white/80 backdrop-blur border-b border-slate-100"
+          className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-slate-100"
           style={{ paddingTop: 'env(safe-area-inset-top)' }}
         >
-          {trainerLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-9 w-9 lg:h-10 lg:w-10 rounded-xl object-cover" />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-9 w-9 lg:h-10 lg:w-10 rounded-xl" />
-          )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm lg:text-base font-semibold text-slate-900 truncate leading-tight">{businessName ?? 'PupManager'}</p>
-            <p className="text-[11px] text-slate-400 leading-tight lg:hidden">Your training home</p>
+          <div className="max-w-3xl mx-auto w-full flex items-center gap-3 px-5 lg:px-8 h-14 lg:h-16">
+            {/* Logo always routes back to /home — acts as the client app's
+                home button regardless of which page they're on. */}
+            <Link href="/home" aria-label="Home" className="flex items-center min-w-0 rounded-xl">
+              {trainerLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-9 w-9 lg:h-10 lg:w-10 rounded-xl object-cover" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-9 w-9 lg:h-10 lg:w-10 rounded-xl" />
+              )}
+            </Link>
+
+            {/* Tablet+desktop: nav on the right with icon-on-top,
+                label-underneath. Phone: nav lives in the bottom tab bar so
+                this row only shows the sign-out icon. */}
+            <nav className="hidden md:flex items-center gap-1 ml-auto">
+              {CLIENT_NAV.map((item) => {
+                const active = pathname === item.href || pathname.startsWith(item.href + '/')
+                const Icon = item.icon
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      'flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[11px] font-medium transition-colors',
+                      active
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </nav>
+
+            <button
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              className="p-2 -mr-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors md:ml-2 ml-auto"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
-
-          {/* Desktop: inline tab nav */}
-          <nav className="hidden lg:flex items-center gap-1">
-            {CLIENT_NAV.map((item) => {
-              const active = pathname === item.href || pathname.startsWith(item.href + '/')
-              const Icon = item.icon
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors',
-                    active ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
-
-          <button
-            onClick={() => signOut({ callbackUrl: '/login' })}
-            className="p-2 -mr-2 lg:ml-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
-            aria-label="Sign out"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
         </header>
 
         {/* Main content */}
-        <main className="flex-1 pb-24 lg:pb-8">
+        <main className="flex-1 pb-24 md:pb-8">
           {children}
         </main>
 
-        {/* Mobile/iPad: bottom tab nav */}
+        {/* Phone-only bottom tab nav. Tablet+desktop use the sticky top nav
+            inside the header instead. */}
         <nav
-          className="lg:hidden sticky bottom-0 z-40 bg-white/95 backdrop-blur border-t border-slate-100"
+          className="md:hidden sticky bottom-0 z-40 bg-white/95 backdrop-blur border-t border-slate-100"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           <div className="flex">
-            {CLIENT_NAV.map((item) => {
+            {/* Home is omitted from the mobile tab bar — the trainer logo
+                in the header is the home affordance on mobile. */}
+            {CLIENT_NAV.filter(item => item.href !== '/home').map((item) => {
               const active = pathname === item.href || pathname.startsWith(item.href + '/')
               const Icon = item.icon
               return (
@@ -309,26 +321,31 @@ function TrainerShell({
         </div>
       </aside>
 
-      {/* Mobile sticky brand header */}
+      {/* Mobile sticky brand header — logo centred, avatar tucked right. */}
       <header
-        className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-5 h-14 bg-white/85 backdrop-blur border-b border-slate-100"
+        className="md:hidden sticky top-0 z-30 grid grid-cols-[40px_1fr_40px] items-center px-5 h-14 bg-white/85 backdrop-blur border-b border-slate-100"
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
-        {trainerLogo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-8 rounded-lg object-cover" />
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg" />
-        )}
-        <p className="flex-1 min-w-0 text-sm font-semibold text-slate-900 truncate">
-          {businessName ?? 'PupManager'}
-        </p>
-        <div
-          className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600"
-          title={userName ?? undefined}
-        >
-          {userName?.[0]?.toUpperCase() ?? '?'}
+        <div />
+        <div className="flex flex-col items-center min-w-0">
+          {trainerLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-8 rounded-lg object-cover" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg" />
+          )}
+          <p className="text-[10px] font-medium text-slate-500 truncate leading-tight mt-0.5 max-w-[60vw]">
+            {businessName ?? 'PupManager'}
+          </p>
+        </div>
+        <div className="flex justify-end">
+          <div
+            className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-xs font-semibold text-slate-600"
+            title={userName ?? undefined}
+          >
+            {userName?.[0]?.toUpperCase() ?? '?'}
+          </div>
         </div>
       </header>
 

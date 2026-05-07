@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -8,7 +9,22 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
-import { Plus, Package as PackageIcon, Pencil, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Package as PackageIcon, Pencil, Trash2, X, GripVertical } from 'lucide-react'
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan'
 
@@ -37,6 +53,7 @@ interface PkgRow {
   specialPriceCents: number | null
   color: PackageColor | null
   defaultSessionFormId: string | null
+  requireSessionNotes: boolean
   assignments: number
 }
 
@@ -106,12 +123,16 @@ export function PackagesView({
   initialPackages: PkgRow[]
   sessionForms: SessionFormOption[]
 }) {
+  const router = useRouter()
   const [packages, setPackages] = useState(initialPackages)
   const [editing, setEditing] = useState<PkgRow | null>(null)
   const [showCreate, setShowCreate] = useState(false)
 
   function upsert(p: PkgRow, isNew: boolean) {
     setPackages(prev => isNew ? [p, ...prev] : prev.map(x => x.id === p.id ? p : x))
+    // Refresh server state so the trainer layout (FAB / onboarding state)
+    // sees the new package count and advances the wizard.
+    router.refresh()
   }
 
   async function handleDelete(id: string) {
@@ -120,14 +141,16 @@ export function PackagesView({
     if (res.ok) setPackages(prev => prev.filter(p => p.id !== id))
   }
 
-  async function move(id: string, direction: -1 | 1) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
     setPackages(prev => {
-      const idx = prev.findIndex(p => p.id === id)
-      const target = idx + direction
-      if (idx === -1 || target < 0 || target >= prev.length) return prev
-      const next = prev.slice()
-      ;[next[idx], next[target]] = [next[target], next[idx]]
-      // Persist new order — fire-and-forget; on failure we re-fetch via reload.
+      const oldIndex = prev.findIndex(p => p.id === active.id)
+      const newIndex = prev.findIndex(p => p.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return prev
+      const next = arrayMove(prev, oldIndex, newIndex)
       void fetch('/api/packages/reorder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -141,14 +164,12 @@ export function PackagesView({
 
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Packages</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Bundles of sessions you can assign to clients in one go.
-          </p>
-        </div>
-        <Button onClick={() => setShowCreate(true)}>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Packages</h1>
+        <p className="text-sm text-slate-500 mt-1 mb-3">
+          Bundles of sessions you can assign to clients in one go.
+        </p>
+        <Button size="sm" onClick={() => setShowCreate(true)}>
           <Plus className="h-4 w-4" /> New package
         </Button>
       </div>
@@ -161,93 +182,24 @@ export function PackagesView({
           </CardBody>
         </Card>
       ) : (
-        <div className="flex flex-col gap-2">
-          {packages.map((p, idx) => {
-            const isFirst = idx === 0
-            const isLast = idx === packages.length - 1
-            return (
-              <Card key={p.id} className="hover:border-blue-100 transition-colors">
-                <CardBody className="py-4">
-                  <div className="flex items-start gap-4">
-                    {/* Reorder controls */}
-                    <div className="flex flex-col flex-shrink-0">
-                      <button
-                        onClick={() => move(p.id, -1)}
-                        disabled={isFirst}
-                        className="p-0.5 text-slate-300 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        aria-label="Move up"
-                      >
-                        <ChevronUp className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => move(p.id, 1)}
-                        disabled={isLast}
-                        className="p-0.5 text-slate-300 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        aria-label="Move down"
-                      >
-                        <ChevronDown className="h-4 w-4" />
-                      </button>
-                    </div>
-
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-xl flex-shrink-0 ${packageIconClasses(p.color)}`}>
-                      <PackageIcon className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2 flex-wrap">
-                        <p className="font-semibold text-slate-900">{p.name}</p>
-                        {p.priceCents !== null && (
-                          <span className="text-sm font-medium text-slate-700">
-                            {p.specialPriceCents !== null ? (
-                              <>
-                                <span className="text-emerald-600">{formatPrice(p.specialPriceCents)}</span>
-                                <span className="text-slate-400 line-through ml-1.5 text-xs">{formatPrice(p.priceCents)}</span>
-                              </>
-                            ) : (
-                              formatPrice(p.priceCents)
-                            )}
-                          </span>
-                        )}
-                      </div>
-                      {p.description && <p className="text-sm text-slate-500 mt-0.5">{p.description}</p>}
-                      <div className="flex items-center gap-3 text-xs text-slate-400 mt-1.5 flex-wrap">
-                        <span>{p.sessionCount === 0 ? 'Ongoing' : `${p.sessionCount} sessions`}</span>
-                        <span>·</span>
-                        <span>{p.weeksBetween === 0 ? 'No spacing' : `every ${p.weeksBetween} week${p.weeksBetween > 1 ? 's' : ''}`}</span>
-                        <span>·</span>
-                        <span>{p.durationMins} min</span>
-                        <span>·</span>
-                        <span>{p.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'}</span>
-                        {p.assignments > 0 && (
-                          <>
-                            <span>·</span>
-                            <span className="text-blue-600">{p.assignments} assigned</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => setEditing(p)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                        aria-label="Edit"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(p.id)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                        aria-label="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </CardBody>
-              </Card>
-            )
-          })}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={packages.map(p => p.id)} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col gap-2">
+              {packages.map(p => (
+                <SortablePackageRow
+                  key={p.id}
+                  pkg={p}
+                  showHandle={packages.length > 1}
+                  onEdit={() => setEditing(p)}
+                  onDelete={() => handleDelete(p.id)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
+
+      {/* Sortable row defined inline — closes over edit/delete handlers via props. */}
 
       {(showCreate || editing) && (
         <PackageModal
@@ -257,6 +209,103 @@ export function PackagesView({
           onSaved={(p, isNew) => { upsert(p, isNew); setShowCreate(false); setEditing(null) }}
         />
       )}
+    </div>
+  )
+}
+
+// Sortable package row — wraps the existing card layout with a drag handle
+// and useSortable. Drag handle only appears when there's more than one
+// package (nothing to reorder when there's one).
+function SortablePackageRow({
+  pkg: p,
+  showHandle,
+  onEdit,
+  onDelete,
+}: {
+  pkg: PkgRow
+  showHandle: boolean
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.id })
+  const style = {
+    transform: transform ? CSS.Transform.toString(transform) : undefined,
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <Card className="hover:border-blue-100 transition-colors">
+        <CardBody className="px-4 py-3">
+          <div className="flex items-center gap-3">
+            {showHandle && (
+              <button
+                type="button"
+                {...attributes}
+                {...listeners}
+                className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing"
+                aria-label="Drag to reorder"
+              >
+                <GripVertical className="h-4 w-4" />
+              </button>
+            )}
+
+            <div className={`flex h-10 w-10 items-center justify-center rounded-xl flex-shrink-0 ${packageIconClasses(p.color)}`}>
+              <PackageIcon className="h-5 w-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <p className="font-semibold text-slate-900">{p.name}</p>
+                {p.priceCents !== null && (
+                  <span className="text-sm font-medium text-slate-700">
+                    {p.specialPriceCents !== null ? (
+                      <>
+                        <span className="text-emerald-600">{formatPrice(p.specialPriceCents)}</span>
+                        <span className="text-slate-400 line-through ml-1.5 text-xs">{formatPrice(p.priceCents)}</span>
+                      </>
+                    ) : (
+                      formatPrice(p.priceCents)
+                    )}
+                  </span>
+                )}
+              </div>
+              {p.description && <p className="text-sm text-slate-500 mt-0.5">{p.description}</p>}
+              <div className="flex items-center gap-3 text-xs text-slate-400 mt-1.5 flex-wrap">
+                <span>{p.sessionCount === 0 ? 'Ongoing' : `${p.sessionCount} sessions`}</span>
+                <span>·</span>
+                <span>{p.weeksBetween === 0 ? 'No spacing' : `every ${p.weeksBetween} week${p.weeksBetween > 1 ? 's' : ''}`}</span>
+                <span>·</span>
+                <span>{p.durationMins} min</span>
+                <span>·</span>
+                <span>{p.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'}</span>
+                {p.assignments > 0 && (
+                  <>
+                    <span>·</span>
+                    <span className="text-blue-600">{p.assignments} assigned</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={onEdit}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                aria-label="Edit"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                onClick={onDelete}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                aria-label="Delete"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
     </div>
   )
 }
@@ -275,6 +324,7 @@ function PackageModal({
   const [error, setError] = useState<string | null>(null)
   const [color, setColor] = useState<PackageColor | null>(existing?.color ?? null)
   const [defaultSessionFormId, setDefaultSessionFormId] = useState<string | null>(existing?.defaultSessionFormId ?? null)
+  const [requireSessionNotes, setRequireSessionNotes] = useState<boolean>(existing?.requireSessionNotes ?? true)
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: existing
@@ -308,6 +358,7 @@ function PackageModal({
         specialPriceCents: dollarsToCents(specialPrice),
         color,
         defaultSessionFormId,
+        requireSessionNotes,
       }),
     })
     if (!res.ok) { setError('Failed to save.'); return }
@@ -325,6 +376,7 @@ function PackageModal({
         specialPriceCents: saved.specialPriceCents ?? null,
         color: saved.color ?? null,
         defaultSessionFormId: saved.defaultSessionFormId ?? null,
+        requireSessionNotes: saved.requireSessionNotes ?? true,
         assignments: existing?.assignments ?? 0,
       },
       !existing
@@ -344,7 +396,7 @@ function PackageModal({
         <form onSubmit={handleSubmit(onSubmit)} className="p-5 flex flex-col gap-3">
           {error && <Alert variant="error">{error}</Alert>}
 
-          <Input label="Name" placeholder="Paws 2" error={errors.name?.message} {...register('name')} />
+          <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
@@ -427,6 +479,21 @@ function PackageModal({
               {sessionForms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </div>
+
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={requireSessionNotes}
+              onChange={e => setRequireSessionNotes(e.target.checked)}
+              className="h-4 w-4 mt-0.5"
+            />
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium text-slate-700">Send a follow-up reminder for session notes</span>
+              <span className="block text-[11px] text-slate-400 mt-0.5">
+                Sends a push near the end of each session in this package nudging you to write notes. Turn off for drop-in classes or anything that doesn&apos;t need a follow-up.
+              </span>
+            </span>
+          </label>
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Schedule colour</label>

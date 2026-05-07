@@ -46,8 +46,8 @@ enum SessionStatus {
 }
 
 enum MessageChannel {
-  TRAINER_CLIENT   // visible to client
-  TRAINER_TRAINER  // private between trainers
+  TRAINER_CLIENT // visible to client
+  TRAINER_TRAINER // private between trainers
 }
 
 enum CustomFieldType {
@@ -62,9 +62,9 @@ enum ProductKind {
 }
 
 enum ProductRequestStatus {
-  PENDING    // client wants this, hasn't been delivered yet
-  FULFILLED  // trainer marked it delivered (linked to a session)
-  CANCELLED  // client withdrew the request, or trainer dismissed it
+  PENDING // client wants this, hasn't been delivered yet
+  FULFILLED // trainer marked it delivered (linked to a session)
+  CANCELLED // client withdrew the request, or trainer dismissed it
 }
 
 // ─── Core User ───────────────────────────────────────────────────────────────
@@ -115,12 +115,12 @@ enum DevicePlatform {
 // What kind of event a notification is for. Add new variants as we wire up
 // more triggers — the preference matrix UI renders one row per type.
 enum NotificationType {
-  SESSION_REMINDER             // n minutes before a TrainingSession starts
-  SESSION_NOTES_REMINDER       // n minutes before a TrainingSession ends — prompts the trainer to write session notes
-  NEW_CLIENT_INVITE_ACCEPTED   // a client used the invite link to sign up
-  CLIENT_COMPLETED_TASKS       // a client completed all of today's tasks
-  NEW_MESSAGE                  // a new in-app message landed
-  DAILY_SUMMARY                // morning digest of today's sessions/tasks
+  SESSION_REMINDER // n minutes before a TrainingSession starts
+  SESSION_NOTES_REMINDER // n minutes before a TrainingSession ends — prompts the trainer to write session notes
+  NEW_CLIENT_INVITE_ACCEPTED // a client used the invite link to sign up
+  CLIENT_COMPLETED_TASKS // a client completed all of today's tasks
+  NEW_MESSAGE // a new in-app message landed
+  DAILY_SUMMARY // morning digest of today's sessions/tasks
 }
 
 enum NotificationChannel {
@@ -155,12 +155,12 @@ model NotificationPreference {
 }
 
 model DeviceToken {
-  id        String         @id @default(cuid())
-  userId    String
-  token     String         @unique
-  platform  DevicePlatform
-  createdAt DateTime       @default(now())
-  lastSeenAt DateTime      @default(now())
+  id         String         @id @default(cuid())
+  userId     String
+  token      String         @unique
+  platform   DevicePlatform
+  createdAt  DateTime       @default(now())
+  lastSeenAt DateTime       @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -215,13 +215,13 @@ model VerificationToken {
 // ─── Trainer Profile ─────────────────────────────────────────────────────────
 
 model TrainerProfile {
-  id              String  @id @default(cuid())
-  userId          String  @unique
-  businessName    String
-  phone           String?
-  logoUrl         String?
-  dashboardBgUrl  String? // background image shown on the client home dashboard
-  inviteTemplate  String? @db.Text // customisable invite email template
+  id               String  @id @default(cuid())
+  userId           String  @unique
+  businessName     String
+  phone            String?
+  logoUrl          String?
+  dashboardBgUrl   String? // background image shown on the client home dashboard
+  inviteTemplate   String? @db.Text // customisable invite email template
   // Hex colour for the accent strip across the top of outbound emails.
   // Falls back to a violet default when null.
   emailAccentColor String?
@@ -232,18 +232,27 @@ model TrainerProfile {
 
   // Schedule view preferences — controls the visible hour range and which
   // weekdays render in the week grid. Days are 1=Mon..7=Sun.
-  scheduleStartHour Int  @default(7)   // inclusive
-  scheduleEndHour   Int  @default(21)  // exclusive (last hour shown is end-1)
-  scheduleDays      Json @default("[1,2,3,4,5,6,7]")
+  scheduleStartHour   Int     @default(7) // inclusive
+  scheduleEndHour     Int     @default(21) // exclusive (last hour shown is end-1)
+  scheduleDays        Json    @default("[1,2,3,4,5,6,7]")
   // Up to 2 extra fields rendered on schedule blocks. Allowed ids:
   // "location" | "description" | "sessionType" | "duration" | "title"
-  scheduleExtraFields Json @default("[]")
+  scheduleExtraFields Json    @default("[]")
+  // Ordered list of intake-form section names (string[]). Lets trainers create
+  // empty sections and drag fields into them; without this, a section only
+  // "existed" if at least one field had that category. Fields whose category
+  // doesn't appear in this list pile into a "Fields without a section" bucket.
+  intakeSectionOrder  Json    @default("[]")
+  // Whether the intake form is published (visible to clients). Defaults to
+  // false so newly-seeded intake fields don't go live until the trainer
+  // explicitly publishes from the intake editor.
+  intakeFormPublished Boolean @default(false)
   // Trainer-chosen visible columns on /clients. Allowed ids:
   // "email" | "dog" | "breed" | "extraDogs" | "nextSession" | "compliance" | "shared" | "custom:<id>"
-  clientListColumns Json @default("[\"email\",\"dog\",\"nextSession\",\"compliance\"]")
+  clientListColumns   Json    @default("[\"email\",\"dog\",\"nextSession\",\"compliance\"]")
   // Grouping for /clients. null = flat list. "nextDay" = group by day of
   // next booking. "custom:<id>" = group by custom-field value.
-  clientListGroupBy String?
+  clientListGroupBy   String?
 
   // Subscription
   subscriptionPlanId String?
@@ -252,13 +261,13 @@ model TrainerProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subscriptionPlan  SubscriptionPlan? @relation(fields: [subscriptionPlanId], references: [id])
-  clients           ClientProfile[]
-  sharedClients     ClientShare[]     @relation("SharedByTrainer")
-  receivedClients   ClientShare[]     @relation("SharedWithTrainer")
-  trainingSessions  TrainingSession[]
-  trainingTemplates TrainingTemplate[]
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionPlan   SubscriptionPlan?          @relation(fields: [subscriptionPlanId], references: [id])
+  clients            ClientProfile[]
+  sharedClients      ClientShare[]              @relation("SharedByTrainer")
+  receivedClients    ClientShare[]              @relation("SharedWithTrainer")
+  trainingSessions   TrainingSession[]
+  trainingTemplates  TrainingTemplate[]
   customFields       CustomField[]
   libraryTypes       LibraryType[]
   embedForms         EmbedForm[]
@@ -270,6 +279,7 @@ model TrainerProfile {
   sessionForms       SessionForm[]
   products           Product[]
   achievements       Achievement[]
+  onboardingProgress TrainerOnboardingProgress?
 
   @@map("trainer_profiles")
 }
@@ -279,7 +289,7 @@ model TrainerProfile {
 model ClientProfile {
   id        String  @id @default(cuid())
   userId    String  @unique
-  trainerId String  // primary trainer
+  trainerId String // primary trainer
   dogId     String? // set after onboarding
   status    String  @default("ACTIVE") // "ACTIVE" | "INACTIVE"
 
@@ -293,9 +303,9 @@ model ClientProfile {
   diaryEntries      TrainingTask[]
   trainingSessions  TrainingSession[]
   shares            ClientShare[]
-  messages          Message[]          @relation("ClientMessages")
+  messages          Message[]            @relation("ClientMessages")
   customFieldValues CustomFieldValue[]
-  dogs              Dog[]              @relation("AdditionalDogs")
+  dogs              Dog[]                @relation("AdditionalDogs")
   notifications     ClientNotification[]
   clientPackages    ClientPackage[]
   productRequests   ProductRequest[]
@@ -311,19 +321,19 @@ model Dog {
   id              String    @id @default(cuid())
   name            String
   breed           String?
-  weight          Float?    // kg
+  weight          Float? // kg
   dob             DateTime?
   photoUrl        String?
   notes           String?   @db.Text
-  clientProfileId String?   // owner (for additional dogs in a household)
+  clientProfileId String? // owner (for additional dogs in a household)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  primaryFor ClientProfile[]  @relation("PrimaryDog")
-  owner      ClientProfile?   @relation("AdditionalDogs", fields: [clientProfileId], references: [id])
-  sessions   TrainingSession[]
-  tasks      TrainingTask[]
+  primaryFor    ClientProfile[]   @relation("PrimaryDog")
+  owner         ClientProfile?    @relation("AdditionalDogs", fields: [clientProfileId], references: [id])
+  sessions      TrainingSession[]
+  tasks         TrainingTask[]
   buddySessions SessionBuddy[]
 
   @@index([clientProfileId])
@@ -355,22 +365,22 @@ model ClientShare {
 model TrainingTask {
   id          String   @id @default(cuid())
   clientId    String
-  dogId       String?  // optional: which dog this task is for
-  sessionId   String?  // optional: linked training session
+  dogId       String? // optional: which dog this task is for
+  sessionId   String? // optional: linked training session
   date        DateTime @db.Date
   title       String
   description String?  @db.Text
   repetitions Int?
-  videoUrl    String?  // trainer-provided instructional link
-  trainerNote String?  @db.Text   // per-task comment from the trainer
+  videoUrl    String? // trainer-provided instructional link
+  trainerNote String?  @db.Text // per-task comment from the trainer
   imageUrls   Json     @default("[]") // string[] of public image URLs
   order       Int      @default(0) // display order within a session
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  client     ClientProfile   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  dog        Dog?            @relation(fields: [dogId], references: [id])
+  client     ClientProfile    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dog        Dog?             @relation(fields: [dogId], references: [id])
   session    TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   completion TaskCompletion?
 
@@ -385,8 +395,8 @@ model TaskCompletion {
   taskId      String   @unique
   completedAt DateTime @default(now())
   note        String?  @db.Text
-  videoUrl    String?  // client-submitted link
-  videoS3Key  String?  // native video upload (S3)
+  videoUrl    String? // client-submitted link
+  videoS3Key  String? // native video upload (S3)
 
   task TrainingTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
@@ -396,39 +406,39 @@ model TaskCompletion {
 // ─── Scheduling ──────────────────────────────────────────────────────────────
 
 model TrainingSession {
-  id          String      @id @default(cuid())
-  trainerId   String
-  clientId    String?     // direct client link (optional, in addition to dogId)
-  dogId       String?
+  id              String        @id @default(cuid())
+  trainerId       String
+  clientId        String? // direct client link (optional, in addition to dogId)
+  dogId           String?
   clientPackageId String? // membership in an assigned package
-  title       String
-  description String?     @db.Text
-  scheduledAt DateTime
-  durationMins Int        @default(60)
-  sessionType SessionType   @default(IN_PERSON)
-  status      SessionStatus @default(UPCOMING)
-  location    String?
-  virtualLink String?
+  title           String
+  description     String?       @db.Text
+  scheduledAt     DateTime
+  durationMins    Int           @default(60)
+  sessionType     SessionType   @default(IN_PERSON)
+  status          SessionStatus @default(UPCOMING)
+  location        String?
+  virtualLink     String?
 
   googleCalendarEventId String?
 
   // Set when the "starting in ~20 min" push reminder has been delivered to the
   // trainer, so the cron loop never sends two pushes for the same session.
-  reminderPushSentAt DateTime?
+  reminderPushSentAt      DateTime?
   // Same idea for the "ends in ~5 min — write session notes" reminder.
   notesReminderPushSentAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  client  ClientProfile? @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  dog     Dog?           @relation(fields: [dogId], references: [id])
-  clientPackage ClientPackage? @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
-  tasks   TrainingTask[]
-  formResponses SessionFormResponse[]
+  trainer                  TrainerProfile        @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  client                   ClientProfile?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  dog                      Dog?                  @relation(fields: [dogId], references: [id])
+  clientPackage            ClientPackage?        @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
+  tasks                    TrainingTask[]
+  formResponses            SessionFormResponse[]
   fulfilledProductRequests ProductRequest[]
-  buddies SessionBuddy[]
+  buddies                  SessionBuddy[]
 
   @@index([trainerId])
   @@index([clientId])
@@ -472,9 +482,9 @@ model Product {
   // Required for DIGITAL products — the file the customer downloads. Public URL
   // (e.g. Vercel Blob) or signed URL handed out at access time.
   downloadUrl String?
-  category    String?     // free-form trainer-defined grouping ("Treats", "Guides")
+  category    String? // free-form trainer-defined grouping ("Treats", "Guides")
   featured    Boolean     @default(false) // surfaces on the client home dashboard
-  active      Boolean     @default(true)  // hide from clients without deleting
+  active      Boolean     @default(true) // hide from clients without deleting
   order       Int         @default(0)
 
   createdAt DateTime @default(now())
@@ -492,10 +502,10 @@ model Product {
 // onto each successive upcoming session until the trainer marks it FULFILLED
 // (typically because they handed the item over at a session) or CANCELLED.
 model ProductRequest {
-  id        String                @id @default(cuid())
+  id        String               @id @default(cuid())
   clientId  String
   productId String
-  status    ProductRequestStatus  @default(PENDING)
+  status    ProductRequestStatus @default(PENDING)
 
   // Optional notes from the client when they request (e.g. "for Bella, size L")
   note String? @db.Text
@@ -508,9 +518,9 @@ model ProductRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  client            ClientProfile   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  fulfilledSession  TrainingSession? @relation(fields: [fulfilledSessionId], references: [id], onDelete: SetNull)
+  client           ClientProfile    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  product          Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fulfilledSession TrainingSession? @relation(fields: [fulfilledSessionId], references: [id], onDelete: SetNull)
 
   @@index([clientId, status])
   @@index([productId])
@@ -520,25 +530,29 @@ model ProductRequest {
 // ─── Packages ─────────────────────────────────────────────────────────────────
 
 model Package {
-  id           String   @id @default(cuid())
-  trainerId    String
-  name         String
-  description  String?  @db.Text
-  sessionCount Int      @default(3)
-  weeksBetween Int      @default(2)   // gap between sessions, in weeks
-  durationMins Int      @default(60)  // default duration applied to created sessions
-  sessionType  SessionType @default(IN_PERSON)
+  id                   String      @id @default(cuid())
+  trainerId            String
+  name                 String
+  description          String?     @db.Text
+  sessionCount         Int         @default(3)
+  weeksBetween         Int         @default(2) // gap between sessions, in weeks
+  durationMins         Int         @default(60) // default duration applied to created sessions
+  sessionType          SessionType @default(IN_PERSON)
   // Prices in cents to avoid float precision issues. specialPriceCents is an
   // optional discounted price the trainer can offer for promotions, etc.
-  priceCents        Int? // null = unpriced
-  specialPriceCents Int? // null = no special price
+  priceCents           Int? // null = unpriced
+  specialPriceCents    Int? // null = no special price
   // Optional schedule colour (Tailwind palette key, eg "blue"). When set,
   // sessions assigned to this package render in that colour on the calendar.
-  color        String?
-  order        Int      @default(0)   // display order, lowest first
+  color                String?
+  order                Int         @default(0) // display order, lowest first
   // Optional default session form. When a session is opened with this package
   // and no form responses exist, the default form is auto-attached.
   defaultSessionFormId String?
+  // When false, suppress the SESSION_NOTES_REMINDER push for sessions in this
+  // package. Some packages (e.g. drop-in classes) don't need a follow-up.
+  // Defaults to true so existing packages keep firing reminders.
+  requireSessionNotes  Boolean     @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -553,14 +567,14 @@ model Package {
 }
 
 model ClientPackage {
-  id         String   @id @default(cuid())
-  packageId  String
-  clientId   String
-  startDate  DateTime
-  assignedAt DateTime @default(now())
+  id                 String   @id @default(cuid())
+  packageId          String
+  clientId           String
+  startDate          DateTime
+  assignedAt         DateTime @default(now())
   // When true, the schedule auto-creates more sessions on the package's
   // cadence so the calendar always has ~6 weeks of sessions ahead.
-  extendIndefinitely Boolean @default(false)
+  extendIndefinitely Boolean  @default(false)
 
   package  Package           @relation(fields: [packageId], references: [id], onDelete: Cascade)
   client   ClientProfile     @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -578,18 +592,22 @@ model ClientPackage {
 // can reorder/add/remove without schema migrations:
 //   [{ id, label, type: 'SHORT_TEXT'|'LONG_TEXT'|'NUMBER'|'RATING_1_5', required }]
 model SessionForm {
-  id          String   @id @default(cuid())
-  trainerId   String
-  name        String
-  description String?  @db.Text
-  introText   String?  @db.Text   // shown above the questions during fill + on the report
-  closingText String?  @db.Text   // shown below the questions during fill + on the report
+  id              String  @id @default(cuid())
+  trainerId       String
+  name            String
+  description     String? @db.Text
+  introText       String? @db.Text // shown above the questions during fill + on the report
+  closingText     String? @db.Text // shown below the questions during fill + on the report
   // Visual treatment for the client-facing report. backgroundUrl wins over
   // backgroundColor when both are set.
   backgroundColor String? // hex/CSS colour, e.g. "#fef3c7"
   backgroundUrl   String? // public image URL, applied as a tiled cover
-  questions   Json     @default("[]")
-  order       Int      @default(0)
+  questions       Json    @default("[]")
+  order           Int     @default(0)
+  // When false the form is a draft — hidden from the trainer's session-form
+  // picker. New defaults seeded by the onboarding init helper start as drafts
+  // so trainers review them before they're usable in real sessions.
+  isActive        Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -606,17 +624,17 @@ model SessionForm {
 // responses (multiple forms attached). `answers` is a JSON object keyed by
 // question id → string (we store everything as text; rendering interprets it).
 model SessionFormResponse {
-  id        String   @id @default(cuid())
-  sessionId String
-  formId    String
-  answers   Json     @default("{}")
+  id               String  @id @default(cuid())
+  sessionId        String
+  formId           String
+  answers          Json    @default("{}")
   // Per-question image lists, keyed by question id → string[] of URLs
-  imagesByQuestion Json @default("{}")
+  imagesByQuestion Json    @default("{}")
   // Trainer-authored top/bottom messages for the report. Optional and
   // independent of the form template's introText/closingText (which act as
   // suggested defaults the trainer can copy in).
-  introMessage   String? @db.Text
-  closingMessage String? @db.Text
+  introMessage     String? @db.Text
+  closingMessage   String? @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -650,7 +668,7 @@ model TrainingTemplate {
 model TemplateTask {
   id          String  @id @default(cuid())
   templateId  String
-  dayOffset   Int     // day 1, 2, 3... from program start
+  dayOffset   Int // day 1, 2, 3... from program start
   title       String
   description String? @db.Text
   repetitions Int?
@@ -665,12 +683,12 @@ model TemplateTask {
 // ─── Messaging ────────────────────────────────────────────────────────────────
 
 model Message {
-  id        String         @id @default(cuid())
-  channel   MessageChannel
-  clientId  String         // the client this message thread relates to
-  senderId  String
-  body      String         @db.Text
-  readAt    DateTime?
+  id       String         @id @default(cuid())
+  channel  MessageChannel
+  clientId String // the client this message thread relates to
+  senderId String
+  body     String         @db.Text
+  readAt   DateTime?
 
   createdAt DateTime @default(now())
 
@@ -686,12 +704,12 @@ model Message {
 // ─── Notifications ────────────────────────────────────────────────────────────
 
 model Notification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   title     String
   body      String
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@map("notifications")
 }
@@ -704,9 +722,9 @@ model CustomField {
   label     String
   type      CustomFieldType
   required  Boolean         @default(false)
-  options   Json?           // string[] for DROPDOWN
+  options   Json? // string[] for DROPDOWN
   order     Int             @default(0)
-  category  String?         // optional grouping label
+  category  String? // optional grouping label
   appliesTo String          @default("OWNER") // "OWNER" | "DOG"
 
   createdAt DateTime @default(now())
@@ -739,13 +757,13 @@ model CustomFieldValue {
 // ─── Subscription Plans ───────────────────────────────────────────────────────
 
 model SubscriptionPlan {
-  id              String  @id @default(cuid())
-  name            String
-  description     String? @db.Text
-  priceMonthly    Float
-  maxClients      Int?    // null = unlimited
-  featureFlags    Json    @default("{}")
-  isActive        Boolean @default(true)
+  id           String  @id @default(cuid())
+  name         String
+  description  String? @db.Text
+  priceMonthly Float
+  maxClients   Int? // null = unlimited
+  featureFlags Json    @default("{}")
+  isActive     Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -824,18 +842,18 @@ model ClientNotification {
 // ─── Trainer Availability ─────────────────────────────────────────────────────
 
 model AvailabilitySlot {
-  id          String    @id @default(cuid())
-  trainerId   String
-  title       String?
-  dayOfWeek   Int?      // 1=Mon … 7=Sun; null = one-off date
-  date        DateTime? @db.Date
-  startTime   String    // "HH:MM" 24-hr
-  endTime     String    // "HH:MM" 24-hr
+  id           String    @id @default(cuid())
+  trainerId    String
+  title        String?
+  dayOfWeek    Int? // 1=Mon … 7=Sun; null = one-off date
+  date         DateTime? @db.Date
+  startTime    String // "HH:MM" 24-hr
+  endTime      String // "HH:MM" 24-hr
   // 1 = weekly, 2 = fortnightly, etc. Only used when dayOfWeek is set.
-  cadenceWeeks Int      @default(1)
+  cadenceWeeks Int       @default(1)
   // Anchor date for cadence > 1 — defines parity (e.g. which fortnight is "on").
   firstDate    DateTime? @db.Date
-  createdAt   DateTime  @default(now())
+  createdAt    DateTime  @default(now())
 
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
 
@@ -884,20 +902,24 @@ enum AchievementTrigger {
 // MANUAL achievement (trainer awards from the client profile) *or* an automatic
 // rule with a trigger type and threshold (system awards via evaluateAchievementsFor).
 model Achievement {
-  id          String   @id @default(cuid())
-  trainerId   String
-  name        String
-  description String?  @db.Text
-  icon        String?
-  color       String?
-  order       Int      @default(0)
+  id           String             @id @default(cuid())
+  trainerId    String
+  name         String
+  description  String?            @db.Text
+  icon         String?
+  color        String?
+  order        Int                @default(0)
+  // When false the achievement is hidden from clients and not auto-awarded.
+  // Trainers use this to draft new achievements before surfacing them or to
+  // pause an existing one without deleting it.
+  published    Boolean            @default(true)
   // Auto-award rule. MANUAL = no auto-award; the rest are evaluated by the
   // awarder helper when relevant counters change. triggerValue is the integer
   // threshold (eg 5 for "5 sessions"); null for binary triggers.
   triggerType  AchievementTrigger @default(MANUAL)
   triggerValue Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   trainer TrainerProfile      @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   awards  ClientAchievement[]
@@ -958,34 +980,34 @@ model EmbedForm {
 // even if the embed form's field config changes later.
 
 model Enquiry {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   trainerId String
-  formId    String?  // null if the source form was deleted
+  formId    String? // null if the source form was deleted
 
   // Snapshot of form values at submit time
-  name      String
-  email     String
-  phone     String?
-  dogName   String?
-  dogBreed  String?
-  dogWeight Float?
-  dogDob    DateTime?
-  message   String?  @db.Text
+  name              String
+  email             String
+  phone             String?
+  dogName           String?
+  dogBreed          String?
+  dogWeight         Float?
+  dogDob            DateTime?
+  message           String?   @db.Text
   // { customFieldId: value } map of custom-field answers, snapshotted
-  customFieldValues Json @default("{}")
+  customFieldValues Json      @default("{}")
 
-  status         EnquiryStatus @default(NEW)
+  status          EnquiryStatus @default(NEW)
   // Set when the trainer first opens the enquiry — drives the dashboard badge.
-  viewedAt       DateTime?
+  viewedAt        DateTime?
   // Populated after Accept; gives a forward link to the resulting client.
-  clientProfileId String?      @unique
+  clientProfileId String?       @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trainer       TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  form          EmbedForm?     @relation(fields: [formId], references: [id], onDelete: SetNull)
-  clientProfile ClientProfile? @relation(fields: [clientProfileId], references: [id], onDelete: SetNull)
+  trainer       TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  form          EmbedForm?       @relation(fields: [formId], references: [id], onDelete: SetNull)
+  clientProfile ClientProfile?   @relation(fields: [clientProfileId], references: [id], onDelete: SetNull)
   messages      EnquiryMessage[]
 
   @@index([trainerId, status])
@@ -1004,17 +1026,128 @@ enum EnquiryStatus {
 // inbound threading) so direction is implicit-outbound; we still keep the
 // column to make v2 (Gmail/Microsoft OAuth, two-way) a non-breaking change.
 model EnquiryMessage {
-  id          String   @id @default(cuid())
-  enquiryId   String
-  direction   String   @default("OUTBOUND") // "OUTBOUND" | "INBOUND"
-  subject     String
-  bodyText    String   @db.Text
+  id           String   @id @default(cuid())
+  enquiryId    String
+  direction    String   @default("OUTBOUND") // "OUTBOUND" | "INBOUND"
+  subject      String
+  bodyText     String   @db.Text
   // Trainer (User) who composed and sent this. Null if system-generated.
   sentByUserId String?
-  createdAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
 
   @@index([enquiryId, createdAt])
   @@map("enquiry_messages")
+}
+
+// ─── Onboarding ──────────────────────────────────────────────────────────────
+
+// Admin-editable wizard step content. The trainer-facing wizard reads
+// `publishedAt IS NOT NULL` rows ordered by `order`. Per-trainer state lives
+// in TrainerOnboardingStepProgress, joined by `key` (no FK so admins can
+// rename keys without cascading through trainer history).
+model OnboardingStep {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  order       Int       @default(0)
+  title       String
+  body        String    @db.Text
+  ctaLabel    String
+  ctaHref     String
+  skippable   Boolean   @default(true)
+  skipWarning String?   @db.Text
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("onboarding_steps")
+}
+
+// Admin-editable email template + send rule. The cron sender evaluates each
+// published row's triggerRule against trainer state and dispatches via Resend.
+// `senderKey` selects the founder voice ("karl" | "brooke") for from-address
+// and signature.
+model OnboardingEmail {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  subject     String
+  body        String    @db.Text
+  senderKey   String    @default("karl")
+  // Examples:
+  //   { "type": "on_signup" }
+  //   { "type": "after_signup", "hours": 24, "requireStepIncomplete": "business_profile" }
+  //   { "type": "after_first_invite_sent", "hours": 24, "requireNoClientSignedIn": true }
+  //   { "type": "on_aha_reached" }
+  triggerRule Json
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("onboarding_emails")
+}
+
+// One row per trainer, created on first dashboard load. ahaReachedAt fires
+// when this trainer's first non-sample client signs in for the first time.
+model TrainerOnboardingProgress {
+  id                   String    @id @default(cuid())
+  trainerId            String    @unique
+  startedAt            DateTime  @default(now())
+  ahaReachedAt         DateTime?
+  // Timestamp of the trainer's first sent client invite — anchors the
+  // chase-sequence drips (emails 3 and 4).
+  firstInviteSentAt    DateTime?
+  // Trainer dismissed the dashboard checklist widget independently of completion.
+  checklistDismissedAt DateTime?
+  // Set on the row when it was created via post-deploy backfill (trainer
+  // existed before onboarding shipped). Suppresses auto-modal — instead the
+  // dashboard shows a one-time opt-in banner. Null = fresh signup.
+  backfilledAt         DateTime?
+  // Set when the trainer dismissed the first-visit welcome modal — either by
+  // clicking "Start the quick setup" or "Skip". Once set, the welcome never
+  // shows again (the wizard / checklist take over).
+  welcomeShownAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer TrainerProfile                  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  steps   TrainerOnboardingStepProgress[]
+  emails  TrainerOnboardingEmailLog[]
+
+  @@map("trainer_onboarding_progress")
+}
+
+// Per-trainer per-step state. `stepKey` is denormalised — no FK to
+// OnboardingStep so admins can rename/delete steps without orphaning trainers.
+model TrainerOnboardingStepProgress {
+  id          String    @id @default(cuid())
+  progressId  String
+  stepKey     String
+  startedAt   DateTime?
+  completedAt DateTime?
+  skippedAt   DateTime?
+
+  progress TrainerOnboardingProgress @relation(fields: [progressId], references: [id], onDelete: Cascade)
+
+  @@unique([progressId, stepKey])
+  @@index([progressId])
+  @@map("trainer_onboarding_step_progress")
+}
+
+// Idempotency log — `@@unique([progressId, emailKey])` prevents the cron
+// sender from resending the same drip to the same trainer.
+model TrainerOnboardingEmailLog {
+  id         String   @id @default(cuid())
+  progressId String
+  emailKey   String
+  sentAt     DateTime @default(now())
+
+  progress TrainerOnboardingProgress @relation(fields: [progressId], references: [id], onDelete: Cascade)
+
+  @@unique([progressId, emailKey])
+  @@index([progressId])
+  @@map("trainer_onboarding_email_logs")
 }

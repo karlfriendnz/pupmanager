@@ -35,11 +35,13 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // suppressHydrationWarning on both <html> and <body>: browser extensions
+  // (Grammarly, ClickUp, AI assistants like Gemini/Claude) inject attributes
+  // and classes onto these root elements before React hydrates. Suppressing
+  // here only ignores attribute mismatches on this single element, not
+  // children, so real bugs in our components still surface.
   return (
-    <html lang="en-NZ" className={`${geist.variable} h-full antialiased`}>
-      {/* suppressHydrationWarning on body: some browser extensions (e.g. ClickUp,
-          Grammarly) inject classes onto <body> before React hydrates. Without this,
-          every page logs a benign hydration mismatch. */}
+    <html lang="en-NZ" suppressHydrationWarning className={`${geist.variable} h-full antialiased`}>
       <body suppressHydrationWarning className="min-h-full bg-slate-50 text-slate-900 flex flex-col">
         <NativeBootstrap />
         {children}

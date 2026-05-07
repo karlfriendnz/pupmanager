@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { AppShell } from '@/components/shared/app-shell'
+import { OnboardingFab } from './onboarding-fab'
+import { getOnboardingFabState } from '@/lib/onboarding/state'
 
 export default async function TrainerLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -14,6 +16,10 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     select: { businessName: true, logoUrl: true },
   })
 
+  const fabState = session.user.trainerId
+    ? await getOnboardingFabState(session.user.trainerId)
+    : { show: false, nextStep: null, totalSteps: 0 }
+
   return (
     <AppShell
       role="TRAINER"
@@ -23,6 +29,9 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       businessName={tp?.businessName ?? session.user.businessName}
     >
       {children}
+      {fabState.show && fabState.nextStep && (
+        <OnboardingFab nextStep={fabState.nextStep} totalSteps={fabState.totalSteps} />
+      )}
     </AppShell>
   )
 }

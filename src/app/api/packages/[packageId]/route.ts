@@ -14,6 +14,7 @@ const updateSchema = z.object({
   specialPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   color: z.enum(['blue', 'emerald', 'amber', 'rose', 'purple', 'orange', 'teal', 'indigo', 'pink', 'cyan']).nullable().optional(),
   defaultSessionFormId: z.string().nullable().optional(),
+  requireSessionNotes: z.boolean().optional(),
 })
 
 async function ownPackage(packageId: string, trainerId: string) {

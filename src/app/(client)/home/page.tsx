@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 import { ClientHomeView } from './home-view'
+import { computeAchievementProgress } from '@/lib/achievements'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Home' }
@@ -24,12 +25,13 @@ function endOfWeek(now: Date) {
 }
 
 export default async function ClientHomePage() {
-  const session = await auth()
-  if (!session) redirect('/login')
+  const active = await getActiveClient()
+  if (!active) redirect('/login')
 
   const clientProfile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: active.clientId },
     include: {
+      user: { select: { name: true } },
       trainer: { select: { id: true, businessName: true, logoUrl: true, dashboardBgUrl: true } },
       dog: { select: { id: true, name: true, breed: true, photoUrl: true } },
       dogs: { select: { id: true, name: true, breed: true, photoUrl: true } },
@@ -58,6 +60,7 @@ export default async function ClientHomePage() {
     pendingRequests,
     allAchievements,
     earnedAchievements,
+    achievementProgress,
   ] = await Promise.all([
     prisma.trainingSession.findFirst({
       where: {
@@ -148,7 +151,10 @@ export default async function ClientHomePage() {
       },
     }),
     prisma.achievement.findMany({
-      where: { trainerId: clientProfile.trainer.id },
+      // Only published — drafts are trainer-side WIP and shouldn't surface
+      // to clients (or to trainer-in-preview, since the goal is "what the
+      // client sees").
+      where: { trainerId: clientProfile.trainer.id, published: true },
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
       select: { id: true, name: true, icon: true, color: true },
     }),
@@ -156,6 +162,7 @@ export default async function ClientHomePage() {
       where: { clientId: clientProfile.id },
       select: { achievementId: true },
     }),
+    computeAchievementProgress(clientProfile.id),
   ])
 
   const earnedSet = new Set(earnedAchievements.map(e => e.achievementId))
@@ -170,7 +177,7 @@ export default async function ClientHomePage() {
     : null
 
   // Latest message — only shown if it's from someone other than the client.
-  const latestMessageProp = latestMessage && latestMessage.senderId !== session.user.id
+  const latestMessageProp = latestMessage && latestMessage.senderId !== active.userId
     ? {
         from: latestMessage.sender.name ?? 'Your trainer',
         preview: latestMessage.body,
@@ -181,7 +188,7 @@ export default async function ClientHomePage() {
 
   return (
     <ClientHomeView
-      clientName={session.user.name ?? 'there'}
+      clientName={clientProfile.user.name ?? 'there'}
       businessName={clientProfile.trainer.businessName}
       dashboardBgUrl={clientProfile.trainer.dashboardBgUrl}
       trainerLogoUrl={clientProfile.trainer.logoUrl}
@@ -231,6 +238,7 @@ export default async function ClientHomePage() {
         icon: a.icon,
         color: a.color,
         earned: earnedSet.has(a.id),
+        progress: achievementProgress[a.id] ?? null,
       }))}
     />
   )

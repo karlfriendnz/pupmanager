@@ -8,8 +8,7 @@ import {
   ClipboardList,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { FormEditorModal as SessionFormEditorModal } from './session/session-forms-manager'
-import type { FormRow as SessionFormRow, CustomFieldOption as SessionCustomFieldOption } from './session/session-forms-manager'
+import type { FormRow as SessionFormRow } from './session/session-forms-manager'
 import { CustomFieldsManager } from '../settings/custom-fields-manager'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -32,7 +31,7 @@ interface EmbedForm {
   isActive: boolean
 }
 
-interface CustomField {
+export interface CustomField {
   id: string
   label: string
   type: 'TEXT' | 'NUMBER' | 'DROPDOWN'
@@ -44,6 +43,7 @@ interface CustomField {
 export interface IntakeCustomField extends CustomField {
   options: string[]
   category: string | null
+  order: number
 }
 
 // ─── Copy button ─────────────────────────────────────────────────────────────
@@ -70,17 +70,32 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 
 // ─── Form builder panel ───────────────────────────────────────────────────────
 
-function FormBuilder({
+// Page-style embed form editor. Renders in a dedicated route (/forms/embed/new
+// or /forms/embed/[formId]) — the parent page provides the chrome (back link
+// + title), this component owns the form fields, save/delete/toggle, and the
+// embed code reveal. Save and delete redirect back to /settings?tab=forms.
+export function EmbedFormEditor({
   initial,
   customFields,
-  onSave,
-  onClose,
 }: {
   initial?: EmbedForm
   customFields: CustomField[]
-  onSave: (form: EmbedForm) => void
-  onClose: () => void
 }) {
+  const router = useRouter()
+  // Local URL helpers — only meaningful when initial exists.
+  const formUrl = typeof window !== 'undefined' && initial
+    ? `${window.location.origin}/form/${initial.id}`
+    : initial ? `/form/${initial.id}` : undefined
+  const embedSnippet = formUrl
+    ? `<iframe src="${formUrl}" width="100%" height="700" style="border:none;border-radius:12px;" title="Registration form"></iframe>`
+    : undefined
+  // Local state mirror of isActive so the toggle button can update without
+  // a full refresh round-trip. Synced to initial.isActive on mount.
+  const [isActive, setIsActive] = useState(initial?.isActive ?? true)
+  const [togglingActive, setTogglingActive] = useState(false)
+  const [showEmbed, setShowEmbed] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [title, setTitle] = useState(initial?.title ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [thankYouTitle, setThankYouTitle] = useState(initial?.thankYouTitle ?? '')
@@ -131,7 +146,9 @@ function FormBuilder({
       customFieldIds: Array.from(enabledCustomIds),
       thankYouTitle: thankYouTitle.trim() || null,
       thankYouMessage: thankYou.trim() || null,
-      isActive: initial?.isActive ?? true,
+      // Use the live state, not the snapshot from page-load — otherwise
+      // toggling Published then clicking Save reverts the toggle.
+      isActive,
     }
 
     const res = initial
@@ -152,29 +169,97 @@ function FormBuilder({
       setSaving(false)
       return
     }
-    const saved = await res.json()
-    onSave({ ...payload, id: saved.id, isActive: saved.isActive })
-    onClose()
+    router.push('/settings?tab=forms')
+    router.refresh()
+  }
+
+  async function onToggleActive() {
+    if (!initial) return
+    const res = await fetch(`/api/embed-forms/${initial.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: !isActive }),
+    })
+    if (!res.ok) return
+  }
+
+  async function onDelete() {
+    if (!initial) return
+    const res = await fetch(`/api/embed-forms/${initial.id}`, { method: 'DELETE' })
+    if (!res.ok) return
+    router.push('/settings?tab=forms')
+    router.refresh()
   }
 
   const ownerCustom = customFields.filter(f => f.appliesTo === 'OWNER')
   const dogCustom = customFields.filter(f => f.appliesTo === 'DOG')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40">
-      <div className="w-full sm:max-w-xl bg-white rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[92vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
-          <h2 className="text-base font-semibold text-slate-900">
-            {initial ? 'Edit form' : 'New embed form'}
-          </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <div className="flex flex-col gap-4">
+      {/* Action bar — publish toggle, preview, embed code, delete. Sits above
+          the form so trainers can act without scrolling. Only shown for
+          existing forms. */}
+      {initial && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  setTogglingActive(true)
+                  try { await onToggleActive(); setIsActive(v => !v) }
+                  finally { setTogglingActive(false) }
+                }}
+                disabled={togglingActive}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-100 disabled:opacity-50"
+                title={isActive ? 'Unpublish' : 'Publish'}
+              >
+                {isActive
+                  ? <ToggleRight className="h-4 w-4 text-green-500" />
+                  : <ToggleLeft className="h-4 w-4 text-slate-400" />}
+                <span className={isActive ? 'text-green-700' : 'text-slate-500'}>
+                  {isActive ? 'Published' : 'Draft'}
+                </span>
+              </button>
+              {formUrl && (
+                <a
+                  href={formUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Preview
+                </a>
+              )}
+              {embedSnippet && (
+                <button
+                  type="button"
+                  onClick={() => setShowEmbed(v => !v)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  <Code2 className="h-3.5 w-3.5" />
+                  {showEmbed ? 'Hide embed code' : 'Embed code'}
+                </button>
+              )}
+            </div>
+          </div>
 
+          {showEmbed && embedSnippet && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Paste this on your site</p>
+                <CopyButton text={embedSnippet} label="Copy" />
+              </div>
+              <pre className="text-xs text-slate-600 font-mono bg-white border border-slate-200 rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all">{embedSnippet}</pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="bg-white border border-slate-200 rounded-2xl flex flex-col">
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 min-h-0 flex flex-col gap-5">
+        <div className="px-5 py-5 flex flex-col gap-5">
           {error && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>
           )}
@@ -263,9 +348,43 @@ function FormBuilder({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-4 border-t border-slate-100 flex-shrink-0">
-          <Button onClick={save} loading={saving} className="w-full">
+        {/* Footer — Delete on left (existing forms only), Save on right. */}
+        <div className="flex items-center gap-2 px-5 py-4 border-t border-slate-100 flex-shrink-0 bg-white">
+          {initial && (
+            confirmDelete ? (
+              <div className="flex items-center gap-1 mr-auto">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setDeleting(true)
+                    try { await onDelete() } finally { setDeleting(false) }
+                  }}
+                  disabled={deleting}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleting ? 'Deleting…' : 'Confirm delete'}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="mr-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
+            )
+          )}
+          <Button onClick={save} loading={saving} className={initial ? '' : 'w-full'}>
             {initial ? 'Save changes' : 'Create form'}
           </Button>
         </div>
@@ -359,74 +478,20 @@ const TYPE_BADGE: Record<FormType, { label: string; cls: string; Icon: typeof Gl
 
 export function FormsManager({
   initialForms,
-  customFields,
   initialSessionForms,
   intakeCustomFields,
-  sessionCustomFieldOptions,
+  intakeFormPublished,
 }: {
   initialForms: EmbedForm[]
-  customFields: CustomField[]
   initialSessionForms: SessionFormRow[]
   intakeCustomFields: IntakeCustomField[]
-  sessionCustomFieldOptions: SessionCustomFieldOption[]
+  intakeFormPublished: boolean
 }) {
   const router = useRouter()
-  const [forms, setForms] = useState<EmbedForm[]>(initialForms)
-  const [sessionForms, setSessionForms] = useState<SessionFormRow[]>(initialSessionForms)
-  const [building, setBuilding] = useState<EmbedForm | 'new' | null>(null)
-  const [editingSession, setEditingSession] = useState<SessionFormRow | 'new' | null>(null)
-  const [editingIntake, setEditingIntake] = useState(false)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Forms list is read-only here — actual edits live on dedicated routes.
+  const forms = initialForms
+  const sessionForms = initialSessionForms
   const [picking, setPicking] = useState(false)
-
-  function formUrl(id: string) {
-    const origin = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_APP_URL ?? '')
-    return `${origin}/form/${id}`
-  }
-
-  function embedCode(id: string) {
-    return `<iframe src="${formUrl(id)}" width="100%" height="700" style="border:none;border-radius:12px;" title="Registration form"></iframe>`
-  }
-
-  function onSaveEmbed(saved: EmbedForm) {
-    setForms(prev => {
-      const idx = prev.findIndex(f => f.id === saved.id)
-      if (idx >= 0) {
-        const next = [...prev]
-        next[idx] = saved
-        return next
-      }
-      return [saved, ...prev]
-    })
-  }
-
-  function onSaveSession(saved: SessionFormRow, isNew: boolean) {
-    setSessionForms(prev => isNew ? [saved, ...prev] : prev.map(f => f.id === saved.id ? saved : f))
-  }
-
-  async function toggleActive(form: EmbedForm) {
-    const res = await fetch(`/api/embed-forms/${form.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: !form.isActive }),
-    })
-    if (!res.ok) return
-    setForms(prev => prev.map(f => f.id === form.id ? { ...f, isActive: !f.isActive } : f))
-  }
-
-  async function deleteEmbed(id: string) {
-    if (!confirm('Delete this form? This cannot be undone.')) return
-    const res = await fetch(`/api/embed-forms/${id}`, { method: 'DELETE' })
-    if (!res.ok) return
-    setForms(prev => prev.filter(f => f.id !== id))
-  }
-
-  async function deleteSession(id: string) {
-    if (!confirm('Delete this form? Existing responses on past sessions stay attached but you cannot edit them.')) return
-    const res = await fetch(`/api/session-forms/${id}`, { method: 'DELETE' })
-    if (!res.ok) return
-    setSessionForms(prev => prev.filter(f => f.id !== id))
-  }
 
   const intakeFieldCount = intakeCustomFields.length
 
@@ -443,13 +508,15 @@ export function FormsManager({
       </div>
 
       <div className="flex flex-col gap-3">
-        {/* Intake form (singleton) */}
+        {/* Intake form (singleton). Published state is now an explicit flag
+            on TrainerProfile — toggled from inside the intake editor. */}
         <FormRowCard
           type="INTAKE"
           title="Intake form"
           description="The first form a client fills in when accepted. You can also fill it on their behalf from a client's edit page."
           meta={`${intakeFieldCount} field${intakeFieldCount === 1 ? '' : 's'} configured`}
-          onEdit={() => setEditingIntake(true)}
+          published={intakeFormPublished}
+          onEdit={() => router.push('/forms/intake')}
         />
 
         {/* Embed forms */}
@@ -462,9 +529,9 @@ export function FormsManager({
                   <p className="font-semibold text-slate-900 truncate">{form.title}</p>
                   <TypeBadge type="EMBED" />
                   <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                    form.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'
+                    form.isActive ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
                   }`}>
-                    {form.isActive ? 'Active' : 'Inactive'}
+                    {form.isActive ? 'Published' : 'Draft'}
                   </span>
                 </div>
                 {form.description && <p className="text-sm text-slate-400 truncate mt-0.5">{form.description}</p>}
@@ -473,45 +540,12 @@ export function FormsManager({
                 </p>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
-                <a href={formUrl(form.id)} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Preview form">
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-                <button onClick={() => toggleActive(form)} className="p-2 text-slate-400 hover:text-slate-600 transition-colors" title={form.isActive ? 'Deactivate' : 'Activate'}>
-                  {form.isActive ? <ToggleRight className="h-4 w-4 text-green-500" /> : <ToggleLeft className="h-4 w-4" />}
-                </button>
-                <button onClick={() => setBuilding(form)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit form">
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button onClick={() => setExpandedId(expandedId === form.id ? null : form.id)} className="p-2 text-slate-400 hover:text-slate-600 transition-colors" title="Get embed code">
-                  <Code2 className="h-4 w-4" />
-                </button>
-                <button onClick={() => deleteEmbed(form.id)} className="p-2 text-slate-300 hover:text-red-400 transition-colors" title="Delete form">
-                  <Trash2 className="h-4 w-4" />
+                <button onClick={() => router.push(`/forms/embed/${form.id}`)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit form">
+                  <Pencil className="h-4 w-4" />{/* Publish, preview, embed code, delete are inside the editor page. */}
                 </button>
               </div>
             </div>
 
-            {expandedId === form.id && (
-              <div className="border-t border-slate-100 px-4 pb-4 pt-3 bg-slate-50">
-                <div className="flex flex-col gap-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Direct link</p>
-                      <CopyButton text={formUrl(form.id)} label="Copy link" />
-                    </div>
-                    <p className="text-xs text-slate-600 font-mono bg-white border border-slate-200 rounded-lg px-3 py-2 break-all">{formUrl(form.id)}</p>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Embed code</p>
-                      <CopyButton text={embedCode(form.id)} label="Copy code" />
-                    </div>
-                    <pre className="text-xs text-slate-600 font-mono bg-white border border-slate-200 rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all">{embedCode(form.id)}</pre>
-                    <p className="text-xs text-slate-400 mt-1.5">Paste this snippet into your website&apos;s HTML wherever you&apos;d like the form to appear.</p>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         ))}
 
@@ -524,6 +558,11 @@ export function FormsManager({
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-semibold text-slate-900 truncate">{f.name}</p>
                   <TypeBadge type="SESSION" />
+                  <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+                    f.isActive ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {f.isActive ? 'Published' : 'Draft'}
+                  </span>
                 </div>
                 {f.description && <p className="text-sm text-slate-400 truncate mt-0.5">{f.description}</p>}
                 <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap">
@@ -532,11 +571,8 @@ export function FormsManager({
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
-                <button onClick={() => setEditingSession(f)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit form">
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button onClick={() => deleteSession(f.id)} className="p-2 text-slate-300 hover:text-red-400 transition-colors" title="Delete form">
-                  <Trash2 className="h-4 w-4" />
+                <button onClick={() => router.push(`/forms/session/${f.id}`)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit form">
+                  <Pencil className="h-4 w-4" />{/* Delete moved into the editor page. */}
                 </button>
               </div>
             </div>
@@ -549,40 +585,17 @@ export function FormsManager({
         <TypePicker
           onPick={(type) => {
             setPicking(false)
-            if (type === 'EMBED') setBuilding('new')
-            else if (type === 'SESSION') setEditingSession('new')
+            if (type === 'EMBED') router.push('/forms/embed/new')
+            else if (type === 'SESSION') router.push('/forms/session/new')
           }}
           onClose={() => setPicking(false)}
         />
       )}
 
-      {/* Embed form builder modal */}
-      {building && (
-        <FormBuilder
-          initial={building === 'new' ? undefined : building}
-          customFields={customFields}
-          onSave={onSaveEmbed}
-          onClose={() => setBuilding(null)}
-        />
-      )}
-
-      {/* Session form editor modal */}
-      {editingSession && (
-        <SessionFormEditorModal
-          existing={editingSession === 'new' ? null : editingSession}
-          customFields={sessionCustomFieldOptions}
-          onClose={() => setEditingSession(null)}
-          onSaved={(f, isNew) => { onSaveSession(f, isNew); setEditingSession(null) }}
-        />
-      )}
-
-      {/* Intake (custom fields) editor modal */}
-      {editingIntake && (
-        <IntakeEditorModal
-          initialFields={intakeCustomFields}
-          onClose={() => { setEditingIntake(false); router.refresh() }}
-        />
-      )}
+      {/* Editor modals replaced by dedicated routes:
+          /forms/embed/new + /forms/embed/[formId]
+          /forms/session/new + /forms/session/[formId]
+          /forms/intake */}
     </>
   )
 }
@@ -611,12 +624,14 @@ function FormRowCard({
   title,
   description,
   meta,
+  published,
   onEdit,
 }: {
   type: FormType
   title: string
   description: string
   meta: string
+  published?: boolean
   onEdit: () => void
 }) {
   return (
@@ -624,9 +639,16 @@ function FormRowCard({
       <div className="flex items-center gap-4 p-4">
         <TypeBadgeIcon type={type} />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <p className="font-semibold text-slate-900 truncate">{title}</p>
             <TypeBadge type={type} />
+            {published !== undefined && (
+              <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+                published ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+              }`}>
+                {published ? 'Published' : 'Draft'}
+              </span>
+            )}
           </div>
           <p className="text-sm text-slate-400 mt-0.5">{description}</p>
           <p className="text-xs text-slate-400 mt-1">{meta}</p>
@@ -680,32 +702,78 @@ function TypePicker({ onPick, onClose }: { onPick: (t: 'EMBED' | 'SESSION') => v
   )
 }
 
-function IntakeEditorModal({
+// Page-style intake form editor. Wraps CustomFieldsManager with the page
+// chrome the route page provides (back link / heading). The "Done" button
+// just navigates back to the forms list.
+export function IntakeFormEditor({
   initialFields,
-  onClose,
+  initialSectionOrder,
+  initialPublished,
 }: {
   initialFields: IntakeCustomField[]
-  onClose: () => void
+  initialSectionOrder: { name: string; description: string | null }[]
+  initialPublished: boolean
 }) {
+  const router = useRouter()
+  const [isPublished, setIsPublished] = useState(initialPublished)
+  const [togglingPublished, setTogglingPublished] = useState(false)
+
+  async function togglePublished() {
+    setTogglingPublished(true)
+    try {
+      const res = await fetch('/api/trainer/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intakeFormPublished: !isPublished }),
+      })
+      if (res.ok) setIsPublished(v => !v)
+    } finally {
+      setTogglingPublished(false)
+    }
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-50 bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
-          <div>
-            <h2 className="font-semibold text-slate-900">Intake form</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Fields here gate new clients on first login and appear on each client&apos;s edit page.</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <CustomFieldsManager initialFields={initialFields} />
-        </div>
-        <div className="px-5 py-3 border-t border-slate-100 flex-shrink-0 flex justify-end">
-          <Button size="sm" onClick={onClose}>Done</Button>
-        </div>
+    <div className="flex flex-col gap-4">
+      {/* Action bar — publish toggle + preview link. */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={togglePublished}
+          disabled={togglingPublished}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-100 disabled:opacity-50"
+          title={isPublished ? 'Unpublish' : 'Publish'}
+        >
+          <span className={`h-2 w-2 rounded-full ${isPublished ? 'bg-green-500' : 'bg-amber-400'}`} />
+          <span className={isPublished ? 'text-green-700' : 'text-amber-700'}>
+            {isPublished ? 'Published' : 'Draft'}
+          </span>
+        </button>
+        <span className="text-xs text-slate-400">Click to {isPublished ? 'unpublish' : 'publish'}</span>
+        <a
+          href="/forms/intake/preview"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Preview form
+        </a>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl p-5">
+        <p className="text-sm text-slate-500 mb-4">
+          Fields here gate new clients on first login and appear on each client&apos;s edit page.
+          Group fields into sections to walk clients through one section at a time.
+        </p>
+        <CustomFieldsManager
+          initialFields={initialFields}
+          initialSectionOrder={initialSectionOrder}
+        />
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => { router.push('/settings?tab=forms'); router.refresh() }}>
+          Done
+        </Button>
       </div>
     </div>
   )

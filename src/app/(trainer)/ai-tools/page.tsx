@@ -14,7 +14,7 @@ export default async function AIToolsPage() {
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
 
   const clients = await prisma.clientProfile.findMany({
     where: { trainerId },

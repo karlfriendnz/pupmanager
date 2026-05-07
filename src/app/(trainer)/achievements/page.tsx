@@ -14,7 +14,7 @@ export default async function AchievementsPage() {
     where: { userId: session.user.id },
     select: { id: true },
   })
-  if (!trainerProfile) redirect('/onboarding')
+  if (!trainerProfile) redirect('/login')
 
   const achievements = await prisma.achievement.findMany({
     where: { trainerId: trainerProfile.id },
@@ -35,6 +35,7 @@ export default async function AchievementsPage() {
           description: a.description,
           icon: a.icon,
           color: a.color,
+          published: a.published,
           triggerType: a.triggerType,
           triggerValue: a.triggerValue,
         }))}

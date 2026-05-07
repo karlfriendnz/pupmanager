@@ -22,7 +22,7 @@ export default async function SessionPreviewPage({
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
 
   const { sessionId } = await params
 

@@ -43,6 +43,7 @@ const patchSchema = z.object({
   icon: z.string().max(8).optional().nullable(),
   color: z.string().max(20).optional().nullable(),
   order: z.number().int().optional(),
+  published: z.boolean().optional(),
   triggerType: z.enum(TRIGGER_TYPES).optional(),
   triggerValue: z.number().int().positive().nullable().optional(),
 })

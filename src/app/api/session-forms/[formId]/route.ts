@@ -6,6 +6,8 @@ import { z } from 'zod'
 const baseQuestion = {
   id: z.string().min(1),
   required: z.boolean().default(false),
+  // When true: visible to the trainer only (filtered out of the client report).
+  isPrivate: z.boolean().optional(),
 }
 
 const questionSchema = z.discriminatedUnion('type', [
@@ -24,6 +26,7 @@ const updateSchema = z.object({
   backgroundColor: z.string().nullable().optional(),
   backgroundUrl: z.string().url().nullable().optional().or(z.literal('')),
   questions: z.array(questionSchema).min(1).max(50).optional(),
+  isActive: z.boolean().optional(),
 })
 
 async function ownForm(formId: string, trainerId: string) {

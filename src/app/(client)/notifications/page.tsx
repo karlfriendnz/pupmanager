@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate } from '@/lib/utils'
 import type { Metadata } from 'next'
@@ -8,17 +8,17 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = { title: 'Notifications' }
 
 export default async function NotificationsPage() {
-  const session = await auth()
-  if (!session) redirect('/login')
+  const active = await getActiveClient()
+  if (!active) redirect('/login')
 
   const notifications = await prisma.notification.findMany({
-    where: { userId: session.user.id },
+    where: { userId: active.userId },
     orderBy: { createdAt: 'desc' },
     take: 50,
   })
 
   return (
-    <div className="p-4 md:p-8 max-w-xl mx-auto">
+    <div className="px-5 lg:px-8 py-6 max-w-3xl mx-auto w-full">
       <h1 className="text-2xl font-bold text-slate-900 mb-6">Notifications</h1>
 
       {notifications.length === 0 ? (

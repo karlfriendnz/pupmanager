@@ -18,7 +18,7 @@ export default async function ClientsPage({
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },

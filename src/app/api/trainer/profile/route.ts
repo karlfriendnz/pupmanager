@@ -23,6 +23,14 @@ const patchSchema = z.object({
   // null = flat list. "nextDay" = group by day of next booking.
   // "custom:<cuid>" = group by custom-field value.
   clientListGroupBy: z.string().regex(/^(nextDay|custom:[a-z0-9]+)$/).nullable().optional(),
+  // Ordered list of intake-form sections. Each entry has a required name and
+  // an optional description (shown to the client at the top of the section).
+  intakeSectionOrder: z.array(z.object({
+    name: z.string().min(1).max(60),
+    description: z.string().max(500).nullable().optional(),
+  })).max(50).optional(),
+  // Master publish flag for the intake form. False = draft, hidden from clients.
+  intakeFormPublished: z.boolean().optional(),
 })
 
 export async function GET() {

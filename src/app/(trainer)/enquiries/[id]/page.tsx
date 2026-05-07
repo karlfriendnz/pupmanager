@@ -14,7 +14,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
 
   const { id } = await params
 

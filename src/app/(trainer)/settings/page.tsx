@@ -16,7 +16,7 @@ export default async function TrainerSettingsPage() {
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { userId: session.user.id },
-    select: { id: true, businessName: true, phone: true, logoUrl: true, dashboardBgUrl: true, inviteTemplate: true, emailAccentColor: true },
+    select: { id: true, businessName: true, phone: true, logoUrl: true, dashboardBgUrl: true, inviteTemplate: true, emailAccentColor: true, intakeSectionOrder: true, intakeFormPublished: true },
   })
 
   const user = await prisma.user.findUnique({
@@ -50,6 +50,7 @@ export default async function TrainerSettingsPage() {
     options: Array.isArray(f.options) ? f.options as string[] : [],
     category: f.category ?? null,
     appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
+    order: f.order,
   }))
 
   return (
@@ -71,13 +72,6 @@ export default async function TrainerSettingsPage() {
               thankYouMessage: f.thankYouMessage,
               isActive: f.isActive,
             }))}
-            customFields={intakeFields.map(f => ({
-              id: f.id,
-              label: f.label,
-              type: f.type,
-              required: f.required,
-              appliesTo: f.appliesTo,
-            }))}
             initialSessionForms={sessionForms.map(f => ({
               id: f.id,
               name: f.name,
@@ -88,15 +82,10 @@ export default async function TrainerSettingsPage() {
               backgroundUrl: f.backgroundUrl,
               questions: Array.isArray(f.questions) ? f.questions as unknown as Question[] : [],
               responses: f._count.responses,
+              isActive: f.isActive,
             }))}
             intakeCustomFields={intakeFields}
-            sessionCustomFieldOptions={customFields.map(f => ({
-              id: f.id,
-              label: f.label,
-              type: f.type as 'TEXT' | 'NUMBER' | 'DROPDOWN',
-              appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
-              category: f.category,
-            }))}
+            intakeFormPublished={trainerProfile.intakeFormPublished}
           />
         }
       />

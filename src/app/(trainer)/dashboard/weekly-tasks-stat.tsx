@@ -29,10 +29,10 @@ export function WeeklyTasksStat({ tasks }: { tasks: WeeklyTask[] }) {
     <>
       <button
         onClick={() => setOpen(v => !v)}
-        className="text-left group cursor-pointer"
+        className="text-left group cursor-pointer h-full"
         aria-expanded={open}
       >
-        <Card className="p-4 flex flex-col gap-2 group-hover:border-blue-200 group-hover:shadow-sm transition-all">
+        <Card className="p-4 h-full flex flex-col gap-2 group-hover:border-blue-200 group-hover:shadow-sm transition-all">
           <div className="flex items-start justify-between gap-2">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tasks this week</p>
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 flex-shrink-0">
@@ -47,6 +47,10 @@ export function WeeklyTasksStat({ tasks }: { tasks: WeeklyTask[] }) {
               ? <ChevronDown className="h-4 w-4 text-slate-400" aria-hidden />
               : <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden />}
           </div>
+          {/* Reserved height-matching slot — StatCard pins a progress bar
+              to the bottom; this card has no progress so the slot stays
+              hidden but keeps the card the same height as siblings. */}
+          <div className="mt-auto h-1.5" aria-hidden />
         </Card>
       </button>
 

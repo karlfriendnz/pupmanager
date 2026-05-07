@@ -11,7 +11,7 @@ export default async function LibraryPage() {
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
 
   const types = await prisma.libraryType.findMany({
     where: { trainerId },

@@ -18,6 +18,7 @@ const schema = z.object({
   // schedule-view.tsx — both must include any new option.
   color: z.enum(['blue', 'emerald', 'amber', 'rose', 'purple', 'orange', 'teal', 'indigo', 'pink', 'cyan']).nullable().optional(),
   defaultSessionFormId: z.string().nullable().optional(),
+  requireSessionNotes: z.boolean().optional(),
 })
 
 export async function GET() {
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
       specialPriceCents: parsed.data.specialPriceCents ?? null,
       color: parsed.data.color ?? null,
       defaultSessionFormId: parsed.data.defaultSessionFormId ?? null,
+      requireSessionNotes: parsed.data.requireSessionNotes ?? true,
       order: nextOrder,
     },
   })

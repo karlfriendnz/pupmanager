@@ -37,6 +37,10 @@ export async function GET(req: Request) {
     include: {
       dog: { select: { name: true } },
       client: { select: { user: { select: { name: true } } } },
+      // Pull the package's notes-reminder opt-out so we can skip the notes
+      // push for packages that don't expect a follow-up. Sessions without a
+      // package keep the default behaviour (reminder fires).
+      clientPackage: { select: { package: { select: { requireSessionNotes: true } } } },
       trainer: {
         select: {
           user: {
@@ -109,7 +113,12 @@ export async function GET(req: Request) {
     }
 
     // ── Notes reminder (before session END) ─────────────────────────────
-    if (!s.notesReminderPushSentAt) {
+    // Skip entirely when the session's package has opted out of notes.
+    // Mark as "sent" so we don't re-evaluate next tick.
+    const packageRequiresNotes = s.clientPackage?.package?.requireSessionNotes ?? true
+    if (!s.notesReminderPushSentAt && !packageRequiresNotes) {
+      await prisma.trainingSession.update({ where: { id: s.id }, data: { notesReminderPushSentAt: now } })
+    } else if (!s.notesReminderPushSentAt) {
       const pref = notesPrefs.get(trainerUser.id)!
       const lead = pref.minutesBefore ?? notesMeta.defaults.minutesBefore!
       // Only fire while the session is in progress (or about to end). Skip

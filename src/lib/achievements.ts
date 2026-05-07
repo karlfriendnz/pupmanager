@@ -50,7 +50,9 @@ export async function evaluateAchievementsFor(clientId: string): Promise<AwardRe
 
   const [rules, alreadyAwarded] = await Promise.all([
     prisma.achievement.findMany({
-      where: { trainerId: client.trainerId, triggerType: { not: 'MANUAL' } },
+      // Only published rules are eligible for auto-award. Drafts stay invisible
+      // to clients and the awarder until the trainer publishes them.
+      where: { trainerId: client.trainerId, triggerType: { not: 'MANUAL' }, published: true },
       select: { id: true, triggerType: true, triggerValue: true, name: true },
     }),
     prisma.clientAchievement.findMany({
@@ -310,6 +312,100 @@ function evaluate(type: AchievementTrigger, threshold: number | null, c: ClientC
   }
 }
 
+export interface AchievementProgress {
+  current: number
+  target: number
+}
+
+/**
+ * Per-rule progress snapshot — used by the client home view to render partial
+ * progress bars on unearned achievements (e.g. "5 sessions together" with 1
+ * session shows 1/5). Mirrors `evaluate` in shape; returns null for triggers
+ * that have no meaningful counter (MANUAL).
+ */
+function progressFor(
+  type: AchievementTrigger,
+  threshold: number | null,
+  c: ClientCounters,
+): AchievementProgress | null {
+  const t = threshold ?? 1
+  switch (type) {
+    case 'FIRST_SESSION':
+      return { current: Math.min(c.sessionsCompleted, 1), target: 1 }
+    case 'SESSIONS_COMPLETED':
+      return { current: c.sessionsCompleted, target: t }
+    case 'IN_PERSON_SESSIONS':
+      return { current: c.sessionsCompletedInPerson, target: t }
+    case 'VIRTUAL_SESSIONS':
+      return { current: c.sessionsCompletedVirtual, target: t }
+    case 'CONSECUTIVE_SESSIONS_ATTENDED':
+      return { current: c.consecutiveCompletedFromMostRecent, target: t }
+    case 'FIRST_PACKAGE_ASSIGNED':
+      return { current: c.hasAnyPackage ? 1 : 0, target: 1 }
+    case 'PACKAGES_COMPLETED':
+      return { current: c.packagesCompleted, target: t }
+    case 'FIRST_HOMEWORK_DONE':
+      return { current: Math.min(c.homeworkDone, 1), target: 1 }
+    case 'HOMEWORK_TASKS_DONE':
+      return { current: c.homeworkDone, target: t }
+    case 'HOMEWORK_STREAK_DAYS':
+      return { current: c.homeworkStreakDays, target: t }
+    case 'PERFECT_WEEK':
+      return { current: c.perfectWeeks, target: t }
+    case 'CLIENT_ANNIVERSARY_DAYS':
+      return { current: c.daysAsClient, target: t }
+    case 'MESSAGES_SENT':
+      return { current: c.messagesSentByClient, target: t }
+    case 'PRODUCTS_PURCHASED':
+      return { current: c.productsPurchased, target: t }
+    case 'PROFILE_COMPLETED':
+      return { current: c.profileComplete ? 1 : 0, target: 1 }
+    case 'MANUAL':
+      return null
+  }
+}
+
+/**
+ * Returns a map of achievementId → { current, target } for every published
+ * auto-rule of the trainer that owns this client. The view uses this to draw
+ * partial progress bars on badges the client is working towards.
+ */
+export async function computeAchievementProgress(
+  clientId: string,
+): Promise<Record<string, AchievementProgress>> {
+  const client = await prisma.clientProfile.findUnique({
+    where: { id: clientId },
+    select: { id: true, trainerId: true, createdAt: true, userId: true },
+  })
+  if (!client) return {}
+
+  const rules = await prisma.achievement.findMany({
+    where: {
+      trainerId: client.trainerId,
+      published: true,
+      triggerType: { not: 'MANUAL' },
+    },
+    select: { id: true, triggerType: true, triggerValue: true },
+  })
+  if (rules.length === 0) return {}
+
+  const need = new Set(rules.map(r => r.triggerType))
+  const counters = await loadCounters(
+    client.id,
+    client.userId,
+    client.trainerId,
+    client.createdAt,
+    need,
+  )
+
+  const out: Record<string, AchievementProgress> = {}
+  for (const rule of rules) {
+    const p = progressFor(rule.triggerType, rule.triggerValue, counters)
+    if (p) out[rule.id] = p
+  }
+  return out
+}
+
 /**
  * Re-evaluate every active client of the trainer that owns this achievement.
  * Used when a trainer creates a new auto-rule (retroactive backfill) and by
@@ -317,6 +413,7 @@ function evaluate(type: AchievementTrigger, threshold: number | null, c: ClientC
  */
 export async function evaluateAchievementForAllClients(achievement: Achievement): Promise<number> {
   if (achievement.triggerType === 'MANUAL') return 0
+  if (!achievement.published) return 0
   const clients = await prisma.clientProfile.findMany({
     where: { trainerId: achievement.trainerId, status: 'ACTIVE' },
     select: { id: true },

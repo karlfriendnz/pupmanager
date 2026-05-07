@@ -13,7 +13,7 @@ export default async function MessagesPage() {
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
 
   const clients = await prisma.clientProfile.findMany({
     where: { trainerId },

@@ -1,17 +1,17 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
-import { Plus, Pencil, Trash2, X, FileText, GripVertical, ChevronUp, ChevronDown, Link2 } from 'lucide-react'
+import { Plus, Trash2, GripVertical, ChevronUp, ChevronDown, Link2 } from 'lucide-react'
 import { ImageUploadButton } from '@/components/image-uploader'
 
 export type QuestionType = 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5' | 'CUSTOM_FIELD'
 
 export type Question =
-  | { id: string; type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'; label: string; required: boolean }
-  | { id: string; type: 'CUSTOM_FIELD'; customFieldId: string; required: boolean }
+  | { id: string; type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'; label: string; required: boolean; isPrivate?: boolean }
+  | { id: string; type: 'CUSTOM_FIELD'; customFieldId: string; required: boolean; isPrivate?: boolean }
 
 export interface CustomFieldOption {
   id: string
@@ -31,6 +31,7 @@ export interface FormRow {
   backgroundUrl: string | null
   questions: Question[]
   responses: number
+  isActive: boolean
 }
 
 const TYPE_LABELS: Record<Exclude<QuestionType, 'CUSTOM_FIELD'>, string> = {
@@ -40,113 +41,45 @@ const TYPE_LABELS: Record<Exclude<QuestionType, 'CUSTOM_FIELD'>, string> = {
   RATING_1_5: 'Rating 1–5',
 }
 
-export function SessionFormsManager({
-  initialForms,
-  customFields,
-}: {
-  initialForms: FormRow[]
-  customFields: CustomFieldOption[]
-}) {
-  const [forms, setForms] = useState(initialForms)
-  const [editing, setEditing] = useState<FormRow | null>(null)
-  const [creating, setCreating] = useState(false)
+// Note: the standalone SessionFormsManager has been removed — the unified
+// FormsManager on /settings?tab=forms is the only entry point now, and editor
+// pages live at /forms/session/new and /forms/session/[formId].
 
-  function upsert(f: FormRow, isNew: boolean) {
-    setForms(prev => isNew ? [...prev, f] : prev.map(x => x.id === f.id ? f : x))
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this form? Existing responses on past sessions stay attached but you cannot edit them.')) return
-    const res = await fetch(`/api/session-forms/${id}`, { method: 'DELETE' })
-    if (res.ok) setForms(prev => prev.filter(f => f.id !== id))
-  }
-
+// Inline pill that switches a question between public (trainer + client) and
+// private (trainer only). Click cycles between the two.
+function PrivacyToggle({ isPrivate, onChange }: { isPrivate: boolean; onChange: (v: boolean) => void }) {
   return (
-    <>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-slate-500">
-          Templates trainers can attach to a session to capture a structured report.
-        </p>
-        <Button size="sm" onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" /> New form
-        </Button>
-      </div>
-
-      {forms.length === 0 ? (
-        <Card>
-          <CardBody className="py-12 text-center text-slate-400">
-            <FileText className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">No session forms yet. Create one to start filling in reports.</p>
-          </CardBody>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {forms.map(f => (
-            <Card key={f.id} className="hover:border-blue-100 transition-colors">
-              <CardBody className="py-4">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 flex-shrink-0">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-900">{f.name}</p>
-                    {f.description && <p className="text-sm text-slate-500 mt-0.5">{f.description}</p>}
-                    <div className="flex items-center gap-3 text-xs text-slate-400 mt-1.5 flex-wrap">
-                      <span>{f.questions.length} question{f.questions.length === 1 ? '' : 's'}</span>
-                      {f.responses > 0 && (
-                        <>
-                          <span>·</span>
-                          <span className="text-blue-600">{f.responses} filled</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => setEditing(f)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                      aria-label="Edit"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(f.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                      aria-label="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {(creating || editing) && (
-        <FormEditorModal
-          existing={editing}
-          customFields={customFields}
-          onClose={() => { setCreating(false); setEditing(null) }}
-          onSaved={(f, isNew) => { upsert(f, isNew); setCreating(false); setEditing(null) }}
-        />
-      )}
-    </>
+    <button
+      type="button"
+      onClick={() => onChange(!isPrivate)}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+        isPrivate
+          ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+          : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+      }`}
+      title={isPrivate ? 'Click to make this question visible to clients' : 'Click to keep this question trainer-only'}
+    >
+      {isPrivate ? '🔒 Private' : '👁 Public'}
+    </button>
   )
 }
 
-export function FormEditorModal({
+// Page-style session form editor. Save / delete redirect to /settings?tab=forms.
+// Renders inside a route page that provides the chrome (back link / heading).
+export function SessionFormEditor({
   existing,
   customFields,
-  onClose,
-  onSaved,
 }: {
   existing: FormRow | null
   customFields: CustomFieldOption[]
-  onClose: () => void
-  onSaved: (f: FormRow, isNew: boolean) => void
 }) {
+  const router = useRouter()
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  // Local mirror of isActive so the toggle can update without a refresh
+  // round-trip. New (no `existing`) forms default to active.
+  const [isActive, setIsActive] = useState(existing?.isActive ?? true)
+  const [togglingActive, setTogglingActive] = useState(false)
   const [name, setName] = useState(existing?.name ?? '')
   const [description, setDescription] = useState(existing?.description ?? '')
   const [introText, setIntroText] = useState(existing?.introText ?? '')
@@ -223,9 +156,11 @@ export function FormEditorModal({
         backgroundUrl: backgroundUrl.trim() || null,
         questions: questions.map(q =>
           q.type === 'CUSTOM_FIELD'
-            ? { id: q.id, type: q.type, customFieldId: q.customFieldId, required: q.required }
-            : { id: q.id, type: q.type, label: q.label.trim(), required: q.required }
+            ? { id: q.id, type: q.type, customFieldId: q.customFieldId, required: q.required, isPrivate: !!q.isPrivate }
+            : { id: q.id, type: q.type, label: q.label.trim(), required: q.required, isPrivate: !!q.isPrivate }
         ),
+        // Use live state so toggling Published then clicking Save preserves it.
+        isActive,
       }),
     })
     if (!res.ok) {
@@ -233,32 +168,56 @@ export function FormEditorModal({
       setSaving(false)
       return
     }
-    const saved = await res.json()
-    onSaved({
-      id: saved.id,
-      name: saved.name,
-      description: saved.description,
-      introText: saved.introText ?? null,
-      closingText: saved.closingText ?? null,
-      backgroundColor: saved.backgroundColor ?? null,
-      backgroundUrl: saved.backgroundUrl ?? null,
-      questions: saved.questions,
-      responses: existing?.responses ?? 0,
-    }, !existing)
+    router.push('/settings?tab=forms')
+    router.refresh()
+  }
+
+  async function onToggleActive() {
+    if (!existing) return
+    setTogglingActive(true)
+    try {
+      const res = await fetch(`/api/session-forms/${existing.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !isActive }),
+      })
+      if (res.ok) setIsActive(v => !v)
+    } finally {
+      setTogglingActive(false)
+    }
+  }
+
+  async function onDelete() {
+    if (!existing) return
+    const res = await fetch(`/api/session-forms/${existing.id}`, { method: 'DELETE' })
+    if (!res.ok) return
+    router.push('/settings?tab=forms')
+    router.refresh()
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 flex-shrink-0">
-          <h2 className="font-semibold text-slate-900">{existing ? 'Edit form' : 'New session form'}</h2>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
-            <X className="h-5 w-5" />
+    <div className="flex flex-col gap-4">
+      {/* Action bar — publish toggle (existing forms only). */}
+      {existing && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleActive}
+            disabled={togglingActive}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-100 disabled:opacity-50"
+            title={isActive ? 'Unpublish' : 'Publish'}
+          >
+            <span className={`h-2 w-2 rounded-full ${isActive ? 'bg-green-500' : 'bg-amber-400'}`} />
+            <span className={isActive ? 'text-green-700' : 'text-amber-700'}>
+              {isActive ? 'Published' : 'Draft'}
+            </span>
           </button>
+          <span className="text-xs text-slate-400">Click to {isActive ? 'unpublish' : 'publish'}</span>
         </div>
+      )}
 
-        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+      <div className="bg-white border border-slate-200 rounded-2xl flex flex-col">
+        <div className="p-5 flex flex-col gap-4">
           {error && <Alert variant="error">{error}</Alert>}
 
           <div>
@@ -417,6 +376,10 @@ export function FormEditorModal({
                             />
                             Required
                           </label>
+                          <PrivacyToggle
+                            isPrivate={!!q.isPrivate}
+                            onChange={v => updateQuestion(q.id, { isPrivate: v })}
+                          />
                         </>
                       ) : (
                         <>
@@ -446,6 +409,10 @@ export function FormEditorModal({
                               />
                               Required
                             </label>
+                            <PrivacyToggle
+                              isPrivate={!!q.isPrivate}
+                              onChange={v => updateQuestion(q.id, { isPrivate: v })}
+                            />
                           </div>
                         </>
                       )}
@@ -465,8 +432,42 @@ export function FormEditorModal({
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 p-5 border-t border-slate-100 flex-shrink-0 bg-white">
-          <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+        <div className="flex items-center gap-2 p-5 border-t border-slate-100 flex-shrink-0 bg-white">
+          {existing && onDelete && (
+            confirmDelete ? (
+              <div className="flex items-center gap-1 mr-auto">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setDeleting(true)
+                    try { await onDelete() } finally { setDeleting(false) }
+                  }}
+                  disabled={deleting}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleting ? 'Deleting…' : 'Confirm delete'}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="mr-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
+            )
+          )}
+          <Button variant="ghost" size="sm" onClick={() => router.push('/settings?tab=forms')}>Cancel</Button>
           <Button size="sm" loading={saving} onClick={handleSave}>
             {existing ? 'Save changes' : 'Create form'}
           </Button>

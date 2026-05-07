@@ -1,17 +1,17 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 import { ShopGrid } from './shop-grid'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Shop' }
 
 export default async function MyShopPage() {
-  const session = await auth()
-  if (!session) redirect('/login')
+  const active = await getActiveClient()
+  if (!active) redirect('/login')
 
   const profile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: active.clientId },
     select: { id: true, trainer: { select: { businessName: true } }, trainerId: true },
   })
   if (!profile) redirect('/login')
@@ -41,7 +41,7 @@ export default async function MyShopPage() {
   const requestedIds = new Set(pendingRequests.map(r => r.productId))
 
   return (
-    <div className="px-5 lg:px-8 pt-6 lg:max-w-6xl lg:mx-auto">
+    <div className="px-5 lg:px-8 pt-6 max-w-3xl mx-auto w-full">
       <h1 className="text-2xl font-bold text-slate-900">Shop</h1>
       <p className="text-sm text-slate-500 mt-1">
         From <span className="font-medium text-slate-700">{profile.trainer.businessName}</span>

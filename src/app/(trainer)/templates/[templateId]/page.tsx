@@ -17,7 +17,7 @@ export default async function TemplateDetailPage({ params }: { params: Promise<{
   const { templateId } = await params
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
 
   const template = await prisma.trainingTemplate.findFirst({
     where: { id: templateId, trainerId },

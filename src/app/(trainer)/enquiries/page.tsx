@@ -26,7 +26,7 @@ export default async function EnquiriesPage({
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
 
   const sp = await searchParams
   const tab: TabKey = (TABS.find(t => t.key === sp.tab)?.key) ?? 'NEW'

@@ -1,13 +1,30 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  closestCenter,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Card, CardBody } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Plus, Trash2, Pencil, Check, X } from 'lucide-react'
+import { Plus, Trash2, Pencil, Check, X, GripVertical } from 'lucide-react'
 
 type FieldType = 'TEXT' | 'NUMBER' | 'DROPDOWN'
-
 type AppliesTo = 'OWNER' | 'DOG'
 
 type CustomField = {
@@ -18,6 +35,7 @@ type CustomField = {
   options: string[]
   category: string | null
   appliesTo: AppliesTo
+  order: number
 }
 
 const TYPE_LABELS: Record<FieldType, string> = {
@@ -26,342 +44,726 @@ const TYPE_LABELS: Record<FieldType, string> = {
   DROPDOWN: 'Dropdown',
 }
 
-export function CustomFieldsManager({ initialFields }: { initialFields: CustomField[] }) {
+const ORPHAN_BUCKET_ID = '__orphan__'
+
+export interface SectionMeta {
+  name: string
+  description: string | null
+}
+
+interface SectionView {
+  id: string             // either the section name or ORPHAN_BUCKET_ID
+  name: string           // display name ("Fields without a section" for orphans)
+  description: string | null
+  fields: CustomField[]
+  isOrphan: boolean
+}
+
+function buildSections(fields: CustomField[], sectionOrder: SectionMeta[]): SectionView[] {
+  // Sort fields within their section by `order` so reorders show up immediately
+  // even before the page is refetched.
+  const sortByOrder = (a: CustomField, b: CustomField) => a.order - b.order
+  const knownNames = new Set(sectionOrder.map(s => s.name))
+  const orphans = fields.filter(f => !f.category || !knownNames.has(f.category)).sort(sortByOrder)
+  const named: SectionView[] = sectionOrder.map(s => ({
+    id: s.name,
+    name: s.name,
+    description: s.description ?? null,
+    fields: fields.filter(f => f.category === s.name).sort(sortByOrder),
+    isOrphan: false,
+  }))
+  if (orphans.length === 0) return named
+  return [
+    { id: ORPHAN_BUCKET_ID, name: 'Fields without a section', description: null, fields: orphans, isOrphan: true },
+    ...named,
+  ]
+}
+
+export function CustomFieldsManager({
+  initialFields,
+  initialSectionOrder,
+}: {
+  initialFields: CustomField[]
+  initialSectionOrder: SectionMeta[]
+}) {
   const [fields, setFields] = useState(initialFields)
+  const [sectionOrder, setSectionOrder] = useState(initialSectionOrder)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [adding, setAdding] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [addingInSection, setAddingInSection] = useState<string | null>(null)
+  const [savingFieldId, setSavingFieldId] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [creatingSection, setCreatingSection] = useState(false)
+  const [editingSectionName, setEditingSectionName] = useState<string | null>(null)
 
-  const [newLabel, setNewLabel] = useState('')
-  const [newType, setNewType] = useState<FieldType>('TEXT')
-  const [newRequired, setNewRequired] = useState(false)
-  const [newOptions, setNewOptions] = useState<string[]>([])
-  const [newOptionInput, setNewOptionInput] = useState('')
-  const [newCategory, setNewCategory] = useState('')
-  const [newAppliesTo, setNewAppliesTo] = useState<AppliesTo>('OWNER')
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const sections = useMemo(() => buildSections(fields, sectionOrder), [fields, sectionOrder])
+  const activeField = activeId ? fields.find(f => f.id === activeId) ?? null : null
 
-  const [editLabel, setEditLabel] = useState('')
-  const [editType, setEditType] = useState<FieldType>('TEXT')
-  const [editRequired, setEditRequired] = useState(false)
-  const [editOptions, setEditOptions] = useState<string[]>([])
-  const [editOptionInput, setEditOptionInput] = useState('')
-  const [editCategory, setEditCategory] = useState('')
-  const [editAppliesTo, setEditAppliesTo] = useState<AppliesTo>('OWNER')
+  // ─── Section CRUD ────────────────────────────────────────────────────────
 
-  // Collect existing category names for autocomplete suggestions
-  const existingCategories = Array.from(new Set(fields.map(f => f.category).filter(Boolean))) as string[]
-
-  function startEdit(field: CustomField) {
-    setEditingId(field.id)
-    setEditLabel(field.label)
-    setEditType(field.type)
-    setEditRequired(field.required)
-    setEditOptions(field.options)
-    setEditOptionInput('')
-    setEditCategory(field.category ?? '')
-    setEditAppliesTo(field.appliesTo)
-  }
-
-  function cancelEdit() { setEditingId(null) }
-
-  function cancelAdd() {
-    setAdding(false)
-    setNewLabel(''); setNewType('TEXT'); setNewRequired(false)
-    setNewOptions([]); setNewOptionInput(''); setNewCategory('')
-    setNewAppliesTo('OWNER')
-  }
-
-  async function saveNew() {
-    if (!newLabel.trim()) return
-    setSaving(true)
-    setSaveError(null)
-    const res = await fetch('/api/custom-fields', {
-      method: 'POST',
+  async function persistSectionOrder(next: SectionMeta[]) {
+    setSectionOrder(next)
+    await fetch('/api/trainer/profile', {
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        label: newLabel.trim(), type: newType, required: newRequired,
-        options: newOptions, category: newCategory.trim() || null,
-        appliesTo: newAppliesTo,
-      }),
+      body: JSON.stringify({ intakeSectionOrder: next }),
     })
-    if (res.ok) {
-      const field = await res.json()
-      setFields(prev => [...prev, {
-        id: field.id, label: field.label, type: field.type,
-        required: field.required,
-        options: Array.isArray(field.options) ? field.options : [],
-        category: field.category ?? null,
-        appliesTo: (field.appliesTo ?? 'OWNER') as AppliesTo,
-      }])
-      cancelAdd()
-    } else {
-      const data = await res.json().catch(() => ({}))
-      setSaveError(data.error ? JSON.stringify(data.error) : `Error ${res.status}`)
+  }
+
+  async function handleSubmitNewSection(rawName: string, rawDescription: string) {
+    const name = rawName.trim()
+    if (!name) { setCreatingSection(false); return }
+    if (sectionOrder.some(s => s.name === name)) {
+      setError(`A section called "${name}" already exists.`)
+      return
     }
-    setSaving(false)
+    setError(null)
+    setCreatingSection(false)
+    const description = rawDescription.trim() || null
+    await persistSectionOrder([...sectionOrder, { name, description }])
   }
 
-  async function saveEdit(fieldId: string) {
-    if (!editLabel.trim()) return
-    setSaving(true)
-    setSaveError(null)
-    const res = await fetch(`/api/custom-fields/${fieldId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        label: editLabel.trim(), type: editType, required: editRequired,
-        options: editOptions, category: editCategory.trim() || null,
-        appliesTo: editAppliesTo,
-      }),
-    })
-    if (res.ok) {
-      setFields(prev => prev.map(f => f.id === fieldId
-        ? { ...f, label: editLabel.trim(), type: editType, required: editRequired, options: editOptions, category: editCategory.trim() || null, appliesTo: editAppliesTo }
-        : f
+  async function handleEditSection(currentName: string, rawName: string, rawDescription: string) {
+    const newName = rawName.trim()
+    if (!newName) { setEditingSectionName(null); return }
+    const renaming = newName !== currentName
+    if (renaming && sectionOrder.some(s => s.name === newName)) {
+      setError(`A section called "${newName}" already exists.`)
+      return
+    }
+    setError(null)
+    const description = rawDescription.trim() || null
+    const next = sectionOrder.map(s => s.name === currentName ? { name: newName, description } : s)
+    await persistSectionOrder(next)
+    setEditingSectionName(null)
+
+    // Cascade rename: update all fields with the old category to the new one.
+    if (renaming) {
+      const affected = fields.filter(f => f.category === currentName)
+      setFields(prev => prev.map(f => f.category === currentName ? { ...f, category: newName } : f))
+      await Promise.all(affected.map(f =>
+        fetch(`/api/custom-fields/${f.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: newName }),
+        })
       ))
-      cancelEdit()
-    } else {
-      const data = await res.json().catch(() => ({}))
-      setSaveError(data.error ? JSON.stringify(data.error) : `Error ${res.status}`)
-    }
-    setSaving(false)
-  }
-
-  async function deleteField(fieldId: string) {
-    if (!confirm('Delete this field? All saved values will also be removed.')) return
-    const res = await fetch(`/api/custom-fields/${fieldId}`, { method: 'DELETE' })
-    if (res.ok) setFields(prev => prev.filter(f => f.id !== fieldId))
-  }
-
-  function addNewOption() {
-    const v = newOptionInput.trim()
-    if (v) { setNewOptions(prev => [...prev, v]); setNewOptionInput('') }
-  }
-  function addEditOption() {
-    const v = editOptionInput.trim()
-    if (v) { setEditOptions(prev => [...prev, v]); setEditOptionInput('') }
-  }
-
-  // Group fields by category
-  const grouped: { category: string | null; fields: CustomField[] }[] = []
-  const seen = new Set<string | null>()
-  for (const f of fields) {
-    const key = f.category ?? null
-    if (!seen.has(key)) {
-      seen.add(key)
-      grouped.push({ category: key, fields: fields.filter(x => (x.category ?? null) === key) })
     }
   }
+
+  async function handleDeleteSection(name: string) {
+    const fieldsInSection = fields.filter(f => f.category === name).length
+    if (fieldsInSection > 0) {
+      setError(`Move the ${fieldsInSection} field(s) out of "${name}" first, then delete the section.`)
+      return
+    }
+    setError(null)
+    await persistSectionOrder(sectionOrder.filter(s => s.name !== name))
+  }
+
+  // ─── Field CRUD ──────────────────────────────────────────────────────────
+
+  async function persistFieldUpdate(fieldId: string, patch: Partial<Pick<CustomField, 'category'>> & { order?: number }) {
+    const current = fields.find(f => f.id === fieldId)
+    if (!current) return
+    setSavingFieldId(fieldId)
+    try {
+      const res = await fetch(`/api/custom-fields/${fieldId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...patch }),
+      })
+      if (!res.ok) {
+        // Roll back optimistic change
+        setFields(prev => prev.map(f => f.id === fieldId ? current : f))
+      }
+    } finally {
+      setSavingFieldId(null)
+    }
+  }
+
+  // ─── Drag and drop ───────────────────────────────────────────────────────
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(event.active.id as string)
+  }
+
+  // Find which section a field currently lives in, by category. Returns the
+  // section id (its name, or ORPHAN_BUCKET_ID for uncategorised) — or null
+  // if the id is one of the section drop targets itself.
+  function sectionOfField(fieldId: string): string | null {
+    const f = fields.find(x => x.id === fieldId)
+    if (!f) return null
+    if (!f.category) return ORPHAN_BUCKET_ID
+    if (!sectionOrder.some(s => s.name === f.category)) return ORPHAN_BUCKET_ID
+    return f.category
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null)
+    const { active, over } = event
+    if (!over) return
+    const fieldId = active.id as string
+    const overId = over.id as string
+
+    const field = fields.find(f => f.id === fieldId)
+    if (!field) return
+
+    const fromSection = sectionOfField(fieldId)
+    if (!fromSection) return
+
+    // Determine target section: either over.id is a section drop target, OR
+    // it's another field — in which case use that field's section.
+    const overIsField = fields.some(f => f.id === overId)
+    const toSection = overIsField ? sectionOfField(overId) : overId
+    if (!toSection) return
+
+    const newCategory = toSection === ORPHAN_BUCKET_ID ? null : toSection
+
+    // Same section reorder: move within the array, recompute orders.
+    if (fromSection === toSection) {
+      if (!overIsField) return // dropped on container, no reorder target
+      const peers = fields.filter(f => sectionOfField(f.id) === fromSection)
+      const oldIndex = peers.findIndex(f => f.id === fieldId)
+      const newIndex = peers.findIndex(f => f.id === overId)
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+      const reordered = arrayMove(peers, oldIndex, newIndex)
+      const reorderedIds = new Set(reordered.map(f => f.id))
+      setFields(prev => {
+        const others = prev.filter(f => !reorderedIds.has(f.id))
+        return [...others, ...reordered.map((f, i) => ({ ...f, order: i }))]
+      })
+      // Persist the new order for each field in the section.
+      void Promise.all(reordered.map((f, i) =>
+        persistFieldUpdate(f.id, { order: i })
+      ))
+      return
+    }
+
+    // Cross-section move: change category, drop at end of target section.
+    const peersInTarget = fields.filter(f => sectionOfField(f.id) === toSection)
+    const newOrder = peersInTarget.length // append to end
+    setFields(prev => prev.map(f => f.id === fieldId ? { ...f, category: newCategory, order: newOrder } : f))
+    void persistFieldUpdate(fieldId, { category: newCategory, order: newOrder })
+  }
+
+  // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div>
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-slate-900">Custom client fields</h2>
-        <p className="text-sm text-slate-500 mt-0.5">Define extra fields that appear on every client profile.</p>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-slate-500">Drag fields between sections. Sections show clients one screen at a time.</p>
+        <Button size="sm" variant="secondary" onClick={() => setCreatingSection(true)} disabled={creatingSection}>
+          <Plus className="h-3.5 w-3.5" />
+          Create section
+        </Button>
       </div>
 
-      <Card>
-        <CardBody className="pt-4 pb-4 flex flex-col gap-3">
-          {saveError && (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{saveError}</p>
-          )}
-          {fields.length === 0 && !adding && (
-            <p className="text-sm text-slate-400 text-center py-4">No custom fields yet.</p>
+      {error && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>
+      )}
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="flex flex-col gap-3">
+          {sections.length === 0 && (
+            <Card>
+              <CardBody className="py-8 text-center text-slate-400 text-sm">
+                No sections yet. Click <strong>Create section</strong> to add one.
+              </CardBody>
+            </Card>
           )}
 
-          {grouped.map(group => (
-            <div key={group.category ?? '__uncategorised__'}>
-              {group.category && (
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 mt-1">{group.category}</p>
-              )}
-              <div className="flex flex-col gap-2">
-                {group.fields.map(field => (
-                  <div key={field.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                    {editingId === field.id ? (
-                      <FieldForm
-                        label={editLabel} setLabel={setEditLabel}
-                        type={editType} setType={setEditType}
-                        required={editRequired} setRequired={setEditRequired}
-                        options={editOptions} setOptions={setEditOptions}
-                        optionInput={editOptionInput} setOptionInput={setEditOptionInput}
-                        addOption={addEditOption}
-                        category={editCategory} setCategory={setEditCategory}
-                        existingCategories={existingCategories}
-                        appliesTo={editAppliesTo} setAppliesTo={setEditAppliesTo}
-                        onSave={() => saveEdit(field.id)}
-                        onCancel={cancelEdit}
-                        saving={saving}
-                      />
-                    ) : (
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-slate-800">
-                            {field.label}
-                            {field.required && <span className="text-red-500 ml-1">*</span>}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            {TYPE_LABELS[field.type]}
-                            {field.type === 'DROPDOWN' && field.options.length > 0 && ` · ${field.options.join(', ')}`}
-                            {' · '}
-                            <span className={field.appliesTo === 'DOG' ? 'text-amber-600' : 'text-slate-400'}>
-                              {field.appliesTo === 'DOG' ? 'Dog' : 'Owner'}
-                            </span>
-                          </p>
-                        </div>
-                        <div className="flex gap-1.5">
-                          <button onClick={() => startEdit(field)} className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-white transition-colors">
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => deleteField(field.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-white transition-colors">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+          {sections.map(section => (
+            <SectionDroppable
+              key={section.id}
+              section={section}
+              isEditingMeta={editingSectionName === section.name}
+              onStartEditMeta={section.isOrphan ? undefined : () => setEditingSectionName(section.name)}
+              onCancelEditMeta={() => setEditingSectionName(null)}
+              onSubmitEditMeta={(name, desc) => handleEditSection(section.name, name, desc)}
+              onDelete={section.isOrphan ? undefined : () => handleDeleteSection(section.name)}
+              onAddField={() => setAddingInSection(section.id)}
+              onEditField={setEditingId}
+              onCancelEdit={() => setEditingId(null)}
+              onFieldSaved={(saved, isNew) => {
+                setFields(prev => isNew ? [...prev, saved] : prev.map(f => f.id === saved.id ? saved : f))
+                setEditingId(null)
+                setAddingInSection(null)
+              }}
+              onFieldDeleted={(id) => setFields(prev => prev.filter(f => f.id !== id))}
+              editingId={editingId}
+              addingHere={addingInSection === section.id}
+              onCancelAdd={() => setAddingInSection(null)}
+              savingFieldId={savingFieldId}
+            />
           ))}
 
-          {adding && (
-            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
-              <FieldForm
-                label={newLabel} setLabel={setNewLabel}
-                type={newType} setType={setNewType}
-                required={newRequired} setRequired={setNewRequired}
-                options={newOptions} setOptions={setNewOptions}
-                optionInput={newOptionInput} setOptionInput={setNewOptionInput}
-                addOption={addNewOption}
-                category={newCategory} setCategory={setNewCategory}
-                existingCategories={existingCategories}
-                appliesTo={newAppliesTo} setAppliesTo={setNewAppliesTo}
-                onSave={saveNew}
-                onCancel={cancelAdd}
-                saving={saving}
-              />
-            </div>
+          {creatingSection && (
+            <SectionMetaForm
+              ringClass="ring-2 ring-blue-300 ring-offset-1"
+              submitLabel="Add"
+              onSubmit={handleSubmitNewSection}
+              onCancel={() => { setCreatingSection(false); setError(null) }}
+            />
           )}
+        </div>
 
-          {!adding && (
-            <button
-              onClick={() => setAdding(true)}
-              className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 mt-1"
-            >
-              <Plus className="h-4 w-4" /> Add field
-            </button>
-          )}
-        </CardBody>
-      </Card>
+        <DragOverlay>
+          {activeField && <FieldDragPreview field={activeField} />}
+        </DragOverlay>
+      </DndContext>
     </div>
   )
 }
 
-function FieldForm({
-  label, setLabel, type, setType, required, setRequired,
-  options, setOptions, optionInput, setOptionInput, addOption,
-  category, setCategory, existingCategories,
-  appliesTo, setAppliesTo,
-  onSave, onCancel, saving,
+// ─── Inline section meta form (create + edit) ────────────────────────────────
+
+function SectionMetaForm({
+  initialName = '',
+  initialDescription = '',
+  submitLabel,
+  ringClass,
+  onSubmit,
+  onCancel,
 }: {
-  label: string; setLabel: (v: string) => void
-  type: FieldType; setType: (v: FieldType) => void
-  required: boolean; setRequired: (v: boolean) => void
-  options: string[]; setOptions: (v: string[]) => void
-  optionInput: string; setOptionInput: (v: string) => void
-  addOption: () => void
-  category: string; setCategory: (v: string) => void
-  existingCategories: string[]
-  appliesTo: AppliesTo; setAppliesTo: (v: AppliesTo) => void
-  onSave: () => void; onCancel: () => void
-  saving: boolean
+  initialName?: string
+  initialDescription?: string
+  submitLabel: string
+  ringClass?: string
+  onSubmit: (name: string, description: string) => void
+  onCancel: () => void
 }) {
+  const [name, setName] = useState(initialName)
+  const [description, setDescription] = useState(initialDescription)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  function handleEnter(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(name, description) }
+    if (e.key === 'Escape') { e.preventDefault(); onCancel() }
+  }
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex gap-2">
-        <Input label="Field name" placeholder="e.g. Emergency contact" value={label} onChange={e => setLabel(e.target.value)} className="flex-1" />
-        <div className="w-36">
-          <label className="text-sm font-medium text-slate-700 block mb-1.5">Type</label>
-          <select value={type} onChange={e => setType(e.target.value as FieldType)} className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+    <Card className={ringClass}>
+      <CardBody className="py-3 flex flex-col gap-2">
+        <input
+          ref={inputRef}
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={handleEnter}
+          placeholder="Section name (e.g. About you)"
+          className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <textarea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          onKeyDown={handleEnter}
+          placeholder="Description (optional) — shown to clients above this section"
+          rows={2}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+        />
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+            aria-label="Cancel"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <Button size="sm" onClick={() => onSubmit(name, description)}>
+            <Check className="h-3.5 w-3.5" />
+            {submitLabel}
+          </Button>
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+// ─── Section (drop target) ──────────────────────────────────────────────────
+
+function SectionDroppable({
+  section,
+  isEditingMeta,
+  onStartEditMeta,
+  onCancelEditMeta,
+  onSubmitEditMeta,
+  onDelete,
+  onAddField,
+  onEditField,
+  onCancelEdit,
+  onFieldSaved,
+  onFieldDeleted,
+  editingId,
+  addingHere,
+  onCancelAdd,
+  savingFieldId,
+}: {
+  section: SectionView
+  isEditingMeta?: boolean
+  onStartEditMeta?: () => void
+  onCancelEditMeta?: () => void
+  onSubmitEditMeta?: (name: string, description: string) => void
+  onDelete?: () => void
+  onAddField: () => void
+  onEditField: (id: string) => void
+  onCancelEdit: () => void
+  onFieldSaved: (saved: CustomField, isNew: boolean) => void
+  onFieldDeleted: (id: string) => void
+  editingId: string | null
+  addingHere: boolean
+  onCancelAdd: () => void
+  savingFieldId: string | null
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: section.id })
+
+  // While editing meta, show the form in place of the header.
+  if (isEditingMeta && onSubmitEditMeta && onCancelEditMeta) {
+    return (
+      <SectionMetaForm
+        initialName={section.name}
+        initialDescription={section.description ?? ''}
+        submitLabel="Save"
+        ringClass="ring-2 ring-blue-300 ring-offset-1"
+        onSubmit={onSubmitEditMeta}
+        onCancel={onCancelEditMeta}
+      />
+    )
+  }
+
+  return (
+    <Card className={isOver ? 'ring-2 ring-blue-400 ring-offset-1' : ''}>
+      <CardBody className="py-4">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className="min-w-0 flex-1">
+            <h3 className={`text-sm font-semibold ${section.isOrphan ? 'text-amber-700' : 'text-slate-900'}`}>
+              {section.name}
+              <span className="ml-2 text-xs font-normal text-slate-400">
+                {section.fields.length} {section.fields.length === 1 ? 'field' : 'fields'}
+              </span>
+            </h3>
+            {section.description && (
+              <p className="text-xs text-slate-500 mt-0.5 leading-snug">{section.description}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {!section.isOrphan && (
+              <Button size="sm" variant="ghost" onClick={onAddField}>
+                <Plus className="h-3.5 w-3.5" />
+                Add field
+              </Button>
+            )}
+            {onStartEditMeta && (
+              <button
+                type="button"
+                onClick={onStartEditMeta}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                title="Edit section"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                title="Delete section"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div ref={setNodeRef} className="flex flex-col gap-2 min-h-[44px]">
+          {section.fields.length === 0 && !addingHere && (
+            <p className="text-xs text-slate-400 italic px-2 py-3">
+              Drop fields here, or click <strong>Add field</strong>.
+            </p>
+          )}
+          <SortableContext items={section.fields.map(f => f.id)} strategy={verticalListSortingStrategy}>
+            {section.fields.map(field =>
+              editingId === field.id ? (
+                <FieldEditor
+                  key={field.id}
+                  initial={field}
+                  presetCategory={section.isOrphan ? null : section.name}
+                  onCancel={onCancelEdit}
+                  onSaved={(saved) => onFieldSaved(saved, false)}
+                  onDeleted={() => onFieldDeleted(field.id)}
+                />
+              ) : (
+                <SortableFieldRow
+                  key={field.id}
+                  field={field}
+                  onEdit={() => onEditField(field.id)}
+                  isSaving={savingFieldId === field.id}
+                />
+              )
+            )}
+          </SortableContext>
+          {addingHere && (
+            <FieldEditor
+              presetCategory={section.isOrphan ? null : section.name}
+              onCancel={onCancelAdd}
+              onSaved={(saved) => onFieldSaved(saved, true)}
+            />
+          )}
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+// ─── Field row (draggable) ───────────────────────────────────────────────────
+
+function SortableFieldRow({
+  field,
+  onEdit,
+  isSaving,
+}: {
+  field: CustomField
+  onEdit: () => void
+  isSaving: boolean
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id })
+  const style = {
+    transform: transform ? CSS.Transform.toString(transform) : undefined,
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition-colors"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing"
+        aria-label="Drag field"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-900 truncate">
+          {field.label}
+          {field.required && <span className="text-red-500 ml-1">*</span>}
+        </p>
+        <p className="text-xs text-slate-400">
+          {TYPE_LABELS[field.type]} · {field.appliesTo === 'DOG' ? 'Per dog' : 'Per owner'}
+          {isSaving && <span className="ml-2 text-blue-500">Saving…</span>}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+        aria-label="Edit field"
+      >
+        <Pencil className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+function FieldDragPreview({ field }: { field: CustomField }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-300 bg-white shadow-lg">
+      <GripVertical className="h-4 w-4 text-slate-400" />
+      <p className="text-sm font-medium text-slate-900">{field.label}</p>
+    </div>
+  )
+}
+
+// ─── Field editor (create + edit) ────────────────────────────────────────────
+
+function FieldEditor({
+  initial,
+  presetCategory,
+  onCancel,
+  onSaved,
+  onDeleted,
+}: {
+  initial?: CustomField
+  presetCategory: string | null
+  onCancel: () => void
+  onSaved: (saved: CustomField) => void
+  onDeleted?: () => void
+}) {
+  const [label, setLabel] = useState(initial?.label ?? '')
+  const [type, setType] = useState<FieldType>(initial?.type ?? 'TEXT')
+  const [required, setRequired] = useState(initial?.required ?? false)
+  const [appliesTo, setAppliesTo] = useState<AppliesTo>(initial?.appliesTo ?? 'OWNER')
+  const [options, setOptions] = useState<string[]>(initial?.options ?? [])
+  const [optionInput, setOptionInput] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function addOption() {
+    const v = optionInput.trim()
+    if (!v) return
+    if (options.includes(v)) return
+    setOptions(prev => [...prev, v])
+    setOptionInput('')
+  }
+
+  function removeOption(opt: string) {
+    setOptions(prev => prev.filter(o => o !== opt))
+  }
+
+  async function save() {
+    if (!label.trim()) { setError('Label is required'); return }
+    if (type === 'DROPDOWN' && options.length === 0) { setError('Add at least one dropdown option'); return }
+
+    setSaving(true)
+    setError(null)
+    const payload = {
+      label: label.trim(),
+      type,
+      required,
+      options: type === 'DROPDOWN' ? options : [],
+      category: presetCategory,
+      appliesTo,
+    }
+    const url = initial ? `/api/custom-fields/${initial.id}` : '/api/custom-fields'
+    const method = initial ? 'PATCH' : 'POST'
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    if (!res.ok) {
+      setError('Failed to save')
+      setSaving(false)
+      return
+    }
+    const saved = await res.json()
+    onSaved({
+      id: saved.id,
+      label: saved.label,
+      type: saved.type as FieldType,
+      required: saved.required,
+      options: Array.isArray(saved.options) ? saved.options as string[] : [],
+      category: saved.category ?? null,
+      appliesTo: (saved.appliesTo ?? 'OWNER') as AppliesTo,
+      order: typeof saved.order === 'number' ? saved.order : 0,
+    })
+  }
+
+  async function handleDelete() {
+    if (!initial) return
+    setDeleting(true)
+    const res = await fetch(`/api/custom-fields/${initial.id}`, { method: 'DELETE' })
+    if (!res.ok) { setDeleting(false); setError('Failed to delete'); return }
+    onDeleted?.()
+  }
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 flex flex-col gap-3">
+      <Input
+        label="Label"
+        placeholder="e.g. Dog's breed"
+        value={label}
+        onChange={e => setLabel(e.target.value)}
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-slate-700">Type</label>
+          <select
+            value={type}
+            onChange={e => setType(e.target.value as FieldType)}
+            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
             <option value="TEXT">Text</option>
             <option value="NUMBER">Number</option>
             <option value="DROPDOWN">Dropdown</option>
           </select>
         </div>
-      </div>
-
-      <div>
-        <label className="text-sm font-medium text-slate-700 block mb-1.5">Applies to</label>
-        <div className="flex gap-2">
-          {(['OWNER', 'DOG'] as AppliesTo[]).map(opt => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => setAppliesTo(opt)}
-              className={`flex-1 h-10 rounded-xl border text-sm font-medium transition-colors ${
-                appliesTo === opt
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-              }`}
-            >
-              {opt === 'OWNER' ? 'Owner' : 'Dog'}
-            </button>
-          ))}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-slate-700">Applies to</label>
+          <select
+            value={appliesTo}
+            onChange={e => setAppliesTo(e.target.value as AppliesTo)}
+            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="OWNER">Owner</option>
+            <option value="DOG">Each dog</option>
+          </select>
         </div>
-      </div>
-
-      <div>
-        <label className="text-sm font-medium text-slate-700 block mb-1.5">Category <span className="text-slate-400 font-normal">(optional)</span></label>
-        <input
-          list="category-suggestions"
-          value={category}
-          onChange={e => setCategory(e.target.value)}
-          placeholder="e.g. Medical, Home Routines"
-          className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <datalist id="category-suggestions">
-          {existingCategories.map(c => <option key={c} value={c} />)}
-        </datalist>
       </div>
 
       {type === 'DROPDOWN' && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium text-slate-500">Options</p>
-          {options.map((opt, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <span className="flex-1 text-sm text-slate-700 bg-white rounded-lg border border-slate-200 px-3 py-2">{opt}</span>
-              <button type="button" onClick={() => setOptions(options.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
+          <label className="text-sm font-medium text-slate-700">Options</label>
           <div className="flex gap-2">
-            <input
+            <Input
+              placeholder="Add option"
               value={optionInput}
               onChange={e => setOptionInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOption() } }}
-              placeholder="Add option..."
-              className="flex-1 h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <button type="button" onClick={addOption} className="text-blue-600 hover:text-blue-700 px-2">
-              <Plus className="h-4 w-4" />
-            </button>
+            <Button size="sm" type="button" variant="secondary" onClick={addOption}>Add</Button>
           </div>
+          {options.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {options.map(opt => (
+                <span key={opt} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-slate-200 text-xs">
+                  {opt}
+                  <button type="button" onClick={() => removeOption(opt)} className="text-slate-400 hover:text-red-500">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-        <input type="checkbox" checked={required} onChange={e => setRequired(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={required}
+          onChange={e => setRequired(e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 text-blue-600"
+        />
         Required field
       </label>
 
-      <div className="flex gap-2">
-        <Button size="sm" onClick={onSave} loading={saving}>
-          <Check className="h-3.5 w-3.5" /> Save
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>
-          <X className="h-3.5 w-3.5" /> Cancel
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      <div className="flex items-center gap-2">
+        {initial && (
+          confirmDelete ? (
+            <div className="flex items-center gap-1 mr-auto">
+              <button type="button" onClick={() => setConfirmDelete(false)} className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button type="button" onClick={handleDelete} disabled={deleting} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50">
+                <Trash2 className="h-3.5 w-3.5" />
+                {deleting ? 'Deleting…' : 'Confirm'}
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirmDelete(true)} className="mr-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50">
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </button>
+          )
+        )}
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+        <Button size="sm" loading={saving} onClick={save}>
+          <Check className="h-3.5 w-3.5" />
+          {initial ? 'Save' : 'Add field'}
         </Button>
       </div>
     </div>

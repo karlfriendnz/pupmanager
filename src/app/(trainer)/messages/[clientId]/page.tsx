@@ -15,7 +15,7 @@ export default async function TrainerMessageThreadPage({ params }: { params: Pro
   const { clientId } = await params
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
 
   const client = await prisma.clientProfile.findFirst({
     where: { id: clientId, trainerId },

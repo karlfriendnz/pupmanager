@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
@@ -77,6 +78,7 @@ interface Achievement {
   description: string | null
   icon: string | null
   color: string | null
+  published: boolean
   triggerType: TriggerType
   triggerValue: number | null
 }
@@ -85,6 +87,7 @@ const COMMON_ICONS = ['🏆', '⭐', '🥇', '🎖️', '🐾', '🦴', '💯', 
 const DEFAULT_COLOR: Color = 'amber'
 
 export function AchievementsManager({ initial }: { initial: Achievement[] }) {
+  const router = useRouter()
   const [items, setItems] = useState<Achievement[]>(initial)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showAdd, setShowAdd] = useState(false)
@@ -96,6 +99,7 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
   const [draftDesc, setDraftDesc] = useState('')
   const [draftIcon, setDraftIcon] = useState<string>('🏆')
   const [draftColor, setDraftColor] = useState<Color>(DEFAULT_COLOR)
+  const [draftPublished, setDraftPublished] = useState(true)
   const [draftMode, setDraftMode] = useState<'manual' | 'auto'>('manual')
   const [draftTrigger, setDraftTrigger] = useState<TriggerType>('SESSIONS_COMPLETED')
   const [draftValue, setDraftValue] = useState<string>('5')
@@ -105,6 +109,7 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
     setDraftDesc('')
     setDraftIcon('🏆')
     setDraftColor(DEFAULT_COLOR)
+    setDraftPublished(true)
     setDraftMode('manual')
     setDraftTrigger('SESSIONS_COMPLETED')
     setDraftValue('5')
@@ -123,7 +128,10 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
     setDraftName(a.name)
     setDraftDesc(a.description ?? '')
     setDraftIcon(a.icon ?? '🏆')
-    setDraftColor(((a.color ?? DEFAULT_COLOR) as Color) in COLOR_BY_KEY ? (a.color as Color) : DEFAULT_COLOR)
+    // Guard against nullish a.color — the previous expression checked the
+    // fallback against COLOR_BY_KEY but then assigned the raw (null) value.
+    setDraftColor(a.color && (a.color as Color) in COLOR_BY_KEY ? (a.color as Color) : DEFAULT_COLOR)
+    setDraftPublished(a.published)
     setDraftMode(a.triggerType === 'MANUAL' ? 'manual' : 'auto')
     setDraftTrigger(a.triggerType === 'MANUAL' ? 'SESSIONS_COMPLETED' : a.triggerType)
     setDraftValue(a.triggerValue != null ? String(a.triggerValue) : '5')
@@ -159,6 +167,7 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
       description: draftDesc.trim() || null,
       icon: draftIcon || null,
       color: draftColor,
+      published: draftPublished,
       triggerType,
       triggerValue,
     }
@@ -173,6 +182,9 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
       : [...prev, saved],
     )
     cancel()
+    // Refresh server state so the trainer layout (FAB / onboarding state)
+    // sees the new published-achievement count and advances the wizard.
+    router.refresh()
   }
 
   async function remove(id: string) {
@@ -181,6 +193,7 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
     setItems(p => p.filter(a => a.id !== id))
     const res = await fetch(`/api/achievements/${id}`, { method: 'DELETE' })
     if (!res.ok) setItems(prev)
+    else router.refresh()
   }
 
   return (
@@ -210,7 +223,14 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
                     {a.icon || '🏆'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-900 truncate">{a.name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-slate-900 truncate">{a.name}</p>
+                      <span className={`flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                        a.published ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {a.published ? 'Published' : 'Draft'}
+                      </span>
+                    </div>
                     {a.description && (
                       <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{a.description}</p>
                     )}
@@ -243,9 +263,19 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
         </ul>
       )}
 
-      {/* Add/Edit form */}
-      {(showAdd || editingId) ? (
-        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-5 flex flex-col gap-4">
+      {/* Add button — always visible. Modal pops over when adding/editing. */}
+      <button
+        onClick={startAdd}
+        className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+      >
+        <Plus className="h-4 w-4" />
+        Add achievement
+      </button>
+
+      {/* Add/Edit modal */}
+      {(showAdd || editingId) && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-md animate-pm-fade">
+          <div className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto bg-white rounded-3xl shadow-2xl animate-pm-pop p-5 flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-slate-900">
               {editingId ? 'Edit achievement' : 'New achievement'}
@@ -393,21 +423,28 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
             )}
           </div>
 
+          {/* Published toggle */}
+          <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+            <div>
+              <p className="text-sm font-medium text-slate-700">Published</p>
+              <p className="text-xs text-slate-500">Visible to clients and eligible for auto-award. Turn off to draft.</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={draftPublished}
+              onChange={e => setDraftPublished(e.target.checked)}
+              className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+          </label>
+
           <div className="flex gap-2 pt-1">
             <Button type="button" variant="secondary" onClick={cancel} className="flex-1">Cancel</Button>
             <Button type="button" onClick={save} loading={saving} className="flex-1">
               {editingId ? 'Save changes' : 'Add achievement'}
             </Button>
           </div>
+          </div>
         </div>
-      ) : (
-        <button
-          onClick={startAdd}
-          className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-400 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Add achievement
-        </button>
       )}
     </div>
   )

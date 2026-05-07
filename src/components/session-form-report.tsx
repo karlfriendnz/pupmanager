@@ -210,7 +210,7 @@ export function SessionFormReport({
     if ((templates?.length ?? 0) === 0) {
       return (
         <p className="text-sm text-slate-400">
-          No session forms yet. Create one in <a href="/forms/session" className="text-blue-600 hover:underline">Forms → Session forms</a>.
+          No session forms yet. Create one in <a href="/settings?tab=forms" className="text-blue-600 hover:underline">Settings → Forms</a>.
         </p>
       )
     }
@@ -295,7 +295,7 @@ export function SessionFormReport({
         </div>
       ) : (templates?.length ?? 0) === 0 ? (
         <p className="text-sm text-slate-400">
-          No session forms yet. Create one in <a href="/forms/session" className="text-blue-600 hover:underline">Forms → Session forms</a>.
+          No session forms yet. Create one in <a href="/settings?tab=forms" className="text-blue-600 hover:underline">Settings → Forms</a>.
         </p>
       ) : (responses?.length ?? 0) === 0 ? (
         <p className="text-sm text-slate-400">

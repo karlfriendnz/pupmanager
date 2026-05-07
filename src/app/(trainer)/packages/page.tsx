@@ -11,7 +11,7 @@ export default async function PackagesPage() {
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/onboarding')
+  if (!trainerId) redirect('/login')
 
   const [packages, sessionForms] = await Promise.all([
     prisma.package.findMany({
@@ -40,6 +40,7 @@ export default async function PackagesPage() {
         specialPriceCents: p.specialPriceCents,
         color: (p.color ?? null) as 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan' | null,
         defaultSessionFormId: p.defaultSessionFormId ?? null,
+        requireSessionNotes: p.requireSessionNotes,
         assignments: p._count.assignments,
       }))}
       sessionForms={sessionForms}

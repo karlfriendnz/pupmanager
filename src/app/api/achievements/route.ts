@@ -44,6 +44,7 @@ const schema = z.object({
   description: z.string().max(500).optional().nullable(),
   icon: z.string().max(8).optional().nullable(),
   color: z.string().max(20).optional().nullable(),
+  published: z.boolean().optional(),
   triggerType: z.enum(TRIGGER_TYPES).default('MANUAL'),
   triggerValue: z.number().int().positive().nullable().optional(),
 })
@@ -92,6 +93,7 @@ export async function POST(req: Request) {
       icon: parsed.data.icon ?? null,
       color: parsed.data.color ?? null,
       order: count,
+      published: parsed.data.published ?? true,
       triggerType: parsed.data.triggerType,
       triggerValue,
     },

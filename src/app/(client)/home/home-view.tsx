@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Flame, Trophy, MapPin, Clock, ChevronRight, Check, Play,
-  Sparkles, Lock, ShoppingBag, Download, Video,
+  Flame, MapPin, Clock, ChevronRight, Check, Play,
+  Sparkles, ShoppingBag, Download, Video, Calendar as CalendarIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -78,6 +78,21 @@ interface AchievementBadge {
   icon: string | null
   color: string | null
   earned: boolean
+  progress?: { current: number; target: number } | null
+}
+
+// Map of trainer-chosen achievement colours → Tailwind class strings. Tailwind
+// can't see classes built from runtime strings, so any colour we accept on
+// the trainer side needs an entry here. Falls back to amber for anything
+// unknown so we never render a colourless badge.
+const BADGE_COLOR_CLASSES: Record<string, { bg: string; text: string }> = {
+  amber: { bg: 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200', text: 'text-amber-900' },
+  blue: { bg: 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200', text: 'text-blue-900' },
+  sky: { bg: 'bg-gradient-to-br from-sky-50 to-cyan-50 border-sky-200', text: 'text-sky-900' },
+  violet: { bg: 'bg-gradient-to-br from-violet-50 to-purple-50 border-violet-200', text: 'text-violet-900' },
+  emerald: { bg: 'bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200', text: 'text-emerald-900' },
+  rose: { bg: 'bg-gradient-to-br from-rose-50 to-pink-50 border-rose-200', text: 'text-rose-900' },
+  slate: { bg: 'bg-gradient-to-br from-slate-50 to-slate-100 border-slate-200', text: 'text-slate-900' },
 }
 
 interface Props {
@@ -120,9 +135,12 @@ function formatPrice(cents: number | null) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Locale is fixed to en-NZ on both server and client to avoid hydration
+// mismatches — the trainer-side defaults to NZ formatting and an undefined
+// locale resolves differently in Node vs the browser.
 function formatSessionWhen(iso: string) {
   const d = new Date(iso)
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString('en-NZ', {
     weekday: 'long',
     hour: 'numeric',
     minute: '2-digit',
@@ -131,7 +149,7 @@ function formatSessionWhen(iso: string) {
 
 function formatShortDate(iso: string) {
   const d = new Date(iso)
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return d.toLocaleDateString('en-NZ', { month: 'short', day: 'numeric' })
 }
 
 function countdownLabel(iso: string) {
@@ -227,93 +245,102 @@ export function ClientHomeView({
 
   return (
     <div className="relative">
-      {/* ─── Hero: trainer brand banner + dog card ─── */}
-      <section className="relative">
-        <div
-          className="h-44 md:h-52 lg:h-64 w-full relative overflow-hidden"
-          style={
-            dashboardBgUrl
-              ? { backgroundImage: `url(${dashboardBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-              : undefined
-          }
-        >
-          {!dashboardBgUrl && (
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600" />
-          )}
+      {/* ─── Greeting band — compact hero strip using the trainer's
+          dashboardBgUrl when set, otherwise a brand gradient. Dog is a chip
+          on the right (stacked under the greeting on mobile) with name +
+          package progress + streak in a tight horizontal layout. */}
+      <section
+        className="relative w-full overflow-hidden"
+        style={
+          dashboardBgUrl
+            ? { backgroundImage: `url(${dashboardBgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+            : undefined
+        }
+      >
+        {/* When the trainer hasn't set a dashboard background, we drop back
+            to a clean white band rather than a gradient — keeps the top of
+            the app feeling calm and lets the content take the focus. */}
+        {dashboardBgUrl && (
           <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/40" />
+        )}
 
-          {/* Greeting sits in upper portion so the dog card can overlap the
-              bottom of the banner without covering text. */}
-          <div className="relative h-full flex flex-col justify-end px-5 lg:px-8 pb-20 lg:pb-24 w-full">
-            <p className="text-xs font-medium text-white/80 tracking-wide">{businessName}</p>
-            <h1 className="text-2xl lg:text-3xl font-bold text-white leading-tight">Hi {firstName} 👋</h1>
-            <p className="text-sm lg:text-base text-white/90">Let&apos;s keep {dogName}&apos;s streak going.</p>
-          </div>
-        </div>
-
-        {/* Dog hero card — left-aligned within shell, constrained width on larger screens */}
-        <div className="px-5 lg:px-8 -mt-14 relative z-10">
-          <div className="md:max-w-md rounded-3xl bg-white shadow-xl shadow-slate-900/5 border border-slate-100 overflow-hidden">
-            <div className="flex items-stretch">
-              <div className="w-28 lg:w-36 h-32 lg:h-40 bg-gradient-to-br from-amber-100 to-orange-200 flex-shrink-0 relative overflow-hidden">
-                {primaryDog?.photoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={primaryDog.photoUrl} alt={dogName} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center text-5xl lg:text-6xl">🐕</div>
-                )}
-              </div>
-
-              <div className="flex-1 p-4 lg:p-5 flex flex-col gap-2 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-slate-400 font-medium">Your dog</p>
-                    <h2 className="text-lg lg:text-xl font-bold text-slate-900 truncate">{dogName}</h2>
-                    {primaryDog?.breed && (
-                      <p className="text-xs lg:text-sm text-slate-500 truncate">{primaryDog.breed}</p>
-                    )}
-                  </div>
-                  <StreakChip days={MOCK_STREAK} />
-                </div>
-
-                {packageProgress ? (
-                  <div className="mt-1">
-                    <div className="flex items-center justify-between text-[11px] mb-1">
-                      <span className="font-medium text-slate-600 truncate">{packageProgress.label}</span>
-                      <span className="text-slate-400 flex-shrink-0">{packageProgress.completed}/{packageProgress.total}</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all"
-                        style={{ width: `${packagePct}%` }}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400 mt-1">No active package</p>
-                )}
-              </div>
+        <div className={cn(
+          'relative px-5 lg:px-8 pt-6 pb-5 max-w-3xl mx-auto w-full',
+          !dashboardBgUrl && 'border-b border-slate-100',
+        )}>
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div className="min-w-0">
+              <p className={cn(
+                'text-[11px] uppercase tracking-wider font-semibold',
+                dashboardBgUrl ? 'text-white/80' : 'text-slate-400',
+              )}>{businessName}</p>
+              <h1 className={cn(
+                'text-2xl lg:text-3xl font-bold leading-tight mt-0.5',
+                dashboardBgUrl ? 'text-white' : 'text-slate-900',
+              )}>Hi {firstName} 👋</h1>
             </div>
+            {primaryDog && (
+              <div className={cn(
+                'flex items-center gap-2.5 rounded-2xl px-2.5 py-2 self-start sm:self-auto',
+                dashboardBgUrl
+                  ? 'bg-white/95 backdrop-blur-sm border border-white/40 shadow-lg'
+                  : 'bg-slate-50 border border-slate-100',
+              )}>
+                <div className="h-10 w-10 rounded-xl bg-amber-50 overflow-hidden flex items-center justify-center text-2xl shrink-0">
+                  {primaryDog.photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={primaryDog.photoUrl} alt={dogName} className="h-full w-full object-cover" />
+                  ) : (
+                    <span aria-hidden>🐕</span>
+                  )}
+                </div>
+                <div className="text-left min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 leading-tight truncate">{dogName}</p>
+                  {packageProgress ? (
+                    <p className="text-[11px] text-slate-500 leading-tight truncate">
+                      {packageProgress.label} · {packageProgress.completed}/{packageProgress.total}
+                    </p>
+                  ) : primaryDog.breed ? (
+                    <p className="text-[11px] text-slate-500 leading-tight truncate">{primaryDog.breed}</p>
+                  ) : null}
+                </div>
+                {MOCK_STREAK > 0 && <StreakChip days={MOCK_STREAK} />}
+              </div>
+            )}
           </div>
         </div>
       </section>
 
-      {/* ─── Body — flex column on phone/iPad, 3-col grid on desktop ─── */}
-      <div className="mt-6 lg:mt-8 lg:px-8 lg:max-w-6xl lg:mx-auto flex flex-col gap-6 lg:grid lg:grid-cols-3 lg:auto-rows-min lg:gap-6">
+      {/* ─── Body — single centered column, action-focused stack. ─── */}
+      <div className="mt-4 max-w-3xl mx-auto w-full flex flex-col gap-5 pb-8">
 
       {/* ─── Up next ─── */}
-      <section className="px-5 lg:px-0 lg:col-span-2">
+      <section className="px-5">
         <SectionHeader title="Up next" />
         {upcomingSession ? (
-          <Link
-            href={`/my-sessions/${upcomingSession.id}`}
-            className="block mt-3 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 p-5 text-white shadow-lg shadow-blue-600/20 active:scale-[0.99] transition-transform"
-          >
-            <div className="flex items-start justify-between">
+          <div className="mt-3 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 p-5 text-white shadow-lg shadow-blue-600/20">
+            {/* Title row — Reschedule sits inline next to the title on
+                tablet/desktop (md+). On mobile it moves to its own row
+                below the details so the title can use the full width. */}
+            <div className="flex items-start gap-2 mb-1">
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium text-blue-100 tracking-wide">{countdownLabel(upcomingSession.scheduledAt)}</p>
-                <h3 className="text-lg font-bold mt-0.5 leading-tight">{upcomingSession.title}</h3>
-                <div className="mt-3 space-y-1.5 text-sm text-blue-50">
+                <h3 className="text-lg font-bold leading-tight mt-0.5">{upcomingSession.title}</h3>
+              </div>
+              <Link
+                href={`/my-messages?reschedule=${upcomingSession.id}`}
+                className="hidden md:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white/15 hover:bg-white/25 transition-colors flex-shrink-0 mt-0.5"
+              >
+                <CalendarIcon className="h-3 w-3" /> Reschedule
+              </Link>
+            </div>
+
+            <Link
+              href={`/my-sessions/${upcomingSession.id}`}
+              className="block active:scale-[0.99] transition-transform"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 space-y-1.5 text-sm text-blue-50">
                   <div className="flex items-center gap-2">
                     <Clock className="h-3.5 w-3.5 opacity-80" />
                     <span>{formatSessionWhen(upcomingSession.scheduledAt)} · {upcomingSession.durationMins} min</span>
@@ -331,25 +358,36 @@ export function ClientHomeView({
                     </div>
                   )}
                 </div>
+                <ChevronRight className="h-5 w-5 text-blue-200 flex-shrink-0" />
               </div>
-              <ChevronRight className="h-5 w-5 text-blue-200 flex-shrink-0" />
-            </div>
 
-            {pendingRequests.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-white/20">
-                <p className="text-[11px] uppercase tracking-wide text-blue-200/80 font-medium mb-1.5">
-                  Coming next session
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {pendingRequests.map(r => (
-                    <span key={r.id} className="text-xs bg-white/15 backdrop-blur px-2 py-1 rounded-lg">
-                      {r.productName}
-                    </span>
-                  ))}
+              {pendingRequests.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-white/20">
+                  <p className="text-[11px] uppercase tracking-wide text-blue-200/80 font-medium mb-1.5">
+                    Coming next session
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {pendingRequests.map(r => (
+                      <span key={r.id} className="text-xs bg-white/15 backdrop-blur px-2 py-1 rounded-lg">
+                        {r.productName}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </Link>
+              )}
+            </Link>
+
+            {/* Mobile-only Reschedule row — sits below the details so the
+                title row stays clean on narrow screens. */}
+            <div className="md:hidden mt-4 pt-4 border-t border-white/20 flex justify-end">
+              <Link
+                href={`/my-messages?reschedule=${upcomingSession.id}`}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 transition-colors"
+              >
+                <CalendarIcon className="h-3.5 w-3.5" /> Reschedule
+              </Link>
+            </div>
+          </div>
         ) : (
           <div className="mt-3 rounded-3xl bg-white border border-dashed border-slate-200 p-6 text-center">
             <Clock className="h-6 w-6 text-slate-300 mx-auto" />
@@ -359,32 +397,12 @@ export function ClientHomeView({
         )}
       </section>
 
-      {/* ─── Level / XP strip (mock) ─── */}
-      <section className="px-5 lg:px-0 lg:col-span-1">
-        <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 p-4 h-full">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold text-sm shadow-sm">
-              {MOCK_LEVEL}
-            </div>
-            <div className="flex-1">
-              <p className="text-xs text-amber-900/70 font-medium">Level {MOCK_LEVEL} · Apprentice</p>
-              <div className="mt-1 h-2 bg-amber-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full transition-all"
-                  style={{ width: `${xpPct}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-amber-900/60 mt-1">
-                {MOCK_XP} / {MOCK_NEXT_LEVEL_XP} XP — {MOCK_NEXT_LEVEL_XP - MOCK_XP} to Level {MOCK_LEVEL + 1}
-              </p>
-            </div>
-            <Trophy className="h-5 w-5 text-amber-500" />
-          </div>
-        </div>
-      </section>
+      {/* Level/XP card removed — was a mocked placeholder and threw off the
+          row-1 height balance. The achievements column already conveys
+          progress on the right. */}
 
       {/* ─── Homework ─── */}
-      <section className="px-5 lg:px-0 lg:col-span-2">
+      <section className="px-5">
         <div className="flex items-end justify-between">
           <SectionHeader title="This week's homework" />
           {totalCount > 0 && <span className="text-xs text-slate-400">{doneCount}/{totalCount}</span>}
@@ -449,43 +467,86 @@ export function ClientHomeView({
 
       {/* ─── Achievements ─── */}
       {achievements.length > 0 && (
-        <section className="px-5 lg:px-0 lg:col-span-1">
+        <section className="px-5">
           <SectionHeader title="Achievements" subtitle="Earn badges as you train" />
-          <div className="mt-3 grid grid-cols-3 gap-3">
-            {achievements.map(badge => (
-              <div
-                key={badge.id}
-                className={cn(
-                  'aspect-square rounded-2xl flex flex-col items-center justify-center gap-1 p-2 border transition-all',
-                  badge.earned
-                    ? 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200'
-                    : 'bg-slate-50 border-slate-100 opacity-60',
-                )}
-              >
-                <span className="text-2xl relative">
-                  {badge.earned ? (badge.icon || '🏆') : <Lock className="h-5 w-5 text-slate-400" />}
-                </span>
-                <p
+          <div className="mt-3 grid grid-cols-3 lg:grid-cols-6 gap-3 lg:gap-2">
+            {achievements.map(badge => {
+              const palette = BADGE_COLOR_CLASSES[badge.color ?? 'amber'] ?? BADGE_COLOR_CLASSES.amber
+              const progress = badge.progress
+              // Show a bar on every unearned badge with a multi-step counter,
+              // even when the client hasn't started yet (0/N) — gives them a
+              // visible "this is what's next" target.
+              const showProgress =
+                !badge.earned &&
+                progress != null &&
+                progress.target > 1 &&
+                progress.current < progress.target
+              const pct = progress
+                ? Math.min(100, Math.round((progress.current / progress.target) * 100))
+                : 0
+              return (
+                <div
+                  key={badge.id}
                   className={cn(
-                    'text-[10px] font-medium text-center leading-tight',
-                    badge.earned ? 'text-amber-900' : 'text-slate-400',
+                    // grid-rows pins the icon row to a fixed height and lets
+                    // the label row sit at a consistent baseline across cards
+                    // regardless of icon size or label length.
+                    'relative aspect-square rounded-2xl border transition-all overflow-hidden p-2 grid grid-rows-[1fr_auto]',
+                    badge.earned ? palette.bg : 'bg-slate-50 border-slate-100',
                   )}
+                  title={
+                    showProgress
+                      ? `${badge.name} — ${progress!.current}/${progress!.target}`
+                      : badge.name
+                  }
                 >
-                  {badge.name}
-                </p>
-              </div>
-            ))}
+                  <div className="flex items-center justify-center">
+                    <span
+                      className={cn(
+                        'text-2xl leading-none',
+                        !badge.earned && 'opacity-30 grayscale',
+                      )}
+                      aria-hidden
+                    >
+                      {badge.icon || '🏆'}
+                    </span>
+                  </div>
+                  <p
+                    className={cn(
+                      'text-xs lg:text-[11px] font-medium text-center leading-tight line-clamp-2 min-h-[2.4em]',
+                      badge.earned ? palette.text : 'text-slate-400',
+                      // Reserve room at the bottom so the progress bar doesn't
+                      // overlap the second line of text on long names.
+                      showProgress && 'mb-1.5',
+                    )}
+                  >
+                    {badge.name}
+                  </p>
+                  {showProgress && (
+                    <div
+                      className="absolute left-2 right-2 bottom-1 h-1 bg-slate-200/80 rounded-full overflow-hidden"
+                      aria-label={`Progress: ${progress!.current} of ${progress!.target}`}
+                    >
+                      <div
+                        className="h-full bg-amber-400"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </section>
       )}
 
       {/* ─── Recent sessions ─── */}
       {recentSessions.length > 0 && (
-        <section className="lg:col-span-2 lg:px-0">
-          <div className="px-5 lg:px-0">
+        <section className="lg:px-0">
+          <div className="px-5">
             <SectionHeader title="Recent sessions" linkHref="/my-sessions" linkLabel="See all" />
           </div>
-          <div className="mt-3 flex gap-3 overflow-x-auto px-5 lg:px-0 pb-2 snap-x snap-mandatory no-scrollbar">
+          <div className="mt-3 flex gap-3 overflow-x-auto px-5 pb-2 snap-x snap-mandatory no-scrollbar">
             {recentSessions.map(s => (
               <Link
                 key={s.id}
@@ -509,7 +570,7 @@ export function ClientHomeView({
 
       {/* ─── Latest message ─── */}
       {latestMessage && (
-        <section className="px-5 lg:px-0 lg:col-span-1">
+        <section className="px-5">
           <SectionHeader title="From your trainer" />
           <Link
             href="/my-messages"
@@ -532,8 +593,8 @@ export function ClientHomeView({
 
       {/* ─── Featured products ─── */}
       {featuredProducts.length > 0 && (
-        <section className="lg:col-span-2 lg:px-0">
-          <div className="px-5 lg:px-0">
+        <section className="lg:px-0">
+          <div className="px-5">
             <SectionHeader
               title="Recommended for you"
               subtitle="Hand-picked by your trainer"
@@ -542,7 +603,7 @@ export function ClientHomeView({
               icon={<ShoppingBag className="h-4 w-4" />}
             />
           </div>
-          <div className="mt-3 flex gap-3 overflow-x-auto px-5 lg:px-0 pb-2 snap-x snap-mandatory no-scrollbar">
+          <div className="mt-3 flex gap-3 overflow-x-auto px-5 pb-2 snap-x snap-mandatory no-scrollbar">
             {featuredProducts.map(p => (
               <Link
                 key={p.id}
@@ -569,7 +630,7 @@ export function ClientHomeView({
 
       {/* ─── Library — digital products ─── */}
       {libraryItems.length > 0 && (
-        <section className="px-5 lg:px-0 mb-8 lg:mb-0 lg:col-span-1">
+        <section className="px-5 mb-8 lg:mb-0">
           <SectionHeader
             title="Your library"
             subtitle="Guides and resources from your trainer"
@@ -657,6 +718,15 @@ function SectionHeader({
 }
 
 function ConfettiBurst() {
+  // Math.cos/sin returns floats that differ by 1 ulp between Node and the
+  // browser, which React flags as a hydration mismatch on every render. The
+  // burst is purely decorative and only appears for ~700ms, so we render
+  // nothing on SSR and let the client own the calculation entirely.
+  const [mounted, setMounted] = useState(false)
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return null
+
   const colors = ['#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6', '#10b981']
   const pieces = Array.from({ length: 12 })
   return (

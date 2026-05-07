@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 import { Card, CardBody } from '@/components/ui/card'
 import { ClientSupportForm } from './client-support-form'
 import type { Metadata } from 'next'
@@ -15,16 +15,21 @@ const FAQ = [
 ]
 
 export default async function ClientHelpPage() {
-  const session = await auth()
-  if (!session) redirect('/login')
+  const active = await getActiveClient()
+  if (!active) redirect('/login')
 
-  // HELP-03: show trainer contact details
+  // HELP-03: show trainer contact details. Prisma rejects `select` and
+  // `include` on the same relation so we hoist the user select into the
+  // trainer's select block.
   const clientProfile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: active.clientId },
     include: {
       trainer: {
-        select: { businessName: true, phone: true },
-        include: { user: { select: { email: true } } },
+        select: {
+          businessName: true,
+          phone: true,
+          user: { select: { email: true } },
+        },
       },
     },
   })
@@ -32,7 +37,7 @@ export default async function ClientHelpPage() {
   const trainer = clientProfile?.trainer
 
   return (
-    <div className="p-4 md:p-8 max-w-xl mx-auto">
+    <div className="px-5 lg:px-8 py-6 max-w-3xl mx-auto w-full">
       <h1 className="text-2xl font-bold text-slate-900 mb-8">Help</h1>
 
       {/* Trainer contact — HELP-03 */}

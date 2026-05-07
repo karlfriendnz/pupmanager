@@ -48,11 +48,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // upsert here is a no-op.
     async createUser({ user }) {
       if (user.role !== 'TRAINER') return
+      // businessName starts empty — required field on /settings forces the
+      // trainer to enter a real one. Onboarding step 1 (business_profile)
+      // flips to completed only when this field is set.
       await prisma.trainerProfile.upsert({
         where: { userId: user.id! },
-        create: { userId: user.id!, businessName: user.name ?? 'My Business' },
+        create: { userId: user.id!, businessName: '' },
         update: {},
       })
+    },
+    // Aha trigger — when a CLIENT user signs in, mark their trainer's onboarding
+    // as aha-reached (idempotent via the null filter). This is fire-and-forget;
+    // failure must not block sign-in. Sample-data clients will need to be
+    // excluded once the demo system (Phase 3) lands.
+    async signIn({ user }) {
+      try {
+        if (user.role !== 'CLIENT' || !user.id) return
+        const client = await prisma.clientProfile.findUnique({
+          where: { userId: user.id },
+          select: { trainerId: true },
+        })
+        if (!client) return
+        await prisma.trainerOnboardingProgress.updateMany({
+          where: { trainerId: client.trainerId, ahaReachedAt: null },
+          data: { ahaReachedAt: new Date() },
+        })
+      } catch {
+        // Swallow — aha tracking should never block a client sign-in.
+      }
     },
   },
   callbacks: {

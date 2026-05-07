@@ -86,6 +86,9 @@ export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string 
     }
 
     setSent(true)
+    // Refresh the trainer layout so the FAB / onboarding state picks up the
+    // new client count and the wizard advances past the invite step.
+    router.refresh()
     setTimeout(() => router.push('/clients'), 2000)
   }
 

@@ -129,11 +129,8 @@ export function ShopGrid({ products }: { products: Product[] }) {
             </div>
             <div className="p-3">
               <p className="text-sm font-semibold text-slate-900 line-clamp-2 leading-tight">{p.name}</p>
-              <div className="mt-1 flex items-center justify-between gap-2">
+              <div className="mt-1">
                 <span className="text-sm font-semibold text-slate-700">{formatPrice(p.priceCents)}</span>
-                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">
-                  {p.kind === 'DIGITAL' ? 'Digital' : 'Physical'}
-                </span>
               </div>
             </div>
           </button>

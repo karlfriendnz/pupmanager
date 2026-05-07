@@ -1,17 +1,19 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 import { AppShell } from '@/components/shared/app-shell'
 import { IntakeGate } from './intake-gate'
+import { PreviewBanner } from './preview-banner'
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth()
-  if (!session || session.user.role !== 'CLIENT') redirect('/login')
+  const active = await getActiveClient()
+  if (!active) redirect('/login')
 
   const clientProfile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: active.clientId },
     include: {
-      trainer: { select: { id: true, businessName: true, logoUrl: true } },
+      user: { select: { name: true, email: true } },
+      trainer: { select: { id: true, businessName: true, logoUrl: true, intakeSectionOrder: true } },
       dog: { select: { id: true, name: true } },
       dogs: { select: { id: true, name: true } },
       customFieldValues: { select: { fieldId: true, dogId: true, value: true } },
@@ -53,44 +55,68 @@ export default async function ClientLayout({ children }: { children: React.React
     }
   }
 
-  const appShell = (
-    <AppShell
-      role="CLIENT"
-      userName={session.user.name ?? ''}
-      userEmail={session.user.email ?? ''}
-      trainerLogo={clientProfile.trainer.logoUrl}
-      businessName={clientProfile.trainer.businessName}
-    >
-      {children}
-    </AppShell>
-  )
+  const clientDisplayName = clientProfile.user.name ?? clientProfile.user.email ?? 'Client'
 
-  // If required fields are missing and there are any custom fields, show intake gate
-  if (hasMissingRequired && customFields.length > 0) {
+  // Trainer in preview should see the actual app, not the intake gate — the
+  // gate would force them through the client's data-entry flow which would
+  // write as the client. The banner already telegraphs that this is a view.
+  const showIntakeGate = !active.isPreview && hasMissingRequired && customFields.length > 0
+
+  const banner = active.isPreview
+    ? <PreviewBanner clientName={clientDisplayName} />
+    : null
+
+  if (showIntakeGate) {
     return (
-      <AppShell
-        role="CLIENT"
-        userName={session.user.name ?? ''}
-        trainerLogo={clientProfile.trainer.logoUrl}
-        businessName={clientProfile.trainer.businessName}
-      >
-        <IntakeGate
+      <>
+        {banner}
+        <AppShell
+          role="CLIENT"
+          userName={clientDisplayName}
+          trainerLogo={clientProfile.trainer.logoUrl}
           businessName={clientProfile.trainer.businessName}
-          customFields={customFields.map(f => ({
-            id: f.id,
-            label: f.label,
-            type: f.type as 'TEXT' | 'NUMBER' | 'DROPDOWN',
-            required: f.required,
-            options: Array.isArray(f.options) ? f.options as string[] : [],
-            category: f.category,
-            appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
-          }))}
-          dogs={allDogs}
-          existingValues={existingValues}
-        />
-      </AppShell>
+        >
+          <IntakeGate
+            businessName={clientProfile.trainer.businessName}
+            customFields={customFields.map(f => ({
+              id: f.id,
+              label: f.label,
+              type: f.type as 'TEXT' | 'NUMBER' | 'DROPDOWN',
+              required: f.required,
+              options: Array.isArray(f.options) ? f.options as string[] : [],
+              category: f.category,
+              appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
+            }))}
+            // Normalise the JSON column — handles both legacy string[] and new
+            // {name, description?}[] shapes.
+            sectionMeta={(Array.isArray(clientProfile.trainer.intakeSectionOrder)
+              ? clientProfile.trainer.intakeSectionOrder
+              : []
+            ).map(entry =>
+              typeof entry === 'string'
+                ? { name: entry, description: null }
+                : { name: (entry as { name: string }).name, description: (entry as { description?: string | null }).description ?? null }
+            )}
+            dogs={allDogs}
+            existingValues={existingValues}
+          />
+        </AppShell>
+      </>
     )
   }
 
-  return appShell
+  return (
+    <>
+      {banner}
+      <AppShell
+        role="CLIENT"
+        userName={clientDisplayName}
+        userEmail={clientProfile.user.email ?? ''}
+        trainerLogo={clientProfile.trainer.logoUrl}
+        businessName={clientProfile.trainer.businessName}
+      >
+        {children}
+      </AppShell>
+    </>
+  )
 }

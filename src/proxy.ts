@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth'
 import { authConfig } from '@/lib/auth.config'
 import { NextResponse } from 'next/server'
+import { PREVIEW_COOKIE } from '@/lib/client-context'
 
 const { auth } = NextAuth(authConfig)
 
@@ -15,7 +16,7 @@ const PUBLIC_PATHS = [
 // Trainer-only route prefixes
 const TRAINER_PATHS = [
   '/dashboard', '/clients', '/schedule', '/templates', '/library',
-  '/progress', '/messages', '/ai-tools', '/settings', '/help', '/forms',
+  '/progress', '/messages', '/ai-tools', '/settings', '/help',
   '/packages', '/products',
 ]
 
@@ -58,9 +59,14 @@ export default auth((req) => {
       return NextResponse.redirect(new URL('/home', req.url))
     }
 
-    // Trainer trying to access client paths
+    // Trainer trying to access client paths — allowed when in active client
+    // preview mode (cookie set by /preview-as/[clientId]). Otherwise bounced
+    // back to the trainer dashboard.
     if (role === 'TRAINER' && CLIENT_PATHS.some(p => pathname.startsWith(p))) {
-      return NextResponse.redirect(new URL('/dashboard', req.url))
+      const previewing = req.cookies.get(PREVIEW_COOKIE)?.value
+      if (!previewing) {
+        return NextResponse.redirect(new URL('/dashboard', req.url))
+      }
     }
   }
 

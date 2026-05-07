@@ -1,22 +1,22 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 import { ClientProfileForm } from './client-profile-form'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'My Profile' }
 
 export default async function ClientProfilePage() {
-  const session = await auth()
-  if (!session) redirect('/login')
+  const active = await getActiveClient()
+  if (!active) redirect('/login')
 
   const [user, clientProfile] = await Promise.all([
     prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: active.userId },
       select: { name: true, email: true, timezone: true, notifyEmail: true, notifyPush: true },
     }),
     prisma.clientProfile.findUnique({
-      where: { userId: session.user.id },
+      where: { id: active.clientId },
       include: { dog: true, dogs: true },
     }),
   ])
@@ -29,7 +29,7 @@ export default async function ClientProfilePage() {
   ]
 
   return (
-    <div className="p-4 md:p-8 max-w-xl mx-auto">
+    <div className="px-5 lg:px-8 py-6 max-w-3xl mx-auto w-full">
       <h1 className="text-2xl font-bold text-slate-900 mb-8">My Profile</h1>
       <ClientProfileForm clientId={clientProfile.id} user={user} dogs={allDogs} />
     </div>

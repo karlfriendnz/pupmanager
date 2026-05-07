@@ -502,7 +502,7 @@ function EmptyState({ tab }: { tab: Props['tab'] }) {
         <>
           <p className="font-medium">No new registrations</p>
           <p className="text-sm mt-1">Clients who register via your embed forms will appear here</p>
-          <Link href="/forms" className="mt-4 inline-block text-sm font-medium text-blue-600 hover:text-blue-700">
+          <Link href="/settings?tab=forms" className="mt-4 inline-block text-sm font-medium text-blue-600 hover:text-blue-700">
             Manage embed forms →
           </Link>
         </>
