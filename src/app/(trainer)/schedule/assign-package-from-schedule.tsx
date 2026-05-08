@@ -97,6 +97,66 @@ export function AssignPackageFromScheduleModal({
   defaultStartTime?: string
   onClose: () => void
 }) {
+  // Guard against opening the modal before any clients/packages exist —
+  // both `useState(arr[0].id)` calls below would crash on an empty array.
+  // Surfaces an empty state instead so the trainer knows what to do.
+  if (clients.length === 0 || packages.length === 0) {
+    return <EmptyAssignModal hasClients={clients.length > 0} hasPackages={packages.length > 0} onClose={onClose} />
+  }
+  return (
+    <AssignPackageFromScheduleModalInner
+      clients={clients}
+      packages={packages}
+      availability={availability}
+      defaultStartDate={defaultStartDate}
+      defaultStartTime={defaultStartTime}
+      onClose={onClose}
+    />
+  )
+}
+
+function EmptyAssignModal({
+  hasClients,
+  hasPackages,
+  onClose,
+}: {
+  hasClients: boolean
+  hasPackages: boolean
+  onClose: () => void
+}) {
+  const missing: string[] = []
+  if (!hasClients) missing.push('a client')
+  if (!hasPackages) missing.push('a package')
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+      <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center" onClick={e => e.stopPropagation()}>
+        <PackageIcon className="h-8 w-8 mx-auto text-slate-300 mb-3" />
+        <h2 className="font-semibold text-slate-900">Add {missing.join(' and ')} first</h2>
+        <p className="text-sm text-slate-500 mt-1.5">
+          You need {missing.join(' and ')} before you can assign a package.
+        </p>
+        <Button variant="ghost" onClick={onClose} className="mt-4">Close</Button>
+      </div>
+    </div>
+  )
+}
+
+function AssignPackageFromScheduleModalInner({
+  clients,
+  packages,
+  availability,
+  defaultStartDate,
+  defaultStartTime,
+  onClose,
+}: {
+  clients: ClientOption[]
+  packages: PkgOption[]
+  availability: AvailabilityRow[]
+  defaultStartDate?: string
+  defaultStartTime?: string
+  onClose: () => void
+}) {
   const router = useRouter()
   const [clientId, setClientId] = useState(clients[0].id)
   const [packageId, setPackageId] = useState(packages[0].id)
