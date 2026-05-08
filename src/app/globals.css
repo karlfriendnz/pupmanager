@@ -102,6 +102,30 @@ button, a, [role="button"] {
 }
 .animate-pm-fab-content { animation: pm-fab-content-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* Onboarding-finish-line celebration. The backdrop fades + slight scale on
+   the centre card; the particles radiate outward via inline custom
+   properties (--dx, --dy) per element. Three staggered bursts give a
+   "boom… boom-boom" feel rather than a single flash. */
+@keyframes pm-celebration-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-pm-celebration-fade { animation: pm-celebration-fade 240ms ease-out both; }
+
+@keyframes pm-celebration-pop {
+  0%   { transform: scale(0.7) translateY(8px); opacity: 0; }
+  60%  { transform: scale(1.04) translateY(0);   opacity: 1; }
+  100% { transform: scale(1)    translateY(0);   opacity: 1; }
+}
+.animate-pm-celebration-pop { animation: pm-celebration-pop 480ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms both; }
+
+@keyframes pm-firework-particle {
+  0%   { transform: translate(-50%, -50%) scale(0.4) rotate(0deg);   opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.1) rotate(180deg); opacity: 0; }
+}
+.animate-pm-firework-particle { animation: pm-firework-particle 1400ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
 /* Pulsing dot rendered beside a sidebar menu item to point the trainer at
    the page they should click next. Slow inhale-exhale, gentle outer ring
    pulse — distinct enough to draw the eye without being twitchy. */

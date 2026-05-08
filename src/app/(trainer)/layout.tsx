@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { AppShell } from '@/components/shared/app-shell'
 import { OnboardingFab } from './onboarding-fab'
+import { OnboardingCelebration } from './onboarding-celebration'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { STEP_TO_MENU } from '@/lib/onboarding/path-step'
 
@@ -19,7 +20,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
 
   const fabState = session.user.trainerId
     ? await getOnboardingFabState(session.user.trainerId)
-    : { show: false, nextStep: null, steps: [], totalSteps: 0 }
+    : { show: false, nextStep: null, steps: [], totalSteps: 0, allComplete: false }
 
   // Highlight the sidebar menu item that corresponds to the next-incomplete
   // step — but only after the trainer has completed their current page's
@@ -55,6 +56,10 @@ export default async function TrainerLayout({ children }: { children: React.Reac
           totalSteps={fabState.totalSteps}
         />
       )}
+      {/* One-shot fireworks when the wizard hits zero remaining steps. The
+          component handles its own sessionStorage gate so this is safe to
+          render unconditionally — a no-op when allComplete is false. */}
+      <OnboardingCelebration allComplete={fabState.allComplete} />
       {children}
     </AppShell>
   )

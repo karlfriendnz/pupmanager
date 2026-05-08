@@ -36,6 +36,14 @@ export async function getOnboardingFabState(trainerId: string): Promise<{
   nextStep: FabStep | null
   steps: FabStep[]
   totalSteps: number
+  /**
+   * True when every published step has status === 'completed' (no pending,
+   * in_progress, or skipped). The trainer layout uses this to fire a
+   * one-shot celebration overlay once they've crossed the finish line.
+   * Independent of `show` — the FAB always hides at this point, but the
+   * celebration is what marks the moment.
+   */
+  allComplete: boolean
 }> {
   const state = await getOnboardingState(trainerId)
   const allSteps: FabStep[] = state.steps.map(s => ({
@@ -46,9 +54,10 @@ export async function getOnboardingFabState(trainerId: string): Promise<{
     status: s.status,
   }))
   const totalSteps = allSteps.length
+  const allComplete = totalSteps > 0 && allSteps.every(s => s.status === 'completed')
 
   if (state.ahaReachedAt || state.checklistDismissedAt) {
-    return { show: false, nextStep: null, steps: allSteps, totalSteps }
+    return { show: false, nextStep: null, steps: allSteps, totalSteps, allComplete }
   }
 
   // Priority for "what's next up": first incomplete step in order, where
@@ -61,7 +70,7 @@ export async function getOnboardingFabState(trainerId: string): Promise<{
     allSteps.find(s => s.status === 'pending' || s.status === 'in_progress') ??
     allSteps.find(s => s.status === 'skipped')
   if (!next) {
-    return { show: false, nextStep: null, steps: allSteps, totalSteps }
+    return { show: false, nextStep: null, steps: allSteps, totalSteps, allComplete }
   }
 
   return {
@@ -69,6 +78,7 @@ export async function getOnboardingFabState(trainerId: string): Promise<{
     nextStep: next,
     steps: allSteps,
     totalSteps,
+    allComplete,
   }
 }
 
