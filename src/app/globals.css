@@ -92,6 +92,16 @@ button, a, [role="button"] {
 }
 .animate-pm-fab-slide { animation: pm-fab-slide-down 320ms cubic-bezier(0.16, 1, 0.3, 1) 1s both; }
 
+/* Replays whenever the FAB transitions to a new task — keyed by the focused
+   step so React remounts the inner block and the animation runs again. The
+   short upward slide + opacity sweep gives a "fresh content arriving" feel
+   that matches the slide-down entrance without re-running the whole banner. */
+@keyframes pm-fab-content-in {
+  from { transform: translateY(6px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+.animate-pm-fab-content { animation: pm-fab-content-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
 /* Pulsing dot rendered beside a sidebar menu item to point the trainer at
    the page they should click next. Slow inhale-exhale, gentle outer ring
    pulse — distinct enough to draw the eye without being twitchy. */

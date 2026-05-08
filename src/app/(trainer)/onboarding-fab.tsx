@@ -199,7 +199,14 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
           <CheckCircle2 className="h-4 w-4" strokeWidth={2.25} />
         </span>
       )}
-      <div className="min-w-0 flex-1">
+      {/* Keyed by the focused step + completion state so React remounts the
+          block whenever the FAB transitions to a new task or that task flips
+          to "done". The remount re-plays the fade-up animation, giving the
+          trainer a visual cue that the next thing has arrived. */}
+      <div
+        key={`${leftStep.key}:${leftCompleted ? 'done' : 'todo'}`}
+        className="min-w-0 flex-1 animate-pm-fab-content"
+      >
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 leading-none">
           {leftCompleted ? 'Step done 🎉' : 'What to do'}
         </p>
