@@ -20,7 +20,9 @@ async function loadPendingSessions(trainerId: string) {
       status: { in: ['UPCOMING', 'COMPLETED', 'COMMENTED'] },
       formResponses: { none: {} },
     },
-    orderBy: { scheduledAt: 'desc' },
+    // Oldest first — this is a backlog queue, not a feed. The next session
+    // the trainer needs to work on is the one that's been waiting longest.
+    orderBy: { scheduledAt: 'asc' },
     select: {
       id: true,
       title: true,
@@ -67,8 +69,8 @@ export default async function NeedsNotesPage() {
   const sessions = await loadPendingSessions(trainerId)
 
   // Group by Monday-anchored week so the trainer can scan one week at a time.
-  // Map preserves insertion order which is already DESC by scheduledAt, so
-  // the resulting weeks are this-week → last-week → older without re-sorting.
+  // Map preserves insertion order which is now ASC by scheduledAt, so the
+  // oldest week is at the top — the "next up" in the backlog queue.
   type Row = (typeof sessions)[number]
   const byWeek = new Map<string, { weekStart: Date; sessions: Row[] }>()
   for (const s of sessions) {
