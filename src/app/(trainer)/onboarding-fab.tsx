@@ -107,64 +107,68 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   if (!mounted) return null
   if (pathname === '/dashboard') return null
 
-  // Resolve which step the FAB should describe. If the trainer is on a
-  // page that maps to a step, prefer that one. Otherwise show the
-  // next-incomplete step.
+  // LEFT side describes the page the trainer is on (the path-matched step).
+  // RIGHT side is always the next-incomplete step — the actionable thing
+  // they need to do next regardless of where they are now.
   const pathStepKey = stepKeyForPath(pathname)
   const pathStep = pathStepKey ? steps.find(s => s.key === pathStepKey) : null
-  const focused = pathStep ?? nextStep
+  const leftStep = pathStep ?? nextStep
+  const leftCompleted = pathStep?.status === 'completed'
+  const leftHint = STEP_HINT[leftStep.key] ?? `Wrap up ${leftStep.title.toLowerCase()}.`
 
-  const Icon = STEP_ICON[focused.key] ?? PawPrint
-  const hint = STEP_HINT[focused.key] ?? `Open the wizard to wrap up ${focused.title.toLowerCase()}.`
-  const isCompleted = focused.status === 'completed'
-  // Link to the focused step's CTA so clicking gets the trainer to the
-  // right place — instead of always bouncing through /dashboard?wizard=1.
-  const href = focused.ctaHref || '/dashboard?wizard=1'
+  const NextIcon = STEP_ICON[nextStep.key] ?? PawPrint
 
   return (
     <Link
-      href={href}
-      aria-label={isCompleted ? `${focused.title} — completed` : `Continue setup: ${focused.title}`}
-      className="group sticky top-2.5 z-30 mx-2.5 mt-2.5 mb-2 flex items-center gap-4 px-4 sm:px-6 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white rounded-2xl shadow-[0_10px_30px_-8px_rgba(99,102,241,0.55)] hover:shadow-[0_16px_40px_-8px_rgba(99,102,241,0.7)] transition-shadow animate-pm-fab-slide"
+      href={nextStep.ctaHref || '/dashboard?wizard=1'}
+      aria-label={`Continue setup: ${nextStep.title}`}
+      className="group sticky top-2.5 z-30 mx-2.5 mt-2.5 mb-2 flex items-center gap-4 px-4 sm:px-5 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white rounded-2xl shadow-[0_10px_30px_-8px_rgba(99,102,241,0.55)] hover:shadow-[0_16px_40px_-8px_rgba(99,102,241,0.7)] transition-shadow animate-pm-fab-slide"
     >
-      {/* Left: instruction OR completed confirmation. */}
-      <div className="flex-1 min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 leading-none">
-          {isCompleted ? 'Step done' : 'What to do'}
-        </p>
-        <p className="text-sm text-white leading-snug mt-1.5 line-clamp-2">
-          {isCompleted
-            ? `${focused.title} is complete — nice work. ${nextStep.key !== focused.key ? `Next up: ${nextStep.title}.` : ''}`
-            : hint}
-        </p>
+      {/* LEFT: page-matched step status. Green check when the step the
+          trainer is on has already been completed; otherwise a plain
+          "What to do" hint. */}
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        {leftCompleted && (
+          <span
+            aria-hidden
+            className="grid place-items-center h-9 w-9 shrink-0 rounded-xl bg-emerald-500 text-white ring-1 ring-emerald-300/40"
+          >
+            <CheckCircle2 className="h-4 w-4" strokeWidth={2.25} />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 leading-none">
+            {leftCompleted ? 'Step done' : 'What to do'}
+          </p>
+          <p className="text-sm text-white leading-snug mt-1.5 line-clamp-2">
+            {leftCompleted
+              ? `${leftStep.title} is complete — nice work.`
+              : leftHint}
+          </p>
+        </div>
       </div>
 
       {/* Vertical divider on tablet+desktop only — collapses on phones. */}
       <span className="hidden sm:block self-stretch w-px bg-white/25" aria-hidden />
 
-      {/* Right: step icon + counter + arrow. When completed, swap the icon
-          tile to an emerald check. */}
+      {/* RIGHT: next-incomplete step — where the click takes them. */}
       <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
         <span
           aria-hidden
           className={`grid place-items-center h-9 w-9 shrink-0 rounded-xl text-white ${
-            isCompleted
-              ? 'bg-emerald-500 ring-1 ring-emerald-300/40'
-              : celebrating
-                ? 'bg-emerald-500 shadow-emerald-500/40 animate-pm-fab-flash'
-                : 'bg-white/15 backdrop-blur-sm ring-1 ring-white/20'
+            celebrating
+              ? 'bg-emerald-500 shadow-emerald-500/40 animate-pm-fab-flash'
+              : 'bg-white/15 backdrop-blur-sm ring-1 ring-white/20'
           }`}
         >
-          {isCompleted
-            ? <CheckCircle2 className="h-4 w-4" strokeWidth={2.25} />
-            : <Icon className="h-4 w-4" strokeWidth={2} />}
+          <NextIcon className="h-4 w-4" strokeWidth={2} />
         </span>
         <div className="hidden sm:flex flex-col min-w-0 max-w-[180px] md:max-w-[220px]">
           <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 leading-none">
-            Step {focused.order} of {totalSteps}
+            Step {nextStep.order} of {totalSteps}
           </span>
           <span className="text-sm font-semibold text-white truncate leading-tight mt-0.5">
-            {focused.title}
+            {nextStep.title}
           </span>
         </div>
         <ArrowRight className="h-4 w-4 text-white/80 transition-transform group-hover:translate-x-0.5 group-hover:text-white" />
