@@ -18,7 +18,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
 
   const fabState = session.user.trainerId
     ? await getOnboardingFabState(session.user.trainerId)
-    : { show: false, nextStep: null, totalSteps: 0 }
+    : { show: false, nextStep: null, steps: [], totalSteps: 0 }
 
   return (
     <AppShell
@@ -31,7 +31,11 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       {/* FAB sits above the page content so when it's a sticky banner it
           appears at the top of <main> rather than way below at the bottom. */}
       {fabState.show && fabState.nextStep && (
-        <OnboardingFab nextStep={fabState.nextStep} totalSteps={fabState.totalSteps} />
+        <OnboardingFab
+          nextStep={fabState.nextStep}
+          steps={fabState.steps}
+          totalSteps={fabState.totalSteps}
+        />
       )}
       {children}
     </AppShell>

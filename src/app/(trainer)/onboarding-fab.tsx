@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ArrowRight, Building2, ClipboardList, Notebook, Package, Trophy, Eye, Mail, PawPrint, Calendar, type LucideIcon } from 'lucide-react'
+import { ArrowRight, Building2, ClipboardList, Notebook, Package, Trophy, Eye, Mail, PawPrint, Calendar, CheckCircle2, type LucideIcon } from 'lucide-react'
 
 const STEP_ICON: Record<string, LucideIcon> = {
   business_profile: Building2,
@@ -30,8 +30,42 @@ const STEP_HINT: Record<string, string> = {
   schedule_session: 'Pop a session in the calendar for your client.',
 }
 
+// Maps the trainer's current URL to the wizard step that page belongs to.
+// First match wins; most specific patterns first. When a match is found
+// AND the trainer hasn't yet completed that step, the FAB shows that
+// step's content (so they get the right context for the page they're on).
+// Falls back to the next-incomplete step otherwise.
+const STEP_PATH_MATCH: Array<{ pattern: RegExp; key: string }> = [
+  { pattern: /^\/forms\/intake/, key: 'intake_form' },
+  { pattern: /^\/forms\/embed/, key: 'intake_form' },
+  { pattern: /^\/forms\/session/, key: 'session_form' },
+  { pattern: /^\/forms/, key: 'intake_form' },
+  { pattern: /^\/packages/, key: 'program_package' },
+  { pattern: /^\/achievements/, key: 'achievements' },
+  { pattern: /^\/preview-as/, key: 'client_view' },
+  { pattern: /^\/clients\/invite/, key: 'invite_client' },
+  { pattern: /^\/schedule/, key: 'schedule_session' },
+  { pattern: /^\/settings/, key: 'business_profile' },
+]
+
+function stepKeyForPath(pathname: string): string | null {
+  for (const m of STEP_PATH_MATCH) {
+    if (m.pattern.test(pathname)) return m.key
+  }
+  return null
+}
+
+export interface FabStep {
+  key: string
+  title: string
+  order: number
+  ctaHref: string
+  status: 'pending' | 'in_progress' | 'completed' | 'skipped'
+}
+
 interface Props {
-  nextStep: { key: string; title: string; order: number }
+  nextStep: FabStep
+  steps: FabStep[]
   totalSteps: number
 }
 
@@ -39,14 +73,19 @@ const FAB_LAST_STEP_KEY = 'pm-fab-last-step'
 
 // "Continue setup" banner pinned to the top of the trainer content area.
 // Hidden on /dashboard since the persistent checklist + modal already live
-// there. Click → /dashboard?wizard=1 which the panel honours by auto-
-// opening the modal at the next incomplete step.
-export function OnboardingFab({ nextStep, totalSteps }: Props) {
+// there.
+//
+// Step resolution:
+//  - If the current pathname maps to a step (e.g. /forms/intake → intake_form),
+//    use THAT step. The FAB then shows the action hint OR a "completed"
+//    indicator based on its status, and the link points back to the page
+//    they're already on (mostly a confirmation of "yep, this is the right
+//    place to be").
+//  - Otherwise the FAB falls back to the next-incomplete step and links
+//    out to that step's ctaHref.
+export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   const pathname = usePathname()
   const [mounted, setMounted] = useState(false)
-  // Tracks step transitions across navigation so we know when to flash
-  // the icon emerald (subtle "you advanced!" cue). The big bounce-on-
-  // celebrate animation was overkill so we drop it.
   const [celebrating, setCelebrating] = useState(false)
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -68,53 +107,64 @@ export function OnboardingFab({ nextStep, totalSteps }: Props) {
   if (!mounted) return null
   if (pathname === '/dashboard') return null
 
-  // Both sides describe the same step — the next-incomplete one. LEFT is
-  // the action hint, RIGHT is the breadcrumb (icon + "Step N of M" + title).
-  // Path-aware variants caused confusing splits when the trainer was on a
-  // page that matched a step they'd already completed.
-  const Icon = STEP_ICON[nextStep.key] ?? PawPrint
-  const hint = STEP_HINT[nextStep.key]
+  // Resolve which step the FAB should describe. If the trainer is on a
+  // page that maps to a step, prefer that one. Otherwise show the
+  // next-incomplete step.
+  const pathStepKey = stepKeyForPath(pathname)
+  const pathStep = pathStepKey ? steps.find(s => s.key === pathStepKey) : null
+  const focused = pathStep ?? nextStep
+
+  const Icon = STEP_ICON[focused.key] ?? PawPrint
+  const hint = STEP_HINT[focused.key] ?? `Open the wizard to wrap up ${focused.title.toLowerCase()}.`
+  const isCompleted = focused.status === 'completed'
+  // Link to the focused step's CTA so clicking gets the trainer to the
+  // right place — instead of always bouncing through /dashboard?wizard=1.
+  const href = focused.ctaHref || '/dashboard?wizard=1'
 
   return (
     <Link
-      href="/dashboard?wizard=1"
-      aria-label={`Continue setup: ${nextStep.title}`}
-      // Sticky-top with a 10px inset on every side, rounded card, full
-      // gradient background — matches the wizard modal hero so the FAB
-      // visually belongs to the same family of "onboarding chrome".
+      href={href}
+      aria-label={isCompleted ? `${focused.title} — completed` : `Continue setup: ${focused.title}`}
       className="group sticky top-2.5 z-30 mx-2.5 mt-2.5 mb-2 flex items-center gap-4 px-4 sm:px-6 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white rounded-2xl shadow-[0_10px_30px_-8px_rgba(99,102,241,0.55)] hover:shadow-[0_16px_40px_-8px_rgba(99,102,241,0.7)] transition-shadow animate-pm-fab-slide"
     >
-      {/* Left: instruction for the page the trainer is on. */}
+      {/* Left: instruction OR completed confirmation. */}
       <div className="flex-1 min-w-0">
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 leading-none">
-          What to do
+          {isCompleted ? 'Step done' : 'What to do'}
         </p>
         <p className="text-sm text-white leading-snug mt-1.5 line-clamp-2">
-          {hint ?? `Open the wizard to wrap up ${nextStep.title.toLowerCase()}.`}
+          {isCompleted
+            ? `${focused.title} is complete — nice work. ${nextStep.key !== focused.key ? `Next up: ${nextStep.title}.` : ''}`
+            : hint}
         </p>
       </div>
 
       {/* Vertical divider on tablet+desktop only — collapses on phones. */}
       <span className="hidden sm:block self-stretch w-px bg-white/25" aria-hidden />
 
-      {/* Right: where the trainer is heading next + arrow affordance. */}
+      {/* Right: step icon + counter + arrow. When completed, swap the icon
+          tile to an emerald check. */}
       <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
         <span
           aria-hidden
           className={`grid place-items-center h-9 w-9 shrink-0 rounded-xl text-white ${
-            celebrating
-              ? 'bg-emerald-500 shadow-emerald-500/40 animate-pm-fab-flash'
-              : 'bg-white/15 backdrop-blur-sm ring-1 ring-white/20'
+            isCompleted
+              ? 'bg-emerald-500 ring-1 ring-emerald-300/40'
+              : celebrating
+                ? 'bg-emerald-500 shadow-emerald-500/40 animate-pm-fab-flash'
+                : 'bg-white/15 backdrop-blur-sm ring-1 ring-white/20'
           }`}
         >
-          <Icon className="h-4 w-4" strokeWidth={2} />
+          {isCompleted
+            ? <CheckCircle2 className="h-4 w-4" strokeWidth={2.25} />
+            : <Icon className="h-4 w-4" strokeWidth={2} />}
         </span>
         <div className="hidden sm:flex flex-col min-w-0 max-w-[180px] md:max-w-[220px]">
           <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 leading-none">
-            Step {nextStep.order} of {totalSteps}
+            Step {focused.order} of {totalSteps}
           </span>
           <span className="text-sm font-semibold text-white truncate leading-tight mt-0.5">
-            {nextStep.title}
+            {focused.title}
           </span>
         </div>
         <ArrowRight className="h-4 w-4 text-white/80 transition-transform group-hover:translate-x-0.5 group-hover:text-white" />

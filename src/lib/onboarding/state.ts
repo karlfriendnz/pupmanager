@@ -18,20 +18,37 @@ import type { OnboardingState, OnboardingStepView, StepStatus } from './types'
 // COMPLETE_ON_CTA_CLICK in the panel).
 const EXPLICIT_ONLY_KEYS = new Set<string>()
 
+export interface FabStep {
+  key: string
+  title: string
+  order: number
+  ctaHref: string
+  status: 'pending' | 'in_progress' | 'completed' | 'skipped'
+}
+
 // Computes what the floating "Continue setup" card on trainer pages should
-// show: hidden, or visible with the next-incomplete step's metadata. Reuses
-// the full state helper so the next step is live-derived (not just based on
-// explicit skip/complete records).
+// show: hidden, or visible with the full step list + the next-incomplete
+// step's metadata. The FAB needs every step (not just the next one) so it
+// can resolve the page the trainer is currently on to a step and reflect
+// that step's status — completed, skipped, or still pending.
 export async function getOnboardingFabState(trainerId: string): Promise<{
   show: boolean
-  nextStep: { key: string; title: string; order: number } | null
+  nextStep: FabStep | null
+  steps: FabStep[]
   totalSteps: number
 }> {
   const state = await getOnboardingState(trainerId)
-  const totalSteps = state.steps.length
+  const allSteps: FabStep[] = state.steps.map(s => ({
+    key: s.key,
+    title: s.title,
+    order: s.order,
+    ctaHref: s.ctaHref,
+    status: s.status,
+  }))
+  const totalSteps = allSteps.length
 
   if (state.ahaReachedAt || state.checklistDismissedAt) {
-    return { show: false, nextStep: null, totalSteps }
+    return { show: false, nextStep: null, steps: allSteps, totalSteps }
   }
 
   // Priority order for "what's next up": fresh pending > skipped > in-progress.
@@ -40,18 +57,17 @@ export async function getOnboardingFabState(trainerId: string): Promise<{
   // or have decided to defer. If everything is started, fall back to skipped
   // first (re-engage their decisions), then in-progress (last resort).
   const next =
-    state.steps.find(s => s.status === 'pending') ??
-    state.steps.find(s => s.status === 'skipped') ??
-    state.steps.find(s => s.status === 'in_progress')
+    allSteps.find(s => s.status === 'pending') ??
+    allSteps.find(s => s.status === 'skipped') ??
+    allSteps.find(s => s.status === 'in_progress')
   if (!next) {
-    // All steps done but no aha yet — trainer is in limbo, the dashboard
-    // limbo card handles that, no need to nag from the FAB.
-    return { show: false, nextStep: null, totalSteps }
+    return { show: false, nextStep: null, steps: allSteps, totalSteps }
   }
 
   return {
     show: true,
-    nextStep: { key: next.key, title: next.title, order: next.order },
+    nextStep: next,
+    steps: allSteps,
     totalSteps,
   }
 }
