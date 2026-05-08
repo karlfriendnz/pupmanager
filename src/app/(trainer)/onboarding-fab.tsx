@@ -72,13 +72,13 @@ function subPathHint(pathname: string): string | null {
 
 const STEP_TRANSITION: Record<string, string> = {
   availability: "Nice — your hours are blocked out! Now let's drop a first session onto the calendar. Click any open slot in the schedule.",
-  schedule_session: "Booked — your first session is on the calendar! Now let's set up your business profile. Click 'Settings' on the left.",
+  schedule_session: "Booked — your first session is on the calendar! Now let's invite a real client to put into that slot. Click 'Clients' on the left.",
+  invite_client: "Done — your first invite is on its way! Now let's set up your business profile. Click 'Settings' on the left.",
   business_profile: "Nice work — your business is all set up! Now let's get your intake form ready. Click 'Settings' on the left, then 'Forms'.",
   intake_form: "Awesome — your intake form is ready! You can do the other forms later. Now let's add your first programme — click 'Packages' on the left.",
   session_form: "Sweet — your session form is set! Now let's add your first programme. Click 'Packages' on the left.",
   program_package: "Boom — your first programme is in! Now let's pick some fun achievements. Click 'Achievements' on the left.",
-  achievements: "Nice — your achievements are live! Time to invite your first real client. Click 'Clients' on the left.",
-  invite_client: "Done — your first invite is on its way! Last step: take a quick peek at what your clients will see. Click 'Clients' on the left, then 'View as client'.",
+  achievements: "Nice — your achievements are live! Last step: take a quick peek at what your clients will see. Click 'Clients' on the left, then 'View as client'.",
   client_view: "Cool — you've seen what your clients see! That's the basics done. You're all set up 🎉",
 }
 
