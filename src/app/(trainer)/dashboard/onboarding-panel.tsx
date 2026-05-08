@@ -182,13 +182,18 @@ function WelcomeModal({ onStart, onSkip }: { onStart: () => void; onSkip: () => 
             <PawPrint className="h-16 w-16 text-white rotate-[14deg] -translate-y-2" />
           </div>
           <div className="relative h-full grid place-items-center">
-            <button
-              type="button"
-              aria-label="Play welcome video (placeholder)"
-              className="grid place-items-center h-20 w-20 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-sm ring-2 ring-white/40 text-white transition-all hover:scale-105"
-            >
-              <Play className="h-9 w-9 ml-1" fill="currentColor" />
-            </button>
+            <div className="flex flex-col items-center gap-3">
+              <button
+                type="button"
+                aria-label="Play welcome video (placeholder)"
+                className="grid place-items-center h-20 w-20 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-sm ring-2 ring-white/40 text-white transition-all hover:scale-105"
+              >
+                <Play className="h-9 w-9 ml-1" fill="currentColor" />
+              </button>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.16em] bg-white/15 text-white border border-white/30 backdrop-blur-sm">
+                Coming soon
+              </span>
+            </div>
           </div>
           <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
             Welcome video · 90 seconds
