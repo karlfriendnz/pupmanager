@@ -245,6 +245,17 @@ export default async function DashboardPage({
                 })}
           </h2>
           <div className="flex items-center gap-0.5 shrink-0">
+            {/* Today badge sits to the left of the arrows — only when we're
+                not on today. The arrows themselves stay in fixed positions
+                so muscle memory works regardless of which day is in view. */}
+            {!isToday && (
+              <Link
+                href={todayHref}
+                className="h-9 inline-flex items-center px-2 mr-1 text-xs font-medium text-blue-600 hover:underline"
+              >
+                Today
+              </Link>
+            )}
             <Link
               href={prevHref}
               aria-label="Previous day"
@@ -259,14 +270,6 @@ export default async function DashboardPage({
             >
               <ChevronRight className="h-5 w-5" />
             </Link>
-            {!isToday && (
-              <Link
-                href={todayHref}
-                className="h-9 inline-flex items-center px-2 text-xs font-medium text-blue-600 hover:underline"
-              >
-                Today
-              </Link>
-            )}
           </div>
         </div>
         {todaysSessions.length === 0 ? (
