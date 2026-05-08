@@ -884,6 +884,7 @@ function AvailabilityManager({
   onDeleteBlackout: (id: string) => void
   onClose: () => void
 }) {
+  const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [tab, setTab] = useState<'hours' | 'holidays'>('hours')
@@ -1228,6 +1229,23 @@ function AvailabilityManager({
               </Button>
             </form>
           </div>}
+        </div>
+
+        {/* Footer — confirms the trainer's done, also nudges router.refresh()
+            so the onboarding FAB picks up the new availability count and
+            transitions to the next step. */}
+        <div className="sticky bottom-0 bg-white border-t border-slate-100 px-5 py-3">
+          <Button
+            variant="primary"
+            className="w-full"
+            disabled={slots.length === 0}
+            onClick={() => {
+              router.refresh()
+              onClose()
+            }}
+          >
+            {slots.length === 0 ? 'Add at least one block to finish' : 'I have finished adding my hours'}
+          </Button>
         </div>
       </div>
     </div>
