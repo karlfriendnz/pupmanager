@@ -27,6 +27,21 @@ const STEP_HINT: Record<string, string> = {
   schedule_session: "Book your first session. Click 'Schedule' on the left.",
 }
 
+// On-page hints — used when the trainer is already on the step's primary
+// page, so the copy points at the in-page action instead of telling them
+// to navigate somewhere they already are. Falls back to STEP_HINT if a
+// step has no specific in-page version.
+const STEP_ON_PAGE_HINT: Record<string, string> = {
+  business_profile: "Fill in your business name, phone and logo here. Hit 'Save' when you're happy.",
+  intake_form: "Have a look through the questions, then hit 'Publish' to make the form live.",
+  session_form: "Have a look through the questions, then hit 'Publish' to make the form live.",
+  program_package: "Click 'New package' to add your first programme.",
+  achievements: "Pick the achievements you'd like your clients to earn — tap any to publish.",
+  client_view: "Click around to see what your clients see. Hit 'Exit preview' when you're done.",
+  invite_client: "Click 'Invite client' (top right) to send your first sign-up link.",
+  schedule_session: "Click any open time slot in the calendar to book a session.",
+}
+
 const STEP_TRANSITION: Record<string, string> = {
   business_profile: "Nice work — your business is all set up! Now let's get your intake form ready. Click 'Settings' on the left, then 'Forms'.",
   intake_form: "Awesome — your intake form is ready! You can do the other forms later. Now let's add your first programme — click 'Packages' on the left.",
@@ -113,7 +128,12 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   const pathStep = pathStepKey ? steps.find(s => s.key === pathStepKey) : null
   const leftStep = pathStep ?? nextStep
   const leftCompleted = leftStep.status === 'completed'
-  const leftHint = STEP_HINT[leftStep.key] ?? `Wrap up ${leftStep.title.toLowerCase()}.`
+  // When the trainer is already on the step's page, prefer the in-page
+  // hint ("click 'Invite client'") over the navigational one ("click
+  // 'Clients' on the left") which is awkward when they're already there.
+  const leftHint = (pathStep ? STEP_ON_PAGE_HINT[pathStep.key] : null)
+    ?? STEP_HINT[leftStep.key]
+    ?? `Wrap up ${leftStep.title.toLowerCase()}.`
 
   // Click is a fallback for trainers who'd rather skip the menu — points
   // at the next-incomplete step. The pulsing dot on the sidebar is the

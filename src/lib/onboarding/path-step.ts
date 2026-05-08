@@ -15,6 +15,9 @@ const STEP_PATH_MATCH: Array<{ pattern: RegExp; key: string }> = [
   { pattern: /^\/achievements/, key: 'achievements' },
   { pattern: /^\/preview-as/, key: 'client_view' },
   { pattern: /^\/clients\/invite/, key: 'invite_client' },
+  // Match /clients (the list page) but NOT /clients/<id> (a specific client
+  // profile). The list is where the Invite Client button lives.
+  { pattern: /^\/clients(?:\?|#|$)/, key: 'invite_client' },
   { pattern: /^\/schedule/, key: 'schedule_session' },
   { pattern: /^\/settings/, key: 'business_profile' },
 ]
