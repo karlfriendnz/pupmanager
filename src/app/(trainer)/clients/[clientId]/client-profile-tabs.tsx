@@ -459,7 +459,7 @@ export function ClientProfileTabs({
                       ? 'border-blue-400 ring-2 ring-blue-100'
                       : 'hover:border-blue-200 hover:shadow-md'
                   } ${isPast ? 'opacity-70' : ''}`}
-                  onClick={() => setActiveSession(s)}
+                  onClick={() => router.push(`/sessions/${s.id}`)}
                 >
                   <CardBody className="pt-4 pb-4">
                     <div className="flex items-start gap-4">
