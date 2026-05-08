@@ -108,25 +108,31 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   if (pathname === '/dashboard') return null
 
   // LEFT side describes the page the trainer is on (the path-matched step).
-  // RIGHT side is always the next-incomplete step — the actionable thing
-  // they need to do next regardless of where they are now.
+  // RIGHT side is the SEQUENTIAL next step — the one immediately after the
+  // LEFT step in the flow, regardless of completion status. The trainer
+  // sees the chain: "you're on step N, here's step N+1."
   const pathStepKey = stepKeyForPath(pathname)
   const pathStep = pathStepKey ? steps.find(s => s.key === pathStepKey) : null
   const leftStep = pathStep ?? nextStep
-  const leftCompleted = pathStep?.status === 'completed'
+  const leftCompleted = leftStep.status === 'completed'
   const leftHint = STEP_HINT[leftStep.key] ?? `Wrap up ${leftStep.title.toLowerCase()}.`
 
-  const NextIcon = STEP_ICON[nextStep.key] ?? PawPrint
+  const rightStep = steps.find(s => s.order === leftStep.order + 1) ?? null
+  const rightIcon = rightStep ? (STEP_ICON[rightStep.key] ?? PawPrint) : null
+  const rightCompleted = rightStep?.status === 'completed'
+
+  // Click follows the flow forward — to the step after LEFT. Falls back to
+  // the actual next-incomplete when LEFT is the last step (rare).
+  const href = rightStep?.ctaHref || nextStep.ctaHref || '/dashboard?wizard=1'
 
   return (
     <Link
-      href={nextStep.ctaHref || '/dashboard?wizard=1'}
-      aria-label={`Continue setup: ${nextStep.title}`}
+      href={href}
+      aria-label={rightStep ? `Next step: ${rightStep.title}` : `Continue setup: ${nextStep.title}`}
       className="group sticky top-2.5 z-30 mx-2.5 mt-2.5 mb-2 flex items-center gap-4 px-4 sm:px-5 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white rounded-2xl shadow-[0_10px_30px_-8px_rgba(99,102,241,0.55)] hover:shadow-[0_16px_40px_-8px_rgba(99,102,241,0.7)] transition-shadow animate-pm-fab-slide"
     >
-      {/* LEFT: page-matched step status. Green check when the step the
-          trainer is on has already been completed; otherwise a plain
-          "What to do" hint. */}
+      {/* LEFT: status of the step matching this page. Green check tile when
+          done; otherwise the "What to do" hint. */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
         {leftCompleted && (
           <span
@@ -148,31 +154,43 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
         </div>
       </div>
 
-      {/* Vertical divider on tablet+desktop only — collapses on phones. */}
-      <span className="hidden sm:block self-stretch w-px bg-white/25" aria-hidden />
+      {/* Sequential next step — only renders when there's a step after LEFT
+          in the flow. Hidden when LEFT is the final step. */}
+      {rightStep && rightIcon && (
+        <>
+          <span className="hidden sm:block self-stretch w-px bg-white/25" aria-hidden />
 
-      {/* RIGHT: next-incomplete step — where the click takes them. */}
-      <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
-        <span
-          aria-hidden
-          className={`grid place-items-center h-9 w-9 shrink-0 rounded-xl text-white ${
-            celebrating
-              ? 'bg-emerald-500 shadow-emerald-500/40 animate-pm-fab-flash'
-              : 'bg-white/15 backdrop-blur-sm ring-1 ring-white/20'
-          }`}
-        >
-          <NextIcon className="h-4 w-4" strokeWidth={2} />
-        </span>
-        <div className="hidden sm:flex flex-col min-w-0 max-w-[180px] md:max-w-[220px]">
-          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 leading-none">
-            Step {nextStep.order} of {totalSteps}
-          </span>
-          <span className="text-sm font-semibold text-white truncate leading-tight mt-0.5">
-            {nextStep.title}
-          </span>
-        </div>
-        <ArrowRight className="h-4 w-4 text-white/80 transition-transform group-hover:translate-x-0.5 group-hover:text-white" />
-      </div>
+          <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
+            <span
+              aria-hidden
+              className={`relative grid place-items-center h-9 w-9 shrink-0 rounded-xl text-white ${
+                celebrating
+                  ? 'bg-emerald-500 shadow-emerald-500/40 animate-pm-fab-flash'
+                  : 'bg-white/15 backdrop-blur-sm ring-1 ring-white/20'
+              }`}
+            >
+              {(() => {
+                const RightIcon = rightIcon
+                return <RightIcon className="h-4 w-4" strokeWidth={2} />
+              })()}
+              {rightCompleted && (
+                <span className="absolute -top-1 -right-1 grid place-items-center h-4 w-4 rounded-full bg-emerald-500 ring-2 ring-blue-700 text-white">
+                  <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />
+                </span>
+              )}
+            </span>
+            <div className="hidden sm:flex flex-col min-w-0 max-w-[180px] md:max-w-[220px]">
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70 leading-none">
+                Step {rightStep.order} of {totalSteps}
+              </span>
+              <span className="text-sm font-semibold text-white truncate leading-tight mt-0.5">
+                {rightStep.title}
+              </span>
+            </div>
+            <ArrowRight className="h-4 w-4 text-white/80 transition-transform group-hover:translate-x-0.5 group-hover:text-white" />
+          </div>
+        </>
+      )}
     </Link>
   )
 }

@@ -123,20 +123,17 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
 
   const counts = profileWithCounts?._count ?? { embedForms: 0, sessionForms: 0, packages: 0, clients: 0, customFields: 0, achievements: 0, trainingSessions: 0 }
 
-  // intake_form completes when AT LEAST ONE form is published — embed form,
-  // session form, or the intake form itself. Trainer has to actively publish
-  // something they reviewed before the wizard advances past this step.
-  const anyFormPublished =
-    !!profileWithCounts?.intakeFormPublished ||
-    counts.embedForms > 0 ||
-    counts.sessionForms > 0
-
   // Live-derived completion — a step is "done" if either the underlying state
-  // exists OR the trainer explicitly marked it complete. achievements is
-  // gated on the trainer publishing at least one badge (drafts don't count).
+  // exists OR the trainer explicitly marked it complete.
+  //
+  // intake_form is keyed *only* off intakeFormPublished, not "any form is
+  // active". The previous version bailed the trainer out of this step if any
+  // embed/session form happened to be active (e.g. a default seeded one
+  // toggled on), which let them skip past actually reviewing+publishing the
+  // intake form. They have to publish their intake form specifically.
   const liveDerived: Record<string, boolean> = {
     business_profile: !!profileWithCounts?.businessName?.trim(),
-    intake_form: anyFormPublished,
+    intake_form: !!profileWithCounts?.intakeFormPublished,
     program_package: counts.packages > 0,
     achievements: counts.achievements > 0,
     invite_client: counts.clients > 0,
