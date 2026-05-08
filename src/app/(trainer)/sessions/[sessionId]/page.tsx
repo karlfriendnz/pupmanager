@@ -101,7 +101,10 @@ export default async function SessionPage({
             <Eye className="h-4 w-4" /> Preview report
           </Link>
           <MarkCompleteButton sessionId={trainingSession.id} initialStatus={trainingSession.status} />
-          <MarkInvoicedButton sessionId={trainingSession.id} initialStatus={trainingSession.status} />
+          <MarkInvoicedButton
+            sessionId={trainingSession.id}
+            initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
+          />
           <DeleteSessionButton
             sessionId={trainingSession.id}
             redirectTo={clientId ? `/clients/${clientId}?tab=sessions` : '/schedule'}

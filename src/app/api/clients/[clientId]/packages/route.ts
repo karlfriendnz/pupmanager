@@ -120,6 +120,7 @@ export async function POST(
         invoicedAt: parsed.data.markInvoiced ? new Date() : null,
       },
     })
+    const invoicedAt = parsed.data.markInvoiced ? new Date() : null
     await tx.trainingSession.createMany({
       data: sessionDates.map((d, i) => ({
         trainerId,
@@ -133,9 +134,9 @@ export async function POST(
         durationMins: pkg.durationMins,
         sessionType: pkg.sessionType,
         // If the trainer ticked "already invoiced" on the package, each
-        // child session inherits the INVOICED status so they don't have
-        // to mark them individually after the fact.
-        status: parsed.data.markInvoiced ? 'INVOICED' : 'UPCOMING',
+        // child session inherits invoicedAt — independent of status so
+        // the trainer can still mark sessions complete after they happen.
+        invoicedAt,
       })),
     })
     return assignment

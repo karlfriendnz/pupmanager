@@ -417,6 +417,11 @@ model TrainingSession {
   durationMins    Int           @default(60)
   sessionType     SessionType   @default(IN_PERSON)
   status          SessionStatus @default(UPCOMING)
+  // Whether the trainer has invoiced this session (Xero/QBO/manual). Tracked
+  // separately from `status` because invoicing can happen before OR after the
+  // session is marked complete — the lifecycles are orthogonal. Null = not
+  // invoiced; set = invoiced at this timestamp.
+  invoicedAt      DateTime?
   location        String?
   virtualLink     String?
 

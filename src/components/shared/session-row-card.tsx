@@ -13,6 +13,9 @@ export interface SessionRowSession {
   scheduledAt: Date | string
   durationMins: number
   status: SessionRowStatus
+  // Independent of status — set when the trainer marks the session invoiced.
+  // When present, the card shows an "Invoiced" pill in place of the status.
+  invoicedAt?: Date | string | null
   location?: string | null
   clientId?: string | null
   client?: { user: { name: string | null; email: string } } | null
@@ -43,6 +46,8 @@ const STATUS_META: Record<SessionRowStatus, { label: string; colour: string }> =
   INVOICED:  { label: 'Invoiced',  colour: 'bg-purple-50 text-purple-700 border-purple-200' },
 }
 
+const INVOICED_META = { label: 'Invoiced', colour: 'bg-purple-50 text-purple-700 border-purple-200' }
+
 /**
  * The dashboard-style session card — coloured time rail on the left,
  * dog/client/title body in the middle, and a blue action rail on the right.
@@ -59,7 +64,11 @@ export function SessionRowCard({
 }: SessionRowCardProps) {
   const start = new Date(s.scheduledAt)
   const isPast = start.getTime() + s.durationMins * 60_000 < Date.now()
-  const meta = STATUS_META[s.status]
+  // Invoiced overrides the status pill — billing is the more useful signal
+  // for the trainer at-a-glance. Legacy rows that still have status=INVOICED
+  // (pre-migration) are treated the same.
+  const isInvoiced = s.invoicedAt != null || s.status === 'INVOICED'
+  const meta = isInvoiced ? INVOICED_META : STATUS_META[s.status]
   const startTime = start.toLocaleTimeString('en-NZ', {
     hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz,
   })

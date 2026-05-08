@@ -8,6 +8,10 @@ const patchSchema = z.object({
   scheduledAt: z.string().optional(),
   durationMins: z.number().int().positive().optional(),
   status: z.enum(['UPCOMING', 'COMPLETED', 'COMMENTED', 'INVOICED']).optional(),
+  // Toggle the invoiced flag on the session — true stamps invoicedAt = now,
+  // false clears it. Independent of status so the trainer can invoice
+  // before or after marking complete.
+  invoiced: z.boolean().optional(),
   // null clears the dog. Empty string treated the same. Validated against the
   // session's client below (must be a dog owned by that client).
   dogId: z.string().nullable().optional(),
@@ -138,6 +142,7 @@ export async function PATCH(
       ...(parsed.data.scheduledAt !== undefined && { scheduledAt: new Date(parsed.data.scheduledAt) }),
       ...(parsed.data.durationMins !== undefined && { durationMins: parsed.data.durationMins }),
       ...(parsed.data.status !== undefined && { status: parsed.data.status }),
+      ...(parsed.data.invoiced !== undefined && { invoicedAt: parsed.data.invoiced ? new Date() : null }),
       ...(nextDogId !== undefined && { dogId: nextDogId }),
       ...(nextClientPackageId !== undefined && { clientPackageId: nextClientPackageId }),
     },
