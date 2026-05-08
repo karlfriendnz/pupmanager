@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { ArrowRight, Building2, ClipboardList, Notebook, Package, Trophy, Eye, Mail, PawPrint, Calendar, CheckCircle2, type LucideIcon } from 'lucide-react'
 
 const STEP_ICON: Record<string, LucideIcon> = {
@@ -30,13 +30,14 @@ const STEP_HINT: Record<string, string> = {
   schedule_session: 'Pop a session in the calendar for your client.',
 }
 
-// Maps the trainer's current URL (pathname + hash) to the wizard step that
-// page belongs to. First match wins; most specific patterns first. The
-// settings page uses hash-based tabs (#profile, #forms, #notifications) so
-// we test against pathname+hash rather than pathname alone.
+// Resolves the trainer's current location to the wizard step that page
+// belongs to. The settings page uses tab markers in two forms — `?tab=foo`
+// query param (set by router.push) and `#foo` hash (set by older links) —
+// so we normalise the location into a single string and pattern-match
+// against that.
 const STEP_PATH_MATCH: Array<{ pattern: RegExp; key: string }> = [
-  { pattern: /^\/settings#forms/, key: 'intake_form' },
-  { pattern: /^\/settings#notifications/, key: 'business_profile' },
+  { pattern: /^\/settings(\?tab=forms|#forms)/, key: 'intake_form' },
+  { pattern: /^\/settings(\?tab=notifications|#notifications)/, key: 'business_profile' },
   { pattern: /^\/forms\/intake/, key: 'intake_form' },
   { pattern: /^\/forms\/embed/, key: 'intake_form' },
   { pattern: /^\/forms\/session/, key: 'intake_form' },
@@ -49,9 +50,9 @@ const STEP_PATH_MATCH: Array<{ pattern: RegExp; key: string }> = [
   { pattern: /^\/settings/, key: 'business_profile' },
 ]
 
-function stepKeyForPath(pathAndHash: string): string | null {
+function stepKeyForLocation(loc: string): string | null {
   for (const m of STEP_PATH_MATCH) {
-    if (m.pattern.test(pathAndHash)) return m.key
+    if (m.pattern.test(loc)) return m.key
   }
   return null
 }
@@ -86,12 +87,13 @@ const FAB_LAST_STEP_KEY = 'pm-fab-last-step'
 //    out to that step's ctaHref.
 export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const tab = searchParams?.get('tab') ?? ''
   const [mounted, setMounted] = useState(false)
   const [celebrating, setCelebrating] = useState(false)
-  // Track the current URL hash so the FAB can distinguish hash-based tabs
-  // (e.g. /settings#forms vs /settings#profile). usePathname only gives us
-  // the path; hash changes don't trigger Next.js navigation events so we
-  // wire the listener ourselves.
+  // usePathname / useSearchParams handle the path + query, but the hash
+  // (#tab markers in older links) doesn't trigger Next.js navigation
+  // events, so we wire that listener ourselves.
   const [hash, setHash] = useState('')
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -125,7 +127,8 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   // RIGHT side is the SEQUENTIAL next step — the one immediately after the
   // LEFT step in the flow, regardless of completion status. The trainer
   // sees the chain: "you're on step N, here's step N+1."
-  const pathStepKey = stepKeyForPath(`${pathname}${hash}`)
+  const locationKey = `${pathname}${tab ? `?tab=${tab}` : ''}${hash}`
+  const pathStepKey = stepKeyForLocation(locationKey)
   const pathStep = pathStepKey ? steps.find(s => s.key === pathStepKey) : null
   const leftStep = pathStep ?? nextStep
   const leftCompleted = leftStep.status === 'completed'
