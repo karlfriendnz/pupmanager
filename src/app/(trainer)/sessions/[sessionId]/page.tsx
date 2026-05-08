@@ -8,6 +8,7 @@ import { SessionFormReport } from '@/components/session-form-report'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
 import { MarkCompleteButton } from '@/components/mark-complete-button'
 import { MarkInvoicedButton } from '@/components/mark-invoiced-button'
+import { DeleteSessionButton } from '@/components/delete-session-button'
 import { OpenSessionLink } from './open-session-link'
 import type { Metadata } from 'next'
 
@@ -94,6 +95,10 @@ export default async function SessionPage({
           </Link>
           <MarkCompleteButton sessionId={trainingSession.id} initialStatus={trainingSession.status} />
           <MarkInvoicedButton sessionId={trainingSession.id} initialStatus={trainingSession.status} />
+          <DeleteSessionButton
+            sessionId={trainingSession.id}
+            redirectTo={clientId ? `/clients/${clientId}?tab=sessions` : '/schedule'}
+          />
         </div>
       </div>
 
