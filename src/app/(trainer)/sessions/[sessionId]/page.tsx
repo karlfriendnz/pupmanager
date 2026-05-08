@@ -7,6 +7,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { SessionFormReport } from '@/components/session-form-report'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
 import { MarkCompleteButton } from '@/components/mark-complete-button'
+import { MarkInvoicedButton } from '@/components/mark-invoiced-button'
 import { OpenSessionLink } from './open-session-link'
 import type { Metadata } from 'next'
 
@@ -92,6 +93,7 @@ export default async function SessionPage({
             <Eye className="h-4 w-4" /> Preview report
           </Link>
           <MarkCompleteButton sessionId={trainingSession.id} initialStatus={trainingSession.status} />
+          <MarkInvoicedButton sessionId={trainingSession.id} initialStatus={trainingSession.status} />
         </div>
       </div>
 

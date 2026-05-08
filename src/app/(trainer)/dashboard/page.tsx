@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { UserPlus, TrendingUp, Calendar, ChevronLeft, ChevronRight, ArrowRight, Users, CheckCircle2, Inbox, type LucideIcon } from 'lucide-react'
+import { UserPlus, TrendingUp, Calendar, ChevronLeft, ChevronRight, ArrowRight, Users, CheckCircle2, Inbox, FileText, type LucideIcon } from 'lucide-react'
 import { SessionRowCard } from '@/components/shared/session-row-card'
 import { WeeklyTasksStat, type WeeklyTask } from './weekly-tasks-stat'
 import { PendingRequestsPanel } from './pending-requests-panel'
@@ -170,6 +170,17 @@ export default async function DashboardPage({
     where: { trainerId, status: 'NEW', viewedAt: null },
   })
 
+  // Past sessions waiting on a write-up — surfaced as a CTA on the dashboard
+  // so the trainer can clear the backlog without trawling the schedule.
+  const sessionsAwaitingNotesCount = await prisma.trainingSession.count({
+    where: {
+      trainerId,
+      scheduledAt: { lt: new Date() },
+      status: { in: ['UPCOMING', 'COMPLETED', 'COMMENTED'] },
+      formResponses: { none: {} },
+    },
+  })
+
   // Pending product requests across this trainer's clients — shown as a panel
   // so the trainer can fulfil items at the next session and dismiss the chip.
   const pendingProductRequests = await prisma.productRequest.findMany({
@@ -285,6 +296,33 @@ export default async function DashboardPage({
           </div>
         )}
       </div>
+
+      {/* Notes-to-write CTA — only renders when there's a backlog. Linked to
+          the dedicated /sessions/needs-notes page where they're grouped by
+          week so the trainer can knock out a week at a time. */}
+      {sessionsAwaitingNotesCount > 0 && (
+        <Link
+          href="/sessions/needs-notes"
+          className="mb-6 block rounded-2xl border bg-amber-50 border-amber-100 hover:border-amber-200 p-4 transition-colors"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-700 flex-shrink-0">
+                <FileText className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold text-sm leading-tight text-amber-900">
+                  {sessionsAwaitingNotesCount} session{sessionsAwaitingNotesCount === 1 ? '' : 's'} need a write-up
+                </p>
+                <p className="text-xs mt-0.5 text-amber-700/80">
+                  Past sessions without notes — grouped by week.
+                </p>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 flex-shrink-0 mt-1 text-amber-700" />
+          </div>
+        </Link>
+      )}
 
       {/* Recent enquiries — only shown when there's actually been recent
           inbound activity, so the dashboard doesn't carry an empty card. */}
