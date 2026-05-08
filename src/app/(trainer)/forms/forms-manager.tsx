@@ -726,7 +726,14 @@ export function IntakeFormEditor({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ intakeFormPublished: !isPublished }),
       })
-      if (res.ok) setIsPublished(v => !v)
+      if (res.ok) {
+        setIsPublished(v => !v)
+        // The trainer layout's FAB reads server-rendered onboarding state.
+        // Without this, the FAB keeps showing "What to do — publish the
+        // intake form" even after the toggle flips, because the layout
+        // never re-fetches.
+        router.refresh()
+      }
     } finally {
       setTogglingPublished(false)
     }
