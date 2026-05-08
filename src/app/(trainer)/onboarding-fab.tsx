@@ -30,15 +30,16 @@ const STEP_HINT: Record<string, string> = {
   schedule_session: 'Pop a session in the calendar for your client.',
 }
 
-// Maps the trainer's current URL to the wizard step that page belongs to.
-// First match wins; most specific patterns first. When a match is found
-// AND the trainer hasn't yet completed that step, the FAB shows that
-// step's content (so they get the right context for the page they're on).
-// Falls back to the next-incomplete step otherwise.
+// Maps the trainer's current URL (pathname + hash) to the wizard step that
+// page belongs to. First match wins; most specific patterns first. The
+// settings page uses hash-based tabs (#profile, #forms, #notifications) so
+// we test against pathname+hash rather than pathname alone.
 const STEP_PATH_MATCH: Array<{ pattern: RegExp; key: string }> = [
+  { pattern: /^\/settings#forms/, key: 'intake_form' },
+  { pattern: /^\/settings#notifications/, key: 'business_profile' },
   { pattern: /^\/forms\/intake/, key: 'intake_form' },
   { pattern: /^\/forms\/embed/, key: 'intake_form' },
-  { pattern: /^\/forms\/session/, key: 'session_form' },
+  { pattern: /^\/forms\/session/, key: 'intake_form' },
   { pattern: /^\/forms/, key: 'intake_form' },
   { pattern: /^\/packages/, key: 'program_package' },
   { pattern: /^\/achievements/, key: 'achievements' },
@@ -48,9 +49,9 @@ const STEP_PATH_MATCH: Array<{ pattern: RegExp; key: string }> = [
   { pattern: /^\/settings/, key: 'business_profile' },
 ]
 
-function stepKeyForPath(pathname: string): string | null {
+function stepKeyForPath(pathAndHash: string): string | null {
   for (const m of STEP_PATH_MATCH) {
-    if (m.pattern.test(pathname)) return m.key
+    if (m.pattern.test(pathAndHash)) return m.key
   }
   return null
 }
@@ -87,9 +88,22 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   const pathname = usePathname()
   const [mounted, setMounted] = useState(false)
   const [celebrating, setCelebrating] = useState(false)
+  // Track the current URL hash so the FAB can distinguish hash-based tabs
+  // (e.g. /settings#forms vs /settings#profile). usePathname only gives us
+  // the path; hash changes don't trigger Next.js navigation events so we
+  // wire the listener ourselves.
+  const [hash, setHash] = useState('')
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMounted(true) }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setHash(window.location.hash)
+    const onHashChange = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [pathname])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -111,7 +125,7 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   // RIGHT side is the SEQUENTIAL next step — the one immediately after the
   // LEFT step in the flow, regardless of completion status. The trainer
   // sees the chain: "you're on step N, here's step N+1."
-  const pathStepKey = stepKeyForPath(pathname)
+  const pathStepKey = stepKeyForPath(`${pathname}${hash}`)
   const pathStep = pathStepKey ? steps.find(s => s.key === pathStepKey) : null
   const leftStep = pathStep ?? nextStep
   const leftCompleted = leftStep.status === 'completed'
