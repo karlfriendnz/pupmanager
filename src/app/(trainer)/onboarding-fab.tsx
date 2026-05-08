@@ -42,6 +42,24 @@ const STEP_ON_PAGE_HINT: Record<string, string> = {
   schedule_session: "Click any open time slot in the calendar to book a session.",
 }
 
+// Sub-path-specific overrides for pages where the trainer is one step
+// deeper than the step's primary page (e.g. /clients/invite is the
+// invite-form, not the client list). Checked before STEP_ON_PAGE_HINT —
+// first matching pattern wins.
+const SUB_PATH_HINT: Array<{ pattern: RegExp; hint: string }> = [
+  {
+    pattern: /^\/clients\/invite/,
+    hint: "Fill in your client's name, email and their dog's name, then hit 'Send invitation' to email them a sign-up link.",
+  },
+]
+
+function subPathHint(pathname: string): string | null {
+  for (const m of SUB_PATH_HINT) {
+    if (m.pattern.test(pathname)) return m.hint
+  }
+  return null
+}
+
 const STEP_TRANSITION: Record<string, string> = {
   business_profile: "Nice work — your business is all set up! Now let's get your intake form ready. Click 'Settings' on the left, then 'Forms'.",
   intake_form: "Awesome — your intake form is ready! You can do the other forms later. Now let's add your first programme — click 'Packages' on the left.",
@@ -128,10 +146,12 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   const pathStep = pathStepKey ? steps.find(s => s.key === pathStepKey) : null
   const leftStep = pathStep ?? nextStep
   const leftCompleted = leftStep.status === 'completed'
-  // When the trainer is already on the step's page, prefer the in-page
-  // hint ("click 'Invite client'") over the navigational one ("click
-  // 'Clients' on the left") which is awkward when they're already there.
-  const leftHint = (pathStep ? STEP_ON_PAGE_HINT[pathStep.key] : null)
+  // Hint resolution priority:
+  //   1. Sub-path override (e.g. /clients/invite — fills the in-page form)
+  //   2. On-page hint (trainer is on the step's primary page)
+  //   3. Navigational hint (off-page; tells them which menu to click)
+  const leftHint = subPathHint(pathname)
+    ?? (pathStep ? STEP_ON_PAGE_HINT[pathStep.key] : null)
     ?? STEP_HINT[leftStep.key]
     ?? `Wrap up ${leftStep.title.toLowerCase()}.`
 
