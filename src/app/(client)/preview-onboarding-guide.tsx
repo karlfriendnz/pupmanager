@@ -42,6 +42,9 @@ export function PreviewOnboardingGuide() {
         <span className="inline-block h-2 w-2 rounded-full bg-white align-middle ring-2 ring-white/40 mx-1" />
         indigo dots in the nav — each one points at a section your client can use (sessions, profile, shop, and more).
       </p>
+      <p className="mt-2 text-sm leading-snug text-white/90 pr-8">
+        Once you&apos;re happy, click <span className="font-semibold">Exit preview</span> in the top-right to go back to your dashboard.
+      </p>
     </div>
   )
 }
