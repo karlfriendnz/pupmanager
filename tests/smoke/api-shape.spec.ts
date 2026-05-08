@@ -13,6 +13,11 @@ const ENDPOINTS: { method: 'GET' | 'POST'; path: string }[] = [
   { method: 'POST', path: '/api/notification-preferences/test' },
   { method: 'POST', path: '/api/devices/register' },
   { method: 'POST', path: '/api/devices/test-push' },
+  // Session lifecycle endpoints — touched by mark-complete, mark-invoiced and
+  // the delete-session button. We pass a bogus id so the auth check runs but
+  // the row lookup fails; what we're guarding against is the route exploding
+  // before either step.
+  { method: 'POST', path: '/api/clients/cmnotreal/packages' },
 ]
 
 test.describe('Authed API endpoints', () => {
@@ -33,6 +38,20 @@ test.describe('Authed API endpoints', () => {
         expect(text.length, `${path} 401 body should not be empty`).toBeGreaterThan(0)
         expect(() => JSON.parse(text), `${path} 401 body should be JSON`).not.toThrow()
       }
+    })
+  }
+
+  // Session-status mutations live behind a dynamic [sessionId] route — easier
+  // to test those by hitting them directly with a bogus id.
+  for (const method of ['PATCH', 'DELETE'] as const) {
+    test(`${method} /api/schedule/[id] rejects unauth without crashing`, async ({ request }) => {
+      const r = await request.fetch('/api/schedule/cmnotreal', {
+        method,
+        data: method === 'PATCH' ? { status: 'INVOICED' } : undefined,
+        maxRedirects: 0,
+      })
+      const status = r.status()
+      expect([307, 401, 403], `expected auth-bounce (got ${status})`).toContain(status)
     })
   }
 })

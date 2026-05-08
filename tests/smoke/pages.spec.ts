@@ -36,6 +36,7 @@ const TRAINER_ROUTES = [
   '/forms/embed/new',
   '/forms/session/new',
   '/progress',
+  '/sessions/needs-notes',
 ]
 
 const CLIENT_ROUTES = [

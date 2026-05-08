@@ -26,7 +26,7 @@ PROTECTED_ROUTES=(
   /messages /settings /help /ai-tools
   /forms/intake /forms/intake/preview
   /forms/embed/new /forms/session/new
-  /progress
+  /progress /sessions/needs-notes
   /home /my-sessions /my-availability
   /my-shop /my-help /my-profile /my-messages /notifications
   / /preview-as
