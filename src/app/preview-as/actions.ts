@@ -36,7 +36,39 @@ export async function exitClientPreview(returnTo?: string) {
   const store = await cookies()
   const previewId = store.get(PREVIEW_COOKIE)?.value
   store.delete(PREVIEW_COOKIE)
+
+  // Exiting the preview means the trainer has *seen* the client view —
+  // satisfy the "see it from your client's side" onboarding step. Best-
+  // effort: only mark complete if the trainer's progress row exists and
+  // the step is published. Errors are swallowed so a transient DB issue
+  // doesn't block the redirect (the worst outcome is the step staying
+  // pending until the trainer clicks the explicit confirm).
+  try {
+    const session = await auth()
+    if (session?.user?.role === 'TRAINER' && session.user.trainerId) {
+      const step = await prisma.onboardingStep.findUnique({
+        where: { key: 'client_view' },
+        select: { publishedAt: true },
+      })
+      const progress = await prisma.trainerOnboardingProgress.findUnique({
+        where: { trainerId: session.user.trainerId },
+        select: { id: true },
+      })
+      if (step?.publishedAt && progress) {
+        await prisma.trainerOnboardingStepProgress.upsert({
+          where: { progressId_stepKey: { progressId: progress.id, stepKey: 'client_view' } },
+          create: { progressId: progress.id, stepKey: 'client_view', completedAt: new Date() },
+          update: { completedAt: new Date(), skippedAt: null },
+        })
+      }
+    }
+  } catch (err) {
+    console.error('[exitClientPreview] failed to mark client_view complete', err)
+  }
+
   if (returnTo) redirect(returnTo)
-  if (previewId) redirect(`/clients/${previewId}`)
+  // Default: send the trainer to their dashboard so the freshly-completed
+  // step is reflected on the home screen (and the celebration fires if
+  // that was the last one).
   redirect('/dashboard')
 }
