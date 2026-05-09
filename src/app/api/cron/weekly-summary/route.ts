@@ -102,14 +102,26 @@ export async function GET(req: Request) {
       formResponses: { select: { id: true }, take: 1 },
     } as const
 
+    // Mirror the schedule page: orphaned sessions (clientId null) are
+    // not on the trainer's actual calendar, so they shouldn't show up
+    // in the wrap-up either.
     const [completedSessions, upcomingSessions, upcomingTasksRows] = await Promise.all([
       prisma.trainingSession.findMany({
-        where: { trainerId, scheduledAt: { gte: weekStart, lte: weekEnd }, status: 'COMPLETED' },
+        where: {
+          trainerId,
+          scheduledAt: { gte: weekStart, lte: weekEnd },
+          status: 'COMPLETED',
+          clientId: { not: null },
+        },
         orderBy: { scheduledAt: 'asc' },
         include: sessionInclude,
       }),
       prisma.trainingSession.findMany({
-        where: { trainerId, scheduledAt: { gte: nextStart, lte: nextEnd } },
+        where: {
+          trainerId,
+          scheduledAt: { gte: nextStart, lte: nextEnd },
+          clientId: { not: null },
+        },
         orderBy: { scheduledAt: 'asc' },
         include: sessionInclude,
       }),

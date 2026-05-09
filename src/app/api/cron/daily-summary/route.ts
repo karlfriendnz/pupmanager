@@ -61,13 +61,21 @@ export async function GET(req: Request) {
     const start = startOfDayInTz(today, u.timezone)
     const end = endOfDayInTz(today, u.timezone)
 
+    // Mirror the schedule page's filter: ignore orphaned sessions (no
+    // clientId) so we don't tell the trainer they have N sessions
+    // today when those Ns aren't on their calendar. (SessionStatus
+    // doesn't include CANCELLED in this codebase — orphans are the
+    // primary "lingering on the DB but invisible on /schedule" cause.)
+    const dailyWhere = {
+      trainerId: u.trainerProfile.id,
+      scheduledAt: { gte: start, lte: end },
+      clientId: { not: null },
+    }
     const [sessionCount, clientCount, firstSession] = await Promise.all([
-      prisma.trainingSession.count({
-        where: { trainerId: u.trainerProfile.id, scheduledAt: { gte: start, lte: end } },
-      }),
+      prisma.trainingSession.count({ where: dailyWhere }),
       prisma.clientProfile.count({ where: { trainerId: u.trainerProfile.id } }),
       prisma.trainingSession.findFirst({
-        where: { trainerId: u.trainerProfile.id, scheduledAt: { gte: start, lte: end } },
+        where: dailyWhere,
         orderBy: { scheduledAt: 'asc' },
         select: { scheduledAt: true },
       }),
