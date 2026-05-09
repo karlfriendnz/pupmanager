@@ -6,14 +6,8 @@
 ALTER TABLE "trainer_onboarding_progress"
   ADD COLUMN IF NOT EXISTS "tourStartedAt" TIMESTAMP(3);
 
--- Backfill: any trainer who's already started clicking through wizard
--- steps has effectively opted in, so stamp them so the FAB doesn't
--- vanish from under them on first deploy.
-UPDATE "trainer_onboarding_progress" p
-SET "tourStartedAt" = NOW()
-WHERE "tourStartedAt" IS NULL
-  AND EXISTS (
-    SELECT 1 FROM "trainer_onboarding_step_progress" sp
-    WHERE sp."progressId" = p.id
-      AND (sp."completedAt" IS NOT NULL OR sp."skippedAt" IS NOT NULL OR sp."startedAt" IS NOT NULL)
-  );
+-- No backfill: every trainer (existing OR new) needs to click into the
+-- tour from the dashboard before the FAB / pulse dots appear. Earlier
+-- iterations stamped trainers with prior step activity, but the
+-- product call is strict opt-in — random progress from past testing
+-- doesn't count as a positive choice.
