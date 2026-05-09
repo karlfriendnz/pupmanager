@@ -199,7 +199,16 @@ function PrefRowEditor({
   const [saving, startSaving] = useTransition()
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [testState, setTestState] = useState<{ kind: 'idle' } | { kind: 'sending' } | { kind: 'sent' } | { kind: 'noDevices' } | { kind: 'unsupported' } | { kind: 'error'; message: string }>({ kind: 'idle' })
+  const [testState, setTestState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'sending' }
+    | { kind: 'sent' }
+    | { kind: 'sentEmail'; to: string }
+    | { kind: 'noDevices' }
+    | { kind: 'noEmail' }
+    | { kind: 'unsupported' }
+    | { kind: 'error'; message: string }
+  >({ kind: 'idle' })
 
   function save(patch: Partial<PrefRow>) {
     onLocalChange(patch)
@@ -235,8 +244,14 @@ function PrefRowEditor({
       })
       const data = await r.json()
       if (data.reason === 'no-devices') return setTestState({ kind: 'noDevices' })
+      if (data.reason === 'no-email') return setTestState({ kind: 'noEmail' })
+      // Legacy stub response — kept so an old client opening a fresh
+      // server still degrades gracefully if the API's ever rolled back.
       if (data.reason === 'email-test-not-implemented') return setTestState({ kind: 'unsupported' })
-      if (data.reason === 'crash' || !data.ok) return setTestState({ kind: 'error', message: data.message ?? 'Send failed' })
+      if (data.reason === 'crash' || data.reason === 'email-send-failed' || !data.ok) {
+        return setTestState({ kind: 'error', message: data.message ?? 'Send failed' })
+      }
+      if (row.channel === 'EMAIL') return setTestState({ kind: 'sentEmail', to: data.deliveredTo ?? '' })
       setTestState({ kind: 'sent' })
     } catch (e) {
       setTestState({ kind: 'error', message: e instanceof Error ? e.message : 'Network error' })
@@ -329,7 +344,9 @@ function PrefRowEditor({
             </Button>
           </div>
           {testState.kind === 'sent' && <Alert variant="success">Test sent — check your iPhone.</Alert>}
+          {testState.kind === 'sentEmail' && <Alert variant="success">Test email sent{testState.to ? ` to ${testState.to}` : ''} — check your inbox (it can take up to a minute).</Alert>}
           {testState.kind === 'noDevices' && <Alert variant="info">No iOS devices registered. Open the app on iPhone, allow notifications, then try again.</Alert>}
+          {testState.kind === 'noEmail' && <Alert variant="info">Your account doesn&apos;t have an email address — add one in account settings.</Alert>}
           {testState.kind === 'unsupported' && <Alert variant="info">Email channel test isn&apos;t implemented yet.</Alert>}
           {testState.kind === 'error' && <Alert variant="error">{testState.message}</Alert>}
         </>
