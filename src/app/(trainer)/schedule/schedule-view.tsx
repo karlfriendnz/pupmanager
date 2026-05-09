@@ -2345,6 +2345,7 @@ export function ScheduleView({
   scheduleExtraFields,
   customFields,
   clientExtras: initialClientExtras,
+  showHints = false,
 }: {
   sessions: Session[]
   availabilitySlots: AvailSlot[]
@@ -2359,6 +2360,10 @@ export function ScheduleView({
   scheduleExtraFields: string[]
   customFields: CustomFieldMeta[]
   clientExtras: Record<string, ClientExtra>
+  // True only while the trainer is still in the onboarding wizard. Gates
+  // surfaces that exist purely to teach the schedule UI (the Hours
+  // pulse dot, etc.) so the screen is quiet for established trainers.
+  showHints?: boolean
 }) {
   // Mirror the initially-rendered week into local state. Week navigation
   // mutates these without a server round-trip.
@@ -2727,7 +2732,7 @@ export function ScheduleView({
             <Button variant="secondary" size="sm" onClick={() => setShowAvail(true)} title="Availability hours">
               <Clock className="h-4 w-4" /> Hours
             </Button>
-            {availSlots.length === 0 && (
+            {showHints && availSlots.length === 0 && (
               <span
                 aria-hidden
                 className="pointer-events-none absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-indigo-500 animate-pm-menu-dot ring-2 ring-white"

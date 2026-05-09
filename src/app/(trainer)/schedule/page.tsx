@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ScheduleView } from './schedule-view'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
+import { getOnboardingFabState } from '@/lib/onboarding/state'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Schedule' }
@@ -65,6 +66,12 @@ export default async function SchedulePage({
   // Top up forever-ongoing assignments before fetching sessions, so the
   // current view always includes any newly-generated bookings.
   await extendOngoingPackages(trainerProfile.id).catch(() => {})
+
+  // Onboarding nudges (the indigo dot on the Hours button) only fire while
+  // the trainer's still in the wizard. Once they're done, the schedule
+  // page is just the schedule page.
+  const fabState = await getOnboardingFabState(trainerProfile.id)
+  const showHints = fabState.show
 
   const today = new Date().toISOString().split('T')[0]
   const sp = await searchParams
@@ -268,6 +275,7 @@ export default async function SchedulePage({
       scheduleExtraFields={scheduleSelections}
       customFields={customFields}
       clientExtras={clientExtras}
+      showHints={showHints}
     />
   )
 }
