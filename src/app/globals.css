@@ -139,6 +139,24 @@ button, a, [role="button"] {
   animation: pm-trial-shimmer 8s ease-in-out infinite;
 }
 
+/* PupManager brand tokens — kept in lockstep with the marketing site's
+   /globals.css so anything in-app that mirrors a marketing surface
+   (pricing page, trial banners, CTAs) reads identically.  Sampled from
+   the app icon. Update both files together. */
+:root {
+  --pm-brand-50:  #effcfd;
+  --pm-brand-500: #4ab1bd;
+  --pm-brand-600: #2a9da9;
+  --pm-brand-700: #1f818c;
+  --pm-accent-400: #fbbf24;
+  --pm-accent-500: #f59e0b;
+  --pm-ink-900: #0f1f24;
+  --pm-ink-700: #2d4751;
+  --pm-ink-500: #5b7682;
+  --pm-ink-300: #b8cdd4;
+  --pm-ink-100: #e6eef1;
+}
+
 /* Pulsing dot rendered beside a sidebar menu item to point the trainer at
    the page they should click next. Slow inhale-exhale, gentle outer ring
    pulse — distinct enough to draw the eye without being twitchy. */
