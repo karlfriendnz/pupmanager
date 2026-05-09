@@ -24,8 +24,8 @@ export default function BillingCancelPage() {
         </p>
 
         <div className="mt-6 flex items-center justify-center gap-3">
-          <Link href="/billing/plans">
-            <Button>See plans</Button>
+          <Link href="/billing/setup">
+            <Button>Try again</Button>
           </Link>
           <Link href="/dashboard">
             <Button variant="secondary">Back to dashboard</Button>

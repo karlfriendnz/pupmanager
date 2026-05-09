@@ -39,7 +39,7 @@ const TRAINER_ROUTES = [
   '/forms/session/new',
   '/progress',
   '/sessions/needs-notes',
-  '/billing/plans',
+  '/billing/setup',
   '/billing/success',
   '/billing/cancel',
 ]

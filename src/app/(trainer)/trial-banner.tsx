@@ -89,7 +89,7 @@ function resolveCopy(status: Props['status'], trialEndsAt: Props['trialEndsAt'])
 // like a living surface.
 export function TrialBanner({ status, trialEndsAt }: Props) {
   const pathname = usePathname()
-  // The banner exists to nudge the trainer toward /billing/plans. When
+  // The banner exists to nudge the trainer toward /signup. When
   // they're already there (or on the success/cancel landings) the chip
   // becomes a redundant link to the page they're standing on, so hide it.
   if (pathname?.startsWith('/billing')) return null
@@ -142,7 +142,7 @@ export function TrialBanner({ status, trialEndsAt }: Props) {
 
   return (
     <Link
-      href="/billing/plans"
+      href="/signup"
       aria-label={`${copy.headline}: ${copy.subtext}`}
       className={`group fixed right-2.5 bottom-[5.625rem] md:bottom-2.5 z-30 flex items-center gap-3 px-3 py-2.5 pr-2 rounded-2xl shadow-[0_18px_40px_-12px_rgba(15,23,42,0.35)] max-w-[calc(100%-1.25rem)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_50px_-14px_rgba(15,23,42,0.45)] ${toneShell[copy.tone]}`}
     >

@@ -270,6 +270,19 @@ model TrainerProfile {
   // End of the current paid period — drives the "renews on …" copy and
   // the access-cutoff job for cancelled subscriptions.
   currentPeriodEnd     DateTime?
+  // Number of trainer seats the subscription was booked for. Mirrors
+  // the Stripe subscription's quantity. 1 by default; bumps via the
+  // slider on /billing/setup.
+  seatCount            Int       @default(1)
+  // Business postal address — captured on /billing/setup, used for
+  // Stripe customer billing details, invoice rendering, and tax-region
+  // reporting. All optional so existing trainers don't get blocked.
+  addressLine1         String?
+  addressLine2         String?
+  addressCity          String?
+  addressRegion        String?
+  addressPostcode      String?
+  addressCountry       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

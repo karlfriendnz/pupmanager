@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { SignupForm } from './signup-form'
 
@@ -14,6 +16,15 @@ export const metadata: Metadata = {
 // trainers down: more thorough info capture, seat-count slider, live
 // total, then straight to a Stripe Checkout Session.
 export default async function SignupPage() {
+  // Authed trainers landing on /signup (most often via the trial-chip
+  // "Pick a plan" CTA, which intentionally uses /signup as the
+  // universal entry to "start a paid subscription") get sent straight
+  // through to /billing/setup. Unauth visitors stay here for the
+  // account-creation form.
+  const session = await auth()
+  if (session?.user?.role === 'TRAINER') redirect('/billing/setup')
+  if (session?.user?.role === 'CLIENT') redirect('/home')
+
   // Pull the cheapest paid plan as the per-seat anchor for the slider.
   // We fall back to a sensible default ($40 NZD) so the page still
   // renders something useful before the admin has wired up Stripe.
