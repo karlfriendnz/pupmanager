@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { openExternal } from '@/lib/external-link'
-import { CURRENCIES, GROWTH_PRICE, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
+import { CURRENCIES, SOLO_PRICE, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 
 const schema = z.object({
   businessName: z.string().min(2, 'Business name is required'),
@@ -41,8 +41,8 @@ interface Props {
 }
 
 // Single-column setup form. Captures business name + phone + full
-// address, lets the trainer pick a currency, and shows the Growth
-// tier price for that currency (sourced from the shared pricing
+// address, lets the trainer pick a currency, and shows the Solo
+// plan price for that currency (sourced from the shared pricing
 // table — same numbers as pupmanager.com/pricing).
 //
 // We're a one-trainer-per-account product right now, so there's no
@@ -53,7 +53,7 @@ export function SetupForm({ planId, planName, purchasable, configuredCurrencies,
   const [serverError, setServerError] = useState<string | null>(null)
 
   const meta = useMemo(() => CURRENCIES.find(c => c.code === currency)!, [currency])
-  const total = useMemo(() => GROWTH_PRICE[currency], [currency])
+  const total = useMemo(() => SOLO_PRICE[currency], [currency])
   const fallback = !configuredCurrencies.includes(currency)
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({

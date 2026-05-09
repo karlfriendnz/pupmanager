@@ -1,12 +1,16 @@
-// Per-currency pricing for the public Growth and (coming-soon)
-// Enterprise tiers. Mirrored verbatim from the marketing site's
-// `pupmanager-marketing/src/components/PricingTiers.tsx` so the in-app
-// /billing/setup surface and the public /pricing page always quote the
-// same number for the same currency. Update both files together.
+// Per-currency pricing for the public Solo plan. Mirrored verbatim
+// from the marketing site's `pupmanager-marketing/src/components/
+// PricingTiers.tsx` so the in-app /billing/setup surface and the
+// public /pricing page always quote the same number for the same
+// currency. Update both files together.
 //
 // The values are explicit per currency (no FX maths) — we picked them
 // to land on round numbers people recognise locally rather than
 // pegging to a single rate.
+//
+// Marketing simplified to a single tier ("Solo plan · One trainer ·
+// all features included"). Old GROWTH_PRICE / ENTERPRISE_PRICE are
+// gone — re-add only when marketing reintroduces multi-tier.
 
 export type CurrencyCode = 'AUD' | 'NZD' | 'GBP' | 'CAD' | 'USD' | 'ZAR'
 
@@ -19,23 +23,17 @@ export const CURRENCIES: { code: CurrencyCode; symbol: string; label: string }[]
   { code: 'ZAR', symbol: 'R', label: 'ZAR' },
 ]
 
-export const GROWTH_PRICE: Record<CurrencyCode, number> = {
-  AUD: 38,
-  NZD: 40,
-  GBP: 20,
-  CAD: 35,
-  USD: 25,
-  ZAR: 450,
+// Solo plan — single trainer, all features included.
+export const SOLO_PRICE: Record<CurrencyCode, number> = {
+  AUD: 45,
+  NZD: 49,
+  GBP: 23,
+  CAD: 41,
+  USD: 30,
+  ZAR: 540,
 }
 
-export const ENTERPRISE_PRICE: Record<CurrencyCode, number> = {
-  AUD: 76,
-  NZD: 80,
-  GBP: 40,
-  CAD: 70,
-  USD: 50,
-  ZAR: 900,
-}
+export const PLAN_NAME = 'Solo plan'
 
 export const DEFAULT_CURRENCY: CurrencyCode = 'NZD'
 
