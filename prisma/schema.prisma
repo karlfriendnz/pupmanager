@@ -122,6 +122,7 @@ enum NotificationType {
   CLIENT_COMPLETED_TASKS // a client completed all of today's tasks
   NEW_MESSAGE // a new in-app message landed
   DAILY_SUMMARY // morning digest of today's sessions/tasks
+  WEEKLY_SUMMARY // Sunday-evening wrap of the week + week-ahead glance
 }
 
 enum NotificationChannel {
@@ -147,6 +148,11 @@ model NotificationPreference {
   // values fall back to the type's default template.
   customTitle   String?
   customBody    String?
+  // For DAILY_SUMMARY: when the trainer has zero sessions booked, swap
+  // the morning digest for a warm "you can take the day off" message
+  // instead of "0 sessions today" copy. Default true so existing
+  // trainers get the friendlier behaviour without opting in.
+  dayOffSummary Boolean             @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

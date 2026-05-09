@@ -74,8 +74,17 @@ export async function GET(req: Request) {
     ])
 
     const pref = u.notificationPreferences[0]
-    const title = pref?.customTitle ?? meta.defaults.title
-    const body = pref?.customBody ?? meta.defaults.body
+
+    // Day-off path: when there's nothing booked AND the trainer hasn't
+    // opted out, swap the digest for a warm "take the day off" copy.
+    // Honours their custom overrides if they've set a non-default
+    // title/body — otherwise picks the day-off defaults below.
+    const dayOff = sessionCount === 0 && (pref?.dayOffSummary ?? true)
+
+    const title = pref?.customTitle ?? (dayOff ? 'Day off ☕️' : meta.defaults.title)
+    const body = pref?.customBody ?? (dayOff
+      ? 'No sessions today — kick back, refill the coffee, your dogs (and clients) can wait.'
+      : meta.defaults.body)
 
     const subs = {
       sessionCount: String(sessionCount),
@@ -89,7 +98,7 @@ export async function GET(req: Request) {
       u.deviceTokens.map(d => d.token),
       {
         alert: { title: renderTemplate(title, subs), body: renderTemplate(body, subs) },
-        customData: { type: 'daily-summary' },
+        customData: { type: dayOff ? 'daily-summary-day-off' : 'daily-summary' },
       },
     )
 

@@ -77,7 +77,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   DAILY_SUMMARY: {
     type: 'DAILY_SUMMARY',
     label: 'Morning summary',
-    description: 'A quick rundown of your sessions and tasks for the day.',
+    description: 'A quick rundown of your sessions and tasks for the day. When you have nothing booked, the trainer can opt to receive a friendlier "take the day off" message instead.',
     trigger: 'time-of-day',
     channels: ['PUSH', 'EMAIL'],
     defaults: {
@@ -91,6 +91,28 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
       sessionCount: '3',
       clientCount: '12',
       firstSessionTime: '9:00 am',
+    },
+  },
+  WEEKLY_SUMMARY: {
+    type: 'WEEKLY_SUMMARY',
+    label: 'Sunday wrap-up',
+    description: 'A weekly recap on Sunday evening — sessions you ran, money earned, and a glance at the week ahead.',
+    trigger: 'time-of-day',
+    channels: ['PUSH', 'EMAIL'],
+    defaults: {
+      enabled: true,
+      // 19 = 7pm in the trainer's local timezone. Cron only fires this
+      // type when the local day-of-week is Sunday (see /api/cron/weekly-summary).
+      dailyAtHour: 19,
+      title: 'Great week! 🎉',
+      body: '{{sessionsCompleted}} sessions done, {{revenue}} earned. {{nextWeekSessions}} booked + {{nextWeekTasks}} tasks for next week.',
+    },
+    placeholders: ['sessionsCompleted', 'revenue', 'nextWeekSessions', 'nextWeekTasks'],
+    sampleValues: {
+      sessionsCompleted: '12',
+      revenue: '$480',
+      nextWeekSessions: '8',
+      nextWeekTasks: '23',
     },
   },
   NEW_CLIENT_INVITE_ACCEPTED: {
