@@ -5,8 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { openExternal } from '@/lib/external-link'
-
-const MAX_SEATS = 5
+import { CURRENCIES, GROWTH_PRICE, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 
 const schema = z.object({
   businessName: z.string().min(2, 'Business name is required'),
@@ -24,10 +23,12 @@ type FormValues = z.infer<typeof schema>
 interface Props {
   planId: string | null
   planName: string
-  perSeatPrice: number
   purchasable: boolean
+  // Currency codes that have a Stripe Price ID wired up. Anything not
+  // in here gets disabled in the dropdown (the trainer can still see
+  // the published price, but Checkout would fail).
+  configuredCurrencies: string[]
   defaults: {
-    seats: number
     businessName: string
     phone: string
     addressLine1: string
@@ -39,18 +40,21 @@ interface Props {
   }
 }
 
-// Single-column setup form: business name + full postal address +
-// trainer-count slider with live total. Submit POSTs to
-// /api/billing/checkout (which persists the address to TrainerProfile,
-// pre-fills the Stripe Customer, and opens a Checkout Session with
-// quantity=seats and a 10-day trial). The returned Stripe URL is
-// handed off via openExternal so iOS users land in Safari.
-export function SetupForm({ planId, planName, perSeatPrice, purchasable, defaults }: Props) {
-  const [seats, setSeats] = useState(defaults.seats)
+// Single-column setup form. Captures business name + phone + full
+// address, lets the trainer pick a currency, and shows the Growth
+// tier price for that currency (sourced from the shared pricing
+// table — same numbers as pupmanager.com/pricing).
+//
+// We're a one-trainer-per-account product right now, so there's no
+// seat slider; quantity is always 1.
+export function SetupForm({ planId, planName, purchasable, configuredCurrencies, defaults }: Props) {
+  const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY)
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
 
-  const total = useMemo(() => Math.round(perSeatPrice * seats), [perSeatPrice, seats])
+  const meta = useMemo(() => CURRENCIES.find(c => c.code === currency)!, [currency])
+  const total = useMemo(() => GROWTH_PRICE[currency], [currency])
+  const fallback = !configuredCurrencies.includes(currency)
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
@@ -64,7 +68,7 @@ export function SetupForm({ planId, planName, perSeatPrice, purchasable, default
       const res = await fetch('/api/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...values, seats, planId }),
+        body: JSON.stringify({ ...values, planId, currency }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? `Checkout failed (${res.status})`)
@@ -154,26 +158,31 @@ export function SetupForm({ planId, planName, perSeatPrice, purchasable, default
         </div>
       </Section>
 
-      <Section label="Trainers">
+      <Section label="Plan">
         <div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={MAX_SEATS}
-              step={1}
-              value={seats}
-              onChange={(e) => setSeats(Number(e.target.value))}
-              className="w-full accent-amber-500"
-              aria-label="Number of trainers"
-            />
-            <span className="w-9 text-right text-base font-semibold tabular-nums" style={{ color: 'var(--pm-ink-900)' }}>
-              {seats}
-            </span>
-          </div>
-          <div className="mt-1 flex justify-between text-[11px] tabular-nums" style={{ color: 'var(--pm-ink-500)' }}>
-            <span>1</span>
-            <span>{MAX_SEATS}+</span>
+          <label className="text-sm font-medium" style={{ color: 'var(--pm-ink-700)' }}>
+            Currency
+          </label>
+          <div className="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {CURRENCIES.map(c => {
+              const active = c.code === currency
+              return (
+                <button
+                  key={c.code}
+                  type="button"
+                  onClick={() => setCurrency(c.code)}
+                  className={`rounded-xl border px-2 py-2 text-sm font-semibold tabular-nums transition ${
+                    active ? 'text-white' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                  style={{
+                    borderColor: active ? 'var(--pm-brand-600)' : 'var(--pm-ink-100)',
+                    background: active ? 'var(--pm-brand-600)' : '#fff',
+                  }}
+                >
+                  {c.symbol} {c.label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
@@ -185,15 +194,21 @@ export function SetupForm({ planId, planName, perSeatPrice, purchasable, default
             Total after trial
           </p>
           <p className="mt-1 flex items-baseline gap-1">
-            <span className="text-3xl font-bold tabular-nums" style={{ color: 'var(--pm-ink-900)' }}>${total}</span>
-            <span className="text-sm" style={{ color: 'var(--pm-ink-500)' }}>NZD / month</span>
+            <span className="text-2xl font-semibold" style={{ color: 'var(--pm-ink-900)' }}>{meta.symbol}</span>
+            <span className="text-3xl font-bold tabular-nums" style={{ color: 'var(--pm-ink-900)' }}>{total}</span>
+            <span className="text-sm" style={{ color: 'var(--pm-ink-500)' }}>{meta.label} / month</span>
           </p>
           <p className="mt-1 text-xs" style={{ color: 'var(--pm-ink-500)' }}>
-            ${perSeatPrice} × {seats} {seats === 1 ? 'trainer' : 'trainers'} · {planName}
+            {planName} · 1 trainer
           </p>
           <p className="mt-2 text-[11px] font-medium" style={{ color: 'var(--pm-brand-700)' }}>
             Free for 10 days · cancel any time.
           </p>
+          {fallback && purchasable && (
+            <p className="mt-2 text-[11px]" style={{ color: 'var(--pm-ink-500)' }}>
+              Stripe checkout for {meta.label} isn&apos;t live yet — we&apos;ll bill you in NZD until that&apos;s wired up.
+            </p>
+          )}
         </div>
       </Section>
 

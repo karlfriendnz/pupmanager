@@ -8,13 +8,14 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = { title: 'Set up your subscription · PupManager' }
 
 // In-platform billing setup. Trainers land here from the trial banner
-// or from a "Start plan" CTA; this is now the only billing surface in
-// the app. Pricing details + plan comparison live on
-// pupmanager.com/pricing — we don't duplicate them here.
+// or from /signup → here once authed. Pricing details + plan
+// comparison live on pupmanager.com/pricing; we just collect the
+// formal business address, the trainer's chosen currency, and hand
+// off to Stripe Checkout.
 //
-// The form captures the formal business address (used for Stripe
-// invoices + tax-region reporting) and a seat-count slider, then
-// hands off to Stripe Checkout via /api/billing/checkout.
+// We currently sell one-trainer accounts only — no seat slider, no
+// quantity option. The schema still has seatCount so we can flip
+// multi-trainer back on without another migration when we're ready.
 export default async function BillingSetupPage() {
   const session = await auth()
   if (!session) redirect('/login')
@@ -27,7 +28,6 @@ export default async function BillingSetupPage() {
     select: {
       businessName: true,
       phone: true,
-      seatCount: true,
       addressLine1: true,
       addressLine2: true,
       addressCity: true,
@@ -41,17 +41,32 @@ export default async function BillingSetupPage() {
   })
   if (!trainer) redirect('/login')
 
-  // Cheapest paid plan = the per-seat anchor for the slider total.
+  // We surface the marketing-site Growth tier as the active paid plan
+  // (the only one configured today). The DB row backing it is the
+  // cheapest non-zero SubscriptionPlan; we still need the planId for
+  // the API call, but the displayed price comes from the shared
+  // pricing table — not from priceMonthly — so the in-app surface
+  // never drifts from pupmanager.com/pricing.
   const cheapestPaid = await prisma.subscriptionPlan.findFirst({
     where: { isActive: true, priceMonthly: { gt: 0 } },
     orderBy: { priceMonthly: 'asc' },
-    select: { id: true, name: true, priceMonthly: true, stripePriceId: true },
+    select: { id: true, name: true, stripePriceId: true, stripePriceIdsByCurrency: true },
   })
 
-  const perSeatPrice = cheapestPaid?.priceMonthly ?? 40
   const planId = cheapestPaid?.id ?? null
   const planName = cheapestPaid?.name ?? 'Growth'
+  // "purchasable" only requires a default Stripe Price ID (NZD).
+  // Per-currency mappings are checked on the server at Checkout time;
+  // unmapped currencies fall back to NZD with a UI note.
   const purchasable = isStripeConfigured() && !!cheapestPaid?.stripePriceId
+
+  // Surface which currencies actually have a wired-up Stripe Price ID
+  // so the form can disable / annotate the others. The default
+  // currency (NZD) is always considered configured if the legacy
+  // stripePriceId column is set.
+  const idsByCurrency = (cheapestPaid?.stripePriceIdsByCurrency ?? {}) as Record<string, string>
+  const configuredCurrencies = new Set<string>(Object.keys(idsByCurrency))
+  if (cheapestPaid?.stripePriceId) configuredCurrencies.add('NZD')
 
   return (
     <div className="px-4 py-10 md:py-14 max-w-xl mx-auto" style={{ color: 'var(--pm-ink-900)' }}>
@@ -63,17 +78,16 @@ export default async function BillingSetupPage() {
           One last thing
         </h1>
         <p className="mt-2 text-sm" style={{ color: 'var(--pm-ink-700)' }}>
-          Confirm your business details and pick how many trainers you have. We&apos;ll send you to Stripe to finish up.
+          Confirm your business details and pick your currency. We&apos;ll send you to Stripe to finish up.
         </p>
       </div>
 
       <SetupForm
         planId={planId}
         planName={planName}
-        perSeatPrice={perSeatPrice}
         purchasable={purchasable}
+        configuredCurrencies={Array.from(configuredCurrencies)}
         defaults={{
-          seats: trainer.seatCount ?? 1,
           businessName: trainer.businessName ?? '',
           phone: trainer.phone ?? '',
           addressLine1: trainer.addressLine1 ?? '',

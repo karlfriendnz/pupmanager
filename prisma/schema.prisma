@@ -802,8 +802,15 @@ model SubscriptionPlan {
   // Stripe Price ID this plan maps to (e.g. price_1Abc…). Null while a
   // plan exists in our DB but hasn't been wired to Stripe yet — the
   // checkout flow filters those out so the trainer can't pick a plan
-  // we can't actually charge for.
+  // we can't actually charge for. Treated as the NZD default; per-
+  // currency overrides live in stripePriceIdsByCurrency.
   stripePriceId String? @unique
+  // Per-currency Stripe Price IDs. Shape: { "AUD": "price_…", "USD": "price_…" }.
+  // The /billing/setup page lets the trainer pick a currency; we look
+  // up the matching price here at Checkout time. If the chosen
+  // currency has no entry, we fall back to stripePriceId (NZD) and
+  // surface that to the trainer in the UI.
+  stripePriceIdsByCurrency Json @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

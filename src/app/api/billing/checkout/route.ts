@@ -4,13 +4,17 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { stripe, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
+import { isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 
 const TRIAL_DAYS = 10
-const MAX_SEATS = 5
 
 const schema = z.object({
   planId: z.string().min(1),
-  seats: z.number().int().min(1).max(MAX_SEATS).default(1),
+  // Currency the trainer picked on /billing/setup. The server uses it
+  // to look up the matching Stripe Price ID; if no per-currency price
+  // is wired up we fall back to the legacy stripePriceId column
+  // (treated as NZD) and let the trainer know they were billed in NZD.
+  currency: z.string().refine(isCurrencyCode, 'Invalid currency').default(DEFAULT_CURRENCY),
   // Business profile fields captured on /billing/setup. We persist them
   // to TrainerProfile and feed them into the Stripe Customer + Checkout
   // Session so invoices show the right address. Phone, city and
@@ -55,25 +59,34 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status: 400 })
   }
   const {
-    planId, seats,
+    planId, currency,
     businessName, phone,
     addressLine1, addressLine2, addressCity, addressRegion, addressPostcode, addressCountry,
   } = parsed.data
 
   const plan = await prisma.subscriptionPlan.findUnique({
     where: { id: planId },
-    select: { id: true, name: true, stripePriceId: true, isActive: true },
+    select: { id: true, name: true, stripePriceId: true, stripePriceIdsByCurrency: true, isActive: true },
   })
   if (!plan || !plan.isActive) return NextResponse.json({ error: 'Plan not found' }, { status: 404 })
-  if (!plan.stripePriceId) {
+
+  // Resolve the right Stripe Price ID for the trainer's chosen
+  // currency. Per-currency overrides win; legacy single-price column
+  // is the NZD fallback. If neither is set we can't open Checkout.
+  const idsByCurrency = (plan.stripePriceIdsByCurrency ?? {}) as Record<string, string>
+  const priceForCurrency = idsByCurrency[currency as CurrencyCode]
+    ?? (currency === DEFAULT_CURRENCY ? plan.stripePriceId : null)
+    ?? plan.stripePriceId
+  if (!priceForCurrency) {
     return NextResponse.json({ error: 'This plan isn\'t available for purchase yet' }, { status: 409 })
   }
 
   // Persist anything the form gave us before talking to Stripe — that
   // way an interrupted Checkout still leaves the trainer's record
-  // up-to-date and the next attempt pre-fills correctly.
+  // up-to-date and the next attempt pre-fills correctly. seats stays
+  // at 1 — multi-trainer is on the roadmap but not sold today.
   const profileUpdate = {
-    seatCount: seats,
+    seatCount: 1,
     ...(businessName    ? { businessName } : {}),
     ...(phone           ? { phone } : {}),
     ...(addressLine1    ? { addressLine1 } : {}),
@@ -145,16 +158,16 @@ export async function POST(req: Request) {
   const checkout = await stripeClient.checkout.sessions.create({
     mode: 'subscription',
     customer: customerId,
-    line_items: [{ price: plan.stripePriceId, quantity: seats }],
+    line_items: [{ price: priceForCurrency, quantity: 1 }],
     // We've already gathered the address — let Stripe trust it without
     // re-prompting. Falls back to "auto" if line1 is missing so we
     // still get a billing address either way.
     billing_address_collection: stripeAddress ? 'auto' : 'required',
     subscription_data: {
       trial_period_days: TRIAL_DAYS,
-      metadata: { trainerId, planId: plan.id, seats: String(seats) },
+      metadata: { trainerId, planId: plan.id, currency },
     },
-    metadata: { trainerId, planId: plan.id, seats: String(seats) },
+    metadata: { trainerId, planId: plan.id, currency },
     success_url: `${env.NEXT_PUBLIC_APP_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${env.NEXT_PUBLIC_APP_URL}/billing/cancel`,
     allow_promotion_codes: true,
