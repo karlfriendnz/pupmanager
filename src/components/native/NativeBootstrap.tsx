@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { App as CapacitorApp } from '@capacitor/app';
 
 export function NativeBootstrap() {
+  const router = useRouter();
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -98,6 +100,25 @@ export function NativeBootstrap() {
       PushNotifications.removeAllListeners().catch(() => {});
     };
   }, []);
+
+  // Refetch Server Components whenever the app comes back to foreground.
+  // iOS doesn't kill backgrounded apps — the WebView keeps the React
+  // tree (and any Server-Component-rendered data) exactly as it was
+  // when the trainer swiped away. Without this, "closing and reopening"
+  // shows yesterday's dashboard. router.refresh() rebuilds the
+  // current route's Server Components without blowing away client
+  // state (form drafts, scroll positions). We track the previous
+  // isActive value so we only refresh on the inactive → active
+  // transition, not on the initial mount or on duplicate events.
+  const wasActiveRef = useRef(true);
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const handle = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive && !wasActiveRef.current) router.refresh();
+      wasActiveRef.current = isActive;
+    });
+    return () => { void handle.then(h => h.remove()); };
+  }, [router]);
 
   return null;
 }
