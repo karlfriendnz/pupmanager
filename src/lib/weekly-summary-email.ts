@@ -257,7 +257,8 @@ function renderHtml(d: WeeklySummaryData, ctx: RenderHtmlCtx): string {
 }
 
 function sessionRowHtml(s: SessionRow, tz: string, kind: 'done' | 'next'): string {
-  const when = formatDateTimeShort(s.scheduledAt, tz)
+  const dateLabel = formatShortDate(s.scheduledAt, tz)
+  const timeLabel = formatTimeShort(s.scheduledAt, tz)
   const who = [s.dogName, s.clientName].filter(Boolean).join(' · ')
   const dur = `${s.durationMins} min`
 
@@ -276,11 +277,17 @@ function sessionRowHtml(s: SessionRow, tz: string, kind: 'done' | 'next'): strin
     statusCell = escapeHtml(dur)
   }
 
+  // Date on the first line (semibold), time below in a softer colour —
+  // makes the "When" column scannable. Older approach put both on one
+  // line which read like a long ISO string and crowded the row.
+  const whenCell = `<div style="font-size:13px;font-weight:600;color:#0f172a;line-height:1.2;">${escapeHtml(dateLabel)}</div>
+    <div style="font-size:12px;color:#64748b;line-height:1.4;margin-top:2px;">${escapeHtml(timeLabel)}</div>`
+
   return `<tr>
-    <td style="padding:10px 12px;font-size:13px;color:#0f172a;border-bottom:1px solid #f1f5f9;vertical-align:top;white-space:nowrap;">${escapeHtml(when)}</td>
-    <td style="padding:10px 12px;font-size:13px;color:#0f172a;border-bottom:1px solid #f1f5f9;vertical-align:top;">${escapeHtml(who || '—')}</td>
-    <td style="padding:10px 12px;font-size:13px;color:#475569;border-bottom:1px solid #f1f5f9;vertical-align:top;">${escapeHtml(s.title)}${s.packageName ? `<br><span style="font-size:11px;color:#94a3b8;">${escapeHtml(s.packageName)}</span>` : ''}</td>
-    <td style="padding:10px 12px;font-size:13px;border-bottom:1px solid #f1f5f9;vertical-align:top;">${statusCell}</td>
+    <td style="padding:12px;border-bottom:1px solid #f1f5f9;vertical-align:top;white-space:nowrap;">${whenCell}</td>
+    <td style="padding:12px;font-size:13px;color:#0f172a;border-bottom:1px solid #f1f5f9;vertical-align:top;line-height:1.4;">${escapeHtml(who || '—')}</td>
+    <td style="padding:12px;font-size:13px;color:#475569;border-bottom:1px solid #f1f5f9;vertical-align:top;line-height:1.4;">${escapeHtml(s.title)}${s.packageName ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px;">${escapeHtml(s.packageName)}</div>` : ''}</td>
+    <td style="padding:12px;font-size:13px;border-bottom:1px solid #f1f5f9;vertical-align:top;">${statusCell}</td>
   </tr>`
 }
 
@@ -288,9 +295,9 @@ function taskRowHtml(t: TaskRow, tz: string): string {
   const when = formatShortDate(t.date, tz)
   const who = [t.dogName, t.clientName].filter(Boolean).join(' · ')
   return `<tr>
-    <td style="padding:10px 12px;font-size:13px;color:#0f172a;border-bottom:1px solid #f1f5f9;vertical-align:top;white-space:nowrap;">${escapeHtml(when)}</td>
-    <td style="padding:10px 12px;font-size:13px;color:#0f172a;border-bottom:1px solid #f1f5f9;vertical-align:top;">${escapeHtml(who || '—')}</td>
-    <td style="padding:10px 12px;font-size:13px;color:#475569;border-bottom:1px solid #f1f5f9;vertical-align:top;">${escapeHtml(t.title)}</td>
+    <td style="padding:12px;font-size:13px;font-weight:600;color:#0f172a;border-bottom:1px solid #f1f5f9;vertical-align:top;white-space:nowrap;line-height:1.4;">${escapeHtml(when)}</td>
+    <td style="padding:12px;font-size:13px;color:#0f172a;border-bottom:1px solid #f1f5f9;vertical-align:top;line-height:1.4;">${escapeHtml(who || '—')}</td>
+    <td style="padding:12px;font-size:13px;color:#475569;border-bottom:1px solid #f1f5f9;vertical-align:top;line-height:1.4;">${escapeHtml(t.title)}</td>
   </tr>`
 }
 
@@ -347,8 +354,12 @@ function formatShortDate(d: Date, tz: string): string {
   return d.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz })
 }
 
+function formatTimeShort(d: Date, tz: string): string {
+  return d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz })
+}
+
 function formatDateTimeShort(d: Date, tz: string): string {
-  return d.toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz })
+  return `${formatShortDate(d, tz)} · ${formatTimeShort(d, tz)}`
 }
 
 function formatCents(cents: number): string {
