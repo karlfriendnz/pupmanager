@@ -56,7 +56,12 @@ export function TrialBanner({ status, trialEndsAt }: Props) {
       : 'bg-red-700 hover:bg-red-800 text-white'
 
   return (
-    <div className={`flex items-center justify-between gap-3 px-4 py-2 text-sm ${toneClasses}`}>
+    // Pinned to the bottom of the viewport. On mobile the trainer's
+    // bottom tab bar lives at bottom-0 z-40, so we sit at bottom-20
+    // (5rem) above it; on desktop the tab bar is gone so we sit
+    // flush with the bottom edge. z-30 so app modals at z-50 still
+    // come over the top.
+    <div className={`fixed inset-x-0 bottom-20 md:bottom-0 z-30 flex items-center justify-between gap-3 px-4 py-2 text-sm shadow-[0_-6px_20px_-12px_rgba(15,23,42,0.25)] ${toneClasses}`}>
       <div className="flex items-center gap-2 min-w-0">
         {copy.tone === 'indigo' && <Sparkles className="h-4 w-4 shrink-0" />}
         <span className="truncate font-medium">{copy.label}</span>
