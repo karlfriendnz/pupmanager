@@ -165,6 +165,13 @@ export function CustomFieldsManager({
   const allFields = useMemo(() => [...systemRows, ...fields], [systemRows, fields])
   const sections = useMemo(() => buildSections(allFields, sectionOrder), [allFields, sectionOrder])
   const activeField = activeId ? allFields.find(f => f.id === activeId) ?? null : null
+  // Section ids in their current order — used as the SortableContext items
+  // for section-level drag, and to detect whether a drag is a section drag
+  // (active.id is a section name) vs a field drag (active.id is a field id).
+  const sectionIds = useMemo(() => sectionOrder.map(s => s.name), [sectionOrder])
+  const activeSection = activeId && sectionIds.includes(activeId)
+    ? sectionOrder.find(s => s.name === activeId) ?? null
+    : null
 
   // ─── Section CRUD ────────────────────────────────────────────────────────
 
@@ -285,9 +292,25 @@ export function CustomFieldsManager({
     setActiveId(null)
     const { active, over } = event
     if (!over) return
-    const fieldId = active.id as string
+    const activeIdStr = active.id as string
     const overId = over.id as string
 
+    // ─── Section reorder ──────────────────────────────────────────────
+    // Section ids are their names; field ids are cuids, so name-match is
+    // a clean discriminator. The orphan bucket can't be reordered (it's
+    // auto-positioned at the top whenever there are uncategorised fields).
+    if (sectionIds.includes(activeIdStr)) {
+      if (!sectionIds.includes(overId)) return
+      if (activeIdStr === overId) return
+      const oldIndex = sectionOrder.findIndex(s => s.name === activeIdStr)
+      const newIndex = sectionOrder.findIndex(s => s.name === overId)
+      if (oldIndex === -1 || newIndex === -1) return
+      const reordered = arrayMove(sectionOrder, oldIndex, newIndex)
+      void persistSectionOrder(reordered)
+      return
+    }
+
+    const fieldId = activeIdStr
     const field = allFields.find(f => f.id === fieldId)
     if (!field) return
 
@@ -378,30 +401,63 @@ export function CustomFieldsManager({
             </Card>
           )}
 
-          {sections.map(section => (
-            <SectionDroppable
-              key={section.id}
-              section={section}
-              isEditingMeta={editingSectionName === section.name}
-              onStartEditMeta={section.isOrphan ? undefined : () => setEditingSectionName(section.name)}
-              onCancelEditMeta={() => setEditingSectionName(null)}
-              onSubmitEditMeta={(name, desc) => handleEditSection(section.name, name, desc)}
-              onDelete={section.isOrphan ? undefined : () => handleDeleteSection(section.name)}
-              onAddField={() => setAddingInSection(section.id)}
-              onEditField={setEditingId}
-              onCancelEdit={() => setEditingId(null)}
-              onFieldSaved={(saved, isNew) => {
-                setFields(prev => isNew ? [...prev, saved] : prev.map(f => f.id === saved.id ? saved : f))
-                setEditingId(null)
-                setAddingInSection(null)
-              }}
-              onFieldDeleted={(id) => setFields(prev => prev.filter(f => f.id !== id))}
-              editingId={editingId}
-              addingHere={addingInSection === section.id}
-              onCancelAdd={() => setAddingInSection(null)}
-              savingFieldId={savingFieldId}
-            />
-          ))}
+          <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
+            {sections.map(section => {
+              const droppable = (
+                <SectionDroppable
+                  section={section}
+                  isEditingMeta={editingSectionName === section.name}
+                  onStartEditMeta={section.isOrphan ? undefined : () => setEditingSectionName(section.name)}
+                  onCancelEditMeta={() => setEditingSectionName(null)}
+                  onSubmitEditMeta={(name, desc) => handleEditSection(section.name, name, desc)}
+                  onDelete={section.isOrphan ? undefined : () => handleDeleteSection(section.name)}
+                  onAddField={() => setAddingInSection(section.id)}
+                  onEditField={setEditingId}
+                  onCancelEdit={() => setEditingId(null)}
+                  onFieldSaved={(saved, isNew) => {
+                    setFields(prev => isNew ? [...prev, saved] : prev.map(f => f.id === saved.id ? saved : f))
+                    setEditingId(null)
+                    setAddingInSection(null)
+                  }}
+                  onFieldDeleted={(id) => setFields(prev => prev.filter(f => f.id !== id))}
+                  editingId={editingId}
+                  addingHere={addingInSection === section.id}
+                  onCancelAdd={() => setAddingInSection(null)}
+                  savingFieldId={savingFieldId}
+                />
+              )
+              // Orphan section can't be reordered — it floats to the top.
+              if (section.isOrphan) return <div key={section.id}>{droppable}</div>
+              return (
+                <SortableSection key={section.id} id={section.id}>
+                  {(handleProps) => (
+                    <SectionDroppable
+                      section={section}
+                      isEditingMeta={editingSectionName === section.name}
+                      onStartEditMeta={() => setEditingSectionName(section.name)}
+                      onCancelEditMeta={() => setEditingSectionName(null)}
+                      onSubmitEditMeta={(name, desc) => handleEditSection(section.name, name, desc)}
+                      onDelete={() => handleDeleteSection(section.name)}
+                      onAddField={() => setAddingInSection(section.id)}
+                      onEditField={setEditingId}
+                      onCancelEdit={() => setEditingId(null)}
+                      onFieldSaved={(saved, isNew) => {
+                        setFields(prev => isNew ? [...prev, saved] : prev.map(f => f.id === saved.id ? saved : f))
+                        setEditingId(null)
+                        setAddingInSection(null)
+                      }}
+                      onFieldDeleted={(id) => setFields(prev => prev.filter(f => f.id !== id))}
+                      editingId={editingId}
+                      addingHere={addingInSection === section.id}
+                      onCancelAdd={() => setAddingInSection(null)}
+                      savingFieldId={savingFieldId}
+                      dragHandleProps={handleProps}
+                    />
+                  )}
+                </SortableSection>
+              )
+            })}
+          </SortableContext>
 
           {creatingSection && (
             <SectionMetaForm
@@ -415,6 +471,7 @@ export function CustomFieldsManager({
 
         <DragOverlay>
           {activeField && <FieldDragPreview field={activeField} />}
+          {activeSection && <SectionDragPreview section={activeSection} />}
         </DragOverlay>
       </DndContext>
     </div>
@@ -488,6 +545,37 @@ function SectionMetaForm({
   )
 }
 
+// ─── Section (sortable wrapper) ─────────────────────────────────────────────
+
+// Provides the section-level useSortable hook. The section card itself owns
+// its layout and renders the activator (drag handle) inside its header — we
+// pass the handle props down via render-prop so the handle stays visually
+// part of the header without duplicating the section's whole markup here.
+type SectionHandleProps = {
+  attributes: ReturnType<typeof useSortable>['attributes']
+  listeners: ReturnType<typeof useSortable>['listeners']
+}
+
+function SortableSection({
+  id,
+  children,
+}: {
+  id: string
+  children: (handleProps: SectionHandleProps) => React.ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style = {
+    transform: transform ? CSS.Transform.toString(transform) : undefined,
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ attributes, listeners })}
+    </div>
+  )
+}
+
 // ─── Section (drop target) ──────────────────────────────────────────────────
 
 function SectionDroppable({
@@ -506,6 +594,7 @@ function SectionDroppable({
   addingHere,
   onCancelAdd,
   savingFieldId,
+  dragHandleProps,
 }: {
   section: SectionView
   isEditingMeta?: boolean
@@ -522,6 +611,9 @@ function SectionDroppable({
   addingHere: boolean
   onCancelAdd: () => void
   savingFieldId: string | null
+  /** When provided, renders a grip handle in the section header that
+   *  activates section-level drag. Orphan sections receive no handle. */
+  dragHandleProps?: SectionHandleProps
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: section.id })
 
@@ -543,6 +635,17 @@ function SectionDroppable({
     <Card className={isOver ? 'ring-2 ring-blue-400 ring-offset-1' : ''}>
       <CardBody className="py-4">
         <div className="flex items-start justify-between gap-2 mb-3">
+          {dragHandleProps && (
+            <button
+              type="button"
+              {...dragHandleProps.attributes}
+              {...dragHandleProps.listeners}
+              className="mt-0.5 -ml-1 p-1 rounded text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing"
+              aria-label="Drag section"
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          )}
           <div className="min-w-0 flex-1">
             <h3 className={`text-sm font-semibold ${section.isOrphan ? 'text-amber-700' : 'text-slate-900'}`}>
               {section.name}
@@ -698,6 +801,15 @@ function FieldDragPreview({ field }: { field: CustomField }) {
     <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-300 bg-white shadow-lg">
       <GripVertical className="h-4 w-4 text-slate-400" />
       <p className="text-sm font-medium text-slate-900">{field.label}</p>
+    </div>
+  )
+}
+
+function SectionDragPreview({ section }: { section: SectionMeta }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-blue-300 bg-white shadow-xl">
+      <GripVertical className="h-4 w-4 text-slate-400" />
+      <p className="text-sm font-semibold text-slate-900">{section.name}</p>
     </div>
   )
 }
