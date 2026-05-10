@@ -75,12 +75,37 @@ export default async function SchedulePage({
 
   const today = new Date().toISOString().split('T')[0]
   const sp = await searchParams
-  const scheduleDaysArr = Array.isArray(trainerProfile.scheduleDays)
+  const configuredDays = Array.isArray(trainerProfile.scheduleDays)
     ? trainerProfile.scheduleDays as number[]
     : [1, 2, 3, 4, 5, 6, 7]
-  const selectedDate = sp.date ?? nextWorkingDay(today, scheduleDaysArr)
+  const selectedDate = sp.date ?? nextWorkingDay(today, configuredDays)
 
   const { weekStart, weekEnd } = getWeekBounds(selectedDate)
+
+  // Auto-expand the visible weekdays when this week has sessions on a
+  // day the trainer normally hides — so a Sunday-scheduled session
+  // doesn't silently vanish from the calendar (the dashboard would
+  // still show it via "Today's sessions" while the grid skipped the
+  // whole column, which has burned trainers expecting WYSIWYG).
+  // We don't mutate the trainer's persisted preference — the column
+  // only appears for weeks that actually need it.
+  const sessionsOnHiddenDays = await prisma.trainingSession.findMany({
+    where: {
+      trainerId: trainerProfile.id,
+      scheduledAt: { gte: weekStart, lte: weekEnd },
+      clientId: { not: null },
+    },
+    select: { scheduledAt: true },
+  })
+  const hiddenDaysWithSessions = new Set<number>()
+  for (const s of sessionsOnHiddenDays) {
+    const js = s.scheduledAt.getDay() // 0=Sun..6=Sat
+    const iso = js === 0 ? 7 : js     // schedule uses 1=Mon..7=Sun
+    if (!configuredDays.includes(iso)) hiddenDaysWithSessions.add(iso)
+  }
+  const scheduleDaysArr = hiddenDaysWithSessions.size > 0
+    ? [...configuredDays, ...hiddenDaysWithSessions].sort((a, b) => a - b)
+    : configuredDays
 
   // Inspect the trainer's selected schedule-extra fields up-front so we can
   // skip expensive lookups (session client compliance, custom values) when
