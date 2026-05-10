@@ -5,15 +5,19 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { renderClientInviteEmail, DEFAULT_INVITE_BODY } from '@/lib/client-invite-email'
 
-// Re-send the invite email to a client who hasn't activated their
-// account yet. Generates a fresh verificationToken (invalidating any
-// older tokens we'd issued for the same email) and ships the same
-// branded invite the original /api/clients/invite send uses, so the
-// trainer can chase clients who let the first email get buried.
+// Re-send the invite/sign-in link email. Generates a fresh
+// verificationToken (invalidating any older tokens we'd issued for
+// the same email) and ships the same branded email the original
+// /api/clients/invite send uses, so the trainer can chase clients
+// who let the first email get buried — or just nudge an active
+// client back into the app whenever they like.
 //
-// Refuses if the client has already verified their email — at that
-// point they've completed signup and a re-invite would be confusing.
-// The trainer can use the password-reset flow instead.
+// Trainers asked for this to work for *already-activated* clients
+// too ("resend as many times as I want"), so the previous
+// emailVerified refusal is gone — the same fresh-token link works
+// as a one-tap sign-in for verified accounts (the /invite page
+// accepts any valid token and routes through NextAuth's magic-link
+// flow on the other side).
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ clientId: string }> },
@@ -36,12 +40,6 @@ export async function POST(
     },
   })
   if (!client) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  if (client.user.emailVerified) {
-    return NextResponse.json({
-      error: 'This client has already activated their account — use password reset if they\'re locked out.',
-    }, { status: 409 })
-  }
 
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },

@@ -35,8 +35,10 @@ interface Props {
    *  confirm dialog so the trainer can sanity-check before
    *  triggering an outbound send. */
   clientEmail: string
-  /** True only when the client hasn't activated their account yet —
-   *  hides the Re-invite item once they're verified. */
+  /** True when the client hasn't activated their account yet — the
+   *  menu copy reads "Re-invite client" in that case and "Re-send
+   *  sign-in link" once they're verified. The action itself is
+   *  available for both. */
   needsInvite: boolean
   packages: PkgOption[]
   availability: AvailabilityRow[]
@@ -182,20 +184,18 @@ export function ClientActionsMenu({
             target="_blank"
             onClick={() => setMenuOpen(false)}
           />
-          {needsInvite && (
-            <MenuButton
-              icon={<Send className="h-4 w-4 text-slate-400" />}
-              label="Re-invite client"
-              onClick={() => {
-                setMenuOpen(false)
-                // Reset any previous error so the confirm dialog
-                // opens clean — error from a prior attempt would
-                // otherwise sit at the bottom of the menu trigger.
-                setReinvite({ kind: 'idle' })
-                setActiveModal('reinvite')
-              }}
-            />
-          )}
+          <MenuButton
+            icon={<Send className="h-4 w-4 text-slate-400" />}
+            label={needsInvite ? 'Re-invite client' : 'Re-send sign-in link'}
+            onClick={() => {
+              setMenuOpen(false)
+              // Reset any previous error so the confirm dialog opens
+              // clean — error from a prior attempt would otherwise
+              // sit at the bottom of the menu trigger.
+              setReinvite({ kind: 'idle' })
+              setActiveModal('reinvite')
+            }}
+          />
           <MenuButton
             icon={<PackageIcon className="h-4 w-4 text-slate-400" />}
             label="Assign package"
@@ -257,9 +257,10 @@ export function ClientActionsMenu({
 
       {/* Re-invite confirm — surfaces the recipient email so the
           trainer can spot a typo before triggering an outbound send.
-          Dialog shape mirrors Delete (small, focused, single decision)
-          for a consistent feel across the menu's destructive-ish
-          actions. */}
+          Copy adapts based on whether the client has activated yet:
+          unactivated → "send invite", activated → "send sign-in link"
+          (same mechanism either way, different framing for the
+          trainer's mental model). */}
       {activeModal === 'reinvite' && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
@@ -270,7 +271,11 @@ export function ClientActionsMenu({
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 mb-2">
-              <h2 className="text-base font-semibold text-slate-900">Re-send invite to {clientName}?</h2>
+              <h2 className="text-base font-semibold text-slate-900">
+                {needsInvite
+                  ? `Re-send invite to ${clientName}?`
+                  : `Send a fresh sign-in link to ${clientName}?`}
+              </h2>
               <button
                 type="button"
                 onClick={() => reinvite.kind !== 'sending' && setActiveModal(null)}
@@ -281,9 +286,12 @@ export function ClientActionsMenu({
               </button>
             </div>
             <p className="text-sm text-slate-600 leading-snug">
-              We&apos;ll email a fresh sign-up link to{' '}
-              <span className="font-medium text-slate-900">{clientEmail}</span>. Any
-              previous invite link they had will stop working.
+              We&apos;ll email a fresh{' '}
+              {needsInvite ? 'sign-up' : 'sign-in'} link to{' '}
+              <span className="font-medium text-slate-900">{clientEmail}</span>.{' '}
+              {needsInvite
+                ? 'Any previous invite link they had will stop working.'
+                : 'You can send this as often as you like — each new link replaces the previous one.'}
             </p>
             {reinvite.kind === 'error' && (
               <p className="mt-3 text-xs text-red-600 inline-flex items-center gap-1">
