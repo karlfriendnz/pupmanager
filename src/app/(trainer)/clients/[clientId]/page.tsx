@@ -3,14 +3,11 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { ArrowLeft, Pencil, Eye } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
-import { ShareClientModal } from './share-client-modal'
-import { DeleteClientButton } from './delete-client-button'
 import { ClientProfileTabs } from './client-profile-tabs'
 import { StatusToggle } from './status-toggle'
-import { AssignPackageButton } from './assign-package-modal'
+import { ClientActionsMenu } from './client-actions-menu'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Client profile' }
@@ -34,7 +31,7 @@ export default async function ClientDetailPage({
   const client = await prisma.clientProfile.findUnique({
     where: { id: clientId },
     include: {
-      user: { select: { name: true, email: true, createdAt: true } },
+      user: { select: { name: true, email: true, emailVerified: true, createdAt: true } },
       dog: true,
       dogs: true,
       diaryEntries: {
@@ -143,51 +140,33 @@ export default async function ClientDetailPage({
             Client since {formatDate(client.user.createdAt)}
           </p>
         </div>
-        <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
-          {canEdit && (
-            <>
-              <AssignPackageButton
-                clientId={client.id}
-                dogs={allDogs.map(d => ({ id: d.id, name: d.name }))}
-                packages={packages.map(p => ({
-                  id: p.id,
-                  name: p.name,
-                  description: p.description,
-                  sessionCount: p.sessionCount,
-                  weeksBetween: p.weeksBetween,
-                  durationMins: p.durationMins,
-                  sessionType: p.sessionType,
-                }))}
-                availability={availabilitySlots.map(s => ({
-                  id: s.id,
-                  dayOfWeek: s.dayOfWeek,
-                  date: s.date ? s.date.toISOString().split('T')[0] : null,
-                  startTime: s.startTime,
-                  endTime: s.endTime,
-                }))}
-              />
-              <Link href={`/clients/${client.id}/edit`}>
-                <Button variant="secondary" size="sm">
-                  <Pencil className="h-4 w-4" />
-                  Edit
-                </Button>
-              </Link>
-              <Link href={`/preview-as/${client.id}`} target="_blank" rel="noopener">
-                <Button variant="secondary" size="sm" title="See what this client sees when they log in">
-                  <Eye className="h-4 w-4" />
-                  View as client
-                </Button>
-              </Link>
-            </>
-          )}
-
-          {isPrimaryTrainer && (
-            <>
-              <ShareClientModal clientId={client.id} clientName={client.user.name ?? client.user.email} />
-              <DeleteClientButton clientId={client.id} />
-            </>
-          )}
-        </div>
+        {/* All per-client actions live behind a single dropdown so the
+            header stays clean on phone-narrow viewports and the
+            trainer doesn't have to hunt across a wrapping button row. */}
+        <ClientActionsMenu
+          clientId={client.id}
+          clientName={client.user.name ?? client.user.email}
+          canEdit={canEdit}
+          isPrimaryTrainer={isPrimaryTrainer}
+          needsInvite={!client.user.emailVerified}
+          dogs={allDogs.map(d => ({ id: d.id, name: d.name }))}
+          packages={packages.map(p => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            sessionCount: p.sessionCount,
+            weeksBetween: p.weeksBetween,
+            durationMins: p.durationMins,
+            sessionType: p.sessionType,
+          }))}
+          availability={availabilitySlots.map(s => ({
+            id: s.id,
+            dayOfWeek: s.dayOfWeek,
+            date: s.date ? s.date.toISOString().split('T')[0] : null,
+            startTime: s.startTime,
+            endTime: s.endTime,
+          }))}
+        />
       </div>
 
       {/* Tabbed content */}

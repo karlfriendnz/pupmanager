@@ -16,14 +16,29 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
+// External `open` + `onOpenChange` make this controllable from the
+// new ClientActionsMenu — when provided, the internal Share button
+// is hidden and the modal opens/closes from outside. Without them
+// (legacy callers) the component renders its own trigger and manages
+// state itself, unchanged.
 export function ShareClientModal({
   clientId,
   clientName,
+  open: externalOpen,
+  onOpenChange,
 }: {
   clientId: string
   clientName: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isControlled = externalOpen !== undefined
+  const open = isControlled ? externalOpen : internalOpen
+  const setOpen = (v: boolean) => {
+    if (isControlled) onOpenChange?.(v)
+    else setInternalOpen(v)
+  }
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -61,10 +76,12 @@ export function ShareClientModal({
 
   return (
     <>
-      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
-        <Share2 className="h-4 w-4" />
-        Share
-      </Button>
+      {!isControlled && (
+        <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+          <Share2 className="h-4 w-4" />
+          Share
+        </Button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">

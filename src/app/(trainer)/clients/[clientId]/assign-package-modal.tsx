@@ -25,20 +25,38 @@ const ONGOING_MAX_SESSIONS = 52
 // Default end date offered for ongoing packages (12 weeks from start).
 const ONGOING_DEFAULT_WEEKS = 12
 
+// External `open` + `onOpenChange` make this controllable from the
+// new ClientActionsMenu. When omitted (legacy callers), the
+// component renders its own trigger Button and manages state itself.
 export function AssignPackageButton({
   clientId,
   packages,
   availability,
   dogs,
+  open: externalOpen,
+  onOpenChange,
 }: {
   clientId: string
   packages: PkgOption[]
   availability: AvailabilityRow[]
   dogs?: { id: string; name: string }[]
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isControlled = externalOpen !== undefined
+  const open = isControlled ? externalOpen : internalOpen
+  const setOpen = (v: boolean) => {
+    if (isControlled) onOpenChange?.(v)
+    else setInternalOpen(v)
+  }
 
   if (packages.length === 0) {
+    if (isControlled) {
+      // In a menu — silently no-op when triggered. The menu can
+      // gate the item itself based on `packages.length`.
+      return null
+    }
     return (
       <Button
         variant="secondary"
@@ -54,10 +72,12 @@ export function AssignPackageButton({
 
   return (
     <>
-      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
-        <PackageIcon className="h-4 w-4" />
-        Assign package
-      </Button>
+      {!isControlled && (
+        <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+          <PackageIcon className="h-4 w-4" />
+          Assign package
+        </Button>
+      )}
       {open && (
         <AssignModal
           clientId={clientId}
