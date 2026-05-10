@@ -31,6 +31,16 @@ const patchSchema = z.object({
   })).max(50).optional(),
   // Master publish flag for the intake form. False = draft, hidden from clients.
   intakeFormPublished: z.boolean().optional(),
+  // Section assignment for the three "system" fields on the intake form
+  // (name, email, phone). Each value is the name of a section in
+  // intakeSectionOrder, or null for orphan. The keys are open to allow
+  // any of the three to be sent independently — sending one key doesn't
+  // wipe the others (we merge with the existing JSON below).
+  intakeSystemFieldSections: z.object({
+    name: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
+  }).optional(),
 })
 
 export async function GET() {
@@ -62,6 +72,18 @@ export async function PATCH(req: Request) {
   // Empty string from the colour input means "clear this" — store as null
   // so the email template falls back to the default.
   if (data.emailAccentColor === '') data.emailAccentColor = null as unknown as string
+
+  // Merge intakeSystemFieldSections instead of replacing — the editor
+  // sends one key at a time when the trainer drags a single system
+  // field. A wholesale write would clobber the other assignments.
+  if (data.intakeSystemFieldSections) {
+    const current = await prisma.trainerProfile.findUnique({
+      where: { userId: session.user.id },
+      select: { intakeSystemFieldSections: true },
+    })
+    const existing = (current?.intakeSystemFieldSections as Record<string, string | null> | null) ?? {}
+    data.intakeSystemFieldSections = { ...existing, ...data.intakeSystemFieldSections }
+  }
 
   const profile = await prisma.trainerProfile.update({
     where: { userId: session.user.id },

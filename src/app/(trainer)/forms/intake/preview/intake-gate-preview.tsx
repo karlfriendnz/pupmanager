@@ -22,11 +22,13 @@ export function IntakeGatePreview({
   trainerLogoUrl,
   customFields,
   sectionMeta,
+  systemFieldSections,
 }: {
   businessName: string
   trainerLogoUrl: string | null
   customFields: CustomFieldShape[]
   sectionMeta: { name: string; description: string | null }[]
+  systemFieldSections: Partial<Record<'name' | 'email' | 'phone', string | null>>
 }) {
   const router = useRouter()
   return (
@@ -38,6 +40,7 @@ export function IntakeGatePreview({
       dogs={SAMPLE_DOGS}
       existingValues={{}}
       coreContact={{ name: '', email: 'sample@client.com', phone: '' }}
+      systemFieldSections={systemFieldSections}
       preview
       onPreviewExit={() => router.push('/forms/intake')}
     />

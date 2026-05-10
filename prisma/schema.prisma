@@ -259,6 +259,14 @@ model TrainerProfile {
   // false so newly-seeded intake fields don't go live until the trainer
   // explicitly publishes from the intake editor.
   intakeFormPublished Boolean @default(false)
+  // Per-trainer assignment of the three core "system" intake fields
+  // (name, email, phone) to a section in intakeSectionOrder. Shape:
+  // { name?: string|null, email?: string|null, phone?: string|null }.
+  // null/missing for any key = orphan (renders alongside fields that
+  // also lack a section). Stored separately from CustomField.category
+  // because the system fields aren't custom fields — they back real
+  // columns on User/ClientProfile.
+  intakeSystemFieldSections Json @default("{}")
   // Trainer-chosen visible columns on /clients. Allowed ids:
   // "email" | "dog" | "breed" | "extraDogs" | "nextSession" | "compliance" | "shared" | "custom:<id>"
   clientListColumns   Json    @default("[\"email\",\"dog\",\"nextSession\",\"compliance\"]")

@@ -709,10 +709,12 @@ export function IntakeFormEditor({
   initialFields,
   initialSectionOrder,
   initialPublished,
+  initialSystemFieldSections,
 }: {
   initialFields: IntakeCustomField[]
   initialSectionOrder: { name: string; description: string | null }[]
   initialPublished: boolean
+  initialSystemFieldSections: Partial<Record<'name' | 'email' | 'phone', string | null>>
 }) {
   const router = useRouter()
   const [isPublished, setIsPublished] = useState(initialPublished)
@@ -775,6 +777,8 @@ export function IntakeFormEditor({
         <CustomFieldsManager
           initialFields={initialFields}
           initialSectionOrder={initialSectionOrder}
+          initialSystemFieldSections={initialSystemFieldSections}
+          showSystemFields
         />
       </div>
       <div className="flex justify-end">

@@ -16,7 +16,7 @@ export default async function ClientLayout({ children }: { children: React.React
     where: { id: active.clientId },
     include: {
       user: { select: { name: true, email: true } },
-      trainer: { select: { id: true, businessName: true, logoUrl: true, intakeSectionOrder: true } },
+      trainer: { select: { id: true, businessName: true, logoUrl: true, intakeSectionOrder: true, intakeSystemFieldSections: true } },
       dog: { select: { id: true, name: true } },
       dogs: { select: { id: true, name: true } },
       customFieldValues: { select: { fieldId: true, dogId: true, value: true } },
@@ -136,6 +136,9 @@ export default async function ClientLayout({ children }: { children: React.React
           dogs={allDogs}
           existingValues={existingValues}
           coreContact={coreContact}
+          systemFieldSections={
+            (clientProfile.trainer.intakeSystemFieldSections as Partial<Record<'name' | 'email' | 'phone', string | null>> | null) ?? {}
+          }
         />
       </>
     )

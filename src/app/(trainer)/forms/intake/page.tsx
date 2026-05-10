@@ -20,7 +20,7 @@ export default async function IntakeFormPage() {
     }),
     prisma.trainerProfile.findUnique({
       where: { id: trainerId },
-      select: { intakeSectionOrder: true, intakeFormPublished: true },
+      select: { intakeSectionOrder: true, intakeFormPublished: true, intakeSystemFieldSections: true },
     }),
   ])
 
@@ -44,12 +44,16 @@ export default async function IntakeFormPage() {
       : { name: (entry as { name: string }).name, description: (entry as { description?: string | null }).description ?? null }
   )
 
+  const initialSystemFieldSections =
+    (profile?.intakeSystemFieldSections as Partial<Record<'name' | 'email' | 'phone', string | null>> | null) ?? {}
+
   return (
     <FormEditorPageChrome title="Intake form">
       <IntakeFormEditor
         initialFields={initialFields}
         initialSectionOrder={initialSectionOrder}
         initialPublished={profile?.intakeFormPublished ?? false}
+        initialSystemFieldSections={initialSystemFieldSections}
       />
     </FormEditorPageChrome>
   )

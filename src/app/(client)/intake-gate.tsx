@@ -31,6 +31,9 @@ interface CoreContact {
   phone: string
 }
 
+type SystemFieldKey = 'name' | 'email' | 'phone'
+type SystemFieldSections = Partial<Record<SystemFieldKey, string | null>>
+
 interface Props {
   businessName: string
   /** The trainer's logo URL — displayed prominently above the form
@@ -41,11 +44,14 @@ interface Props {
   dogs: Dog[]
   existingValues: Record<string, string>
   /** Current values for the client's core contact details (User.name,
-   *  User.email, ClientProfile.phone). Rendered as the first three
-   *  required fields of step 1 so the trainer always gets a
-   *  reachable client at the end of intake. Email is shown
-   *  read-only — the client signed in with it. */
+   *  User.email, ClientProfile.phone). Email is shown read-only —
+   *  the client signed in with it. */
   coreContact: CoreContact
+  /** Where to render each of the three system fields. Each value is
+   *  the name of a section in sectionMeta or null/missing for orphan
+   *  (= rendered above the headless / first orphan step). The trainer
+   *  configures this on /forms/intake. */
+  systemFieldSections: SystemFieldSections
   // When true: don't POST to /api/my/field-values on submit, just show a
   // confirmation. Used by the trainer's preview page so they can walk through
   // the form without saving anything.
@@ -150,7 +156,7 @@ function buildSteps(customFields: CustomField[], dogs: Dog[], sectionMeta: Secti
   return steps
 }
 
-export function IntakeGate({ businessName, trainerLogoUrl, customFields, sectionMeta, dogs, existingValues, coreContact, preview = false, onPreviewExit }: Props) {
+export function IntakeGate({ businessName, trainerLogoUrl, customFields, sectionMeta, dogs, existingValues, coreContact, systemFieldSections, preview = false, onPreviewExit }: Props) {
   const router = useRouter()
   const [values, setValues] = useState<Record<string, string>>(existingValues)
   const [contact, setContact] = useState<CoreContact>(coreContact)
@@ -160,10 +166,13 @@ export function IntakeGate({ businessName, trainerLogoUrl, customFields, section
   const [error, setError] = useState<string | null>(null)
 
   const steps = useMemo(() => buildSteps(customFields, dogs, sectionMeta), [customFields, dogs, sectionMeta])
-  // Core contact (name/email/phone) is always rendered above the
-  // first step's custom fields. If the trainer has no custom fields
-  // at all, we still need a one-step experience so the client can
-  // submit their contact details.
+  // Build the list of system fields to slot into THIS step. A system
+  // field assigned to section "About you" appears in the owner-step
+  // for that section; an unassigned (orphan) system field appears in
+  // the first step.
+  // If the trainer has no custom fields at all, we still need a
+  // one-step experience so the client can submit their contact
+  // details — synthesise a single headless contact-only step.
   const effectiveSteps: Step[] = steps.length > 0 ? steps : [{
     id: 'contact-only',
     title: null,
@@ -175,7 +184,28 @@ export function IntakeGate({ businessName, trainerLogoUrl, customFields, section
   const currentStep = effectiveSteps[stepIndex]
   const isLast = stepIndex === totalSteps - 1
   const isFirst = stepIndex === 0
-  const showContactOnThisStep = isFirst
+
+  // Decide which (if any) system fields render on the current step.
+  // A system field's section is matched against its step's title;
+  // unassigned system fields fall to the first step. If a trainer has
+  // assigned a system field to a section that no longer exists, treat
+  // it as orphan (first step) so the client never loses access to a
+  // required field.
+  const systemFieldsOnThisStep = useMemo(() => {
+    const sectionExists = (name: string | null | undefined) =>
+      !!name && sectionMeta.some(s => s.name === name)
+    function targetStepIndex(key: SystemFieldKey): number {
+      const assigned = systemFieldSections[key] ?? null
+      if (!sectionExists(assigned)) return 0 // orphan
+      return effectiveSteps.findIndex(s => s.title === assigned) ?? 0
+    }
+    const keys: SystemFieldKey[] = ['name', 'email', 'phone']
+    return keys.filter(k => {
+      const idx = targetStepIndex(k)
+      return (idx === -1 ? 0 : idx) === stepIndex
+    })
+  }, [systemFieldSections, sectionMeta, effectiveSteps, stepIndex])
+  const showContactOnThisStep = systemFieldsOnThisStep.length > 0
 
   function setValue(key: string, val: string) {
     setValues(prev => ({ ...prev, [key]: val }))
@@ -188,9 +218,9 @@ export function IntakeGate({ businessName, trainerLogoUrl, customFields, section
   function validateCurrentStep(): string | null {
     if (preview) return null
     const missing: string[] = []
-    if (showContactOnThisStep) {
-      if (!contact.name.trim()) missing.push('Name')
-      if (!contact.phone.trim()) missing.push('Phone')
+    for (const k of systemFieldsOnThisStep) {
+      if (k === 'email') continue // read-only, always populated
+      if (!contact[k].trim()) missing.push(k === 'name' ? 'Name' : 'Phone')
     }
     if (currentStep) {
       for (const { field, valueKey } of currentStep.fields) {
@@ -360,37 +390,39 @@ export function IntakeGate({ businessName, trainerLogoUrl, customFields, section
             {currentStep.description && (
               <p className="text-sm text-slate-500 -mt-1 leading-relaxed">{currentStep.description}</p>
             )}
-            {/* Core contact (name/email/phone) anchors the first step.
-                Email is read-only — the client signed in with it, and
-                changing it here would orphan their session. Name and
-                phone write back to User.name + ClientProfile.phone via
-                /api/my/profile on submit. */}
-            {showContactOnThisStep && (
-              <>
-                <ContactField
-                  label="Name"
-                  required
-                  value={contact.name}
-                  onChange={v => setContact(c => ({ ...c, name: v }))}
-                  placeholder="Your full name"
-                />
-                <ContactField
-                  label="Email"
-                  required
-                  readOnly
-                  value={contact.email}
-                  onChange={() => {}}
-                  type="email"
-                />
-                <ContactField
-                  label="Phone"
-                  required
-                  value={contact.phone}
-                  onChange={v => setContact(c => ({ ...c, phone: v }))}
-                  type="tel"
-                  placeholder="So your trainer can reach you"
-                />
-              </>
+            {/* System fields (name/email/phone) — only the ones the
+                trainer assigned to THIS step's section render here.
+                Email is read-only because the client signed in with
+                it; name + phone write back to User.name +
+                ClientProfile.phone via /api/my/profile on submit. */}
+            {systemFieldsOnThisStep.includes('name') && (
+              <ContactField
+                label="Name"
+                required
+                value={contact.name}
+                onChange={v => setContact(c => ({ ...c, name: v }))}
+                placeholder="Your full name"
+              />
+            )}
+            {systemFieldsOnThisStep.includes('email') && (
+              <ContactField
+                label="Email"
+                required
+                readOnly
+                value={contact.email}
+                onChange={() => {}}
+                type="email"
+              />
+            )}
+            {systemFieldsOnThisStep.includes('phone') && (
+              <ContactField
+                label="Phone"
+                required
+                value={contact.phone}
+                onChange={v => setContact(c => ({ ...c, phone: v }))}
+                type="tel"
+                placeholder="So your trainer can reach you"
+              />
             )}
             {currentStep.fields.map(({ field, valueKey }) => (
               <FieldInput

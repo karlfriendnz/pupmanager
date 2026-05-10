@@ -18,7 +18,7 @@ export default async function IntakeFormPreviewPage() {
   const [profile, customFields] = await Promise.all([
     prisma.trainerProfile.findUnique({
       where: { id: trainerId },
-      select: { businessName: true, logoUrl: true, intakeSectionOrder: true },
+      select: { businessName: true, logoUrl: true, intakeSectionOrder: true, intakeSystemFieldSections: true },
     }),
     prisma.customField.findMany({
       where: { trainerId },
@@ -32,6 +32,9 @@ export default async function IntakeFormPreviewPage() {
       ? { name: entry, description: null }
       : { name: (entry as { name: string }).name, description: (entry as { description?: string | null }).description ?? null }
   )
+
+  const systemFieldSections =
+    (profile.intakeSystemFieldSections as Partial<Record<'name' | 'email' | 'phone', string | null>> | null) ?? {}
 
   return (
     <IntakeGatePreview
@@ -47,6 +50,7 @@ export default async function IntakeFormPreviewPage() {
         appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
       }))}
       sectionMeta={sectionMeta}
+      systemFieldSections={systemFieldSections}
     />
   )
 }

@@ -36,6 +36,48 @@ type CustomField = {
   category: string | null
   appliesTo: AppliesTo
   order: number
+  // True for the three pinned "system" fields (name/email/phone).
+  // System rows can be dragged between sections but not edited or
+  // deleted; they back real columns on User/ClientProfile.
+  isSystem?: boolean
+}
+
+// id prefix for the synthetic system rows in the editor; the suffix
+// (`name` | `email` | `phone`) is the key in trainerProfile.intakeSystemFieldSections.
+const SYSTEM_FIELD_PREFIX = '__system:'
+type SystemFieldKey = 'name' | 'email' | 'phone'
+type SystemFieldSections = Partial<Record<SystemFieldKey, string | null>>
+
+const SYSTEM_FIELDS: { key: SystemFieldKey; label: string; type: FieldType }[] = [
+  { key: 'name', label: 'Name', type: 'TEXT' },
+  { key: 'email', label: 'Email', type: 'TEXT' },
+  { key: 'phone', label: 'Phone', type: 'TEXT' },
+]
+
+function buildSystemFieldRows(sections: SystemFieldSections): CustomField[] {
+  return SYSTEM_FIELDS.map((sf, i) => ({
+    id: `${SYSTEM_FIELD_PREFIX}${sf.key}`,
+    label: sf.label,
+    type: sf.type,
+    required: true,
+    options: [],
+    category: sections[sf.key] ?? null,
+    appliesTo: 'OWNER' as AppliesTo,
+    // Negative order so system rows naturally sort above any custom
+    // fields that share the same section, without competing for the
+    // 0..N range used by custom fields.
+    order: -1000 + i,
+    isSystem: true,
+  }))
+}
+
+function isSystemFieldId(id: string): boolean {
+  return id.startsWith(SYSTEM_FIELD_PREFIX)
+}
+
+function systemFieldKeyOf(id: string): SystemFieldKey | null {
+  if (!isSystemFieldId(id)) return null
+  return id.slice(SYSTEM_FIELD_PREFIX.length) as SystemFieldKey
 }
 
 const TYPE_LABELS: Record<FieldType, string> = {
@@ -82,10 +124,31 @@ function buildSections(fields: CustomField[], sectionOrder: SectionMeta[]): Sect
 export function CustomFieldsManager({
   initialFields,
   initialSectionOrder,
+  initialSystemFieldSections,
+  showSystemFields = false,
 }: {
   initialFields: CustomField[]
   initialSectionOrder: SectionMeta[]
+  /** Section assignment for the pinned name/email/phone rows. Only
+   *  consulted when showSystemFields is true (intake form editor). */
+  initialSystemFieldSections?: SystemFieldSections
+  /** When true, the editor renders three pinned "system" rows
+   *  (Name/Email/Phone) at the top of the orphan / their assigned
+   *  sections. Drag-end persists their section to
+   *  /api/trainer/profile.intakeSystemFieldSections rather than to
+   *  the per-field PATCH used for custom fields. */
+  showSystemFields?: boolean
 }) {
+  const [systemFieldSections, setSystemFieldSections] = useState<SystemFieldSections>(
+    initialSystemFieldSections ?? {}
+  )
+  // Synthetic system rows merged in alongside real custom fields when
+  // showSystemFields is on. They take part in the same drag/section
+  // placement logic but skip the field-edit PATCH path.
+  const systemRows = useMemo(
+    () => (showSystemFields ? buildSystemFieldRows(systemFieldSections) : []),
+    [showSystemFields, systemFieldSections]
+  )
   const [fields, setFields] = useState(initialFields)
   const [sectionOrder, setSectionOrder] = useState(initialSectionOrder)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -97,8 +160,11 @@ export function CustomFieldsManager({
   const [editingSectionName, setEditingSectionName] = useState<string | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-  const sections = useMemo(() => buildSections(fields, sectionOrder), [fields, sectionOrder])
-  const activeField = activeId ? fields.find(f => f.id === activeId) ?? null : null
+  // Combine system + custom rows for section placement. Sorting
+  // (system first via their negative order) happens inside buildSections.
+  const allFields = useMemo(() => [...systemRows, ...fields], [systemRows, fields])
+  const sections = useMemo(() => buildSections(allFields, sectionOrder), [allFields, sectionOrder])
+  const activeField = activeId ? allFields.find(f => f.id === activeId) ?? null : null
 
   // ─── Section CRUD ────────────────────────────────────────────────────────
 
@@ -149,13 +215,28 @@ export function CustomFieldsManager({
           body: JSON.stringify({ category: newName }),
         })
       ))
+      // System fields living in the renamed section need to follow.
+      const systemPatch: SystemFieldSections = {}
+      for (const [k, v] of Object.entries(systemFieldSections) as [SystemFieldKey, string | null][]) {
+        if (v === currentName) systemPatch[k] = newName
+      }
+      if (Object.keys(systemPatch).length > 0) {
+        setSystemFieldSections(prev => ({ ...prev, ...systemPatch }))
+        await fetch('/api/trainer/profile', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ intakeSystemFieldSections: systemPatch }),
+        })
+      }
     }
   }
 
   async function handleDeleteSection(name: string) {
-    const fieldsInSection = fields.filter(f => f.category === name).length
-    if (fieldsInSection > 0) {
-      setError(`Move the ${fieldsInSection} field(s) out of "${name}" first, then delete the section.`)
+    const customInSection = fields.filter(f => f.category === name).length
+    const systemInSection = Object.values(systemFieldSections).filter(v => v === name).length
+    const total = customInSection + systemInSection
+    if (total > 0) {
+      setError(`Move the ${total} field(s) out of "${name}" first, then delete the section.`)
       return
     }
     setError(null)
@@ -193,7 +274,7 @@ export function CustomFieldsManager({
   // section id (its name, or ORPHAN_BUCKET_ID for uncategorised) — or null
   // if the id is one of the section drop targets itself.
   function sectionOfField(fieldId: string): string | null {
-    const f = fields.find(x => x.id === fieldId)
+    const f = allFields.find(x => x.id === fieldId)
     if (!f) return null
     if (!f.category) return ORPHAN_BUCKET_ID
     if (!sectionOrder.some(s => s.name === f.category)) return ORPHAN_BUCKET_ID
@@ -207,7 +288,7 @@ export function CustomFieldsManager({
     const fieldId = active.id as string
     const overId = over.id as string
 
-    const field = fields.find(f => f.id === fieldId)
+    const field = allFields.find(f => f.id === fieldId)
     if (!field) return
 
     const fromSection = sectionOfField(fieldId)
@@ -215,13 +296,31 @@ export function CustomFieldsManager({
 
     // Determine target section: either over.id is a section drop target, OR
     // it's another field — in which case use that field's section.
-    const overIsField = fields.some(f => f.id === overId)
+    const overIsField = allFields.some(f => f.id === overId)
     const toSection = overIsField ? sectionOfField(overId) : overId
     if (!toSection) return
 
     const newCategory = toSection === ORPHAN_BUCKET_ID ? null : toSection
 
+    // System fields don't have a writable `order` (they always sort
+    // first via their negative synthetic order); only their section
+    // assignment moves. Custom fields below take the existing path.
+    const sysKey = systemFieldKeyOf(fieldId)
+    if (sysKey) {
+      if (fromSection === toSection) return // no-op reorder among peers
+      setSystemFieldSections(prev => ({ ...prev, [sysKey]: newCategory }))
+      void fetch('/api/trainer/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intakeSystemFieldSections: { [sysKey]: newCategory } }),
+      })
+      return
+    }
+
     // Same section reorder: move within the array, recompute orders.
+    // System rows participate in section membership but not in this
+    // ordering — exclude them so their negative-order values don't
+    // get rewritten.
     if (fromSection === toSection) {
       if (!overIsField) return // dropped on container, no reorder target
       const peers = fields.filter(f => sectionOfField(f.id) === fromSection)
@@ -492,17 +591,23 @@ function SectionDroppable({
             </p>
           )}
           <SortableContext items={section.fields.map(f => f.id)} strategy={verticalListSortingStrategy}>
-            {section.fields.map(field =>
-              editingId === field.id ? (
-                <FieldEditor
-                  key={field.id}
-                  initial={field}
-                  presetCategory={section.isOrphan ? null : section.name}
-                  onCancel={onCancelEdit}
-                  onSaved={(saved) => onFieldSaved(saved, false)}
-                  onDeleted={() => onFieldDeleted(field.id)}
-                />
-              ) : (
+            {section.fields.map(field => {
+              // System rows can't enter the FieldEditor — they're
+              // pinned to fixed labels/types/required-state. Render
+              // them via SortableFieldRow regardless of editingId.
+              if (!field.isSystem && editingId === field.id) {
+                return (
+                  <FieldEditor
+                    key={field.id}
+                    initial={field}
+                    presetCategory={section.isOrphan ? null : section.name}
+                    onCancel={onCancelEdit}
+                    onSaved={(saved) => onFieldSaved(saved, false)}
+                    onDeleted={() => onFieldDeleted(field.id)}
+                  />
+                )
+              }
+              return (
                 <SortableFieldRow
                   key={field.id}
                   field={field}
@@ -510,7 +615,7 @@ function SectionDroppable({
                   isSaving={savingFieldId === field.id}
                 />
               )
-            )}
+            })}
           </SortableContext>
           {addingHere && (
             <FieldEditor
@@ -547,7 +652,11 @@ function SortableFieldRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition-colors"
+      className={
+        field.isSystem
+          ? 'flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 hover:border-slate-300 transition-colors'
+          : 'flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition-colors'
+      }
     >
       <button
         type="button"
@@ -564,18 +673,22 @@ function SortableFieldRow({
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </p>
         <p className="text-xs text-slate-400">
-          {TYPE_LABELS[field.type]} · {field.appliesTo === 'DOG' ? 'Per dog' : 'Per owner'}
+          {field.isSystem
+            ? 'System field · always required'
+            : `${TYPE_LABELS[field.type]} · ${field.appliesTo === 'DOG' ? 'Per dog' : 'Per owner'}`}
           {isSaving && <span className="ml-2 text-blue-500">Saving…</span>}
         </p>
       </div>
-      <button
-        type="button"
-        onClick={onEdit}
-        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-        aria-label="Edit field"
-      >
-        <Pencil className="h-4 w-4" />
-      </button>
+      {!field.isSystem && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+          aria-label="Edit field"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+      )}
     </div>
   )
 }
