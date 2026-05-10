@@ -18,7 +18,7 @@ export default async function IntakeFormPreviewPage() {
   const [profile, customFields] = await Promise.all([
     prisma.trainerProfile.findUnique({
       where: { id: trainerId },
-      select: { businessName: true, intakeSectionOrder: true },
+      select: { businessName: true, logoUrl: true, intakeSectionOrder: true },
     }),
     prisma.customField.findMany({
       where: { trainerId },
@@ -36,6 +36,7 @@ export default async function IntakeFormPreviewPage() {
   return (
     <IntakeGatePreview
       businessName={profile.businessName || 'Your business'}
+      trainerLogoUrl={profile.logoUrl ?? null}
       customFields={customFields.map(f => ({
         id: f.id,
         label: f.label,

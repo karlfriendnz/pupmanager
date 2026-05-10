@@ -19,10 +19,12 @@ interface CustomFieldShape {
 
 export function IntakeGatePreview({
   businessName,
+  trainerLogoUrl,
   customFields,
   sectionMeta,
 }: {
   businessName: string
+  trainerLogoUrl: string | null
   customFields: CustomFieldShape[]
   sectionMeta: { name: string; description: string | null }[]
 }) {
@@ -30,6 +32,7 @@ export function IntakeGatePreview({
   return (
     <IntakeGate
       businessName={businessName}
+      trainerLogoUrl={trainerLogoUrl}
       customFields={customFields}
       sectionMeta={sectionMeta}
       dogs={SAMPLE_DOGS}

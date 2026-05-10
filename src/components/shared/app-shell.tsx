@@ -101,10 +101,15 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints }: Ap
           <div className="max-w-3xl mx-auto w-full flex items-center gap-3 px-5 lg:px-8 h-14 lg:h-16">
             {/* Logo always routes back to /home — acts as the client app's
                 home button regardless of which page they're on. */}
-            <Link href="/home" aria-label="Home" className="flex items-center min-w-0 rounded-xl">
+            <Link href="/home" aria-label="Home" className="flex items-center min-w-0">
               {trainerLogo ? (
+                // Don't crop or round — the trainer's logo can be any
+                // aspect ratio (a horizontal wordmark, a non-square
+                // brand mark) and forcing it into a square with
+                // object-cover hacked off useful parts. object-contain
+                // preserves the full mark; we just bound the height.
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-9 w-9 lg:h-10 lg:w-10 rounded-xl object-cover" />
+                <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-9 lg:h-10 w-auto max-w-[180px] object-contain" />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-9 w-9 lg:h-10 lg:w-10 rounded-xl" />

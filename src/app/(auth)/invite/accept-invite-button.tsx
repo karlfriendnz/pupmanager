@@ -29,8 +29,10 @@ export function AcceptInviteButton({ token, email }: { token: string; email: str
     // Token verified — send a magic link so the client can sign in
     await signIn('resend', { email, callbackUrl: '/home', redirect: false })
 
-    // Redirect to verify-email page
-    window.location.href = '/verify-email'
+    // Redirect to verify-email page, passing the email so the page
+    // can resolve the trainer and brand the "check your inbox"
+    // screen with their logo.
+    window.location.href = `/verify-email?email=${encodeURIComponent(email)}`
   }
 
   return (

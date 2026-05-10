@@ -87,40 +87,40 @@ export default async function ClientLayout({ children }: { children: React.React
     : null
 
   if (showIntakeGate) {
+    // Render the intake form WITHOUT the AppShell — no top nav, no
+    // bottom tab bar. The form is a one-time gate, and a half-built
+    // navigation around an unfinished profile is just visual noise
+    // (and cheats the focus-on-one-task feel of the form). The
+    // PreviewBanner is the only chrome that survives because it
+    // pertains to the trainer-in-preview, not the client.
     return (
       <>
         {banner}
-        <AppShell
-          role="CLIENT"
-          userName={clientDisplayName}
-          trainerLogo={clientProfile.trainer.logoUrl}
+        <IntakeGate
           businessName={clientProfile.trainer.businessName}
-        >
-          <IntakeGate
-            businessName={clientProfile.trainer.businessName}
-            customFields={customFields.map(f => ({
-              id: f.id,
-              label: f.label,
-              type: f.type as 'TEXT' | 'NUMBER' | 'DROPDOWN',
-              required: f.required,
-              options: Array.isArray(f.options) ? f.options as string[] : [],
-              category: f.category,
-              appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
-            }))}
-            // Normalise the JSON column — handles both legacy string[] and new
-            // {name, description?}[] shapes.
-            sectionMeta={(Array.isArray(clientProfile.trainer.intakeSectionOrder)
-              ? clientProfile.trainer.intakeSectionOrder
-              : []
-            ).map(entry =>
-              typeof entry === 'string'
-                ? { name: entry, description: null }
-                : { name: (entry as { name: string }).name, description: (entry as { description?: string | null }).description ?? null }
-            )}
-            dogs={allDogs}
-            existingValues={existingValues}
-          />
-        </AppShell>
+          trainerLogoUrl={clientProfile.trainer.logoUrl}
+          customFields={customFields.map(f => ({
+            id: f.id,
+            label: f.label,
+            type: f.type as 'TEXT' | 'NUMBER' | 'DROPDOWN',
+            required: f.required,
+            options: Array.isArray(f.options) ? f.options as string[] : [],
+            category: f.category,
+            appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
+          }))}
+          // Normalise the JSON column — handles both legacy string[] and new
+          // {name, description?}[] shapes.
+          sectionMeta={(Array.isArray(clientProfile.trainer.intakeSectionOrder)
+            ? clientProfile.trainer.intakeSectionOrder
+            : []
+          ).map(entry =>
+            typeof entry === 'string'
+              ? { name: entry, description: null }
+              : { name: (entry as { name: string }).name, description: (entry as { description?: string | null }).description ?? null }
+          )}
+          dogs={allDogs}
+          existingValues={existingValues}
+        />
       </>
     )
   }

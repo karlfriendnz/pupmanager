@@ -27,6 +27,9 @@ interface SectionMeta {
 
 interface Props {
   businessName: string
+  /** The trainer's logo URL — displayed prominently above the form
+   *  so the client sees their trainer's brand, not PupManager's. */
+  trainerLogoUrl: string | null
   customFields: CustomField[]
   sectionMeta: SectionMeta[]
   dogs: Dog[]
@@ -135,7 +138,7 @@ function buildSteps(customFields: CustomField[], dogs: Dog[], sectionMeta: Secti
   return steps
 }
 
-export function IntakeGate({ businessName, customFields, sectionMeta, dogs, existingValues, preview = false, onPreviewExit }: Props) {
+export function IntakeGate({ businessName, trainerLogoUrl, customFields, sectionMeta, dogs, existingValues, preview = false, onPreviewExit }: Props) {
   const router = useRouter()
   const [values, setValues] = useState<Record<string, string>>(existingValues)
   const [stepIndex, setStepIndex] = useState(0)
@@ -246,8 +249,23 @@ export function IntakeGate({ businessName, customFields, sectionMeta, dogs, exis
             )}
           </div>
         )}
-        {/* Header */}
+        {/* Header — trainer logo big and centred above the title. The
+            page is unbranded by PupManager (no top nav, no bottom
+            bar), so the trainer's logo is the first thing the client
+            sees, framing the whole form as theirs. */}
         <div className="text-center mb-6">
+          {trainerLogoUrl && (
+            // No crop, no border. Trainer logos can be wordmarks /
+            // non-square brand marks; forcing object-cover into a
+            // square hacks them off. Bound the height + max width and
+            // let the image keep its real aspect.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={trainerLogoUrl}
+              alt={businessName}
+              className="mx-auto mb-4 h-24 w-auto max-w-[280px] object-contain"
+            />
+          )}
           <p className="text-sm font-medium text-blue-600 mb-2">{businessName}</p>
           <h1 className="text-2xl font-bold text-slate-900">Before you get started</h1>
           <p className="text-slate-500 mt-2 text-sm">
