@@ -36,23 +36,25 @@ export async function POST(req: Request) {
   })
   const validIds = new Set(validFields.map(f => f.id))
 
-  await Promise.all(
-    parsed.data.values
-      .filter(v => validIds.has(v.fieldId))
-      .map(async ({ fieldId, value, dogId }) => {
-        const resolvedDogId = dogId ?? null
-        const existing = await prisma.customFieldValue.findFirst({
-          where: { fieldId, clientId: clientProfile.id, dogId: resolvedDogId },
-        })
-        if (existing) {
-          await prisma.customFieldValue.update({ where: { id: existing.id }, data: { value } })
-        } else {
-          await prisma.customFieldValue.create({
-            data: { fieldId, clientId: clientProfile.id, dogId: resolvedDogId, value },
-          })
-        }
+  // Sequential, not Promise.all — a 10-field intake form would
+  // otherwise fan out 20+ simultaneous Prisma queries (findFirst +
+  // update/create per value) and blow Supabase's 15-slot session
+  // pool, which surfaced as a 500 to the client mid-intake. One
+  // value at a time means at most one open connection from this
+  // request, plenty fast for the typical handful of fields.
+  for (const { fieldId, value, dogId } of parsed.data.values.filter(v => validIds.has(v.fieldId))) {
+    const resolvedDogId = dogId ?? null
+    const existing = await prisma.customFieldValue.findFirst({
+      where: { fieldId, clientId: clientProfile.id, dogId: resolvedDogId },
+    })
+    if (existing) {
+      await prisma.customFieldValue.update({ where: { id: existing.id }, data: { value } })
+    } else {
+      await prisma.customFieldValue.create({
+        data: { fieldId, clientId: clientProfile.id, dogId: resolvedDogId, value },
       })
-  )
+    }
+  }
 
   await safeEvaluate(clientProfile.id)
 

@@ -36,8 +36,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ clientI
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  // Use findFirst + update/create since dogId can be null (upsert breaks with nullable composite key)
-  await Promise.all(parsed.data.values.map(async ({ fieldId, value, dogId }) => {
+  // Sequential, not Promise.all — concurrent fan-out exhausted the
+  // Supabase session pool (15 slots) on long custom-field forms,
+  // surfacing as a 500 mid-save. One findFirst + update/create per
+  // value at a time uses one connection and is fast enough for the
+  // handful of fields a client form has.
+  // Use findFirst + update/create since dogId can be null (upsert
+  // breaks with nullable composite key).
+  for (const { fieldId, value, dogId } of parsed.data.values) {
     const resolvedDogId = dogId ?? null
     const existing = await prisma.customFieldValue.findFirst({
       where: { fieldId, clientId, dogId: resolvedDogId },
@@ -47,7 +53,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ clientI
     } else {
       await prisma.customFieldValue.create({ data: { fieldId, clientId, dogId: resolvedDogId, value } })
     }
-  }))
+  }
 
   await safeEvaluate(clientId)
 
