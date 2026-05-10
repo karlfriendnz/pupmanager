@@ -45,5 +45,11 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>PupManager uses the camera so you can record session videos and snap photos straight into your session notes.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PupManager uses the microphone while you record a session video so the audio is captured along with the picture.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>PupManager accesses your photo library so you can attach existing photos and videos to session notes.</string>
 </dict>
 </plist>
