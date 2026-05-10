@@ -156,8 +156,12 @@ export function IntakeGate({ businessName, trainerLogoUrl, customFields, section
     setValues(prev => ({ ...prev, [key]: val }))
   }
 
-  // Required-field check scoped to the current step only.
+  // Required-field check scoped to the current step only. Skipped in
+  // preview — the trainer is just walking through their form, not
+  // submitting answers, so making them fill every required field
+  // before they can advance is friction with no payoff.
   function validateCurrentStep(): string | null {
+    if (preview) return null
     if (!currentStep) return null
     const missing: string[] = []
     for (const { field, valueKey } of currentStep.fields) {
