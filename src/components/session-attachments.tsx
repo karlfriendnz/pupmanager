@@ -37,7 +37,10 @@ interface Props {
 // upload, which bypasses our serverless function body limit.
 export function SessionAttachments({ sessionId, initialAttachments }: Props) {
   const [attachments, setAttachments] = useState(initialAttachments)
-  const [uploading, setUploading] = useState<{ kind: 'IMAGE' | 'VIDEO'; progress: number } | null>(null)
+  // Active upload: kind currently uploading + 1-based index/total in
+  // queue + percentage. Null when idle. Multi-file uploads queue
+  // sequentially so we don't overwhelm the user's connection.
+  const [uploading, setUploading] = useState<{ kind: 'IMAGE' | 'VIDEO'; progress: number; index: number; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -84,86 +87,91 @@ export function SessionAttachments({ sessionId, initialAttachments }: Props) {
     })
   }
 
-  async function handleImage(file: File) {
-    setError(null)
+  async function uploadOneImage(file: File): Promise<void> {
     if (file.size > IMAGE_MAX_BYTES) {
-      setError('Image too large — keep it under 10 MB.')
-      return
+      throw new Error(`${file.name}: image too large — keep it under 10 MB.`)
     }
-    setUploading({ kind: 'IMAGE', progress: 0 })
-    try {
-      // Compress in JS before upload — invisible to the trainer, brings
-      // 12 MP iPhone photos (~5 MB) down to ~1 MB and resizes to 2048px.
-      const compressed = await imageCompression(file, {
-        maxSizeMB: 2,
-        maxWidthOrHeight: 2048,
-        useWebWorker: true,
-        fileType: 'image/jpeg',
-      })
-      const blob = await upload(safeName(file.name, 'jpg'), compressed, {
-        access: 'public',
-        handleUploadUrl: `/api/sessions/${sessionId}/attachments/upload`,
-        clientPayload: JSON.stringify({
-          kind: 'IMAGE',
-          sizeBytes: compressed.size,
-        }),
-        onUploadProgress: (p) => setUploading({ kind: 'IMAGE', progress: p.percentage }),
-      })
-      // Vercel's onUploadCompleted webhook only fires in production
-      // (it can't reach localhost). Always POST the metadata back so
-      // the row gets created in dev too — the endpoint is idempotent
-      // on URL so it doesn't double-insert in prod.
-      const created = await confirmAttachment(sessionId, {
+    // Compress in JS before upload — invisible to the trainer, brings
+    // 12 MP iPhone photos (~5 MB) down to ~1 MB and resizes to 2048px.
+    const compressed = await imageCompression(file, {
+      maxSizeMB: 2,
+      maxWidthOrHeight: 2048,
+      useWebWorker: true,
+      fileType: 'image/jpeg',
+    })
+    const blob = await upload(safeName(file.name, 'jpg'), compressed, {
+      access: 'public',
+      handleUploadUrl: `/api/sessions/${sessionId}/attachments/upload`,
+      clientPayload: JSON.stringify({
         kind: 'IMAGE',
-        url: blob.url,
         sizeBytes: compressed.size,
-      })
-      setAttachments(prev => upsert(prev, created))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Image upload failed')
-    } finally {
-      setUploading(null)
-      if (photoInputRef.current) photoInputRef.current.value = ''
-    }
+      }),
+      onUploadProgress: (p) => setUploading(u => u && { ...u, progress: p.percentage }),
+    })
+    // Vercel's onUploadCompleted webhook only fires in production (it
+    // can't reach localhost). Always POST the metadata back so the
+    // row gets created in dev too — the endpoint is idempotent on
+    // URL so it doesn't double-insert in prod.
+    const created = await confirmAttachment(sessionId, {
+      kind: 'IMAGE',
+      url: blob.url,
+      sizeBytes: compressed.size,
+    })
+    setAttachments(prev => upsert(prev, created))
   }
 
-  async function handleVideo(file: File) {
-    setError(null)
+  async function uploadOneVideo(file: File): Promise<void> {
     if (file.size > VIDEO_MAX_BYTES) {
-      setError('Video too large — keep it under 100 MB.')
-      return
+      throw new Error(`${file.name}: video too large — keep it under 100 MB.`)
     }
-    setUploading({ kind: 'VIDEO', progress: 0 })
-    try {
-      const { durationMs } = await readVideoMetadata(file)
-      if (durationMs > VIDEO_MAX_SECONDS * 1000) {
-        setError(`Video too long — keep it under ${VIDEO_MAX_SECONDS / 60} minutes.`)
-        setUploading(null)
-        return
-      }
-      const blob = await upload(safeName(file.name, 'mp4'), file, {
-        access: 'public',
-        handleUploadUrl: `/api/sessions/${sessionId}/attachments/upload`,
-        clientPayload: JSON.stringify({
-          kind: 'VIDEO',
-          sizeBytes: file.size,
-          durationMs,
-        }),
-        onUploadProgress: (p) => setUploading({ kind: 'VIDEO', progress: p.percentage }),
-      })
-      const created = await confirmAttachment(sessionId, {
+    const { durationMs } = await readVideoMetadata(file)
+    if (durationMs > VIDEO_MAX_SECONDS * 1000) {
+      throw new Error(`${file.name}: video too long — keep it under ${VIDEO_MAX_SECONDS / 60} minutes.`)
+    }
+    const blob = await upload(safeName(file.name, 'mp4'), file, {
+      access: 'public',
+      handleUploadUrl: `/api/sessions/${sessionId}/attachments/upload`,
+      clientPayload: JSON.stringify({
         kind: 'VIDEO',
-        url: blob.url,
         sizeBytes: file.size,
         durationMs,
-      })
-      setAttachments(prev => upsert(prev, created))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Video upload failed')
-    } finally {
-      setUploading(null)
-      if (videoInputRef.current) videoInputRef.current.value = ''
+      }),
+      onUploadProgress: (p) => setUploading(u => u && { ...u, progress: p.percentage }),
+    })
+    const created = await confirmAttachment(sessionId, {
+      kind: 'VIDEO',
+      url: blob.url,
+      sizeBytes: file.size,
+      durationMs,
+    })
+    setAttachments(prev => upsert(prev, created))
+  }
+
+  // Sequential queue — uploading in parallel makes the progress bar
+  // useless and competes for cellular bandwidth, which on mobile
+  // tends to regress all of them. We process one file at a time and
+  // collect failures so the trainer sees which ones bombed without
+  // the whole batch aborting on the first error.
+  async function uploadQueue(files: File[], kind: 'IMAGE' | 'VIDEO'): Promise<void> {
+    setError(null)
+    const failures: string[] = []
+    for (let i = 0; i < files.length; i++) {
+      setUploading({ kind, progress: 0, index: i + 1, total: files.length })
+      try {
+        if (kind === 'IMAGE') await uploadOneImage(files[i])
+        else await uploadOneVideo(files[i])
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : `${files[i].name}: upload failed`
+        console.error('[session-attachments]', msg, err)
+        failures.push(msg)
+      }
     }
+    setUploading(null)
+    if (failures.length > 0) setError(failures.join(' · '))
+    // Final reconcile in case the optimistic state and the DB drifted
+    // (e.g. prod webhook fired faster than the client confirm). Cheap
+    // and idempotent.
+    void refetch()
   }
 
   async function refetch() {
@@ -174,7 +182,6 @@ export function SessionAttachments({ sessionId, initialAttachments }: Props) {
       setAttachments(data.attachments)
     } catch { /* keep optimistic state */ }
   }
-  void refetch // referenced; kept for potential manual reload
 
   async function deleteAttachment(id: string) {
     setPendingDelete(id)
@@ -209,28 +216,32 @@ export function SessionAttachments({ sessionId, initialAttachments }: Props) {
         >
           <Video className="h-4 w-4" /> Add video
         </button>
-        {/* Native pickers — `capture` hints the OS to default to the
-            camera but still lets the trainer pick from the library. */}
+        {/* Native pickers — multi-select on. iOS picker has a
+            "Take Photo or Video" option at the top of the camera roll,
+            so dropping `capture` doesn't lose the camera path; it just
+            unlocks multi-pick. */}
         <input
           ref={photoInputRef}
           type="file"
           accept="image/*"
-          capture="environment"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) void handleImage(f)
+            const files = Array.from(e.target.files ?? [])
+            if (files.length > 0) void uploadQueue(files, 'IMAGE')
+            if (photoInputRef.current) photoInputRef.current.value = ''
           }}
         />
         <input
           ref={videoInputRef}
           type="file"
           accept="video/*"
-          capture="environment"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) void handleVideo(f)
+            const files = Array.from(e.target.files ?? [])
+            if (files.length > 0) void uploadQueue(files, 'VIDEO')
+            if (videoInputRef.current) videoInputRef.current.value = ''
           }}
         />
       </div>
@@ -240,7 +251,9 @@ export function SessionAttachments({ sessionId, initialAttachments }: Props) {
           <Loader2 className="h-4 w-4 text-slate-500 animate-spin" />
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-slate-700">
-              Uploading {uploading.kind === 'IMAGE' ? 'photo' : 'video'}…
+              {uploading.total > 1
+                ? `Uploading ${uploading.kind === 'IMAGE' ? 'photo' : 'video'} ${uploading.index} of ${uploading.total}…`
+                : `Uploading ${uploading.kind === 'IMAGE' ? 'photo' : 'video'}…`}
             </p>
             <div className="mt-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
               <div
