@@ -46,43 +46,116 @@ export function SessionAttachments({ sessionId, initialAttachments }: Props) {
   const photoInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
 
+  // iOS WebView is fragile around HEVC + large blobs — a freshly-shot
+  // 4K HEVC clip can be 50+ MB/min, and pulling a frame via the
+  // <video>/<canvas> path eats decoded RGB memory equal to the
+  // capture resolution (a single 4K frame ≈ 33 MB uncompressed).
+  // Stack a few of those + the video itself sitting in an
+  // ObjectURL and you can OOM the WebView. Defences:
+  //   • Skip thumbnail generation entirely for files > 60 MB; the
+  //     upload still proceeds, the tile just falls back to the
+  //     placeholder gradient.
+  //   • Cap canvas at 480px wide so we don't allocate a 4K frame.
+  //   • Hard-timeout the whole thing at 8 s — if the video element
+  //     can't load metadata in that window we move on without a
+  //     thumbnail rather than hang the queue.
+  //   • Catch every error path; durationMs falls back to 0 (server
+  //     accepts that, the duration badge just won't render).
+  const THUMB_SKIP_BYTES = 60 * 1024 * 1024
+  const THUMB_MAX_WIDTH = 480
+  const THUMB_TIMEOUT_MS = 8000
+
   async function readVideoMetadata(file: File): Promise<{ durationMs: number; thumbnail: Blob | null }> {
     return new Promise((resolve) => {
-      const url = URL.createObjectURL(file)
-      const video = document.createElement('video')
+      // Files past the threshold skip the canvas dance entirely.
+      // We still want duration if cheap; bail to 0 if even that fails.
+      const skipThumbnail = file.size > THUMB_SKIP_BYTES
+
+      let url: string | null = null
+      let video: HTMLVideoElement | null = null
+      let settled = false
+      const settle = (durationMs: number, thumbnail: Blob | null) => {
+        if (settled) return
+        settled = true
+        try { if (url) URL.revokeObjectURL(url) } catch { /* ignore */ }
+        if (video) {
+          video.onloadedmetadata = null
+          video.onseeked = null
+          video.onerror = null
+          // Force the WebView to drop the decoded frame buffer.
+          video.removeAttribute('src')
+          try { video.load() } catch { /* ignore */ }
+          video = null
+        }
+        resolve({ durationMs, thumbnail })
+      }
+
+      // Hard ceiling — if anything below stalls (no metadata fired,
+      // seek hangs, canvas blocks), the queue still moves.
+      const timeout = window.setTimeout(() => settle(0, null), THUMB_TIMEOUT_MS)
+
+      try {
+        url = URL.createObjectURL(file)
+      } catch {
+        window.clearTimeout(timeout)
+        settle(0, null)
+        return
+      }
+
+      video = document.createElement('video')
       video.preload = 'metadata'
       video.muted = true
       video.playsInline = true
       video.src = url
+
       video.onloadedmetadata = () => {
+        if (!video) return
         const durationMs = Math.round((video.duration || 0) * 1000)
-        // Seek to t=0.1s so we don't capture a black first frame.
-        video.currentTime = Math.min(0.1, (video.duration || 1) - 0.05)
-      }
-      video.onseeked = () => {
+        if (skipThumbnail) {
+          window.clearTimeout(timeout)
+          settle(durationMs, null)
+          return
+        }
         try {
-          const canvas = document.createElement('canvas')
-          canvas.width = Math.min(video.videoWidth, 720)
-          canvas.height = Math.round(canvas.width * (video.videoHeight / video.videoWidth)) || 405
-          const ctx = canvas.getContext('2d')
-          if (!ctx) {
-            URL.revokeObjectURL(url)
-            resolve({ durationMs: Math.round((video.duration || 0) * 1000), thumbnail: null })
-            return
-          }
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-          canvas.toBlob((blob) => {
-            URL.revokeObjectURL(url)
-            resolve({ durationMs: Math.round((video.duration || 0) * 1000), thumbnail: blob })
-          }, 'image/jpeg', 0.7)
+          // Avoid the black first-frame; clamp into the file.
+          video.currentTime = Math.min(0.1, (video.duration || 1) - 0.05)
         } catch {
-          URL.revokeObjectURL(url)
-          resolve({ durationMs: Math.round((video.duration || 0) * 1000), thumbnail: null })
+          window.clearTimeout(timeout)
+          settle(durationMs, null)
         }
       }
+
+      video.onseeked = () => {
+        if (!video) return
+        const durationMs = Math.round((video.duration || 0) * 1000)
+        try {
+          const canvas = document.createElement('canvas')
+          const w = Math.min(video.videoWidth || THUMB_MAX_WIDTH, THUMB_MAX_WIDTH)
+          const h = video.videoWidth
+            ? Math.round(w * ((video.videoHeight || 1) / (video.videoWidth || 1)))
+            : Math.round(w * 9 / 16)
+          canvas.width = w
+          canvas.height = h
+          const ctx = canvas.getContext('2d')
+          if (!ctx) {
+            window.clearTimeout(timeout)
+            settle(durationMs, null)
+            return
+          }
+          ctx.drawImage(video, 0, 0, w, h)
+          canvas.toBlob((blob) => {
+            window.clearTimeout(timeout)
+            settle(durationMs, blob)
+          }, 'image/jpeg', 0.7)
+        } catch {
+          window.clearTimeout(timeout)
+          settle(durationMs, null)
+        }
+      }
+
       video.onerror = () => {
-        URL.revokeObjectURL(url)
-        resolve({ durationMs: 0, thumbnail: null })
+        window.clearTimeout(timeout)
+        settle(0, null)
       }
     })
   }
