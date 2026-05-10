@@ -127,23 +127,67 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: appleClientSecret,
       allowDangerousEmailAccountLinking: true,
     })] : []),
-    // Magic link for clients
+    // Magic link for clients (and any trainer who chooses email-only
+    // sign-in). The email itself is rendered to look like it's *from
+    // the trainer*, not from PupManager — for clients, that means the
+    // trainer's business name, logo, and accent colour wrap the link;
+    // From / Reply-To use `fromTrainer()` so the inbox shows
+    // "Sarah Carter via PupManager <noreply@…>" with replies routing
+    // back to the trainer's actual address. Trainers get a generic
+    // branded fallback.
     Resend({
       from: process.env.RESEND_FROM_EMAIL,
       sendVerificationRequest: async ({ identifier, url }) => {
-        const { Resend: ResendClient } = await import('resend')
-        const resend = new ResendClient(process.env.RESEND_API_KEY)
-        await resend.emails.send({
-          from: process.env.RESEND_FROM_EMAIL!,
+        const { renderLoginLinkEmail } = await import('@/lib/login-link-email')
+        const { sendEmail, fromTrainer } = await import('@/lib/email')
+
+        // Look up the trainer context from the email. Clients have a
+        // ClientProfile → trainer relation; trainers have their own
+        // TrainerProfile. Either way, we get the branding bits we
+        // need (or null, in which case the renderer uses defaults).
+        const user = await prisma.user.findUnique({
+          where: { email: identifier },
+          select: {
+            name: true,
+            role: true,
+            clientProfile: {
+              select: {
+                trainer: {
+                  select: {
+                    businessName: true,
+                    logoUrl: true,
+                    emailAccentColor: true,
+                    user: { select: { name: true, email: true } },
+                  },
+                },
+              },
+            },
+            trainerProfile: {
+              select: {
+                businessName: true,
+                logoUrl: true,
+                emailAccentColor: true,
+                user: { select: { name: true, email: true } },
+              },
+            },
+          },
+        })
+
+        const trainer = user?.clientProfile?.trainer ?? user?.trainerProfile ?? null
+        const recipientName = user?.name ?? null
+
+        const rendered = renderLoginLinkEmail({ url, recipientName, trainer })
+
+        await sendEmail({
           to: identifier,
-          subject: 'Your PupManager login link',
-          html: `
-            <p>Click the link below to log in to PupManager. This link expires in 15 minutes.</p>
-            <a href="${url}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;">
-              Log in to PupManager
-            </a>
-            <p>If you didn't request this, you can safely ignore it.</p>
-          `,
+          subject: rendered.subject,
+          // From-spoof so the email appears to be from the trainer
+          // when we have one. Falls back to the platform sender for
+          // trainer accounts (no parent trainer to spoof from).
+          from: trainer ? fromTrainer(trainer.user.name?.trim() || trainer.businessName) : undefined,
+          replyTo: trainer?.user.email ?? undefined,
+          text: rendered.text,
+          html: rendered.html,
         })
       },
     }),
