@@ -46,6 +46,11 @@ enum SessionStatus {
   INVOICED
 }
 
+enum AttachmentKind {
+  IMAGE
+  VIDEO
+}
+
 enum MessageChannel {
   TRAINER_CLIENT // visible to client
   TRAINER_TRAINER // private between trainers
@@ -476,12 +481,45 @@ model TrainingSession {
   formResponses            SessionFormResponse[]
   fulfilledProductRequests ProductRequest[]
   buddies                  SessionBuddy[]
+  attachments              SessionAttachment[]
 
   @@index([trainerId])
   @@index([clientId])
   @@index([scheduledAt])
   @@index([clientPackageId])
   @@map("training_sessions")
+}
+
+// Trainer-uploaded media attached to a session — photos and short clips
+// captured during/after a session and surfaced in the session detail
+// page. Lives in Vercel Blob (no transcoding) for v1; if/when we move
+// video to a streaming service the schema can grow a `provider` enum
+// without changing call sites.
+model SessionAttachment {
+  id           String         @id @default(cuid())
+  sessionId    String
+  trainerId    String         // denormalised for fast permission checks
+  kind         AttachmentKind
+  // Public Blob URL. We don't gate access via signing for v1 — the
+  // pathname includes the session + attachment id so URLs are
+  // unguessable, and the API endpoints that hand them out enforce
+  // trainer ownership.
+  url          String
+  // Optional client-generated thumbnail still for video previews.
+  thumbnailUrl String?
+  // Free-form caption / note the trainer can add when uploading.
+  caption      String?        @db.Text
+  // Stored for display ("12 sec") and for soft-quota calculations later.
+  sizeBytes    Int
+  durationMs   Int?           // videos only
+
+  createdAt DateTime @default(now())
+
+  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([trainerId])
+  @@map("session_attachments")
 }
 
 // "Buddy session" — additional client/dog pairs attending a TrainingSession

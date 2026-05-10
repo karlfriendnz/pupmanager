@@ -2,13 +2,14 @@ import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, Clock, MapPin, Video, ExternalLink, Eye, ChevronDown, History } from 'lucide-react'
+import { ArrowLeft, Calendar, Clock, MapPin, Video, ExternalLink, Eye, ChevronDown, History, Paperclip } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { SessionFormReport } from '@/components/session-form-report'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
 import { MarkCompleteButton } from '@/components/mark-complete-button'
 import { MarkInvoicedButton } from '@/components/mark-invoiced-button'
 import { DeleteSessionButton } from '@/components/delete-session-button'
+import { SessionAttachments } from '@/components/session-attachments'
 import { OpenSessionLink } from './open-session-link'
 import type { Metadata } from 'next'
 
@@ -42,6 +43,13 @@ export default async function SessionPage({
         select: {
           name: true,
           primaryFor: { take: 1, select: { id: true, user: { select: { name: true, email: true } } } },
+        },
+      },
+      attachments: {
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, kind: true, url: true, thumbnailUrl: true,
+          caption: true, sizeBytes: true, durationMs: true, createdAt: true,
         },
       },
     },
@@ -235,6 +243,31 @@ export default async function SessionPage({
           title; SessionFormReport itself supplies the dropdown or filler. */}
       <Card className="overflow-hidden">
         <SessionFormReport sessionId={trainingSession.id} layout="inline" autoPromptIfEmpty />
+      </Card>
+
+      {/* Trainer-uploaded media. Sits between the form and the
+          library-tasks card so anything the trainer captures live in
+          a session is right next to the rest of their notes. */}
+      <Card className="mt-6">
+        <CardBody className="py-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Paperclip className="h-4 w-4 text-slate-400" />
+            <h2 className="text-sm font-semibold text-slate-700">Attachments</h2>
+          </div>
+          <SessionAttachments
+            sessionId={trainingSession.id}
+            initialAttachments={trainingSession.attachments.map(a => ({
+              id: a.id,
+              kind: a.kind,
+              url: a.url,
+              thumbnailUrl: a.thumbnailUrl,
+              caption: a.caption,
+              sizeBytes: a.sizeBytes,
+              durationMs: a.durationMs,
+              createdAt: a.createdAt.toISOString(),
+            }))}
+          />
+        </CardBody>
       </Card>
 
       <Card className="mt-6">
