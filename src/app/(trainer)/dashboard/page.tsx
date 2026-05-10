@@ -5,9 +5,8 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { UserPlus, TrendingUp, Calendar, ChevronLeft, ChevronRight, ArrowRight, Users, CheckCircle2, Inbox, FileText, type LucideIcon } from 'lucide-react'
+import { UserPlus, TrendingUp, Calendar, ChevronLeft, ChevronRight, ArrowRight, Users, PawPrint, CheckCircle2, Inbox, FileText, type LucideIcon } from 'lucide-react'
 import { SessionRowCard } from '@/components/shared/session-row-card'
-import { WeeklyTasksStat, type WeeklyTask } from './weekly-tasks-stat'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { OnboardingPanel } from './onboarding-panel'
 import { initTrainerOnboarding } from '@/lib/onboarding/init'
@@ -108,6 +107,7 @@ export default async function DashboardPage({
     include: {
       user: { select: { name: true, email: true } },
       dog: { select: { name: true } },
+      dogs: { select: { id: true } },
       diaryEntries: {
         where: { date: { gte: sevenDaysAgo } },
         select: { id: true, completion: { select: { id: true } } },
@@ -116,35 +116,23 @@ export default async function DashboardPage({
     orderBy: { createdAt: 'desc' },
   })
 
-  // Detailed list for the expandable "Tasks this week" panel — fetched
-  // separately so the count cards stay cheap and the panel has full task
-  // data (title, dog, etc.) when it expands.
-  const weeklyTasksRaw = await prisma.trainingTask.findMany({
-    where: {
-      client: { trainerId },
-      date: { gte: sevenDaysAgo },
-    },
-    include: {
-      client: { include: { user: { select: { name: true, email: true } } } },
-      dog: { select: { name: true } },
-      completion: { select: { id: true } },
-    },
-    orderBy: { date: 'asc' },
-  })
-
-  const weeklyTasks: WeeklyTask[] = weeklyTasksRaw.map(t => ({
-    id: t.id,
-    title: t.title,
-    date: t.date.toISOString(),
-    clientId: t.clientId,
-    clientName: t.client.user.name ?? t.client.user.email,
-    dogName: t.dog?.name ?? null,
-    completed: !!t.completion,
-  }))
+  const [weeklyTasksAssigned, weeklyTasksCompleted] = await Promise.all([
+    prisma.trainingTask.count({
+      where: { client: { trainerId }, date: { gte: sevenDaysAgo } },
+    }),
+    prisma.trainingTask.count({
+      where: { client: { trainerId }, date: { gte: sevenDaysAgo }, completion: { isNot: null } },
+    }),
+  ])
 
   const totalClients = clients.length
-  const weeklyTasksAssigned = weeklyTasks.length
-  const weeklyTasksCompleted = weeklyTasks.filter(t => t.completed).length
+  const activeClients = clients.filter(c => c.status === 'ACTIVE').length
+  // Dog counts: primary dog (c.dogId) + additional household dogs (c.dogs).
+  // "Active" follows the parent client's status, matching how dogs disappear
+  // from the trainer's day-to-day when the client goes inactive.
+  const dogCount = (c: typeof clients[number]) => (c.dogId ? 1 : 0) + c.dogs.length
+  const totalDogs = clients.reduce((sum, c) => sum + dogCount(c), 0)
+  const activeDogs = clients.filter(c => c.status === 'ACTIVE').reduce((sum, c) => sum + dogCount(c), 0)
   const overallCompliance =
     weeklyTasksAssigned > 0
       ? Math.round((weeklyTasksCompleted / weeklyTasksAssigned) * 100)
@@ -459,11 +447,16 @@ export default async function DashboardPage({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
           label="Clients"
-          value={String(totalClients)}
+          value={`${activeClients}/${totalClients}`}
           icon={Users}
           iconClass="bg-blue-50 text-blue-600"
         />
-        <WeeklyTasksStat tasks={weeklyTasks} />
+        <StatCard
+          label="Dogs"
+          value={`${activeDogs}/${totalDogs}`}
+          icon={PawPrint}
+          iconClass="bg-amber-50 text-amber-600"
+        />
         <StatCard
           label="Completed"
           value={String(weeklyTasksCompleted)}
