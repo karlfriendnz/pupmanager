@@ -282,15 +282,13 @@ export default async function SessionPage({
         </CardBody>
       </Card>
 
-      <Card className="mt-6">
-        <CardBody className="py-5">
-          <SessionLibraryTasks
-            sessionId={trainingSession.id}
-            clientId={clientId ?? null}
-            sessionDate={d.toISOString().split('T')[0]}
-          />
-        </CardBody>
-      </Card>
+      <div className="mt-6">
+        <SessionLibraryTasks
+          sessionId={trainingSession.id}
+          clientId={clientId ?? null}
+          sessionDate={d.toISOString().split('T')[0]}
+        />
+      </div>
     </div>
   )
 }
