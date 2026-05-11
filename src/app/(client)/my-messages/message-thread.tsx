@@ -31,6 +31,21 @@ export function MessageThread({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Real-time subscription via Server-Sent Events. Pulls new messages
+  // for this thread as they hit the DB and dedups against the local
+  // list (handles the overlap with optimistic inserts from this user).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const es = new EventSource(`/api/messages/stream?clientId=${encodeURIComponent(clientId)}`)
+    es.addEventListener('message', (ev) => {
+      try {
+        const msg = JSON.parse(ev.data) as Message
+        setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
+      } catch { /* ignore malformed events */ }
+    })
+    return () => { es.close() }
+  }, [clientId])
+
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
     if (!body.trim()) return

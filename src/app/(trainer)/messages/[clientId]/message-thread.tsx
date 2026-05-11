@@ -31,6 +31,27 @@ export function MessageThread({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Real-time subscription via Server-Sent Events. Opens a long-lived
+  // connection to /api/messages/stream which polls Postgres every 2s
+  // for new rows in this thread and pushes them down. Receiver sees
+  // new messages within ~2s without refreshing; sender already has
+  // them locally via the optimistic insert, so dedup-by-id covers
+  // the overlap.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const es = new EventSource(`/api/messages/stream?clientId=${encodeURIComponent(clientId)}`)
+    es.addEventListener('message', (ev) => {
+      try {
+        const msg = JSON.parse(ev.data) as Message
+        setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
+      } catch { /* ignore malformed events */ }
+    })
+    // Server rotates the connection ~every 4 minutes to dodge the
+    // function timeout. EventSource reconnects automatically on
+    // close, so we just need to close on unmount.
+    return () => { es.close() }
+  }, [clientId])
+
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
     if (!body.trim()) return
