@@ -94,8 +94,7 @@ export default async function SessionPage({
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto">
       <PageHeader
-        title={formatSessionTitle(trainingSession.title)}
-        subtitle={clientName ? `${clientName}${trainingSession.dog ? ` · 🐕 ${trainingSession.dog.name}` : ''}` : undefined}
+        title="Session"
         back={clientId ? { href: `/clients/${clientId}?tab=sessions`, label: 'Back to client' } : undefined}
       />
 
@@ -121,14 +120,30 @@ export default async function SessionPage({
         />
       </div>
 
-      <div className="mb-6">
-        <span className={`text-xs font-semibold uppercase tracking-wide ${trainingSession.sessionType === 'VIRTUAL' ? 'text-purple-500' : 'text-blue-500'}`}>
-          {trainingSession.sessionType === 'VIRTUAL' ? '💻 Virtual session' : '📍 In-person session'}
-        </span>
-      </div>
-
       <Card className="mb-6">
         <CardBody className="py-4 flex flex-col gap-2.5 text-sm">
+          {/* Session title and in-person/virtual badge — the page header
+              just says "Session", so this is where the trainer learns
+              which one it is. */}
+          <div className="flex items-start justify-between gap-3 pb-2 border-b border-slate-100">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-slate-900 leading-snug">
+                {formatSessionTitle(trainingSession.title)}
+              </h2>
+              {clientName && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {clientName}{trainingSession.dog ? ` · 🐕 ${trainingSession.dog.name}` : ''}
+                </p>
+              )}
+            </div>
+            <span className={`flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full ${
+              trainingSession.sessionType === 'VIRTUAL'
+                ? 'bg-purple-50 text-purple-700'
+                : 'bg-blue-50 text-blue-700'
+            }`}>
+              {trainingSession.sessionType === 'VIRTUAL' ? '💻 Virtual' : '📍 In-person'}
+            </span>
+          </div>
           <div className="flex items-center gap-3">
             <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
             <span className="text-slate-700">
