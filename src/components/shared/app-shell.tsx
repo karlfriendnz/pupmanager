@@ -74,6 +74,13 @@ interface AppShellProps {
    * highlight dot when that step is in this list.
    */
   completedStepKeys?: string[]
+  /**
+   * Per-href badge counts to render on nav items (sidebar + mobile tabs).
+   * Currently used for unread message counts on the Messages nav item
+   * (trainer) and on Home (client, while the Messages tab is still hidden
+   * from the mobile bottom bar). Missing or zero values render no badge.
+   */
+  unreadCounts?: Record<string, number>
 }
 
 export function AppShell(props: AppShellProps) {
@@ -85,7 +92,7 @@ export function AppShell(props: AppShellProps) {
 // Mobile-app-style layout: no sidebar on any viewport. Sticky brand header
 // on top, sticky bottom tab nav, centered narrow column on desktop.
 
-function ClientShell({ children, trainerLogo, businessName, clientNavHints }: AppShellProps) {
+function ClientShell({ children, trainerLogo, businessName, clientNavHints, unreadCounts = {} }: AppShellProps) {
   const pathname = usePathname()
 
   return (
@@ -123,6 +130,7 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints }: Ap
               {CLIENT_NAV.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(item.href + '/')
                 const Icon = item.icon
+                const unread = unreadCounts[item.href] ?? 0
                 return (
                   <Link
                     key={item.href}
@@ -136,7 +144,15 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints }: Ap
                   >
                     <Icon className="h-5 w-5" />
                     {item.label}
-                    {clientNavHints && !active && (
+                    {unread > 0 && (
+                      <span
+                        aria-label={`${unread} unread`}
+                        className="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white tabular-nums ring-2 ring-white"
+                      >
+                        {unread > 9 ? '9+' : unread}
+                      </span>
+                    )}
+                    {clientNavHints && !active && unread === 0 && (
                       <span
                         aria-hidden
                         className="pointer-events-none absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-indigo-500 animate-pm-menu-dot ring-2 ring-white"
@@ -169,11 +185,10 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints }: Ap
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           <div className="flex">
-            {/* Home is omitted from the mobile tab bar — the trainer logo
-                in the header is the home affordance on mobile. */}
-            {CLIENT_NAV.filter(item => item.href !== '/home').map((item) => {
+            {CLIENT_NAV.map((item) => {
               const active = pathname === item.href || pathname.startsWith(item.href + '/')
               const Icon = item.icon
+              const unread = unreadCounts[item.href] ?? 0
               return (
                 <Link
                   key={item.href}
@@ -185,7 +200,15 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints }: Ap
                 >
                   <Icon className={cn('h-5 w-5 transition-transform', active && 'scale-110')} />
                   <span className="text-[10px] font-medium">{item.label}</span>
-                  {clientNavHints && !active && (
+                  {unread > 0 && (
+                    <span
+                      aria-label={`${unread} unread`}
+                      className="absolute top-1.5 right-[18%] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white tabular-nums ring-2 ring-white"
+                    >
+                      {unread > 9 ? '9+' : unread}
+                    </span>
+                  )}
+                  {clientNavHints && !active && unread === 0 && (
                     <span
                       aria-hidden
                       className="pointer-events-none absolute top-1.5 right-[18%] h-2 w-2 rounded-full bg-indigo-500 animate-pm-menu-dot ring-2 ring-white"
@@ -205,6 +228,28 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints }: Ap
 // Desktop: collapsible sidebar. Phone: sticky brand header + 4-tab bottom
 // nav with a "More" sheet that holds the secondary destinations and sign-out.
 
+// Small numeric badge rendered on a nav item when the corresponding
+// unreadCounts[href] is > 0. Caps at 99+ so it doesn't blow the layout.
+function NavBadge({ count, variant = 'pill' }: { count: number; variant?: 'pill' | 'dot' }) {
+  if (!count) return null
+  if (variant === 'dot') {
+    return (
+      <span
+        aria-label={`${count} unread`}
+        className="absolute top-1 right-[22%] h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white"
+      />
+    )
+  }
+  return (
+    <span
+      aria-label={`${count} unread`}
+      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold tabular-nums text-white"
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
+
 function TrainerShell({
   children,
   userName,
@@ -213,6 +258,7 @@ function TrainerShell({
   businessName,
   highlightMenuHref,
   completedStepKeys = [],
+  unreadCounts = {},
 }: AppShellProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
@@ -334,6 +380,15 @@ function TrainerShell({
               >
                 <Icon className="h-5 w-5 flex-shrink-0" />
                 {!collapsed && item.label}
+                {!collapsed && <NavBadge count={unreadCounts[item.href] ?? 0} />}
+                {/* Collapsed-sidebar mode hides the pill — use the dot
+                    variant overlaid on the icon corner instead. */}
+                {collapsed && (unreadCounts[item.href] ?? 0) > 0 && (
+                  <span
+                    aria-hidden
+                    className="absolute top-0.5 right-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white"
+                  />
+                )}
                 {highlighted && (
                   <span
                     aria-hidden
@@ -442,17 +497,26 @@ function TrainerShell({
           {mobilePrimary.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             const Icon = item.icon
+            const unread = unreadCounts[item.href] ?? 0
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors',
+                  'relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors',
                   active ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
                 )}
               >
                 <Icon className={cn('h-5 w-5 transition-transform', active && 'scale-110')} />
                 <span className="text-[10px] font-medium">{item.label}</span>
+                {unread > 0 && (
+                  <span
+                    aria-label={`${unread} unread`}
+                    className="absolute top-1.5 right-[22%] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white tabular-nums ring-2 ring-white"
+                  >
+                    {unread > 9 ? '9+' : unread}
+                  </span>
+                )}
               </Link>
             )
           })}

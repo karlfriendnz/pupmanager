@@ -144,6 +144,21 @@ export default async function ClientLayout({ children }: { children: React.React
     )
   }
 
+  // Count unread messages for this client — anything in their thread
+  // the trainer (or another sender) wrote that the client hasn't seen
+  // yet. Trainer-in-preview gets a 0 because the badge would otherwise
+  // show the actual client's pending messages, which isn't useful.
+  const unreadMessageCount = active.isPreview
+    ? 0
+    : await prisma.message.count({
+        where: {
+          channel: 'TRAINER_CLIENT',
+          readAt: null,
+          senderId: { not: clientProfile.userId },
+          clientId: clientProfile.id,
+        },
+      })
+
   return (
     <>
       {banner}
@@ -154,6 +169,7 @@ export default async function ClientLayout({ children }: { children: React.React
         trainerLogo={clientProfile.trainer.logoUrl}
         businessName={clientProfile.trainer.businessName}
         clientNavHints={showPreviewOnboarding}
+        unreadCounts={{ '/my-messages': unreadMessageCount, '/home': unreadMessageCount }}
       >
         {children}
       </AppShell>

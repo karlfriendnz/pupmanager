@@ -44,6 +44,21 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     .filter(s => s.status === 'completed')
     .map(s => s.key)
 
+  // Count messages the trainer hasn't read yet — anything in the
+  // TRAINER_CLIENT channel where the trainer isn't the sender. Powers
+  // the badge on the Messages nav item. Bounded by clientProfile.trainerId
+  // so a trainer never sees counts from another trainer's threads.
+  const unreadMessageCount = session.user.trainerId
+    ? await prisma.message.count({
+        where: {
+          channel: 'TRAINER_CLIENT',
+          readAt: null,
+          senderId: { not: session.user.id },
+          client: { trainerId: session.user.trainerId },
+        },
+      })
+    : 0
+
   return (
     <AppShell
       role="TRAINER"
@@ -53,6 +68,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       businessName={tp?.businessName ?? session.user.businessName}
       highlightMenuHref={highlightMenuHref}
       completedStepKeys={completedStepKeys}
+      unreadCounts={{ '/messages': unreadMessageCount }}
     >
       {/* Trial / payment-status banner — only renders when there's
           something the trainer needs to know (trial running out, payment

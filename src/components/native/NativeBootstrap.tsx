@@ -84,6 +84,17 @@ export function NativeBootstrap() {
         }
       });
 
+      // Foreground push delivery — iOS fires this when a notification
+      // arrives while the user is actively in the app. We can't show
+      // the system banner ourselves but we DO need to re-fetch the
+      // server-rendered nav so the unread-count badge picks up the
+      // new message immediately. router.refresh() recomputes the
+      // (trainer|client)/layout server component without blowing
+      // away client state on the current page.
+      await PushNotifications.addListener('pushNotificationReceived', () => {
+        router.refresh();
+      });
+
       await PushNotifications.register();
       registered = true;
     }
