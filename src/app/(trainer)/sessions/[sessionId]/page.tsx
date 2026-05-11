@@ -95,8 +95,13 @@ export default async function SessionPage({
       {/* Sticky action bar — back link + workflow buttons stay pinned at the
           top while the trainer scrolls the report. Action labels collapse to
           icons on mobile so all four (Preview / Complete / Invoice / Delete)
-          fit on one line without wrapping. */}
-      <div className="sticky top-0 z-20 -mx-4 md:-mx-8 px-4 md:px-8 py-3 mb-4 bg-slate-50/90 backdrop-blur border-b border-slate-100">
+          fit on one line without wrapping. The safe-area padding stops the
+          iOS chrome (time, battery) bleeding into the bar once the page is
+          scrolled and the bar is sticking to viewport-top. */}
+      <div
+        className="sticky top-0 z-20 -mx-4 md:-mx-8 px-4 md:px-8 mb-4 bg-white/95 backdrop-blur border-b border-slate-100"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)', paddingBottom: '0.625rem' }}
+      >
         <div className="flex items-center justify-between gap-2 max-w-3xl mx-auto">
           {clientId ? (
             <Link
@@ -107,14 +112,14 @@ export default async function SessionPage({
               <span className="hidden sm:inline">Back to client</span>
             </Link>
           ) : <span />}
-          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <Link
               href={`/sessions/${trainingSession.id}/preview`}
-              className="inline-flex items-center justify-center gap-1.5 text-sm font-medium px-2 sm:px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100"
+              className="inline-flex items-center justify-center gap-1.5 h-9 px-2 sm:px-3 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors"
               title="Preview report"
             >
-              <Eye className="h-4 w-4" />
-              <span className="hidden sm:inline">Preview report</span>
+              <Eye className="h-4 w-4 text-purple-600" />
+              <span className="hidden sm:inline">Preview</span>
             </Link>
             <MarkCompleteButton sessionId={trainingSession.id} initialStatus={trainingSession.status} />
             <MarkInvoicedButton

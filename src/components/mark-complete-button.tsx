@@ -52,7 +52,7 @@ export function MarkCompleteButton({
         onMouseLeave={() => setHovering(false)}
         disabled={saving}
         title={saving ? 'Updating' : hovering ? 'Mark not complete' : 'Completed'}
-        className="inline-flex items-center gap-1.5 text-sm font-medium px-2 sm:px-3 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-60 transition-colors"
+        className="inline-flex items-center justify-center gap-1.5 h-9 px-2 sm:px-3 text-sm font-medium rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 disabled:opacity-60 transition-colors"
       >
         {saving
           ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -71,9 +71,11 @@ export function MarkCompleteButton({
       onClick={() => !saving && setRemote('COMPLETED')}
       disabled={saving}
       title="Mark as complete"
-      className="inline-flex items-center gap-1.5 text-sm font-medium px-2 sm:px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
+      className="inline-flex items-center justify-center gap-1.5 h-9 px-2 sm:px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-green-300 hover:bg-green-50 disabled:opacity-60 transition-colors"
     >
-      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+      {saving
+        ? <Loader2 className="h-4 w-4 animate-spin text-green-600" />
+        : <Check className="h-4 w-4 text-green-600" />}
       <span className="hidden sm:inline">Mark as complete</span>
     </button>
   )
