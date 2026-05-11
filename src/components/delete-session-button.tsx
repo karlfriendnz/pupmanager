@@ -43,10 +43,10 @@ export function DeleteSessionButton({
       <button
         onClick={() => setConfirming(true)}
         title="Delete session"
-        className="inline-flex items-center justify-center gap-1.5 h-9 px-2 sm:px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+        className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition-colors"
       >
         <Trash2 className="h-4 w-4 text-rose-500" />
-        <span className="hidden sm:inline">Delete</span>
+        <span>Delete</span>
       </button>
     )
   }
@@ -54,7 +54,7 @@ export function DeleteSessionButton({
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-1.5">
-        <span className="text-xs text-slate-600 hidden sm:inline">Delete this session?</span>
+        <span className="text-xs text-slate-600">Delete this session?</span>
         <button
           onClick={() => { setConfirming(false); setError(null) }}
           disabled={deleting}
