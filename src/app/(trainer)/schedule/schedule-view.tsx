@@ -2701,10 +2701,12 @@ export function ScheduleView({
           marginTop: 'calc(min(env(safe-area-inset-top, 0px), 1rem) * -1)',
         }}
       >
-        <h1 className="text-xl font-bold text-slate-900">Schedule</h1>
+        <h1 className="hidden sm:block text-xl font-bold text-slate-900">Schedule</h1>
 
-        {/* Date nav — sits next to the title */}
-        <div className="flex items-center gap-1">
+        {/* Date nav — fills the row on phones, sits next to the title on
+            tablet+. `flex-1` claims the whole width on mobile so the
+            chevrons sit at the screen edges and the date label centres. */}
+        <div className="flex items-center gap-1 flex-1 sm:flex-initial w-full sm:w-auto justify-center sm:justify-start">
           <button
             onClick={() => navigate(-1)}
             disabled={navigatingWeek}
@@ -2713,7 +2715,7 @@ export function ScheduleView({
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <div className="min-w-[8rem] text-center">
+          <div className="flex-1 sm:flex-initial sm:min-w-[8rem] text-center">
             {view === 'week' ? (
               <p className="font-semibold text-slate-900 text-sm tabular-nums">
                 {weekStart.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })} – {addDays(weekStart, 6).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
@@ -2816,13 +2818,15 @@ export function ScheduleView({
             customFields={customFields}
           />
 
-          {/* Day/Week toggle (icon-only) */}
+          {/* Day/Week toggle (icon-only) — fixed-size squares so both
+              buttons render at the exact same dimensions regardless of
+              icon viewBox quirks. */}
           <div className="flex p-0.5 bg-slate-100 rounded-xl gap-0.5">
             <button
               onClick={() => setView('day')}
               title="Day view"
               aria-label="Day view"
-              className={`flex items-center px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'day' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${view === 'day' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
             >
               <List className="h-3.5 w-3.5" />
             </button>
@@ -2830,7 +2834,7 @@ export function ScheduleView({
               onClick={() => setView('week')}
               title="Week view"
               aria-label="Week view"
-              className={`flex items-center px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'week' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
+              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${view === 'week' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
             >
               <LayoutGrid className="h-3.5 w-3.5" />
             </button>
