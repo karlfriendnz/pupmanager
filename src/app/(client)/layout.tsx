@@ -170,6 +170,7 @@ export default async function ClientLayout({ children }: { children: React.React
         businessName={clientProfile.trainer.businessName}
         clientNavHints={showPreviewOnboarding}
         unreadCounts={{ '/my-messages': unreadMessageCount, '/home': unreadMessageCount }}
+        unreadTotal={unreadMessageCount}
       >
         {children}
       </AppShell>

@@ -69,6 +69,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       highlightMenuHref={highlightMenuHref}
       completedStepKeys={completedStepKeys}
       unreadCounts={{ '/messages': unreadMessageCount }}
+      unreadTotal={unreadMessageCount}
     >
       {/* Trial / payment-status banner — only renders when there's
           something the trainer needs to know (trial running out, payment

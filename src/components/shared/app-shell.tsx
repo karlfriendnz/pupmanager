@@ -12,6 +12,7 @@ import {
   MoreHorizontal, X, Inbox,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
+import { UnreadBadgeSync } from './unread-badge-sync'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
 
@@ -81,11 +82,22 @@ interface AppShellProps {
    * from the mobile bottom bar). Missing or zero values render no badge.
    */
   unreadCounts?: Record<string, number>
+  /**
+   * Aggregate unread count for browser-tab title + OS Badging API.
+   * Decoupled from unreadCounts because we may surface the same number
+   * under multiple nav hrefs (e.g. /home and /my-messages on the client
+   * side) and naïvely summing those keys would double-count.
+   */
+  unreadTotal?: number
 }
 
 export function AppShell(props: AppShellProps) {
-  if (props.role === 'CLIENT') return <ClientShell {...props} />
-  return <TrainerShell {...props} />
+  return (
+    <>
+      <UnreadBadgeSync total={props.unreadTotal ?? 0} />
+      {props.role === 'CLIENT' ? <ClientShell {...props} /> : <TrainerShell {...props} />}
+    </>
+  )
 }
 
 // ─── Client shell ────────────────────────────────────────────────────────────
