@@ -503,6 +503,7 @@ function WeekGrid({
   customFields,
   matchedIds,
   searchActive,
+  onAdvanceWeek,
 }: {
   weekDays: Date[]
   sessions: Session[]
@@ -521,6 +522,12 @@ function WeekGrid({
   customFields: CustomFieldMeta[]
   matchedIds: Set<string>
   searchActive: boolean
+  // Called when the mobile 3-day window steps past either end of the
+  // current week. Parent should advance the week by `delta` (±1) and
+  // re-render with the new weekDays. We track the spill direction in
+  // local state so the next render lands at the right end of the new
+  // week (start when spilling forward, end when spilling backward).
+  onAdvanceWeek?: (delta: 1 | -1) => void
 }) {
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i)
   const gridRef = useRef<HTMLDivElement>(null)
@@ -540,10 +547,12 @@ function WeekGrid({
   // Mobile 3-day window state. `mobileDayStart` is the index in weekDays
   // of the leftmost visible day; valid range is 0..(weekDays.length - 3).
   // `isMobile` toggles between the 3-day phone layout and the full
-  // 7-day desktop layout. We keep the state at the WeekGrid level so
-  // sessions outside the window simply don't render.
+  // 7-day desktop layout. `pendingSpill` remembers which edge the user
+  // spilled past so once the new week's weekDays arrives we land at
+  // the matching end (start for forward spill, end for backward).
   const [mobileDayStart, setMobileDayStart] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
+  const [pendingSpill, setPendingSpill] = useState<1 | -1 | null>(null)
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
     // Approximate chrome height above the schedule grid (page header, FAB,
@@ -561,22 +570,61 @@ function WeekGrid({
     return () => window.removeEventListener('resize', update)
   }, [totalHours])
 
-  // When the parent jumps to a new week, default the mobile window to
-  // include `selectedDate` if it falls inside the new week. Keeps the
-  // user oriented after a week-level navigation.
+  // When the parent jumps to a new week, default the mobile window.
+  // Two cases:
+  //  • `pendingSpill` set → user just stepped off an edge of the old
+  //    week. Land at the matching end of the new week so the next 3
+  //    days continue naturally.
+  //  • otherwise → centre the window on `selectedDate` so a week-level
+  //    nav (top date arrows) puts the trainer somewhere sensible.
   useEffect(() => {
     if (!isMobile) return
+    if (pendingSpill != null) {
+      setMobileDayStart(pendingSpill === 1 ? 0 : Math.max(0, weekDays.length - 3))
+      setPendingSpill(null)
+      return
+    }
     const idx = weekDays.findIndex(d => toDateStr(d) === selectedDate)
     if (idx < 0) return
     const start = Math.min(Math.max(0, idx - 1), Math.max(0, weekDays.length - 3))
     setMobileDayStart(start)
-  }, [isMobile, weekDays, selectedDate])
+  }, [isMobile, weekDays, selectedDate, pendingSpill])
+
+  // Step the mobile 3-day window. If the next/prev step would cross the
+  // current week's boundary, we tell the parent to advance the week
+  // (`onAdvanceWeek`) and stash a pending direction so the post-nav
+  // effect above lands us at the matching end.
+  function handleMobileNext() {
+    const next = mobileDayStart + 3
+    if (next + 3 <= weekDays.length) {
+      setMobileDayStart(next)
+    } else if (onAdvanceWeek) {
+      setPendingSpill(1)
+      onAdvanceWeek(1)
+    } else {
+      setMobileDayStart(Math.max(0, weekDays.length - 3))
+    }
+  }
+  function handleMobilePrev() {
+    const prev = mobileDayStart - 3
+    if (prev >= 0) {
+      setMobileDayStart(prev)
+    } else if (onAdvanceWeek) {
+      setPendingSpill(-1)
+      onAdvanceWeek(-1)
+    } else {
+      setMobileDayStart(0)
+    }
+  }
 
   const visibleDays = isMobile
     ? weekDays.slice(mobileDayStart, mobileDayStart + 3)
     : weekDays
-  const canMobilePrev = isMobile && mobileDayStart > 0
-  const canMobileNext = isMobile && mobileDayStart + 3 < weekDays.length
+  // Both buttons stay enabled when onAdvanceWeek is wired — the spill
+  // handler takes the user into the next/previous week. Without an
+  // advance callback the buttons clamp to the current week's edges.
+  const canMobilePrev = isMobile && (mobileDayStart > 0 || !!onAdvanceWeek)
+  const canMobileNext = isMobile && (mobileDayStart + 3 < weekDays.length || !!onAdvanceWeek)
 
   // ── Drag state ──────────────────────────────────────────────────────────────
   const [dragging, setDragging] = useState<{
@@ -685,7 +733,7 @@ function WeekGrid({
       {isMobile && weekDays.length > 3 && (
         <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 bg-slate-50">
           <button
-            onClick={() => setMobileDayStart(s => Math.max(0, s - 3))}
+            onClick={handleMobilePrev}
             disabled={!canMobilePrev}
             className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 disabled:text-slate-300 px-2 py-1 rounded-md hover:bg-white"
             aria-label="Previous 3 days"
@@ -699,7 +747,7 @@ function WeekGrid({
             {visibleDays[visibleDays.length - 1]?.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
           </p>
           <button
-            onClick={() => setMobileDayStart(s => Math.min(weekDays.length - 3, s + 3))}
+            onClick={handleMobileNext}
             disabled={!canMobileNext}
             className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 disabled:text-slate-300 px-2 py-1 rounded-md hover:bg-white"
             aria-label="Next 3 days"
@@ -905,7 +953,7 @@ function DayList({
               <button
                 onClick={() => onDelete(s.id)}
                 aria-label="Delete session"
-                className="self-stretch px-2 rounded-2xl text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                className="hidden sm:flex self-stretch px-2 rounded-2xl text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0 items-center"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -2763,9 +2811,9 @@ export function ScheduleView({
           )}
         </div>
 
-        {/* Action cluster — icon-only on phones, icon + label from sm.
-            Reports/Hours/Calendar collapse so the header stays one row. */}
-        <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto sm:ml-0">
+        {/* Action cluster — left-aligned and full-width on phones (its own
+            row underneath the date nav), inline & tight on tablet+. */}
+        <div className="flex items-center gap-1.5 w-full sm:w-auto sm:flex-shrink-0 justify-start sm:justify-end">
           {/* Mobile-only search trigger — sits alongside the other action
               icons so the header reads as a single button row. */}
           <button
@@ -2917,6 +2965,7 @@ export function ScheduleView({
             customFields={customFields}
             matchedIds={matchedIds}
             searchActive={searchTokens.length > 0}
+            onAdvanceWeek={navigate}
           />
         ) : (
           <DayList

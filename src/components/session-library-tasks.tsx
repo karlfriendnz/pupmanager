@@ -268,7 +268,7 @@ export function SessionLibraryTasks({
 
       {/* Add affordances — kept on a single row when collapsed; either grows
           to full width when its form/panel opens. */}
-      <div className="flex flex-wrap items-start gap-2">
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch sm:items-start gap-2">
         <CustomTaskForm
           clientId={clientId}
           onCreate={async (data) => {
@@ -297,10 +297,11 @@ export function SessionLibraryTasks({
           <button
             onClick={() => setShowLibrary(true)}
             disabled={!clientId}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+            className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-3 sm:py-2 rounded-lg hover:bg-blue-50 border border-blue-100 sm:border-transparent transition-colors"
             title={!clientId ? 'No client linked to this session' : undefined}
           >
-            <Layers className="h-4 w-4" /> Add from library
+            <Layers className="h-5 w-5 sm:h-4 sm:w-4" />
+            <span>Add from library</span>
           </button>
         ) : null}
       </div>
@@ -430,10 +431,11 @@ function CustomTaskForm({
       <button
         onClick={() => setOpen(true)}
         disabled={!clientId}
-        className="inline-flex items-center gap-1 self-start text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+        className="flex flex-col sm:flex-row items-center justify-center sm:self-start gap-1 sm:gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-3 sm:py-2 rounded-lg hover:bg-blue-50 border border-blue-100 sm:border-transparent transition-colors"
         title={!clientId ? 'No client linked to this session' : undefined}
       >
-        <Plus className="h-4 w-4" /> Add custom task
+        <Plus className="h-5 w-5 sm:h-4 sm:w-4" />
+        <span>Add custom task</span>
       </button>
     )
   }

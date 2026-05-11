@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate, cn, formatSessionTitle } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign } from 'lucide-react'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SessionFormReport } from '@/components/session-form-report'
 import { ClientAchievementsPanel } from './client-achievements-panel'
+import { StatusToggle } from './status-toggle'
 import Link from 'next/link'
 
 type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements'
@@ -96,6 +97,10 @@ interface Props {
   // the trainer-defined custom fields aren't the only thing there. The
   // page header used to render these and got noisy.
   contact: { email: string | null; phone: string | null; clientSince: string }
+  // ACTIVE / INACTIVE / NEW — used to render the status toggle inside
+  // the Contact card on the Details tab (used to live in the page
+  // header but cluttered the top of the page).
+  status: string
 }
 
 function groupByCategory<T extends { category: string | null }>(items: T[]) {
@@ -124,6 +129,7 @@ export function ClientProfileTabs({
   products,
   pendingProductRequests: initialPendingRequests,
   contact,
+  status,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [pendingRequests, setPendingRequests] = useState(initialPendingRequests)
@@ -249,32 +255,44 @@ export function ClientProfileTabs({
   const ownerFields = customFields.filter(f => f.appliesTo === 'OWNER')
   const dogFields   = customFields.filter(f => f.appliesTo === 'DOG')
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview',  label: 'Overview' },
-    { id: 'sessions',  label: sessions.length > 0 ? `Sessions (${sessions.length})` : 'Sessions' },
-    { id: 'dogs',      label: dogs.length > 1 ? `Dogs (${dogs.length})` : 'Dog' },
-    { id: 'achievements', label: 'Achievements' },
-    { id: 'details',   label: 'Details' },
+  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
+    { id: 'overview',     label: 'Overview',     icon: Home },
+    { id: 'sessions',     label: 'Sessions',     icon: Calendar, badge: sessions.length > 0 ? sessions.length : undefined },
+    { id: 'dogs',         label: dogs.length > 1 ? 'Dogs' : 'Dog', icon: PawPrint, badge: dogs.length > 1 ? dogs.length : undefined },
+    { id: 'achievements', label: 'Achievements', icon: Trophy },
+    { id: 'details',      label: 'Details',      icon: Info },
   ]
 
   return (
     <>
-      {/* Tab bar — horizontally scrollable on mobile so labels don't crash
-          into each other, and flex-equal on tablet+ where there's room. */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-8 overflow-x-auto sm:overflow-visible whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex-shrink-0 sm:flex-1 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
-              tab === t.id
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Tab bar — iOS-style icon-on-top, tiny-label-below. Five tabs split
+          the row evenly so each is a comfortable tap target on phones
+          without scrolling. */}
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-8">
+        {tabs.map(t => {
+          const Icon = t.icon
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`relative flex-1 flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all duration-150 ${
+                tab === t.id
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span className="text-[10px] font-medium leading-tight">{t.label}</span>
+              {t.badge != null && (
+                <span className={`absolute top-1 right-1 min-w-4 h-4 px-1 text-[9px] font-semibold tabular-nums rounded-full flex items-center justify-center ${
+                  tab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {t.badge}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       {/* ── Overview ─────────────────────────────────────────────────────── */}
@@ -639,9 +657,12 @@ export function ClientProfileTabs({
               below in their own grouped cards. */}
           <Card>
             <CardBody className="pt-5">
-              <h2 className="font-semibold text-slate-900 mb-5">Contact</h2>
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 text-sm">
-                <div className={contact.email && contact.email.length > 32 ? 'col-span-2' : ''}>
+              <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
+                <h2 className="font-semibold text-slate-900">Contact</h2>
+                {canEdit && <StatusToggle clientId={clientId} initialStatus={status} />}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 text-sm">
+                <div className={contact.email && contact.email.length > 32 ? 'sm:col-span-2' : ''}>
                   <p className="text-xs text-slate-400 mb-0.5">Email</p>
                   {contact.email ? (
                     <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline break-all">{contact.email}</a>
@@ -671,11 +692,11 @@ export function ClientProfileTabs({
                   <h2 className="font-semibold text-slate-900 mb-5">
                     {group.category ?? 'Additional details'}
                   </h2>
-                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 text-sm">
                     {group.items.map(field => {
                       const val = fieldValueMap[field.id]
                       return (
-                        <div key={field.id} className={val && val.length > 40 ? 'col-span-2 lg:col-span-3' : ''}>
+                        <div key={field.id} className={val && val.length > 40 ? 'sm:col-span-2 lg:col-span-3' : ''}>
                           <p className="text-xs text-slate-400 mb-0.5">{field.label}</p>
                           <p className={val ? 'text-slate-800' : 'text-slate-300'}>
                             {val || '—'}
@@ -1056,7 +1077,7 @@ function SessionsTabPanel({
                             <button
                               onClick={() => onConfirmDelete(s.id)}
                               aria-label="Delete session"
-                              className="self-stretch px-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                              className="h-6 w-6 self-center rounded-full flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>

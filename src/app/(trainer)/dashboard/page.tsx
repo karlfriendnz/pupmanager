@@ -209,13 +209,9 @@ export default async function DashboardPage({
 
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
-      <PageHeader title="Dashboard" subtitle={session.user.businessName ?? undefined} />
-
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">
-          Good {getGreeting(tz)}, {session.user.name?.split(' ')[0]} 👋
-        </h1>
-      </div>
+      <PageHeader
+        title={`Good ${getGreeting(tz)}, ${session.user.name?.split(' ')[0] ?? 'there'} 👋`}
+      />
 
       <OnboardingPanel state={onboardingState} />
 

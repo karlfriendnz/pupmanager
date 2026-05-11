@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import { formatDate } from '@/lib/utils'
 import { ClientProfileTabs } from './client-profile-tabs'
-import { StatusToggle } from './status-toggle'
 import { ClientActionsMenu } from './client-actions-menu'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
@@ -113,50 +112,36 @@ export default async function ClientDetailPage({
     <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <PageHeader
         title={client.user.name ?? client.user.email ?? 'Client'}
+        subtitle={!isPrimaryTrainer ? 'Co-managed' : undefined}
         back={{ href: '/clients', label: 'Back to clients' }}
+        actions={
+          <ClientActionsMenu
+            clientId={client.id}
+            clientName={client.user.name ?? client.user.email}
+            clientEmail={client.user.email ?? ''}
+            canEdit={canEdit}
+            isPrimaryTrainer={isPrimaryTrainer}
+            needsInvite={!client.user.emailVerified}
+            dogs={allDogs.map(d => ({ id: d.id, name: d.name }))}
+            packages={packages.map(p => ({
+              id: p.id,
+              name: p.name,
+              description: p.description,
+              sessionCount: p.sessionCount,
+              weeksBetween: p.weeksBetween,
+              durationMins: p.durationMins,
+              sessionType: p.sessionType,
+            }))}
+            availability={availabilitySlots.map(s => ({
+              id: s.id,
+              dayOfWeek: s.dayOfWeek,
+              date: s.date ? s.date.toISOString().split('T')[0] : null,
+              startTime: s.startTime,
+              endTime: s.endTime,
+            }))}
+          />
+        }
       />
-
-      {/* Header — status + actions only. Email, phone, and the "client
-          since" date moved into the Details tab so the top of the page
-          isn't cluttered with metadata. */}
-      <div className="flex items-center justify-between mb-6 gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          {canEdit && <StatusToggle clientId={client.id} initialStatus={client.status} />}
-          {!isPrimaryTrainer && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-              Co-managed
-            </span>
-          )}
-        </div>
-        {/* All per-client actions live behind a single dropdown so the
-            header stays clean on phone-narrow viewports and the
-            trainer doesn't have to hunt across a wrapping button row. */}
-        <ClientActionsMenu
-          clientId={client.id}
-          clientName={client.user.name ?? client.user.email}
-          clientEmail={client.user.email ?? ''}
-          canEdit={canEdit}
-          isPrimaryTrainer={isPrimaryTrainer}
-          needsInvite={!client.user.emailVerified}
-          dogs={allDogs.map(d => ({ id: d.id, name: d.name }))}
-          packages={packages.map(p => ({
-            id: p.id,
-            name: p.name,
-            description: p.description,
-            sessionCount: p.sessionCount,
-            weeksBetween: p.weeksBetween,
-            durationMins: p.durationMins,
-            sessionType: p.sessionType,
-          }))}
-          availability={availabilitySlots.map(s => ({
-            id: s.id,
-            dayOfWeek: s.dayOfWeek,
-            date: s.date ? s.date.toISOString().split('T')[0] : null,
-            startTime: s.startTime,
-            endTime: s.endTime,
-          }))}
-        />
-      </div>
 
       {/* Tabbed content */}
       <ClientProfileTabs
@@ -226,6 +211,7 @@ export default async function ClientDetailPage({
           phone: client.phone,
           clientSince: formatDate(client.user.createdAt),
         }}
+        status={client.status}
       />
     </div>
   )
