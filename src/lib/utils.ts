@@ -26,8 +26,13 @@ export function formatTime(date: Date | string): string {
 // API now omits it for single-session packages, but legacy rows still carry
 // it. Multi-session forms ("— session 2/3") are preserved so the trainer can
 // see progression at a glance.
+//
+// Two variants get stripped:
+//   • "— session 1/1" (legacy single-session counter)
+//   • "— session" (bare suffix with no counter at all — also adds no info)
+// "— session 2/3" and higher are kept because the count is meaningful.
 export function formatSessionTitle(title: string): string {
-  return title.replace(/\s*[—-]\s*session\s+1\s*\/\s*1\s*$/i, '')
+  return title.replace(/\s*[—-]\s*session(\s+1\s*\/\s*1)?\s*$/i, '')
 }
 
 export function getInitials(name: string): string {

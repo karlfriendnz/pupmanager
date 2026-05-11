@@ -17,15 +17,18 @@ import { Receipt, CheckCircle2, Loader2 } from 'lucide-react'
 export function MarkInvoicedButton({
   sessionId,
   initialInvoicedAt,
+  variant = 'inline',
 }: {
   sessionId: string
   initialInvoicedAt: string | Date | null
+  variant?: 'inline' | 'stacked'
 }) {
   const router = useRouter()
   const [invoicedAt, setInvoicedAt] = useState<string | Date | null>(initialInvoicedAt)
   const [saving, setSaving] = useState(false)
 
   const isInvoiced = invoicedAt != null
+  const stacked = variant === 'stacked'
 
   async function handleClick() {
     if (isInvoiced || saving) return
@@ -46,25 +49,35 @@ export function MarkInvoicedButton({
     return (
       <span
         title="Invoiced"
-        className="inline-flex items-center justify-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg bg-purple-50 text-purple-700 border border-purple-200"
+        className={
+          stacked
+            ? 'flex-1 flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-xl bg-purple-50 text-purple-700 border border-purple-200'
+            : 'inline-flex items-center justify-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg bg-purple-50 text-purple-700 border border-purple-200'
+        }
       >
-        <CheckCircle2 className="h-4 w-4" />
-        <span>Invoiced</span>
+        <CheckCircle2 className={stacked ? 'h-6 w-6' : 'h-4 w-4'} />
+        <span className={stacked ? 'text-xs font-medium leading-tight text-center' : ''}>Invoiced</span>
       </span>
     )
   }
+
+  const icon = saving
+    ? <Loader2 className={stacked ? 'h-6 w-6 animate-spin text-purple-600' : 'h-4 w-4 animate-spin text-purple-600'} />
+    : <Receipt className={stacked ? 'h-6 w-6 text-purple-600' : 'h-4 w-4 text-purple-600'} />
 
   return (
     <button
       onClick={handleClick}
       disabled={saving}
       title="Mark as invoiced"
-      className="inline-flex items-center justify-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-purple-300 hover:bg-purple-50 disabled:opacity-60 transition-colors"
+      className={
+        stacked
+          ? 'flex-1 flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:border-purple-300 hover:bg-purple-50 disabled:opacity-60 transition-colors'
+          : 'inline-flex items-center justify-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-purple-300 hover:bg-purple-50 disabled:opacity-60 transition-colors'
+      }
     >
-      {saving
-        ? <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
-        : <Receipt className="h-4 w-4 text-purple-600" />}
-      <span>Mark as invoiced</span>
+      {icon}
+      <span className={stacked ? 'text-xs font-medium leading-tight text-center' : ''}>Mark invoiced</span>
     </button>
   )
 }

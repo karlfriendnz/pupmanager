@@ -2,16 +2,16 @@ import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
-import { Calendar, Clock, MapPin, Video, ExternalLink, Eye, ChevronDown, History, Paperclip } from 'lucide-react'
+import { Calendar, Clock, MapPin, Video, ExternalLink, ChevronDown, History, Paperclip } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatSessionTitle } from '@/lib/utils'
 import { SessionFormReport } from '@/components/session-form-report'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
 import { MarkCompleteButton } from '@/components/mark-complete-button'
 import { MarkInvoicedButton } from '@/components/mark-invoiced-button'
-import { DeleteSessionButton } from '@/components/delete-session-button'
 import { SessionAttachments } from '@/components/session-attachments'
 import { OpenSessionLink } from './open-session-link'
+import { SessionMoreMenu } from './session-more-menu'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
@@ -96,44 +96,49 @@ export default async function SessionPage({
       <PageHeader
         title="Session"
         back={clientId ? { href: `/clients/${clientId}?tab=sessions`, label: 'Back to client' } : undefined}
+        actions={
+          <SessionMoreMenu
+            sessionId={trainingSession.id}
+            redirectTo={clientId ? `/clients/${clientId}?tab=sessions` : '/schedule'}
+          />
+        }
       />
 
-      {/* Action row — left-aligned, labels visible at every breakpoint so
-          buttons read at a glance instead of being icon-only on phones. */}
-      <div className="mb-4 flex flex-wrap items-center justify-start gap-1.5">
-        <Link
-          href={`/sessions/${trainingSession.id}/preview`}
-          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors"
-          title="Preview report"
-        >
-          <Eye className="h-4 w-4 text-purple-600" />
-          <span>Preview</span>
-        </Link>
-        <MarkCompleteButton sessionId={trainingSession.id} initialStatus={trainingSession.status} />
+      {/* Primary actions — Mark complete + Mark invoiced as big stacked
+          tap targets (icon top, label below). Preview and Delete live
+          inside the More menu in the sticky header above. */}
+      <div className="mb-4 flex items-stretch gap-2">
+        <MarkCompleteButton
+          sessionId={trainingSession.id}
+          initialStatus={trainingSession.status}
+          variant="stacked"
+        />
         <MarkInvoicedButton
           sessionId={trainingSession.id}
           initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
-        />
-        <DeleteSessionButton
-          sessionId={trainingSession.id}
-          redirectTo={clientId ? `/clients/${clientId}?tab=sessions` : '/schedule'}
+          variant="stacked"
         />
       </div>
 
       <Card className="mb-6">
         <CardBody className="py-4 flex flex-col gap-2.5 text-sm">
-          {/* Session title + client/dog above, in-person/virtual badge on
-              its own row underneath so it isn't fighting a long session
-              title for horizontal space on phones. */}
+          {/* Identity stack — dog first (the trainer's emotional anchor),
+              then the human, then the session label. In-person/virtual
+              badge underneath on its own row. */}
           <div className="pb-2 border-b border-slate-100">
-            <h2 className="text-base font-semibold text-slate-900 leading-snug">
-              {formatSessionTitle(trainingSession.title)}
-            </h2>
+            {trainingSession.dog ? (
+              <h2 className="text-lg font-semibold text-slate-900 leading-tight">
+                🐕 {trainingSession.dog.name}
+              </h2>
+            ) : null}
             {clientName && (
-              <p className="text-xs text-slate-500 mt-0.5">
-                {clientName}{trainingSession.dog ? ` · 🐕 ${trainingSession.dog.name}` : ''}
+              <p className={`${trainingSession.dog ? 'text-sm text-slate-700 mt-0.5' : 'text-lg font-semibold text-slate-900 leading-tight'}`}>
+                {clientName}
               </p>
             )}
+            <p className="text-xs text-slate-500 mt-0.5">
+              {formatSessionTitle(trainingSession.title)}
+            </p>
             <span className={`inline-flex items-center mt-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full ${
               trainingSession.sessionType === 'VIRTUAL'
                 ? 'bg-purple-50 text-purple-700'
