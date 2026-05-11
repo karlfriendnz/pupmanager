@@ -210,7 +210,7 @@ export default async function DashboardPage({
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">
-          Good {getGreeting()}, {session.user.name?.split(' ')[0]} 👋
+          Good {getGreeting(tz)}, {session.user.name?.split(' ')[0]} 👋
         </h1>
         <p className="hidden sm:block text-slate-500 text-sm mt-1">{session.user.businessName}</p>
       </div>
@@ -484,8 +484,10 @@ function QuickAction({ href, icon, label }: { href: string; icon: React.ReactNod
   )
 }
 
-function getGreeting() {
-  const h = new Date().getHours()
+function getGreeting(tz: string) {
+  // Vercel runs Node in UTC, so new Date().getHours() returns UTC hours and
+  // would call NZ 2pm "morning". Format the hour in the trainer's tz instead.
+  const h = Number(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }))
   if (h < 12) return 'morning'
   if (h < 17) return 'afternoon'
   return 'evening'

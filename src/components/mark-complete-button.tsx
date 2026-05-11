@@ -51,15 +51,17 @@ export function MarkCompleteButton({
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
         disabled={saving}
-        title="Click to mark as not yet complete"
-        className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-60 transition-colors"
+        title={saving ? 'Updating' : hovering ? 'Mark not complete' : 'Completed'}
+        className="inline-flex items-center gap-1.5 text-sm font-medium px-2 sm:px-3 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-60 transition-colors"
       >
         {saving
           ? <Loader2 className="h-4 w-4 animate-spin" />
           : hovering
             ? <Undo2 className="h-4 w-4" />
             : <CheckCircle2 className="h-4 w-4" />}
-        {saving ? 'Updating' : hovering ? 'Mark not complete' : 'Completed'}
+        <span className="hidden sm:inline">
+          {saving ? 'Updating' : hovering ? 'Mark not complete' : 'Completed'}
+        </span>
       </button>
     )
   }
@@ -68,10 +70,11 @@ export function MarkCompleteButton({
     <button
       onClick={() => !saving && setRemote('COMPLETED')}
       disabled={saving}
-      className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
+      title="Mark as complete"
+      className="inline-flex items-center gap-1.5 text-sm font-medium px-2 sm:px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
     >
       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-      Mark as complete
+      <span className="hidden sm:inline">Mark as complete</span>
     </button>
   )
 }

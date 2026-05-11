@@ -44,8 +44,12 @@ export function MarkInvoicedButton({
 
   if (isInvoiced) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700">
-        <CheckCircle2 className="h-4 w-4" /> Invoiced
+      <span
+        title="Invoiced"
+        className="inline-flex items-center gap-1.5 text-sm font-medium px-2 sm:px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700"
+      >
+        <CheckCircle2 className="h-4 w-4" />
+        <span className="hidden sm:inline">Invoiced</span>
       </span>
     )
   }
@@ -54,10 +58,11 @@ export function MarkInvoicedButton({
     <button
       onClick={handleClick}
       disabled={saving}
-      className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60 transition-colors"
+      title="Mark as invoiced"
+      className="inline-flex items-center gap-1.5 text-sm font-medium px-2 sm:px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60 transition-colors"
     >
       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Receipt className="h-4 w-4" />}
-      Mark as invoiced
+      <span className="hidden sm:inline">Mark as invoiced</span>
     </button>
   )
 }

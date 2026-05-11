@@ -92,32 +92,40 @@ export default async function SessionPage({
 
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
-        {clientId ? (
-          <Link
-            href={`/clients/${clientId}?tab=sessions`}
-            className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to client
-          </Link>
-        ) : <span />}
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/sessions/${trainingSession.id}/preview`}
-            className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100"
-          >
-            <Eye className="h-4 w-4" /> Preview report
-          </Link>
-          <MarkCompleteButton sessionId={trainingSession.id} initialStatus={trainingSession.status} />
-          <MarkInvoicedButton
-            sessionId={trainingSession.id}
-            initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
-          />
-          <DeleteSessionButton
-            sessionId={trainingSession.id}
-            redirectTo={clientId ? `/clients/${clientId}?tab=sessions` : '/schedule'}
-          />
+      {/* Sticky action bar — back link + workflow buttons stay pinned at the
+          top while the trainer scrolls the report. Action labels collapse to
+          icons on mobile so all four (Preview / Complete / Invoice / Delete)
+          fit on one line without wrapping. */}
+      <div className="sticky top-0 z-20 -mx-4 md:-mx-8 px-4 md:px-8 py-3 mb-4 bg-slate-50/90 backdrop-blur border-b border-slate-100">
+        <div className="flex items-center justify-between gap-2 max-w-3xl mx-auto">
+          {clientId ? (
+            <Link
+              href={`/clients/${clientId}?tab=sessions`}
+              className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 flex-shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Back to client</span>
+            </Link>
+          ) : <span />}
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+            <Link
+              href={`/sessions/${trainingSession.id}/preview`}
+              className="inline-flex items-center justify-center gap-1.5 text-sm font-medium px-2 sm:px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100"
+              title="Preview report"
+            >
+              <Eye className="h-4 w-4" />
+              <span className="hidden sm:inline">Preview report</span>
+            </Link>
+            <MarkCompleteButton sessionId={trainingSession.id} initialStatus={trainingSession.status} />
+            <MarkInvoicedButton
+              sessionId={trainingSession.id}
+              initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
+            />
+            <DeleteSessionButton
+              sessionId={trainingSession.id}
+              redirectTo={clientId ? `/clients/${clientId}?tab=sessions` : '/schedule'}
+            />
+          </div>
         </div>
       </div>
 
