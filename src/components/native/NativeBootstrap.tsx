@@ -63,15 +63,25 @@ export function NativeBootstrap() {
 
       await PushNotifications.addListener('registration', async (token) => {
         try {
-          await fetch('/api/devices/register', {
+          const res = await fetch('/api/devices/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: token.value, platform: 'IOS' }),
           });
-        } catch { /* swallowed — retry on next launch */ }
+          if (!res.ok) {
+            console.error('[native-push] register returned', res.status);
+          }
+        } catch (err) {
+          // Network/parse error — registration will retry on next launch.
+          // Log so the failure is visible in Sentry/console rather than
+          // a silent "no devices registered" state in Settings.
+          console.error('[native-push] register failed', err);
+        }
       });
 
-      await PushNotifications.addListener('registrationError', () => {});
+      await PushNotifications.addListener('registrationError', (err) => {
+        console.error('[native-push] APNs registrationError', err);
+      });
 
       // Deep-link tap handling: every push payload from the server includes a
       // `path` in its custom data. When the user taps the notification, we
@@ -135,9 +145,11 @@ export function NativeBootstrap() {
         if (u.hostname !== 'app.pupmanager.com') return;
         const target = u.pathname + (u.search || '') + (u.hash || '');
         window.location.assign(target);
-      } catch {
-        // Malformed URL — silently ignore. The user can always retry
-        // from email.
+      } catch (err) {
+        // Malformed URL — log so we can spot bad deep-link payloads
+        // from email or push notifications, instead of the tap going
+        // silently nowhere.
+        console.error('[native-deep-link] failed to parse url', url, err);
       }
     });
     return () => { void handle.then(h => h.remove()); };

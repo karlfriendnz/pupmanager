@@ -9,8 +9,6 @@ interface PageHeaderProps {
   subtitle?: React.ReactNode
   back?: BackLink
   actions?: React.ReactNode
-  /** Kept for back-compat; no longer affects rendering. */
-  flush?: boolean
 }
 
 // Shared sticky page header used across the trainer app. Pins to the top
@@ -27,9 +25,6 @@ interface PageHeaderProps {
 //       <PageHeader … />
 //       <div className="p-4 md:p-8 w-full max-w-… mx-auto">…</div>
 //     </>
-// - `flush` is kept for back-compat with pages that don't follow the
-//   sibling pattern yet (it has no effect now — the header always renders
-//   in-place without negative-margin breakouts).
 export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) {
   return (
     <div

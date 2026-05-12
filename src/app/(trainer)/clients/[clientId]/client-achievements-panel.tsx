@@ -94,8 +94,15 @@ export function ClientAchievementsPanel({ clientId, canEdit }: { clientId: strin
     if (!confirm('Revoke this achievement?')) return
     setBusyId(achievementId)
     try {
-      await fetch(`/api/clients/${clientId}/achievements/${achievementId}`, { method: 'DELETE' })
+      const res = await fetch(`/api/clients/${clientId}/achievements/${achievementId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`DELETE ${res.status}`)
       setRows(prev => prev ? prev.map(r => r.id === achievementId ? { ...r, earned: false, award: null } : r) : prev)
+    } catch (err) {
+      // Server-first: don't drop the row locally if the DB still has the
+      // award. Surface the error so the trainer knows the revoke didn't
+      // stick instead of seeing it reappear after a refresh.
+      console.error('[client-achievements] revoke failed', err)
+      setError('Could not revoke — try again')
     } finally {
       setBusyId(null)
     }

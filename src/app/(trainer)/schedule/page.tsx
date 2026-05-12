@@ -64,8 +64,12 @@ export default async function SchedulePage({
   if (!trainerProfile) redirect('/login')
 
   // Top up forever-ongoing assignments before fetching sessions, so the
-  // current view always includes any newly-generated bookings.
-  await extendOngoingPackages(trainerProfile.id).catch(() => {})
+  // current view always includes any newly-generated bookings. Failure
+  // here is non-fatal (the trainer's existing sessions still render),
+  // but log so we notice if it's failing consistently.
+  await extendOngoingPackages(trainerProfile.id).catch(err => {
+    console.error('[schedule] extendOngoingPackages failed', err)
+  })
 
   // Onboarding nudges (the indigo dot on the Hours button) only fire while
   // the trainer's still in the wizard. Once they're done, the schedule

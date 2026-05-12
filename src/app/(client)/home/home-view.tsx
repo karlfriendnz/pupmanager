@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Flame, MapPin, Clock, ChevronRight, Check, Play,
+  MapPin, Clock, ChevronRight, Check, Play,
   Sparkles, ShoppingBag, Download, Video, Calendar as CalendarIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -112,21 +112,9 @@ interface Props {
   achievements?: AchievementBadge[]
 }
 
-// ─── Gamification mocks (rules TBD) ──────────────────────────────────────────
-
-const MOCK_STREAK = 14
-const MOCK_XP = 1240
-const MOCK_LEVEL = 3
-const MOCK_NEXT_LEVEL_XP = 1500
-
-const MOCK_BADGES = [
-  { id: 'b1', label: '7-day streak', icon: '🔥', earned: true },
-  { id: 'b2', label: 'First recall', icon: '🎯', earned: true },
-  { id: 'b3', label: 'Mat master', icon: '🛏️', earned: true },
-  { id: 'b4', label: '14-day streak', icon: '🔥', earned: true },
-  { id: 'b5', label: 'Loose-leash', icon: '🦮', earned: false },
-  { id: 'b6', label: '30-day streak', icon: '🏅', earned: false },
-]
+// Gamification mocks were here (MOCK_STREAK, MOCK_XP, MOCK_LEVEL,
+// MOCK_BADGES) but all dependent UI is gone. Re-introduce once the
+// rules + backend data are real — don't reintroduce the mocks.
 
 function formatPrice(cents: number | null) {
   if (cents == null) return 'Contact'
@@ -209,7 +197,6 @@ export function ClientHomeView({
   const totalCount = homeworkResolved.length
   const allDone = totalCount > 0 && doneCount === totalCount
 
-  const xpPct = Math.min(100, Math.round((MOCK_XP / MOCK_NEXT_LEVEL_XP) * 100))
 
   async function toggleHomework(task: HomeworkTask) {
     if (busyTaskId) return
@@ -671,15 +658,6 @@ export function ClientHomeView({
 }
 
 // ─── Small components ────────────────────────────────────────────────────────
-
-function StreakChip({ days }: { days: number }) {
-  return (
-    <div className="flex items-center gap-1 bg-gradient-to-br from-orange-100 to-red-100 border border-orange-200 px-2 py-1 rounded-full flex-shrink-0">
-      <Flame className="h-3.5 w-3.5 text-orange-600" fill="currentColor" />
-      <span className="text-[11px] font-bold text-orange-900 tabular-nums">{days}</span>
-    </div>
-  )
-}
 
 function SectionHeader({
   title,

@@ -1038,8 +1038,16 @@ function AvailabilityManager({
   }
 
   async function handleDeleteBlackoutClick(id: string) {
+    // Server is the source of truth — only drop from the UI after a
+    // successful DELETE. Without this, a failed request would leave the
+    // UI in a "deleted" state while the blackout still exists in the DB,
+    // and the row would pop back on next reload.
+    const res = await fetch(`/api/blackouts/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      console.error('[schedule] blackout DELETE failed', { id, status: res.status })
+      return
+    }
     onDeleteBlackout(id)
-    await fetch(`/api/blackouts/${id}`, { method: 'DELETE' })
   }
 
   function startEdit(slot: AvailSlot) {
@@ -1816,7 +1824,13 @@ function SessionModal({
   }
 
   async function handleDeleteTask(taskId: string) {
-    await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+    // Drop from local UI only after the server confirms — otherwise a
+    // failed DELETE leaves the task in the DB but hides it locally.
+    const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+    if (!res.ok) {
+      console.error('[schedule] task DELETE failed', { taskId, status: res.status })
+      return
+    }
     setTasks(prev => prev.filter(t => t.id !== taskId))
   }
 
@@ -2732,7 +2746,13 @@ export function ScheduleView({
   }
 
   async function handleDeleteAvail(id: string) {
-    await fetch(`/api/availability/${id}`, { method: 'DELETE' })
+    // Server-first: a failed DELETE would otherwise hide the slot locally
+    // while it's still in the DB, popping back on next reload.
+    const res = await fetch(`/api/availability/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      console.error('[schedule] availability DELETE failed', { id, status: res.status })
+      return
+    }
     setAvailSlots(prev => prev.filter(s => s.id !== id))
   }
 
