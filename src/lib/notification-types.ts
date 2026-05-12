@@ -166,10 +166,13 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     label: 'New enquiry',
     description: 'Someone filled in one of your public forms (embed or intake).',
     trigger: 'event',
-    channels: ['PUSH'],
+    // PUSH for the in-pocket buzz, EMAIL so the trainer has the full
+    // enquiry in their inbox to reply from (or forward, or read at
+    // their desk).
+    channels: ['PUSH', 'EMAIL'],
     defaults: {
       enabled: true,
-      title: 'New enquiry — {{name}}',
+      title: '🐾 New enquiry from {{name}}',
       body: '{{preview}}',
     },
     placeholders: ['name', 'email', 'dogName', 'preview'],

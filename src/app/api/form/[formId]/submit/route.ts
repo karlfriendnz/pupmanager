@@ -67,15 +67,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
     select: { id: true },
   })
 
-  // Fire-and-forget push to the trainer. Errors are swallowed inside
-  // the helper so a flaky APNs round-trip never fails a public form.
-  await notifyEnquiryTrainer({
-    enquiryId: enquiry.id,
-    trainerId: form.trainerId,
-    name,
-    email,
-    message: message?.trim() || null,
-  })
+  // Fire-and-forget push + email to the trainer. The helper fetches
+  // the full enquiry on its own and swallows errors internally so a
+  // flaky APNs/Resend round-trip never fails the public form.
+  await notifyEnquiryTrainer({ enquiryId: enquiry.id })
 
   return NextResponse.json({ ok: true }, { status: 201 })
 }
