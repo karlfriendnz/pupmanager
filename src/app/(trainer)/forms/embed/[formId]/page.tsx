@@ -38,6 +38,8 @@ export default async function EditEmbedFormPage({ params }: { params: Promise<{ 
           thankYouTitle: form.thankYouTitle,
           thankYouMessage: form.thankYouMessage,
           isActive: form.isActive,
+          showBorder: form.showBorder,
+          buttonColor: form.buttonColor,
         }}
         customFields={customFields.map(f => ({
           id: f.id,

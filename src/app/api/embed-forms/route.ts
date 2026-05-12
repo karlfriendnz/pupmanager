@@ -8,6 +8,8 @@ const fieldSchema = z.object({
   required: z.boolean(),
 })
 
+const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}){1,2}([0-9a-fA-F]{2})?$/)
+
 const schema = z.object({
   title: z.string().min(1),
   description: z.string().optional().nullable(),
@@ -16,6 +18,8 @@ const schema = z.object({
   thankYouTitle: z.string().optional().nullable(),
   thankYouMessage: z.string().optional().nullable(),
   isActive: z.boolean().default(true),
+  showBorder: z.boolean().default(true),
+  buttonColor: hexColor.nullable().optional(),
 })
 
 export async function GET() {
@@ -60,6 +64,8 @@ export async function POST(req: Request) {
         thankYouTitle: parsed.data.thankYouTitle ?? null,
         thankYouMessage: parsed.data.thankYouMessage ?? null,
         isActive: parsed.data.isActive,
+        showBorder: parsed.data.showBorder,
+        buttonColor: parsed.data.buttonColor ?? null,
       },
     })
     return NextResponse.json(form, { status: 201 })

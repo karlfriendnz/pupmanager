@@ -8,6 +8,11 @@ const fieldSchema = z.object({
   required: z.boolean(),
 })
 
+// 7-char (#rgb) or 9-char (#rrggbbaa) hex colour. Loose regex —
+// browser <input type="color"> always emits #rrggbb, so this is mostly
+// defensive against direct API consumers passing odd strings.
+const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}){1,2}([0-9a-fA-F]{2})?$/)
+
 const schema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional().nullable(),
@@ -16,6 +21,8 @@ const schema = z.object({
   thankYouTitle: z.string().optional().nullable(),
   thankYouMessage: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
+  showBorder: z.boolean().optional(),
+  buttonColor: hexColor.nullable().optional(),
 })
 
 async function getForm(formId: string, userId: string) {
@@ -45,6 +52,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ formId
       ...(parsed.data.thankYouTitle !== undefined && { thankYouTitle: parsed.data.thankYouTitle }),
       ...(parsed.data.thankYouMessage !== undefined && { thankYouMessage: parsed.data.thankYouMessage }),
       ...(parsed.data.isActive !== undefined && { isActive: parsed.data.isActive }),
+      ...(parsed.data.showBorder !== undefined && { showBorder: parsed.data.showBorder }),
+      ...(parsed.data.buttonColor !== undefined && { buttonColor: parsed.data.buttonColor }),
     },
   })
   return NextResponse.json(updated)

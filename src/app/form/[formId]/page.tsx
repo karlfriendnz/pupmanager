@@ -32,6 +32,8 @@ export default async function PublicFormPage({
       description={form.description}
       thankYouTitle={form.thankYouTitle}
       thankYouMessage={form.thankYouMessage}
+      showBorder={form.showBorder}
+      buttonColor={form.buttonColor}
       fields={fields}
       customFields={customFields.map(f => ({
         id: f.id,

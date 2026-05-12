@@ -16,9 +16,16 @@ interface Props {
   description: string | null
   thankYouTitle: string | null
   thankYouMessage: string | null
+  /** Trainer-controlled: draw a slate-200 border around the field
+   *  groups. Off when the trainer's site already provides framing. */
+  showBorder: boolean
+  /** Hex string override for the submit button. null → platform blue. */
+  buttonColor: string | null
   fields: { key: string; required: boolean }[]
   customFields: CustomField[]
 }
+
+const DEFAULT_BUTTON_COLOR = '#2563eb'
 
 const FIELD_LABELS: Record<string, string> = {
   phone: 'Phone number',
@@ -30,9 +37,18 @@ export function PublicForm({
   description,
   thankYouTitle,
   thankYouMessage,
+  showBorder,
+  buttonColor,
   fields,
   customFields,
 }: Props) {
+  // Border classes are computed once so both field-group cards stay in
+  // sync. When the trainer turns the border off, drop the background +
+  // padding too so the page bleed-through looks intentional.
+  const cardClass = showBorder
+    ? 'bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-4'
+    : 'flex flex-col gap-4'
+  const submitColor = buttonColor ?? DEFAULT_BUTTON_COLOR
   const [values, setValues] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -121,7 +137,7 @@ export function PublicForm({
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           {/* Always-shown fields */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-4">
+          <div className={cardClass}>
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Your details</h2>
             <Field label="Full name" required>
               <input
@@ -166,7 +182,7 @@ export function PublicForm({
 
           {/* Custom fields */}
           {customFields.length > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-4">
+            <div className={cardClass}>
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Additional information</h2>
               {customFields.map(cf => (
                 <Field key={cf.id} label={cf.label} required={cf.required}>
@@ -203,7 +219,12 @@ export function PublicForm({
           <button
             type="submit"
             disabled={submitting}
-            className="h-12 w-full rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-60 transition-colors text-sm"
+            // Inline background so trainer-picked hex colours work
+            // without precompiling a Tailwind class. Hover darkens via
+            // a subtle CSS filter so any colour gets a sensible hover
+            // state without needing a paired hover hex.
+            style={{ backgroundColor: submitColor }}
+            className="h-12 w-full rounded-xl text-white font-semibold disabled:opacity-60 transition-[filter,opacity] hover:brightness-90 text-sm"
           >
             {submitting ? 'Submitting…' : 'Submit'}
           </button>

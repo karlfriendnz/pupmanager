@@ -29,7 +29,11 @@ interface EmbedForm {
   thankYouTitle: string | null
   thankYouMessage: string | null
   isActive: boolean
+  showBorder: boolean
+  buttonColor: string | null
 }
+
+const DEFAULT_BUTTON_COLOR = '#2563eb' // Tailwind blue-600 — platform default
 
 export interface CustomField {
   id: string
@@ -111,6 +115,8 @@ export function EmbedFormEditor({
   const [enabledCustomIds, setEnabledCustomIds] = useState<Set<string>>(
     new Set(initial?.customFieldIds ?? [])
   )
+  const [showBorder, setShowBorder] = useState(initial?.showBorder ?? true)
+  const [buttonColor, setButtonColor] = useState(initial?.buttonColor ?? DEFAULT_BUTTON_COLOR)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -149,6 +155,10 @@ export function EmbedFormEditor({
       // Use the live state, not the snapshot from page-load — otherwise
       // toggling Published then clicking Save reverts the toggle.
       isActive,
+      showBorder,
+      // Store null when the trainer hasn't touched the colour (matches
+      // platform blue) so resetting back to default is a real toggle.
+      buttonColor: buttonColor.toLowerCase() === DEFAULT_BUTTON_COLOR ? null : buttonColor,
     }
 
     const res = initial
@@ -320,6 +330,53 @@ export function EmbedFormEditor({
                   onToggle={() => toggleCustom(cf.id)}
                 />
               ))}
+            </div>
+          </div>
+
+          {/* Styling — let the trainer match the form to their site's
+              brand. Border toggle is useful for embeds where the parent
+              page already provides framing; button colour overrides the
+              platform blue for the submit CTA. */}
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Styling</p>
+            <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setShowBorder(v => !v)}
+                className="flex-shrink-0"
+                aria-pressed={showBorder}
+                aria-label="Toggle card border"
+              >
+                {showBorder
+                  ? <ToggleRight className="h-5 w-5 text-blue-600" />
+                  : <ToggleLeft className="h-5 w-5 text-slate-300" />}
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-900">Card border</p>
+                <p className="text-xs text-slate-500">A subtle border around each field group. Turn off when you&apos;re embedding inside a card on your own site.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200">
+              <input
+                type="color"
+                value={buttonColor}
+                onChange={e => setButtonColor(e.target.value)}
+                className="h-9 w-12 rounded-lg border border-slate-200 cursor-pointer bg-white"
+                aria-label="Submit button colour"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-900">Submit button colour</p>
+                <p className="text-xs text-slate-500 break-all">{buttonColor}{buttonColor.toLowerCase() === DEFAULT_BUTTON_COLOR ? ' (platform default)' : ''}</p>
+              </div>
+              {buttonColor.toLowerCase() !== DEFAULT_BUTTON_COLOR && (
+                <button
+                  type="button"
+                  onClick={() => setButtonColor(DEFAULT_BUTTON_COLOR)}
+                  className="text-xs text-slate-500 hover:text-slate-700 hover:underline"
+                >
+                  Reset
+                </button>
+              )}
             </div>
           </div>
 
