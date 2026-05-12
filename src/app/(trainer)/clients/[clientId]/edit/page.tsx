@@ -62,7 +62,7 @@ export default async function EditClientPage({
   ]
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto">
+    <div className="p-4 md:p-8 w-full max-w-5xl mx-auto">
       <PageHeader
         title={`Edit ${client.user.name ?? client.user.email}`}
         back={{ href: `/clients/${clientId}`, label: 'Back to profile' }}

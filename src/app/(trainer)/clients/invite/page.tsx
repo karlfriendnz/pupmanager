@@ -28,7 +28,7 @@ Looking forward to working with you,
 ${trainerProfile?.businessName ?? 'Your Trainer'}`
 
   return (
-    <div className="p-4 md:p-8 max-w-2xl mx-auto">
+    <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
       <PageHeader
         title="Invite a new client"
         back={{ href: '/clients', label: 'Back to clients' }}

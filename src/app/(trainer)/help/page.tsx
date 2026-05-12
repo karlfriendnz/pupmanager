@@ -31,7 +31,7 @@ const FAQ = [
 
 export default function TrainerHelpPage() {
   return (
-    <div className="p-4 md:p-8 max-w-2xl mx-auto">
+    <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
       <PageHeader title="Help & Support" />
       <div className="mb-8" />
 

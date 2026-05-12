@@ -71,7 +71,7 @@ export default async function BillingSetupPage() {
   if (cheapestPaid?.stripePriceId) configuredCurrencies.add('NZD')
 
   return (
-    <div className="px-4 py-10 md:py-14 max-w-xl mx-auto" style={{ color: 'var(--pm-ink-900)' }}>
+    <div className="px-4 py-10 md:py-14 w-full max-w-xl mx-auto" style={{ color: 'var(--pm-ink-900)' }}>
       <div className="text-center mb-8">
         <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--pm-accent-500)' }}>
           Set up your subscription

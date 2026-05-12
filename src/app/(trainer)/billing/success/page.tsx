@@ -28,7 +28,7 @@ export default async function BillingSuccessPage() {
   const active = trainer?.subscriptionStatus === 'ACTIVE'
 
   return (
-    <div className="p-4 md:p-8 max-w-xl mx-auto text-center">
+    <div className="p-4 md:p-8 w-full max-w-xl mx-auto text-center">
       <div className="mt-6 rounded-3xl bg-white border border-slate-100 shadow-sm p-10">
         <div className="mx-auto grid place-items-center h-14 w-14 rounded-2xl bg-emerald-50 text-emerald-600 mb-4">
           <CheckCircle2 className="h-7 w-7" />

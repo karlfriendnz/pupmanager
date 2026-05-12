@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Checkout cancelled · PupManager' }
 // plan picker so they can try again whenever.
 export default function BillingCancelPage() {
   return (
-    <div className="p-4 md:p-8 max-w-xl mx-auto text-center">
+    <div className="p-4 md:p-8 w-full max-w-xl mx-auto text-center">
       <div className="mt-6 rounded-3xl bg-white border border-slate-100 shadow-sm p-10">
         <div className="mx-auto grid place-items-center h-14 w-14 rounded-2xl bg-slate-100 text-slate-600 mb-4">
           <Info className="h-7 w-7" />

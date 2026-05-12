@@ -27,7 +27,7 @@ export default async function AIToolsPage() {
   })
 
   return (
-    <div className="p-4 md:p-8 max-w-2xl mx-auto">
+    <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
       <PageHeader
         title="AI Tools"
         actions={<Sparkles className="h-5 w-5 text-blue-600" />}

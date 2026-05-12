@@ -84,7 +84,7 @@ export default async function SessionPreviewPage({
 
   return (
     <div className="min-h-screen w-full" style={reportBackgroundStyle(responses)}>
-      <div className="p-4 md:p-8 max-w-3xl mx-auto">
+      <div className="p-4 md:p-8 w-full max-w-3xl mx-auto">
         <PageHeader
           title="Session preview"
           back={{ href: `/sessions/${trainingSession.id}`, label: 'Back to session' }}

@@ -55,7 +55,7 @@ export default async function TrainerSettingsPage() {
   }))
 
   return (
-    <div className="p-4 md:p-8 max-w-2xl md:max-w-[872px] mx-auto">
+    <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-[872px] mx-auto">
       <PageHeader title="Settings" />
 
       <SettingsTabs

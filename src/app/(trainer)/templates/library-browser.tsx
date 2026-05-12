@@ -745,7 +745,7 @@ export function LibraryBrowser({ initialTypes, clients }: Props) {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
+    <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
       <PageHeader title="Library" />
 
       {!selectedTypeId && <TypesView />}
