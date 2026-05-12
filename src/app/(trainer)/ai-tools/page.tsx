@@ -27,11 +27,12 @@ export default async function AIToolsPage() {
   })
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
+    <>
       <PageHeader
         title="AI Tools"
         actions={<Sparkles className="h-5 w-5 text-blue-600" />}
       />
+      <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
       <p className="text-sm text-slate-500 mb-8">AI-powered tools to help you plan and review client training</p>
 
       <div className="flex flex-col gap-8">
@@ -64,6 +65,7 @@ export default async function AIToolsPage() {
           </CardBody>
         </Card>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

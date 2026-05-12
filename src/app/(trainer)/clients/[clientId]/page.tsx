@@ -109,7 +109,7 @@ export default async function ClientDetailPage({
   const dogNames = Object.fromEntries(allDogs.map(d => [d.id, d.name]))
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
+    <>
       <PageHeader
         title={client.user.name ?? client.user.email ?? 'Client'}
         subtitle={!isPrimaryTrainer ? 'Co-managed' : undefined}
@@ -142,6 +142,7 @@ export default async function ClientDetailPage({
           />
         }
       />
+      <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
 
       {/* Tabbed content */}
       <ClientProfileTabs
@@ -213,6 +214,7 @@ export default async function ClientDetailPage({
         }}
         status={client.status}
       />
-    </div>
+      </div>
+    </>
   )
 }

@@ -164,7 +164,7 @@ export function PackagesView({
   }
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+    <>
       <PageHeader
         title="Packages"
         actions={
@@ -174,6 +174,7 @@ export function PackagesView({
           </Button>
         }
       />
+      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       <p className="text-sm text-slate-500 mb-4">
         Bundles of sessions you can assign to clients in one go.
       </p>
@@ -213,7 +214,8 @@ export function PackagesView({
           onSaved={(p, isNew) => { upsert(p, isNew); setShowCreate(false); setEditing(null) }}
         />
       )}
-    </div>
+      </div>
+    </>
   )
 }
 

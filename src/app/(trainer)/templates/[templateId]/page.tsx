@@ -32,7 +32,7 @@ export default async function TemplateDetailPage({ params }: { params: Promise<{
   })
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-4xl xl:max-w-6xl mx-auto">
+    <>
       <PageHeader
         title={template.name}
         subtitle={`${template.tasks.length} tasks`}
@@ -49,6 +49,7 @@ export default async function TemplateDetailPage({ params }: { params: Promise<{
           </>
         }
       />
+      <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-4xl xl:max-w-6xl mx-auto">
 
       {template.description && (
         <p className="text-slate-500 text-sm mb-6">{template.description}</p>
@@ -72,6 +73,7 @@ export default async function TemplateDetailPage({ params }: { params: Promise<{
           </Card>
         ))}
       </div>
-    </div>
+      </div>
+    </>
   )
 }

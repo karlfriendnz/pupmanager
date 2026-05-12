@@ -81,10 +81,10 @@ export function MessagesView({
   const threadVisibility = selectedClient ? 'flex' : 'hidden md:flex'
 
   return (
-    // -mt-4 cancels PageHeader's mb-4 so there's no dead band between
-    // the page title and the two-pane content. -mx negates the page's
-    // px so the panes go flush to main's edges.
-    <div className="flex flex-1 min-h-0 -mt-4 -mx-4 md:-mx-8 -mb-20 md:mb-0 border-t border-slate-100">
+    // -mx negates the page's horizontal padding so the panes go flush
+    // to main's edges. No top margin — PageHeader has its own bottom
+    // border, so the two-pane content sits cleanly below it.
+    <div className="flex flex-1 min-h-0 -mx-4 md:-mx-8">
       {/* ── Thread list (left pane) ─────────────────────────────────────── */}
       <aside
         className={cn(
@@ -98,7 +98,7 @@ export function MessagesView({
       >
         {/* Tab strip — sticky at the top of the list pane so the Active /
             Inactive controls stay visible while the list scrolls. */}
-        <div className="sticky top-0 z-10 flex gap-1 border-b border-slate-200 bg-white px-2 pt-2">
+        <div className="sticky top-0 z-10 flex gap-1 border-b border-slate-100 bg-white p-2">
           {([
             { key: 'active',   label: 'Active',   count: activeClients.length,   unread: activeUnread },
             { key: 'inactive', label: 'Inactive', count: inactiveClients.length, unread: inactiveUnread },
@@ -109,15 +109,17 @@ export function MessagesView({
                 key={t.key}
                 href={hrefFor({ nextTab: t.key })}
                 className={cn(
-                  'flex-1 px-3 py-2 text-sm font-medium text-center -mb-px border-b-2 transition-colors',
-                  active ? 'text-blue-700 border-blue-600' : 'text-slate-500 border-transparent hover:text-slate-700',
+                  'flex-1 px-3 py-2 rounded-lg text-sm font-medium text-center transition-colors',
+                  active
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50',
                 )}
               >
                 <span className="inline-flex items-center gap-1.5">
                   {t.label}
                   <span className={cn(
                     'inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] tabular-nums',
-                    active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500',
+                    active ? 'bg-white text-blue-700' : 'bg-slate-100 text-slate-500',
                   )}>
                     {t.count}
                   </span>

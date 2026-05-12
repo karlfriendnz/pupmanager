@@ -36,12 +36,14 @@ export default async function EditTemplatePage({ params }: { params: Promise<{ t
   }
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
+    <>
       <PageHeader
         title="Edit template"
         back={{ href: `/templates/${template.id}`, label: 'Back to template' }}
       />
-      <TemplateBuilderForm templateId={template.id} defaultValues={defaultValues} />
-    </div>
+      <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
+        <TemplateBuilderForm templateId={template.id} defaultValues={defaultValues} />
+      </div>
+    </>
   )
 }

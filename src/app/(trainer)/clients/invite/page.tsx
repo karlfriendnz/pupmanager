@@ -28,15 +28,17 @@ Looking forward to working with you,
 ${trainerProfile?.businessName ?? 'Your Trainer'}`
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
+    <>
       <PageHeader
         title="Invite a new client"
         back={{ href: '/clients', label: 'Back to clients' }}
       />
+      <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
       <p className="text-sm text-slate-500 mb-6">
         Customise the invitation email before sending
       </p>
       <InviteClientForm defaultTemplate={defaultTemplate} />
-    </div>
+      </div>
+    </>
   )
 }

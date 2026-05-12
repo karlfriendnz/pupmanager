@@ -84,16 +84,16 @@ export default async function SessionPreviewPage({
 
   return (
     <div className="min-h-screen w-full" style={reportBackgroundStyle(responses)}>
+      <PageHeader
+        title="Session preview"
+        back={{ href: `/sessions/${trainingSession.id}`, label: 'Back to session' }}
+        actions={
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
+            <Eye className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Preview — what your client sees</span>
+          </span>
+        }
+      />
       <div className="p-4 md:p-8 w-full max-w-3xl mx-auto">
-        <PageHeader
-          title="Session preview"
-          back={{ href: `/sessions/${trainingSession.id}`, label: 'Back to session' }}
-          actions={
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">
-              <Eye className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Preview — what your client sees</span>
-            </span>
-          }
-        />
 
         <SessionReport
           sessionTitle={trainingSession.title}

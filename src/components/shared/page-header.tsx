@@ -9,43 +9,46 @@ interface PageHeaderProps {
   subtitle?: React.ReactNode
   back?: BackLink
   actions?: React.ReactNode
-  // Pages that don't use the standard p-4 md:p-8 wrapper can opt out of the
-  // negative-margin breakout (the header then renders flush inside its
-  // parent instead of bursting through page padding).
+  /** Kept for back-compat; no longer affects rendering. */
   flush?: boolean
 }
 
-// Shared sticky page header used across the trainer & client app. Pins to
-// the top of the viewport while the user scrolls and reserves
-// env(safe-area-inset-top) so iOS chrome (time/battery) renders against the
-// header's solid white surface — Style.Dark glyphs need a light background
-// to stay legible.
+// Shared sticky page header used across the trainer app. Pins to the top
+// of the viewport while the user scrolls and reserves
+// env(safe-area-inset-top) so iOS chrome (time/battery) renders against
+// the header's solid white surface — Style.Dark glyphs need a light
+// background to stay legible.
 //
 // Layout contract:
-// - Designed to live INSIDE the standard `p-4 md:p-8 max-w-* mx-auto` page
-//   wrapper. The negative top/x margins bust out of that padding so the
-//   sticky surface is flush with the screen edges.
-// - The page's <main> already has a capped safe-area-inset-top pad (see
-//   app-shell.tsx). The header's negative top margin pulls back through
-//   that pad too, then re-adds the inset internally as paddingTop.
-// - Use `flush` for pages that don't use p-4 md:p-8 (e.g. centered text
-//   wrappers, billing flows).
-export function PageHeader({ title, subtitle, back, actions, flush = false }: PageHeaderProps) {
+// - Render as a SIBLING of the page's max-w content wrapper, not a child.
+//   The header is full-width (spans the entire <main> content area) and
+//   provides its own horizontal padding. Each page is:
+//     <>
+//       <PageHeader … />
+//       <div className="p-4 md:p-8 w-full max-w-… mx-auto">…</div>
+//     </>
+// - `flush` is kept for back-compat with pages that don't follow the
+//   sibling pattern yet (it has no effect now — the header always renders
+//   in-place without negative-margin breakouts).
+export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) {
   return (
     <div
-      className={cn(
-        'sticky top-0 z-20 mb-4 bg-white border-b border-slate-100',
-        !flush && '-mt-4 md:-mt-8 -mx-4 md:-mx-8 px-4 md:px-8',
-      )}
+      className="sticky top-0 z-20 bg-white border-b border-slate-100 px-4 md:px-8"
       style={{
+        // The header's own top padding combines safe-area-inset-top (so
+        // iOS chrome sits on the white surface) with a small breathing
+        // gap below it. <main> caps its own safe-area pad at 1rem; we
+        // negate that with a transform so the bar's surface still extends
+        // up under the chrome.
         paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)',
         paddingBottom: '0.625rem',
-        // Pull through <main>'s capped safe-area-inset-top pad AND the
-        // page's own top padding so the bar's surface sits flush.
-        marginTop: flush ? undefined : 'calc(min(env(safe-area-inset-top, 0px), 1rem) * -1 - 1rem)',
+        // Pull the header up through <main>'s safe-area pad (capped 1rem)
+        // so the bar's surface is flush with the very top of the viewport
+        // on iOS. On desktop env() = 0 so this is a no-op.
+        marginTop: 'calc(min(env(safe-area-inset-top, 0px), 1rem) * -1)',
       }}
     >
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-2 min-w-0 min-h-12">
         {back && (
           <Link
             href={back.href}

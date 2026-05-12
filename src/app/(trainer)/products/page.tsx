@@ -19,8 +19,9 @@ export default async function ProductsPage() {
   })
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
+    <>
       <PageHeader title="Products" />
+      <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
       <p className="text-sm text-slate-500 mb-6">
         Sell physical items and digital downloads to your clients.
       </p>
@@ -39,6 +40,7 @@ export default async function ProductsPage() {
           active: p.active,
         }))}
       />
-    </div>
+      </div>
+    </>
   )
 }

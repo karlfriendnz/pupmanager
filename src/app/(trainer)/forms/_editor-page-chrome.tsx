@@ -5,12 +5,14 @@ import { PageHeader } from '@/components/shared/page-header'
 // consistent.
 export function FormEditorPageChrome({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
+    <>
       <PageHeader
         title={title}
         back={{ href: '/settings?tab=forms', label: 'Back to forms' }}
       />
+      <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
       {children}
-    </div>
+      </div>
+    </>
   )
 }

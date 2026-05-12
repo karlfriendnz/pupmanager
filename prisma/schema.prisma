@@ -126,6 +126,7 @@ enum NotificationType {
   NEW_CLIENT_INVITE_ACCEPTED // a client used the invite link to sign up
   CLIENT_COMPLETED_TASKS // a client completed all of today's tasks
   NEW_MESSAGE // a new in-app message landed
+  NEW_ENQUIRY // a public form (embed or intake) submission landed
   DAILY_SUMMARY // morning digest of today's sessions/tasks
   WEEKLY_SUMMARY // Sunday-evening wrap of the week + week-ahead glance
 }

@@ -44,13 +44,14 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   const labelById = Object.fromEntries(fields.map(f => [f.id, f.label]))
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+    <>
       <PageHeader
         title="Enquiry"
         subtitle={`Submitted ${enquiry.createdAt.toLocaleString()}${enquiry.form ? ` via "${enquiry.form.title}"` : ''}`}
         back={{ href: '/enquiries', label: 'Back to enquiries' }}
         actions={<StatusPill status={enquiry.status} />}
       />
+      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
 
       <Card className="p-5 mb-4">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Contact</h2>
@@ -108,7 +109,8 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         defaultSubject={`Re: your enquiry${enquiry.dogName ? ` about ${enquiry.dogName}` : ''}`}
         defaultGreeting={`Hi ${enquiry.name.split(' ')[0]},`}
       />
-    </div>
+      </div>
+    </>
   )
 }
 

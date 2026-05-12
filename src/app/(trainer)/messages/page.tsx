@@ -127,10 +127,11 @@ export default async function MessagesPage({
     // Note: no top padding — the messages surface goes flush against
     // its container so there's no dead band above PageHeader, and the
     // chrome below PageHeader (tabs + list) flows seamlessly.
-    <div
-      className="px-4 md:px-8 flex flex-col overflow-hidden h-[calc(100dvh-5rem)] md:h-[100dvh]"
-    >
+    <>
       <PageHeader title="Messages" />
+      <div
+        className="px-4 md:px-8 flex flex-col overflow-hidden h-[calc(100dvh-5rem-3rem)] md:h-[calc(100dvh-3rem)]"
+      >
       <MessagesView
         activeClients={activeClients}
         inactiveClients={inactiveClients}
@@ -141,7 +142,8 @@ export default async function MessagesPage({
         threadMessages={threadMessages}
         currentUserId={session.user.id}
       />
-    </div>
+      </div>
+    </>
   )
 }
 

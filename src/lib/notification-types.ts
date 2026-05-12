@@ -161,6 +161,25 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
       taskCount: '4',
     },
   },
+  NEW_ENQUIRY: {
+    type: 'NEW_ENQUIRY',
+    label: 'New enquiry',
+    description: 'Someone filled in one of your public forms (embed or intake).',
+    trigger: 'event',
+    channels: ['PUSH'],
+    defaults: {
+      enabled: true,
+      title: 'New enquiry — {{name}}',
+      body: '{{preview}}',
+    },
+    placeholders: ['name', 'email', 'dogName', 'preview'],
+    sampleValues: {
+      name: 'Jess Carter',
+      email: 'jess@example.com',
+      dogName: 'Bailey',
+      preview: 'Looking for help with reactivity on walks.',
+    },
+  },
   NEW_MESSAGE: {
     type: 'NEW_MESSAGE',
     label: 'New message',

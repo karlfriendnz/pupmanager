@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { notifyEnquiryTrainer } from '@/lib/notify-enquiry-trainer'
 
 const schema = z.object({
   name: z.string().min(1),
@@ -53,7 +54,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
     }
   }
 
-  await prisma.enquiry.create({
+  const enquiry = await prisma.enquiry.create({
     data: {
       trainerId: form.trainerId,
       formId: form.id,
@@ -63,6 +64,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
       message: message?.trim() || null,
       customFieldValues: customFieldSnapshot,
     },
+    select: { id: true },
+  })
+
+  // Fire-and-forget push to the trainer. Errors are swallowed inside
+  // the helper so a flaky APNs round-trip never fails a public form.
+  await notifyEnquiryTrainer({
+    enquiryId: enquiry.id,
+    trainerId: form.trainerId,
+    name,
+    email,
+    message: message?.trim() || null,
   })
 
   return NextResponse.json({ ok: true }, { status: 201 })

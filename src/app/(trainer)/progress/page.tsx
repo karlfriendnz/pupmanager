@@ -48,9 +48,9 @@ export default async function ProgressPage() {
   })
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+    <>
       <PageHeader title="Progress & Analytics" subtitle="7-day compliance overview for all clients" />
-
+      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
 
       {clientStats.length === 0 ? (
         <div className="text-center py-12 text-slate-400">
@@ -105,6 +105,7 @@ export default async function ProgressPage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }

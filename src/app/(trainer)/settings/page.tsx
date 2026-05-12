@@ -55,8 +55,9 @@ export default async function TrainerSettingsPage() {
   }))
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-[872px] mx-auto">
+    <>
       <PageHeader title="Settings" />
+      <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-[872px] mx-auto">
 
       <SettingsTabs
         profile={<TrainerSettingsForm user={user} profile={trainerProfile} />}
@@ -90,6 +91,7 @@ export default async function TrainerSettingsPage() {
           />
         }
       />
-    </div>
+      </div>
+    </>
   )
 }

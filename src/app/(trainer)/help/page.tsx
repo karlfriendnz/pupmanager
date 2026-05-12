@@ -31,8 +31,9 @@ const FAQ = [
 
 export default function TrainerHelpPage() {
   return (
-    <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
+    <>
       <PageHeader title="Help & Support" />
+      <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
       <div className="mb-8" />
 
       {/* FAQ */}
@@ -63,7 +64,8 @@ export default function TrainerHelpPage() {
         <h2 className="font-semibold text-slate-900 mb-4">Share feedback or ideas</h2>
         <SupportTicketForm type="feedback" />
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 

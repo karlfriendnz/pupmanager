@@ -92,7 +92,7 @@ export default async function SessionPage({
     : []
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-3xl lg:max-w-6xl xl:max-w-7xl mx-auto">
+    <>
       <PageHeader
         title="Session"
         back={clientId ? { href: `/clients/${clientId}?tab=sessions`, label: 'Back to client' } : undefined}
@@ -103,6 +103,7 @@ export default async function SessionPage({
           />
         }
       />
+      <div className="p-4 md:p-8 w-full max-w-3xl lg:max-w-6xl xl:max-w-7xl mx-auto">
 
       {/* Desktop (lg+): two-column layout — left rail with the session's
           metadata + primary actions, right column with the form report,
@@ -298,6 +299,7 @@ export default async function SessionPage({
           />
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

@@ -133,12 +133,13 @@ export default async function SessionsTodoPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+    <>
       <PageHeader
         title="Sessions to wrap up"
         back={{ href: '/dashboard', label: 'Back to dashboard' }}
         actions={<ListTodo className="h-5 w-5 text-amber-500" />}
       />
+      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
 
       <div className="mb-6">
 
@@ -280,6 +281,7 @@ export default async function SessionsTodoPage() {
           })}
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }

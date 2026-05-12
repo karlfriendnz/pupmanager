@@ -208,12 +208,12 @@ export default async function DashboardPage({
   }
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
+    <>
       <PageHeader
         title={`Good ${getGreeting(tz)}, ${session.user.name?.split(' ')[0] ?? 'there'} 👋`}
       />
-
-      <OnboardingPanel state={onboardingState} />
+      <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
+        <OnboardingPanel state={onboardingState} />
 
       {/* Vital stats strip — four tiles in one row: Notes, Invoice, Clients,
           Dogs. The first two link to /sessions/needs-notes; Clients/Dogs are
@@ -457,7 +457,8 @@ export default async function DashboardPage({
         }))}
       />
 
-    </div>
+      </div>
+    </>
   )
 }
 

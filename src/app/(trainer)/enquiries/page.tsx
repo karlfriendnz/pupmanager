@@ -53,8 +53,9 @@ export default async function EnquiriesPage({
   const countByStatus = Object.fromEntries(counts.map(c => [c.status, c._count._all]))
 
   return (
-    <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+    <>
       <PageHeader title="Enquiries" />
+      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       <p className="text-sm text-slate-500 mb-6">
         Form submissions awaiting your decision. Accept turns them into a client; decline closes them out.
       </p>
@@ -127,7 +128,8 @@ export default async function EnquiriesPage({
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }
 
