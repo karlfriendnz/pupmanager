@@ -74,8 +74,23 @@ async function sendPush(
   })
   if (tokens.length === 0) return
 
-  const title = renderTemplate(pref.title, values)
-  const body = renderTemplate(pref.body, values)
+  // Belt-and-braces: if the resolved template renders to an empty
+  // string (e.g. a stored pref row with `customTitle: ''` slipped
+  // through, or every placeholder was empty), iOS falls back to
+  // showing the bare word "Notification". Guard with hardcoded text
+  // so the trainer always sees something useful.
+  const rawTitle = renderTemplate(pref.title, values).trim()
+  const rawBody = renderTemplate(pref.body, values).trim()
+  const title = rawTitle || `New enquiry from ${values.name || 'someone'}`
+  const body = rawBody || (values.email ? `Reply to ${values.email}` : 'Tap to open the enquiry.')
+
+  console.log('[notify-enquiry-trainer push]', {
+    enquiryId,
+    trainerUserId,
+    tokenCount: tokens.length,
+    title,
+    bodyLength: body.length,
+  })
 
   const results = await sendApns(
     tokens.map(t => t.token),
