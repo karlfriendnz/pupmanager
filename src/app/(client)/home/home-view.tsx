@@ -210,9 +210,6 @@ export function ClientHomeView({
   const allDone = totalCount > 0 && doneCount === totalCount
 
   const xpPct = Math.min(100, Math.round((MOCK_XP / MOCK_NEXT_LEVEL_XP) * 100))
-  const packagePct = packageProgress
-    ? Math.round((packageProgress.completed / Math.max(1, packageProgress.total)) * 100)
-    : 0
 
   async function toggleHomework(task: HomeworkTask) {
     if (busyTaskId) return
@@ -296,15 +293,13 @@ export function ClientHomeView({
                 </div>
                 <div className="text-left min-w-0">
                   <p className="text-sm font-semibold text-slate-900 leading-tight truncate">{dogName}</p>
-                  {packageProgress ? (
-                    <p className="text-[11px] text-slate-500 leading-tight truncate">
-                      {packageProgress.label} · {packageProgress.completed}/{packageProgress.total}
-                    </p>
-                  ) : primaryDog.breed ? (
+                  {primaryDog.breed && (
                     <p className="text-[11px] text-slate-500 leading-tight truncate">{primaryDog.breed}</p>
-                  ) : null}
+                  )}
                 </div>
-                {MOCK_STREAK > 0 && <StreakChip days={MOCK_STREAK} />}
+                {/* Package progress + streak chip hidden for now — bring
+                    them back once we've got real streak data and the
+                    package-progress numbers are reliable. */}
               </div>
             )}
           </div>
