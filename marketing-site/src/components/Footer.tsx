@@ -6,9 +6,11 @@ const groups: { title: string; links: { href: string; label: string }[] }[] = [
   {
     title: 'Product',
     links: [
-      { href: '/#features', label: 'Features' },
+      { href: '/features', label: 'Features' },
       { href: '/pricing', label: 'Pricing' },
-      { href: '/vs/duct-tape-stack', label: 'Compare' },
+      { href: '/roadmap', label: 'Roadmap' },
+      { href: '/changelog', label: 'Changelog' },
+      { href: '/faq', label: 'FAQ' },
     ],
   },
   {
@@ -16,7 +18,7 @@ const groups: { title: string; links: { href: string; label: string }[] }[] = [
     links: [
       { href: '/about', label: 'About' },
       { href: '/blog', label: 'Blog' },
-      { href: 'mailto:hello@pupmanager.com', label: 'Contact' },
+      { href: '/contact', label: 'Contact' },
     ],
   },
   {
@@ -32,16 +34,20 @@ export function Footer() {
   return (
     <footer className="mt-32 border-t border-ink-100 bg-ink-50">
       <Container className="py-16">
-        <div className="grid gap-12 md:grid-cols-4">
+        <div className="grid gap-12 md:grid-cols-5">
           <div>
-            <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-tight text-ink-900">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-600">
-                <Image src="/logomark.svg" alt="" width={20} height={26} className="invert" />
-              </span>
-              <span>PupManager</span>
+            <Link href="/" aria-label="PupManager" className="inline-flex">
+              <Image
+                src="/wordmark.png"
+                alt="PupManager"
+                width={5247}
+                height={966}
+                sizes="(max-width: 640px) 200px, 220px"
+                className="h-10 w-auto sm:h-8"
+              />
             </Link>
             <p className="mt-4 max-w-xs text-sm text-ink-700">
-              Software for working dog trainers. Built around the actual job.
+              Software for dog trainers. Made by people who get it.
             </p>
           </div>
 
@@ -59,6 +65,27 @@ export function Footer() {
               </ul>
             </div>
           ))}
+
+          <div className="flex flex-col gap-2 md:items-end">
+            <a href="#" aria-label="Download on the App Store" className="inline-flex">
+              <Image
+                src="/app-store-badge.svg"
+                alt="Download on the App Store"
+                width={135}
+                height={45}
+                className="h-[45px] w-auto"
+              />
+            </a>
+            <a href="#" aria-label="Get it on Google Play" className="inline-flex">
+              <Image
+                src="/google-play-badge.svg"
+                alt="Get it on Google Play"
+                width={135}
+                height={45}
+                className="h-[45px] w-auto"
+              />
+            </a>
+          </div>
         </div>
 
         <div className="mt-12 flex flex-col gap-3 border-t border-ink-100 pt-6 text-sm text-ink-500 md:flex-row md:items-center md:justify-between">

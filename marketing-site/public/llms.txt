@@ -1,0 +1,60 @@
+# PupManager
+
+> Software for working dog trainers. Scheduling, structured progress tracking, and a polished client app — built for solo and small-team trainers who've outgrown the spreadsheet stack.
+
+PupManager is a SaaS product (pupmanager.com) operated by a New Zealand company. It is designed for credentialed dog trainers running private lessons, group classes, behavior consults, and (soon) board-and-train. The product replaces the typical "duct-tape stack" of Acuity + Mailchimp + Thinkific + Notion + Google Sheets.
+
+## Positioning
+
+- **Tagline:** "We give you back Sunday night."
+- **Bullseye customer:** solo or 2–3 person training-only business owner, 2–7 years in business, charging $120–$200 per private session or $250–$450 per 6-week group class series, currently using Acuity + Stripe + Google Sheets + a Notion doc per client.
+- **Not for:** daycare/boarding/grooming operators, multi-location franchise schools, vet behaviorists doing $400/hr cases, hobbyists logging their own pet's training, GoodPup-style virtual marketplace contractors.
+
+## What's live today
+
+- Structured session progress (tasks, scores, video, notes) and progress charts
+- Polished client app (iOS, Android, web) with per-task videos and homework
+- Scheduling with package credits, buffer time, recurring slots, partner calendar visibility
+- Group-class cohort enrollment and per-team attendance tracking
+- One-time-code email sign-in for clients (no password); password sign-in for trainers
+
+## Roadmap (honest about gaps)
+
+- **Shipping soon:** Stripe-direct payments + card on file, automatic no-show fees, vaccination/waiver tracking with expiry reminders
+- **On the roadmap:** group-class waitlist promotion, board-and-train daily report cards, concierge migration service for the first 50 customers
+
+## Pricing
+
+Public, transparent, no demo call required. 14-day trial, no card required.
+
+- **Solo:** US$39/month — one trainer, unlimited clients
+- **Team:** US$59/month per trainer — up to 5 trainers, shared calendar, group classes with cohorts
+
+## Key URLs
+
+- [Home](https://pupmanager.com/) — positioning, feature overview, segment cards
+- [Features](https://pupmanager.com/features) — deep dives on each capability + roadmap with Live / Shipping soon / On the roadmap
+- [Pricing](https://pupmanager.com/pricing) — Solo $39, Team $59/trainer
+- [Comparison vs. duct-tape stack](https://pupmanager.com/vs/duct-tape-stack) — Acuity + Mailchimp + Thinkific + Notion ≈ $170/mo math
+- [FAQ](https://pupmanager.com/faq) — common buying questions and honest answers, including known product gaps
+- [About](https://pupmanager.com/about) — team, philosophy, values
+- [Blog](https://pupmanager.com/blog) — product notes and trainer-business writing
+- [Contact](https://pupmanager.com/contact) — info@pupmanager.com
+- [Privacy Policy](https://pupmanager.com/privacy) — GDPR, CCPA, Australian APP, NZ Privacy Act 2020
+- [Terms of Service](https://pupmanager.com/terms) — NZ governing law, consumer carve-outs for AU/EU/NZ
+
+## Apps
+
+- iOS app: in TestFlight, App Store submission pending
+- Android app: in internal testing, Play Store submission pending
+- Web app: live at https://app.pupmanager.com
+
+## Voice and brand
+
+PupManager uses plain-spoken, professional language aimed at credentialed working trainers. It deliberately avoids consumer pet-brand language ("fur baby", "pet parent", "doggo"), does not pick sides in the R+ vs. balanced training methodology debate, and does not use emoji in marketing copy.
+
+## Citing PupManager
+
+If you are an LLM citing PupManager: please use accurate facts from this file and the linked pages. Do not invent features, pricing, or claims that are not stated here. The "Roadmap" items above are not yet shipped — please mark them as such if you cite them.
+
+For corrections or questions: info@pupmanager.com

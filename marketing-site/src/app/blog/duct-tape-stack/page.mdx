@@ -1,0 +1,105 @@
+import { BlogPostLayout } from '@/components/BlogPostLayout'
+
+export const metadata = {
+  title: 'Dog training software vs the duct-tape stack: the real $170/month math',
+  description:
+    "Booking app + Mailchimp + Thinkific + a Notion doc + a Google Sheet ≈ $170/mo — and 8–11 hours of weekly admin you don't bill. Here's the math, and the alternative.",
+}
+
+<BlogPostLayout
+  slug="duct-tape-stack"
+  title="Dog training software vs the duct-tape stack: the real $170/month math"
+  description="Booking app + Mailchimp + Thinkific + a Notion doc + a Google Sheet ≈ $170/mo — and 8–11 hours of weekly admin you don't bill. Here's the math, and the alternative."
+  date="2026-05-02"
+  author="Karl"
+>
+
+You're not paying for one tool. You're paying for five.
+
+Most working trainers run on a booking app for scheduling, Mailchimp for client email, Thinkific (or a Google Drive folder) for course content, a Notion doc per client, and a Google Sheet they don't quite trust. The math doesn't favour you.
+
+## The line items
+
+| Tool | What it does | Monthly |
+|---|---|---:|
+| Booking app | Scheduling, package credits | $27 |
+| Stripe | Payments (free, but transaction fees) | — |
+| Mailchimp | Client email + lesson recap broadcasts | $45 |
+| Thinkific or similar | Course content, lesson library | $99 |
+| Notion / Google Sheets | Client notes, attendance, packages | $0–$10 |
+| **Stack total** | …and the gaps between them | **~$170** |
+| **PupManager** | All of the above. One login. | **$30** |
+
+Costs reflect typical paid plans for a solo trainer in 2026. Free tiers exist; the time you spend duct-taping them together is the bigger bill.
+
+## The math the spreadsheet doesn't show
+
+The duct-tape stack costs more than $170. The real cost is the 8–11 hours a week of admin that doesn't bill — the post-session note-typing in your car, the Sunday-night Stripe reconcile, the four "what was the cue again?" texts you answer between appointments.
+
+At $165 a session, that's **$1,300–$1,800 of unbilled labour a week**.
+
+PupManager doesn't replace your training. It replaces the admin overhead the stack forces on you.
+
+## Side by side
+
+<div className="not-prose my-10 overflow-x-auto">
+  <table className="w-full border-separate border-spacing-x-3 border-spacing-y-1 text-left">
+    <thead>
+      <tr>
+        <th className="w-1/4 px-2 pb-6" />
+        <th className="px-6 pb-6 text-center align-bottom">
+          <div className="mx-auto grid h-10 w-10 place-items-center rounded-xl bg-ink-100 text-xl" aria-hidden>📋</div>
+          <div className="mt-3 text-sm font-semibold text-ink-900">Without PupManager</div>
+          <div className="mt-1 text-xs text-ink-500">Spreadsheets, WhatsApp, no real system</div>
+        </th>
+        <th className="px-6 pb-6 text-center align-bottom">
+          <div className="mx-auto grid h-10 w-10 place-items-center rounded-xl bg-emerald-100 text-xl text-emerald-700" aria-hidden>🐾</div>
+          <div className="mt-3 text-sm font-semibold text-emerald-700">With PupManager</div>
+          <div className="mt-1 text-xs text-emerald-700/80">One tool. Built for trainers.</div>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr className="bg-white">
+        <td className="rounded-l-xl px-5 py-5 align-top text-sm font-semibold text-ink-900">Reschedule at 9:47 pm</td>
+        <td className="px-6 py-5 align-top text-sm text-ink-700">Personal-cell text. Open the booking app, hope the calendar syncs, remember to tell the client.</td>
+        <td className="rounded-r-xl bg-emerald-50/70 px-6 py-5 align-top text-sm text-ink-700">Client opens their app, picks a new slot from your real availability, the package credit re-applies. You don't open a tool.</td>
+      </tr>
+      <tr className="bg-ink-50/60">
+        <td className="rounded-l-xl px-5 py-5 align-top text-sm font-semibold text-ink-900">Post-session admin</td>
+        <td className="px-6 py-5 align-top text-sm text-ink-700">Notes app in the car. Maybe transferred to a Google Doc later. Maybe not. Video stuck on your camera roll.</td>
+        <td className="rounded-r-xl bg-emerald-50/70 px-6 py-5 align-top text-sm text-ink-700">Mark tasks complete in 90 seconds. Drop in the phone-shot video. The client gets tonight's homework before they're home.</td>
+      </tr>
+      <tr className="bg-white">
+        <td className="rounded-l-xl px-5 py-5 align-top text-sm font-semibold text-ink-900">"What was that cue again?"</td>
+        <td className="px-6 py-5 align-top text-sm text-ink-700">You covered it two weeks ago. You wrote it down somewhere. You can't find it. You retype it from memory at 10 pm.</td>
+        <td className="rounded-r-xl bg-emerald-50/70 px-6 py-5 align-top text-sm text-ink-700">Client opens their home screen, sees the homework with the cue and the demo video you attached at the time. No text needed.</td>
+      </tr>
+      <tr className="bg-ink-50/60">
+        <td className="rounded-l-xl px-5 py-5 align-top text-sm font-semibold text-ink-900">No-shows</td>
+        <td className="px-6 py-5 align-top text-sm text-ink-700">A $165 hour you can't get back. The "I thought it was 2 pm??" text after the fact.</td>
+        <td className="rounded-r-xl bg-emerald-50/70 px-6 py-5 align-top text-sm text-ink-700">Auto reminders at -24h and -2h cut no-shows on their own. Stripe payment links and invoicing are shipping soon.</td>
+      </tr>
+      <tr className="bg-white">
+        <td className="rounded-l-xl px-5 py-5 align-top text-sm font-semibold text-ink-900">Group classes</td>
+        <td className="px-6 py-5 align-top text-sm text-ink-700">Printed roll-call sheet. Two paid by bank transfer, one paid Stripe, three on a 6-week package — nobody remembers who's owed a make-up.</td>
+        <td className="rounded-r-xl bg-emerald-50/70 px-6 py-5 align-top text-sm text-ink-700">Sign-ups in one go. Attendance in two taps per team. Catch-ups auto-tracked.</td>
+      </tr>
+      <tr className="bg-ink-50/60">
+        <td className="rounded-l-xl px-5 py-5 align-top text-sm font-semibold text-ink-900">End-of-week admin</td>
+        <td className="px-6 py-5 align-top text-sm text-ink-700">Three hours reconciling Stripe, bank transfers, and the EFTPOS receipts your clients texted you against a sheet that hasn't been updated since November.</td>
+        <td className="rounded-r-xl bg-emerald-50/70 px-6 py-5 align-top text-sm text-ink-700">Twenty minutes. Glance at the dashboard. Reply to two messages. Done.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+## "Switching is the painful part."
+
+We know. Sixty active clients in your old booking tool, three years of session notes scattered across Notion docs, a Stripe account that has to keep working through the move.
+
+For the first 50 customers we do the migration for you — bring us your exports, we'll bring the clients, packages, and history into PupManager and hand you back a working day-1 setup.
+
+[Try PupManager free for 10 days](https://app.pupmanager.com/register) — or [see pricing](/pricing).
+
+</BlogPostLayout>

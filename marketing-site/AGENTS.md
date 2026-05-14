@@ -1,34 +1,35 @@
-# Marketing site — agent + human guide
+# PupManager marketing site — agent + human guide
 
-This is the public marketing site for PupManager, separate from the app at `app.pupmanager.com`. It lives in this repo so brand tokens, copy, and assets can be shared with the main Next.js app.
+This is the public marketing site for PupManager (pupmanager.com). It lives in its own repo, separate from the main app at `app.pupmanager.com`.
 
 ## Stack
 
 - Next.js 16 (App Router) + React 19 + TypeScript
 - Tailwind 4 (CSS-first theme in `src/app/globals.css`)
 - MDX for blog posts (`@next/mdx` + `gray-matter` for frontmatter)
-- Deployed on Vercel as a separate project from the main app
-
-> Same Next.js version as the main app. The repo's root `AGENTS.md` notes that this Next.js has breaking changes vs. older versions — read `node_modules/next/dist/docs/` before writing code.
+- Deployed on Vercel — auto-deploys on push to `main`, preview URLs on PRs
 
 ## Layout
 
 ```
-marketing-site/
-  src/
-    app/                  # routes (App Router)
-      layout.tsx          # nav + footer wrap
-      page.tsx            # home
-      pricing/page.tsx
-      blog/page.tsx       # index
-      blog/[slug]/page.tsx
-      globals.css         # Tailwind + brand tokens
-    components/           # Nav, Footer, Container
-    content/posts/*.mdx   # blog posts (frontmatter: title, description, date, author)
-    lib/posts.ts          # reads frontmatter from posts/
-    mdx-components.tsx
-  next.config.ts          # MDX wired in
-  package.json
+.
+├── src/
+│   ├── app/                # routes (App Router)
+│   │   ├── layout.tsx      # nav + footer wrap
+│   │   ├── page.tsx        # home
+│   │   ├── about/page.tsx
+│   │   ├── pricing/page.tsx
+│   │   ├── vs/duct-tape-stack/page.tsx
+│   │   ├── blog/page.tsx
+│   │   ├── blog/[slug]/page.tsx
+│   │   └── globals.css     # Tailwind + brand tokens
+│   ├── components/         # Nav, Footer, Container, ImageSlot
+│   ├── content/posts/*.mdx # blog posts (frontmatter: title, description, date, author)
+│   ├── lib/posts.ts        # reads frontmatter from posts/
+│   └── mdx-components.tsx
+├── public/                 # logomark.svg, wordmark.svg, icon-1024.png
+├── next.config.ts
+└── package.json
 ```
 
 ## How to add a blog post
@@ -43,41 +44,54 @@ marketing-site/
    author: Karl
    ---
    ```
-3. Write the post in markdown. JSX is allowed (you can drop in components).
-4. The blog index and `/blog/[slug]` pick it up automatically.
+3. Write the post. JSX is allowed.
+4. Open a PR — Vercel posts a preview URL. Merge to `main` → live on pupmanager.com.
 
 ## How to edit copy
 
-- **Home, pricing, nav, footer**: edit the matching `.tsx` file. Component code lives next to copy on purpose — small site, low overhead.
-- **Voice rules** are non-negotiable. See `branding/marketing/_context/customer-profile.md` (in the parent repo) for the full picture, but the short version:
+- **Home, pricing, about, vs/duct-tape-stack**: edit the matching `.tsx` file.
+- **Voice rules** are non-negotiable. The full customer profile lives in the main `pupmanager` repo at `branding/marketing/_context/customer-profile.md`. Short version:
   - Plain-spoken professional. Linear / Cal.com / Superhuman, not Mindbody.
   - Never write "fur baby," "pet parent," "doggo," "tail-wagging," emoji, or movement politics (R+ vs. balanced).
   - Treat the reader like the credentialed working trainer they are.
   - The product positioning line is **"We give you back Sunday night."**
-- The bullseye customer is a solo or 2–3 person training-only business owner, 2–7 years in, on a duct-tape stack of Acuity + Stripe + Google Sheets. Lead with their pain, not our features.
+- The bullseye customer is a solo or 2–3 person training-only business owner, 2–7 years in, on a duct-tape stack of Acuity + Stripe + Google Sheets.
 
-## Brand tokens
+## Brand assets
 
-Colors live in `src/app/globals.css` under `@theme`. They mirror the main app's `globals.css` — keep the brand-* and accent-* values in sync if you change them in either place.
+- `public/logomark.svg` — standalone P-with-dog mark (single-color, fill follows context)
+- `public/wordmark.svg` — horizontal logomark + "PupManager" wordmark
+- `public/icon-1024.png` — full-color app icon (favicon + apple-touch-icon)
+- Brand teal sampled from the app icon: scale lives in `src/app/globals.css` under `@theme` (`--color-brand-50` … `--color-brand-900`)
+
+## Image slots
+
+`<ImageSlot label="..." aspect="4/3" />` marks every place the site needs art. Replace with `next/image` calls when art is supplied:
+
+```tsx
+import Image from 'next/image'
+<Image src="/heroes/dashboard.png" alt="Trainer dashboard" width={1200} height={900} />
+```
 
 ## Local dev
 
 ```
-cd marketing-site
 npm install
 npm run dev      # http://localhost:3001
 npm run build    # production build
 npm run lint
 ```
 
-The dev port is 3001 so it doesn't collide with the main app on 3000.
-
 ## Deployment
 
-Vercel project should point at `marketing-site/` as its root directory. Build command: `next build`. Output: framework-detected. No env vars required for the public site.
+- Vercel project: `pupmanager-marketing-site` (under `karlfriendnzs-projects`)
+- Push to `main` → auto-deploy to pupmanager.com
+- PRs → preview URL posted in checks
+- DNS: `pupmanager.com` (apex A → 76.76.21.21) and `www` (CNAME → cname.vercel-dns.com, 308 redirect to apex) at Namecheap
 
 ## When making changes
 
 - Prefer editing existing files over creating new ones.
-- Don't add a CMS, headless service, or new dep without asking — the whole point is "content in git, agent edits via PR."
+- No fabricated testimonials, names, or quotes — the audience will spot them.
+- Don't add a CMS, headless service, or new dep without asking — content-in-git is the maintenance promise.
 - For UI changes, run `npm run dev` and look at the page in a browser before reporting done.
