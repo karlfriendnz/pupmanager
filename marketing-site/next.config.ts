@@ -1,8 +1,19 @@
 import type { NextConfig } from 'next'
 import createMDX from '@next/mdx'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const nextConfig: NextConfig = {
   pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
+  // Pin to this subdir so Vercel's monorepo detection doesn't scan the
+  // sibling main app at the repo root (which has next-auth, src/proxy.ts,
+  // src/instrumentation.ts — none of which are deps of the marketing site).
+  outputFileTracingRoot: __dirname,
+  turbopack: {
+    root: __dirname,
+  },
   async redirects() {
     return [
       {
