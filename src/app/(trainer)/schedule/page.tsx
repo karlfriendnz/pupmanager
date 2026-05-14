@@ -57,6 +57,8 @@ export default async function SchedulePage({
       googleCalendarConnected: true,
       scheduleStartHour: true,
       scheduleEndHour: true,
+      scheduleMobileStartHour: true,
+      scheduleMobileEndHour: true,
       scheduleDays: true,
       scheduleExtraFields: true,
     },
@@ -300,6 +302,8 @@ export default async function SchedulePage({
       googleCalendarConnected={trainerProfile.googleCalendarConnected}
       scheduleStartHour={trainerProfile.scheduleStartHour}
       scheduleEndHour={trainerProfile.scheduleEndHour}
+      scheduleMobileStartHour={trainerProfile.scheduleMobileStartHour}
+      scheduleMobileEndHour={trainerProfile.scheduleMobileEndHour}
       scheduleDays={scheduleDaysArr}
       scheduleExtraFields={scheduleSelections}
       customFields={customFields}

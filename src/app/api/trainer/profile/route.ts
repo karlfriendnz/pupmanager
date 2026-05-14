@@ -12,8 +12,12 @@ const patchSchema = z.object({
   // 3- or 6-digit hex (with leading #), or empty string to clear.
   emailAccentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
   // Schedule view prefs. Hours 0–23, days 1=Mon..7=Sun, end > start.
+  // The mobile pair is an optional override applied only on phones —
+  // pass `null` to clear and fall back to the desktop pair.
   scheduleStartHour: z.number().int().min(0).max(23).optional(),
   scheduleEndHour: z.number().int().min(1).max(24).optional(),
+  scheduleMobileStartHour: z.number().int().min(0).max(23).nullable().optional(),
+  scheduleMobileEndHour: z.number().int().min(1).max(24).nullable().optional(),
   scheduleDays: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional(),
   // Built-in session/client field ids OR "custom:<cuid>". Mirrors the
   // /clients column selector so trainers can pick the same fields here.

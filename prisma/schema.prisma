@@ -245,8 +245,13 @@ model TrainerProfile {
 
   // Schedule view preferences — controls the visible hour range and which
   // weekdays render in the week grid. Days are 1=Mon..7=Sun.
-  scheduleStartHour   Int     @default(7) // inclusive
-  scheduleEndHour     Int     @default(21) // exclusive (last hour shown is end-1)
+  // The base scheduleStart/EndHour pair drives the desktop grid; the
+  // mobile pair (nullable) overrides on phones so trainers can run a
+  // tighter window on small screens. Null = fall back to the base pair.
+  scheduleStartHour       Int     @default(7) // inclusive
+  scheduleEndHour         Int     @default(21) // exclusive (last hour shown is end-1)
+  scheduleMobileStartHour Int? // mobile-only override; null falls back to scheduleStartHour
+  scheduleMobileEndHour   Int? // mobile-only override; null falls back to scheduleEndHour
   scheduleDays        Json    @default("[1,2,3,4,5,6,7]")
   // Up to 2 extra fields rendered on schedule blocks. Allowed ids:
   // "location" | "description" | "sessionType" | "duration" | "title"

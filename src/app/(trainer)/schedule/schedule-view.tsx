@@ -2470,6 +2470,8 @@ export function ScheduleView({
   googleCalendarConnected,
   scheduleStartHour,
   scheduleEndHour,
+  scheduleMobileStartHour,
+  scheduleMobileEndHour,
   scheduleDays,
   scheduleExtraFields,
   customFields,
@@ -2483,8 +2485,15 @@ export function ScheduleView({
   selectedDate: string
   today: string
   googleCalendarConnected: boolean
+  // Desktop visible-hours range. Acts as the fallback for mobile too
+  // when the mobile-specific pair below is null.
   scheduleStartHour: number
   scheduleEndHour: number
+  // Mobile-only overrides. Null on either side falls back to the desktop
+  // value so existing trainers see no behaviour change until they pick
+  // a phone-specific range in the schedule-view settings panel.
+  scheduleMobileStartHour: number | null
+  scheduleMobileEndHour: number | null
   scheduleDays: number[]   // 1=Mon..7=Sun
   scheduleExtraFields: string[]
   customFields: CustomFieldMeta[]
@@ -2524,9 +2533,27 @@ export function ScheduleView({
   //               they can scan the whole week without paging.
   // Default: week on desktop, day on mobile.
   const [view, setView] = useState<'day' | 'threeDay' | 'week'>('week')
+  // Track viewport class so we can pick the trainer's mobile vs desktop
+  // hour range. Matches WeekGrid's existing 640px breakpoint so the two
+  // device detectors stay in lockstep.
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
   useEffect(() => {
     if (window.innerWidth < 768) setView('day')
+    const update = () => setIsMobileViewport(window.innerWidth < 640)
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
   }, [])
+
+  // Resolve the effective visible-hour range for the current device.
+  // Mobile overrides fall back to the desktop value when null so a
+  // trainer who's never opened settings keeps the old behaviour.
+  const effectiveStartHour = isMobileViewport
+    ? (scheduleMobileStartHour ?? scheduleStartHour)
+    : scheduleStartHour
+  const effectiveEndHour = isMobileViewport
+    ? (scheduleMobileEndHour ?? scheduleEndHour)
+    : scheduleEndHour
 
   const [sessions, setSessions]         = useState(initialSessions)
   const [availSlots, setAvailSlots]     = useState(initialAvailSlots)
@@ -2900,6 +2927,8 @@ export function ScheduleView({
           <ScheduleSettings
             startHour={scheduleStartHour}
             endHour={scheduleEndHour}
+            mobileStartHour={scheduleMobileStartHour}
+            mobileEndHour={scheduleMobileEndHour}
             days={scheduleDays}
             extraFields={extraFields}
             customFields={customFields}
@@ -3006,8 +3035,8 @@ export function ScheduleView({
             onSessionClick={handleSessionClick}
             onSessionDrop={handleSessionDrop}
             onDeleteAvail={handleDeleteAvail}
-            startHour={scheduleStartHour}
-            endHour={scheduleEndHour}
+            startHour={effectiveStartHour}
+            endHour={effectiveEndHour}
             extraFields={extraFields}
             clientExtras={clientExtras}
             customFields={customFields}

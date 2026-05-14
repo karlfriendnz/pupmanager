@@ -39,12 +39,19 @@ interface CustomFieldMeta {
 export function ScheduleSettings({
   startHour,
   endHour,
+  mobileStartHour,
+  mobileEndHour,
   days,
   extraFields,
   customFields,
 }: {
   startHour: number
   endHour: number
+  // Mobile-specific override. Null = "use desktop hours on mobile too" —
+  // when the trainer hasn't customised it, the controls show the
+  // desktop hours and stay disabled until they tick the override.
+  mobileStartHour: number | null
+  mobileEndHour: number | null
   days: number[]   // 1=Mon..7=Sun
   extraFields: string[]
   customFields: CustomFieldMeta[]
@@ -53,6 +60,14 @@ export function ScheduleSettings({
   const [open, setOpen] = useState(false)
   const [draftStart, setDraftStart] = useState(startHour)
   const [draftEnd, setDraftEnd] = useState(endHour)
+  // Mobile-override state. The toggle stores whether the trainer wants
+  // a separate mobile range at all. When off we send nulls on save so
+  // the server-side fallback kicks back in. When on, the dropdowns
+  // edit the override and seed from the desktop values if there's
+  // nothing saved yet.
+  const [mobileOverride, setMobileOverride] = useState(mobileStartHour != null && mobileEndHour != null)
+  const [draftMobileStart, setDraftMobileStart] = useState(mobileStartHour ?? startHour)
+  const [draftMobileEnd, setDraftMobileEnd] = useState(mobileEndHour ?? endHour)
   const [draftDays, setDraftDays] = useState<Set<number>>(new Set(days))
   // Order matters: it's the render order on the block. Keep as a list, not a set.
   const [draftExtra, setDraftExtra] = useState<string[]>(extraFields)
@@ -86,6 +101,9 @@ export function ScheduleSettings({
   async function handleSave() {
     setError(null)
     if (draftEnd <= draftStart) { setError('End hour must be after start hour'); return }
+    if (mobileOverride && draftMobileEnd <= draftMobileStart) {
+      setError('Mobile end hour must be after start hour'); return
+    }
     if (draftDays.size === 0) { setError('Pick at least one day'); return }
     setSaving(true)
     const res = await fetch('/api/trainer/profile', {
@@ -94,6 +112,10 @@ export function ScheduleSettings({
       body: JSON.stringify({
         scheduleStartHour: draftStart,
         scheduleEndHour: draftEnd,
+        // Send null when the override is off so the server clears any
+        // previously-saved phone range and mobile falls back to desktop.
+        scheduleMobileStartHour: mobileOverride ? draftMobileStart : null,
+        scheduleMobileEndHour: mobileOverride ? draftMobileEnd : null,
         scheduleDays: Array.from(draftDays).sort((a, b) => a - b),
         scheduleExtraFields: draftExtra,
       }),
@@ -123,7 +145,8 @@ export function ScheduleSettings({
               {error && <p className="text-sm text-red-600">{error}</p>}
 
               <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1.5">Visible hours</label>
+                <label className="text-sm font-medium text-slate-700 block mb-0.5">Visible hours · Desktop</label>
+                <p className="text-[11px] text-slate-400 mb-1.5">Used on tablet and desktop screens.</p>
                 <div className="flex items-center gap-2">
                   <select
                     value={draftStart}
@@ -139,6 +162,47 @@ export function ScheduleSettings({
                     value={draftEnd}
                     onChange={e => setDraftEnd(Number(e.target.value))}
                     className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Array.from({ length: 24 }, (_, h) => h + 1).map(h => (
+                      <option key={h} value={h}>{labelHour(h % 24 || 24)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="text-sm font-medium text-slate-700">Visible hours · Mobile</label>
+                  <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={mobileOverride}
+                      onChange={e => setMobileOverride(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Different from desktop</span>
+                  </label>
+                </div>
+                <p className="text-[11px] text-slate-400 mb-1.5">
+                  {mobileOverride ? 'Used on phones (under 640px wide).' : 'Phones use the desktop range above.'}
+                </p>
+                <div className={`flex items-center gap-2 ${mobileOverride ? '' : 'opacity-50 pointer-events-none'}`}>
+                  <select
+                    value={draftMobileStart}
+                    onChange={e => setDraftMobileStart(Number(e.target.value))}
+                    disabled={!mobileOverride}
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  >
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>{labelHour(h)}</option>
+                    ))}
+                  </select>
+                  <span className="text-slate-400">to</span>
+                  <select
+                    value={draftMobileEnd}
+                    onChange={e => setDraftMobileEnd(Number(e.target.value))}
+                    disabled={!mobileOverride}
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
                   >
                     {Array.from({ length: 24 }, (_, h) => h + 1).map(h => (
                       <option key={h} value={h}>{labelHour(h % 24 || 24)}</option>
