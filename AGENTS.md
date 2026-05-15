@@ -4,24 +4,23 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-# PupManager monorepo layout
+# PupManager repo layout
 
-Everything PupManager-related now lives in this repo:
+This repo holds the main app (`app.pupmanager.com`). The marketing site
+(`pupmanager.com`) lives in its own repo at `karlfriendnz/pupmanager-marketing`,
+cloned locally at `/Users/karl/pupmanager-marketing/`.
 
 | Path | What | Dev command |
 |------|------|-------------|
-| `src/`, `prisma/`, `public/` (root) | Main app — app.pupmanager.com (Next.js + Prisma + NextAuth) | `npm run dev` (port 3000) |
-| `marketing-site/` | Public site — pupmanager.com (Next.js + MDX) | `npm --prefix marketing-site run dev` (port 3001) |
+| `src/`, `prisma/`, `public/` | Main app — app.pupmanager.com (Next.js + Prisma + NextAuth) | `npm run dev` (port 3000) |
 | `android/`, `ios/` | Capacitor mobile shells | Don't touch unless push-notification code changed |
 | `branding/` | Logos, marketing assets, customer profile, voice rules — shared by app + marketing | — |
 | `prisma/` | Schema, migrations, seeds | — |
 
-The marketing site has its own `AGENTS.md` at `marketing-site/AGENTS.md` covering voice rules, blog posts, and brand assets.
-
 ## Deploys
 
 - **Main app** (`app.pupmanager.com`): Vercel project `pupmanager-app`, watches `pupmanager-app.git` remote, root `.`.
-- **Marketing site** (`pupmanager.com`): Vercel project `pupmanager-marketing-site`, watches `pupmanager.git` remote, root `marketing-site/`.
+- **Marketing site** (`pupmanager.com`): separate repo + Vercel project — see `/Users/karl/pupmanager-marketing/AGENTS.md`.
 - Both auto-deploy on push to `main`. **Never `git push` without the literal phrase "Deploy Live"** from Karl (rule tightened 2026-05-12).
 
 ## Ruflo coordination
