@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, Calendar, Layers, Package,
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag,
-  MoreHorizontal, X, Inbox,
+  MoreHorizontal, X, Inbox, GraduationCap,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
@@ -21,6 +21,7 @@ const TRAINER_NAV = [
   { href: '/clients',      label: 'Clients',      icon: Users },
   { href: '/schedule',     label: 'Schedule',     icon: Calendar },
   { href: '/packages',     label: 'Packages',     icon: Package },
+  { href: '/classes',      label: 'Classes',      icon: GraduationCap },
   { href: '/templates',    label: 'Library',      icon: Layers },
   { href: '/products',     label: 'Products',     icon: ShoppingBag },
   { href: '/achievements', label: 'Achievements', icon: Trophy },
@@ -39,6 +40,7 @@ const TRAINER_MOBILE_PRIMARY_HREFS = new Set([
 const CLIENT_NAV = [
   { href: '/home', label: 'Home', icon: Home },
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
+  { href: '/my-classes', label: 'Classes', icon: GraduationCap },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-profile', label: 'Profile', icon: User },
 ]

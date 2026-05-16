@@ -55,6 +55,14 @@ interface PkgRow {
   color: PackageColor | null
   defaultSessionFormId: string | null
   requireSessionNotes: boolean
+  // Group-class config (optional so an older loader that doesn't select
+  // them still satisfies the type — the modal defaults them).
+  isGroup?: boolean
+  capacity?: number | null
+  allowDropIn?: boolean
+  dropInPriceCents?: number | null
+  allowWaitlist?: boolean
+  publicEnrollment?: boolean
   assignments: number
 }
 
@@ -331,6 +339,15 @@ function PackageModal({
   const [color, setColor] = useState<PackageColor | null>(existing?.color ?? null)
   const [defaultSessionFormId, setDefaultSessionFormId] = useState<string | null>(existing?.defaultSessionFormId ?? null)
   const [requireSessionNotes, setRequireSessionNotes] = useState<boolean>(existing?.requireSessionNotes ?? true)
+  // Group-class config — extra modal state (not RHF fields).
+  const [isGroup, setIsGroup] = useState<boolean>(existing?.isGroup ?? false)
+  const [capacity, setCapacity] = useState<string>(
+    existing?.capacity != null ? String(existing.capacity) : '',
+  )
+  const [allowDropIn, setAllowDropIn] = useState<boolean>(existing?.allowDropIn ?? false)
+  const [dropInPrice, setDropInPrice] = useState<string>(centsToDollars(existing?.dropInPriceCents ?? null))
+  const [allowWaitlist, setAllowWaitlist] = useState<boolean>(existing?.allowWaitlist ?? false)
+  const [publicEnrollment, setPublicEnrollment] = useState<boolean>(existing?.publicEnrollment ?? false)
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: existing
@@ -365,6 +382,12 @@ function PackageModal({
         color,
         defaultSessionFormId,
         requireSessionNotes,
+        isGroup,
+        capacity: isGroup && capacity.trim() ? Math.max(0, Math.floor(Number(capacity))) : null,
+        allowDropIn: isGroup && allowDropIn,
+        dropInPriceCents: isGroup && allowDropIn ? dollarsToCents(dropInPrice) : null,
+        allowWaitlist: isGroup && allowWaitlist,
+        publicEnrollment: isGroup && publicEnrollment,
       }),
     })
     if (!res.ok) { setError('Failed to save.'); return }
@@ -383,6 +406,12 @@ function PackageModal({
         color: saved.color ?? null,
         defaultSessionFormId: saved.defaultSessionFormId ?? null,
         requireSessionNotes: saved.requireSessionNotes ?? true,
+        isGroup: saved.isGroup ?? false,
+        capacity: saved.capacity ?? null,
+        allowDropIn: saved.allowDropIn ?? false,
+        dropInPriceCents: saved.dropInPriceCents ?? null,
+        allowWaitlist: saved.allowWaitlist ?? false,
+        publicEnrollment: saved.publicEnrollment ?? false,
         assignments: existing?.assignments ?? 0,
       },
       !existing
@@ -500,6 +529,77 @@ function PackageModal({
               </span>
             </span>
           </label>
+
+          {/* ─── Group class ─────────────────────────────────────────── */}
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isGroup}
+              onChange={e => setIsGroup(e.target.checked)}
+              className="h-4 w-4 mt-0.5"
+            />
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium text-slate-700">This is a group class</span>
+              <span className="block text-[11px] text-slate-400 mt-0.5">
+                Run cohorts of this package — one shared schedule, many clients, a roster and capacity. Leave off for normal 1:1 packages.
+              </span>
+            </span>
+          </label>
+
+          {isGroup && (
+            <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 flex flex-col gap-3">
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1.5">Capacity (optional)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={capacity}
+                  onChange={e => setCapacity(e.target.value)}
+                  placeholder="Leave blank for unlimited"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">Max enrolments per run. A run can override this.</p>
+              </div>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" checked={allowWaitlist} onChange={e => setAllowWaitlist(e.target.checked)} className="h-4 w-4 mt-0.5" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium text-slate-700">Allow a waitlist when full</span>
+                  <span className="block text-[11px] text-slate-400 mt-0.5">Auto-promotes the next person when someone withdraws.</span>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" checked={allowDropIn} onChange={e => setAllowDropIn(e.target.checked)} className="h-4 w-4 mt-0.5" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium text-slate-700">Allow drop-ins after the class starts</span>
+                  <span className="block text-[11px] text-slate-400 mt-0.5">Clients can join mid-run, charged per remaining session.</span>
+                </span>
+              </label>
+
+              {allowDropIn && (
+                <div>
+                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Drop-in price per session</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={dropInPrice}
+                    onChange={e => setDropInPrice(e.target.value)}
+                    placeholder="30"
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" checked={publicEnrollment} onChange={e => setPublicEnrollment(e.target.checked)} className="h-4 w-4 mt-0.5" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium text-slate-700">Let clients self-enrol from your embed form</span>
+                  <span className="block text-[11px] text-slate-400 mt-0.5">Open runs show publicly; requests arrive as enquiries for you to accept.</span>
+                </span>
+              </label>
+            </div>
+          )}
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Schedule colour</label>

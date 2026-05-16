@@ -41,6 +41,12 @@ export default async function PackagesPage() {
         color: (p.color ?? null) as 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan' | null,
         defaultSessionFormId: p.defaultSessionFormId ?? null,
         requireSessionNotes: p.requireSessionNotes,
+        isGroup: p.isGroup,
+        capacity: p.capacity,
+        allowDropIn: p.allowDropIn,
+        dropInPriceCents: p.dropInPriceCents,
+        allowWaitlist: p.allowWaitlist,
+        publicEnrollment: p.publicEnrollment,
         assignments: p._count.assignments,
       }))}
       sessionForms={sessionForms}
