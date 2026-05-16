@@ -11,8 +11,6 @@ import { PageHeader } from '@/components/shared/page-header'
 import { WaitlistNudge } from '@/components/shared/waitlist-nudge'
 import { BookingRequestsPanel } from '@/components/shared/booking-requests-panel'
 import { StreakChip } from '@/components/shared/streak-chip'
-import { StreakModal } from '@/components/shared/streak-modal'
-import { getStreak } from '@/lib/trainer-streak'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { OnboardingPanel } from './onboarding-panel'
 import { initTrainerOnboarding } from '@/lib/onboarding/init'
@@ -59,9 +57,6 @@ export default async function DashboardPage({
     select: { timezone: true },
   })
   const tz = trainerUser?.timezone ?? 'Pacific/Auckland'
-
-  // Training-day streak for the on-load dashboard popup.
-  const { current: streakCurrent, longest: streakLongest } = await getStreak(trainerId, tz)
 
   const sp = await searchParams
   const todayDateStr = todayInTz(tz)
@@ -221,7 +216,6 @@ export default async function DashboardPage({
         title={`Good ${getGreeting(tz)}, ${session.user.name?.split(' ')[0] ?? 'there'} 👋`}
         actions={<StreakChip trainerId={trainerId} />}
       />
-      <StreakModal current={streakCurrent} longest={streakLongest} />
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
         <BookingRequestsPanel trainerId={trainerId} />
         <WaitlistNudge trainerId={trainerId} />
