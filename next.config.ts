@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  // Hide the dev-mode "N" badge so it doesn't show up in screenshots.
+  // Remove this when you're done with marketing screenshots.
+  devIndicators: false,
   async headers() {
     return [
       {
