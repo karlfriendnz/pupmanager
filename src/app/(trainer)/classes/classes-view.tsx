@@ -40,7 +40,7 @@ export function ClassesView({
   const [showCreate, setShowCreate] = useState(false)
 
   return (
-    <div>
+    <>
       <PageHeader
         title="Classes"
         subtitle="Schedule a cohort of a group package — one shared timetable, a roster, capacity and waitlist."
@@ -53,6 +53,7 @@ export function ClassesView({
         }
       />
 
+      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       {groupPackages.length === 0 ? (
         <Card>
           <CardBody>
@@ -122,7 +123,8 @@ export function ClassesView({
           }}
         />
       )}
-    </div>
+      </div>
+    </>
   )
 }
 

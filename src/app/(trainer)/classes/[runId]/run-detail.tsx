@@ -77,7 +77,7 @@ export function RunDetail({
   }
 
   return (
-    <div>
+    <>
       <PageHeader
         title={run.name}
         subtitle={`${run.packageName} · ${run.scheduleNote || new Date(run.startDate).toLocaleDateString()}`}
@@ -95,6 +95,7 @@ export function RunDetail({
         }
       />
 
+      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
       {/* Roster */}
@@ -205,7 +206,8 @@ export function RunDetail({
           onClose={() => setOpenSession(null)}
         />
       )}
-    </div>
+      </div>
+    </>
   )
 }
 
