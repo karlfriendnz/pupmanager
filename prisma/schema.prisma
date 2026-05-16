@@ -340,6 +340,7 @@ model TrainerProfile {
   sessionForms       SessionForm[]
   products           Product[]
   achievements       Achievement[]
+  classRuns          ClassRun[]
   onboardingProgress TrainerOnboardingProgress?
 
   @@map("trainer_profiles")
@@ -368,6 +369,7 @@ model ClientProfile {
 
   diaryEntries      TrainingTask[]
   trainingSessions  TrainingSession[]
+  classEnrollments  ClassEnrollment[]
   shares            ClientShare[]
   messages          Message[]            @relation("ClientMessages")
   customFieldValues CustomFieldValue[]
@@ -401,6 +403,7 @@ model Dog {
   sessions      TrainingSession[]
   tasks         TrainingTask[]
   buddySessions SessionBuddy[]
+  classEnrollments ClassEnrollment[]
 
   @@index([clientProfileId])
   @@map("dogs")
@@ -477,6 +480,13 @@ model TrainingSession {
   clientId        String? // direct client link (optional, in addition to dogId)
   dogId           String?
   clientPackageId String? // membership in an assigned package
+  // Group classes: a shared session belongs to a ClassRun (cohort) rather
+  // than a single client. For group sessions clientId/dogId stay null —
+  // attendance is tracked per-enrollee via SessionAttendance. sessionIndex
+  // is the 1-based position within the run ("session 3 of 6"), also the
+  // join point used for drop-in pricing.
+  classRunId      String?
+  sessionIndex    Int?
   title           String
   description     String?       @db.Text
   scheduledAt     DateTime
@@ -511,11 +521,14 @@ model TrainingSession {
   fulfilledProductRequests ProductRequest[]
   buddies                  SessionBuddy[]
   attachments              SessionAttachment[]
+  classRun                 ClassRun?             @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  attendance               SessionAttendance[]
 
   @@index([trainerId])
   @@index([clientId])
   @@index([scheduledAt])
   @@index([clientPackageId])
+  @@index([classRunId])
   @@map("training_sessions")
 }
 
@@ -657,12 +670,29 @@ model Package {
   // package. Some packages (e.g. drop-in classes) don't need a follow-up.
   // Defaults to true so existing packages keep firing reminders.
   requireSessionNotes  Boolean     @default(true)
+  // ─── Group classes ──────────────────────────────────────────────────────
+  // When isGroup, the package is a sellable class template. A trainer
+  // schedules one or more ClassRuns (cohorts) off it; each run owns ONE
+  // shared session series that many clients enrol into. isGroup=false
+  // packages keep the 1:1 ClientPackage path untouched.
+  isGroup              Boolean     @default(false)
+  // Max enrolments per run (null = unlimited). A run may override this.
+  capacity             Int?
+  // Allow clients to join a run after it has started (rolling drop-in),
+  // paying per remaining session at dropInPriceCents.
+  allowDropIn          Boolean     @default(false)
+  dropInPriceCents     Int?
+  // Full runs accept a waitlist that auto-promotes on withdrawal.
+  allowWaitlist        Boolean     @default(false)
+  // Exposed on the public embed surface for client self-enrolment.
+  publicEnrollment     Boolean     @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   trainer            TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   assignments        ClientPackage[]
+  classRuns          ClassRun[]
   defaultSessionForm SessionForm?    @relation("PackageDefaultSessionForm", fields: [defaultSessionFormId], references: [id], onDelete: SetNull)
 
   @@index([trainerId])
@@ -691,6 +721,113 @@ model ClientPackage {
   @@index([clientId])
   @@index([packageId])
   @@map("client_packages")
+}
+
+// ─── Group classes ────────────────────────────────────────────────────────────
+
+enum ClassRunStatus {
+  SCHEDULED // created, may still be taking enrolments before it starts
+  RUNNING   // first session has happened
+  COMPLETED // all sessions done
+  CANCELLED // called off; sessions cancelled, enrolments closed
+}
+
+enum EnrollmentType {
+  FULL    // enrolled for the whole run from the start
+  DROP_IN // joined mid-run, pays per remaining session
+}
+
+enum EnrollmentStatus {
+  ENROLLED
+  WAITLISTED
+  WITHDRAWN
+  COMPLETED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+  MAKEUP // attended a different run's session to make this one up
+}
+
+// A scheduled cohort of a group Package. Owns ONE shared TrainingSession
+// series (sessions have classRunId set, clientId null). Capacity falls
+// back to the package's when null here.
+model ClassRun {
+  id          String         @id @default(cuid())
+  trainerId   String
+  packageId   String
+  name        String // e.g. "Spring Puppy Class"
+  scheduleNote String?       // human cadence, e.g. "Tuesdays 6:00pm"
+  startDate   DateTime
+  capacity    Int? // per-run override of Package.capacity
+  status      ClassRunStatus @default(SCHEDULED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer     TrainerProfile    @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  package     Package           @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  sessions    TrainingSession[]
+  enrollments ClassEnrollment[]
+
+  @@index([trainerId])
+  @@index([packageId])
+  @@map("class_runs")
+}
+
+// A client+dog's membership in a ClassRun. Replaces ClientPackage for the
+// group path. Waitlist is a status + position, auto-promoted on withdrawal.
+model ClassEnrollment {
+  id              String           @id @default(cuid())
+  classRunId      String
+  clientId        String
+  dogId           String?
+  type            EnrollmentType   @default(FULL)
+  status          EnrollmentStatus @default(ENROLLED)
+  waitlistPosition Int?            // set only while WAITLISTED
+  // For DROP_IN: the 1-based session index they joined at, so pricing
+  // and the roster only count sessions from here on.
+  joinedAtIndex   Int?
+  source          String           @default("TRAINER") // "TRAINER" | "SELF_SERVE"
+  // Mirrors ClientPackage.invoicedAt — manual until billing is wired.
+  invoicedAt      DateTime?
+  enrolledAt      DateTime         @default(now())
+  withdrawnAt     DateTime?
+
+  classRun   ClassRun            @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  client     ClientProfile       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dog        Dog?                @relation(fields: [dogId], references: [id], onDelete: SetNull)
+  attendance SessionAttendance[]
+
+  @@unique([classRunId, clientId, dogId])
+  @@index([classRunId])
+  @@index([clientId])
+  @@map("class_enrollments")
+}
+
+// Per-enrollee record for one shared class session: the roster grid AND
+// the per-dog in-class note/scores. scores is a free JSON bag so the
+// trainer can score whatever they like without a migration.
+model SessionAttendance {
+  id           String           @id @default(cuid())
+  sessionId    String
+  enrollmentId String
+  status       AttendanceStatus @default(PRESENT)
+  note         String?          @db.Text
+  scores       Json             @default("{}")
+  markedAt     DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  session    TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  enrollment ClassEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, enrollmentId])
+  @@index([sessionId])
+  @@index([enrollmentId])
+  @@map("session_attendance")
 }
 
 // ─── Session report forms ─────────────────────────────────────────────────────
