@@ -10,6 +10,7 @@ import { SessionRowCard } from '@/components/shared/session-row-card'
 import { PageHeader } from '@/components/shared/page-header'
 import { WaitlistNudge } from '@/components/shared/waitlist-nudge'
 import { BookingRequestsPanel } from '@/components/shared/booking-requests-panel'
+import { StreakChip } from '@/components/shared/streak-chip'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { OnboardingPanel } from './onboarding-panel'
 import { initTrainerOnboarding } from '@/lib/onboarding/init'
@@ -213,6 +214,7 @@ export default async function DashboardPage({
     <>
       <PageHeader
         title={`Good ${getGreeting(tz)}, ${session.user.name?.split(' ')[0] ?? 'there'} 👋`}
+        actions={<StreakChip trainerId={trainerId} />}
       />
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
         <BookingRequestsPanel trainerId={trainerId} />
