@@ -11,11 +11,11 @@ import {
   syncBadges,
 } from '@/lib/trainer-streak'
 
-// Daily. For each push-enabled trainer whose streak-update hour matches
-// the current hour in their timezone: send one curated line about their
-// weekly engagement streak (or an at-risk warning), and sync any newly
-// earned badges. Trainers with no live streak get nothing — no daily
-// nagging of lapsed/brand-new accounts.
+// Invoked once daily by a Supabase pg_cron job (NOT a Vercel cron — see
+// the supabase cron migration). Sends every push-enabled trainer one
+// curated line about their weekly engagement streak (or an at-risk
+// warning) and syncs newly earned badges. Trainers with no live streak
+// get nothing — no daily nagging of lapsed/brand-new accounts.
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,7 +27,6 @@ export async function GET(req: Request) {
   }
 
   const meta = NOTIFICATION_TYPES.STREAK_UPDATE
-  const defaultHour = meta.defaults.dailyAtHour!
 
   const candidates = await prisma.user.findMany({
     where: {
@@ -45,15 +44,12 @@ export async function GET(req: Request) {
     },
   })
 
-  const due: typeof candidates = []
-  for (const u of candidates) {
+  // Fired once a day by Supabase, so no per-timezone hour gating — every
+  // eligible trainer (push on, pref not disabled) is due this run.
+  const due = candidates.filter(u => {
     const pref = u.notificationPreferences[0]
-    if (pref && !pref.enabled) continue
-    const localHour = Number(
-      new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: u.timezone }),
-    )
-    if (localHour === defaultHour) due.push(u)
-  }
+    return !pref || pref.enabled
+  })
 
   const week = isoWeekKey(new Date())
   let pushed = 0

@@ -1,17 +1,3 @@
 {
-  "regions": ["syd1"],
-  "crons": [
-    {
-      "path": "/api/cron/daily-reminders",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/cron/evaluate-achievements",
-      "schedule": "30 18 * * *"
-    },
-    {
-      "path": "/api/cron/streak-update",
-      "schedule": "0 * * * *"
-    }
-  ]
+  "regions": ["syd1"]
 }
