@@ -2,23 +2,28 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
-import {
-  isoWeekKey,
-  activeWeekKeys,
-  currentStreak,
-  longestStreak,
-  streakAtRisk,
-  syncBadges,
-} from '@/lib/trainer-streak'
+import { getStreak, todayStatus, syncBadges } from '@/lib/trainer-streak'
 
-// Invoked once daily by a Supabase pg_cron job (NOT a Vercel cron — see
-// the supabase cron migration). Sends every push-enabled trainer one
-// curated line about their weekly engagement streak (or an at-risk
-// warning) and syncs newly earned badges. Trainers with no live streak
-// get nothing — no daily nagging of lapsed/brand-new accounts.
+// Invoked HOURLY by a Supabase pg_cron job (NOT a Vercel cron). For each
+// push-enabled trainer whose local time is 8pm: if today is a training
+// day AND today's notes aren't done, nudge them to finish (and keep
+// their training-day streak). Also syncs newly earned badges. No nag on
+// non-training days or once the notes are done. (There's no reliable
+// per-user "logged in today" signal in the schema — notesDone is the
+// authoritative "they're on top of it" gate, which is what matters.)
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+const REMIND_HOUR = 20 // 8pm, trainer-local
+
+function localParts(tz: string) {
+  const now = new Date()
+  return {
+    hour: Number(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz })),
+    date: now.toLocaleDateString('en-CA', { timeZone: tz }),
+  }
+}
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
@@ -44,14 +49,14 @@ export async function GET(req: Request) {
     },
   })
 
-  // Fired once a day by Supabase, so no per-timezone hour gating — every
-  // eligible trainer (push on, pref not disabled) is due this run.
+  // Only trainers whose local time is the reminder hour right now and
+  // who haven't disabled the notification.
   const due = candidates.filter(u => {
     const pref = u.notificationPreferences[0]
-    return !pref || pref.enabled
+    if (pref && !pref.enabled) return false
+    return localParts(u.timezone).hour === REMIND_HOUR
   })
 
-  const week = isoWeekKey(new Date())
   let pushed = 0
   let badgesAwarded = 0
   const tokensToDelete: string[] = []
@@ -59,34 +64,31 @@ export async function GET(req: Request) {
   for (const u of due) {
     if (!u.trainerProfile) continue
     const trainerId = u.trainerProfile.id
+    const tz = u.timezone
 
-    const keys = await activeWeekKeys(trainerId)
-    const streak = currentStreak(keys, week)
+    const { current, longest } = await getStreak(trainerId, tz)
 
-    // Sync badges every day regardless (cheap; dashboard surfaces them).
+    // Badge sync (cheap; surfaces on /awards regardless of the push).
     const [clients, sessionsDelivered] = await Promise.all([
       prisma.clientProfile.count({ where: { trainerId } }),
       prisma.trainingSession.count({
         where: { trainerId, status: { in: ['COMPLETED', 'COMMENTED', 'INVOICED'] } },
       }),
     ])
-    const fresh = await syncBadges(trainerId, {
-      clients,
-      sessionsDelivered,
-      currentStreakWeeks: streak,
-      longestStreakWeeks: longestStreak(keys),
-    })
-    badgesAwarded += fresh.length
+    badgesAwarded += (
+      await syncBadges(trainerId, { clients, sessionsDelivered, currentStreak: current, longestStreak: longest })
+    ).length
 
-    // No live streak → don't send (avoid daily nagging).
-    if (streak === 0) continue
+    const { isTrainingDay, notesDone } = await todayStatus(trainerId, tz)
+    if (!isTrainingDay) continue // no training today — nothing to nag about
+    if (notesDone) continue // already on top of it
 
-    const atRisk = streakAtRisk(keys, week)
-    const message = atRisk
-      ? `Your ${streak}-week streak needs an action this week — don’t let it slip.`
-      : `${streak}-week streak going — you’ve already been active this week. Nice.`
+    const streakLine =
+      current > 0
+        ? `Finish today's notes to keep your ${current}-day streak alive.`
+        : `Finish today's session notes before the day's out.`
+    const subs = { message: streakLine, weeks: String(current) }
 
-    const subs = { message, weeks: String(streak) }
     const results = await sendApns(
       u.deviceTokens.map(d => d.token),
       {
@@ -94,7 +96,7 @@ export async function GET(req: Request) {
           title: renderTemplate(meta.defaults.title, subs),
           body: renderTemplate(meta.defaults.body, subs),
         },
-        customData: { type: atRisk ? 'streak-at-risk' : 'streak-update' },
+        customData: { type: 'streak-notes-reminder' },
       },
     )
     for (const r of results) {

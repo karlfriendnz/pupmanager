@@ -207,21 +207,21 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   },
   STREAK_UPDATE: {
     type: 'STREAK_UPDATE',
-    label: 'Streak update',
-    description: 'A short daily nudge about your weekly engagement streak — keeps you in the habit and warns you before a streak lapses. Sent each morning in your timezone; copy we look after for you.',
+    label: 'Notes reminder',
+    description: "An evening nudge on training days — if you haven't logged in or finished your session notes by 8pm, we'll remind you so your training-day streak stays alive. Copy we look after for you.",
     trigger: 'time-of-day',
     channels: ['PUSH'],
-    // Locked: one curated line, fixed morning time.
+    // Locked: one curated line, fixed 8pm time, training days only.
     customisable: false,
     defaults: {
       enabled: true,
-      dailyAtHour: 8,
-      title: 'Your streak 🔥',
+      dailyAtHour: 20,
+      title: 'Notes due 📝',
       body: '{{message}}',
     },
     placeholders: ['message', 'weeks'],
     sampleValues: {
-      message: "5-week streak going — you've already been active this week. Nice.",
+      message: "Finish today's notes to keep your 5-day streak alive.",
       weeks: '5',
     },
   },

@@ -93,7 +93,7 @@ interface AppShellProps {
    * pill at the bottom of the trainer sidebar. Computed in the trainer
    * layout (server) each navigation. Omitted for the client shell.
    */
-  streak?: { weeks: number; atRisk: boolean } | null
+  streak?: { current: number } | null
 }
 
 export function AppShell(props: AppShellProps) {
@@ -420,16 +420,14 @@ function TrainerShell({
           <Link
             href="/awards"
             title={
-              streak.weeks > 0
-                ? `${streak.weeks}-week streak${streak.atRisk ? ' — act this week to keep it' : ''}`
-                : 'Start a streak this week'
+              streak.current > 0
+                ? `${streak.current}-training-day streak`
+                : 'Start a streak — finish your notes on a training day'
             }
             className={cn(
               'animate-pm-pop mx-3 mb-2 flex items-center rounded-xl text-white transition-colors',
-              streak.weeks > 0
-                ? streak.atRisk
-                  ? 'bg-amber-500 hover:bg-amber-600'
-                  : 'bg-orange-500 hover:bg-orange-600'
+              streak.current > 0
+                ? 'bg-orange-500 hover:bg-orange-600'
                 : 'bg-slate-700 hover:bg-slate-800',
               collapsed ? 'justify-center p-2' : 'gap-2 px-3 py-2',
             )}
@@ -438,19 +436,19 @@ function TrainerShell({
             {!collapsed && (
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold leading-tight">
-                  {streak.weeks > 0 ? `${streak.weeks}-week streak` : 'Start a streak'}
+                  {streak.current > 0
+                    ? `${streak.current}-day streak`
+                    : 'Start a streak'}
                 </span>
                 <span className="block text-[11px] text-white/80 leading-tight">
-                  {streak.weeks > 0
-                    ? streak.atRisk
-                      ? 'Act this week to keep it'
-                      : 'Active this week 🎉'
-                    : 'Do something this week'}
+                  {streak.current > 0
+                    ? 'Training days with notes done'
+                    : 'Finish notes on a training day'}
                 </span>
               </span>
             )}
-            {collapsed && streak.weeks > 0 && (
-              <span className="sr-only">{streak.weeks}-week streak</span>
+            {collapsed && streak.current > 0 && (
+              <span className="sr-only">{streak.current}-day streak</span>
             )}
           </Link>
         )}

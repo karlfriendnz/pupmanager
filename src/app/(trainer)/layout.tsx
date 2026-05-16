@@ -7,7 +7,7 @@ import { OnboardingCelebration } from './onboarding-celebration'
 import { TrialBanner } from './trial-banner'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { STEP_TO_MENU } from '@/lib/onboarding/path-step'
-import { isoWeekKey, activeWeekKeys, currentStreak, streakAtRisk } from '@/lib/trainer-streak'
+import { getStreak } from '@/lib/trainer-streak'
 
 export default async function TrainerLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -60,14 +60,16 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       })
     : 0
 
-  // Engagement streak for the always-visible sidebar pill. Recomputed
-  // per navigation (this layout is already dynamic). Cheap: one indexed
-  // query + pure math.
-  let streak: { weeks: number; atRisk: boolean } | null = null
+  // Training-day engagement streak for the always-visible sidebar pill.
+  // Recomputed per navigation (this layout is already dynamic).
+  let streak: { current: number } | null = null
   if (session.user.trainerId) {
-    const week = isoWeekKey(new Date())
-    const keys = await activeWeekKeys(session.user.trainerId)
-    streak = { weeks: currentStreak(keys, week), atRisk: streakAtRisk(keys, week) }
+    const u = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { timezone: true },
+    })
+    const { current } = await getStreak(session.user.trainerId, u?.timezone ?? 'Pacific/Auckland')
+    streak = { current }
   }
 
   return (
