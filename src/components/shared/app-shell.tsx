@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Users, Calendar, Layers, Package,
   MessageSquare, Settings, HelpCircle, User, Trophy,
-  Home, LogOut, ShoppingBag, ChevronsLeft, ChevronsRight,
+  Home, LogOut, ShoppingBag,
   MoreHorizontal, X, Inbox,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
@@ -479,19 +479,6 @@ function TrainerShell({
             )}
           </div>
 
-          {/* Collapse / expand chevron — its own button row so the
-              user-menu popout doesn't fight for the same click target. */}
-          <button
-            onClick={toggleCollapsed}
-            className={cn(
-              'rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100',
-              collapsed ? 'p-2' : 'ml-auto block p-1.5'
-            )}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
-          </button>
         </div>
       </aside>
 
