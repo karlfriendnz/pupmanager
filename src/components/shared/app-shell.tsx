@@ -415,41 +415,32 @@ function TrainerShell({
 
         {/* Always-visible engagement streak. The flex-1 <nav> above
             pushes this + the user block to the bottom of the sidebar.
-            Links to the dashboard for the full widget. */}
+            Clicking opens the full awards page. */}
         {streak && (
           <Link
-            href="/dashboard"
+            href="/awards"
             title={
               streak.weeks > 0
                 ? `${streak.weeks}-week streak${streak.atRisk ? ' — act this week to keep it' : ''}`
                 : 'Start a streak this week'
             }
             className={cn(
-              'mx-3 mb-2 flex items-center rounded-xl border transition-colors',
+              'animate-pm-pop mx-3 mb-2 flex items-center rounded-xl text-white transition-colors',
               streak.weeks > 0
                 ? streak.atRisk
-                  ? 'border-amber-200 bg-amber-50 hover:bg-amber-100/70'
-                  : 'border-orange-200 bg-orange-50 hover:bg-orange-100/70'
-                : 'border-slate-200 bg-slate-50 hover:bg-slate-100',
+                  ? 'bg-amber-500 hover:bg-amber-600'
+                  : 'bg-orange-500 hover:bg-orange-600'
+                : 'bg-slate-700 hover:bg-slate-800',
               collapsed ? 'justify-center p-2' : 'gap-2 px-3 py-2',
             )}
           >
-            <Flame
-              className={cn(
-                'h-4 w-4 flex-shrink-0',
-                streak.weeks > 0
-                  ? streak.atRisk
-                    ? 'text-amber-600'
-                    : 'text-orange-600'
-                  : 'text-slate-400',
-              )}
-            />
+            <Flame className="h-4 w-4 flex-shrink-0 text-white" />
             {!collapsed && (
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-900 leading-tight">
+                <span className="block text-sm font-semibold leading-tight">
                   {streak.weeks > 0 ? `${streak.weeks}-week streak` : 'Start a streak'}
                 </span>
-                <span className="block text-[11px] text-slate-500 leading-tight">
+                <span className="block text-[11px] text-white/80 leading-tight">
                   {streak.weeks > 0
                     ? streak.atRisk
                       ? 'Act this week to keep it'
