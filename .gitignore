@@ -75,3 +75,8 @@ next-env.d.ts
 /test-results
 /playwright/.cache
 /.claude-screenshots/
+
+# ruflo / claude-flow local state (.mcp.json is shared config, stays tracked)
+/.claude-flow/
+/.swarm/
+/ruvector.db
