@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, Calendar, Layers, Package,
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag,
-  MoreHorizontal, X, Inbox, GraduationCap,
+  MoreHorizontal, X, Inbox, GraduationCap, Flame,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
@@ -88,6 +88,12 @@ interface AppShellProps {
    * side) and naïvely summing those keys would double-count.
    */
   unreadTotal?: number
+  /**
+   * Trainer engagement streak summary, surfaced as an always-visible
+   * pill at the bottom of the trainer sidebar. Computed in the trainer
+   * layout (server) each navigation. Omitted for the client shell.
+   */
+  streak?: { weeks: number; atRisk: boolean } | null
 }
 
 export function AppShell(props: AppShellProps) {
@@ -273,6 +279,7 @@ function TrainerShell({
   highlightMenuHref,
   completedStepKeys = [],
   unreadCounts = {},
+  streak,
 }: AppShellProps) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
@@ -405,6 +412,57 @@ function TrainerShell({
             )
           })}
         </nav>
+
+        {/* Always-visible engagement streak. The flex-1 <nav> above
+            pushes this + the user block to the bottom of the sidebar.
+            Links to the dashboard for the full widget. */}
+        {streak && (
+          <Link
+            href="/dashboard"
+            title={
+              streak.weeks > 0
+                ? `${streak.weeks}-week streak${streak.atRisk ? ' — act this week to keep it' : ''}`
+                : 'Start a streak this week'
+            }
+            className={cn(
+              'mx-3 mb-2 flex items-center rounded-xl border transition-colors',
+              streak.weeks > 0
+                ? streak.atRisk
+                  ? 'border-amber-200 bg-amber-50 hover:bg-amber-100/70'
+                  : 'border-orange-200 bg-orange-50 hover:bg-orange-100/70'
+                : 'border-slate-200 bg-slate-50 hover:bg-slate-100',
+              collapsed ? 'justify-center p-2' : 'gap-2 px-3 py-2',
+            )}
+          >
+            <Flame
+              className={cn(
+                'h-4 w-4 flex-shrink-0',
+                streak.weeks > 0
+                  ? streak.atRisk
+                    ? 'text-amber-600'
+                    : 'text-orange-600'
+                  : 'text-slate-400',
+              )}
+            />
+            {!collapsed && (
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-900 leading-tight">
+                  {streak.weeks > 0 ? `${streak.weeks}-week streak` : 'Start a streak'}
+                </span>
+                <span className="block text-[11px] text-slate-500 leading-tight">
+                  {streak.weeks > 0
+                    ? streak.atRisk
+                      ? 'Act this week to keep it'
+                      : 'Active this week 🎉'
+                    : 'Do something this week'}
+                </span>
+              </span>
+            )}
+            {collapsed && streak.weeks > 0 && (
+              <span className="sr-only">{streak.weeks}-week streak</span>
+            )}
+          </Link>
+        )}
 
         <div className={cn('border-t border-slate-100 relative', collapsed ? 'p-2 flex flex-col items-center gap-2' : 'p-4')}>
           {/* User menu trigger — clicking the avatar/name pops a small
