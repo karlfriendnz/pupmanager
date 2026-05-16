@@ -12,6 +12,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-demo": "tsx prisma/seed-demo.ts",
+    "db:reset-demo": "tsx prisma/reset-demo.ts",
+    "set-admin-password": "tsx scripts/set-admin-password.ts",
     "test": "vitest",
     "test:e2e": "playwright test",
     "smoke:prod": "./scripts/smoke-prod.sh"

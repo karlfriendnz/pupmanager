@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { formatDate } from '@/lib/utils'
+import { Database } from 'lucide-react'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Admin Dashboard' }
@@ -75,6 +76,24 @@ export default async function AdminDashboardPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Tools */}
+      <div className="mb-10">
+        <h2 className="font-semibold text-slate-200 mb-4">Tools</h2>
+        <Link
+          href="/admin/demo"
+          className="inline-flex items-center gap-3 bg-slate-800 border border-slate-700 hover:border-blue-500/60 hover:bg-slate-700/40 rounded-xl px-4 py-3 transition-colors group"
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600/15 text-blue-400">
+            <Database className="h-4 w-4" />
+          </span>
+          <span>
+            <p className="font-medium text-white text-sm">Demo data</p>
+            <p className="text-xs text-slate-400">Seed or reset the demo trainer&apos;s data before a live demo.</p>
+          </span>
+          <span className="ml-2 text-slate-500 group-hover:text-blue-400">→</span>
+        </Link>
       </div>
 
       {/* Recent trainers */}

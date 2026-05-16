@@ -6,30 +6,35 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('Seeding database...')
 
-  // Admin user
+  // Admin user — upsert + always refresh the password hash so re-running
+  // `npm run db:seed` rotates the credential back to the documented one.
+  // Use scripts/set-admin-password.ts to update the live admin without
+  // touching the rest of this seed.
   const adminEmail = 'admin@pupmanager.app'
-  const existing = await prisma.user.findUnique({ where: { email: adminEmail } })
-
-  if (!existing) {
-    const hash = await bcrypt.hash('admin1234', 12)
-    const admin = await prisma.user.create({
-      data: {
-        name: 'Platform Admin',
-        email: adminEmail,
-        role: 'ADMIN',
-        emailVerified: new Date(),
-      },
-    })
-    await prisma.account.create({
-      data: {
-        userId: admin.id,
-        type: 'credentials',
-        provider: 'credentials',
-        providerAccountId: hash,
-      },
-    })
-    console.log('Created admin user:', adminEmail)
-  }
+  const adminPassword = 'Com_01puter_01'
+  const admin = await prisma.user.upsert({
+    where: { email: adminEmail },
+    create: {
+      name: 'Platform Admin',
+      email: adminEmail,
+      role: 'ADMIN',
+      emailVerified: new Date(),
+    },
+    update: { role: 'ADMIN' },
+  })
+  const hash = await bcrypt.hash(adminPassword, 12)
+  await prisma.account.deleteMany({
+    where: { userId: admin.id, provider: 'credentials' },
+  })
+  await prisma.account.create({
+    data: {
+      userId: admin.id,
+      type: 'credentials',
+      provider: 'credentials',
+      providerAccountId: hash,
+    },
+  })
+  console.log(`Admin user ready: ${adminEmail} / ${adminPassword}`)
 
   // Demo trainer
   const trainerEmail = 'trainer@demo.co.nz'

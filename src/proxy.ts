@@ -49,8 +49,11 @@ export default auth((req) => {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
 
-    // Admin: only allow /admin paths (plus public + api)
-    if (role === 'ADMIN' && !pathname.startsWith('/admin') && !isPublic) {
+    // Admin: only allow /admin paths (plus public + api). `/api/*` is the
+    // backing surface for the admin UI (e.g. /api/admin/trainers, the new
+    // /api/admin/demo/* seed routes), so we let it through here — the
+    // routes themselves enforce role with requireAdmin().
+    if (role === 'ADMIN' && !pathname.startsWith('/admin') && !pathname.startsWith('/api') && !isPublic) {
       return NextResponse.redirect(new URL('/admin', req.url))
     }
 
