@@ -30,8 +30,53 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ clie
   if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   // Only the primary trainer can delete
   if (access.client.trainerId !== access.trainerId) return NextResponse.json({ error: 'Only the primary trainer can delete a client' }, { status: 403 })
-  // Deleting the user cascades to ClientProfile and all related data
-  await prisma.user.delete({ where: { id: access.client.userId } })
+
+  // Two relations into ClientProfile have no onDelete cascade and would
+  // otherwise abort the user-cascade delete:
+  //   • Dog.clientProfileId → ClientProfile  (additional household dogs)
+  //   • ClientProfile.dogId → Dog            (primary dog)
+  // We detach the additional dogs first so the cascade succeeds, then
+  // delete the User (which cascades through ClientProfile + tasks +
+  // packages + shares + messages + ...), and finally drop the dog rows
+  // themselves so a deleted client doesn't leave orphan pets behind.
+  // TrainingSession.clientId is SetNull on the schema, so past sessions
+  // stay on the calendar as un-attributed history — that's intentional.
+  const profile = await prisma.clientProfile.findUnique({
+    where: { id: access.client.id },
+    select: {
+      userId: true,
+      dogId: true,
+      dogs: { select: { id: true } },
+    },
+  })
+  if (!profile) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const additionalDogIds = profile.dogs.map(d => d.id)
+  const dogIdsToDelete = [
+    ...(profile.dogId ? [profile.dogId] : []),
+    ...additionalDogIds,
+  ]
+
+  try {
+    await prisma.$transaction(async tx => {
+      if (additionalDogIds.length > 0) {
+        await tx.dog.updateMany({
+          where: { id: { in: additionalDogIds } },
+          data: { clientProfileId: null },
+        })
+      }
+      await tx.user.delete({ where: { id: profile.userId } })
+      if (dogIdsToDelete.length > 0) {
+        await tx.dog.deleteMany({ where: { id: { in: dogIdsToDelete } } })
+      }
+    })
+  } catch (err) {
+    console.error('[clients DELETE] failed', { clientId, err })
+    return NextResponse.json(
+      { error: 'Could not delete this client. Check server logs.' },
+      { status: 500 },
+    )
+  }
   return NextResponse.json({ ok: true })
 }
 
