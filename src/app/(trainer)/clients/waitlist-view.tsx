@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
-import { PageHeader } from '@/components/shared/page-header'
 import { Plus, X, GripVertical, Clock, CalendarCheck, UserCheck, Trash2, Pencil } from 'lucide-react'
 import {
   DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent,
@@ -127,18 +126,16 @@ export function WaitlistView({
   }
 
   return (
-    <>
-      <PageHeader
-        title="Waitlist"
-        subtitle="People you want to take on but have no slot for yet — drag to prioritise, book when one opens."
-        actions={
-          <Button onClick={() => setShowAdd(true)}>
-            <Plus className="h-4 w-4" /> Add to waitlist
-          </Button>
-        }
-      />
-      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl mx-auto">
-        {error && <Alert variant="error" className="mb-4">{error}</Alert>}
+    <div>
+      <div className="flex items-start justify-between gap-3 mb-5">
+        <p className="text-sm text-slate-500 max-w-md">
+          People you want to take on but have no slot for yet — drag to prioritise, book when one opens.
+        </p>
+        <Button onClick={() => setShowAdd(true)} className="flex-shrink-0">
+          <Plus className="h-4 w-4" /> Add to waitlist
+        </Button>
+      </div>
+      {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
         <div className="flex gap-1.5 mb-5 flex-wrap">
           {FILTERS.map(f => {
@@ -187,7 +184,6 @@ export function WaitlistView({
             </SortableContext>
           </DndContext>
         )}
-      </div>
 
       {(showAdd || editing) && (
         <EntryModal
@@ -198,7 +194,7 @@ export function WaitlistView({
           onSaved={() => { setShowAdd(false); setEditing(null); router.refresh() }}
         />
       )}
-    </>
+    </div>
   )
 }
 

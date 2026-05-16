@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, Calendar, Layers, Package,
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag,
-  MoreHorizontal, X, Inbox, GraduationCap, ListChecks,
+  MoreHorizontal, X, Inbox, GraduationCap,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
@@ -26,7 +26,6 @@ const TRAINER_NAV = [
   { href: '/products',     label: 'Products',     icon: ShoppingBag },
   { href: '/achievements', label: 'Achievements', icon: Trophy },
   { href: '/enquiries',    label: 'Enquiries',    icon: Inbox },
-  { href: '/waitlist',     label: 'Waitlist',     icon: ListChecks },
   { href: '/messages',     label: 'Messages',     icon: MessageSquare },
   { href: '/settings',     label: 'Settings',     icon: Settings },
   { href: '/help',         label: 'Help',         icon: HelpCircle },
@@ -326,14 +325,6 @@ function TrainerShell({
 
   // Close the sheet when route changes.
   useEffect(() => { setMoreOpen(false) }, [pathname])
-
-  function toggleCollapsed() {
-    setCollapsed(v => {
-      const next = !v
-      try { window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0') } catch {}
-      return next
-    })
-  }
 
   const sidebarWidth = collapsed ? 'md:w-16' : 'md:w-64'
   const mainOffset = collapsed ? 'md:ml-16' : 'md:ml-64'

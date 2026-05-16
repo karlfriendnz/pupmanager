@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { UserPlus } from 'lucide-react'
 import { ClientsList } from './clients-list'
+import { WaitlistView } from './waitlist-view'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
@@ -31,14 +32,71 @@ export default async function ClientsPage({
   const clientListGroupBy = trainerProfile?.clientListGroupBy ?? null
 
   const sp = await searchParams
-  const tab = sp.tab === 'inactive' ? 'inactive' : sp.tab === 'new' ? 'new' : 'active'
-  const status = tab === 'active' ? 'ACTIVE' : tab === 'inactive' ? 'INACTIVE' : 'NEW'
+  const tab =
+    sp.tab === 'inactive' ? 'inactive'
+    : sp.tab === 'new' ? 'new'
+    : sp.tab === 'waitlist' ? 'waitlist'
+    : 'active'
+  const status = tab === 'inactive' ? 'INACTIVE' : tab === 'new' ? 'NEW' : 'ACTIVE'
 
-  const [newCount, activeCount, inactiveCount] = await Promise.all([
+  const [newCount, activeCount, inactiveCount, waitlistCount] = await Promise.all([
     prisma.clientProfile.count({ where: { trainerId, status: 'NEW' } }),
     prisma.clientProfile.count({ where: { trainerId, status: 'ACTIVE' } }),
     prisma.clientProfile.count({ where: { trainerId, status: 'INACTIVE' } }),
+    prisma.waitlistEntry.count({ where: { trainerId, status: 'WAITING' } }),
   ])
+
+  // Waitlist is a tab on this page (not a separate route). Only its data
+  // is fetched when that tab is active; the heavy client-list queries
+  // below still run but their results simply aren't rendered.
+  const waitlistData =
+    tab === 'waitlist'
+      ? await (async () => {
+          const [entries, activeClients, packages] = await Promise.all([
+            prisma.waitlistEntry.findMany({
+              where: { trainerId },
+              orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
+              include: {
+                client: { select: { id: true, user: { select: { name: true, email: true } } } },
+                package: { select: { id: true, name: true } },
+              },
+            }),
+            prisma.clientProfile.findMany({
+              where: { trainerId, status: 'ACTIVE' },
+              select: { id: true, user: { select: { name: true } } },
+              orderBy: { user: { name: 'asc' } },
+            }),
+            prisma.package.findMany({
+              where: { trainerId },
+              orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+              select: { id: true, name: true },
+            }),
+          ])
+          return {
+            entries: entries.map(e => ({
+              id: e.id,
+              clientId: e.clientId,
+              name: e.client?.user.name ?? e.name,
+              email: e.client?.user.email ?? e.email,
+              phone: e.phone,
+              packageId: e.packageId,
+              packageName: e.package?.name ?? null,
+              request: e.request,
+              sessionType: e.sessionType,
+              preferredDays: e.preferredDays,
+              preferredTimeStart: e.preferredTimeStart,
+              preferredTimeEnd: e.preferredTimeEnd,
+              earliestStart: e.earliestStart ? e.earliestStart.toISOString().slice(0, 10) : null,
+              notes: e.notes,
+              status: e.status,
+              contactedAt: e.contactedAt?.toISOString() ?? null,
+              createdAt: e.createdAt.toISOString(),
+            })),
+            clients: activeClients.map(c => ({ id: c.id, name: c.user.name ?? 'Unnamed client' })),
+            packages,
+          }
+        })()
+      : null
 
   // Fetch the full tab unfiltered — search now happens client-side as the user
   // types so there's no per-keystroke round-trip. For trainer client lists
@@ -231,16 +289,34 @@ export default async function ClientsPage({
         >
           Inactive{inactiveCount > 0 && <span className="ml-1.5 text-xs opacity-60">{inactiveCount}</span>}
         </Link>
+        <Link
+          href={tabHref('waitlist')}
+          className={`flex-1 py-2.5 rounded-xl text-sm font-medium text-center transition-all duration-150 ${
+            tab === 'waitlist'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Waitlist{waitlistCount > 0 && <span className="ml-1.5 text-xs opacity-60">{waitlistCount}</span>}
+        </Link>
       </div>
 
-      <ClientsList
-        clients={flatClients}
-        tab={tab}
-        columns={clientListColumns}
-        customFields={customFields}
-        customValues={customValueMap}
-        groupBy={clientListGroupBy}
-      />
+      {tab === 'waitlist' && waitlistData ? (
+        <WaitlistView
+          initialEntries={waitlistData.entries}
+          clients={waitlistData.clients}
+          packages={waitlistData.packages}
+        />
+      ) : (
+        <ClientsList
+          clients={flatClients}
+          tab={tab as 'new' | 'active' | 'inactive'}
+          columns={clientListColumns}
+          customFields={customFields}
+          customValues={customValueMap}
+          groupBy={clientListGroupBy}
+        />
+      )}
       </div>
     </>
   )

@@ -11,7 +11,7 @@ export async function WaitlistNudge({ trainerId }: { trainerId: string }) {
 
   return (
     <Link
-      href="/waitlist"
+      href="/clients?tab=waitlist"
       className="mb-6 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 hover:bg-amber-100/70 transition-colors"
     >
       <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700 flex-shrink-0">
