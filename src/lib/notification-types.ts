@@ -205,6 +205,26 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
       preview: 'Hi! Just wondering about Tilly\'s next session…',
     },
   },
+  STREAK_UPDATE: {
+    type: 'STREAK_UPDATE',
+    label: 'Streak update',
+    description: 'A short daily nudge about your weekly engagement streak — keeps you in the habit and warns you before a streak lapses. Sent each morning in your timezone; copy we look after for you.',
+    trigger: 'time-of-day',
+    channels: ['PUSH'],
+    // Locked: one curated line, fixed morning time.
+    customisable: false,
+    defaults: {
+      enabled: true,
+      dailyAtHour: 8,
+      title: 'Your streak 🔥',
+      body: '{{message}}',
+    },
+    placeholders: ['message', 'weeks'],
+    sampleValues: {
+      message: "5-week streak going — you've already been active this week. Nice.",
+      weeks: '5',
+    },
+  },
 }
 
 // Substitute {{placeholder}} tokens. Unknown placeholders are left as-is

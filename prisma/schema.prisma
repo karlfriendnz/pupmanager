@@ -129,6 +129,7 @@ enum NotificationType {
   NEW_ENQUIRY // a public form (embed or intake) submission landed
   DAILY_SUMMARY // morning digest of today's sessions/tasks
   WEEKLY_SUMMARY // Sunday-evening wrap of the week + week-ahead glance
+  STREAK_UPDATE // daily nudge about the trainer's weekly engagement streak
 }
 
 enum NotificationChannel {
@@ -343,6 +344,8 @@ model TrainerProfile {
   classRuns          ClassRun[]
   waitlistEntries    WaitlistEntry[]
   bookingRequests    BookingRequest[]
+  activityWeeks      TrainerActivityWeek[]
+  badgeAwards        TrainerBadgeAward[]
   onboardingProgress TrainerOnboardingProgress?
 
   @@map("trainer_profiles")
@@ -932,6 +935,43 @@ model BookingRequest {
   @@index([trainerId, status])
   @@index([clientId])
   @@map("booking_requests")
+}
+
+// ─── Trainer gamification ─────────────────────────────────────────────────────
+// Engagement streak for trainers (distinct from the client-facing
+// Achievement system). One row per trainer per ISO week in which they
+// did a qualifying "meaningful work action". The streak is consecutive
+// active weeks, derived from these rows. Badge catalogue lives in code
+// (lib/trainer-streak.ts, like NOTIFICATION_TYPES); only awards persist.
+
+model TrainerActivityWeek {
+  id        String   @id @default(cuid())
+  trainerId String
+  // ISO week key, e.g. "2026-W20" (lexically sortable within a year;
+  // streak math uses a parsed week index, not string order).
+  isoWeek   String
+  firstActivityAt DateTime @default(now())
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@unique([trainerId, isoWeek])
+  @@index([trainerId])
+  @@map("trainer_activity_weeks")
+}
+
+model TrainerBadgeAward {
+  id        String   @id @default(cuid())
+  trainerId String
+  // Stable key from the in-code badge catalogue (e.g. "streak_4w",
+  // "clients_10", "sessions_50").
+  badgeKey  String
+  awardedAt DateTime @default(now())
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@unique([trainerId, badgeKey])
+  @@index([trainerId])
+  @@map("trainer_badge_awards")
 }
 
 // ─── Session report forms ─────────────────────────────────────────────────────
