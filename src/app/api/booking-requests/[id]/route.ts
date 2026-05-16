@@ -3,7 +3,6 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { safeEvaluate } from '@/lib/achievements'
-import { touchTrainerActivity } from '@/lib/trainer-streak'
 import { createBookingAssignment } from '@/lib/self-book'
 
 // PATCH /api/booking-requests/[id] — trainer confirms or declines a
@@ -74,7 +73,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   })
 
   await safeEvaluate(reqRow.clientId)
-  void touchTrainerActivity(trainerId)
   await prisma.clientNotification
     .create({
       data: {

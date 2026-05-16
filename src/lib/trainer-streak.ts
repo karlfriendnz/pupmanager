@@ -1,124 +1,63 @@
-// Trainer engagement gamification engine. Weekly "active streak":
-// consecutive ISO weeks in which the trainer did a qualifying action.
-// Pure date/streak math is split out for unit testing; the DB touch +
-// badge persistence live at the bottom. Distinct from the client-facing
-// Achievement system.
+// Trainer engagement streak — TRAINING-DAY based. A "training day" is a
+// calendar day (in the trainer's timezone) with >=1 scheduled session.
+// The streak is the run of consecutive *past* training days, most recent
+// backward, where that day's notes are done (every past session that day
+// is COMMENTED/INVOICED). Days with no sessions are skipped — they
+// neither extend nor break the streak. Derived purely from sessions, so
+// there's no activity-tracking table. Distinct from client achievements.
 import { prisma } from './prisma'
 
-// ─── Pure ISO-week + streak math (unit-tested) ───────────────────────────────
+// ─── Pure streak math (unit-tested) ──────────────────────────────────────────
 
-/** ISO-8601 week key for a date, e.g. "2026-W20". */
-export function isoWeekKey(d: Date): string {
-  // Work on a UTC copy at midnight to avoid TZ/DST drift.
-  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
-  // ISO weekday: Mon=1..Sun=7. Shift to the Thursday of this week.
-  const day = t.getUTCDay() || 7
-  t.setUTCDate(t.getUTCDate() + 4 - day)
-  const year = t.getUTCFullYear()
-  const yearStart = new Date(Date.UTC(year, 0, 1))
-  const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
-  return `${year}-W${String(week).padStart(2, '0')}`
+export interface DaySummary {
+  /** Local date 'YYYY-MM-DD'. */
+  date: string
+  /** Had >=1 session scheduled that day. */
+  isTrainingDay: boolean
+  /** Every past session that day has notes done (COMMENTED/INVOICED). */
+  notesDone: boolean
 }
 
 /**
- * Monotonic integer for a week key so consecutive weeks differ by exactly
- * 1 — including across year boundaries. Uses 53 slots/year (ISO years
- * have 52 or 53 weeks; the gap at 52→next-year-01 is still +1 because we
- * also bump the year component, so we instead compare via a running list
- * — see weeksAreConsecutive). Here we just need a stable sortable key.
+ * Streak over training days only. `days` must be PAST days ordered
+ * most-recent-first. Non-training days are skipped. Counting stops at
+ * the first training day whose notes aren't done.
  */
-export function weekSortValue(key: string): number {
-  const [y, w] = key.split('-W')
-  return Number(y) * 53 + Number(w)
+export function computeStreak(days: DaySummary[]): number {
+  let streak = 0
+  for (const d of days) {
+    if (!d.isTrainingDay) continue // skip days off — neutral
+    if (d.notesDone) streak += 1
+    else break
+  }
+  return streak
 }
 
-/**
- * Longest run of consecutive ISO weeks present in `keys`. Consecutiveness
- * is checked by walking actual calendar weeks (add 7 days) so year
- * rollovers (…-W52 → next -W01) count correctly.
- */
-export function longestStreak(keys: string[]): number {
-  const set = new Set(keys)
-  if (set.size === 0) return 0
-  const sorted = [...set].sort((a, b) => weekSortValue(a) - weekSortValue(b))
-  let best = 1
-  let run = 1
-  for (let i = 1; i < sorted.length; i++) {
-    if (nextWeekKey(sorted[i - 1]) === sorted[i]) {
+/** Longest historical run of consecutive notes-done training days. */
+export function longestStreak(days: DaySummary[]): number {
+  let best = 0
+  let run = 0
+  // Oldest → newest so a run reads forward in time.
+  for (let i = days.length - 1; i >= 0; i--) {
+    const d = days[i]
+    if (!d.isTrainingDay) continue
+    if (d.notesDone) {
       run += 1
       best = Math.max(best, run)
     } else {
-      run = 1
+      run = 0
     }
   }
   return best
 }
 
-/** The ISO week key immediately after `key` (calendar-correct). */
-export function nextWeekKey(key: string): string {
-  const [y, w] = key.split('-W').map(Number)
-  // Thursday of that ISO week + 7 days, re-keyed.
-  const jan4 = new Date(Date.UTC(y, 0, 4))
-  const week1Mon = new Date(jan4)
-  week1Mon.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() || 7) - 1))
-  const thisMon = new Date(week1Mon)
-  thisMon.setUTCDate(week1Mon.getUTCDate() + (w - 1) * 7)
-  thisMon.setUTCDate(thisMon.getUTCDate() + 7)
-  return isoWeekKey(thisMon)
-}
-
-/**
- * Current streak length ending at `currentWeek`. The streak is still
- * "alive" if the trainer was active this week OR last week (a one-week
- * grace so it doesn't read 0 mid-week before they've acted yet).
- */
-export function currentStreak(keys: string[], currentWeek: string): number {
-  const set = new Set(keys)
-  if (set.size === 0) return 0
-  const prev = previousWeekKey(currentWeek)
-  // Anchor: latest of (this week if active, else last week if active).
-  let anchor: string
-  if (set.has(currentWeek)) anchor = currentWeek
-  else if (set.has(prev)) anchor = prev
-  else return 0
-  let count = 0
-  let cursor = anchor
-  while (set.has(cursor)) {
-    count += 1
-    cursor = previousWeekKey(cursor)
-  }
-  return count
-}
-
-/** The ISO week key immediately before `key`. */
-export function previousWeekKey(key: string): string {
-  const [y, w] = key.split('-W').map(Number)
-  const jan4 = new Date(Date.UTC(y, 0, 4))
-  const week1Mon = new Date(jan4)
-  week1Mon.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() || 7) - 1))
-  const thisMon = new Date(week1Mon)
-  thisMon.setUTCDate(week1Mon.getUTCDate() + (w - 1) * 7)
-  thisMon.setUTCDate(thisMon.getUTCDate() - 7)
-  return isoWeekKey(thisMon)
-}
-
-/**
- * True when the trainer has a live streak but hasn't acted *this* week
- * yet — the moment a daily nudge should warn them.
- */
-export function streakAtRisk(keys: string[], currentWeek: string): boolean {
-  const set = new Set(keys)
-  if (set.has(currentWeek)) return false
-  return currentStreak(keys, currentWeek) > 0
-}
-
-// ─── Badge catalogue (in code, like NOTIFICATION_TYPES) ──────────────────────
+// ─── Badge catalogue (in code) ───────────────────────────────────────────────
 
 export interface TrainerStats {
   clients: number
   sessionsDelivered: number
-  currentStreakWeeks: number
-  longestStreakWeeks: number
+  currentStreak: number // training days
+  longestStreak: number // training days
 }
 
 export interface BadgeDef {
@@ -135,51 +74,97 @@ export const TRAINER_BADGES: BadgeDef[] = [
   { key: 'sessions_10', name: 'Getting going', description: '10 sessions delivered.', earned: s => s.sessionsDelivered >= 10 },
   { key: 'sessions_50', name: 'Seasoned', description: '50 sessions delivered.', earned: s => s.sessionsDelivered >= 50 },
   { key: 'sessions_200', name: 'Veteran', description: '200 sessions delivered.', earned: s => s.sessionsDelivered >= 200 },
-  { key: 'streak_4w', name: 'One-month habit', description: '4-week activity streak.', earned: s => s.longestStreakWeeks >= 4 },
-  { key: 'streak_12w', name: 'Quarter strong', description: '12-week activity streak.', earned: s => s.longestStreakWeeks >= 12 },
-  { key: 'streak_26w', name: 'Half-year hero', description: '26-week activity streak.', earned: s => s.longestStreakWeeks >= 26 },
+  { key: 'streak_4w', name: 'On a roll', description: 'Notes done 4 training days running.', earned: s => s.longestStreak >= 4 },
+  { key: 'streak_12w', name: 'Dialled in', description: 'Notes done 12 training days running.', earned: s => s.longestStreak >= 12 },
+  { key: 'streak_26w', name: 'Unstoppable', description: 'Notes done 26 training days running.', earned: s => s.longestStreak >= 26 },
 ]
 
-/** Badge keys the stats currently satisfy. */
 export function evaluateBadges(s: TrainerStats): string[] {
   return TRAINER_BADGES.filter(b => b.earned(s)).map(b => b.key)
 }
 
-// ─── DB helpers ──────────────────────────────────────────────────────────────
+// ─── Session-derived day summaries ───────────────────────────────────────────
 
-/**
- * Record that the trainer did a qualifying action now — idempotent per
- * ISO week. Best-effort: callers fire-and-forget so a streak write never
- * fails the underlying mutation.
- */
-export async function touchTrainerActivity(trainerId: string): Promise<void> {
-  const isoWeek = isoWeekKey(new Date())
-  try {
-    await prisma.trainerActivityWeek.upsert({
-      where: { trainerId_isoWeek: { trainerId, isoWeek } },
-      create: { trainerId, isoWeek },
-      update: {},
-    })
-  } catch (e) {
-    console.error('[touchTrainerActivity] failed', e)
-  }
+const NOTES_DONE_STATUSES = ['COMMENTED', 'INVOICED'] as const
+
+/** 'YYYY-MM-DD' for a date in the given IANA timezone. */
+function localDate(d: Date, tz: string): string {
+  return d.toLocaleDateString('en-CA', { timeZone: tz })
 }
 
-/** Active-week keys for a trainer (most recent ~80 weeks is plenty). */
-export async function activeWeekKeys(trainerId: string): Promise<string[]> {
-  const rows = await prisma.trainerActivityWeek.findMany({
-    where: { trainerId },
-    orderBy: { isoWeek: 'desc' },
-    take: 80,
-    select: { isoWeek: true },
+/**
+ * Build past-day summaries from the trainer's recent sessions (newest
+ * first), for streak math. Only days strictly before today (trainer tz)
+ * are included — today is still in progress.
+ */
+export async function daySummaries(
+  trainerId: string,
+  tz: string,
+  windowDays = 120,
+): Promise<DaySummary[]> {
+  const now = new Date()
+  const from = new Date(now.getTime() - windowDays * 86400000)
+  const sessions = await prisma.trainingSession.findMany({
+    where: { trainerId, scheduledAt: { gte: from } },
+    select: { scheduledAt: true, status: true },
+    orderBy: { scheduledAt: 'desc' },
   })
-  return rows.map(r => r.isoWeek)
+
+  const today = localDate(now, tz)
+  // date -> { any: bool, allPastDone: bool } accumulator
+  const byDay = new Map<string, { isTrainingDay: boolean; notesDone: boolean }>()
+  for (const s of sessions) {
+    const day = localDate(s.scheduledAt, tz)
+    if (day >= today) continue // skip today + future — not yet evaluable
+    const past = s.scheduledAt.getTime() <= now.getTime()
+    const cur = byDay.get(day) ?? { isTrainingDay: true, notesDone: true }
+    cur.isTrainingDay = true
+    if (past && !(NOTES_DONE_STATUSES as readonly string[]).includes(s.status)) {
+      cur.notesDone = false
+    }
+    byDay.set(day, cur)
+  }
+
+  return [...byDay.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1)) // most-recent first
+    .map(([date, v]) => ({ date, isTrainingDay: v.isTrainingDay, notesDone: v.notesDone }))
 }
 
-/**
- * Persist any newly-earned badges and return the freshly-awarded keys
- * (so a caller can notify). Idempotent via the unique constraint.
- */
+export async function getStreak(
+  trainerId: string,
+  tz: string,
+): Promise<{ current: number; longest: number }> {
+  const days = await daySummaries(trainerId, tz)
+  return { current: computeStreak(days), longest: longestStreak(days) }
+}
+
+/** Today's state for the 8pm reminder. */
+export async function todayStatus(
+  trainerId: string,
+  tz: string,
+): Promise<{ isTrainingDay: boolean; notesDone: boolean }> {
+  const now = new Date()
+  const today = localDate(now, tz)
+  const sessions = await prisma.trainingSession.findMany({
+    where: {
+      trainerId,
+      scheduledAt: {
+        gte: new Date(now.getTime() - 2 * 86400000),
+        lte: new Date(now.getTime() + 2 * 86400000),
+      },
+    },
+    select: { scheduledAt: true, status: true },
+  })
+  const todays = sessions.filter(s => localDate(s.scheduledAt, tz) === today)
+  if (todays.length === 0) return { isTrainingDay: false, notesDone: true }
+  const notesDone = todays.every(
+    s => s.scheduledAt.getTime() > now.getTime() || (NOTES_DONE_STATUSES as readonly string[]).includes(s.status),
+  )
+  return { isTrainingDay: true, notesDone }
+}
+
+// ─── Badge persistence ───────────────────────────────────────────────────────
+
 export async function syncBadges(trainerId: string, stats: TrainerStats): Promise<string[]> {
   const eligible = evaluateBadges(stats)
   if (eligible.length === 0) return []

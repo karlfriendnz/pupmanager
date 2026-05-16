@@ -3,91 +3,90 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('../../src/lib/prisma', () => ({ prisma: {} }))
 
 import {
-  isoWeekKey,
-  nextWeekKey,
-  previousWeekKey,
+  computeStreak,
   longestStreak,
-  currentStreak,
-  streakAtRisk,
   evaluateBadges,
+  type DaySummary,
 } from '../../src/lib/trainer-streak'
 
-describe('isoWeekKey', () => {
-  it('keys a mid-year date', () => {
-    // 2026-06-02 is a Tuesday in ISO week 23.
-    expect(isoWeekKey(new Date('2026-06-02T12:00:00Z'))).toBe('2026-W23')
-  })
-  it('Jan 1 2026 (Thu) belongs to ISO week 01', () => {
-    expect(isoWeekKey(new Date('2026-01-01T12:00:00Z'))).toBe('2026-W01')
-  })
-  it('a Sunday stays in the same ISO week as the preceding Monday', () => {
-    expect(isoWeekKey(new Date('2026-06-07T12:00:00Z'))).toBe(
-      isoWeekKey(new Date('2026-06-01T12:00:00Z')),
-    )
-  })
+// Helper: day summaries, most-recent-first (as computeStreak expects).
+const D = (date: string, isTrainingDay: boolean, notesDone: boolean): DaySummary => ({
+  date,
+  isTrainingDay,
+  notesDone,
 })
 
-describe('next/previousWeekKey are inverse and calendar-correct', () => {
-  it('round-trips', () => {
-    expect(previousWeekKey(nextWeekKey('2026-W23'))).toBe('2026-W23')
+describe('computeStreak (training-day based)', () => {
+  it('counts consecutive notes-done training days', () => {
+    expect(
+      computeStreak([
+        D('2026-05-16', true, true),
+        D('2026-05-14', true, true),
+        D('2026-05-12', true, true),
+      ]),
+    ).toBe(3)
   })
-  it('crosses the year boundary by exactly one week', () => {
-    const last = isoWeekKey(new Date('2025-12-29T12:00:00Z')) // 2026-W01
-    expect(previousWeekKey(last)).toBe(isoWeekKey(new Date('2025-12-22T12:00:00Z')))
+
+  it('skips non-training days — they neither extend nor break', () => {
+    expect(
+      computeStreak([
+        D('2026-05-16', true, true),
+        D('2026-05-15', false, false), // day off — skipped
+        D('2026-05-14', true, true),
+        D('2026-05-13', false, false), // day off — skipped
+        D('2026-05-12', true, true),
+      ]),
+    ).toBe(3)
+  })
+
+  it('breaks at the first training day with notes not done', () => {
+    expect(
+      computeStreak([
+        D('2026-05-16', true, true),
+        D('2026-05-14', true, false), // missed notes — streak stops here
+        D('2026-05-12', true, true),
+      ]),
+    ).toBe(1)
+  })
+
+  it('0 when the most recent training day missed notes', () => {
+    expect(computeStreak([D('2026-05-16', true, false), D('2026-05-14', true, true)])).toBe(0)
+  })
+
+  it('0 with no training days at all', () => {
+    expect(computeStreak([D('2026-05-16', false, false)])).toBe(0)
   })
 })
 
 describe('longestStreak', () => {
-  it('0 for no activity', () => {
-    expect(longestStreak([])).toBe(0)
+  it('finds the best historical run, ignoring days off', () => {
+    expect(
+      longestStreak([
+        D('2026-05-20', true, true), // run of 2 (newest)
+        D('2026-05-18', true, true),
+        D('2026-05-16', true, false), // break
+        D('2026-05-15', false, false), // off
+        D('2026-05-14', true, true), // run of 3 (older)
+        D('2026-05-12', true, true),
+        D('2026-05-10', true, true),
+      ]),
+    ).toBe(3)
   })
-  it('counts the longest consecutive run, ignoring gaps', () => {
-    expect(longestStreak(['2026-W10', '2026-W11', '2026-W12', '2026-W20', '2026-W21'])).toBe(3)
-  })
-  it('handles unordered input + duplicates', () => {
-    expect(longestStreak(['2026-W12', '2026-W10', '2026-W11', '2026-W11'])).toBe(3)
-  })
-})
-
-describe('currentStreak', () => {
-  it('counts back from this week when active this week', () => {
-    expect(currentStreak(['2026-W21', '2026-W22', '2026-W23'], '2026-W23')).toBe(3)
-  })
-  it('one-week grace: still alive if last week active but not yet this week', () => {
-    expect(currentStreak(['2026-W21', '2026-W22'], '2026-W23')).toBe(2)
-  })
-  it('broken if neither this nor last week active', () => {
-    expect(currentStreak(['2026-W20'], '2026-W23')).toBe(0)
-  })
-  it('0 with no activity', () => {
-    expect(currentStreak([], '2026-W23')).toBe(0)
+  it('0 when nothing is done', () => {
+    expect(longestStreak([D('2026-05-16', true, false)])).toBe(0)
   })
 })
 
-describe('streakAtRisk', () => {
-  it('at risk: has a streak but not active this week yet', () => {
-    expect(streakAtRisk(['2026-W21', '2026-W22'], '2026-W23')).toBe(true)
-  })
-  it('not at risk once active this week', () => {
-    expect(streakAtRisk(['2026-W22', '2026-W23'], '2026-W23')).toBe(false)
-  })
-  it('not at risk with no streak at all', () => {
-    expect(streakAtRisk(['2026-W10'], '2026-W23')).toBe(false)
-  })
-})
-
-describe('evaluateBadges', () => {
-  it('awards by thresholds crossed', () => {
-    const got = evaluateBadges({ clients: 12, sessionsDelivered: 60, currentStreakWeeks: 5, longestStreakWeeks: 5 })
+describe('evaluateBadges (streak now in training days)', () => {
+  it('streak badges trigger off training-day longest streak', () => {
+    const got = evaluateBadges({ clients: 12, sessionsDelivered: 60, currentStreak: 4, longestStreak: 4 })
     expect(got).toContain('first_client')
     expect(got).toContain('clients_10')
-    expect(got).not.toContain('clients_25')
     expect(got).toContain('sessions_50')
-    expect(got).not.toContain('sessions_200')
     expect(got).toContain('streak_4w')
     expect(got).not.toContain('streak_12w')
   })
   it('nothing for a brand-new trainer', () => {
-    expect(evaluateBadges({ clients: 0, sessionsDelivered: 0, currentStreakWeeks: 0, longestStreakWeeks: 0 })).toEqual([])
+    expect(evaluateBadges({ clients: 0, sessionsDelivered: 0, currentStreak: 0, longestStreak: 0 })).toEqual([])
   })
 })
