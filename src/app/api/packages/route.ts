@@ -27,6 +27,8 @@ const schema = z.object({
   dropInPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   allowWaitlist: z.boolean().optional(),
   publicEnrollment: z.boolean().optional(),
+  clientSelfBook: z.boolean().optional(),
+  selfBookRequiresApproval: z.boolean().optional(),
 })
 
 export async function GET() {
@@ -83,6 +85,8 @@ export async function POST(req: Request) {
       dropInPriceCents: parsed.data.dropInPriceCents ?? null,
       allowWaitlist: parsed.data.allowWaitlist ?? false,
       publicEnrollment: parsed.data.publicEnrollment ?? false,
+      clientSelfBook: parsed.data.clientSelfBook ?? false,
+      selfBookRequiresApproval: parsed.data.selfBookRequiresApproval ?? true,
       order: nextOrder,
     },
   })
