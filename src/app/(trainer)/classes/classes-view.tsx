@@ -78,13 +78,13 @@ export function ClassesView({
           </CardBody>
         </Card>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {runs.map(r => (
-            <Link key={r.id} href={`/classes/${r.id}`}>
-              <Card className="hover:border-blue-100 transition-colors">
-                <CardBody>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 flex-shrink-0">
+            <Link key={r.id} href={`/classes/${r.id}`} className="block">
+              <Card className="hover:border-blue-200 transition-colors">
+                <CardBody className="py-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 flex-shrink-0">
                       <GraduationCap className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
