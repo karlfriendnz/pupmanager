@@ -299,6 +299,16 @@ model TrainerProfile {
   // the Stripe subscription's quantity. 1 by default; bumps via the
   // slider on /billing/setup.
   seatCount            Int       @default(1)
+  // Founders Circle: the first FOUNDER_SEATS (10) trainers to subscribe
+  // get a Stripe coupon that holds the founder rate for 12 months, then
+  // the subscription auto-reverts to standard pricing (the coupon's
+  // `duration_in_months` handles the revert — no scheduled job). Stamped
+  // by the Stripe webhook on checkout completion, not at checkout
+  // creation, so an abandoned checkout never burns a founder seat. The
+  // Stripe coupon's own max_redemptions is the hard cap; this flag drives
+  // the "N of 10 left" gate and founder copy.
+  isFounder        Boolean   @default(false)
+  founderClaimedAt DateTime?
   // Business postal address — captured on /billing/setup, used for
   // Stripe customer billing details, invoice rendering, and tax-region
   // reporting. All optional so existing trainers don't get blocked.

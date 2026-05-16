@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { stripe, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
 import { isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
+import { isFounderEligible } from '@/lib/founder'
 
 const TRIAL_DAYS = 10
 
@@ -101,6 +102,7 @@ export async function POST(req: Request) {
     data: profileUpdate,
     select: {
       stripeCustomerId: true,
+      isFounder: true,
       businessName: true,
       phone: true,
       addressLine1: true,
@@ -155,6 +157,14 @@ export async function POST(req: Request) {
     })
   }
 
+  // Founders Circle: server-authoritative — the client never gets to
+  // ask for the founder rate. Eligible when the coupon is wired, this
+  // trainer hasn't already claimed a seat, and seats remain. We do NOT
+  // stamp isFounder here: the webhook does it on checkout completion so
+  // an abandoned checkout never burns a seat (see lib/founder.ts).
+  const founder = await isFounderEligible(trainer.isFounder)
+  const founderFlag = founder ? 'true' : 'false'
+
   const checkout = await stripeClient.checkout.sessions.create({
     mode: 'subscription',
     customer: customerId,
@@ -165,12 +175,18 @@ export async function POST(req: Request) {
     billing_address_collection: stripeAddress ? 'auto' : 'required',
     subscription_data: {
       trial_period_days: TRIAL_DAYS,
-      metadata: { trainerId, planId: plan.id, currency },
+      metadata: { trainerId, planId: plan.id, currency, founder: founderFlag },
     },
-    metadata: { trainerId, planId: plan.id, currency },
+    metadata: { trainerId, planId: plan.id, currency, founder: founderFlag },
     success_url: `${env.NEXT_PUBLIC_APP_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${env.NEXT_PUBLIC_APP_URL}/billing/cancel`,
-    allow_promotion_codes: true,
+    // Stripe Checkout rejects `discounts` together with
+    // `allow_promotion_codes`. Founders get the coupon applied silently
+    // (12-month repeating discount, auto-reverts after); everyone else
+    // keeps the open promo-code box exactly as before.
+    ...(founder && env.STRIPE_FOUNDER_COUPON_ID
+      ? { discounts: [{ coupon: env.STRIPE_FOUNDER_COUPON_ID }] }
+      : { allow_promotion_codes: true }),
   })
 
   if (!checkout.url) {

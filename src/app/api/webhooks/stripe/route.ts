@@ -76,12 +76,26 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   // Pull the actual subscription so we can write the canonical period end
   // and status — the checkout session itself doesn't expose those reliably.
   const sub = await stripe().subscriptions.retrieve(subscriptionId)
+
+  // Founders Circle: stamp the seat here (not at checkout creation) so an
+  // abandoned checkout never burns one. Only on the first completion — a
+  // duplicate webhook must not move founderClaimedAt. Eligibility was
+  // decided server-side when the session was created; we just honour the
+  // flag Stripe echoes back in metadata.
+  const founderStamp =
+    session.metadata?.founder === 'true'
+      ? await prisma.trainerProfile
+          .findUnique({ where: { id: trainerId }, select: { isFounder: true } })
+          .then(t => (t && !t.isFounder ? { isFounder: true, founderClaimedAt: new Date() } : {}))
+      : {}
+
   await prisma.trainerProfile.update({
     where: { id: trainerId },
     data: {
       stripeSubscriptionId: sub.id,
       subscriptionStatus: mapStripeStatus(sub.status),
       ...(planId ? { subscriptionPlanId: planId } : {}),
+      ...founderStamp,
       currentPeriodEnd: new Date(sub.items.data[0]?.current_period_end ? sub.items.data[0].current_period_end * 1000 : Date.now()),
       // Trial is over the moment they pay — null it out so the banner
       // hides immediately.

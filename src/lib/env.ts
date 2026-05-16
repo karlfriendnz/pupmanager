@@ -60,6 +60,13 @@ const schema = z.object({
   // fields once we ship public pricing.
   STRIPE_SECRET_KEY: optionalString,
   STRIPE_WEBHOOK_SECRET: optionalString,
+  // Founders Circle coupon. Create in the Stripe dashboard as a coupon
+  // with duration = "repeating", duration_in_months = 12, the founder
+  // discount (percent_off or amount_off), and max_redemptions = 10 — the
+  // 12-month duration auto-reverts subscriptions to standard pricing and
+  // max_redemptions is the hard cap. Optional: when unset the founder
+  // path is simply off and checkout behaves exactly as before.
+  STRIPE_FOUNDER_COUPON_ID: optionalString,
 
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 })
