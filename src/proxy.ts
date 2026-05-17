@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   '/api/webhooks', // Stripe + future inbound webhooks (signature-gated inside)
   '/form',       // public embed forms
   '/api/form',   // public form submission API
+  '/api/version', // build-id check for the stale-client reload guard (no secrets)
   // Universal Links / Android App Links discovery files. Apple and Google
   // fetch these on app install to verify domain↔app association; they
   // MUST resolve with no auth, no redirects, and Content-Type: application/json.

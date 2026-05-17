@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
+import { VersionGuard } from './version-guard'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
 
@@ -99,6 +100,7 @@ interface AppShellProps {
 export function AppShell(props: AppShellProps) {
   return (
     <>
+      <VersionGuard />
       <UnreadBadgeSync total={props.unreadTotal ?? 0} />
       {props.role === 'CLIENT' ? <ClientShell {...props} /> : <TrainerShell {...props} />}
     </>
