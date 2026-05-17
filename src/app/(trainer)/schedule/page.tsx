@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { ScheduleView } from './schedule-view'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
+import { todayInTz } from '@/lib/timezone'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Schedule' }
@@ -54,6 +55,7 @@ export default async function SchedulePage({
     where: { userId: session.user.id },
     select: {
       id: true,
+      user: { select: { timezone: true } },
       googleCalendarConnected: true,
       scheduleStartHour: true,
       scheduleEndHour: true,
@@ -79,7 +81,10 @@ export default async function SchedulePage({
   const fabState = await getOnboardingFabState(trainerProfile.id)
   const showHints = fabState.show
 
-  const today = new Date().toISOString().split('T')[0]
+  // The trainer's configured timezone is the single source of truth for
+  // every date/time the calendar shows — never the device or UTC.
+  const tz = trainerProfile.user?.timezone ?? 'Pacific/Auckland'
+  const today = todayInTz(tz)
   const sp = await searchParams
   const configuredDays = Array.isArray(trainerProfile.scheduleDays)
     ? trainerProfile.scheduleDays as number[]
@@ -299,6 +304,7 @@ export default async function SchedulePage({
       }))}
       selectedDate={selectedDate}
       today={today}
+      tz={tz}
       googleCalendarConnected={trainerProfile.googleCalendarConnected}
       scheduleStartHour={trainerProfile.scheduleStartHour}
       scheduleEndHour={trainerProfile.scheduleEndHour}

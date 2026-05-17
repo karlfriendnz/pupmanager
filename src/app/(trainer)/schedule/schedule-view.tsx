@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext } from 'react'
+import { ymdInTz, minutesIntoDayInTz, dateParts } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -127,6 +128,13 @@ interface Blackout {
   endDate: string    // YYYY-MM-DD inclusive
 }
 
+// The trainer's configured timezone, provided once at the ScheduleView
+// root. Every instant→display conversion (session time labels, grid
+// position, edit-form date/time, day bucketing) reads this so the
+// calendar looks identical on any device. Default 'UTC' is only a
+// render-before-provider safety net.
+const SchedTz = createContext<string>('UTC')
+
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
 // Parse YYYY-MM-DD as LOCAL noon to avoid timezone-shift bugs
@@ -157,21 +165,21 @@ function addDays(date: Date, n: number): Date {
   return d
 }
 
-function fmtTime(iso: string): string {
+function fmtTime(iso: string, tz: string): string {
   return new Date(iso).toLocaleTimeString('en-NZ', {
-    hour: 'numeric', minute: '2-digit', hour12: true,
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz,
   })
 }
 
 // `<input type="date">` and `<input type="time">` need YYYY-MM-DD and HH:MM
-// in the user's local timezone, not UTC.
-function localDateStr(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+// in the TRAINER's timezone (not the device's, not UTC) so editing a
+// session shows/saves the wall-clock time the trainer means.
+function localDateStr(iso: string, tz: string): string {
+  return ymdInTz(iso, tz)
 }
-function localTimeStr(iso: string): string {
-  const d = new Date(iso)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+function localTimeStr(iso: string, tz: string): string {
+  const { hour, minute } = dateParts(iso, tz)
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 }
 
 function fmtFullDate(dateStr: string): string {
@@ -196,9 +204,8 @@ function timeToY(timeStr: string, startHour = DEFAULT_START_HOUR, pxPerHour = PX
   return ((h * 60 + m - startHour * 60) / 60) * pxPerHour
 }
 
-function sessionTop(iso: string, startHour = DEFAULT_START_HOUR, pxPerHour = PX_PER_HOUR): number {
-  const d = new Date(iso)
-  const mins = d.getHours() * 60 + d.getMinutes()
+function sessionTop(iso: string, tz: string, startHour = DEFAULT_START_HOUR, pxPerHour = PX_PER_HOUR): number {
+  const mins = minutesIntoDayInTz(iso, tz)
   return Math.max(0, ((mins - startHour * 60) / 60) * pxPerHour)
 }
 
@@ -382,7 +389,8 @@ function SessionBlock({
   clientExtras: Record<string, ClientExtra>
   customFields: CustomFieldMeta[]
 }) {
-  const top    = isDragging && dragTop !== null ? dragTop : sessionTop(session.scheduledAt, startHour, pxPerHour)
+  const tz = useContext(SchedTz)
+  const top    = isDragging && dragTop !== null ? dragTop : sessionTop(session.scheduledAt, tz, startHour, pxPerHour)
   const height = sessionHeight(session.durationMins, pxPerHour)
   // Prefer direct client link, fall back to client via dog's primaryFor
   const clientUser = session.client?.user ?? session.dog?.primaryFor[0]?.user
@@ -432,7 +440,7 @@ function SessionBlock({
     >
       <div className="flex items-center gap-1 pt-1">
         <p className="text-[10px] font-semibold text-white leading-tight truncate flex-1">
-          {fmtTime(session.scheduledAt)}
+          {fmtTime(session.scheduledAt, tz)}
         </p>
         {isBuddyWalk && (
           <span
@@ -534,6 +542,7 @@ function WeekGrid({
   // week at a glance on mobile (the "Week" view option).
   forceFullWeek?: boolean
 }) {
+  const tz = useContext(SchedTz)
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i)
   const gridRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -659,7 +668,7 @@ function WeekGrid({
       originalDayIndex: dayIndex,
       dayIndex,
       offsetY: e.clientY - rect.top,
-      currentTop: sessionTop(session.scheduledAt, startHour, pxPerHour),
+      currentTop: sessionTop(session.scheduledAt, tz, startHour, pxPerHour),
       moved: false,
     })
   }, [])
@@ -817,7 +826,7 @@ function WeekGrid({
           {visibleDays.map((d, dayIndex) => {
             const ds         = toDateStr(d)
             const isToday    = ds === today
-            const daySessions = sessions.filter(s => toDateStr(new Date(s.scheduledAt)) === ds)
+            const daySessions = sessions.filter(s => ymdInTz(s.scheduledAt, tz) === ds)
 
             return (
               <div
@@ -1477,6 +1486,7 @@ function SessionModal({
   onSessionsUpdate: (id: string, updates: Partial<Session>) => void
   onDelete: (id: string, scope?: 'this' | 'following') => Promise<void> | void
 }) {
+  const tz = useContext(SchedTz)
   const router = useRouter()
   const [session, setSession] = useState(initialSession)
   const [tasks, setTasks] = useState<SessionTask[]>([])
@@ -1573,8 +1583,8 @@ function SessionModal({
   // whether to apply changes only to this session or to this session plus
   // every later one in the same package. Other fields (status, dog, buddies)
   // remain auto-saved since they're meaningful per-session.
-  const [draftDate, setDraftDate] = useState(localDateStr(initialSession.scheduledAt))
-  const [draftTime, setDraftTime] = useState(localTimeStr(initialSession.scheduledAt))
+  const [draftDate, setDraftDate] = useState(localDateStr(initialSession.scheduledAt, tz))
+  const [draftTime, setDraftTime] = useState(localTimeStr(initialSession.scheduledAt, tz))
   const [draftDuration, setDraftDuration] = useState(initialSession.durationMins)
   const [savingDraft, setSavingDraft] = useState(false)
   const [draftError, setDraftError] = useState<string | null>(null)
@@ -1582,8 +1592,8 @@ function SessionModal({
   // If the parent swaps the session out (e.g. opening a different one),
   // re-seed the draft from the new source.
   useEffect(() => {
-    setDraftDate(localDateStr(initialSession.scheduledAt))
-    setDraftTime(localTimeStr(initialSession.scheduledAt))
+    setDraftDate(localDateStr(initialSession.scheduledAt, tz))
+    setDraftTime(localTimeStr(initialSession.scheduledAt, tz))
     setDraftDuration(initialSession.durationMins)
     setDraftError(null)
   }, [initialSession.id, initialSession.scheduledAt, initialSession.durationMins])
@@ -2143,8 +2153,8 @@ function SessionModal({
                     </Button>
                   )}
                   <Button size="sm" variant="ghost" disabled={savingDraft} onClick={() => {
-                    setDraftDate(localDateStr(session.scheduledAt))
-                    setDraftTime(localTimeStr(session.scheduledAt))
+                    setDraftDate(localDateStr(session.scheduledAt, tz))
+                    setDraftTime(localTimeStr(session.scheduledAt, tz))
                     setDraftDuration(session.durationMins)
                     setDraftError(null)
                   }}>
@@ -2461,6 +2471,7 @@ interface PkgOption {
 }
 
 export function ScheduleView({
+  tz,
   sessions: initialSessions,
   availabilitySlots: initialAvailSlots,
   clients,
@@ -2478,6 +2489,7 @@ export function ScheduleView({
   clientExtras: initialClientExtras,
   showHints = false,
 }: {
+  tz: string
   sessions: Session[]
   availabilitySlots: AvailSlot[]
   clients: ClientOption[]
@@ -2802,9 +2814,10 @@ export function ScheduleView({
     setAvailSlots(prev => prev.filter(s => s.id !== id))
   }
 
-  const daySessions = sessions.filter(s => toDateStr(new Date(s.scheduledAt)) === selectedDate)
+  const daySessions = sessions.filter(s => ymdInTz(s.scheduledAt, tz) === selectedDate)
 
   return (
+    <SchedTz.Provider value={tz}>
     <div className="flex flex-col h-full">
       {/* ── Header (title + date nav on the left, controls on the right) ────── */}
       <div
@@ -3101,5 +3114,6 @@ export function ScheduleView({
         />
       )}
     </div>
+    </SchedTz.Provider>
   )
 }
