@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers } from 'lucide-react'
-import { getInitials } from '@/lib/utils'
+import { getInitials, dateParts } from '@/lib/utils'
 
 type BuiltinColumnId = 'email' | 'dog' | 'breed' | 'extraDogs' | 'nextSession' | 'compliance' | 'shared'
 
@@ -54,9 +54,10 @@ interface Props {
   customFields: CustomFieldMeta[]
   customValues: Record<string, string>  // key: `${clientId}:${fieldId}`
   groupBy: string | null
+  tz: string  // trainer's configured timezone — all dates render in this
 }
 
-export function ClientsList({ clients, tab, columns, customFields, customValues, groupBy }: Props) {
+export function ClientsList({ clients, tab, columns, customFields, customValues, groupBy, tz }: Props) {
   const validCustomIds = new Set(customFields.map(f => f.id))
   const initial = columns.filter(c => isBuiltinId(c) || (c.startsWith('custom:') && validCustomIds.has(c.slice(7))))
   const [visible, setVisible] = useState<Set<string>>(new Set(initial))
@@ -291,6 +292,7 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
           customFields={customFields}
           customValues={customValues}
           groupBy={groupKey || null}
+          tz={tz}
         />
       )}
     </>
@@ -312,6 +314,7 @@ function buildDataColumns(
   visible: Set<string>,
   customFields: CustomFieldMeta[],
   customValues: Record<string, string>,
+  tz: string,
 ): DataColumn[] {
   const cols: DataColumn[] = []
 
@@ -364,9 +367,9 @@ function buildDataColumns(
         return (
           <span className="inline-flex items-center gap-1 text-blue-600 truncate">
             <Calendar className="h-3 w-3 flex-shrink-0" />
-            {d.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
+            {d.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', timeZone: tz })}
             <span className="text-slate-400">·</span>
-            {d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
+            {d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz })}
           </span>
         )
       },
@@ -402,11 +405,11 @@ function buildDataColumns(
   return cols
 }
 
-function groupKeyFor(client: ClientRow, groupBy: string | null, customValues: Record<string, string>): { key: string; label: string; sort: number } {
+function groupKeyFor(client: ClientRow, groupBy: string | null, customValues: Record<string, string>, tz: string): { key: string; label: string; sort: number } {
   if (!groupBy) return { key: '', label: '', sort: 0 }
   if (groupBy === 'nextDay') {
     if (!client.nextSessionAt) return { key: 'none', label: 'No upcoming booking', sort: 8 }
-    const day = new Date(client.nextSessionAt).getDay()  // 0=Sun..6=Sat
+    const day = dateParts(client.nextSessionAt, tz).weekday  // 0=Sun..6=Sat, trainer tz
     // Sort Mon..Sun (Mon first); push Sun to the end of the week.
     const weekIdx = day === 0 ? 6 : day - 1
     return { key: `day:${day}`, label: DAY_NAMES[day], sort: weekIdx }
@@ -420,15 +423,16 @@ function groupKeyFor(client: ClientRow, groupBy: string | null, customValues: Re
   return { key: '', label: '', sort: 0 }
 }
 
-function ClientTable({ clients, tab, visible, customFields, customValues, groupBy }: {
+function ClientTable({ clients, tab, visible, customFields, customValues, groupBy, tz }: {
   clients: ClientRow[]
   tab: Props['tab']
   visible: Set<string>
   customFields: CustomFieldMeta[]
   customValues: Record<string, string>
   groupBy: string | null
+  tz: string
 }) {
-  const dataColumns = buildDataColumns(visible, customFields, customValues)
+  const dataColumns = buildDataColumns(visible, customFields, customValues, tz)
   // Identity column (avatar+name) is always present and gets generous space.
   const gridTemplate = `minmax(220px, 1.6fr) ${dataColumns.map(c => c.width).join(' ')}`.trim()
 
@@ -436,7 +440,7 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
     if (!groupBy) return [{ key: '', label: '', sort: 0, rows: clients }]
     const map = new Map<string, { key: string; label: string; sort: number; rows: ClientRow[] }>()
     for (const c of clients) {
-      const g = groupKeyFor(c, groupBy, customValues)
+      const g = groupKeyFor(c, groupBy, customValues, tz)
       const bucket = map.get(g.key)
       if (bucket) {
         bucket.rows.push(c)

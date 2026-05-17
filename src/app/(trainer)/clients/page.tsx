@@ -24,12 +24,14 @@ export default async function ClientsPage({
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
-    select: { clientListColumns: true, clientListGroupBy: true },
+    select: { clientListColumns: true, clientListGroupBy: true, user: { select: { timezone: true } } },
   })
   const clientListColumns = Array.isArray(trainerProfile?.clientListColumns)
     ? trainerProfile.clientListColumns as string[]
     : ['email', 'dog', 'nextSession', 'compliance']
   const clientListGroupBy = trainerProfile?.clientListGroupBy ?? null
+  // Trainer's configured tz — every date in the list renders in it.
+  const tz = trainerProfile?.user?.timezone ?? 'Pacific/Auckland'
 
   const sp = await searchParams
   const tab =
@@ -315,6 +317,7 @@ export default async function ClientsPage({
           customFields={customFields}
           customValues={customValueMap}
           groupBy={clientListGroupBy}
+          tz={tz}
         />
       )}
       </div>
