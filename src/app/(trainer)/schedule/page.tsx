@@ -4,22 +4,30 @@ import { prisma } from '@/lib/prisma'
 import { ScheduleView } from './schedule-view'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
-import { todayInTz } from '@/lib/timezone'
+import { todayInTz, startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
+import { dateParts } from '@/lib/utils'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Schedule' }
 
-function getWeekBounds(dateStr: string): { weekStart: Date; weekEnd: Date } {
-  const d = new Date(dateStr)
-  const day = d.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  const weekStart = new Date(d)
-  weekStart.setDate(d.getDate() + diff)
-  weekStart.setHours(0, 0, 0, 0)
-  const weekEnd = new Date(weekStart)
-  weekEnd.setDate(weekStart.getDate() + 6)
-  weekEnd.setHours(23, 59, 59, 999)
-  return { weekStart, weekEnd }
+// Mon–Sun window for the week containing `dateStr`, anchored to the
+// trainer's timezone (not UTC / the Vercel host). Doing the weekday and
+// week-start math in UTC keeps it host-tz-safe and handles month/year
+// rollover; the resulting day boundaries are then converted to the UTC
+// instants of midnight..23:59 *in the trainer's tz* so the session query
+// matches what the dashboard's "Today's sessions" shows.
+function getWeekBounds(dateStr: string, tz: string): { weekStart: Date; weekEnd: Date } {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0=Sun..6=Sat
+  const toMonday = dow === 0 ? -6 : 1 - dow
+  const mon = new Date(Date.UTC(y, m - 1, d + toMonday))
+  const sun = new Date(Date.UTC(y, m - 1, d + toMonday + 6))
+  const ymd = (dt: Date) =>
+    `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+  return {
+    weekStart: startOfDayInTz(ymd(mon), tz),
+    weekEnd: endOfDayInTz(ymd(sun), tz),
+  }
 }
 
 // Walk forward from `dateStr` (YYYY-MM-DD) until we hit a day the trainer
@@ -91,7 +99,7 @@ export default async function SchedulePage({
     : [1, 2, 3, 4, 5, 6, 7]
   const selectedDate = sp.date ?? nextWorkingDay(today, configuredDays)
 
-  const { weekStart, weekEnd } = getWeekBounds(selectedDate)
+  const { weekStart, weekEnd } = getWeekBounds(selectedDate, tz)
 
   // Auto-expand the visible weekdays when this week has sessions on a
   // day the trainer normally hides — so a Sunday-scheduled session
@@ -110,8 +118,8 @@ export default async function SchedulePage({
   })
   const hiddenDaysWithSessions = new Set<number>()
   for (const s of sessionsOnHiddenDays) {
-    const js = s.scheduledAt.getDay() // 0=Sun..6=Sat
-    const iso = js === 0 ? 7 : js     // schedule uses 1=Mon..7=Sun
+    const js = dateParts(s.scheduledAt, tz).weekday // 0=Sun..6=Sat, trainer tz
+    const iso = js === 0 ? 7 : js                    // schedule uses 1=Mon..7=Sun
     if (!configuredDays.includes(iso)) hiddenDaysWithSessions.add(iso)
   }
   const scheduleDaysArr = hiddenDaysWithSessions.size > 0

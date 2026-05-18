@@ -2,23 +2,29 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
+import { startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
 
 // Returns the trainer's sessions and the client extras needed by the
 // schedule blocks for a single week. Used by the schedule page to
 // navigate weeks without a full server round-trip — the static data
 // (clients, packages, custom fields, availability) stays in memory and
 // only the per-week data is refetched.
-function getWeekBounds(dateStr: string): { weekStart: Date; weekEnd: Date } {
-  const d = new Date(dateStr)
-  const day = d.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  const weekStart = new Date(d)
-  weekStart.setDate(d.getDate() + diff)
-  weekStart.setHours(0, 0, 0, 0)
-  const weekEnd = new Date(weekStart)
-  weekEnd.setDate(weekStart.getDate() + 6)
-  weekEnd.setHours(23, 59, 59, 999)
-  return { weekStart, weekEnd }
+//
+// Week bounds are anchored to the trainer's timezone (not UTC / the
+// Vercel host) so this matches the server page and the dashboard — see
+// the matching helper in (trainer)/schedule/page.tsx.
+function getWeekBounds(dateStr: string, tz: string): { weekStart: Date; weekEnd: Date } {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0=Sun..6=Sat
+  const toMonday = dow === 0 ? -6 : 1 - dow
+  const mon = new Date(Date.UTC(y, m - 1, d + toMonday))
+  const sun = new Date(Date.UTC(y, m - 1, d + toMonday + 6))
+  const ymd = (dt: Date) =>
+    `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+  return {
+    weekStart: startOfDayInTz(ymd(mon), tz),
+    weekEnd: endOfDayInTz(ymd(sun), tz),
+  }
 }
 
 export async function GET(req: Request) {
@@ -32,15 +38,19 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const date = url.searchParams.get('date')
   if (!date) return NextResponse.json({ error: 'Missing date' }, { status: 400 })
-  const { weekStart, weekEnd } = getWeekBounds(date)
 
   // Best-effort top up: keep the calendar full ahead of the visible week.
   await extendOngoingPackages(trainerId).catch(() => {})
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
-    select: { scheduleExtraFields: true },
+    select: {
+      scheduleExtraFields: true,
+      user: { select: { timezone: true } },
+    },
   })
+  const tz = trainerProfile?.user?.timezone ?? 'Pacific/Auckland'
+  const { weekStart, weekEnd } = getWeekBounds(date, tz)
   const scheduleSelections = Array.isArray(trainerProfile?.scheduleExtraFields)
     ? trainerProfile.scheduleExtraFields as string[]
     : []
