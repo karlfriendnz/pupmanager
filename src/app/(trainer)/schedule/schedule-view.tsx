@@ -2710,7 +2710,17 @@ export function ScheduleView({
   async function handleDeleteSession(id: string, scope: 'this' | 'following' = 'this') {
     const url = `/api/schedule/${id}${scope === 'following' ? '?scope=following' : ''}`
     const res = await fetch(url, { method: 'DELETE' })
-    if (scope === 'following' && res.ok) {
+    // Only prune locally on a confirmed server delete. Removing optimistically
+    // on a failed request left the UI showing the session gone while it still
+    // existed in the DB — then the next RSC sync (the initialSessions effect,
+    // or any navigation back) resurrected it: "it comes back, like it's not
+    // deleting". Mirror the blackout/task delete pattern: log + bail on failure.
+    if (!res.ok) {
+      console.error('[schedule] session DELETE failed', { id, scope, status: res.status })
+      alert('Could not delete that session — it may still exist. Please try again.')
+      return
+    }
+    if (scope === 'following') {
       // Server returns the full list of deleted ids so we can prune locally.
       const body = await res.json().catch(() => ({}))
       const deletedIds: string[] = Array.isArray(body?.deletedIds) ? body.deletedIds : [id]
@@ -2718,6 +2728,9 @@ export function ScheduleView({
     } else {
       setSessions(prev => prev.filter(s => s.id !== id))
     }
+    // Invalidate the Server Component data + Router Cache so the prop-sync
+    // effect can't restore the session from a stale RSC payload.
+    router.refresh()
   }
 
   async function handleSessionDrop(sessionId: string, newIso: string) {
