@@ -233,6 +233,12 @@ function AssignPackageFromScheduleModalInner({
         placed.setHours(pinnedTime.h, pinnedTime.m, 0, 0)
       } else {
         placed = findNextAvailable(availability, cursor, pkg.durationMins, SLOT_SEARCH_DAYS)
+        // Ongoing packages must still drop a session on every cadence step
+        // even when no availability slot matches — otherwise the proposal
+        // list came back empty, the interface didn't render, and nothing
+        // got created. Fall back to the cursor day; the trainer can drag
+        // it afterwards.
+        if (!placed && isOngoing) placed = new Date(cursor)
       }
       // Stop once we've walked past the end date — don't add a placeholder past it.
       if (end && placed && placed > end) break
