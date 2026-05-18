@@ -244,5 +244,18 @@ export async function DELETE(
 
   const idsToDelete = [sessionId, ...followers.map(f => f.id)]
   await prisma.trainingSession.deleteMany({ where: { id: { in: idsToDelete } } })
+
+  // "Delete this + following" on a forever-ongoing assignment must also stop
+  // the assignment regenerating. Otherwise extendOngoingPackages() (which runs
+  // on every schedule load + week fetch) immediately recreates the deleted
+  // sessions with new ids — the trainer deletes, they "come back", and there
+  // is no way to ever clear an ongoing package's sessions from the schedule.
+  if (propagate && trainingSession.clientPackageId) {
+    await prisma.clientPackage.updateMany({
+      where: { id: trainingSession.clientPackageId, extendIndefinitely: true },
+      data: { extendIndefinitely: false },
+    })
+  }
+
   return NextResponse.json({ ok: true, deletedIds: idsToDelete })
 }
