@@ -106,6 +106,25 @@ export async function POST(
     dogId = dog.id
   }
 
+  // Block stacking duplicate forever-ongoing assignments. Each ongoing
+  // ClientPackage is independently topped up by extendOngoingPackages() on
+  // every schedule load, so two active ones for the same client+package
+  // double the sessions and make deletes look like they "come back".
+  // Fixed-count packages can still be assigned repeatedly (legitimate
+  // repurchase) — only ongoing (sessionCount 0 + extendIndefinitely) stacks.
+  if (pkg.sessionCount === 0 && parsed.data.extendIndefinitely === true) {
+    const existingOngoing = await prisma.clientPackage.findFirst({
+      where: { clientId, packageId: pkg.id, extendIndefinitely: true },
+      select: { id: true },
+    })
+    if (existingOngoing) {
+      return NextResponse.json(
+        { error: 'This client already has an active ongoing assignment of this package. Edit or end that one instead of adding another.' },
+        { status: 409 },
+      )
+    }
+  }
+
   // The startDate field stores when the package began for this client — use the
   // first scheduled session as the canonical start.
   const startDate = sessionDates[0]
