@@ -701,8 +701,11 @@ function WeekGrid({
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (!dragging) return
     if (dragging.moved) {
-      // Build new ISO string from target column + snapped top
-      const day = weekDays[dragging.dayIndex]
+      // Build new ISO string from target column + snapped top.
+      // dayIndex is relative to the rendered columns (visibleDays), which
+      // is a 3-day slice when the mobile/narrow window is active — indexing
+      // weekDays here dropped sessions onto the wrong day on iPad/phones.
+      const day = visibleDays[dragging.dayIndex]
       const timeStr = yToTime(dragging.currentTop, startHour, endHour, pxPerHour)
       const [h, m]  = timeStr.split(':').map(Number)
       const newDate  = new Date(day)
@@ -712,7 +715,7 @@ function WeekGrid({
       onSessionClick(dragging.session)
     }
     setDragging(null)
-  }, [dragging, weekDays, onSessionClick, onSessionDrop])
+  }, [dragging, visibleDays, startHour, endHour, pxPerHour, onSessionClick, onSessionDrop])
 
   // Cancel drag if pointer released outside the grid, or if iOS cancels the gesture
   // (e.g. multi-touch zoom, scroll arbitration) — without pointercancel cleanup the
@@ -801,11 +804,24 @@ function WeekGrid({
       </div>
 
       {/* Grid body */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
+        // While a session is being dragged, stop iOS from scroll-arbitrating
+        // the gesture: a mid-drag scroll shifts the column's client rect under
+        // the finger, collapsing the computed Y to 0 and snapping the session
+        // to the top of the day (~7am). Locking touch-action keeps the pointer
+        // math stable for the whole drag.
+        style={{ touchAction: dragging ? 'none' : undefined }}
+      >
         <div
           ref={gridRef}
           className="relative grid"
-          style={{ gridTemplateColumns: `48px repeat(${visibleDays.length}, 1fr)`, height: totalHeight }}
+          style={{
+            gridTemplateColumns: `48px repeat(${visibleDays.length}, 1fr)`,
+            height: totalHeight,
+            touchAction: dragging ? 'none' : undefined,
+          }}
           onPointerMove={dragging ? handlePointerMove : undefined}
           onPointerUp={dragging ? handlePointerUp : undefined}
         >
