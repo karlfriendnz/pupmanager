@@ -38,7 +38,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // are reflected immediately. The JWT caches these only at sign-in. Also
   // pulls the trial/sub state for the chrome banner.
   const tp = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: session.user.trainerId ?? '' },
     select: {
       businessName: true,
       logoUrl: true,

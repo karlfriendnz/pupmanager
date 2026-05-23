@@ -12,7 +12,7 @@ export default async function InviteClientPage() {
   if (!session) redirect('/login')
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: session.user.trainerId ?? '' },
     select: { businessName: true, inviteTemplate: true },
   })
 

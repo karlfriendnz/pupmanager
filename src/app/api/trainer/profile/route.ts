@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -54,13 +55,15 @@ export async function GET() {
   }
 
   const profile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: session.user.trainerId ?? '' },
   })
 
   return NextResponse.json(profile)
 }
 
 export async function PATCH(req: Request) {
+  const guard = await guardPermission('settings.edit')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
@@ -82,7 +85,7 @@ export async function PATCH(req: Request) {
   // field. A wholesale write would clobber the other assignments.
   if (data.intakeSystemFieldSections) {
     const current = await prisma.trainerProfile.findUnique({
-      where: { userId: session.user.id },
+      where: { id: guard.companyId },
       select: { intakeSystemFieldSections: true },
     })
     const existing = (current?.intakeSystemFieldSections as Record<string, string | null> | null) ?? {}
@@ -90,7 +93,7 @@ export async function PATCH(req: Request) {
   }
 
   const profile = await prisma.trainerProfile.update({
-    where: { userId: session.user.id },
+    where: { id: guard.companyId },
     data,
   })
 

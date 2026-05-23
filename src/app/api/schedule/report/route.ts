@@ -27,7 +27,7 @@ export async function GET(req: Request) {
   }
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: session.user.trainerId ?? '' },
     select: {
       id: true,
       scheduleExtraFields: true,

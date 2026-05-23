@@ -48,5 +48,17 @@ test.describe('permission enforcement', () => {
       data: { name: 'Manager package', sessionCount: 3, weeksBetween: 1, durationMins: 60 },
     })
     expect([200, 201]).toContain(res.status())
+
+    // Manager can save business settings (resolves by company id, settings.edit).
+    const settingsRes = await page.request.patch('/api/trainer/profile', {
+      data: { phone: '021 555 0100' },
+    })
+    expect(settingsRes.status()).toBe(200)
+  })
+
+  test('staff: cannot save business settings', async ({ page }) => {
+    await login(page, SEED.staff.email, SEED.staff.password)
+    const res = await page.request.patch('/api/trainer/profile', { data: { phone: '021 000 0000' } })
+    expect(res.status()).toBe(403)
   })
 })

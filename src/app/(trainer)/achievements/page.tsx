@@ -12,7 +12,7 @@ export default async function AchievementsPage() {
   if (!session) redirect('/login')
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: session.user.trainerId ?? '' },
     select: { id: true },
   })
   if (!trainerProfile) redirect('/login')

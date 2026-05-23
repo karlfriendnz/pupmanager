@@ -221,7 +221,7 @@ export async function DELETE(
   const { sessionId } = await params
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: session.user.trainerId ?? '' },
     select: { id: true, googleCalendarRefreshToken: true },
   })
   if (!trainerProfile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })

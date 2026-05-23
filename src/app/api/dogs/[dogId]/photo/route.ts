@@ -57,16 +57,14 @@ export async function POST(
     })
     authorised = cp?.id === owningClientProfileId
   } else if (session.user.role === 'TRAINER') {
-    const tp = await prisma.trainerProfile.findUnique({
-      where: { userId: session.user.id },
-      select: { id: true },
-    })
-    if (tp?.id === owningTrainerId) {
+    // The caller's business id (works for owners + invited members).
+    const myCompanyId = session.user.trainerId
+    if (myCompanyId && myCompanyId === owningTrainerId) {
       authorised = true
-    } else if (tp) {
+    } else if (myCompanyId) {
       // Allow CO_MANAGE shares too — same rule as the rest of the app.
       const share = await prisma.clientShare.findFirst({
-        where: { clientId: owningClientProfileId, sharedWithId: tp.id, shareType: 'CO_MANAGE' },
+        where: { clientId: owningClientProfileId, sharedWithId: myCompanyId, shareType: 'CO_MANAGE' },
         select: { id: true },
       })
       authorised = !!share
@@ -150,11 +148,7 @@ export async function DELETE(
     })
     authorised = cp?.id === owningClientProfileId
   } else if (session.user.role === 'TRAINER') {
-    const tp = await prisma.trainerProfile.findUnique({
-      where: { userId: session.user.id },
-      select: { id: true },
-    })
-    if (tp?.id === owningTrainerId) authorised = true
+    if (session.user.trainerId && session.user.trainerId === owningTrainerId) authorised = true
   }
   if (!authorised) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
