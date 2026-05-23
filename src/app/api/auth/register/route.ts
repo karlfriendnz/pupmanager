@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { sendVerificationEmail } from '@/lib/auth-emails'
+import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 import crypto from 'crypto'
 
 const schema = z.object({
@@ -22,6 +23,9 @@ function generateCode(): string {
 }
 
 export async function POST(req: Request) {
+  const limited = await enforceRateLimit({ key: `register:${getClientIp(req)}`, limit: 5, windowMs: 60 * 60_000 })
+  if (limited) return limited
+
   const body = await req.json()
   const parsed = schema.safeParse(body)
 

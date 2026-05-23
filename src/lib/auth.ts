@@ -5,6 +5,7 @@ import Resend from 'next-auth/providers/resend'
 import Google from 'next-auth/providers/google'
 import Apple from 'next-auth/providers/apple'
 import { prisma } from '@/lib/prisma'
+import { isRateLimited, getClientIp } from '@/lib/rate-limit'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { SignJWT, importPKCS8 } from 'jose'
@@ -246,13 +247,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const parsed = z.object({
           email: z.string().email(),
           password: z.string().min(8),
         }).safeParse(credentials)
 
         if (!parsed.success) return null
+
+        // Brute-force guard: cap attempts per IP. Returning null blocks the
+        // attempt (even a correct password) once over the limit — generous
+        // enough that normal use, including a shared office IP, won't trip it.
+        const ip = request ? getClientIp(request as Request) : 'unknown'
+        if (await isRateLimited(`login:${ip}`, 30, 15 * 60_000)) return null
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },

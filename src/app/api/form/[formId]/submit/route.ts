@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { notifyEnquiryTrainer } from '@/lib/notify-enquiry-trainer'
+import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 
 // Length caps matter here because this is an UNAUTHENTICATED public endpoint —
 // without them a submitter can post megabyte strings and bloat the DB.
@@ -18,6 +19,11 @@ const schema = z.object({
 // Declines. We deliberately don't create any account here so spam and
 // drive-by submissions don't pollute the user table.
 export async function POST(req: Request, { params }: { params: Promise<{ formId: string }> }) {
+  // Unauthenticated endpoint that creates a row + emails/pushes the trainer —
+  // cap submissions per IP to stop spam/notification flooding.
+  const limited = await enforceRateLimit({ key: `form-submit:${getClientIp(req)}`, limit: 10, windowMs: 10 * 60_000 })
+  if (limited) return limited
+
   const { formId } = await params
 
   const form = await prisma.embedForm.findFirst({

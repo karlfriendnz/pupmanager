@@ -100,6 +100,10 @@ export default async function globalSetup() {
     await prisma.package.create({
       data: { trainerId: profile.id, name: 'Puppy Foundations', sessionCount: 4, weeksBetween: 1 },
     })
+    // A published public embed form, for the public-form rate-limit test.
+    await prisma.embedForm.create({
+      data: { id: SEED.embedFormId, trainerId: profile.id, title: 'Get in touch', isActive: true },
+    })
     console.log('[e2e] seed complete')
   } finally {
     await prisma.$disconnect()

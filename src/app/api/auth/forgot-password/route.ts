@@ -2,11 +2,15 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
+import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 import crypto from 'crypto'
 
 const schema = z.object({ email: z.string().email() })
 
 export async function POST(req: Request) {
+  const limited = await enforceRateLimit({ key: `forgot:${getClientIp(req)}`, limit: 5, windowMs: 60 * 60_000 })
+  if (limited) return limited
+
   const body = await req.json()
   const parsed = schema.safeParse(body)
   if (!parsed.success) {

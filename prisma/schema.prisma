@@ -1637,3 +1637,19 @@ model TrainerOnboardingEmailLog {
   @@index([progressId])
   @@map("trainer_onboarding_email_logs")
 }
+
+// ─── Rate limiting ─────────────────────────────────────────────────────────
+// Fixed-window counters for abuse control on sensitive/unauthenticated
+// endpoints (login, register, password reset, public form submit). One row per
+// rate-limit key (e.g. "login:1.2.3.4"); updated via an atomic upsert in
+// src/lib/rate-limit.ts. resetAt marks when the window rolls over. Stale rows
+// are harmless (overwritten on next hit for that key); the index supports an
+// optional periodic prune.
+model RateLimit {
+  key     String   @id
+  count   Int      @default(0)
+  resetAt DateTime
+
+  @@index([resetAt])
+  @@map("rate_limits")
+}

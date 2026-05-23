@@ -3,6 +3,7 @@ import { z } from 'zod'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { sendVerificationEmail } from '@/lib/auth-emails'
+import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 
 const schema = z.object({ email: z.string().email() })
 
@@ -15,6 +16,9 @@ function generateCode(): string {
 // Always returns 200 to avoid email enumeration: telling someone "this email
 // is verified" or "this email isn't registered" leaks user existence.
 export async function POST(req: Request) {
+  const limited = await enforceRateLimit({ key: `resend-verify:${getClientIp(req)}`, limit: 5, windowMs: 60 * 60_000 })
+  if (limited) return limited
+
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ ok: true })
