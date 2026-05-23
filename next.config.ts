@@ -10,6 +10,10 @@ const BUILD_ID =
   process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || `t${Date.now()}`
 
 const nextConfig: NextConfig = {
+  // E2E builds set E2E_DIST_DIR so their production build/start lives in a
+  // separate folder and never collides with a running `next dev` (.next).
+  // Unset in normal dev/prod → defaults to .next.
+  distDir: process.env.E2E_DIST_DIR || '.next',
   env: {
     NEXT_PUBLIC_BUILD_ID: BUILD_ID,
   },

@@ -80,3 +80,7 @@ next-env.d.ts
 /.claude-flow/
 /.swarm/
 /ruvector.db
+
+# Embedded Postgres for E2E tests
+.test-db/
+.next-e2e/

@@ -265,7 +265,7 @@ function InviteForm({ onInvited, seatsLeft }: { onInvited: () => void; seatsLeft
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-4">
+    <div data-testid="invite-form" className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-slate-900">Invite a trainer</h3>
         <button onClick={() => { reset(); setOpen(false) }} className="text-slate-400 hover:text-slate-600">
@@ -344,7 +344,7 @@ function MemberRow({ member, canManage, onChanged }: { member: Member; canManage
   }
 
   return (
-    <div className="p-4">
+    <div className="p-4" data-testid={`member-${member.email}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

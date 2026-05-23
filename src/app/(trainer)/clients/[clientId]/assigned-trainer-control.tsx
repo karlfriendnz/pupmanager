@@ -50,6 +50,7 @@ export function AssignedTrainerControl({
         <UserCog className="h-4 w-4 text-slate-400" /> Assigned trainer
       </span>
       <select
+        data-testid="assigned-trainer-select"
         value={value}
         onChange={(e) => change(e.target.value)}
         disabled={saving}
