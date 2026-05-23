@@ -3,12 +3,14 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { notifyEnquiryTrainer } from '@/lib/notify-enquiry-trainer'
 
+// Length caps matter here because this is an UNAUTHENTICATED public endpoint —
+// without them a submitter can post megabyte strings and bloat the DB.
 const schema = z.object({
-  name: z.string().min(1),
-  email: z.string().email(),
-  phone: z.string().optional().nullable(),
-  message: z.string().optional().nullable(),
-  customFields: z.record(z.string(), z.string()).optional(),
+  name: z.string().min(1).max(120),
+  email: z.string().email().max(200),
+  phone: z.string().max(40).optional().nullable(),
+  message: z.string().max(4000).optional().nullable(),
+  customFields: z.record(z.string(), z.string().max(2000)).optional(),
 })
 
 // Public form submission. Creates an Enquiry in NEW state — the trainer
