@@ -13,6 +13,8 @@ const schema = z.object({
   // Contact phone, stored on ClientProfile.phone. Empty string clears.
   phone: z.string().trim().max(40).nullable().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  // The trainer (TrainerMembership) this client is assigned to. null unassigns.
+  assignedMembershipId: z.string().nullable().optional(),
   dog: z.object({
     name: z.string().min(1),
     breed: z.string().optional().nullable(),
@@ -93,7 +95,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const { name, email, phone, status, dog } = parsed.data
+  const { name, email, phone, status, dog, assignedMembershipId } = parsed.data
   const { client } = access
 
   if (name !== undefined) {
@@ -150,6 +152,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
 
   if (status !== undefined) {
     await prisma.clientProfile.update({ where: { id: client.id }, data: { status } })
+  }
+
+  if (assignedMembershipId !== undefined) {
+    // Validate the membership belongs to the business that owns this client.
+    if (assignedMembershipId) {
+      const member = await prisma.trainerMembership.findFirst({
+        where: { id: assignedMembershipId, companyId: client.trainerId },
+        select: { id: true },
+      })
+      if (!member) return NextResponse.json({ error: 'Trainer not found in this business' }, { status: 400 })
+    }
+    await prisma.clientProfile.update({
+      where: { id: client.id },
+      data: { assignedMembershipId: assignedMembershipId || null },
+    })
   }
 
   if (dog !== undefined) {

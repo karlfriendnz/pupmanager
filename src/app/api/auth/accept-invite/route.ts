@@ -26,12 +26,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invitation has expired.' }, { status: 410 })
   }
 
-  // Mark email as verified and delete the invite token
+  // Mark email as verified and delete the invite token. For invited team
+  // members, also stamp their membership as accepted (idempotent updateMany —
+  // a no-op for client invites, which have no membership).
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } })
   await prisma.$transaction([
     prisma.user.update({
       where: { email },
       data: { emailVerified: new Date() },
     }),
+    ...(user
+      ? [prisma.trainerMembership.updateMany({
+          where: { userId: user.id, acceptedAt: null },
+          data: { acceptedAt: new Date() },
+        })]
+      : []),
     prisma.verificationToken.delete({
       where: { token },
     }),

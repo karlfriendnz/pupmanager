@@ -18,6 +18,9 @@ const patchSchema = z.object({
   // null detaches from any package. A non-null value reassigns the session
   // to another ClientPackage owned by this trainer (validated below).
   clientPackageId: z.string().nullable().optional(),
+  // null unassigns the session's trainer. A non-null value assigns it to a
+  // TrainerMembership in this business (validated below).
+  assignedMembershipId: z.string().nullable().optional(),
 })
 
 export async function GET(
@@ -128,6 +131,23 @@ export async function PATCH(
     }
   }
 
+  // Validate the assigned trainer (if changing). The membership must belong to
+  // this business (trainerId == companyId). null/'' clears the assignment.
+  let nextAssignedMembershipId: string | null | undefined = undefined
+  if ('assignedMembershipId' in parsed.data) {
+    const raw = parsed.data.assignedMembershipId
+    if (raw === null || raw === '') {
+      nextAssignedMembershipId = null
+    } else {
+      const member = await prisma.trainerMembership.findFirst({
+        where: { id: raw, companyId: trainerId },
+        select: { id: true },
+      })
+      if (!member) return NextResponse.json({ error: 'Trainer not found in this business' }, { status: 400 })
+      nextAssignedMembershipId = member.id
+    }
+  }
+
   // ?scope=following propagates the patch to this session and every later
   // session in the same package assignment. For scheduledAt we apply a
   // delta (so each subsequent session keeps its own day, just shifted by
@@ -145,6 +165,7 @@ export async function PATCH(
       ...(parsed.data.invoiced !== undefined && { invoicedAt: parsed.data.invoiced ? new Date() : null }),
       ...(nextDogId !== undefined && { dogId: nextDogId }),
       ...(nextClientPackageId !== undefined && { clientPackageId: nextClientPackageId }),
+      ...(nextAssignedMembershipId !== undefined && { assignedMembershipId: nextAssignedMembershipId }),
     },
   })
 
@@ -168,6 +189,7 @@ export async function PATCH(
           ...(parsed.data.durationMins !== undefined && { durationMins: parsed.data.durationMins }),
           ...(parsed.data.status !== undefined && { status: parsed.data.status }),
           ...(nextDogId !== undefined && { dogId: nextDogId }),
+          ...(nextAssignedMembershipId !== undefined && { assignedMembershipId: nextAssignedMembershipId }),
         },
       })
     ))

@@ -30,8 +30,13 @@ export default async function InvitePage({
 
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { name: true },
+    select: { name: true, role: true },
   })
+
+  // Invited team members are TRAINER users and land on the trainer dashboard;
+  // client invites land on their home. Drives the magic-link callbackUrl.
+  const isTrainer = user?.role === 'TRAINER'
+  const callbackUrl = isTrainer ? '/dashboard' : '/home'
 
   return (
     <div className="flex flex-col gap-6">
@@ -43,8 +48,12 @@ export default async function InvitePage({
       </div>
       <Card>
         <CardBody className="pt-6 flex flex-col gap-4 text-sm text-slate-600">
-          <p>Your trainer has set up an account for you. Click below to accept your invitation and receive a sign-in link.</p>
-          <AcceptInviteButton token={token} email={email} />
+          <p>
+            {isTrainer
+              ? 'You’ve been invited to join a training team. Click below to accept and receive a sign-in link.'
+              : 'Your trainer has set up an account for you. Click below to accept your invitation and receive a sign-in link.'}
+          </p>
+          <AcceptInviteButton token={token} email={email} callbackUrl={callbackUrl} />
         </CardBody>
       </Card>
     </div>

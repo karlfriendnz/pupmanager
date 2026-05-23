@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { ScheduleView } from './schedule-view'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
@@ -56,11 +56,14 @@ export default async function SchedulePage({
 }: {
   searchParams: Promise<{ date?: string }>
 }) {
-  const session = await auth()
-  if (!session) redirect('/login')
+  // Resolve via membership so invited trainers reach their company's schedule.
+  const ctx = await getTrainerContext()
+  if (!ctx) redirect('/login')
+  // Staff without schedule.viewAll only see their own assigned sessions.
+  const memberScope = scopeForMember(ctx, 'schedule.viewAll')
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: ctx.companyId },
     select: {
       id: true,
       user: { select: { timezone: true } },
@@ -74,6 +77,14 @@ export default async function SchedulePage({
     },
   })
   if (!trainerProfile) redirect('/login')
+
+  // Trainers in this business, for the assigned-trainer picker. Only fed to the
+  // view when there's more than one (the picker hides itself otherwise).
+  const teamMembers = await prisma.trainerMembership.findMany({
+    where: { companyId: trainerProfile.id },
+    select: { id: true, role: true, title: true, user: { select: { name: true, email: true } } },
+    orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
+  })
 
   // Top up forever-ongoing assignments before fetching sessions, so the
   // current view always includes any newly-generated bookings. Failure
@@ -113,6 +124,7 @@ export default async function SchedulePage({
       trainerId: trainerProfile.id,
       scheduledAt: { gte: weekStart, lte: weekEnd },
       clientId: { not: null },
+      ...memberScope,
     },
     select: { scheduledAt: true },
   })
@@ -155,8 +167,10 @@ export default async function SchedulePage({
         // when the client is removed, so the session row sticks around but
         // has nobody to attribute it to.
         clientId: { not: null },
+        ...memberScope,
       },
       include: {
+        assignedTrainer: { select: { id: true, title: true, user: { select: { name: true } } } },
         dog: {
           select: {
             name: true,
@@ -287,6 +301,12 @@ export default async function SchedulePage({
         ...s,
         scheduledAt: s.scheduledAt.toISOString(),
         packageColor: (s.clientPackage?.package?.color ?? null) as 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan' | null,
+        assignedTrainerName: s.assignedTrainer?.user?.name ?? s.assignedTrainer?.title ?? null,
+      }))}
+      members={teamMembers.map(m => ({
+        id: m.id,
+        name: m.user.name ?? m.user.email,
+        role: m.role,
       }))}
       availabilitySlots={availabilitySlots.map(s => ({
         ...s,

@@ -1,17 +1,16 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext, scopeForMember } from '@/lib/membership'
 
 // Returns the trainer's sessions whose start time falls in [from, to]. Used by
 // the schedule modals to show conflict warnings when the trainer picks a time
-// that already has a session.
+// that already has a session. Scoped to the member's own sessions when they
+// lack schedule.viewAll, so conflict checks reflect their own calendar.
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
+  const memberScope = scopeForMember(ctx, 'schedule.viewAll')
 
   const url = new URL(req.url)
   const fromStr = url.searchParams.get('from')
@@ -27,6 +26,7 @@ export async function GET(req: Request) {
     where: {
       trainerId,
       scheduledAt: { gte: from, lte: to },
+      ...memberScope,
     },
     select: {
       id: true,

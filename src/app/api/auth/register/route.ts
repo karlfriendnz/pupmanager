@@ -63,12 +63,24 @@ export async function POST(req: Request) {
       },
     })
 
-    await tx.trainerProfile.create({
+    const profile = await tx.trainerProfile.create({
       data: {
         userId: user.id,
         businessName,
         // subscriptionStatus defaults to TRIALING; stamp the end date.
         trialEndsAt,
+      },
+    })
+
+    // The founding account is also an OWNER member of its own business, so
+    // sessions/clients can be assigned to it uniformly and the auth layer
+    // resolves everyone (owner + invited members) through TrainerMembership.
+    await tx.trainerMembership.create({
+      data: {
+        companyId: profile.id,
+        userId: user.id,
+        role: 'OWNER',
+        acceptedAt: new Date(),
       },
     })
   })

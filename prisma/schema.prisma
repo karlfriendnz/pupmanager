@@ -20,6 +20,17 @@ enum Role {
   ADMIN
 }
 
+// A person's role *within a business* (distinct from the app-level Role above —
+// every member is a TRAINER at the User level). OWNER is the founding account
+// that holds billing; MANAGER has full operational access but not billing;
+// STAFF sees only what's assigned to them. The role seeds a default permission
+// set which the owner can then override per-member via TrainerMembership.permissions.
+enum CompanyRole {
+  OWNER
+  MANAGER
+  STAFF
+}
+
 enum SubscriptionStatus {
   ACTIVE
   INACTIVE
@@ -100,6 +111,12 @@ model User {
   // Role-specific profiles
   trainerProfile TrainerProfile?
   clientProfile  ClientProfile?
+
+  // Businesses this user belongs to as a trainer. The OWNER of a business has
+  // both a trainerProfile (the business itself) AND an OWNER membership row;
+  // invited members have only a membership (no trainerProfile of their own).
+  // One membership per business — see TrainerMembership @@unique.
+  memberships TrainerMembership[]
 
   // Messages sent by this user
   sentMessages Message[]
@@ -347,8 +364,51 @@ model TrainerProfile {
   activityWeeks      TrainerActivityWeek[]
   badgeAwards        TrainerBadgeAward[]
   onboardingProgress TrainerOnboardingProgress?
+  members            TrainerMembership[]        @relation("CompanyMembers")
 
   @@map("trainer_profiles")
+}
+
+// ─── Trainer Memberships (multi-trainer businesses) ───────────────────────────
+// One row per (business, person). The business is a TrainerProfile (the tenant
+// every other model already scopes to via trainerId); a member is a User who
+// logs in with their own account. The founding owner has an OWNER row here in
+// addition to owning the TrainerProfile, so sessions/clients can be assigned to
+// them uniformly. Invited trainers have ONLY a membership (no trainerProfile),
+// and resolve their company via this row in the auth callbacks.
+model TrainerMembership {
+  id          String      @id @default(cuid())
+  companyId   String // → TrainerProfile.id (the business / tenant)
+  userId      String // → User.id (the member's login)
+  role        CompanyRole @default(STAFF)
+  // Optional display title shown on the schedule / team list ("Senior trainer").
+  title       String?
+  // Granular permission overrides layered on top of the role preset. Flat map
+  // of permissionKey → boolean, e.g. {"packages.manage": true, "billing.view": false}.
+  // A missing key falls back to the role's default for that permission, so an
+  // empty object means "use the role preset verbatim". OWNER ignores this map
+  // (always full access). See src/lib/permissions.ts for the catalogue + defaults.
+  permissions Json        @default("{}")
+  // Invite lifecycle. invitedAt stamps creation; acceptedAt is null while the
+  // invite is outstanding and set once the member first signs in / accepts.
+  invitedAt   DateTime    @default(now())
+  acceptedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company TrainerProfile @relation("CompanyMembers", fields: [companyId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Work assigned to this member. SetNull (not Cascade) so removing a member
+  // leaves their sessions/clients intact but unassigned, for reassignment.
+  assignedSessions TrainingSession[] @relation("AssignedTrainer")
+  assignedClients  ClientProfile[]   @relation("AssignedTrainer")
+
+  @@unique([companyId, userId])
+  @@index([companyId])
+  @@index([userId])
+  @@map("trainer_memberships")
 }
 
 // ─── Client & Dog ────────────────────────────────────────────────────────────
@@ -356,7 +416,11 @@ model TrainerProfile {
 model ClientProfile {
   id        String  @id @default(cuid())
   userId    String  @unique
-  trainerId String // primary trainer
+  trainerId String // owning business (TrainerProfile = tenant)
+  // The member trainer this client is assigned to within the business. Null =
+  // unassigned (visible to owner/managers; not to any single staff member).
+  // Distinct from trainerId, which is the tenant the client's data lives under.
+  assignedMembershipId String?
   dogId     String? // set after onboarding
   status    String  @default("ACTIVE") // "ACTIVE" | "INACTIVE"
   // Contact phone for the client (collected on intake). Lives on the
@@ -368,9 +432,10 @@ model ClientProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  trainer TrainerProfile @relation(fields: [trainerId], references: [id])
-  dog     Dog?           @relation("PrimaryDog", fields: [dogId], references: [id])
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trainer         TrainerProfile     @relation(fields: [trainerId], references: [id])
+  assignedTrainer TrainerMembership? @relation("AssignedTrainer", fields: [assignedMembershipId], references: [id], onDelete: SetNull)
+  dog             Dog?               @relation("PrimaryDog", fields: [dogId], references: [id])
 
   diaryEntries      TrainingTask[]
   trainingSessions  TrainingSession[]
@@ -389,6 +454,7 @@ model ClientProfile {
   enquiry           Enquiry?
 
   @@index([trainerId])
+  @@index([assignedMembershipId])
   @@map("client_profiles")
 }
 
@@ -483,7 +549,11 @@ model TaskCompletion {
 
 model TrainingSession {
   id              String        @id @default(cuid())
-  trainerId       String
+  trainerId       String // owning business (tenant)
+  // The member trainer running this session. Null = unassigned (sole-trainer
+  // businesses leave this null; the owner is implied). Drives the calendar
+  // colour/filter and staff scoping in multi-trainer businesses.
+  assignedMembershipId String?
   clientId        String? // direct client link (optional, in addition to dogId)
   dogId           String?
   clientPackageId String? // membership in an assigned package
@@ -520,6 +590,7 @@ model TrainingSession {
   updatedAt DateTime @updatedAt
 
   trainer                  TrainerProfile        @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  assignedTrainer          TrainerMembership?    @relation("AssignedTrainer", fields: [assignedMembershipId], references: [id], onDelete: SetNull)
   client                   ClientProfile?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
   dog                      Dog?                  @relation(fields: [dogId], references: [id])
   clientPackage            ClientPackage?        @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
@@ -532,6 +603,7 @@ model TrainingSession {
   attendance               SessionAttendance[]
 
   @@index([trainerId])
+  @@index([assignedMembershipId])
   @@index([clientId])
   @@index([scheduledAt])
   @@index([clientPackageId])

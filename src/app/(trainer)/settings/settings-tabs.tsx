@@ -2,47 +2,53 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell } from 'lucide-react'
+import { User, Pencil, Bell, Users } from 'lucide-react'
 
-const TABS = [
+const ALL_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'forms', label: 'Forms', icon: Pencil },
+  { id: 'team', label: 'Team', icon: Users },
 ] as const
 
-type TabId = typeof TABS[number]['id']
-
-const TAB_IDS = TABS.map(t => t.id) as readonly TabId[]
-
-function readHashTab(): TabId | null {
-  if (typeof window === 'undefined') return null
-  const h = window.location.hash.replace(/^#/, '')
-  return (TAB_IDS as readonly string[]).includes(h) ? (h as TabId) : null
-}
+type TabId = typeof ALL_TABS[number]['id']
 
 export function SettingsTabs({
   profile,
   notifications,
   forms,
+  team,
 }: {
-  profile: React.ReactNode
+  // Each tab renders only when its node is provided, so the page can hide tabs
+  // a member lacks permission for (e.g. staff don't get Profile/Forms).
+  // Notifications are per-user and always available.
+  profile?: React.ReactNode
   notifications: React.ReactNode
-  forms: React.ReactNode
+  forms?: React.ReactNode
+  team?: React.ReactNode
 }) {
+  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, team }
+  const tabs = ALL_TABS.filter((t) => present[t.id] != null)
+  const tabIds = tabs.map((t) => t.id) as readonly TabId[]
+
+  function readHashTab(): TabId | null {
+    if (typeof window === 'undefined') return null
+    const h = window.location.hash.replace(/^#/, '')
+    return (tabIds as readonly string[]).includes(h) ? (h as TabId) : null
+  }
+
   const searchParams = useSearchParams()
   // Search param wins over hash because Next.js soft navigation can strip the
-  // hash before client-side code reads it. ?tab=forms is the reliable path.
+  // hash before client-side code reads it. ?tab=team is the reliable path.
   const queryTab = searchParams.get('tab')
-  const initialTab = (TAB_IDS as readonly string[]).includes(queryTab ?? '')
+  const firstTab = tabIds[0] ?? 'notifications'
+  const initialTab = (tabIds as readonly string[]).includes(queryTab ?? '')
     ? (queryTab as TabId)
-    : 'profile'
+    : firstTab
   const [tab, setTab] = useState<TabId>(initialTab)
 
-  // Also support deep-links via #hash for back-compat with anything that
-  // already uses the hash form.
   useEffect(() => {
     const fromHash = readHashTab()
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (fromHash) setTab(fromHash)
     function onHashChange() {
       const t = readHashTab()
@@ -50,6 +56,7 @@ export function SettingsTabs({
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function selectTab(id: TabId) {
@@ -62,7 +69,7 @@ export function SettingsTabs({
   return (
     <div>
       <div className="flex gap-1 border-b border-slate-200 mb-6 overflow-x-auto overflow-y-hidden -mx-4 md:-mx-8 px-4 md:px-8">
-        {TABS.map(t => {
+        {tabs.map(t => {
           const Icon = t.icon
           const active = tab === t.id
           return (
@@ -85,9 +92,10 @@ export function SettingsTabs({
       </div>
 
       <div>
-        <div className={tab === 'profile' ? '' : 'hidden'}>{profile}</div>
+        {profile != null && <div className={tab === 'profile' ? '' : 'hidden'}>{profile}</div>}
         <div className={tab === 'notifications' ? '' : 'hidden'}>{notifications}</div>
-        <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>
+        {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}
+        {team != null && <div className={tab === 'team' ? '' : 'hidden'}>{team}</div>}
       </div>
     </div>
   )

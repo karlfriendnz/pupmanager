@@ -81,12 +81,25 @@ interface Session {
   dogId: string | null
   clientPackageId: string | null
   packageColor: PackageColor | null
+  // The TrainerMembership this session is assigned to (the trainer running it),
+  // and the resolved display name. Null = unassigned. Only meaningful in
+  // multi-trainer businesses.
+  assignedMembershipId: string | null
+  assignedTrainerName?: string | null
   client: { id: string; user: { name: string | null; email: string } } | null
   dog: {
     name: string
     primaryFor: { id: string; user: { name: string | null; email: string } }[]
   } | null
   buddies: Buddy[]
+}
+
+// A trainer in this business, for the "assigned trainer" picker. Only passed
+// when the business has more than one member.
+interface TeamMemberOption {
+  id: string // TrainerMembership.id
+  name: string
+  role: string
 }
 
 // Static class map for package-coloured blocks (Tailwind purges dynamic
@@ -1490,6 +1503,7 @@ function DeleteSessionMenu({ deleting, canDeleteFollowing, onConfirm }: {
 function SessionModal({
   session: initialSession,
   clients,
+  members,
   onClose,
   onStatusChange,
   onSessionsUpdate,
@@ -1497,6 +1511,7 @@ function SessionModal({
 }: {
   session: Session
   clients: ClientOption[]
+  members: TeamMemberOption[]
   onClose: () => void
   onStatusChange: (id: string, status: SessionStatus) => void
   onSessionsUpdate: (id: string, updates: Partial<Session>) => void
@@ -1527,6 +1542,7 @@ function SessionModal({
   // Client's package assignments for the package picker.
   const [assignments, setAssignments] = useState<{ id: string; package: { id: string; name: string; color: PackageColor | null } }[]>([])
   const [savingPackage, setSavingPackage] = useState(false)
+  const [savingTrainer, setSavingTrainer] = useState(false)
 
   // Buddy session UI state
   const [showBuddyPicker, setShowBuddyPicker] = useState(false)
@@ -1579,6 +1595,25 @@ function SessionModal({
       body: JSON.stringify({ clientPackageId: nextAssignmentId }),
     })
     setSavingPackage(false)
+    if (!res.ok) {
+      setSession(prev => ({ ...prev, ...before }))
+      onSessionsUpdate(session.id, before)
+    }
+  }
+
+  // Assign this session to a different trainer in the business (or unassign).
+  async function handleTrainerChange(nextMembershipId: string | null) {
+    setSavingTrainer(true)
+    const before = { assignedMembershipId: session.assignedMembershipId, assignedTrainerName: session.assignedTrainerName }
+    const nextName = nextMembershipId ? members.find(m => m.id === nextMembershipId)?.name ?? null : null
+    setSession(prev => ({ ...prev, assignedMembershipId: nextMembershipId, assignedTrainerName: nextName }))
+    onSessionsUpdate(session.id, { assignedMembershipId: nextMembershipId, assignedTrainerName: nextName })
+    const res = await fetch(`/api/schedule/${session.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignedMembershipId: nextMembershipId }),
+    })
+    setSavingTrainer(false)
     if (!res.ok) {
       setSession(prev => ({ ...prev, ...before }))
       onSessionsUpdate(session.id, before)
@@ -2196,6 +2231,27 @@ function SessionModal({
             )}
           </div>
 
+          {/* Assigned trainer — who's running this session. Only shown for
+              multi-trainer businesses (more than one member). */}
+          {members.length > 1 && (
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Assigned trainer</p>
+              <select
+                value={session.assignedMembershipId ?? ''}
+                onChange={e => handleTrainerChange(e.target.value || null)}
+                disabled={savingTrainer}
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                <option value="">Unassigned</option>
+                {members.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}{m.role === 'OWNER' ? ' (owner)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Package — pick a different assignment for this session, or
               detach. Hidden when there's no client to attach packages to. */}
           {clientId && (
@@ -2503,6 +2559,7 @@ export function ScheduleView({
   scheduleExtraFields,
   customFields,
   clientExtras: initialClientExtras,
+  members = [],
   showHints = false,
 }: {
   tz: string
@@ -2526,6 +2583,9 @@ export function ScheduleView({
   scheduleExtraFields: string[]
   customFields: CustomFieldMeta[]
   clientExtras: Record<string, ClientExtra>
+  // Trainers in this business. Empty / single-member businesses hide the
+  // assigned-trainer picker entirely.
+  members?: TeamMemberOption[]
   // True only while the trainer is still in the onboarding wizard. Gates
   // surfaces that exist purely to teach the schedule UI (the Hours
   // pulse dot, etc.) so the screen is quiet for established trainers.
@@ -3134,6 +3194,7 @@ export function ScheduleView({
         <SessionModal
           session={activeSession}
           clients={clients}
+          members={members}
           onClose={() => setActiveSession(null)}
           onStatusChange={handleSessionStatusChange}
           onSessionsUpdate={(id, updates) =>

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { UserPlus } from 'lucide-react'
@@ -16,11 +16,12 @@ export default async function ClientsPage({
 }: {
   searchParams: Promise<{ tab?: string }>
 }) {
-  const session = await auth()
-  if (!session) redirect('/login')
+  const ctx = await getTrainerContext()
+  if (!ctx) redirect('/login')
 
-  const trainerId = session.user.trainerId
-  if (!trainerId) redirect('/login')
+  const trainerId = ctx.companyId
+  // Staff without clients.viewAll see only clients assigned to them.
+  const memberScope = scopeForMember(ctx, 'clients.viewAll')
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
@@ -42,9 +43,9 @@ export default async function ClientsPage({
   const status = tab === 'inactive' ? 'INACTIVE' : tab === 'new' ? 'NEW' : 'ACTIVE'
 
   const [newCount, activeCount, inactiveCount, waitlistCount] = await Promise.all([
-    prisma.clientProfile.count({ where: { trainerId, status: 'NEW' } }),
-    prisma.clientProfile.count({ where: { trainerId, status: 'ACTIVE' } }),
-    prisma.clientProfile.count({ where: { trainerId, status: 'INACTIVE' } }),
+    prisma.clientProfile.count({ where: { trainerId, status: 'NEW', ...memberScope } }),
+    prisma.clientProfile.count({ where: { trainerId, status: 'ACTIVE', ...memberScope } }),
+    prisma.clientProfile.count({ where: { trainerId, status: 'INACTIVE', ...memberScope } }),
     prisma.waitlistEntry.count({ where: { trainerId, status: 'WAITING' } }),
   ])
 
@@ -104,7 +105,7 @@ export default async function ClientsPage({
   // types so there's no per-keystroke round-trip. For trainer client lists
   // (typically <500) the bandwidth and JS-filter cost is trivial.
   const ownedClients = await prisma.clientProfile.findMany({
-    where: { trainerId, status },
+    where: { trainerId, status, ...memberScope },
     include: {
       user: { select: { name: true, email: true } },
       dog: { select: { name: true, breed: true } },

@@ -83,7 +83,7 @@ export async function POST(req: Request) {
       },
     })
 
-    await tx.trainerProfile.create({
+    const profile = await tx.trainerProfile.create({
       data: {
         userId: user.id,
         businessName,
@@ -91,6 +91,16 @@ export async function POST(req: Request) {
         // the "X days left" banner. Address + seats + Stripe customer
         // get added on /billing/setup once they're past verification.
         trialEndsAt,
+      },
+    })
+
+    // Founding account = OWNER member of its own business (see register route).
+    await tx.trainerMembership.create({
+      data: {
+        companyId: profile.id,
+        userId: user.id,
+        role: 'OWNER',
+        acceptedAt: new Date(),
       },
     })
   })

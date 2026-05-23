@@ -48,12 +48,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // upsert here is a no-op.
     async createUser({ user }) {
       if (user.role !== 'TRAINER') return
+      // An invited member already has a TrainerMembership (created at invite
+      // time) and must NOT get their own business. createUser only fires for
+      // brand-new User rows, so a pending member who first signs in via OAuth
+      // could land here — bail if they're already a member of any business.
+      const existingMembership = await prisma.trainerMembership.findFirst({
+        where: { userId: user.id! },
+        select: { id: true },
+      })
+      if (existingMembership) return
+
       // businessName starts empty — required field on /settings forces the
       // trainer to enter a real one. Onboarding step 1 (business_profile)
       // flips to completed only when this field is set.
-      await prisma.trainerProfile.upsert({
+      const profile = await prisma.trainerProfile.upsert({
         where: { userId: user.id! },
         create: { userId: user.id!, businessName: '' },
+        update: {},
+      })
+      // Founding account is an OWNER member of its own business.
+      await prisma.trainerMembership.upsert({
+        where: { companyId_userId: { companyId: profile.id, userId: user.id! } },
+        create: { companyId: profile.id, userId: user.id!, role: 'OWNER', acceptedAt: new Date() },
         update: {},
       })
     },
@@ -84,16 +100,46 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = (user as { role?: string }).role
         token.id = user.id
       }
-      // Fetch trainer profile and cache in JWT (runs on sign-in and backfills old JWTs missing trainerId)
+      // Resolve the business (companyId == legacy trainerId) and cache in the
+      // JWT. Runs on sign-in and backfills old JWTs missing trainerId. Members
+      // resolve via their TrainerMembership; the owner has an OWNER membership
+      // pointing at the business they own. The membership row is authoritative
+      // for both owners and invited members. companyRole is a hint only —
+      // getTrainerContext re-reads role + permissions fresh per request so an
+      // owner revoking access takes effect immediately, not at next sign-in.
       if (token.role === 'TRAINER' && token.id && !token.trainerId) {
-        const tp = await prisma.trainerProfile.findUnique({
+        const membership = await prisma.trainerMembership.findFirst({
           where: { userId: token.id as string },
-          select: { id: true, businessName: true, logoUrl: true },
+          select: {
+            id: true,
+            role: true,
+            companyId: true,
+            company: { select: { businessName: true, logoUrl: true } },
+          },
+          // Prisma orders enums by definition order (OWNER, MANAGER, STAFF),
+          // so 'asc' prefers an OWNER membership if a user has more than one.
+          orderBy: { role: 'asc' },
         })
-        if (tp) {
-          token.trainerId = tp.id
-          token.businessName = tp.businessName
-          token.logoUrl = tp.logoUrl
+        if (membership) {
+          token.trainerId = membership.companyId
+          token.membershipId = membership.id
+          token.companyRole = membership.role
+          token.businessName = membership.company.businessName
+          token.logoUrl = membership.company.logoUrl
+        } else {
+          // Legacy fallback: owner whose membership row hasn't been created yet
+          // (account predates this feature and the backfill hasn't run, or a
+          // race on first sign-in). Resolve via the owned profile.
+          const tp = await prisma.trainerProfile.findUnique({
+            where: { userId: token.id as string },
+            select: { id: true, businessName: true, logoUrl: true },
+          })
+          if (tp) {
+            token.trainerId = tp.id
+            token.companyRole = 'OWNER'
+            token.businessName = tp.businessName
+            token.logoUrl = tp.logoUrl
+          }
         }
       }
       return token
@@ -103,6 +149,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.id as string
         session.user.role = token.role as string
         session.user.trainerId = token.trainerId as string | undefined
+        session.user.membershipId = token.membershipId as string | undefined
+        session.user.companyRole = token.companyRole as string | undefined
         session.user.businessName = token.businessName as string | undefined
         session.user.logoUrl = token.logoUrl as string | null | undefined
       }

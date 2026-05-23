@@ -5,7 +5,7 @@ import { signIn } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 
-export function AcceptInviteButton({ token, email }: { token: string; email: string }) {
+export function AcceptInviteButton({ token, email, callbackUrl = '/home' }: { token: string; email: string; callbackUrl?: string }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -26,8 +26,8 @@ export function AcceptInviteButton({ token, email }: { token: string; email: str
       return
     }
 
-    // Token verified — send a magic link so the client can sign in
-    await signIn('resend', { email, callbackUrl: '/home', redirect: false })
+    // Token verified — send a magic link so they can sign in
+    await signIn('resend', { email, callbackUrl, redirect: false })
 
     // Redirect to verify-email page, passing the email so the page
     // can resolve the trainer and brand the "check your inbox"

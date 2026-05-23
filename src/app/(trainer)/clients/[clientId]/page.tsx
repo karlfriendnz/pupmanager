@@ -5,6 +5,7 @@ import { getClientAccess } from '@/lib/trainer-access'
 import { formatDate } from '@/lib/utils'
 import { ClientProfileTabs } from './client-profile-tabs'
 import { ClientActionsMenu } from './client-actions-menu'
+import { AssignedTrainerControl } from './assigned-trainer-control'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
@@ -69,6 +70,16 @@ export default async function ClientDetailPage({
     ? await prisma.availabilitySlot.findMany({
         where: { trainerId: access.trainerId },
         orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+      })
+    : []
+
+  // Trainers in the business, for the assigned-trainer picker. Only the primary
+  // trainer's business members are offered, and only when there's more than one.
+  const teamMembers = (canEdit && isPrimaryTrainer)
+    ? await prisma.trainerMembership.findMany({
+        where: { companyId: clientAccess.trainerId },
+        select: { id: true, role: true, user: { select: { name: true, email: true } } },
+        orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
       })
     : []
 
@@ -143,6 +154,18 @@ export default async function ClientDetailPage({
         }
       />
       <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
+
+      {teamMembers.length > 1 && (
+        <AssignedTrainerControl
+          clientId={client.id}
+          initialMembershipId={client.assignedMembershipId}
+          members={teamMembers.map(m => ({
+            id: m.id,
+            name: m.user.name ?? m.user.email,
+            role: m.role,
+          }))}
+        />
+      )}
 
       {/* Tabbed content */}
       <ClientProfileTabs

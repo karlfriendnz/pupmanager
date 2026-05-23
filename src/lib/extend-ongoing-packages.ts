@@ -31,7 +31,7 @@ export async function extendOngoingPackages(trainerId: string): Promise<void> {
       sessions: {
         orderBy: { scheduledAt: 'desc' },
         take: 1,
-        select: { id: true, scheduledAt: true, dogId: true, clientId: true },
+        select: { id: true, scheduledAt: true, dogId: true, clientId: true, assignedMembershipId: true },
       },
     },
   })
@@ -46,6 +46,7 @@ export async function extendOngoingPackages(trainerId: string): Promise<void> {
       trainerId: string
       clientId: string
       dogId: string | null
+      assignedMembershipId: string | null
       clientPackageId: string
       title: string
       scheduledAt: Date
@@ -66,6 +67,7 @@ export async function extendOngoingPackages(trainerId: string): Promise<void> {
         trainerId,
         clientId: last.clientId,
         dogId: last.dogId,
+        assignedMembershipId: last.assignedMembershipId,
         clientPackageId: a.id,
         title: `${a.package.name} — session`,
         scheduledAt: next,

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
 import { startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
 
@@ -28,12 +28,11 @@ function getWeekBounds(dateStr: string, tz: string): { weekStart: Date; weekEnd:
 }
 
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
+  // Staff without schedule.viewAll see only their own assigned sessions.
+  const memberScope = scopeForMember(ctx, 'schedule.viewAll')
 
   const url = new URL(req.url)
   const date = url.searchParams.get('date')
@@ -63,8 +62,10 @@ export async function GET(req: Request) {
     where: {
       trainerId,
       scheduledAt: { gte: weekStart, lte: weekEnd },
+      ...memberScope,
     },
     include: {
+      assignedTrainer: { select: { id: true, title: true, user: { select: { name: true } } } },
       dog: {
         select: {
           name: true,
@@ -174,6 +175,7 @@ export async function GET(req: Request) {
       ...s,
       scheduledAt: s.scheduledAt.toISOString(),
       packageColor: s.clientPackage?.package?.color ?? null,
+      assignedTrainerName: s.assignedTrainer?.user?.name ?? s.assignedTrainer?.title ?? null,
     })),
     clientExtras,
   })

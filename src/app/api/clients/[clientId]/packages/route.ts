@@ -125,6 +125,14 @@ export async function POST(
     }
   }
 
+  // New sessions inherit the client's assigned trainer (if any), so a member's
+  // bookings show up on their own calendar straight away.
+  const clientRow = await prisma.clientProfile.findUnique({
+    where: { id: clientId },
+    select: { assignedMembershipId: true },
+  })
+  const assignedMembershipId = clientRow?.assignedMembershipId ?? null
+
   // The startDate field stores when the package began for this client — use the
   // first scheduled session as the canonical start.
   const startDate = sessionDates[0]
@@ -145,6 +153,7 @@ export async function POST(
         trainerId,
         clientId,
         dogId,
+        assignedMembershipId,
         clientPackageId: assignment.id,
         // Single-session packages don't need a "1/1" suffix — that's noise.
         // Multi-session keeps "N/M" so the trainer can see progression.
