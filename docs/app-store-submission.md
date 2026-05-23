@@ -97,9 +97,15 @@ Category **Business**. Suggested tags: Dog training, Pet, Scheduling, Small busi
 
 Re-capture anytime with: `node /tmp/capture-store-shots.mjs` (logs in as demo, DSF 3).
 
+**iPad captured** (2048 × 2732, deviceScaleFactor 2) → `~/Desktop/PupManager Store Assets/ipad/`:
+- `01-dashboard.png`, `02-clients.png` (strong populated lead), `03-schedule.png`,
+  `04-packages.png`, `05-client-detail.png` (sparser — see per-client note above).
+- Re-capture with: `node /tmp/capture-ipad-shots.mjs`.
+
 **Apple requirements**
 - iPhone 6.7" (1290 × 2796) — **required**. One set covers all iPhone sizes.
-- iPad 12.9" (2048 × 2732) — only if you mark the app as iPad-compatible. (Recommend iPhone-only for v1 to skip this.)
+- iPad 12.9" (2048 × 2732) — **captured** (see above); upload to the iPad slot in
+  App Store Connect since the app is submitted as iPad-compatible.
 - 3–10 screenshots.
 
 **Play requirements**
