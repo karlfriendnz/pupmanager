@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ArrowRight, AlertTriangle, XCircle } from 'lucide-react'
+import { useIsNative } from '@/lib/native'
 
 interface Props {
   status: 'ACTIVE' | 'INACTIVE' | 'TRIALING' | 'PAST_DUE' | 'CANCELLED'
@@ -89,9 +90,11 @@ function resolveCopy(status: Props['status'], trialEndsAt: Props['trialEndsAt'])
 // like a living surface.
 export function TrialBanner({ status, trialEndsAt }: Props) {
   const pathname = usePathname()
-  // The banner exists to nudge the trainer toward /signup. When
-  // they're already there (or on the success/cancel landings) the chip
-  // becomes a redundant link to the page they're standing on, so hide it.
+  const native = useIsNative()
+  // Never surface the billing nudge inside the native app — purchasing a
+  // subscription in-app would violate Apple Guideline 3.1.1 (IAP). Trainers
+  // manage billing on the web. Also hide it on the /billing pages themselves.
+  if (native) return null
   if (pathname?.startsWith('/billing')) return null
 
   const copy = resolveCopy(status, trialEndsAt)

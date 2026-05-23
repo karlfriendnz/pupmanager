@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { openExternal } from '@/lib/external-link'
+import { useIsNative } from '@/lib/native'
 import { CURRENCIES, SOLO_PRICE, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 
 const schema = z.object({
@@ -56,6 +57,8 @@ export function SetupForm({ planId, planName, purchasable, configuredCurrencies,
   const total = useMemo(() => SOLO_PRICE[currency], [currency])
   const fallback = !configuredCurrencies.includes(currency)
 
+  const native = useIsNative()
+
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
     defaultValues: defaults as FormValues,
@@ -78,6 +81,21 @@ export function SetupForm({ planId, planName, purchasable, configuredCurrencies,
       setServerError(err instanceof Error ? err.message : 'Something went wrong')
       setSubmitting(false)
     }
+  }
+
+  // In the native app we don't offer in-app subscription purchase (Apple
+  // Guideline 3.1.1 / Google Play billing) — point trainers to the web.
+  if (native) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+        <p className="text-base font-semibold text-slate-900">Manage your subscription on the web</p>
+        <p className="mt-2 text-sm text-slate-600">
+          To start or change your plan, sign in at{' '}
+          <span className="font-medium text-slate-900">app.pupmanager.com</span> from a browser.
+          Everything else in the app works as normal.
+        </p>
+      </div>
+    )
   }
 
   return (
