@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -13,6 +14,8 @@ async function getTrainerId(userId: string) {
 }
 
 export async function POST(req: Request) {
+  const guard = await guardPermission('settings.edit')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const trainerId = await getTrainerId(session.user.id)

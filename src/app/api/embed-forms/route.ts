@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -26,7 +27,7 @@ export async function GET() {
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
-  const trainer = await prisma.trainerProfile.findUnique({ where: { userId: session.user.id }, select: { id: true } })
+  const trainer = await prisma.trainerProfile.findUnique({ where: { id: session.user.trainerId ?? '' }, select: { id: true } })
   if (!trainer) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
@@ -43,10 +44,12 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const guard = await guardPermission('forms.manage')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
-  const trainer = await prisma.trainerProfile.findUnique({ where: { userId: session.user.id }, select: { id: true } })
+  const trainer = await prisma.trainerProfile.findUnique({ where: { id: session.user.trainerId ?? '' }, select: { id: true } })
   if (!trainer) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()

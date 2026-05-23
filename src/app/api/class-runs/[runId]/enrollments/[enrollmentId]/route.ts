@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { withdrawEnrollment, ClassError } from '@/lib/class-runs'
 
@@ -11,6 +12,8 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ runId: string; enrollmentId: string }> },
 ) {
+  const guard = await guardPermission('classes.manage')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })

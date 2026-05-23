@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { escapeHtml } from '@/lib/enquiries'
@@ -15,6 +16,8 @@ const schema = z.object({
 // `Reply-To: trainer@theirbusiness.com` so any reply lands in the trainer's
 // real inbox. v2 will swap this for OAuth'd Gmail/Microsoft sending.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const guard = await guardPermission('enquiries.manage')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 

@@ -43,8 +43,8 @@ test.describe('multi-trainer business', () => {
       await expect(page.getByTestId(`member-${invitee.email}`)).toBeVisible({ timeout: 15_000 })
     }
 
-    // Owner + 5 invited = 6 seats used.
-    await expect(page.getByText(/6 of 10 seats used/)).toBeVisible()
+    // Seed has owner + manager + staff (3); +5 invited = 8 of 10 seats used.
+    await expect(page.getByText(/8 of 10 seats used/)).toBeVisible()
     for (const invitee of SEED.invitees) {
       await expect(page.getByText(invitee.email)).toBeVisible()
     }

@@ -26,6 +26,8 @@ export type PermissionKey =
   | 'classes.manage'
   | 'products.manage'
   | 'forms.manage'
+  | 'achievements.manage'
+  | 'ai.use'
   | 'enquiries.manage'
   | 'messages.send'
   | 'settings.edit'
@@ -58,6 +60,9 @@ export const PERMISSION_CATALOGUE: PermissionDef[] = [
   { key: 'packages.manage', label: 'Manage packages', description: 'Create and edit training packages.', group: 'Catalogue' },
   { key: 'products.manage', label: 'Manage products', description: 'Create and edit shop products.', group: 'Catalogue' },
   { key: 'forms.manage', label: 'Manage forms & library', description: 'Edit session forms, templates and the training library.', group: 'Catalogue' },
+  { key: 'ai.use', label: 'Use AI tools', description: 'Generate training plans and progress summaries with AI.', group: 'Catalogue' },
+
+  { key: 'achievements.manage', label: 'Manage achievements', description: 'Create achievements and award them to clients.', group: 'Clients' },
 
   { key: 'enquiries.manage', label: 'Handle enquiries', description: 'View, reply to and accept incoming enquiries.', group: 'Communication' },
   { key: 'messages.send', label: 'Message clients', description: 'Send and read client messages.', group: 'Communication' },
@@ -86,6 +91,8 @@ export const ROLE_DEFAULTS: Record<CompanyRole, PermissionMap> = {
     'packages.manage': true,
     'products.manage': true,
     'forms.manage': true,
+    'achievements.manage': true,
+    'ai.use': true,
     'enquiries.manage': true,
     'messages.send': true,
     'settings.edit': true,
@@ -104,6 +111,8 @@ export const ROLE_DEFAULTS: Record<CompanyRole, PermissionMap> = {
     'packages.manage': false,
     'products.manage': false,
     'forms.manage': false,
+    'achievements.manage': false,
+    'ai.use': false,
     'enquiries.manage': false,
     'messages.send': true,
     'settings.edit': false,

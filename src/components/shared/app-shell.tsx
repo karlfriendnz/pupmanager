@@ -95,6 +95,12 @@ interface AppShellProps {
    * layout (server) each navigation. Omitted for the client shell.
    */
   streak?: { current: number } | null
+  /**
+   * Trainer nav hrefs to hide for this user, based on their company role +
+   * permissions (computed in the trainer layout). Owners/managers see
+   * everything; staff only see what they can act on. Empty = show all.
+   */
+  hiddenNavHrefs?: string[]
 }
 
 export function AppShell(props: AppShellProps) {
@@ -282,8 +288,11 @@ function TrainerShell({
   completedStepKeys = [],
   unreadCounts = {},
   streak,
+  hiddenNavHrefs = [],
 }: AppShellProps) {
   const pathname = usePathname()
+  // Nav filtered to what this user's role/permissions allow.
+  const trainerNav = TRAINER_NAV.filter(i => !hiddenNavHrefs.includes(i.href))
   const [collapsed, setCollapsed] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -338,8 +347,8 @@ function TrainerShell({
   const sidebarWidth = collapsed ? 'md:w-16' : 'md:w-64'
   const mainOffset = collapsed ? 'md:ml-16' : 'md:ml-64'
 
-  const mobilePrimary = TRAINER_NAV.filter(i => TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
-  const mobileSecondary = TRAINER_NAV.filter(i => !TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
+  const mobilePrimary = trainerNav.filter(i => TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
+  const mobileSecondary = trainerNav.filter(i => !TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
   const isOnSecondary = mobileSecondary.some(i => pathname === i.href || pathname.startsWith(i.href + '/'))
 
   return (
@@ -361,7 +370,7 @@ function TrainerShell({
         </div>
 
         <nav className={cn('flex-1 overflow-y-auto py-4 space-y-1', collapsed ? 'px-2' : 'px-3')}>
-          {TRAINER_NAV.map((item) => {
+          {trainerNav.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             // The pulsing dot guides the trainer to their next step, but it
             // should NOT fire while they're mid-step on the page they're on.

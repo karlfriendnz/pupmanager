@@ -1,5 +1,6 @@
 import { NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { safeEvaluate } from '@/lib/achievements'
 import { notifyMessageRecipient } from '@/lib/notify-message-recipient'
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
   if (!clientId) return NextResponse.json({ error: 'clientId required' }, { status: 400 })
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: session.user.trainerId ?? '' },
     select: { id: true },
   })
 
@@ -61,6 +62,8 @@ export async function GET(req: Request) {
 
 // POST /api/messages — send a message
 export async function POST(req: Request) {
+  const guard = await guardPermission('messages.send')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -72,7 +75,7 @@ export async function POST(req: Request) {
 
   // Validate sender is either the trainer for this client, or the client themselves
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: session.user.trainerId ?? '' },
     select: { id: true },
   })
 

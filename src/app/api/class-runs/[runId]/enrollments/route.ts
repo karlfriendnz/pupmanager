@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { enrollInRun, ClassError } from '@/lib/class-runs'
@@ -14,6 +15,8 @@ const schema = z.object({
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ runId: string }> }) {
+  const guard = await guardPermission('classes.manage')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })

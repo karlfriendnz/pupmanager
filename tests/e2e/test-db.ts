@@ -17,6 +17,9 @@ export const TEST_DATABASE_URL = `postgresql://${TEST_DB.user}:${TEST_DB.passwor
 // Known seed credentials the specs log in with.
 export const SEED = {
   owner: { email: 'owner@e2e.test', password: 'Password123!', name: 'Olivia Owner', businessName: 'E2E Dog School' },
+  // Accepted members with passwords, so permission specs can log in as them.
+  manager: { email: 'manager@e2e.test', password: 'Password123!', name: 'Morgan Manager' },
+  staff: { email: 'staffer@e2e.test', password: 'Password123!', name: 'Sam Staff' },
   // Emails we invite trainers at during the multi-trainer spec.
   invitees: [
     { name: 'Manny Manager', email: 'manny@e2e.test', role: 'MANAGER' as const },

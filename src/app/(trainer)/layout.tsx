@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext } from '@/lib/membership'
+import { can, type PermissionKey } from '@/lib/permissions'
 import { AppShell } from '@/components/shared/app-shell'
 import { OnboardingFab } from './onboarding-fab'
 import { OnboardingCelebration } from './onboarding-celebration'
@@ -12,6 +14,25 @@ import { getStreak } from '@/lib/trainer-streak'
 export default async function TrainerLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') redirect('/login')
+
+  // Hide nav items this trainer can't act on (role + permissions). Owners and
+  // managers see everything; staff get a focused menu. Maps each gated nav
+  // href to the permission that unlocks it.
+  const ctx = await getTrainerContext()
+  const NAV_PERMISSION: Record<string, PermissionKey> = {
+    '/packages': 'packages.manage',
+    '/classes': 'classes.manage',
+    '/products': 'products.manage',
+    '/templates': 'forms.manage',
+    '/achievements': 'achievements.manage',
+    '/enquiries': 'enquiries.manage',
+    '/messages': 'messages.send',
+  }
+  const hiddenNavHrefs = ctx
+    ? Object.entries(NAV_PERMISSION)
+        .filter(([, perm]) => !can(perm, ctx.role, ctx.permissions))
+        .map(([href]) => href)
+    : []
 
   // Read logo + business name fresh from DB on every render so settings updates
   // are reflected immediately. The JWT caches these only at sign-in. Also
@@ -84,6 +105,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       completedStepKeys={completedStepKeys}
       unreadCounts={{ '/messages': unreadMessageCount }}
       unreadTotal={unreadMessageCount}
+      hiddenNavHrefs={hiddenNavHrefs}
     >
       {/* Trial / payment-status banner — only renders when there's
           something the trainer needs to know (trial running out, payment

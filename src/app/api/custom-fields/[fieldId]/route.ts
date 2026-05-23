@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -31,6 +32,8 @@ async function getField(fieldId: string, userId: string) {
 }
 
 export async function PUT(req: Request, { params }: { params: Promise<{ fieldId: string }> }) {
+  const guard = await guardPermission('settings.edit')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const { fieldId } = await params
@@ -59,6 +62,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ fieldId:
 // drag-and-drop in the intake editor to flip `category` without resending the
 // whole field.
 export async function PATCH(req: Request, { params }: { params: Promise<{ fieldId: string }> }) {
+  const guard = await guardPermission('settings.edit')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const { fieldId } = await params
@@ -85,6 +90,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ fieldI
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ fieldId: string }> }) {
+  const guard = await guardPermission('settings.edit')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const { fieldId } = await params

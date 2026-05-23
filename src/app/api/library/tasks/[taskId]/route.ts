@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -19,6 +20,8 @@ async function getTask(taskId: string, userId: string) {
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ taskId: string }> }) {
+  const guard = await guardPermission('forms.manage')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const { taskId } = await params
@@ -42,6 +45,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ taskId
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ taskId: string }> }) {
+  const guard = await guardPermission('forms.manage')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const { taskId } = await params

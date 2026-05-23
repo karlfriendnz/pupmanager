@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { evaluateAchievementForAllClients } from '@/lib/achievements'
 import { z } from 'zod'
@@ -57,6 +58,8 @@ async function ensureOwner(userId: string, achievementId: string) {
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ achievementId: string }> }) {
+  const guard = await guardPermission('achievements.manage')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const { achievementId } = await ctx.params
@@ -99,6 +102,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ achievementId
 }
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ achievementId: string }> }) {
+  const guard = await guardPermission('achievements.manage')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const { achievementId } = await ctx.params

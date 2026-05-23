@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -22,13 +23,15 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ templateId: string }> }
 ) {
+  const guard = await guardPermission('forms.manage')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { templateId } = await params
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: session.user.trainerId ?? '' },
     select: { id: true },
   })
   if (!trainerProfile) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

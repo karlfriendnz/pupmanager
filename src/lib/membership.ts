@@ -9,6 +9,7 @@
 // in the same render share one query.
 
 import { cache } from 'react'
+import { NextResponse } from 'next/server'
 import { auth } from './auth'
 import { prisma } from './prisma'
 import type { CompanyRole } from '@/generated/prisma'
@@ -86,6 +87,26 @@ export async function requirePermission(permission: PermissionKey): Promise<Trai
   const ctx = await getTrainerContext()
   if (!ctx) throw new PermissionError(permission)
   if (!canPermission(permission, ctx.role, ctx.permissions)) throw new PermissionError(permission)
+  return ctx
+}
+
+/**
+ * API-route guard. Returns the TrainerContext when the permission is held, or a
+ * ready-to-return NextResponse (401 unauthenticated / 403 forbidden) otherwise:
+ *
+ *   const guard = await guardPermission('packages.manage')
+ *   if (guard instanceof NextResponse) return guard
+ *   const trainerId = guard.companyId
+ *
+ * Owners and managers pass per the role presets, so existing flows are
+ * unaffected; only restricted members (staff) are blocked.
+ */
+export async function guardPermission(permission: PermissionKey): Promise<TrainerContext | NextResponse> {
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  if (!canPermission(permission, ctx.role, ctx.permissions)) {
+    return NextResponse.json({ error: 'You don’t have permission to do this.' }, { status: 403 })
+  }
   return ctx
 }
 

@@ -58,13 +58,44 @@ export default async function globalSetup() {
       data: { companyId: profile.id, userId: user.id, role: 'OWNER', acceptedAt: new Date() },
     })
 
+    // An accepted MANAGER + STAFF member (with passwords) so permission specs
+    // can sign in as them. Members have a membership, no TrainerProfile.
+    const mgrHash = await bcrypt.hash(SEED.manager.password, 12)
+    const mgrUser = await prisma.user.create({
+      data: {
+        email: SEED.manager.email, name: SEED.manager.name, role: 'TRAINER', emailVerified: new Date(),
+        accounts: { create: { type: 'credentials', provider: 'credentials', providerAccountId: mgrHash } },
+      },
+    })
+    await prisma.trainerMembership.create({
+      data: { companyId: profile.id, userId: mgrUser.id, role: 'MANAGER', acceptedAt: new Date() },
+    })
+    const staffHash = await bcrypt.hash(SEED.staff.password, 12)
+    const staffUser = await prisma.user.create({
+      data: {
+        email: SEED.staff.email, name: SEED.staff.name, role: 'TRAINER', emailVerified: new Date(),
+        accounts: { create: { type: 'credentials', provider: 'credentials', providerAccountId: staffHash } },
+      },
+    })
+    const staffMembership = await prisma.trainerMembership.create({
+      data: { companyId: profile.id, userId: staffUser.id, role: 'STAFF', acceptedAt: new Date() },
+    })
+
     // A sample client + dog + a package, so assigned-trainer flows have targets.
+    // The client is assigned to the staff member so they can see it.
     const clientUser = await prisma.user.create({
       data: { email: 'client@e2e.test', name: 'Sarah Client', role: 'CLIENT', emailVerified: new Date() },
     })
     const dog = await prisma.dog.create({ data: { name: 'Bailey' } })
     await prisma.clientProfile.create({
-      data: { userId: clientUser.id, trainerId: profile.id, dogId: dog.id, status: 'ACTIVE' },
+      data: { userId: clientUser.id, trainerId: profile.id, dogId: dog.id, status: 'ACTIVE', assignedMembershipId: staffMembership.id },
+    })
+    // A second, unassigned client — staff should NOT see this one.
+    const otherUser = await prisma.user.create({
+      data: { email: 'other@e2e.test', name: 'Unassigned Client', role: 'CLIENT', emailVerified: new Date() },
+    })
+    await prisma.clientProfile.create({
+      data: { userId: otherUser.id, trainerId: profile.id, status: 'ACTIVE' },
     })
     await prisma.package.create({
       data: { trainerId: profile.id, name: 'Puppy Foundations', sessionCount: 4, weeksBetween: 1 },

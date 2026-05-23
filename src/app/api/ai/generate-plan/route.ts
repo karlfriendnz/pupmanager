@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
@@ -13,11 +14,13 @@ const schema = z.object({
 })
 
 export async function POST(req: Request) {
+  const guard = await guardPermission('ai.use')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: session.user.trainerId ?? '' },
     select: { id: true },
   })
   if (!trainerProfile) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

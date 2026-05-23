@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import { z } from 'zod'
@@ -11,10 +12,12 @@ const schema = z.object({
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ taskId: string }> }) {
+  const guard = await guardPermission('clients.edit')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
-  const trainer = await prisma.trainerProfile.findUnique({ where: { userId: session.user.id }, select: { id: true } })
+  const trainer = await prisma.trainerProfile.findUnique({ where: { id: session.user.trainerId ?? '' }, select: { id: true } })
   if (!trainer) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { taskId } = await params
