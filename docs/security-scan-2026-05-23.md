@@ -19,7 +19,14 @@ unfinished config items, not active holes.
 
 ## Findings
 
-### MEDIUM — No rate limiting anywhere
+### MEDIUM — No rate limiting anywhere — ✅ RESOLVED 2026-05-23 (commit a2ccd4e)
+**Update:** fixed with a DB-backed limiter (`src/lib/rate-limit.ts`, atomic
+Postgres upsert, no external infra, fails open). Wired into login (30/15min per
+IP), register/forgot-password/resend-verification (5/hr per IP), and the public
+form submit (10/10min per IP). Verified by an E2E test (form → 429 after the cap).
+Original finding below for record.
+
+
 There is no throttling on any endpoint. Real exposure:
 - **Login** (`authorize`) — password brute-force, no lockout/backoff.
 - **Public form submit** (`/api/form/[id]/submit`) — unauthenticated; each call creates an Enquiry **and** fires an email + push to the trainer. Spammable → notification flooding, DB bloat, Resend/APNs cost.
