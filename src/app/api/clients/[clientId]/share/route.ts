@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { guardPermission } from '@/lib/membership'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -12,10 +12,10 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ clientId: string }> }
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
+  // Sharing / transferring a client to another business is a sensitive,
+  // manager-level action (clients.invite: Owner/Manager, not Staff).
+  const guard = await guardPermission('clients.invite')
+  if (guard instanceof NextResponse) return guard
 
   const { clientId } = await params
   const body = await req.json()
@@ -26,19 +26,13 @@ export async function POST(
 
   const { partnerEmail, shareType } = parsed.data
 
-  const myProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true },
-  })
-  if (!myProfile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-
-  // Verify this trainer owns the client
+  // Verify this client belongs to the caller's business.
   const client = await prisma.clientProfile.findFirst({
-    where: { id: clientId, trainerId: myProfile.id },
+    where: { id: clientId, trainerId: guard.companyId },
   })
   if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 })
 
-  // Find the partner trainer
+  // Find the partner trainer.
   const partnerUser = await prisma.user.findUnique({
     where: { email: partnerEmail, role: 'TRAINER' },
     include: { trainerProfile: { select: { id: true } } },
@@ -49,17 +43,17 @@ export async function POST(
 
   const partnerProfileId = partnerUser.trainerProfile.id
 
-  // Create the share record
+  // Create the share record.
   await prisma.clientShare.create({
     data: {
       clientId: client.id,
-      sharedById: myProfile.id,
+      sharedById: guard.companyId,
       sharedWithId: partnerProfileId,
       shareType,
     },
   })
 
-  // If transfer: update primary trainer
+  // If transfer: update primary trainer.
   if (shareType === 'TRANSFER') {
     await prisma.clientProfile.update({
       where: { id: client.id },
@@ -67,7 +61,7 @@ export async function POST(
     })
   }
 
-  // Notify partner (fire-and-forget)
+  // Notify partner (fire-and-forget).
   const { Resend } = await import('resend')
   const resend = new Resend(process.env.RESEND_API_KEY)
   await resend.emails.send({

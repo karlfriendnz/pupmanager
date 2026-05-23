@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import crypto from 'crypto'
@@ -15,6 +16,8 @@ const schema = z.object({
 })
 
 export async function POST(req: Request) {
+  const guard = await guardPermission('clients.invite')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
@@ -36,8 +39,10 @@ export async function POST(req: Request) {
 
   const { clientName, dogNames, clientEmail, sendInvite, emailBody } = parsed.data
 
+  // Resolve the business by company id (works for managers too, not just the
+  // owner). Email branding uses the business profile.
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId: session.user.id },
+    where: { id: guard.companyId },
     select: {
       id: true,
       businessName: true,

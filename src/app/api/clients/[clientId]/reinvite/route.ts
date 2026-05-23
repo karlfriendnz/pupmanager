@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { renderClientInviteEmail, DEFAULT_INVITE_BODY } from '@/lib/client-invite-email'
@@ -22,6 +23,9 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ clientId: string }> },
 ) {
+  // Re-inviting sends sign-in credentials — manager-level (clients.invite).
+  const guard = await guardPermission('clients.invite')
+  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })

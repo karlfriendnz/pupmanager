@@ -27,6 +27,12 @@ test.describe('permission enforcement', () => {
     })
     expect(res.status()).toBe(403)
 
+    // API: inviting a client is forbidden (clients.invite is manager-level).
+    const inviteRes = await page.request.post('/api/clients/invite', {
+      data: { clientName: 'Nope Client', dogNames: ['Rex'], clientEmail: 'nope@e2e.test', sendInvite: false },
+    })
+    expect(inviteRes.status()).toBe(403)
+
     // Clients list: sees the assigned client, not the unassigned one.
     await page.goto('/clients')
     await expect(page.getByText('Sarah Client').first()).toBeVisible({ timeout: 15_000 })
