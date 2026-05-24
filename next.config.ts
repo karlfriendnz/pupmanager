@@ -23,6 +23,8 @@ const nextConfig: NextConfig = {
   // Hide the dev-mode "N" badge so it doesn't show up in screenshots.
   // Remove this when you're done with marketing screenshots.
   devIndicators: false,
+  // Don't advertise the framework in the X-Powered-By header.
+  poweredByHeader: false,
   async headers() {
     return [
       {
@@ -31,6 +33,19 @@ const nextConfig: NextConfig = {
         headers: [
           { key: 'X-Frame-Options', value: 'ALLOWALL' },
           { key: 'Content-Security-Policy', value: "frame-ancestors *" },
+        ],
+      },
+      {
+        // Security headers for the whole app EXCEPT the embeddable /form pages.
+        // X-Frame-Options blocks clickjacking (the native shell loads the app as
+        // the top-level document, so it's unaffected). nosniff stops MIME
+        // sniffing; Referrer-Policy trims referrer leakage. (A full CSP is a
+        // separate, carefully-tested follow-up — it needs Next.js nonces.)
+        source: '/((?!form/).*)',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         ],
       },
     ]

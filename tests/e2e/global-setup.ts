@@ -88,14 +88,14 @@ export default async function globalSetup() {
     })
     const dog = await prisma.dog.create({ data: { name: 'Bailey' } })
     await prisma.clientProfile.create({
-      data: { userId: clientUser.id, trainerId: profile.id, dogId: dog.id, status: 'ACTIVE', assignedMembershipId: staffMembership.id },
+      data: { id: SEED.assignedClientId, userId: clientUser.id, trainerId: profile.id, dogId: dog.id, status: 'ACTIVE', assignedMembershipId: staffMembership.id },
     })
-    // A second, unassigned client — staff should NOT see this one.
+    // A second, unassigned client (fixed id) — staff should NOT see this one.
     const otherUser = await prisma.user.create({
       data: { email: 'other@e2e.test', name: 'Unassigned Client', role: 'CLIENT', emailVerified: new Date() },
     })
     await prisma.clientProfile.create({
-      data: { userId: otherUser.id, trainerId: profile.id, status: 'ACTIVE' },
+      data: { id: SEED.unassignedClientId, userId: otherUser.id, trainerId: profile.id, status: 'ACTIVE' },
     })
     await prisma.package.create({
       data: { trainerId: profile.id, name: 'Puppy Foundations', sessionCount: 4, weeksBetween: 1 },
@@ -104,6 +104,31 @@ export default async function globalSetup() {
     await prisma.embedForm.create({
       data: { id: SEED.embedFormId, trainerId: profile.id, title: 'Get in touch', isActive: true },
     })
+
+    // ─── Business B: a SEPARATE tenant the pentest tries to breach ───────────
+    const bHash = await bcrypt.hash(SEED.businessB.ownerPassword, 12)
+    const bUser = await prisma.user.create({
+      data: {
+        email: SEED.businessB.ownerEmail, name: SEED.businessB.name, role: 'TRAINER', emailVerified: new Date(),
+        accounts: { create: { type: 'credentials', provider: 'credentials', providerAccountId: bHash } },
+      },
+    })
+    const bProfile = await prisma.trainerProfile.create({
+      data: { userId: bUser.id, businessName: SEED.businessB.businessName, subscriptionStatus: 'ACTIVE' },
+    })
+    await prisma.trainerMembership.create({
+      data: { companyId: bProfile.id, userId: bUser.id, role: 'OWNER', acceptedAt: new Date() },
+    })
+    const bClientUser = await prisma.user.create({
+      data: { email: 'clientb@e2e.test', name: 'Rival Client', role: 'CLIENT', emailVerified: new Date() },
+    })
+    await prisma.clientProfile.create({
+      data: { id: SEED.businessB.clientId, userId: bClientUser.id, trainerId: bProfile.id, status: 'ACTIVE' },
+    })
+    await prisma.package.create({
+      data: { id: SEED.businessB.packageId, trainerId: bProfile.id, name: 'Rival Package', sessionCount: 4, weeksBetween: 1 },
+    })
+
     console.log('[e2e] seed complete')
   } finally {
     await prisma.$disconnect()

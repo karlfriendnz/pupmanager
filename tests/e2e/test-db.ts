@@ -22,6 +22,20 @@ export const SEED = {
   staff: { email: 'staffer@e2e.test', password: 'Password123!', name: 'Sam Staff' },
   // A published public embed form, used to test the public-form rate limiter.
   embedFormId: 'e2eembedform0000000000000',
+  // Business A clients with fixed ids: one assigned to staff (mass-assignment
+  // target), one unassigned (staff without clients.viewAll must NOT reach it).
+  assignedClientId: 'e2eaassignedclient000000x',
+  unassignedClientId: 'e2eaunassignedclient00000',
+  // A SEPARATE business (different tenant) — the pentest tries to breach it
+  // from Business A. Its resources have fixed ids so the attacker can target them.
+  businessB: {
+    ownerEmail: 'ownerb@e2e.test',
+    ownerPassword: 'Password123!',
+    name: 'Bianca Rival',
+    businessName: 'Rival Dog Co',
+    clientId: 'e2ebclient00000000000000',
+    packageId: 'e2ebpackage0000000000000',
+  },
   // Emails we invite trainers at during the multi-trainer spec.
   invitees: [
     { name: 'Manny Manager', email: 'manny@e2e.test', role: 'MANAGER' as const },
