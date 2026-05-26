@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { OAuthButtons, type EnabledOAuth } from '../oauth-buttons'
+import { AppleNativeButton } from '../apple-native-button'
+import { useNativePlatform } from '@/lib/native'
 
 const trainerSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -41,6 +43,8 @@ interface LoginFormProps {
 export function LoginForm({ error, callbackUrl, enabledOAuth }: LoginFormProps) {
   const [mode, setMode] = useState<'trainer' | 'client'>('trainer')
   const [magicLinkSent, setMagicLinkSent] = useState(false)
+  // iOS uses the native Sign in with Apple sheet (no system-browser redirect).
+  const isIOS = useNativePlatform() === 'ios'
 
   const trainerForm = useForm<TrainerForm>({ resolver: zodResolver(trainerSchema) })
   const clientForm = useForm<ClientForm>({ resolver: zodResolver(clientSchema) })
@@ -109,7 +113,9 @@ export function LoginForm({ error, callbackUrl, enabledOAuth }: LoginFormProps) 
         )}
 
         {mode === 'trainer' && (
-          <OAuthButtons enabledOAuth={enabledOAuth} callbackUrl={callbackUrl} />
+          isIOS
+            ? <AppleNativeButton callbackUrl={callbackUrl} />
+            : <OAuthButtons enabledOAuth={enabledOAuth} callbackUrl={callbackUrl} />
         )}
 
         {mode === 'trainer' ? (

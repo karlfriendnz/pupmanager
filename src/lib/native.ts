@@ -24,3 +24,16 @@ export const nativePlatform = (): 'ios' | 'android' | 'web' => {
   const p = Capacitor.getPlatform();
   return p === 'ios' || p === 'android' ? p : 'web';
 };
+
+// Hydration-safe platform check (mirrors useIsNative): 'web' during SSR + first
+// client render, then the real platform after mount. Used to swap the login UI
+// on iOS — native Sign in with Apple instead of the web OAuth that opened the
+// system browser (App Store Guideline 4 + 4.8).
+export function useNativePlatform(): 'ios' | 'android' | 'web' {
+  const [platform, setPlatform] = useState<'ios' | 'android' | 'web'>('web');
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPlatform(nativePlatform());
+  }, []);
+  return platform;
+}

@@ -23,6 +23,7 @@
     "@anthropic-ai/sdk": "^0.88.0",
     "@auth/prisma-adapter": "^2.11.1",
     "@aws-sdk/client-s3": "^3.1029.0",
+    "@capacitor-community/apple-sign-in": "^7.1.0",
     "@capacitor/android": "^8.3.1",
     "@capacitor/app": "^8.1.0",
     "@capacitor/core": "^8.3.1",

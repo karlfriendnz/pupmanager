@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { OAuthButtons, type EnabledOAuth } from '../oauth-buttons'
+import { AppleNativeButton } from '../apple-native-button'
+import { useNativePlatform } from '@/lib/native'
 
 const schema = z
   .object({
@@ -29,6 +31,8 @@ type FormData = z.infer<typeof schema>
 
 export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
   const [serverError, setServerError] = useState<string | null>(null)
+  // iOS uses the native Sign in with Apple sheet instead of web OAuth.
+  const isIOS = useNativePlatform() === 'ios'
   // Once the signup transaction succeeds we hold the email and switch the
   // form into a 6-digit code-entry state. The trainer can type the code from
   // the email or click the verify-button in the email which lands on
@@ -73,7 +77,9 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
         {serverError && (
           <Alert variant="error" className="mb-4">{serverError}</Alert>
         )}
-        <OAuthButtons enabledOAuth={enabledOAuth} ctaPrefix="Sign up with" />
+        {isIOS
+          ? <AppleNativeButton callbackUrl="/dashboard" />
+          : <OAuthButtons enabledOAuth={enabledOAuth} ctaPrefix="Sign up with" />}
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <Input
             label="Your name"
