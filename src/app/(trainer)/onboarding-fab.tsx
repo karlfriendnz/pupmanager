@@ -173,18 +173,22 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   // chip + the page itself are already telegraphing what to do here.
   if (pathname?.startsWith('/billing')) return null
 
-  // Resolve the focused step from the trainer's current URL — the FAB
-  // describes that step's status. When no path matches, fall back to the
-  // next-incomplete step.
+  // Resolve the onboarding step this page belongs to.
   const locationKey = `${pathname}${tab ? `?tab=${tab}` : ''}${hash}`
   const pathStepKey = stepKeyForLocation(locationKey)
-  const pathStepRaw = pathStepKey ? steps.find(s => s.key === pathStepKey) : null
-  // Reflect whatever step the trainer's current page belongs to — when they
-  // tap a checklist item we navigate straight to that step's page, so the FAB
-  // hint must match it (no clamping to the earliest-incomplete step). Only
-  // fall back to the next-incomplete step when the page maps to no step.
-  const pathStep = pathStepRaw
-  const leftStep = pathStep ?? nextStep
+  const pathStep = pathStepKey ? steps.find(s => s.key === pathStepKey) : null
+
+  // Only show the FAB on pages that ARE a setup step — otherwise the trainer
+  // is on an unrelated page (Library, Products, Messages…) and a hint about
+  // some other step is just noise. The dashboard "Get set up" box is the
+  // catch-all nudge; here we only help with the step you're actually on.
+  // And once that step is done, drop the FAB — it's a "what's left" helper,
+  // not a badge that lingers on every page you've already finished.
+  if (!pathStep || pathStep.status === 'completed') return null
+
+  // Show the hint for THIS page's step (no clamping to the earliest-incomplete
+  // step — when a trainer taps a checklist item we navigate straight here).
+  const leftStep = pathStep
   const leftCompleted = leftStep.status === 'completed'
   // Hint resolution priority:
   //   1. Sub-path override (e.g. /clients/invite — fills the in-page form)
@@ -201,15 +205,15 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
     ?? STEP_HINT[leftStep.key]
     ?? `Wrap up ${leftStep.title.toLowerCase()}.`
 
-  // Click is a fallback for trainers who'd rather skip the menu — points
-  // at the next-incomplete step. The pulsing dot on the sidebar is the
-  // primary affordance now, since the goal is to teach navigation.
-  const href = nextStep.ctaHref || '/dashboard?wizard=1'
+  // The FAB now only appears on its own step's page, so the link just keeps
+  // the trainer on that step's primary surface (e.g. the schedule's Hours
+  // view). The in-page action is what matters; the hint tells them what to do.
+  const href = leftStep.ctaHref || '/dashboard'
 
   return (
     <Link
       href={href}
-      aria-label={`Next: ${nextStep.title}`}
+      aria-label={leftStep.title}
       style={{ backgroundImage: 'linear-gradient(135deg, var(--pm-brand-500), var(--pm-brand-700))' }}
       className="group relative overflow-hidden sticky top-2.5 z-30 mx-2.5 mt-2.5 mb-2 flex items-center gap-3 px-4 sm:px-5 py-3 text-white rounded-2xl shadow-[0_10px_30px_-8px_rgba(42,157,169,0.55)] hover:shadow-[0_16px_40px_-8px_rgba(42,157,169,0.7)] transition-shadow animate-pm-fab-slide"
     >
