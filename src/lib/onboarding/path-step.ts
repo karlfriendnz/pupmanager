@@ -6,6 +6,7 @@
 
 const STEP_PATH_MATCH: Array<{ pattern: RegExp; key: string }> = [
   { pattern: /^\/settings(\?tab=forms|#forms)/, key: 'intake_form' },
+  { pattern: /^\/settings(\?tab=team|#team)/, key: 'invite_staff' },
   { pattern: /^\/settings(\?tab=notifications|#notifications)/, key: 'business_profile' },
   { pattern: /^\/forms\/intake/, key: 'intake_form' },
   { pattern: /^\/forms\/embed/, key: 'intake_form' },
@@ -14,7 +15,13 @@ const STEP_PATH_MATCH: Array<{ pattern: RegExp; key: string }> = [
   { pattern: /^\/packages/, key: 'program_package' },
   { pattern: /^\/achievements/, key: 'achievements' },
   { pattern: /^\/preview-as/, key: 'client_view' },
-  { pattern: /^\/clients\/invite/, key: 'invite_client' },
+  // Session notes screen ("show_notes" step) — any /sessions page counts.
+  { pattern: /^\/sessions/, key: 'show_notes' },
+  // The invite form itself is where "Create a client" happens (add a record,
+  // optionally without an email). The "Invite your first client" step's CTA
+  // lands on the /clients list instead. The FAB's order-clamp handles the
+  // rare case where the final-step trainer opens the form directly.
+  { pattern: /^\/clients\/invite/, key: 'create_client' },
   // Match /clients (the list page) but NOT /clients/<id> (a specific client
   // profile). The list is where the Invite Client button lives.
   { pattern: /^\/clients(?:\?|#|$)/, key: 'invite_client' },
@@ -42,8 +49,14 @@ export const STEP_TO_MENU: Record<string, string> = {
   intake_form: '/settings',
   session_form: '/settings',
   program_package: '/packages',
+  create_client: '/clients',
   achievements: '/achievements',
   client_view: '/clients',
+  // No top-level nav item for the notes screen; sessions live under Schedule.
+  show_notes: '/schedule',
   invite_client: '/clients',
+  invite_staff: '/settings',
+  // download_app opens a QR popup rather than a page; no sidebar item to pulse.
+  download_app: '/dashboard',
   schedule_session: '/schedule',
 }

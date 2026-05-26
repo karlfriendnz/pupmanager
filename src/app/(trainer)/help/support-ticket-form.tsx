@@ -5,27 +5,61 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
-import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 
 const schema = z.object({
   category: z.string().min(1),
-  subject: z.string().min(5),
-  body: z.string().min(20),
+  subject: z.string().min(5, 'Add a short subject (5+ characters).'),
+  body: z.string().min(20, 'Please add a little more detail (20+ characters).'),
 })
 
 type FormData = z.infer<typeof schema>
+export type SupportFormType = 'support' | 'feedback' | 'feature' | 'bug'
 
-const SUPPORT_CATEGORIES = ['Bug report', 'Account issue', 'Billing question', 'Other']
-const FEEDBACK_CATEGORIES = ['Feature idea', 'UI improvement', 'General feedback']
+const CONFIG: Record<SupportFormType, {
+  categories: string[]
+  subjectPlaceholder: string
+  bodyPlaceholder: string
+  submitLabel: string
+  success: string
+}> = {
+  support: {
+    categories: ['Account issue', 'Billing question', 'Something looks wrong', 'Other'],
+    subjectPlaceholder: 'Brief description of what you need help with',
+    bodyPlaceholder: 'What were you trying to do? What happened instead?',
+    submitLabel: 'Send message',
+    success: "✅ Got it! We've emailed you a confirmation and will reply soon.",
+  },
+  feedback: {
+    categories: ['General feedback', 'UI improvement', 'Something you love'],
+    subjectPlaceholder: 'Your feedback in a few words',
+    bodyPlaceholder: 'Tell us more...',
+    submitLabel: 'Send feedback',
+    success: '🙏 Thanks for the feedback!',
+  },
+  feature: {
+    categories: ['New feature', 'Improve an existing feature', 'Integration'],
+    subjectPlaceholder: 'What would you like PupManager to do?',
+    bodyPlaceholder: "Describe the feature and how it would help you. The more detail, the better!",
+    submitLabel: 'Send request',
+    success: '💡 Thanks! Your feature request is on its way to our team.',
+  },
+  bug: {
+    categories: ['Something is broken', 'Wrong information', 'App is slow', 'Other'],
+    subjectPlaceholder: 'Brief description of the bug',
+    bodyPlaceholder: 'What happened? What did you expect? What page were you on?',
+    submitLabel: 'Report bug',
+    success: "🐛 Thanks for the report! We've logged it and will take a look.",
+  },
+}
 
-export function SupportTicketForm({ type }: { type: 'support' | 'feedback' }) {
+export function SupportTicketForm({ type, onDone }: { type: SupportFormType; onDone?: () => void }) {
   const [sent, setSent] = useState(false)
-  const categories = type === 'support' ? SUPPORT_CATEGORIES : FEEDBACK_CATEGORIES
+  const cfg = CONFIG[type]
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { category: categories[0] },
+    defaultValues: { category: cfg.categories[0] },
   })
 
   async function onSubmit(data: FormData) {
@@ -35,52 +69,48 @@ export function SupportTicketForm({ type }: { type: 'support' | 'feedback' }) {
       body: JSON.stringify({ ...data, type }),
     })
     setSent(true)
-    reset()
+    reset({ category: cfg.categories[0], subject: '', body: '' })
   }
 
   if (sent) {
     return (
       <Alert variant="success">
-        {type === 'support' ? '✅ Ticket submitted! We\'ll email you a confirmation shortly.' : '🙏 Thanks for your feedback!'}
-        <button onClick={() => setSent(false)} className="block text-xs underline mt-1">Submit another</button>
+        {cfg.success}
+        <button onClick={() => { setSent(false); onDone?.() }} className="block text-xs underline mt-1">
+          Done
+        </button>
       </Alert>
     )
   }
 
+  const inputCls = 'rounded-xl border border-slate-200 bg-white px-4 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]'
+
   return (
-    <Card>
-      <CardBody className="pt-5">
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Category</label>
-            <select className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" {...register('category')}>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Subject</label>
-            <input
-              className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder={type === 'support' ? 'Brief description of the issue' : 'Your idea in a few words'}
-              {...register('subject')}
-            />
-            {errors.subject && <p className="text-xs text-red-500">{errors.subject.message}</p>}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700">Details</label>
-            <textarea
-              rows={4}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder={type === 'support' ? 'What happened? What were you trying to do?' : 'Tell us more about your idea or suggestion...'}
-              {...register('body')}
-            />
-            {errors.body && <p className="text-xs text-red-500">{errors.body.message}</p>}
-          </div>
-          <Button type="submit" size="sm" className="self-start" loading={isSubmitting}>
-            {type === 'support' ? 'Submit ticket' : 'Send feedback'}
-          </Button>
-        </form>
-      </CardBody>
-    </Card>
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-slate-700">Category</label>
+        <select className={`h-11 ${inputCls}`} {...register('category')}>
+          {cfg.categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-slate-700">Subject</label>
+        <input className={`h-11 ${inputCls}`} placeholder={cfg.subjectPlaceholder} {...register('subject')} />
+        {errors.subject && <p className="text-xs text-red-500">{errors.subject.message}</p>}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-slate-700">Details</label>
+        <textarea
+          rows={4}
+          className={`w-full py-3 resize-none ${inputCls}`}
+          placeholder={cfg.bodyPlaceholder}
+          {...register('body')}
+        />
+        {errors.body && <p className="text-xs text-red-500">{errors.body.message}</p>}
+      </div>
+      <Button type="submit" size="sm" className="self-start" loading={isSubmitting}>
+        {cfg.submitLabel}
+      </Button>
+    </form>
   )
 }

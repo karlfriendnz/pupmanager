@@ -95,7 +95,7 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
   // 4 queries instead of 8: profile + per-relation counts collapse into one
   // findUnique via _count, and the limbo client doubles as the "any client
   // exists" signal so we drop the separate clientCount query.
-  const [steps, progress, profileWithCounts, limbo] = await Promise.all([
+  const [steps, progress, profileWithCounts, limbo, invitedClientCount, staffCount] = await Promise.all([
     prisma.onboardingStep.findMany({
       where: { publishedAt: { not: null } },
       orderBy: { order: 'asc' },
@@ -140,6 +140,13 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
         dog: { select: { name: true } },
       },
     }),
+    // Clients who've actually been sent an invite (vs just added). Drives
+    // invite_client completion, kept distinct from create_client which only
+    // needs any client record to exist.
+    prisma.clientProfile.count({ where: { trainerId, invitedAt: { not: null } } }),
+    // Team members beyond the owner — any MANAGER/STAFF membership (pending or
+    // accepted) means the trainer has invited someone. Drives invite_staff.
+    prisma.trainerMembership.count({ where: { companyId: trainerId, role: { not: 'OWNER' } } }),
   ])
 
   const counts = profileWithCounts?._count ?? { embedForms: 0, sessionForms: 0, packages: 0, clients: 0, customFields: 0, achievements: 0, trainingSessions: 0, availabilitySlots: 0 }
@@ -161,8 +168,17 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
     intake_form: !!profileWithCounts?.intakeFormPublished,
     program_package: counts.packages > 0,
     achievements: counts.achievements > 0,
-    invite_client: counts.clients > 0,
+    // create_client: any client record exists (added or invited).
+    create_client: counts.clients > 0,
+    // invite_client: a client has actually been sent an invite. A client
+    // merely "added" via the create_client step (invitedAt null) doesn't
+    // complete this — the trainer still has to send the invite.
+    invite_client: invitedClientCount > 0,
     schedule_session: counts.trainingSessions > 0,
+    // invite_staff: any non-owner team member has been invited.
+    invite_staff: staffCount > 0,
+    // show_notes + download_app have no live signal — they complete on CTA
+    // click (see COMPLETE_ON_CTA_CLICK in onboarding-panel.tsx).
   }
 
   const explicit = new Map<string, { completed: boolean; skipped: boolean; started: boolean }>()

@@ -104,5 +104,13 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 502 })
   }
 
+  // Record the first time an invite actually went out (a client originally
+  // "added" without notification gets stamped here). Only set when null so
+  // re-inviting an already-invited client preserves the original timestamp.
+  await prisma.clientProfile.updateMany({
+    where: { id: clientId, invitedAt: null },
+    data: { invitedAt: new Date() },
+  })
+
   return NextResponse.json({ ok: true, sentTo: client.user.email })
 }

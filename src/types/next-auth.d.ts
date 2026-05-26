@@ -16,6 +16,10 @@ declare module 'next-auth' {
       companyRole?: string
       businessName?: string
       logoUrl?: string | null
+      // Set only during admin impersonation: the User.id of the admin who
+      // started the "log in as trainer" session. Carried in the (encrypted)
+      // JWT so it can't be forged; powers the exit banner + restore route.
+      impersonatorId?: string
     } & DefaultSession['user']
   }
   interface User {
@@ -32,5 +36,6 @@ declare module 'next-auth/jwt' {
     companyRole?: string
     businessName?: string
     logoUrl?: string | null
+    impersonatorId?: string
   }
 }

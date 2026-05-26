@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -22,10 +22,13 @@ type FormData = z.infer<typeof schema>
 
 export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [error, setError] = useState<string | null>(null)
   const [emailWarning, setEmailWarning] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
-  const [sendInvite, setSendInvite] = useState(true)
+  // ?notify=0 lands here from the onboarding "Create a client" step — they're
+  // adding a record now and inviting later, so default the toggle off.
+  const [sendInvite, setSendInvite] = useState(searchParams.get('notify') !== '0')
 
   const {
     register,

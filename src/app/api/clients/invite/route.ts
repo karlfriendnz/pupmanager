@@ -89,6 +89,11 @@ export async function POST(req: Request) {
         userId: clientUser.id,
         trainerId: trainerProfile.id,
         dogId: primaryDog.id,
+        // Stamp invitedAt only when the trainer is actually sending the
+        // invite email. "Add client" (sendInvite off) leaves it null so the
+        // "Invite your first client" onboarding step stays pending until a
+        // real invite goes out.
+        invitedAt: sendInvite ? new Date() : null,
         dogs: additionalDogs.length > 0
           ? { connect: additionalDogs.map(d => ({ id: d.id })) }
           : undefined,

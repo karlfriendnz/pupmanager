@@ -4,11 +4,19 @@ import { Resend } from 'resend'
 import { z } from 'zod'
 
 const schema = z.object({
-  type: z.enum(['support', 'feedback']),
+  type: z.enum(['support', 'feedback', 'feature', 'bug']),
   category: z.string(),
   subject: z.string(),
   body: z.string().min(5),
 })
+
+// Friendly noun used in the confirmation email back to the sender.
+const TYPE_LABEL: Record<string, string> = {
+  support: 'support ticket',
+  feedback: 'feedback',
+  feature: 'feature request',
+  bug: 'bug report',
+}
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -38,7 +46,7 @@ export async function POST(req: Request) {
   await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL!,
     to: session.user.email!,
-    subject: `We received your ${parsed.data.type === 'support' ? 'support ticket' : 'feedback'} — PupManager`,
+    subject: `We received your ${TYPE_LABEL[parsed.data.type] ?? 'message'} — PupManager`,
     html: `<p>Thanks ${session.user.name ?? ''}! We've received your message and will follow up if needed.</p>`,
   }).catch(() => null)
 

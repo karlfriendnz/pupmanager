@@ -16,9 +16,10 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || loading}
         className={cn(
-          'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+          'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pm-brand-500)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
           {
-            'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800': variant === 'primary',
+            // Brand teal (pm-brand tokens) — the app-wide primary button colour.
+            'bg-[var(--pm-brand-600)] text-white hover:bg-[var(--pm-brand-700)] active:bg-[var(--pm-brand-700)]': variant === 'primary',
             'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 active:bg-slate-100': variant === 'secondary',
             'text-slate-600 hover:bg-slate-100 active:bg-slate-200': variant === 'ghost',
             'bg-red-600 text-white hover:bg-red-700 active:bg-red-800': variant === 'danger',

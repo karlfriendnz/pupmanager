@@ -88,7 +88,7 @@ async function main() {
 }
 
 // ─── Onboarding ──────────────────────────────────────────────────────────────
-// Seeds the 7 wizard steps and 6 drip emails. Idempotent. publishedAt is only
+// Seeds the 12 wizard steps and 6 drip emails. Idempotent. publishedAt is only
 // set on create — re-seeding never re-publishes content the admin unpublished.
 
 async function seedOnboarding() {
@@ -113,28 +113,8 @@ async function seedOnboarding() {
 
 const ONBOARDING_STEPS = [
   {
-    key: 'availability',
-    order: 1,
-    title: 'Block out when you train',
-    body: "Tell PupManager which days and hours you're available — clients can only book inside these. One day is enough to start.",
-    ctaLabel: 'Set your hours',
-    ctaHref: '/schedule#availability',
-    skippable: true,
-    skipWarning: null,
-  },
-  {
-    key: 'schedule_session',
-    order: 2,
-    title: 'Add your first session',
-    body: "Drop a session onto the calendar. It can be a real one or just a placeholder — you can re-assign it to a client later.",
-    ctaLabel: 'Open the schedule',
-    ctaHref: '/schedule',
-    skippable: true,
-    skipWarning: null,
-  },
-  {
     key: 'business_profile',
-    order: 3,
+    order: 1,
     title: 'Set up your business profile',
     body: 'Add your business name, phone, and logo. Your clients see this on every screen.',
     ctaLabel: 'Add business details',
@@ -144,7 +124,7 @@ const ONBOARDING_STEPS = [
   },
   {
     key: 'intake_form',
-    order: 4,
+    order: 2,
     title: 'Review your forms',
     body: "Take a look at your contact, intake, and session forms. Make sure each one asks for the info you actually need before clients start submitting them.",
     ctaLabel: 'Review forms',
@@ -154,7 +134,7 @@ const ONBOARDING_STEPS = [
   },
   {
     key: 'program_package',
-    order: 5,
+    order: 3,
     title: 'Add a program or package',
     body: 'Describe one of your training programs so clients know what they\'re signing up for. Optional — you can do this later.',
     ctaLabel: 'Add a package',
@@ -163,8 +143,38 @@ const ONBOARDING_STEPS = [
     skipWarning: null,
   },
   {
-    key: 'achievements',
+    key: 'create_client',
+    order: 4,
+    title: 'Create a client',
+    body: "Add your first client and their dog so you've got someone to build sessions and packages around. No email goes out yet — you'll send their invite at the end.",
+    ctaLabel: 'Add a client',
+    ctaHref: '/clients/invite?notify=0',
+    skippable: true,
+    skipWarning: null,
+  },
+  {
+    key: 'availability',
+    order: 5,
+    title: 'Block out when you train',
+    body: "Tell PupManager which days and hours you're available — clients can only book inside these. One day is enough to start.",
+    ctaLabel: 'Set your hours',
+    ctaHref: '/schedule#availability',
+    skippable: true,
+    skipWarning: null,
+  },
+  {
+    key: 'schedule_session',
     order: 6,
+    title: 'Add your first session',
+    body: "Drop a session onto the calendar. It can be a real one or just a placeholder — you can re-assign it to a client later.",
+    ctaLabel: 'Open the schedule',
+    ctaHref: '/schedule',
+    skippable: true,
+    skipWarning: null,
+  },
+  {
+    key: 'achievements',
+    order: 7,
     title: 'Pick your achievements',
     body: 'We\'ve set up some sensible defaults — keep them, edit, or add your own.',
     ctaLabel: 'Review achievements',
@@ -173,8 +183,28 @@ const ONBOARDING_STEPS = [
     skipWarning: null,
   },
   {
+    key: 'client_view',
+    order: 8,
+    title: 'See it from your client\'s side',
+    body: 'Pop into the sample client account (Sarah & Bailey) to see exactly what your real clients will experience.',
+    ctaLabel: 'Preview as client',
+    ctaHref: '/preview-as',
+    skippable: true,
+    skipWarning: null,
+  },
+  {
+    key: 'show_notes',
+    order: 9,
+    title: 'See the session notes screen',
+    body: "This is where you write up each session — notes, photos, and homework your client sees afterwards. Take a quick look so you know where it lives.",
+    ctaLabel: 'Open notes',
+    ctaHref: '/sessions/needs-notes',
+    skippable: true,
+    skipWarning: null,
+  },
+  {
     key: 'invite_client',
-    order: 7,
+    order: 10,
     title: 'Invite your first client',
     body: 'The moment this all starts paying off. Send your client an invite email and they\'ll get a sign-up link.',
     ctaLabel: 'Invite a client',
@@ -183,12 +213,22 @@ const ONBOARDING_STEPS = [
     skipWarning: 'Without inviting your first client, you won\'t reach the moment PupManager actually starts saving you time. Skip anyway?',
   },
   {
-    key: 'client_view',
-    order: 8,
-    title: 'See it from your client\'s side',
-    body: 'Last stop — pop into the sample client account (Sarah & Bailey) to see exactly what your real clients will experience.',
-    ctaLabel: 'Preview as client',
-    ctaHref: '/preview-as',
+    key: 'invite_staff',
+    order: 11,
+    title: 'Invite your team',
+    body: "Got other trainers or staff? Send them an invite so they can manage their own clients and sessions. Working solo for now? Skip this — you can add people any time.",
+    ctaLabel: 'Invite a teammate',
+    ctaHref: '/settings?tab=team',
+    skippable: true,
+    skipWarning: null,
+  },
+  {
+    key: 'download_app',
+    order: 12,
+    title: 'Download the app',
+    body: "PupManager works great on your phone too. Scan the QR code to grab the app on iOS or Android and manage your training on the go.",
+    ctaLabel: 'Get the app',
+    ctaHref: '/dashboard?download=1',
     skippable: true,
     skipWarning: null,
   },

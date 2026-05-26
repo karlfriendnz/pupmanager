@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, Trash2, X, Check } from 'lucide-react'
+import { Pencil, Trash2, X, Check, LogIn } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 
 type Trainer = {
@@ -123,6 +123,13 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
       <td className="px-4 py-3 text-slate-400">{formatDate(trainer.createdAt)}</td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1">
+          <a
+            href={`/api/admin/impersonate/${trainer.id}`}
+            className="p-1.5 text-slate-400 hover:text-green-400 rounded-lg hover:bg-slate-700 transition-colors"
+            title={`Log in as ${trainer.name ?? trainer.email}`}
+          >
+            <LogIn className="h-3.5 w-3.5" />
+          </a>
           <button
             onClick={() => setEditing(true)}
             className="p-1.5 text-slate-400 hover:text-blue-400 rounded-lg hover:bg-slate-700 transition-colors"

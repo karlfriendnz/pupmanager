@@ -154,6 +154,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.companyRole = token.companyRole as string | undefined
         session.user.businessName = token.businessName as string | undefined
         session.user.logoUrl = token.logoUrl as string | null | undefined
+        session.user.impersonatorId = token.impersonatorId as string | undefined
       }
       return session
     },
