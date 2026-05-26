@@ -83,17 +83,26 @@ export function SetupForm({ planId, planName, purchasable, configuredCurrencies,
     }
   }
 
-  // In the native app we don't offer in-app subscription purchase (Apple
-  // Guideline 3.1.1 / Google Play billing) — point trainers to the web.
+  // In the native app we never surface subscription purchasing or any
+  // steering toward an external payment page (Apple Guideline 3.1.1 — no
+  // in-app purchase CTA, no pricing, no "subscribe on the web" link/URL).
+  // Trainers reach this page right after signup, when their account is
+  // already on a free trial, so we just send them into the app. Account
+  // billing is a business matter handled entirely outside the app.
   if (native) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
-        <p className="text-base font-semibold text-slate-900">Manage your subscription on the web</p>
+        <p className="text-base font-semibold text-slate-900">You&apos;re all set</p>
         <p className="mt-2 text-sm text-slate-600">
-          To start or change your plan, sign in at{' '}
-          <span className="font-medium text-slate-900">app.pupmanager.com</span> from a browser.
-          Everything else in the app works as normal.
+          Your PupManager account is ready to go.
         </p>
+        <a
+          href="/dashboard"
+          className="mt-4 inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold text-white"
+          style={{ backgroundColor: 'var(--pm-brand-600)' }}
+        >
+          Go to your dashboard
+        </a>
       </div>
     )
   }

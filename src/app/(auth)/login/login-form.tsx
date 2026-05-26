@@ -43,6 +43,8 @@ interface LoginFormProps {
 export function LoginForm({ error, callbackUrl, enabledOAuth }: LoginFormProps) {
   const [mode, setMode] = useState<'trainer' | 'client'>('trainer')
   const [magicLinkSent, setMagicLinkSent] = useState(false)
+  const [trainerLinkSent, setTrainerLinkSent] = useState(false)
+  const [sendingLink, setSendingLink] = useState(false)
   // iOS uses the native Sign in with Apple sheet (no system-browser redirect).
   const isIOS = useNativePlatform() === 'ios'
 
@@ -57,6 +59,25 @@ export function LoginForm({ error, callbackUrl, enabledOAuth }: LoginFormProps) 
       password: data.password,
       callbackUrl: callbackUrl ?? '/dashboard',
     })
+  }
+
+  // Passwordless fallback for trainers — in-app email entry, link returns via
+  // Universal Links. Covers trainers who signed up with Google (no password)
+  // and can't use Sign in with Apple (different email).
+  async function sendTrainerLink() {
+    const valid = await trainerForm.trigger('email')
+    if (!valid) return
+    setSendingLink(true)
+    try {
+      await signIn('resend', {
+        email: trainerForm.getValues('email'),
+        redirect: false,
+        callbackUrl: callbackUrl ?? '/dashboard',
+      })
+      setTrainerLinkSent(true)
+    } finally {
+      setSendingLink(false)
+    }
   }
 
   async function onClientSubmit(data: ClientForm) {
@@ -119,6 +140,9 @@ export function LoginForm({ error, callbackUrl, enabledOAuth }: LoginFormProps) 
         )}
 
         {mode === 'trainer' ? (
+          trainerLinkSent ? (
+            <CheckInbox />
+          ) : (
           <form
             onSubmit={trainerForm.handleSubmit(onTrainerSubmit)}
             className="flex flex-col gap-4"
@@ -154,6 +178,21 @@ export function LoginForm({ error, callbackUrl, enabledOAuth }: LoginFormProps) 
             >
               Sign in
             </Button>
+            <div className="flex items-center gap-3 text-[11px] uppercase tracking-wider text-slate-400">
+              <span className="h-px flex-1 bg-slate-200" />
+              or
+              <span className="h-px flex-1 bg-slate-200" />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              className="w-full"
+              loading={sendingLink}
+              onClick={sendTrainerLink}
+            >
+              Email me a sign-in link
+            </Button>
             <p className="text-center text-sm text-slate-500">
               New trainer?{' '}
               <Link
@@ -164,18 +203,9 @@ export function LoginForm({ error, callbackUrl, enabledOAuth }: LoginFormProps) 
               </Link>
             </p>
           </form>
+          )
         ) : magicLinkSent ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl bg-green-50/70 px-4 py-6 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-700">
-              <MailCheck className="h-6 w-6" aria-hidden />
-            </div>
-            <div>
-              <p className="text-base font-semibold text-slate-900">Check your inbox</p>
-              <p className="mt-1 text-sm text-slate-600">
-                We&apos;ve sent a one-tap login link to your email. It expires in 15 minutes.
-              </p>
-            </div>
-          </div>
+          <CheckInbox />
         ) : (
           <form
             onSubmit={clientForm.handleSubmit(onClientSubmit)}
@@ -204,6 +234,23 @@ export function LoginForm({ error, callbackUrl, enabledOAuth }: LoginFormProps) 
         )}
       </CardBody>
     </Card>
+  )
+}
+
+// Shown after a one-tap login link is emailed (trainer or client).
+function CheckInbox() {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-xl bg-green-50/70 px-4 py-6 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-700">
+        <MailCheck className="h-6 w-6" aria-hidden />
+      </div>
+      <div>
+        <p className="text-base font-semibold text-slate-900">Check your inbox</p>
+        <p className="mt-1 text-sm text-slate-600">
+          We&apos;ve sent a one-tap login link to your email. It expires in 15 minutes.
+        </p>
+      </div>
+    </div>
   )
 }
 

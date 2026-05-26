@@ -5,6 +5,7 @@ import { UserPlus, Trash2, Pencil, Loader2, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
+import { useIsNative } from '@/lib/native'
 import {
   PERMISSION_CATALOGUE,
   resolvePermissions,
@@ -208,6 +209,8 @@ function SeatControl({ seatCount, seatsUsed, onChanged }: { seatCount: number; s
 }
 
 function InviteForm({ onInvited, seatsLeft }: { onInvited: () => void; seatsLeft: number }) {
+  // Don't reference Billing/seat purchasing inside the native app (Apple 3.1.1).
+  const native = useIsNative()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -258,7 +261,11 @@ function InviteForm({ onInvited, seatsLeft }: { onInvited: () => void; seatsLeft
           </Button>
         </div>
         {seatsLeft <= 0 && (
-          <p className="text-xs text-slate-400">You’ve used all your seats. Add more from Billing to invite another trainer.</p>
+          <p className="text-xs text-slate-400">
+            {native
+              ? 'You’ve used all your seats.'
+              : 'You’ve used all your seats. Add more from Billing to invite another trainer.'}
+          </p>
         )}
       </div>
     )
