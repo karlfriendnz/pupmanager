@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Check, MinusCircle, X, ArrowRight, ChevronRight, Clock, MessageSquare, Send, Sparkles, Building2, ClipboardList, Notebook, Package, Trophy, Eye, Mail, PawPrint, Play, Calendar, UserPlus, NotebookPen, Users, Smartphone, Apple, type LucideIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 
-// App-store destinations the download QR codes point at. PLACEHOLDERS — swap
-// these for the real App Store / Play Store listing URLs once the apps are
-// published (they don't exist anywhere else in the repo yet).
-const APP_STORE_URL = 'https://apps.apple.com/app/pupmanager'
+// App-store destinations the download QR codes point at. The Apple URL is
+// the live App Store listing (locale-agnostic — Apple auto-redirects to the
+// user's region). PLAY_STORE_URL is still a placeholder until the Android
+// listing is live.
+const APP_STORE_URL = 'https://apps.apple.com/app/id6766399138'
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.pupmanager.app'
 
 // Steps where clicking the CTA is the trainer's confirmation that they've
