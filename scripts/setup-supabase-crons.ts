@@ -15,9 +15,12 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   // Hourly: the route fires per-trainer at THEIR local 8pm (training-day
   // notes reminder), so it must be evaluated every hour.
   { name: 'pm-streak-update', schedule: '0 * * * *', path: 'streak-update' },
-  // Hourly: nudges trainers about NEW enquiries left unanswered past
-  // 6/18/24/36h. The route picks the right threshold per enquiry.
-  { name: 'pm-enquiry-followups', schedule: '0 * * * *', path: 'enquiry-followups' },
+  // NOTE: pm-enquiry-followups is intentionally NOT listed here. This script
+  // inlines the local CRON_SECRET, which has drifted from the prod value, so
+  // these jobs currently 401 (verify via net._http_response). The followups
+  // job is instead registered with the GUC form (current_setting(
+  // 'app.cron_secret')) by 20260530_enquiry_followup_reminders, matching the
+  // working pupmanager-* jobs. Prefer the GUC form for any new jobs.
 ]
 
 async function main() {
