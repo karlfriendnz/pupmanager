@@ -87,6 +87,10 @@ export default async function TrainerSettingsPage() {
               isActive: f.isActive,
               showBorder: f.showBorder,
               buttonColor: f.buttonColor,
+              welcomeSubject: f.welcomeSubject,
+              welcomeIntro: f.welcomeIntro,
+              welcomeShowDiaryButton: f.welcomeShowDiaryButton,
+              welcomeButtonLabel: f.welcomeButtonLabel,
             }))}
             initialSessionForms={sessionForms.map(f => ({
               id: f.id,

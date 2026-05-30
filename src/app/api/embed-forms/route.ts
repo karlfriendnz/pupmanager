@@ -21,6 +21,10 @@ const schema = z.object({
   isActive: z.boolean().default(true),
   showBorder: z.boolean().default(true),
   buttonColor: hexColor.nullable().optional(),
+  welcomeSubject: z.string().optional().nullable(),
+  welcomeIntro: z.string().optional().nullable(),
+  welcomeShowDiaryButton: z.boolean().default(true),
+  welcomeButtonLabel: z.string().optional().nullable(),
 })
 
 export async function GET() {
@@ -69,6 +73,10 @@ export async function POST(req: Request) {
         isActive: parsed.data.isActive,
         showBorder: parsed.data.showBorder,
         buttonColor: parsed.data.buttonColor ?? null,
+        welcomeSubject: parsed.data.welcomeSubject ?? null,
+        welcomeIntro: parsed.data.welcomeIntro ?? null,
+        welcomeShowDiaryButton: parsed.data.welcomeShowDiaryButton,
+        welcomeButtonLabel: parsed.data.welcomeButtonLabel ?? null,
       },
     })
     return NextResponse.json(form, { status: 201 })

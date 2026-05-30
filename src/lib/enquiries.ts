@@ -20,6 +20,16 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
     where: { id: enquiryId },
     include: {
       trainer: { select: { id: true, businessName: true } },
+      // Welcome-email copy is configured per originating form. May be null
+      // if the form was deleted (formId SetNull) — we fall back to defaults.
+      form: {
+        select: {
+          welcomeSubject: true,
+          welcomeIntro: true,
+          welcomeShowDiaryButton: true,
+          welcomeButtonLabel: true,
+        },
+      },
     },
   })
   if (!enquiry) throw new EnquiryError('NOT_FOUND', 'Enquiry not found')
@@ -102,27 +112,19 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
       email: enquiry.email,
     })}`
     const businessName = enquiry.trainer.businessName
+    const welcome = buildWelcomeEmail({
+      form: enquiry.form,
+      businessName,
+      name: enquiry.name,
+      message: enquiry.message,
+      magicLink,
+    })
 
     try {
       await sendEmail({
         to: enquiry.email,
-        subject: `Welcome to ${businessName} — finish setting up your account`,
-        html: `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
-            <h2 style="color:#0f172a;margin-bottom:8px;">Hi ${escapeHtml(enquiry.name)}!</h2>
-            <p style="color:#475569;margin-bottom:24px;">
-              Thanks for registering with <strong>${escapeHtml(businessName)}</strong>.
-              Click the button below to access your training diary — no password needed, the link logs you in automatically. This link expires in 14 days.
-            </p>
-            ${enquiry.message ? `<p style="color:#475569;background:#f8fafc;border-left:3px solid #e2e8f0;padding:12px 16px;margin-bottom:24px;"><em>"${escapeHtml(enquiry.message)}"</em></p>` : ''}
-            <a href="${magicLink}" style="display:inline-block;background:#2563eb;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;">
-              Access my training diary
-            </a>
-            <p style="color:#94a3b8;font-size:13px;margin-top:32px;">
-              This link expires in 14 days. If you didn't submit this form, you can safely ignore this email.
-            </p>
-          </div>
-        `,
+        subject: welcome.subject,
+        html: welcome.html,
       })
     } catch {
       // Welcome email is best-effort. The client + token already exist so the
@@ -131,6 +133,72 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
   }
 
   return clientProfileId
+}
+
+// Platform defaults for the welcome email. Exported so the embed-form
+// editor can show them as placeholders — keeping the editor and the real
+// send in lock-step. {business} and {name} are substituted at send time.
+export const DEFAULT_WELCOME_SUBJECT = 'Welcome to {business} — finish setting up your account'
+export const DEFAULT_WELCOME_INTRO =
+  'Thanks for registering with {business}. Click the button below to access your training diary — no password needed, the link logs you in automatically.'
+export const DEFAULT_WELCOME_BUTTON_LABEL = 'Access my training diary'
+
+// Substitute the supported {business}/{name} placeholders. `escape` decides
+// whether the *substituted values* get HTML-escaped (true for HTML bodies,
+// false for the plain-text subject line).
+function fillPlaceholders(template: string, vars: { business: string; name: string }, escape: boolean): string {
+  const business = escape ? escapeHtml(vars.business) : vars.business
+  const name = escape ? escapeHtml(vars.name) : vars.name
+  return template.replace(/\{business\}/g, business).replace(/\{name\}/g, name)
+}
+
+interface WelcomeFormConfig {
+  welcomeSubject: string | null
+  welcomeIntro: string | null
+  welcomeShowDiaryButton: boolean
+  welcomeButtonLabel: string | null
+}
+
+// Compose the magic-link welcome email from the originating form's config,
+// falling back to the platform defaults for anything the trainer left blank
+// (or when the form was deleted → form is null). The greeting, branding,
+// and link-expiry note stay templated; only the subject, intro paragraph,
+// and diary-CTA button (show/label) are trainer-controlled.
+export function buildWelcomeEmail({
+  form,
+  businessName,
+  name,
+  message,
+  magicLink,
+}: {
+  form: WelcomeFormConfig | null
+  businessName: string
+  name: string
+  message: string | null
+  magicLink: string
+}): { subject: string; html: string } {
+  const vars = { business: businessName, name }
+  const subject = fillPlaceholders(form?.welcomeSubject?.trim() || DEFAULT_WELCOME_SUBJECT, vars, false)
+  const introRaw = form?.welcomeIntro?.trim() || DEFAULT_WELCOME_INTRO
+  // Trainers type plain text — escape it, then honour line breaks.
+  const introHtml = fillPlaceholders(introRaw, vars, true).replace(/\n/g, '<br>')
+  const showButton = form?.welcomeShowDiaryButton ?? true
+  const buttonLabel = escapeHtml(form?.welcomeButtonLabel?.trim() || DEFAULT_WELCOME_BUTTON_LABEL)
+
+  const html = `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
+            <h2 style="color:#0f172a;margin-bottom:8px;">Hi ${escapeHtml(name)}!</h2>
+            <p style="color:#475569;margin-bottom:24px;">${introHtml}</p>
+            ${message ? `<p style="color:#475569;background:#f8fafc;border-left:3px solid #e2e8f0;padding:12px 16px;margin-bottom:24px;"><em>"${escapeHtml(message)}"</em></p>` : ''}
+            ${showButton ? `<a href="${magicLink}" style="display:inline-block;background:#2563eb;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;">
+              ${buttonLabel}
+            </a>` : ''}
+            <p style="color:#94a3b8;font-size:13px;margin-top:32px;">
+              ${showButton ? 'This link expires in 14 days. ' : ''}If you didn't submit this form, you can safely ignore this email.
+            </p>
+          </div>
+        `
+  return { subject, html }
 }
 
 export class EnquiryError extends Error {

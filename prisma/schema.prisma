@@ -1450,6 +1450,17 @@ model EmbedForm {
   // button; null falls back to the platform blue.
   showBorder      Boolean  @default(true)
   buttonColor     String?
+  // Welcome email — sent by acceptEnquiry when a trainer accepts an
+  // enquiry from this form and opts into the magic-link invite. All
+  // null/default values fall back to the platform copy in
+  // src/lib/enquiries.ts. Subject + intro support {business} and
+  // {name} placeholders. welcomeShowDiaryButton hides the magic-link
+  // CTA (and its label) for trainers who'd rather send a plain
+  // welcome; the greeting, branding, and expiry note stay templated.
+  welcomeSubject         String?  @db.Text
+  welcomeIntro           String?  @db.Text
+  welcomeShowDiaryButton Boolean  @default(true)
+  welcomeButtonLabel     String?  @db.Text
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

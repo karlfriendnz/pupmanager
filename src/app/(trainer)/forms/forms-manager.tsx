@@ -31,9 +31,22 @@ interface EmbedForm {
   isActive: boolean
   showBorder: boolean
   buttonColor: string | null
+  welcomeSubject: string | null
+  welcomeIntro: string | null
+  welcomeShowDiaryButton: boolean
+  welcomeButtonLabel: string | null
 }
 
 const DEFAULT_BUTTON_COLOR = '#2563eb' // Tailwind blue-600 — platform default
+
+// Placeholder copy mirroring the platform defaults in src/lib/enquiries.ts
+// (DEFAULT_WELCOME_*). Kept as literals here because that module is
+// server-only (pulls in prisma/crypto) and can't be imported into this
+// client component. {business} / {name} are substituted at send time.
+const WELCOME_SUBJECT_PLACEHOLDER = 'Welcome to {business} — finish setting up your account'
+const WELCOME_INTRO_PLACEHOLDER =
+  'Thanks for registering with {business}. Click the button below to access your training diary — no password needed, the link logs you in automatically.'
+const WELCOME_BUTTON_PLACEHOLDER = 'Access my training diary'
 
 export interface CustomField {
   id: string
@@ -124,6 +137,10 @@ export function EmbedFormEditor({
   )
   const [showBorder, setShowBorder] = useState(initial?.showBorder ?? true)
   const [buttonColor, setButtonColor] = useState(initial?.buttonColor ?? DEFAULT_BUTTON_COLOR)
+  const [welcomeSubject, setWelcomeSubject] = useState(initial?.welcomeSubject ?? '')
+  const [welcomeIntro, setWelcomeIntro] = useState(initial?.welcomeIntro ?? '')
+  const [welcomeShowDiaryButton, setWelcomeShowDiaryButton] = useState(initial?.welcomeShowDiaryButton ?? true)
+  const [welcomeButtonLabel, setWelcomeButtonLabel] = useState(initial?.welcomeButtonLabel ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -166,6 +183,12 @@ export function EmbedFormEditor({
       // Store null when the trainer hasn't touched the colour (matches
       // platform blue) so resetting back to default is a real toggle.
       buttonColor: buttonColor.toLowerCase() === DEFAULT_BUTTON_COLOR ? null : buttonColor,
+      // Welcome email — blank → null so the send falls back to the
+      // platform default copy.
+      welcomeSubject: welcomeSubject.trim() || null,
+      welcomeIntro: welcomeIntro.trim() || null,
+      welcomeShowDiaryButton,
+      welcomeButtonLabel: welcomeButtonLabel.trim() || null,
     }
 
     const res = initial
@@ -409,6 +432,73 @@ export function EmbedFormEditor({
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
+          </div>
+
+          {/* Welcome email — sent when you accept an enquiry from this form
+              and tick "email them a magic link". Greeting, branding, and
+              the expiry note stay templated; everything here is yours to
+              edit. Blank fields fall back to the platform defaults. */}
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Welcome email</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Sent when you accept an enquiry from this form and choose to email them a login link.
+                Use <code className="text-slate-500">{'{business}'}</code> and <code className="text-slate-500">{'{name}'}</code> to personalise.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Subject</label>
+              <input
+                value={welcomeSubject}
+                onChange={e => setWelcomeSubject(e.target.value)}
+                placeholder={WELCOME_SUBJECT_PLACEHOLDER}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Intro text</label>
+              <textarea
+                value={welcomeIntro}
+                onChange={e => setWelcomeIntro(e.target.value)}
+                rows={3}
+                placeholder={WELCOME_INTRO_PLACEHOLDER}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+            </div>
+            {/* Diary-button toggle. Off = a plain welcome with no login
+                link — only do this if you're inviting them another way. */}
+            <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setWelcomeShowDiaryButton(v => !v)}
+                className="flex-shrink-0"
+                aria-pressed={welcomeShowDiaryButton}
+                aria-label="Toggle diary access button"
+              >
+                {welcomeShowDiaryButton
+                  ? <ToggleRight className="h-5 w-5 text-blue-600" />
+                  : <ToggleLeft className="h-5 w-5 text-slate-300" />}
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-900">Show the &ldquo;Access my diary&rdquo; button</p>
+                <p className="text-xs text-slate-500">
+                  {welcomeShowDiaryButton
+                    ? 'The email includes a one-tap login button to their training diary.'
+                    : 'The email goes out as a plain welcome with no login link — invite them another way.'}
+                </p>
+              </div>
+            </div>
+            {welcomeShowDiaryButton && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">Button label</label>
+                <input
+                  value={welcomeButtonLabel}
+                  onChange={e => setWelcomeButtonLabel(e.target.value)}
+                  placeholder={WELCOME_BUTTON_PLACEHOLDER}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
           </div>
         </div>
 

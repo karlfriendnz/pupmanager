@@ -40,6 +40,10 @@ export default async function EditEmbedFormPage({ params }: { params: Promise<{ 
           isActive: form.isActive,
           showBorder: form.showBorder,
           buttonColor: form.buttonColor,
+          welcomeSubject: form.welcomeSubject,
+          welcomeIntro: form.welcomeIntro,
+          welcomeShowDiaryButton: form.welcomeShowDiaryButton,
+          welcomeButtonLabel: form.welcomeButtonLabel,
         }}
         customFields={customFields.map(f => ({
           id: f.id,

@@ -24,6 +24,10 @@ const schema = z.object({
   isActive: z.boolean().optional(),
   showBorder: z.boolean().optional(),
   buttonColor: hexColor.nullable().optional(),
+  welcomeSubject: z.string().optional().nullable(),
+  welcomeIntro: z.string().optional().nullable(),
+  welcomeShowDiaryButton: z.boolean().optional(),
+  welcomeButtonLabel: z.string().optional().nullable(),
 })
 
 async function getForm(formId: string, userId: string) {
@@ -57,6 +61,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ formId
       ...(parsed.data.isActive !== undefined && { isActive: parsed.data.isActive }),
       ...(parsed.data.showBorder !== undefined && { showBorder: parsed.data.showBorder }),
       ...(parsed.data.buttonColor !== undefined && { buttonColor: parsed.data.buttonColor }),
+      ...(parsed.data.welcomeSubject !== undefined && { welcomeSubject: parsed.data.welcomeSubject }),
+      ...(parsed.data.welcomeIntro !== undefined && { welcomeIntro: parsed.data.welcomeIntro }),
+      ...(parsed.data.welcomeShowDiaryButton !== undefined && { welcomeShowDiaryButton: parsed.data.welcomeShowDiaryButton }),
+      ...(parsed.data.welcomeButtonLabel !== undefined && { welcomeButtonLabel: parsed.data.welcomeButtonLabel }),
     },
   })
   return NextResponse.json(updated)
