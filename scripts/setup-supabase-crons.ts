@@ -15,6 +15,9 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   // Hourly: the route fires per-trainer at THEIR local 8pm (training-day
   // notes reminder), so it must be evaluated every hour.
   { name: 'pm-streak-update', schedule: '0 * * * *', path: 'streak-update' },
+  // Hourly: nudges trainers about NEW enquiries left unanswered past
+  // 6/18/24/36h. The route picks the right threshold per enquiry.
+  { name: 'pm-enquiry-followups', schedule: '0 * * * *', path: 'enquiry-followups' },
 ]
 
 async function main() {

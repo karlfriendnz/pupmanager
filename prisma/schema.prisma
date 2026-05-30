@@ -144,6 +144,7 @@ enum NotificationType {
   CLIENT_COMPLETED_TASKS // a client completed all of today's tasks
   NEW_MESSAGE // a new in-app message landed
   NEW_ENQUIRY // a public form (embed or intake) submission landed
+  ENQUIRY_FOLLOWUP_REMINDER // a NEW enquiry has gone unanswered — nudges at 6/18/24/36h
   DAILY_SUMMARY // morning digest of today's sessions/tasks
   WEEKLY_SUMMARY // Sunday-evening wrap of the week + week-ahead glance
   STREAK_UPDATE // daily nudge about the trainer's weekly engagement streak
@@ -1485,6 +1486,11 @@ model Enquiry {
   status          EnquiryStatus @default(NEW)
   // Set when the trainer first opens the enquiry — drives the dashboard badge.
   viewedAt        DateTime?
+  // Highest follow-up nudge already sent for this unanswered enquiry:
+  // 0 = none, 1 = 6h, 2 = 18h, 3 = 24h, 4 = 36h. The enquiry-followups cron
+  // bumps this as each threshold passes; reset is unnecessary because a reply
+  // or status change takes the enquiry out of the cron's "unanswered" query.
+  followupReminderLevel Int     @default(0)
   // Populated after Accept; gives a forward link to the resulting client.
   clientProfileId String?       @unique
 

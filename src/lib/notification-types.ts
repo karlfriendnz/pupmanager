@@ -183,6 +183,30 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
       preview: 'Looking for help with reactivity on walks.',
     },
   },
+  ENQUIRY_FOLLOWUP_REMINDER: {
+    type: 'ENQUIRY_FOLLOWUP_REMINDER',
+    label: 'Unanswered enquiry nudge',
+    description:
+      "If you haven't replied to a new enquiry, we'll nudge you at 6, 18, 24 and 36 hours so a hot lead doesn't go cold. The nudges stop the moment you reply, accept or decline. Timing and copy we look after for you.",
+    trigger: 'event',
+    channels: ['PUSH', 'EMAIL'],
+    // Locked: the 6/18/24/36h cadence and copy are curated centrally — the
+    // trainer can only flip the channels on or off.
+    customisable: false,
+    defaults: {
+      enabled: true,
+      title: "⏰ Still waiting — {{name}}",
+      body: "{{name}}'s enquiry has been sitting for {{waited}} with no reply. Tap to get back to them.",
+    },
+    placeholders: ['name', 'dogName', 'email', 'waited', 'hours'],
+    sampleValues: {
+      name: 'Jess Carter',
+      dogName: 'Bailey',
+      email: 'jess@example.com',
+      waited: '6 hours',
+      hours: '6',
+    },
+  },
   NEW_MESSAGE: {
     type: 'NEW_MESSAGE',
     label: 'New message',
