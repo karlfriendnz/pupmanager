@@ -4,6 +4,7 @@ import crypto from 'crypto'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { sendVerificationEmail } from '@/lib/auth-emails'
+import { notifyNewTrainerSignup } from '@/lib/notify-new-trainer'
 
 const TRIAL_DAYS = 10
 
@@ -115,6 +116,10 @@ export async function POST(req: Request) {
   sendVerificationEmail({ to: email, name, businessName, code }).catch(err => {
     console.error('[signup] verification email failed:', err)
   })
+
+  // Heads-up to the founders about the new trainer (never blocks signup).
+  await notifyNewTrainerSignup({ name, businessName, email, source: 'signup flow' })
+    .catch(err => console.error('[signup] founder notify failed:', err))
 
   return NextResponse.json({ ok: true, email }, { status: 201 })
 }

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { sendVerificationEmail } from '@/lib/auth-emails'
+import { notifyNewTrainerSignup } from '@/lib/notify-new-trainer'
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 import crypto from 'crypto'
 
@@ -104,6 +105,10 @@ export async function POST(req: Request) {
   }).catch(err => {
     console.error('[register] verification email failed:', err)
   })
+
+  // Heads-up to the founders about the new trainer (never blocks signup).
+  await notifyNewTrainerSignup({ name, businessName, email, source: 'register form' })
+    .catch(err => console.error('[register] founder notify failed:', err))
 
   return NextResponse.json({ ok: true, email }, { status: 201 })
 }
