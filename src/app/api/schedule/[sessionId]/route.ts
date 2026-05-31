@@ -172,6 +172,13 @@ export async function PATCH(
   if (propagate) {
     const followers = await prisma.trainingSession.findMany({
       where: {
+        // Exclude the session we just updated. Its scheduledAt was already
+        // bumped to the new time above, so when moving forward it now
+        // satisfies `scheduledAt > existing.scheduledAt` and would be caught
+        // here — applying the delta a SECOND time (e.g. a +15min change shows
+        // up as +30 on the edited session). Filtering by id keeps the delta
+        // applied exactly once regardless of update order or shift direction.
+        id: { not: sessionId },
         trainerId,
         clientPackageId: existing.clientPackageId,
         scheduledAt: { gt: existing.scheduledAt },
