@@ -146,7 +146,7 @@ export function renderOnboardingEmail(
             <td style="background:#ffffff;border-radius:18px;box-shadow:0 1px 3px rgba(15,23,42,0.04),0 8px 24px rgba(15,23,42,0.06);overflow:hidden;">
               <div style="height:4px;background:#2a9da9;"></div>
               <div style="padding:24px 28px 8px;text-align:center;">
-                <img src="${APP_URL}/email-logo.png" alt="PupManager" width="190" style="display:inline-block;border:0;height:auto;max-width:190px;" />
+                <img src="https://app.pupmanager.com/email-logo.png" alt="PupManager" width="190" style="display:inline-block;border:0;height:auto;max-width:190px;" />
               </div>
               ${topHtml}
               ${imageHtml}
