@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { ShareClientModal } from './share-client-modal'
 import { AssignPackageButton } from './assign-package-modal'
+import { useIsNative } from '@/lib/native'
 
 interface PkgOption {
   id: string
@@ -80,6 +81,12 @@ export function ClientActionsMenu({
   canEdit, isPrimaryTrainer,
 }: Props) {
   const router = useRouter()
+  // In the native app, target="_blank" links are handed to the OS browser
+  // (Safari/Chrome), which has no app session — so "View as client" would land
+  // on the login screen. Navigate in the same WebView there to keep the session
+  // (the preview banner's "Exit preview" brings the trainer back).
+  const native = useIsNative()
+  const previewTarget = native ? undefined : '_blank'
   const [menuOpen, setMenuOpen] = useState(false)
   const [activeModal, setActiveModal] = useState<ModalKind>(null)
   const [reinvite, setReinvite] = useState<ReinviteState>({ kind: 'idle' })
@@ -115,8 +122,8 @@ export function ClientActionsMenu({
     return (
       <Link
         href={`/preview-as/${clientId}`}
-        target="_blank"
-        rel="noopener"
+        target={previewTarget}
+        rel={previewTarget === '_blank' ? 'noopener' : undefined}
         className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
       >
         <Eye className="h-4 w-4" /> View as client
@@ -181,7 +188,7 @@ export function ClientActionsMenu({
             href={`/preview-as/${clientId}`}
             icon={<Eye className="h-4 w-4 text-slate-400" />}
             label="View as client"
-            target="_blank"
+            target={previewTarget}
             onClick={() => setMenuOpen(false)}
           />
           <MenuButton
