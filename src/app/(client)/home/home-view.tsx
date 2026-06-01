@@ -36,6 +36,8 @@ interface RecentSession {
   id: string
   title: string
   scheduledAt: string
+  mediaUrl?: string | null
+  mediaKind?: 'IMAGE' | 'VIDEO' | null
 }
 
 interface HomeworkTask {
@@ -150,6 +152,7 @@ export function ClientHomeView({
   dashboardBgUrl,
   primaryDog,
   upcomingSession,
+  recentSessions,
   homework,
   latestMessage,
   featuredProducts,
@@ -303,6 +306,45 @@ export function ClientHomeView({
                     </div>
                   </div>
                 )}
+              </Link>
+            </section>
+          )}
+
+          {/* ─── Last session ─── (most recent completed — designed to pull a tap) */}
+          {recentSessions.length > 0 && (
+            <section className="px-4">
+              <SectionHeader title="Last session" linkHref="/my-sessions" linkLabel="All sessions" />
+              <Link
+                href={`/my-sessions/${recentSessions[0].id}`}
+                className="mt-3 flex items-stretch overflow-hidden rounded-3xl bg-white shadow-[0_4px_20px_rgba(15,31,36,0.07)] active:scale-[0.99] transition-transform"
+              >
+                {recentSessions[0].mediaUrl ? (
+                  <div className="relative w-28 flex-shrink-0 bg-slate-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={recentSessions[0].mediaUrl} alt={recentSessions[0].title} className="absolute inset-0 h-full w-full object-cover" />
+                    {recentSessions[0].mediaKind === 'VIDEO' && (
+                      <span className="absolute inset-0 flex items-center justify-center">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/85 shadow">
+                          <Play className="h-4 w-4 text-slate-900 ml-0.5" fill="currentColor" />
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-28 flex-shrink-0 flex items-center justify-center" style={{ backgroundImage: 'linear-gradient(135deg,var(--accent),var(--accent-strong))' }}>
+                    <DogIcon className="h-9 w-9 text-white" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 p-4">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-accent bg-accent-soft px-2 py-0.5 rounded-full">
+                    📋 Recap ready
+                  </span>
+                  <h3 className="font-display text-lg font-bold text-slate-900 leading-tight mt-1.5 line-clamp-1">{recentSessions[0].title}</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">{formatSessionWhen(recentSessions[0].scheduledAt)}</p>
+                  <p className="text-sm font-semibold text-accent mt-2 flex items-center gap-1">
+                    See how {dogName} got on <ChevronRight className="h-4 w-4" />
+                  </p>
+                </div>
               </Link>
             </section>
           )}

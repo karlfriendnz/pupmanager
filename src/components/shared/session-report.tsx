@@ -145,7 +145,7 @@ export function SessionReport({
                     : q.label
                   return (
                     <div key={q.id}>
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1 flex items-center gap-2">
+                      <p className="text-lg font-bold text-slate-900 mb-1 flex items-center gap-2">
                         <span>{label}</span>
                         {q.isPrivate && audience === 'trainer' && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[9px] font-semibold normal-case tracking-normal">
@@ -287,5 +287,5 @@ function ReportAnswer({ type, value }: { type: string; value: string }) {
       </div>
     )
   }
-  return <p className="text-sm text-slate-700 whitespace-pre-wrap">{value}</p>
+  return <p className="text-[15px] text-slate-700 whitespace-pre-wrap leading-relaxed">{value}</p>
 }

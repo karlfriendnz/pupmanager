@@ -176,18 +176,23 @@ export default async function DashboardPage({
   // to /sessions/needs-notes which is now framed as a generic "to do" list.
   // We fetch the rows (not just a count) so we can also surface the
   // notes-pending count + total un-invoiced value alongside the headline.
+  // Sessions marked complete/commented/invoiced no longer "need notes" — only
+  // a missing write-up on a not-yet-completed session counts (mirrors the
+  // /sessions/needs-notes page).
+  const NOTES_DONE_STATUSES = ['COMMENTED', 'COMPLETED', 'INVOICED']
   const sessionsToAction = await prisma.trainingSession.findMany({
     where: {
       trainerId,
       scheduledAt: { lt: new Date() },
       clientId: { not: null },
       OR: [
-        { formResponses: { none: {} } },
+        { AND: [{ formResponses: { none: {} } }, { status: { notIn: NOTES_DONE_STATUSES as ('COMMENTED' | 'COMPLETED' | 'INVOICED')[] } }] },
         { invoicedAt: null },
       ],
     },
     select: {
       invoicedAt: true,
+      status: true,
       _count: { select: { formResponses: true } },
       clientPackage: {
         select: { package: { select: { priceCents: true, sessionCount: true } } },
@@ -195,7 +200,7 @@ export default async function DashboardPage({
     },
   })
   const sessionsToActionCount = sessionsToAction.length
-  const wrapNotesCount = sessionsToAction.filter(s => s._count.formResponses === 0).length
+  const wrapNotesCount = sessionsToAction.filter(s => s._count.formResponses === 0 && !(NOTES_DONE_STATUSES as readonly string[]).includes(s.status)).length
   const wrapInvoiceCount = sessionsToAction.filter(s => s.invoicedAt == null).length
   const wrapInvoiceCents = sessionsToAction.reduce((sum, s) => {
     if (s.invoicedAt != null) return sum

@@ -92,12 +92,10 @@ export default async function ClientLayout({ children }: { children: React.React
     }
   }
 
-  // TEMP (redesign testing): preview banner hidden so it doesn't obstruct the
-  // client app while testing. Restore the PreviewBanner line before shipping.
   const banner = active.isPreview
     ? (
       <>
-        {/* <PreviewBanner clientName={clientDisplayName} /> */}
+        <PreviewBanner clientName={clientDisplayName} />
         {showPreviewOnboarding && <PreviewOnboardingGuide />}
       </>
     )

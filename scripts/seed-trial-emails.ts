@@ -47,6 +47,28 @@ Stuck on anything? Just hit reply — Brooke or I will get back to you.
 PupManager`,
   },
   {
+    key: 'trial_transform_workday',
+    senderKey: 'karl',
+    triggerRule: { type: 'after_signup', hours: 84 },
+    subject: 'How PupManager transforms your work day',
+    body: `Hi {{trainerName}},
+
+Picture a normal training week without the evening admin.
+
+A client books in through your page — no back-and-forth texts. You run the session and write your notes once, right there on your phone. Your client sees them instantly, along with the homework you've set, and ticks it off through the week. Their dog's progress builds up on its own.
+
+No spreadsheets. No "what did we cover last time?". No Sunday night catching up on paperwork.
+
+That's the shift PupManager is built for — you spend your time with the dogs, and the admin mostly runs itself.
+
+Have a proper play this week: set up one client and run a session, and you'll feel the difference.
+
+Need a hand? Just reply — Brooke or I will get back to you.
+
+— Karl & Brooke
+PupManager`,
+  },
+  {
     key: 'trial_client_app',
     senderKey: 'karl',
     triggerRule: { type: 'after_signup', hours: 96 },
@@ -68,16 +90,20 @@ PupManager`,
     key: 'trial_brooke_routine',
     senderKey: 'brooke',
     triggerRule: { type: 'after_signup', hours: 120 },
-    subject: 'How I actually use it with my own clients',
+    subject: 'Why I write my session notes in the car',
     body: `Hi {{trainerName}},
 
-Brooke here — I'm a trainer too, so here's how I run it day to day.
+Brooke here — I'm a trainer too, so here's a little confession about how I actually use PupManager during my day.
 
-After each session I write my notes once, right there in the app, and set two or three homework tasks. My client gets them instantly, ticks things off through the week, and by the next session we both know exactly where we're at. No paper, no late-night catch-up.
+I write my session notes in the car. The second a session wraps, before I drive to the next one, I sit in the car park and tap out what we covered and the homework for the week — straight into PupManager on my phone. Two minutes, while it's all still fresh.
 
-If you set up one client and run a session that way this week, you'll feel the difference straight away.
+By the time I get home the admin's already done. No notebook to write up later, no "what did we work on again?" — and my evenings are actually mine.
 
-Stuck on anything? Reply and we'll get back to you.
+That's the whole reason Karl and I built this: the paperwork happens in the gaps you already have between clients, not after the kids are in bed.
+
+Try it after your next session — set the notes and a couple of homework tasks right there, and you'll feel the difference by the end of the week.
+
+Anything I can help with? Just reply — Brooke or I will get back to you.
 
 — Brooke & Karl
 PupManager`,
@@ -149,14 +175,20 @@ PupManager`,
 ]
 
 async function main() {
+  let created = 0
   for (const e of TRIAL_EMAILS) {
-    await prisma.onboardingEmail.upsert({
-      where: { key: e.key },
-      create: { key: e.key, subject: e.subject, body: e.body, senderKey: e.senderKey, triggerRule: e.triggerRule, publishedAt: null },
-      update: { subject: e.subject, body: e.body, senderKey: e.senderKey, triggerRule: e.triggerRule },
+    // NON-DESTRUCTIVE: only create missing templates. We deliberately do NOT
+    // update existing rows — their subject/body/etc. are the source of truth in
+    // the admin editor, and an `update` here would clobber admin edits (it did,
+    // once). Edit copy in the admin, not by re-running this seed.
+    const existing = await prisma.onboardingEmail.findUnique({ where: { key: e.key }, select: { id: true } })
+    if (existing) continue
+    await prisma.onboardingEmail.create({
+      data: { key: e.key, subject: e.subject, body: e.body, senderKey: e.senderKey, triggerRule: e.triggerRule, publishedAt: null },
     })
+    created++
   }
-  console.log(`✅ Seeded ${TRIAL_EMAILS.length} trial-process email templates (as drafts).`)
+  console.log(`✅ Trial email seed: created ${created} missing template(s); existing ones left untouched.`)
 }
 
 main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1) })

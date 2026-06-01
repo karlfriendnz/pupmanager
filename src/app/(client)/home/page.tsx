@@ -99,6 +99,12 @@ export default async function ClientHomePage() {
         id: true,
         title: true,
         scheduledAt: true,
+        attachments: {
+          where: { kind: { in: ['IMAGE', 'VIDEO'] } },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: { kind: true, url: true, thumbnailUrl: true },
+        },
       },
     }),
     prisma.trainingTask.findMany({
@@ -212,11 +218,16 @@ export default async function ClientHomePage() {
         location: upcomingSession.location,
         sessionType: upcomingSession.sessionType,
       } : null}
-      recentSessions={recentSessions.map(s => ({
-        id: s.id,
-        title: s.title,
-        scheduledAt: s.scheduledAt.toISOString(),
-      }))}
+      recentSessions={recentSessions.map(s => {
+        const m = s.attachments[0]
+        return {
+          id: s.id,
+          title: s.title,
+          scheduledAt: s.scheduledAt.toISOString(),
+          mediaUrl: m ? (m.thumbnailUrl ?? m.url) : null,
+          mediaKind: m?.kind ?? null,
+        }
+      })}
       homework={weekTasks.map(t => ({
         id: t.id,
         title: t.title,

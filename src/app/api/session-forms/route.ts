@@ -7,6 +7,8 @@ import { z } from 'zod'
 const baseQuestion = {
   id: z.string().min(1),
   required: z.boolean().default(false),
+  // Trainer-only field — filtered out of the client-facing report.
+  isPrivate: z.boolean().optional(),
 }
 
 // CUSTOM_FIELD questions inherit label/type/options from the linked CustomField,

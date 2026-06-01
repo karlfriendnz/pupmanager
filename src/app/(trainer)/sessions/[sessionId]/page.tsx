@@ -15,7 +15,7 @@ import { SessionMoreMenu } from './session-more-menu'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Session' }
+export const metadata: Metadata = { title: 'Session notes' }
 
 export default async function SessionPage({
   params,
@@ -94,7 +94,7 @@ export default async function SessionPage({
   return (
     <>
       <PageHeader
-        title="Session"
+        title="Session notes"
         back={clientId ? { href: `/clients/${clientId}?tab=sessions`, label: 'Back to client' } : undefined}
         actions={
           <SessionMoreMenu

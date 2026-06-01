@@ -27,6 +27,8 @@ const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.pupman
 const HOUR_MS = 3_600_000
 const DAY_MS = 86_400_000
 const PLATFORM_DOMAIN = '@pupmanager.com'
+// Addresses that should never receive onboarding/trial emails (test/junk accounts).
+const SUPPRESSED_RECIPIENTS = new Set(['t9rc8rb5j8@privaterelay.appleid.com'])
 
 // Where replies to each founder voice land. Mirrors the addresses used by
 // notify-new-trainer.ts.
@@ -126,10 +128,13 @@ export function renderOnboardingEmail(
   const topInner = topText ? emailBodyToHtml(topText) : ''
   const topHtml = topInner ? `<div style="padding:18px 28px 0;">${topInner}</div>` : ''
   const imgStyle = tmpl.imageHeight
-    ? `display:block;height:${tmpl.imageHeight}px;width:auto;max-width:100%;margin:0 auto;border:0;border-radius:12px;`
+    ? `display:inline-block;height:${tmpl.imageHeight}px;width:auto;max-width:100%;border:0;border-radius:12px;`
     : `display:block;width:100%;border:0;border-radius:12px;`
+  // Email clients honour the height ATTRIBUTE far more reliably than CSS height
+  // (Gmail ignores CSS height with width:auto and renders near full width).
+  const heightAttr = tmpl.imageHeight ? ` height="${tmpl.imageHeight}"` : ''
   const imageHtml = tmpl.imageUrl
-    ? `<div style="padding:16px 28px 0;text-align:center;"><img src="${escapeHtml(tmpl.imageUrl)}" alt="" style="${imgStyle}" /></div>`
+    ? `<div style="padding:16px 28px 0;text-align:center;"><img src="${escapeHtml(tmpl.imageUrl)}" alt=""${heightAttr} style="${imgStyle}" /></div>`
     : ''
 
   const html = `<!doctype html>
@@ -226,7 +231,7 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
   for (const p of progresses) {
     const t = p.trainer
     const email = t?.user?.email
-    if (!email || email.toLowerCase().endsWith(PLATFORM_DOMAIN)) continue
+    if (!email || email.toLowerCase().endsWith(PLATFORM_DOMAIN) || SUPPRESSED_RECIPIENTS.has(email.toLowerCase())) continue
 
     const alreadySent = new Set(p.emails.map(e => e.emailKey))
     const firstName = t!.user.name?.split(' ')[0]?.trim() || 'there'

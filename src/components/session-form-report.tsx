@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
-import { Plus, Loader2, FileText, Pencil, Trash2, Star, Link2, X, Sparkles, Check } from 'lucide-react'
+import { Plus, Loader2, FileText, Pencil, Trash2, Star, Link2, X, Sparkles, Check, Lock, List, Layers, ChevronLeft, ChevronRight } from 'lucide-react'
 import { VoiceInput } from '@/components/voice-input'
 import { ImageUploadButton, ImageGallery } from '@/components/image-uploader'
 
 export type Question =
-  | { id: string; type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'; label: string; required: boolean }
-  | { id: string; type: 'CUSTOM_FIELD'; customFieldId: string; required: boolean }
+  | { id: string; type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'; label: string; required: boolean; isPrivate?: boolean }
+  | { id: string; type: 'CUSTOM_FIELD'; customFieldId: string; required: boolean; isPrivate?: boolean }
 
 interface FormTemplate {
   id: string
@@ -227,13 +227,27 @@ export function SessionFormReport({
           </div>
         )
       }
+      // Default to a read-only PREVIEW with an Edit button. Editing reveals the
+      // filler; saving (handleSaved sets editing=null) or cancelling returns
+      // to the preview.
+      if (!editing) {
+        return (
+          <InlineNotesPreview
+            response={r}
+            template={template}
+            linkedFieldMap={linkedFieldMap}
+            onEdit={() => setEditing({ template, existing: r })}
+          />
+        )
+      }
       return (
         <FormFillerBody
           sessionId={sessionId}
-          template={template}
-          existing={r}
+          template={editing.template}
+          existing={editing.existing}
           linked={linked}
           onSaved={handleSaved}
+          onCancel={() => setEditing(null)}
           onRemove={() => handleDelete(r.formId)}
         />
       )
@@ -389,6 +403,89 @@ export function SessionFormReport({
 function mapCustomFieldType(t: 'TEXT' | 'NUMBER' | 'DROPDOWN' | undefined): 'SHORT_TEXT' | 'NUMBER' | 'LONG_TEXT' {
   if (t === 'NUMBER') return 'NUMBER'
   return 'SHORT_TEXT'
+}
+
+// Read-only preview of a saved session report (inline layout). Shows the filled
+// answers with an Edit button; the host swaps in the editable filler when the
+// trainer clicks Edit.
+function InlineNotesPreview({
+  response,
+  template,
+  linkedFieldMap,
+  onEdit,
+}: {
+  response: FormResponse
+  template: FormTemplate
+  linkedFieldMap: Map<string, { label: string; type?: 'TEXT' | 'NUMBER' | 'DROPDOWN' }>
+  onEdit: () => void
+}) {
+  const filled = template.questions.filter(q => response.answers[q.id])
+  return (
+    <div>
+      {/* Header strip */}
+      <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-white">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm flex-shrink-0">
+            <FileText className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="font-semibold text-slate-900 text-sm truncate leading-tight">{response.form.name}</p>
+            <p className="text-[11px] text-slate-400 leading-tight">Session notes</p>
+          </div>
+        </div>
+        <button
+          onClick={onEdit}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 h-9 rounded-xl bg-slate-900 text-white hover:bg-slate-800 active:scale-95 transition flex-shrink-0 shadow-sm"
+        >
+          <Pencil className="h-3.5 w-3.5" /> Edit
+        </button>
+      </div>
+
+      {filled.length === 0 ? (
+        <div className="px-5 py-12 text-center">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-300">
+            <FileText className="h-6 w-6" />
+          </span>
+          <p className="text-sm text-slate-500 mt-3">No notes recorded for this session yet.</p>
+          <button
+            onClick={onEdit}
+            className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold px-4 h-9 rounded-xl bg-slate-900 text-white hover:bg-slate-800 active:scale-95 transition"
+          >
+            <Pencil className="h-3.5 w-3.5" /> Add your write-up
+          </button>
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {filled.map(q => {
+            const value = response.answers[q.id] ?? ''
+            const isCustom = q.type === 'CUSTOM_FIELD'
+            const label = isCustom
+              ? linkedFieldMap.get(q.customFieldId)?.label ?? 'Linked field'
+              : q.label
+            const displayType = isCustom
+              ? mapCustomFieldType(linkedFieldMap.get(q.customFieldId)?.type)
+              : q.type
+            return (
+              <div key={q.id} className="px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
+                <p className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  {isCustom && <Link2 className="h-3.5 w-3.5 text-emerald-500" />}
+                  {label}
+                  {q.isPrivate && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500" title="Private — only you can see this, not the client">
+                      <Lock className="h-2.5 w-2.5" /> Private
+                    </span>
+                  )}
+                </p>
+                <div className="mt-1 text-[15px] text-slate-700 leading-relaxed">
+                  <AnswerDisplay type={displayType} value={value} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function AnswerDisplay({ type, value }: { type: string; value: string }) {
@@ -572,6 +669,11 @@ function FormFillerBody({
   const [saving, setSaving] = useState(false)
   const [polishing, setPolishing] = useState(false)
   const [confirmingRemove, setConfirmingRemove] = useState(false)
+  // Entry mode: see every question at once ('list') or answer one at a time
+  // and swipe/tap through them ('step') — friendlier on a phone.
+  const [mode, setMode] = useState<'list' | 'step'>('list')
+  const [step, setStep] = useState(0)
+  const touchStartX = useRef<number | null>(null)
 
   // Auto-revert the "are you sure?" Remove state if the trainer doesn't follow
   // through within a few seconds — nudges them away from accidental deletes.
@@ -580,6 +682,14 @@ function FormFillerBody({
     const t = setTimeout(() => setConfirmingRemove(false), 5000)
     return () => clearTimeout(t)
   }, [confirmingRemove])
+
+  // Default to one-at-a-time on phone + tablet (< lg); desktop gets the full list.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMode('step')
+    }
+  }, [])
 
   function setAnswer(id: string, value: string) {
     setAnswers(prev => ({ ...prev, [id]: value }))
@@ -647,6 +757,82 @@ function FormFillerBody({
     setSaving(false)
   }
 
+  const renderQuestion = (q: Question) => {
+    if (q.type === 'CUSTOM_FIELD') {
+      const linkedField = linkedFieldMap.get(q.customFieldId)
+      if (!linkedField) {
+        return (
+          <div key={q.id} className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Linked field is missing or was deleted.
+          </div>
+        )
+      }
+      return (
+        <div key={q.id}>
+          <label className="text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1">
+            <Link2 className="h-3 w-3 text-emerald-600" />
+            {linkedField.label}{q.required && <span className="text-red-500">*</span>}
+          </label>
+          <CustomFieldInput
+            field={linkedField}
+            value={answers[q.id] ?? ''}
+            onChange={v => setAnswer(q.id, v)}
+            imageUrls={imagesByQuestion[q.id] ?? []}
+            onImagesChange={(urls) => setImagesByQuestion(prev => ({ ...prev, [q.id]: urls }))}
+            sessionId={sessionId}
+          />
+          <p className="text-[11px] text-emerald-700 mt-1">
+            Saving will update the {linkedField.appliesTo === 'DOG' ? "dog's" : "client's"} record.
+          </p>
+        </div>
+      )
+    }
+    return (
+      <div key={q.id}>
+        <label className="text-sm font-medium text-slate-700 block mb-1.5">
+          {q.label}{q.required && <span className="text-red-500"> *</span>}
+        </label>
+        <BasicQuestionInput
+          type={q.type}
+          value={answers[q.id] ?? ''}
+          onChange={v => setAnswer(q.id, v)}
+          imageUrls={imagesByQuestion[q.id] ?? []}
+          onImagesChange={(urls) => setImagesByQuestion(prev => ({ ...prev, [q.id]: urls }))}
+          sessionId={sessionId}
+        />
+      </div>
+    )
+  }
+
+  const introComposer = (
+    <MessageComposer label="Opening message" placeholder="How would you like to start the report? (optional)" value={introMessage} onChange={setIntroMessage} onCommit={() => { /* persisted on Save */ }} suggestion={template.introText} sessionId={sessionId} />
+  )
+  const closingComposer = (
+    <MessageComposer label="Closing message" placeholder="How would you like to wrap up the report? (optional)" value={closingMessage} onChange={setClosingMessage} onCommit={() => { /* persisted on Save */ }} suggestion={template.closingText} sessionId={sessionId} />
+  )
+
+  // One-at-a-time steps: opening → each question → closing.
+  const steps: { key: string; label: string; node: React.ReactNode }[] = [
+    { key: 'intro', label: 'Opening message', node: introComposer },
+    ...template.questions.map(q => ({
+      key: q.id,
+      label: q.type === 'CUSTOM_FIELD' ? (linkedFieldMap.get(q.customFieldId)?.label ?? 'Linked field') : q.label,
+      node: renderQuestion(q),
+    })),
+    { key: 'closing', label: 'Closing message', node: closingComposer },
+  ]
+  const curStep = Math.min(step, steps.length - 1)
+  const isLastStep = curStep >= steps.length - 1
+
+  function onTouchStart(e: React.TouchEvent) { touchStartX.current = e.touches[0]?.clientX ?? null }
+  function onTouchEnd(e: React.TouchEvent) {
+    if (mode !== 'step' || touchStartX.current == null) return
+    const dx = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current
+    if (dx < -50 && curStep < steps.length - 1) setStep(curStep + 1)
+    else if (dx > 50 && curStep > 0) setStep(curStep - 1)
+    touchStartX.current = null
+  }
+
   return (
     <>
       <div className="px-5 py-4 border-b border-slate-100 flex-shrink-0">
@@ -654,76 +840,56 @@ function FormFillerBody({
         {template.description && <p className="text-xs text-slate-500 mt-0.5">{template.description}</p>}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
 
-        <MessageComposer
-          label="Opening message"
-          placeholder="How would you like to start the report? (optional)"
-          value={introMessage}
-          onChange={setIntroMessage}
-          onCommit={() => { /* persisted on Save changes */ }}
-          suggestion={template.introText}
-          sessionId={sessionId}
-        />
+        {/* Entry mode toggle — full list vs one-at-a-time (phone, tablet & desktop) */}
+        <div className="self-start inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold">
+          <button type="button" onClick={() => setMode('list')} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${mode === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <List className="h-3.5 w-3.5" /> Full list
+          </button>
+          <button type="button" onClick={() => { setMode('step'); setStep(0) }} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${mode === 'step' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <Layers className="h-3.5 w-3.5" /> One at a time
+          </button>
+        </div>
 
-        {template.questions.map(q => {
-          if (q.type === 'CUSTOM_FIELD') {
-            const linkedField = linkedFieldMap.get(q.customFieldId)
-            if (!linkedField) {
-              return (
-                <div key={q.id} className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  Linked field is missing or was deleted.
-                </div>
-              )
-            }
-            return (
-              <div key={q.id}>
-                <label className="text-sm font-medium text-slate-700 block mb-1.5 flex items-center gap-1">
-                  <Link2 className="h-3 w-3 text-emerald-600" />
-                  {linkedField.label}{q.required && <span className="text-red-500">*</span>}
-                </label>
-                <CustomFieldInput
-                  field={linkedField}
-                  value={answers[q.id] ?? ''}
-                  onChange={v => setAnswer(q.id, v)}
-                  imageUrls={imagesByQuestion[q.id] ?? []}
-                  onImagesChange={(urls) => setImagesByQuestion(prev => ({ ...prev, [q.id]: urls }))}
-                  sessionId={sessionId}
-                />
-                <p className="text-[11px] text-emerald-700 mt-1">
-                  Saving will update the {linkedField.appliesTo === 'DOG' ? "dog's" : "client's"} record.
-                </p>
-              </div>
-            )
-          }
-
-          return (
-            <div key={q.id}>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">
-                {q.label}{q.required && <span className="text-red-500"> *</span>}
-              </label>
-              <BasicQuestionInput
-                type={q.type}
-                value={answers[q.id] ?? ''}
-                onChange={v => setAnswer(q.id, v)}
-                imageUrls={imagesByQuestion[q.id] ?? []}
-                onImagesChange={(urls) => setImagesByQuestion(prev => ({ ...prev, [q.id]: urls }))}
-                sessionId={sessionId}
-              />
+        {mode === 'list' ? (
+          <>
+            {introComposer}
+            {template.questions.map(renderQuestion)}
+            {closingComposer}
+          </>
+        ) : (
+          <div>
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-400 mb-2">
+              <span className="truncate pr-2">{steps[curStep].label}</span>
+              <span className="tabular-nums flex-shrink-0">{curStep + 1} / {steps.length}</span>
             </div>
-          )
-        })}
+            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-5">
+              <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${((curStep + 1) / steps.length) * 100}%` }} />
+            </div>
 
-        <MessageComposer
-          label="Closing message"
-          placeholder="How would you like to wrap up the report? (optional)"
-          value={closingMessage}
-          onChange={setClosingMessage}
-          onCommit={() => { /* persisted on Save changes */ }}
-          suggestion={template.closingText}
-          sessionId={sessionId}
-        />
+            <div key={steps[curStep].key} className="animate-pm-fade min-h-[120px]">
+              {steps[curStep].node}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 mt-6">
+              <button type="button" onClick={() => setStep(Math.max(0, curStep - 1))} disabled={curStep === 0} className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors disabled:opacity-0">
+                <ChevronLeft className="h-4 w-4" /> Back
+              </button>
+              {isLastStep ? (
+                <button type="button" onClick={handleSave} disabled={saving} className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 h-11 disabled:opacity-60">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save notes
+                </button>
+              ) : (
+                <button type="button" onClick={() => setStep(Math.min(steps.length - 1, curStep + 1))} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold px-5 h-11">
+                  Next <ChevronRight className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <p className="text-center text-[11px] text-slate-400 mt-3">Swipe or tap Next to move through.</p>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-2 p-4 border-t border-slate-100 flex-shrink-0 flex-wrap">
