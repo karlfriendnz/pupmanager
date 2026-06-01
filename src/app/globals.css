@@ -202,3 +202,15 @@ button, a, [role="button"] {
                      0 0 0 0    rgba(16, 185, 129, 0); }
 }
 .animate-pm-fab-flash { animation: pm-fab-flash 1100ms ease-out both; }
+
+/* TipTap email body editor (admin onboarding emails) */
+.tiptap-body:focus { outline: none; }
+.tiptap-body p { margin: 0 0 0.7rem; }
+.tiptap-body h2 { font-size: 1.125rem; font-weight: 700; line-height: 1.3; margin: 0.8rem 0 0.35rem; }
+.tiptap-body h3 { font-size: 1rem; font-weight: 700; line-height: 1.3; margin: 0.7rem 0 0.3rem; }
+.tiptap-body ul { list-style: disc; padding-left: 1.35rem; margin: 0 0 0.7rem; }
+.tiptap-body ol { list-style: decimal; padding-left: 1.35rem; margin: 0 0 0.7rem; }
+.tiptap-body li { margin: 0 0 0.25rem; }
+.tiptap-body a { color: #5eead4; text-decoration: underline; }
+.tiptap-body strong { font-weight: 700; }
+.tiptap-body em { font-style: italic; }

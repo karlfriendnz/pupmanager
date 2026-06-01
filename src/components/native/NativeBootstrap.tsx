@@ -63,6 +63,9 @@ export function NativeBootstrap() {
 
       await PushNotifications.addListener('registration', async (token) => {
         try {
+          // Stash the APNs token so sign-out can deregister this exact device
+          // (otherwise the token lingers and pushes keep arriving post-logout).
+          try { window.localStorage.setItem('pm-push-token', token.value); } catch {}
           const res = await fetch('/api/devices/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

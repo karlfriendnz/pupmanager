@@ -5,7 +5,6 @@ import { getTrainerContext } from '@/lib/membership'
 import { can, type PermissionKey } from '@/lib/permissions'
 import { AppShell } from '@/components/shared/app-shell'
 import { OnboardingFab } from './onboarding-fab'
-import { OnboardingCelebration } from './onboarding-celebration'
 import { TrialBanner } from './trial-banner'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { STEP_TO_MENU } from '@/lib/onboarding/path-step'
@@ -141,10 +140,6 @@ export default async function TrainerLayout({ children }: { children: React.Reac
           totalSteps={fabState.totalSteps}
         />
       )}
-      {/* One-shot fireworks when the wizard hits zero remaining steps. The
-          component handles its own sessionStorage gate so this is safe to
-          render unconditionally — a no-op when allComplete is false. */}
-      <OnboardingCelebration allComplete={fabState.allComplete} />
       {children}
     </AppShell>
   )

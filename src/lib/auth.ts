@@ -62,9 +62,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // businessName starts empty — required field on /settings forces the
       // trainer to enter a real one. Onboarding step 1 (business_profile)
       // flips to completed only when this field is set.
+      // Stamp a 10-day trial just like the /signup + /register routes — OAuth
+      // sign-ups previously got TRIALING with a null trialEndsAt, which the
+      // trial banner reads as "Trial finished" on day one.
+      const TRIAL_DAYS = 10
       const profile = await prisma.trainerProfile.upsert({
         where: { userId: user.id! },
-        create: { userId: user.id!, businessName: '' },
+        create: { userId: user.id!, businessName: '', trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000) },
         update: {},
       })
       // Founding account is an OWNER member of its own business.

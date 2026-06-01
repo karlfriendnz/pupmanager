@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { signOut } from 'next-auth/react'
+import { signOutWithPush } from '@/lib/sign-out'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Users, Calendar, Layers, Package,
@@ -147,7 +147,7 @@ export function AppShell(props: AppShellProps) {
 function ClientShell({ children, trainerLogo, businessName, clientNavHints, unreadCounts = {}, trainerContact, showTrainerSwitcher, previewExitHref }: AppShellProps) {
   const handleSignOut = () => {
     if (previewExitHref) { window.location.href = previewExitHref; return }
-    signOut({ callbackUrl: '/login' })
+    signOutWithPush()
   }
   const pathname = usePathname()
   // Append a "Switch trainer" entry when the client works with 2+ trainers.
@@ -602,7 +602,7 @@ function TrainerShell({
                 </div>
                 <button
                   type="button"
-                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  onClick={() => signOutWithPush()}
                   className="flex items-center gap-2 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                   role="menuitem"
                 >
@@ -729,7 +729,7 @@ function TrainerShell({
             <div className="px-3 pt-1">
               <button
                 type="button"
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={() => signOutWithPush()}
                 className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-colors cursor-pointer"
               >
                 <LogOut className="h-4 w-4" />

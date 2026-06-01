@@ -1622,6 +1622,8 @@ model OnboardingEmail {
   topText     String?   @db.Text
   // Optional hero image shown in the email (admin-uploaded, public Blob URL).
   imageUrl    String?
+  // Optional fixed display height for the image in px (null = natural/auto).
+  imageHeight Int?
   senderKey   String    @default("karl")
   // Examples:
   //   { "type": "on_signup" }

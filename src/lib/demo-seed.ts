@@ -270,6 +270,13 @@ export async function resetDemoData(prisma: PrismaClient, trainerId: string): Pr
   })
   const enquiries = await prisma.enquiry.deleteMany({ where: { trainerId } })
 
+  // Group classes — must go before packages (ClassRun.packageId FK) and
+  // clients (ClassEnrollment.clientId FK). Attendance → waitlist/enrolment → run.
+  await prisma.sessionAttendance.deleteMany({ where: { enrollment: { classRun: { trainerId } } } })
+  await prisma.waitlistEntry.deleteMany({ where: { trainerId } })
+  await prisma.classEnrollment.deleteMany({ where: { classRun: { trainerId } } })
+  await prisma.classRun.deleteMany({ where: { trainerId } })
+
   const sessions = await prisma.trainingSession.deleteMany({ where: { trainerId } })
   const clientPackages = await prisma.clientPackage.deleteMany({
     where: { client: { trainerId } },
@@ -331,6 +338,8 @@ export type SeedOptions = {
 }
 
 export type SeedResult = {
+  classRuns: number
+  classEnrolments: number
   clients: number
   dogs: number
   packages: number
@@ -689,7 +698,57 @@ export async function seedDemoData(
   }
   await prisma.enquiry.createMany({ data: enquiryRows })
 
+  // ─── 6. Group classes (a few runs off the first packages, with enrolments) ──
+  const classRunDefs: { name: string; scheduleNote: string; status: 'RUNNING' | 'SCHEDULED' | 'COMPLETED'; startOffset: number; enrol: number }[] = [
+    { name: 'Spring Puppy Class', scheduleNote: 'Tuesdays · 6:00pm', status: 'RUNNING', startOffset: -14, enrol: 6 },
+    { name: 'Reactive Rover Group', scheduleNote: 'Thursdays · 7:00pm', status: 'SCHEDULED', startOffset: 7, enrol: 5 },
+    { name: 'Foundations Group', scheduleNote: 'Saturdays · 10:00am', status: 'COMPLETED', startOffset: -63, enrol: 7 },
+  ]
+  let classEnrolCount = 0
+  for (let i = 0; i < classRunDefs.length; i++) {
+    const def = classRunDefs[i]
+    const pkg = packages[i % packages.length]
+    const start = new Date(now)
+    start.setDate(start.getDate() + def.startOffset)
+    start.setHours(18, 0, 0, 0)
+    const run = await prisma.classRun.create({
+      data: { trainerId, packageId: pkg.id, name: def.name, scheduleNote: def.scheduleNote, startDate: start, capacity: 8, status: def.status },
+    })
+    const enrolClients = createdClients.slice(i * 8, i * 8 + def.enrol)
+    for (const c of enrolClients) {
+      await prisma.classEnrollment.create({
+        data: { classRunId: run.id, clientId: c.profileId, dogId: c.dogId, type: 'FULL', status: def.status === 'COMPLETED' ? 'COMPLETED' : 'ENROLLED', joinedAtIndex: 0 },
+      })
+      classEnrolCount++
+    }
+  }
+
+  // ─── 7. Finalise as an established, fully set-up ACTIVE trainer ─────────────
+  // Active (not trialing), no logo, intake form published; every client marked
+  // invited; onboarding fully complete so the checklist doesn't nag.
+  await prisma.trainerProfile.update({
+    where: { id: trainerId },
+    data: { subscriptionStatus: 'ACTIVE', trialEndsAt: null, logoUrl: null, intakeFormPublished: true },
+  })
+  await prisma.clientProfile.updateMany({ where: { trainerId, invitedAt: null }, data: { invitedAt: now } })
+
+  const progress = await prisma.trainerOnboardingProgress.upsert({
+    where: { trainerId },
+    create: { trainerId, welcomeShownAt: now, tourStartedAt: now, ahaReachedAt: now, checklistDismissedAt: now },
+    update: { welcomeShownAt: now, tourStartedAt: now, ahaReachedAt: now, checklistDismissedAt: now },
+  })
+  const allSteps = await prisma.onboardingStep.findMany({ where: { publishedAt: { not: null } }, select: { key: true } })
+  for (const s of allSteps) {
+    await prisma.trainerOnboardingStepProgress.upsert({
+      where: { progressId_stepKey: { progressId: progress.id, stepKey: s.key } },
+      create: { progressId: progress.id, stepKey: s.key, completedAt: now },
+      update: { completedAt: now, skippedAt: null },
+    })
+  }
+
   return {
+    classRuns: classRunDefs.length,
+    classEnrolments: classEnrolCount,
     clients: createdClients.length,
     dogs: createdClients.length,
     packages: packages.length,

@@ -19,6 +19,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { escapeHtml } from '@/lib/enquiries'
 import { getOnboardingState } from '@/lib/onboarding/state'
+import { emailBodyToHtml, emailHtmlToText } from '@/lib/email-html'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com'
 const HOUR_MS = 3_600_000
@@ -112,25 +113,21 @@ function fillTokens(s: string, ctx: Record<string, string>): string {
 // Renders one template into a PupManager-branded email matching the admin
 // preview (teal strip → logo → optional top text → image at text width → body
 // → footer). Card capped at 700px.
-function renderOnboardingEmail(
-  tmpl: { subject: string; body: string; topText: string | null; imageUrl: string | null; senderKey: string },
+export function renderOnboardingEmail(
+  tmpl: { subject: string; body: string; topText: string | null; imageUrl: string | null; imageHeight: number | null; senderKey: string },
   ctx: Record<string, string>,
 ) {
   const subject = fillTokens(tmpl.subject, ctx)
   const topText = tmpl.topText?.trim() ? fillTokens(tmpl.topText, ctx) : ''
   const body = fillTokens(tmpl.body, ctx)
 
-  const paraToHtml = (block: string) =>
-    block
-      .split(/\n{2,}/)
-      .map(p => `<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#0f172a;">${escapeHtml(p).split('\n').join('<br/>')}</p>`)
-      .join('')
-
-  const topHtml = topText
-    ? `<div style="padding:18px 28px 0;">${paraToHtml(topText)}</div>`
-    : ''
+  const topInner = topText ? emailBodyToHtml(topText) : ''
+  const topHtml = topInner ? `<div style="padding:18px 28px 0;">${topInner}</div>` : ''
+  const imgStyle = tmpl.imageHeight
+    ? `display:block;height:${tmpl.imageHeight}px;width:auto;max-width:100%;margin:0 auto;border:0;border-radius:12px;`
+    : `display:block;width:100%;border:0;border-radius:12px;`
   const imageHtml = tmpl.imageUrl
-    ? `<div style="padding:16px 28px 0;"><img src="${escapeHtml(tmpl.imageUrl)}" alt="" style="display:block;width:100%;border:0;border-radius:12px;" /></div>`
+    ? `<div style="padding:16px 28px 0;text-align:center;"><img src="${escapeHtml(tmpl.imageUrl)}" alt="" style="${imgStyle}" /></div>`
     : ''
 
   const html = `<!doctype html>
@@ -148,12 +145,12 @@ function renderOnboardingEmail(
           <tr>
             <td style="background:#ffffff;border-radius:18px;box-shadow:0 1px 3px rgba(15,23,42,0.04),0 8px 24px rgba(15,23,42,0.06);overflow:hidden;">
               <div style="height:4px;background:#2a9da9;"></div>
-              <div style="padding:24px 28px 0;text-align:center;">
-                <img src="${APP_URL}/logo.png" alt="PupManager" width="52" height="52" style="display:inline-block;border:0;border-radius:12px;" />
+              <div style="padding:24px 28px 8px;text-align:center;">
+                <img src="${APP_URL}/email-logo.png" alt="PupManager" width="190" style="display:inline-block;border:0;height:auto;max-width:190px;" />
               </div>
               ${topHtml}
               ${imageHtml}
-              <div style="padding:18px 28px 8px;">${paraToHtml(body)}</div>
+              <div style="padding:18px 28px 8px;">${emailBodyToHtml(body)}</div>
               <div style="padding:16px 28px;background:#fafaf9;border-top:1px solid #f1f5f9;">
                 <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.5;">You're receiving this because you started a PupManager trial.</p>
               </div>
@@ -173,7 +170,7 @@ function renderOnboardingEmail(
 </body>
 </html>`
 
-  const text = [topText, body].filter(Boolean).join('\n\n')
+  const text = [emailHtmlToText(topText), emailHtmlToText(body)].filter(Boolean).join('\n\n')
 
   const senderName = FOUNDER_NAME[tmpl.senderKey] ?? 'Karl'
   return {

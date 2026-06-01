@@ -24,6 +24,7 @@ export default async function AdminOnboardingEmailsPage() {
     body: e.body,
     topText: e.topText,
     imageUrl: e.imageUrl,
+    imageHeight: e.imageHeight,
     sent: sentByKey.get(e.key) ?? 0,
   }))
 

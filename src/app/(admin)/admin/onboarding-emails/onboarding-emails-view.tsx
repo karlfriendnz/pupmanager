@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Upload, Trash2, Loader2, Check, Eye } from 'lucide-react'
+import { Upload, Trash2, Loader2, Check, Eye, Send } from 'lucide-react'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { emailBodyToHtml } from '@/lib/email-html'
 
 export type OnboardingEmailItem = {
   id: string
@@ -15,6 +17,7 @@ export type OnboardingEmailItem = {
   body: string
   topText: string | null
   imageUrl: string | null
+  imageHeight: number | null
   sent: number
 }
 
@@ -59,10 +62,10 @@ function fillTokens(s: string): string {
 
 // Live inbox preview mirroring the real email layout (teal strip, logo, body,
 // footer). Tokens are filled with sample values so it reads like a real send.
-function EmailPreview({ subject, body, topText, senderKey, imageUrl }: { subject: string; body: string; topText: string | null; senderKey: string; imageUrl: string | null }) {
+function EmailPreview({ subject, body, topText, senderKey, imageUrl, imageHeight }: { subject: string; body: string; topText: string | null; senderKey: string; imageUrl: string | null; imageHeight: number | null }) {
   const fromName = senderKey === 'brooke' ? 'Brooke' : 'Karl'
-  const paragraphs = fillTokens(body).split(/\n{2,}/)
-  const topParagraphs = topText?.trim() ? fillTokens(topText).split(/\n{2,}/) : []
+  const bodyHtml = emailBodyToHtml(fillTokens(body))
+  const topHtml = topText?.trim() ? emailBodyToHtml(fillTokens(topText)) : ''
   return (
     <div className="rounded-2xl border border-slate-700 overflow-hidden">
       <div className="px-4 py-3 bg-slate-100 border-b border-slate-200">
@@ -72,24 +75,22 @@ function EmailPreview({ subject, body, topText, senderKey, imageUrl }: { subject
       <div style={{ background: '#F8FAFC', padding: 20 }}>
         <div style={{ background: '#fff', borderRadius: 18, overflow: 'hidden', boxShadow: '0 8px 24px rgba(15,23,42,0.08)', maxWidth: 700, margin: '0 auto' }}>
           <div style={{ height: 4, background: '#2a9da9' }} />
-          <div style={{ textAlign: 'center', padding: '24px 28px 0' }}>
+          <div style={{ textAlign: 'center', padding: '24px 28px 8px' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="PupManager" width={52} height={52} style={{ display: 'inline-block', borderRadius: 12 }} />
+            <img src="/email-logo.png" alt="PupManager" width={190} style={{ display: 'inline-block', height: 'auto', maxWidth: 190 }} />
           </div>
-          {topParagraphs.length > 0 && (
-            <div style={{ padding: '16px 28px 0', color: '#0f172a', fontSize: 14, lineHeight: 1.6, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" }}>
-              {topParagraphs.map((p, i) => <p key={i} style={{ margin: '0 0 14px', whiteSpace: 'pre-line' }}>{p}</p>)}
-            </div>
+          {topHtml && (
+            <div style={{ padding: '16px 28px 0', color: '#0f172a', fontSize: 14, lineHeight: 1.6, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" }} dangerouslySetInnerHTML={{ __html: topHtml }} />
           )}
           {imageUrl && (
-            <div style={{ padding: '16px 28px 0' }}>
+            <div style={{ padding: '16px 28px 0', textAlign: 'center' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={imageUrl} alt="" style={{ display: 'block', width: '100%', borderRadius: 12 }} />
+              <img src={imageUrl} alt="" style={imageHeight
+                ? { display: 'block', height: imageHeight, width: 'auto', maxWidth: '100%', margin: '0 auto', borderRadius: 12 }
+                : { display: 'block', width: '100%', borderRadius: 12 }} />
             </div>
           )}
-          <div style={{ padding: '18px 28px 8px', color: '#0f172a', fontSize: 14, lineHeight: 1.6, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" }}>
-            {paragraphs.map((p, i) => <p key={i} style={{ margin: '0 0 14px', whiteSpace: 'pre-line' }}>{p}</p>)}
-          </div>
+          <div style={{ padding: '18px 28px 8px', color: '#0f172a', fontSize: 14, lineHeight: 1.6, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" }} dangerouslySetInnerHTML={{ __html: bodyHtml }} />
           <div style={{ padding: '16px 28px', background: '#fafaf9', borderTop: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 12 }}>
             PupManager · You’re receiving this because you signed up.
           </div>
@@ -104,9 +105,11 @@ export function OnboardingEmailsView({ emails }: { emails: OnboardingEmailItem[]
   const [selectedId, setSelectedId] = useState(emails[0]?.id ?? '')
   const selected = emails.find(e => e.id === selectedId) ?? emails[0] ?? null
 
-  const [form, setForm] = useState({ subject: '', body: '', topText: '', senderKey: 'karl', published: false, imageUrl: null as string | null })
+  const [form, setForm] = useState({ subject: '', body: '', topText: '', senderKey: 'karl', published: false, imageUrl: null as string | null, imageHeight: null as number | null })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [tested, setTested] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -114,7 +117,7 @@ export function OnboardingEmailsView({ emails }: { emails: OnboardingEmailItem[]
   useEffect(() => {
     if (selected) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setForm({ subject: selected.subject, body: selected.body, topText: selected.topText ?? '', senderKey: selected.senderKey, published: selected.published, imageUrl: selected.imageUrl })
+      setForm({ subject: selected.subject, body: selected.body, topText: selected.topText ?? '', senderKey: selected.senderKey, published: selected.published, imageUrl: selected.imageUrl, imageHeight: selected.imageHeight })
       setSaved(false)
     }
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -129,11 +132,23 @@ export function OnboardingEmailsView({ emails }: { emails: OnboardingEmailItem[]
     try {
       const res = await fetch(`/api/admin/onboarding-emails/${selected!.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: form.subject, body: form.body, topText: form.topText, senderKey: form.senderKey, published: form.published }),
+        body: JSON.stringify({ subject: form.subject, body: form.body, topText: form.topText, senderKey: form.senderKey, published: form.published, imageHeight: form.imageHeight }),
       })
       if (res.ok) { setSaved(true); router.refresh() }
       else alert('Save failed')
     } finally { setSaving(false) }
+  }
+
+  async function sendTest() {
+    setTesting(true); setTested(false)
+    try {
+      const res = await fetch(`/api/admin/onboarding-emails/${selected!.id}/test`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: form.subject, body: form.body, topText: form.topText, senderKey: form.senderKey, imageUrl: form.imageUrl, imageHeight: form.imageHeight }),
+      })
+      if (res.ok) setTested(true)
+      else alert('Test send failed')
+    } finally { setTesting(false) }
   }
 
   async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -196,8 +211,10 @@ export function OnboardingEmailsView({ emails }: { emails: OnboardingEmailItem[]
         <label className="block text-xs text-slate-400 mb-1">Subject</label>
         <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="w-full h-11 rounded-xl bg-slate-900 border border-slate-700 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4" />
 
-        <label className="block text-xs text-slate-400 mb-1">Text above image <span className="text-slate-600">(optional)</span></label>
-        <textarea value={form.topText} onChange={e => setForm(f => ({ ...f, topText: e.target.value }))} rows={3} placeholder="Shown between the logo and the image — leave blank to start straight with the image." className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-sm text-slate-100 font-sans leading-relaxed placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4" />
+        <label className="block text-xs text-slate-400 mb-1">Text above image <span className="text-slate-600">(optional — shown between the logo and the image)</span></label>
+        <div className="mb-4">
+          <RichTextEditor key={`${selected.id}-top`} value={selected.topText ?? ''} onChange={html => setForm(f => ({ ...f, topText: html }))} minHeight={90} />
+        </div>
 
         {/* Image */}
         <label className="block text-xs text-slate-400 mb-1">Image</label>
@@ -221,14 +238,41 @@ export function OnboardingEmailsView({ emails }: { emails: OnboardingEmailItem[]
           </div>
         </div>
 
+        {form.imageUrl && (
+          <div className="mb-4">
+            <label className="block text-xs text-slate-400 mb-1">Image height</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number" min={40} max={2000} step={10}
+                value={form.imageHeight ?? ''}
+                onChange={e => setForm(f => ({ ...f, imageHeight: e.target.value === '' ? null : (parseInt(e.target.value, 10) || null) }))}
+                onBlur={e => {
+                  const v = parseInt(e.target.value, 10)
+                  setForm(f => ({ ...f, imageHeight: (e.target.value === '' || isNaN(v)) ? null : Math.max(40, Math.min(2000, v)) }))
+                }}
+                placeholder="Auto"
+                className="w-28 h-9 rounded-lg bg-slate-900 border border-slate-700 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-slate-500">px {form.imageHeight ? '(scaled, no crop)' : '— blank = natural'}</span>
+              {form.imageHeight && (
+                <button type="button" onClick={() => setForm(f => ({ ...f, imageHeight: null }))} className="text-xs text-slate-400 hover:text-slate-200">Auto</button>
+              )}
+            </div>
+          </div>
+        )}
+
         <label className="block text-xs text-slate-400 mb-1">Body</label>
-        <textarea value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} rows={16} className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-3 text-sm text-slate-100 font-sans leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <RichTextEditor key={selected.id} value={selected.body} onChange={html => setForm(f => ({ ...f, body: html }))} />
 
         <div className="mt-4 flex items-center gap-3">
           <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 h-10 rounded-xl disabled:opacity-50">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {saving ? 'Saving…' : 'Save changes'}
           </button>
           {saved && <span className="text-xs text-green-400">Saved ✓</span>}
+          <button onClick={sendTest} disabled={testing} className="inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium px-4 h-10 rounded-xl disabled:opacity-50" title="Send a test to karlfriend.nz@gmail.com">
+            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {testing ? 'Sending…' : 'Send test'}
+          </button>
+          {tested && <span className="text-xs text-green-400">Sent to karlfriend.nz@gmail.com ✓</span>}
           <span className="text-xs text-slate-500 ml-auto">Tokens like <span className="font-mono">{'{{trainerName}}'}</span>, <span className="font-mono">{'{{businessName}}'}</span> are filled when sent.</span>
         </div>
       </div>
@@ -236,7 +280,7 @@ export function OnboardingEmailsView({ emails }: { emails: OnboardingEmailItem[]
       {/* Right: live inbox preview (50%) */}
       <div className="w-1/2 min-w-0">
         <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-2 flex items-center gap-2"><Eye className="h-3.5 w-3.5" /> Preview — as sent</p>
-        <EmailPreview subject={form.subject} body={form.body} topText={form.topText} senderKey={form.senderKey} imageUrl={form.imageUrl} />
+        <EmailPreview subject={form.subject} body={form.body} topText={form.topText} senderKey={form.senderKey} imageUrl={form.imageUrl} imageHeight={form.imageHeight} />
       </div>
       </div>
     </div>

@@ -10,6 +10,7 @@ const schema = z.object({
   senderKey: z.enum(['karl', 'brooke']).optional(),
   published: z.boolean().optional(),
   imageUrl: z.string().url().nullable().optional().or(z.literal('')),
+  imageHeight: z.number().int().min(40).max(2000).nullable().optional(),
 })
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -20,7 +21,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const parsed = schema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
 
-  const { subject, body, topText, senderKey, published, imageUrl } = parsed.data
+  const { subject, body, topText, senderKey, published, imageUrl, imageHeight } = parsed.data
   const email = await prisma.onboardingEmail.update({
     where: { id },
     data: {
@@ -30,6 +31,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ...(senderKey !== undefined ? { senderKey } : {}),
       ...(published !== undefined ? { publishedAt: published ? new Date() : null } : {}),
       ...(imageUrl !== undefined ? { imageUrl: imageUrl === '' ? null : imageUrl } : {}),
+      ...(imageHeight !== undefined ? { imageHeight } : {}),
     },
   })
   return NextResponse.json(email)

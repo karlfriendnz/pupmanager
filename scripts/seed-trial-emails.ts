@@ -5,6 +5,28 @@ import { prisma } from '../src/lib/prisma'
 
 const TRIAL_EMAILS = [
   {
+    key: 'trial_welcome',
+    senderKey: 'karl',
+    triggerRule: { type: 'on_signup' },
+    subject: 'Welcome to PupManager 🐾',
+    body: `Hi {{trainerName}},
+
+Welcome aboard — really glad to have you. I'm Karl; my wife Brooke is a dog trainer, and we built PupManager to take the evening admin off her plate so she could focus on the dogs (and get her Sundays back).
+
+Your {{businessName}} trial is live. The quickest way to feel the difference:
+
+1. Add your business name and logo so the app feels like yours.
+2. Add a client and send them their training diary link.
+3. Run a session and write your notes once — your client sees them instantly.
+
+That's the whole loop: less admin for you, more time for the dogs.
+
+Need a hand getting set up? Just hit reply — Brooke or I will get back to you.
+
+— Karl & Brooke
+PupManager`,
+  },
+  {
     key: 'trial_day3_value',
     senderKey: 'karl',
     triggerRule: { type: 'after_signup', hours: 72 },
@@ -22,6 +44,42 @@ That loop is the whole point: less admin for you, more time for the dogs.
 Stuck on anything? Just hit reply — Brooke or I will get back to you.
 
 — Karl & Brooke
+PupManager`,
+  },
+  {
+    key: 'trial_client_app',
+    senderKey: 'karl',
+    triggerRule: { type: 'after_signup', hours: 96 },
+    subject: 'The bit your clients will love',
+    body: `Hi {{trainerName}},
+
+Quick one. What makes PupManager click for most trainers isn't the admin side — it's what their clients get: a clean little app showing their upcoming sessions, the homework you've set, your session notes, and their dog's progress over time.
+
+That means fewer "what was I meant to practise again?" messages, and clients who actually keep training between sessions.
+
+Want to see it the way they will? Open your dashboard and tap "Preview as client" — that's exactly what {{businessName}}'s clients see.
+
+Any questions, just reply — Brooke or I will get back to you.
+
+— Karl & Brooke
+PupManager`,
+  },
+  {
+    key: 'trial_brooke_routine',
+    senderKey: 'brooke',
+    triggerRule: { type: 'after_signup', hours: 120 },
+    subject: 'How I actually use it with my own clients',
+    body: `Hi {{trainerName}},
+
+Brooke here — I'm a trainer too, so here's how I run it day to day.
+
+After each session I write my notes once, right there in the app, and set two or three homework tasks. My client gets them instantly, ticks things off through the week, and by the next session we both know exactly where we're at. No paper, no late-night catch-up.
+
+If you set up one client and run a session that way this week, you'll feel the difference straight away.
+
+Stuck on anything? Reply and we'll get back to you.
+
+— Brooke & Karl
 PupManager`,
   },
   {

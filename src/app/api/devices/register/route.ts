@@ -26,3 +26,18 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true })
 }
+
+// Deregister a device token — called on sign-out so the user stops receiving
+// pushes for an account they've logged out of. Deletes by the exact (unique)
+// token, i.e. just this physical device.
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+
+  const body = await req.json().catch(() => null) as { token?: string } | null
+  const token = body?.token?.trim()
+  if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })
+
+  await prisma.deviceToken.deleteMany({ where: { token } })
+  return NextResponse.json({ ok: true })
+}
