@@ -30,6 +30,7 @@ function MessageComposer({
   onCommit,
   suggestion,
   sessionId,
+  hideLabel = false,
 }: {
   label: string
   placeholder: string
@@ -38,22 +39,27 @@ function MessageComposer({
   onCommit: (v: string) => void
   suggestion?: string | null
   sessionId: string
+  // Suppress the field's own label — used by the fullscreen step flow where the
+  // prompt is already shown as a big heading above the composer.
+  hideLabel?: boolean
 }) {
   return (
     <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <label className="text-sm font-medium text-slate-700">{label}</label>
-        {suggestion && !value && (
-          <button
-            type="button"
-            onClick={() => { onChange(suggestion); onCommit(suggestion) }}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full px-2.5 py-1 transition-colors"
-            title="Use the form's suggestion as a starting point"
-          >
-            <Check className="h-3 w-3" /> Use form&rsquo;s {label.toLowerCase()}
-          </button>
-        )}
-      </div>
+      {(!hideLabel || (suggestion && !value)) && (
+        <div className="flex items-center justify-between mb-1.5">
+          {hideLabel ? <span /> : <label className="text-sm font-medium text-slate-700">{label}</label>}
+          {suggestion && !value && (
+            <button
+              type="button"
+              onClick={() => { onChange(suggestion); onCommit(suggestion) }}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full px-2.5 py-1 transition-colors"
+              title="Use the form's suggestion as a starting point"
+            >
+              <Check className="h-3 w-3" /> Use form&rsquo;s {label.toLowerCase()}
+            </button>
+          )}
+        </div>
+      )}
       {suggestion && !value && (
         <p className="text-[11px] text-slate-400 mb-1.5 italic line-clamp-2">
           Suggested: &ldquo;{suggestion}&rdquo;
@@ -249,6 +255,7 @@ export function SessionFormReport({
           onSaved={handleSaved}
           onCancel={() => setEditing(null)}
           onRemove={() => handleDelete(r.formId)}
+          key={r.formId}
         />
       )
     }
@@ -669,9 +676,10 @@ function FormFillerBody({
   const [saving, setSaving] = useState(false)
   const [polishing, setPolishing] = useState(false)
   const [confirmingRemove, setConfirmingRemove] = useState(false)
-  // Entry mode: see every question at once ('list') or answer one at a time
-  // and swipe/tap through them ('step') — friendlier on a phone.
-  const [mode, setMode] = useState<'list' | 'step'>('list')
+  // Entry mode: answer one at a time in a focused fullscreen flow ('step',
+  // default) or see every question at once ('list'). Step mode swipes/slides
+  // through the prompts — friendlier everywhere, especially on a phone.
+  const [mode, setMode] = useState<'list' | 'step'>('step')
   const [step, setStep] = useState(0)
   const touchStartX = useRef<number | null>(null)
 
@@ -682,14 +690,6 @@ function FormFillerBody({
     const t = setTimeout(() => setConfirmingRemove(false), 5000)
     return () => clearTimeout(t)
   }, [confirmingRemove])
-
-  // Default to one-at-a-time on phone + tablet (< lg); desktop gets the full list.
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMode('step')
-    }
-  }, [])
 
   function setAnswer(id: string, value: string) {
     setAnswers(prev => ({ ...prev, [id]: value }))
@@ -804,6 +804,46 @@ function FormFillerBody({
     )
   }
 
+  // Bare input control (no field label) for the fullscreen one-at-a-time flow,
+  // where the prompt is shown as a big heading above the control instead.
+  const renderControl = (q: Question): React.ReactNode => {
+    if (q.type === 'CUSTOM_FIELD') {
+      const linkedField = linkedFieldMap.get(q.customFieldId)
+      if (!linkedField) {
+        return (
+          <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Linked field is missing or was deleted.
+          </div>
+        )
+      }
+      return (
+        <>
+          <CustomFieldInput
+            field={linkedField}
+            value={answers[q.id] ?? ''}
+            onChange={v => setAnswer(q.id, v)}
+            imageUrls={imagesByQuestion[q.id] ?? []}
+            onImagesChange={(urls) => setImagesByQuestion(prev => ({ ...prev, [q.id]: urls }))}
+            sessionId={sessionId}
+          />
+          <p className="text-[11px] text-emerald-700 mt-1.5">
+            Saving will update the {linkedField.appliesTo === 'DOG' ? "dog's" : "client's"} record.
+          </p>
+        </>
+      )
+    }
+    return (
+      <BasicQuestionInput
+        type={q.type}
+        value={answers[q.id] ?? ''}
+        onChange={v => setAnswer(q.id, v)}
+        imageUrls={imagesByQuestion[q.id] ?? []}
+        onImagesChange={(urls) => setImagesByQuestion(prev => ({ ...prev, [q.id]: urls }))}
+        sessionId={sessionId}
+      />
+    )
+  }
+
   const introComposer = (
     <MessageComposer label="Opening message" placeholder="How would you like to start the report? (optional)" value={introMessage} onChange={setIntroMessage} onCommit={() => { /* persisted on Save */ }} suggestion={template.introText} sessionId={sessionId} />
   )
@@ -811,26 +851,166 @@ function FormFillerBody({
     <MessageComposer label="Closing message" placeholder="How would you like to wrap up the report? (optional)" value={closingMessage} onChange={setClosingMessage} onCommit={() => { /* persisted on Save */ }} suggestion={template.closingText} sessionId={sessionId} />
   )
 
-  // One-at-a-time steps: opening → each question → closing.
-  const steps: { key: string; label: string; node: React.ReactNode }[] = [
-    { key: 'intro', label: 'Opening message', node: introComposer },
-    ...template.questions.map(q => ({
+  // One-at-a-time flow: opening → each question → closing. Each panel shows the
+  // prompt as a big heading with the bare input below; the fullscreen view keeps
+  // the heading / input / nav in fixed positions and slides between panels.
+  const questionCount = template.questions.length
+  const stepPanels: {
+    key: string
+    eyebrow: string
+    title: string
+    hint?: string
+    required?: boolean
+    isPrivate?: boolean
+    control: React.ReactNode
+  }[] = [
+    {
+      key: 'intro',
+      eyebrow: 'Opening',
+      title: 'Opening message',
+      hint: 'How would you like to start the report? (optional)',
+      control: (
+        <MessageComposer hideLabel label="Opening message" placeholder="Set the scene…" value={introMessage} onChange={setIntroMessage} onCommit={() => {}} suggestion={template.introText} sessionId={sessionId} />
+      ),
+    },
+    ...template.questions.map((q, i) => ({
       key: q.id,
-      label: q.type === 'CUSTOM_FIELD' ? (linkedFieldMap.get(q.customFieldId)?.label ?? 'Linked field') : q.label,
-      node: renderQuestion(q),
+      eyebrow: `Question ${i + 1} of ${questionCount}`,
+      title: q.type === 'CUSTOM_FIELD' ? (linkedFieldMap.get(q.customFieldId)?.label ?? 'Linked field') : q.label,
+      required: q.required,
+      isPrivate: q.isPrivate,
+      control: renderControl(q),
     })),
-    { key: 'closing', label: 'Closing message', node: closingComposer },
+    {
+      key: 'closing',
+      eyebrow: 'Wrap-up',
+      title: 'Closing message',
+      hint: 'How would you like to wrap up? (optional)',
+      control: (
+        <MessageComposer hideLabel label="Closing message" placeholder="Leave them with a takeaway…" value={closingMessage} onChange={setClosingMessage} onCommit={() => {}} suggestion={template.closingText} sessionId={sessionId} />
+      ),
+    },
   ]
-  const curStep = Math.min(step, steps.length - 1)
-  const isLastStep = curStep >= steps.length - 1
+  const curStep = Math.min(step, stepPanels.length - 1)
+  const isLastStep = curStep >= stepPanels.length - 1
 
   function onTouchStart(e: React.TouchEvent) { touchStartX.current = e.touches[0]?.clientX ?? null }
   function onTouchEnd(e: React.TouchEvent) {
     if (mode !== 'step' || touchStartX.current == null) return
     const dx = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current
-    if (dx < -50 && curStep < steps.length - 1) setStep(curStep + 1)
+    if (dx < -50 && curStep < stepPanels.length - 1) setStep(curStep + 1)
     else if (dx > 50 && curStep > 0) setStep(curStep - 1)
     touchStartX.current = null
+  }
+
+  // FULLSCREEN ONE-AT-A-TIME FLOW — focused, fixed-layout, slides between
+  // prompts. The heading / input / nav stay in the same place every step; only
+  // the sliding track moves.
+  if (mode === 'step') {
+    const panel = stepPanels[curStep]
+    return (
+      <div className="fixed inset-0 z-[70] flex flex-col bg-white">
+        {/* Top bar — close + switch to full list */}
+        <div className="flex items-center gap-2 px-3 sm:px-5 h-14 border-b border-slate-100 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => (onCancel ? onCancel() : setMode('list'))}
+            className="p-2 -ml-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <p className="flex-1 min-w-0 truncate text-sm font-semibold text-slate-900">{template.name}</p>
+          <button
+            type="button"
+            onClick={() => setMode('list')}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 px-2.5 py-1.5 rounded-lg hover:bg-slate-100"
+          >
+            <List className="h-3.5 w-3.5" /> Full list
+          </button>
+        </div>
+
+        {/* Progress */}
+        <div className="px-6 pt-5 flex-shrink-0">
+          <div className="mx-auto w-full max-w-xl">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-400 mb-2">
+              <span className="truncate pr-2">{panel.eyebrow}</span>
+              <span className="tabular-nums flex-shrink-0">{curStep + 1} / {stepPanels.length}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out" style={{ width: `${((curStep + 1) / stepPanels.length) * 100}%` }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Sliding track — one panel per prompt; internal layout is identical
+            across panels so the box never jumps as you advance. */}
+        <div className="flex-1 overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <div
+            className="flex h-full transition-transform duration-300 ease-out"
+            style={{ transform: `translateX(-${curStep * 100}%)` }}
+          >
+            {stepPanels.map(p => (
+              <div key={p.key} className="h-full w-full flex-shrink-0 overflow-y-auto">
+                <div className="mx-auto w-full max-w-xl px-6 py-8 sm:py-12">
+                  <div className="min-h-[3.5rem]">
+                    <h2 className="text-2xl sm:text-[28px] font-bold leading-tight text-slate-900 flex items-start gap-2 flex-wrap">
+                      <span>{p.title}</span>
+                      {p.required && <span className="text-red-500 text-xl leading-none">*</span>}
+                      {p.isPrivate && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 mt-1.5" title="Private — only you can see this, not the client">
+                          <Lock className="h-2.5 w-2.5" /> Private
+                        </span>
+                      )}
+                    </h2>
+                    {p.hint && <p className="text-sm text-slate-400 mt-1.5">{p.hint}</p>}
+                  </div>
+                  <div className="mt-6">{p.control}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {error && (
+          <div className="px-6 flex-shrink-0">
+            <div className="mx-auto w-full max-w-xl text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-2">{error}</div>
+          </div>
+        )}
+
+        {/* Fixed footer nav — Back / Next stay put across every step */}
+        <div className="border-t border-slate-100 flex-shrink-0 bg-white">
+          <div className="mx-auto w-full max-w-xl px-6 py-3.5 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setStep(Math.max(0, curStep - 1))}
+              disabled={curStep === 0}
+              className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors disabled:opacity-0"
+            >
+              <ChevronLeft className="h-4 w-4" /> Back
+            </button>
+            {isLastStep ? (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-6 h-11 disabled:opacity-60"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save notes
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStep(Math.min(stepPanels.length - 1, curStep + 1))}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold px-6 h-11"
+              >
+                Next <ChevronRight className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -840,56 +1020,22 @@ function FormFillerBody({
         {template.description && <p className="text-xs text-slate-500 mt-0.5">{template.description}</p>}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
         {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
 
-        {/* Entry mode toggle — full list vs one-at-a-time (phone, tablet & desktop) */}
+        {/* Entry mode toggle — full list vs the focused one-at-a-time flow */}
         <div className="self-start inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold">
           <button type="button" onClick={() => setMode('list')} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${mode === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
             <List className="h-3.5 w-3.5" /> Full list
           </button>
-          <button type="button" onClick={() => { setMode('step'); setStep(0) }} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${mode === 'step' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          <button type="button" onClick={() => { setMode('step'); setStep(0) }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-slate-500 hover:text-slate-700">
             <Layers className="h-3.5 w-3.5" /> One at a time
           </button>
         </div>
 
-        {mode === 'list' ? (
-          <>
-            {introComposer}
-            {template.questions.map(renderQuestion)}
-            {closingComposer}
-          </>
-        ) : (
-          <div>
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-400 mb-2">
-              <span className="truncate pr-2">{steps[curStep].label}</span>
-              <span className="tabular-nums flex-shrink-0">{curStep + 1} / {steps.length}</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-5">
-              <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${((curStep + 1) / steps.length) * 100}%` }} />
-            </div>
-
-            <div key={steps[curStep].key} className="animate-pm-fade min-h-[120px]">
-              {steps[curStep].node}
-            </div>
-
-            <div className="flex items-center justify-between gap-3 mt-6">
-              <button type="button" onClick={() => setStep(Math.max(0, curStep - 1))} disabled={curStep === 0} className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors disabled:opacity-0">
-                <ChevronLeft className="h-4 w-4" /> Back
-              </button>
-              {isLastStep ? (
-                <button type="button" onClick={handleSave} disabled={saving} className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 h-11 disabled:opacity-60">
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save notes
-                </button>
-              ) : (
-                <button type="button" onClick={() => setStep(Math.min(steps.length - 1, curStep + 1))} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold px-5 h-11">
-                  Next <ChevronRight className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-            <p className="text-center text-[11px] text-slate-400 mt-3">Swipe or tap Next to move through.</p>
-          </div>
-        )}
+        {introComposer}
+        {template.questions.map(renderQuestion)}
+        {closingComposer}
       </div>
 
       <div className="flex items-center justify-between gap-2 p-4 border-t border-slate-100 flex-shrink-0 flex-wrap">
