@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Mic, MicOff } from 'lucide-react'
+import { useIsNative } from '@/lib/native'
 
 // Browser SpeechRecognition is vendor-prefixed on some browsers (notably iOS
 // Safari, which exposes only `webkitSpeechRecognition`). We narrow to the
@@ -49,6 +50,11 @@ export function VoiceInput({
   const [listening, setListening] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const recRef = useRef<SpeechRecognition | null>(null)
+  // In the native app the Web Speech API is unreliable (iOS WKWebView has no
+  // support; Android's WebView exposes webkitSpeechRecognition but start()
+  // fails silently). Hide our mic there and let the device keyboard's built-in
+  // dictation handle voice instead — it's the better native affordance anyway.
+  const native = useIsNative()
 
   // The recognition object's `onresult` closure is created once when we call
   // `start()`. If we capture `onAppend` directly there, it sees the parent's
@@ -106,7 +112,7 @@ export function VoiceInput({
     setListening(false)
   }
 
-  if (!supported) return null
+  if (!supported || native) return null
 
   return (
     <button

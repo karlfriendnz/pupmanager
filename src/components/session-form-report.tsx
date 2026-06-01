@@ -910,8 +910,12 @@ function FormFillerBody({
     const panel = stepPanels[curStep]
     return (
       <div className="fixed inset-0 z-[70] flex flex-col bg-white">
-        {/* Top bar — close + switch to full list */}
-        <div className="flex items-center gap-2 px-3 sm:px-5 h-14 border-b border-slate-100 flex-shrink-0">
+        {/* Top bar — close + switch to full list. Pad the device safe area
+            (notch / status bar) so the controls clear the top inset. */}
+        <div
+          className="flex items-center gap-2 px-3 sm:px-5 min-h-[3.5rem] border-b border-slate-100 flex-shrink-0"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
           <button
             type="button"
             onClick={() => (onCancel ? onCancel() : setMode('list'))}
@@ -978,8 +982,12 @@ function FormFillerBody({
           </div>
         )}
 
-        {/* Fixed footer nav — Back / Next stay put across every step */}
-        <div className="border-t border-slate-100 flex-shrink-0 bg-white">
+        {/* Fixed footer nav — Back / Next stay put across every step. Pad the
+            bottom safe area so the home indicator doesn't overlap the buttons. */}
+        <div
+          className="border-t border-slate-100 flex-shrink-0 bg-white"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
           <div className="mx-auto w-full max-w-xl px-6 py-3.5 flex items-center justify-between gap-3">
             <button
               type="button"
