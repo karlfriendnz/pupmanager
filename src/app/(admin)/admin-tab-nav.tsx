@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Package, Database, ClipboardList } from 'lucide-react'
+import { LayoutDashboard, Users, Package, Database, ClipboardList, Mail } from 'lucide-react'
 
 const TABS = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/trainers', label: 'Trainers', icon: Users },
+  { href: '/admin/onboarding-emails', label: 'Onboarding', icon: Mail },
   { href: '/admin/plans', label: 'Plans', icon: Package },
   { href: '/admin/demo', label: 'Demo data', icon: Database },
   { href: '/admin/status', label: 'Status', icon: ClipboardList },

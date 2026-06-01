@@ -16,7 +16,7 @@ export default async function ClientLayout({ children }: { children: React.React
     where: { id: active.clientId },
     include: {
       user: { select: { name: true, email: true } },
-      trainer: { select: { id: true, businessName: true, logoUrl: true, intakeSectionOrder: true, intakeSystemFieldSections: true } },
+      trainer: { select: { id: true, businessName: true, logoUrl: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true, phone: true, website: true, publicEmail: true, intakeSectionOrder: true, intakeSystemFieldSections: true } },
       dog: { select: { id: true, name: true } },
       dogs: { select: { id: true, name: true } },
       customFieldValues: { select: { fieldId: true, dogId: true, value: true } },
@@ -92,10 +92,12 @@ export default async function ClientLayout({ children }: { children: React.React
     }
   }
 
+  // TEMP (redesign testing): preview banner hidden so it doesn't obstruct the
+  // client app while testing. Restore the PreviewBanner line before shipping.
   const banner = active.isPreview
     ? (
       <>
-        <PreviewBanner clientName={clientDisplayName} />
+        {/* <PreviewBanner clientName={clientDisplayName} /> */}
         {showPreviewOnboarding && <PreviewOnboardingGuide />}
       </>
     )
@@ -159,8 +161,35 @@ export default async function ClientLayout({ children }: { children: React.React
         },
       })
 
+  // Per-trainer accent gradient. The trainer's start colour drives --accent
+  // (and re-derives the soft/tint/surface shades on this wrapper so they follow
+  // the start colour rather than the :root teal); the end colour drives
+  // --accent-strong (the gradient's far stop), falling back to a derived
+  // darker shade. Null start → the PupManager teal default on :root.
+  const t = clientProfile.trainer
+  const start = t.appGradientStart ?? t.emailAccentColor
+  const end = t.appGradientEnd
+  let themeStyle: React.CSSProperties | undefined
+  if (start) {
+    themeStyle = {
+      ['--accent' as string]: start,
+      ['--accent-strong' as string]: end ?? 'color-mix(in oklab, var(--accent), black 14%)',
+      ['--accent-soft' as string]: 'color-mix(in srgb, var(--accent) 14%, white)',
+      ['--accent-tint' as string]: 'color-mix(in srgb, var(--accent) 7%, white)',
+      ['--surface' as string]: 'color-mix(in srgb, var(--accent) 4%, #f7fafb)',
+    } as React.CSSProperties
+  } else if (end) {
+    themeStyle = { ['--accent-strong' as string]: end } as React.CSSProperties
+  }
+
+  // Does this user work with more than one trainer? Drives the "Switch
+  // trainer" entry in the menu/sidebar. Skipped in preview (trainer-as-client).
+  const trainerCount = active.isPreview
+    ? 1
+    : await prisma.clientProfile.count({ where: { userId: clientProfile.userId } })
+
   return (
-    <>
+    <div style={themeStyle}>
       {banner}
       <AppShell
         role="CLIENT"
@@ -168,12 +197,14 @@ export default async function ClientLayout({ children }: { children: React.React
         userEmail={clientProfile.user.email ?? ''}
         trainerLogo={clientProfile.trainer.logoUrl}
         businessName={clientProfile.trainer.businessName}
+        trainerContact={{ phone: clientProfile.trainer.phone, website: clientProfile.trainer.website, email: clientProfile.trainer.publicEmail }}
+        showTrainerSwitcher={trainerCount > 1}
         clientNavHints={showPreviewOnboarding}
         unreadCounts={{ '/my-messages': unreadMessageCount, '/home': unreadMessageCount }}
         unreadTotal={unreadMessageCount}
       >
         {children}
       </AppShell>
-    </>
+    </div>
   )
 }

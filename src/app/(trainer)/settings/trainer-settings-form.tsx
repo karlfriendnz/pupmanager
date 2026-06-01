@@ -25,9 +25,13 @@ const profileSchema = z.object({
   dashboardBgUrl: z.string().url().optional().or(z.literal('')),
   // Hex (#rgb / #rrggbb) — empty string clears to default.
   emailAccentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
+  appGradientStart: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
+  appGradientEnd: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
 })
 
 const DEFAULT_EMAIL_ACCENT = '#7c3aed'
+const DEFAULT_GRADIENT_START = '#2a9da9'
+const DEFAULT_GRADIENT_END = '#1f818c'
 
 const templateSchema = z.object({
   inviteTemplate: z.string().min(20),
@@ -49,7 +53,7 @@ export function TrainerSettingsForm({
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string }
-  profile: { businessName: string; phone: string | null; logoUrl: string | null; dashboardBgUrl: string | null; inviteTemplate: string | null; emailAccentColor: string | null }
+  profile: { businessName: string; phone: string | null; logoUrl: string | null; dashboardBgUrl: string | null; inviteTemplate: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null }
 }) {
   const router = useRouter()
   const [profileMsg, setProfileMsg] = useState<string | null>(null)
@@ -68,12 +72,16 @@ export function TrainerSettingsForm({
       logoUrl: profile.logoUrl ?? '',
       dashboardBgUrl: profile.dashboardBgUrl ?? '',
       emailAccentColor: profile.emailAccentColor ?? '',
+      appGradientStart: profile.appGradientStart ?? '',
+      appGradientEnd: profile.appGradientEnd ?? '',
     },
   })
 
   const logoUrl = profileForm.watch('logoUrl')
   const dashboardBgUrl = profileForm.watch('dashboardBgUrl')
   const emailAccentColor = profileForm.watch('emailAccentColor')
+  const appGradientStart = profileForm.watch('appGradientStart')
+  const appGradientEnd = profileForm.watch('appGradientEnd')
   const logoInputRef = useRef<HTMLInputElement>(null)
   const bgInputRef = useRef<HTMLInputElement>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
@@ -109,7 +117,7 @@ export function TrainerSettingsForm({
     setProfileMsg(null)
     const [r1, r2] = await Promise.all([
       fetch('/api/user', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: data.name, timezone: data.timezone }) }),
-      fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, logoUrl: data.logoUrl, dashboardBgUrl: data.dashboardBgUrl, emailAccentColor: data.emailAccentColor }) }),
+      fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, logoUrl: data.logoUrl, dashboardBgUrl: data.dashboardBgUrl, emailAccentColor: data.emailAccentColor, appGradientStart: data.appGradientStart, appGradientEnd: data.appGradientEnd }) }),
     ])
     setProfileMsg(r1.ok && r2.ok ? 'Saved!' : 'Failed to save.')
     router.refresh()
@@ -251,6 +259,49 @@ export function TrainerSettingsForm({
                   <button
                     type="button"
                     onClick={() => profileForm.setValue('emailAccentColor', '', { shouldDirty: true })}
+                    className="text-xs text-slate-400 hover:text-red-500"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Client-app accent gradient (start + end). */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-700">App accent gradient</label>
+              <p className="text-xs text-slate-400 -mt-1">The two colours used across your clients’ app — buttons, the “Up next” card, highlights. Start fades into end.</p>
+              <div
+                className="h-14 w-full rounded-2xl border border-slate-200"
+                style={{ backgroundImage: `linear-gradient(135deg, ${appGradientStart || DEFAULT_GRADIENT_START}, ${appGradientEnd || DEFAULT_GRADIENT_END})` }}
+              />
+              <div className="flex flex-wrap items-center gap-4 mt-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 w-9">Start</span>
+                  <input
+                    type="color"
+                    value={appGradientStart || DEFAULT_GRADIENT_START}
+                    onChange={e => profileForm.setValue('appGradientStart', e.target.value, { shouldDirty: true })}
+                    className="h-10 w-14 rounded border border-slate-200 cursor-pointer"
+                    aria-label="Gradient start colour"
+                  />
+                  <Input type="text" value={appGradientStart ?? ''} onChange={e => profileForm.setValue('appGradientStart', e.target.value, { shouldDirty: true })} placeholder={DEFAULT_GRADIENT_START} className="w-28 font-mono text-sm" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 w-9">End</span>
+                  <input
+                    type="color"
+                    value={appGradientEnd || DEFAULT_GRADIENT_END}
+                    onChange={e => profileForm.setValue('appGradientEnd', e.target.value, { shouldDirty: true })}
+                    className="h-10 w-14 rounded border border-slate-200 cursor-pointer"
+                    aria-label="Gradient end colour"
+                  />
+                  <Input type="text" value={appGradientEnd ?? ''} onChange={e => profileForm.setValue('appGradientEnd', e.target.value, { shouldDirty: true })} placeholder={DEFAULT_GRADIENT_END} className="w-28 font-mono text-sm" />
+                </div>
+                {(appGradientStart || appGradientEnd) && (
+                  <button
+                    type="button"
+                    onClick={() => { profileForm.setValue('appGradientStart', '', { shouldDirty: true }); profileForm.setValue('appGradientEnd', '', { shouldDirty: true }) }}
                     className="text-xs text-slate-400 hover:text-red-500"
                   >
                     Reset

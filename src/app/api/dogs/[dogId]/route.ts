@@ -22,7 +22,7 @@ export async function PATCH(
   if (!parsed.success) return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
 
   // Verify this dog belongs to the requesting client
-  const clientProfile = await prisma.clientProfile.findUnique({
+  const clientProfile = await prisma.clientProfile.findFirst({
     where: { userId: session.user.id },
     select: { id: true, dogId: true },
   })
@@ -46,7 +46,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ dogId
   if (!session) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { dogId } = await params
-  const clientProfile = await prisma.clientProfile.findUnique({
+  const clientProfile = await prisma.clientProfile.findFirst({
     where: { userId: session.user.id },
     select: { id: true, dogId: true },
   })

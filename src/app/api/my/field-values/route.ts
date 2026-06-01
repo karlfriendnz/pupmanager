@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { safeEvaluate } from '@/lib/achievements'
+import { getActiveClient } from '@/lib/client-context'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -18,10 +19,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   }
 
-  const clientProfile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
+  const active = await getActiveClient()
+  const clientProfile = active ? await prisma.clientProfile.findUnique({
+    where: { id: active.clientId },
     select: { id: true, trainerId: true },
-  })
+  }) : null
   if (!clientProfile) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const body = await req.json()

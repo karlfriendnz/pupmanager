@@ -20,6 +20,16 @@ const SAMPLE_DOG = {
 
 const SAMPLE_CLIENT_NAME = 'Sarah'
 
+// Fake badges so the demo's achievements section looks alive even before the
+// trainer has published any of their own.
+const SAMPLE_BADGES = [
+  { id: 'b1', name: 'First session', icon: '🐾', color: 'blue', earned: true },
+  { id: 'b2', name: '5 sessions together', icon: '⭐', color: 'amber', earned: true },
+  { id: 'b3', name: 'First homework done', icon: '📓', color: 'sky', earned: true },
+  { id: 'b4', name: 'Perfect week', icon: '🏆', color: 'violet', earned: false },
+  { id: 'b5', name: '1 month together', icon: '📅', color: 'emerald', earned: false },
+]
+
 interface AchievementShape {
   id: string
   name: string
@@ -53,6 +63,7 @@ export function DemoClientPreview({
           userEmail="sarah@example.com"
           trainerLogo={logoUrl}
           businessName={businessName}
+          previewExitHref="/dashboard"
         >
           <ClientHomeView
             clientName={SAMPLE_CLIENT_NAME}
@@ -69,7 +80,9 @@ export function DemoClientPreview({
               sessionType: 'IN_PERSON',
             }}
             recentSessions={[
-              { id: 'demo-rs1', title: 'Foundations · session 1', scheduledAt: addDaysISO(-7) },
+              { id: 'demo-rs1', title: 'Recall & focus · session 3', scheduledAt: addDaysISO(-4) },
+              { id: 'demo-rs2', title: 'Loose-leash walking · session 2', scheduledAt: addDaysISO(-11) },
+              { id: 'demo-rs3', title: 'Foundations · session 1', scheduledAt: addDaysISO(-18) },
             ]}
             homework={[
               { id: 'demo-h1', title: 'Five-minute name response practice', repetitions: 3, done: true },
@@ -82,17 +95,17 @@ export function DemoClientPreview({
               createdAt: addDaysISO(-1),
               unread: true,
             }}
-            packageProgress={{ label: 'Puppy Foundations', completed: 1, total: 6 }}
-            featuredProducts={[]}
+            packageProgress={{ label: 'Puppy Foundations', completed: 3, total: 6 }}
+            featuredProducts={[
+              { id: 'demo-p1', name: 'Long line — 10m', priceCents: 2400, imageUrl: '/concept-products/leash.jpg', kind: 'PHYSICAL' },
+              { id: 'demo-p2', name: 'High-value treat pouch', priceCents: 1900, imageUrl: '/concept-products/treats.jpg', kind: 'PHYSICAL' },
+              { id: 'demo-p3', name: 'Puppy starter kit', priceCents: 4900, imageUrl: '/concept-products/puppykit.jpg', kind: 'PHYSICAL' },
+            ]}
             libraryItems={[]}
             pendingRequests={[]}
-            achievements={achievements.map(a => ({
-              id: a.id,
-              name: a.name,
-              icon: a.icon,
-              color: a.color,
-              earned: false,
-            }))}
+            achievements={achievements.length
+              ? achievements.map(a => ({ id: a.id, name: a.name, icon: a.icon, color: a.color, earned: true }))
+              : SAMPLE_BADGES}
           />
         </AppShell>
       </div>

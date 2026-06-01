@@ -37,8 +37,9 @@ const STEP_ICON: Record<string, LucideIcon> = {
 }
 import { cn } from '@/lib/utils'
 import type { OnboardingState, OnboardingStepView } from '@/lib/onboarding/types'
+import { PersonalizationWizard, type WizardInitial } from './personalization-wizard'
 
-export function OnboardingPanel({ state }: { state: OnboardingState }) {
+export function OnboardingPanel({ state, branding }: { state: OnboardingState; branding: WizardInitial }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const resumeRequested = searchParams.get('wizard') === '1'
@@ -120,14 +121,12 @@ export function OnboardingPanel({ state }: { state: OnboardingState }) {
 
   if (showWelcome) {
     return (
-      <WelcomeModal
-        onStart={async () => {
+      <PersonalizationWizard
+        initial={branding}
+        onComplete={async () => {
           setWelcomeDismissedLocal(true)
-          // Order matters: tour/start FIRST so the FAB (other pages) + the
-          // dashboard TourPromptBanner have their opt-in signal by the time
-          // router.refresh() re-renders. We deliberately DON'T open the
-          // wizard here — the trainer lands back on the dashboard and the
-          // banner invites them to start the tour when they're ready.
+          // Finishing the wizard opts them into the tour (so the dashboard
+          // checklist + FAB are live) and marks the welcome as seen.
           await Promise.all([
             fetch('/api/onboarding/tour/start', { method: 'POST' }),
             fetch('/api/onboarding/welcome/dismiss', { method: 'POST' }),
@@ -136,9 +135,8 @@ export function OnboardingPanel({ state }: { state: OnboardingState }) {
         }}
         onSkip={async () => {
           setWelcomeDismissedLocal(true)
-          // Skip = "I see the welcome, get out of my way" — don't opt
-          // them into the tour. The dashboard checklist is still
-          // available; the FAB stays hidden until they explicitly opt in.
+          // Skip = dismiss the wizard without opting into the tour. The
+          // dashboard checklist is still available later.
           await fetch('/api/onboarding/welcome/dismiss', { method: 'POST' })
           router.refresh()
         }}

@@ -30,7 +30,9 @@ export default async function VerifyEmailPage({
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
-        clientProfile: {
+        clientProfiles: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
           select: {
             trainer: { select: { businessName: true, logoUrl: true } },
           },
@@ -38,7 +40,7 @@ export default async function VerifyEmailPage({
         trainerProfile: { select: { businessName: true, logoUrl: true } },
       },
     })
-    const t = user?.clientProfile?.trainer ?? user?.trainerProfile ?? null
+    const t = user?.clientProfiles?.[0]?.trainer ?? user?.trainerProfile ?? null
     if (t) {
       trainerLogoUrl = t.logoUrl
       trainerName = t.businessName

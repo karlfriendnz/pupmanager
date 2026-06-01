@@ -2,11 +2,16 @@
 // next /dashboard load behaves exactly like a brand-new signup:
 //   • welcome modal fires
 //   • init helper re-seeds default forms + achievements (drafts)
-//   • all 6 wizard steps start PENDING
+//   • ALL onboarding steps start PENDING (incl. intake_form + availability)
+//   • billing back to a 10-day TRIALING trial with no plan
+//   • no leftover enquiries, availability slots, etc.
 
 import { PrismaClient } from '../src/generated/prisma'
 
 const prisma = new PrismaClient()
+
+// Mirror the real /signup flow (src/app/api/auth/signup/route.ts).
+const TRIAL_DAYS = 10
 
 async function main() {
   const tp = await prisma.trainerProfile.findFirst({
@@ -40,12 +45,25 @@ async function main() {
   const clients = await prisma.clientProfile.deleteMany({ where: { trainerId } })
   console.log(`✗ ${clients.count} client(s)`)
 
+  // Enquiries — EnquiryMessage cascades on enquiry delete, so this is enough.
+  // Left behind by the old reset, which kept the inbox full of demo enquiries.
+  const enquiries = await prisma.enquiry.deleteMany({ where: { trainerId } })
+  console.log(`✗ ${enquiries.count} enquir(ies)`)
+
+  // Availability slots — otherwise the "availability" onboarding step stays
+  // COMPLETED (it's live-derived from availabilitySlots > 0).
+  const slots = await prisma.availabilitySlot.deleteMany({ where: { trainerId } })
+  console.log(`✗ ${slots.count} availability slot(s)`)
+
   // Onboarding progress — wiped so init re-runs and welcomeShownAt = null.
   const progress = await prisma.trainerOnboardingProgress.deleteMany({ where: { trainerId } })
   console.log(`✗ ${progress.count} onboarding progress row(s)`)
 
   // Reset profile fields. createdAt = now so init treats this as a fresh signup
   // (not a backfill), which means welcome modal + auto-modal both fire.
+  // intakeFormPublished → false so the "intake_form" step starts PENDING (it's
+  // keyed off the flag, not whether a form exists). Billing back to TRIALING
+  // with a fresh trial + no plan, matching the real /signup flow.
   await prisma.trainerProfile.update({
     where: { id: trainerId },
     data: {
@@ -53,16 +71,27 @@ async function main() {
       phone: null,
       logoUrl: null,
       intakeSectionOrder: [],
+      intakeFormPublished: false,
+      // Brand + wizard fields back to defaults (null = falls back to PupManager teal).
+      appGradientStart: null,
+      appGradientEnd: null,
+      emailAccentColor: null,
+      clientWelcomeNote: null,
+      website: null,
+      publicEmail: null,
+      subscriptionStatus: 'TRIALING',
+      subscriptionPlanId: null,
+      trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
       createdAt: new Date(),
     },
   })
-  console.log('✓ Profile reset (businessName, phone, logo, sections, createdAt)')
+  console.log('✓ Profile reset (businessName, phone, logo, sections, intakeFormPublished, billing→TRIALING, createdAt)')
 
   console.log('\nNext /dashboard load will:')
   console.log('  1. Re-seed default forms (1 embed, 1 session, 5 intake fields)')
   console.log('  2. Re-seed default achievements (6, all draft)')
   console.log('  3. Show welcome modal')
-  console.log('  4. After welcome dismissed: wizard at step 1, all others pending')
+  console.log('  4. After welcome dismissed: every onboarding step pending')
   console.log('\nIMPORTANT: open in incognito or clear sessionStorage["pm-onboarding-autoopened-v1"]')
 }
 

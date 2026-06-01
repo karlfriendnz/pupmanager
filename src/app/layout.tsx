@@ -1,11 +1,20 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist } from 'next/font/google'
+import { Geist, Baloo_2 } from 'next/font/google'
 import './globals.css'
 import { NativeBootstrap } from '@/components/native/NativeBootstrap'
 
 const geist = Geist({
   variable: '--font-geist',
   subsets: ['latin'],
+})
+
+// Baloo 2 — the body-text sibling of the PupManager wordmark (Baloo Bhai).
+// Used as the display face for client-app headings to bring the brand's
+// rounded, friendly character into the UI instead of the generic sans.
+const baloo = Baloo_2({
+  variable: '--font-baloo',
+  subsets: ['latin'],
+  weight: ['500', '600', '700', '800'],
 })
 
 export const metadata: Metadata = {
@@ -41,7 +50,7 @@ export default function RootLayout({
   // here only ignores attribute mismatches on this single element, not
   // children, so real bugs in our components still surface.
   return (
-    <html lang="en-NZ" suppressHydrationWarning className={`${geist.variable} h-full antialiased`}>
+    <html lang="en-NZ" suppressHydrationWarning className={`${geist.variable} ${baloo.variable} h-full antialiased`}>
       <body suppressHydrationWarning className="min-h-full bg-slate-50 text-slate-900 flex flex-col">
         <NativeBootstrap />
         {children}

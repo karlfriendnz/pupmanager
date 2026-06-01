@@ -44,7 +44,7 @@ export default async function ClientMessagesPage() {
     // sticky positioning needed because the page itself never scrolls.
     <div className="flex flex-col flex-1 min-h-0 -mb-24 md:-mb-8">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 bg-white flex-shrink-0">
-        <div className="h-9 w-9 rounded-full bg-amber-100 text-amber-700 font-bold text-sm flex items-center justify-center flex-shrink-0">
+        <div className="h-9 w-9 rounded-full bg-accent-soft text-accent font-bold text-sm flex items-center justify-center flex-shrink-0">
           {trainerName[0].toUpperCase()}
         </div>
         <div className="min-w-0">

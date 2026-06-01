@@ -13,6 +13,9 @@ type Trainer = {
   subscriptionPlanName: string | null
   subscriptionStatus: string | null
   clientCount: number
+  onboardingCompleted: number
+  onboardingTotal: number
+  onboardingEmails: number
   createdAt: Date
 }
 
@@ -57,7 +60,7 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
   if (editing) {
     return (
       <tr className="border-b border-slate-700/50 bg-slate-700/40">
-        <td colSpan={7} className="px-4 py-4">
+        <td colSpan={9} className="px-4 py-4">
           {error && <p className="text-red-400 text-xs mb-3">{error}</p>}
           <div className="flex gap-3 flex-wrap items-end">
             <div className="flex flex-col gap-1">
@@ -120,6 +123,26 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
         </span>
       </td>
       <td className="px-4 py-3 text-slate-300">{trainer.clientCount}</td>
+      <td className="px-4 py-3">
+        {(() => {
+          const { onboardingCompleted: done, onboardingTotal: total } = trainer
+          const pct = total > 0 ? Math.round((done / total) * 100) : 0
+          const complete = total > 0 && done >= total
+          return (
+            <div className="flex items-center gap-2" title={`${done} of ${total} onboarding steps complete`}>
+              <div className="w-14 h-1.5 rounded-full bg-slate-700 overflow-hidden">
+                <div className={`h-full ${complete ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
+              </div>
+              <span className={`text-xs tabular-nums ${complete ? 'text-green-300' : 'text-slate-300'}`}>{done}/{total}</span>
+            </div>
+          )
+        })()}
+      </td>
+      <td className="px-4 py-3">
+        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 tabular-nums" title={`${trainer.onboardingEmails} onboarding email${trainer.onboardingEmails === 1 ? '' : 's'} sent`}>
+          {trainer.onboardingEmails} sent
+        </span>
+      </td>
       <td className="px-4 py-3 text-slate-400">{formatDate(trainer.createdAt)}</td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1">

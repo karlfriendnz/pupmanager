@@ -219,7 +219,7 @@ function ProductModal({
               href={product.downloadUrl!}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center justify-center gap-2 transition-colors"
+              className="w-full h-12 rounded-xl bg-accent hover:opacity-90 text-white font-semibold flex items-center justify-center gap-2 transition-colors"
             >
               <Download className="h-4 w-4" /> Download
             </a>

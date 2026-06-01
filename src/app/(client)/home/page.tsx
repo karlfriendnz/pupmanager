@@ -32,7 +32,7 @@ export default async function ClientHomePage() {
     where: { id: active.clientId },
     include: {
       user: { select: { name: true } },
-      trainer: { select: { id: true, businessName: true, logoUrl: true, dashboardBgUrl: true } },
+      trainer: { select: { id: true, businessName: true, logoUrl: true, dashboardBgUrl: true, clientWelcomeNote: true } },
       dog: { select: { id: true, name: true, breed: true, photoUrl: true } },
       dogs: { select: { id: true, name: true, breed: true, photoUrl: true } },
     },
@@ -44,6 +44,15 @@ export default async function ClientHomePage() {
     ...clientProfile.dogs,
   ]
   const primaryDog = allDogs[0] ?? null
+
+  // Trainer-curated gallery for the primary dog — drives the home hero.
+  const galleryMedia = primaryDog
+    ? await prisma.dogMedia.findMany({
+        where: { dogId: primaryDog.id },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, kind: true, url: true, thumbnailUrl: true },
+      })
+    : []
 
   const now = new Date()
   const weekStart = startOfWeek(now)
@@ -190,9 +199,11 @@ export default async function ClientHomePage() {
     <ClientHomeView
       clientName={clientProfile.user.name ?? 'there'}
       businessName={clientProfile.trainer.businessName}
+      welcomeNote={clientProfile.trainer.clientWelcomeNote}
       dashboardBgUrl={clientProfile.trainer.dashboardBgUrl}
       trainerLogoUrl={clientProfile.trainer.logoUrl}
       primaryDog={primaryDog}
+      gallery={galleryMedia.map(m => ({ id: m.id, kind: m.kind as 'IMAGE' | 'VIDEO', url: m.url, thumbnailUrl: m.thumbnailUrl }))}
       upcomingSession={upcomingSession ? {
         id: upcomingSession.id,
         title: upcomingSession.title,

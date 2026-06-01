@@ -99,11 +99,11 @@ export function MessageThread({
             <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-xs md:max-w-sm rounded-2xl px-4 py-2.5 text-sm ${
                 isMine
-                  ? 'bg-blue-600 text-white rounded-br-sm'
-                  : 'bg-slate-100 text-slate-900 rounded-bl-sm'
+                  ? 'bg-accent text-white rounded-br-md'
+                  : 'bg-white shadow-sm text-slate-700 rounded-bl-md'
               }`}>
                 <p className="break-words">{msg.body}</p>
-                <p className={`text-xs mt-1 ${isMine ? 'text-blue-200' : 'text-slate-400'}`}>
+                <p className={`text-xs mt-1 ${isMine ? 'text-white/70' : 'text-slate-400'}`}>
                   {new Date(msg.createdAt).toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
@@ -128,7 +128,7 @@ export function MessageThread({
             value={body}
             onChange={e => setBody(e.target.value)}
             placeholder="Type a message…"
-            className="flex-1 h-11 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="flex-1 h-11 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent bg-white"
             maxLength={2000}
           />
           <Button type="submit" size="sm" loading={isPending} disabled={!body.trim()}>

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 
 // PATCH /api/my/profile — client-side endpoint for updating the
 // signed-in client's own name + phone. Used by the intake form so the
@@ -35,10 +36,13 @@ export async function PATCH(req: Request) {
     await prisma.user.update({ where: { id: session.user.id }, data: { name } })
   }
   if (phone !== undefined) {
-    await prisma.clientProfile.update({
-      where: { userId: session.user.id },
-      data: { phone: phone?.trim() || null },
-    })
+    const active = await getActiveClient()
+    if (active) {
+      await prisma.clientProfile.update({
+        where: { id: active.clientId },
+        data: { phone: phone?.trim() || null },
+      })
+    }
   }
 
   return NextResponse.json({ ok: true })

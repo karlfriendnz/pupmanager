@@ -8,10 +8,17 @@ const patchSchema = z.object({
   businessName: z.string().min(2).optional(),
   phone: z.string().optional(),
   logoUrl: z.string().url().optional().or(z.literal('')),
+  website: z.string().max(200).optional().or(z.literal('')),
+  publicEmail: z.string().max(200).optional().or(z.literal('')),
   dashboardBgUrl: z.string().url().optional().or(z.literal('')),
   inviteTemplate: z.string().optional(),
   // 3- or 6-digit hex (with leading #), or empty string to clear.
   emailAccentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
+  // Client-app accent gradient start + end (hex, or empty to clear).
+  appGradientStart: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
+  appGradientEnd: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
+  // Personal welcome note shown to clients on the app home (empty to clear).
+  clientWelcomeNote: z.string().max(500).optional().or(z.literal('')),
   // Schedule view prefs. Hours 0–23, days 1=Mon..7=Sun, end > start.
   // The mobile pair is an optional override applied only on phones —
   // pass `null` to clear and fall back to the desktop pair.
@@ -79,6 +86,11 @@ export async function PATCH(req: Request) {
   // Empty string from the colour input means "clear this" — store as null
   // so the email template falls back to the default.
   if (data.emailAccentColor === '') data.emailAccentColor = null as unknown as string
+  if (data.appGradientStart === '') data.appGradientStart = null as unknown as string
+  if (data.appGradientEnd === '') data.appGradientEnd = null as unknown as string
+  if (data.clientWelcomeNote === '') data.clientWelcomeNote = null as unknown as string
+  if (data.website === '') data.website = null as unknown as string
+  if (data.publicEmail === '') data.publicEmail = null as unknown as string
 
   // Merge intakeSystemFieldSections instead of replacing — the editor
   // sends one key at a time when the trainer drags a single system

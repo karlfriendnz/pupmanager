@@ -24,7 +24,7 @@ export default async function TrainerSettingsPage() {
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
-    select: { id: true, businessName: true, phone: true, logoUrl: true, dashboardBgUrl: true, inviteTemplate: true, emailAccentColor: true, intakeSectionOrder: true, intakeFormPublished: true },
+    select: { id: true, businessName: true, phone: true, logoUrl: true, dashboardBgUrl: true, inviteTemplate: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true, intakeSectionOrder: true, intakeFormPublished: true },
   })
 
   const user = await prisma.user.findUnique({

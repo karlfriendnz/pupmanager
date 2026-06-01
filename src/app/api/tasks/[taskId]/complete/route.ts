@@ -26,15 +26,10 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
-  const clientProfile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true },
-  })
-  if (!clientProfile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-
-  // Verify client owns this task
+  // Verify the task belongs to one of this user's client profiles (any trainer).
   const task = await prisma.trainingTask.findFirst({
-    where: { id: taskId, clientId: clientProfile.id },
+    where: { id: taskId, client: { userId: session.user.id } },
+    select: { id: true, clientId: true },
   })
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
 
@@ -53,7 +48,7 @@ export async function POST(
     },
   })
 
-  await safeEvaluate(clientProfile.id)
+  await safeEvaluate(task.clientId)
 
   return NextResponse.json(completion)
 }
@@ -69,14 +64,8 @@ export async function DELETE(
 
   const { taskId } = await params
 
-  const clientProfile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true },
-  })
-  if (!clientProfile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-
   const task = await prisma.trainingTask.findFirst({
-    where: { id: taskId, clientId: clientProfile.id },
+    where: { id: taskId, client: { userId: session.user.id } },
     select: { id: true },
   })
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })

@@ -81,7 +81,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user }) {
       try {
         if (user.role !== 'CLIENT' || !user.id) return
-        const client = await prisma.clientProfile.findUnique({
+        const client = await prisma.clientProfile.findFirst({
           where: { userId: user.id },
           select: { trainerId: true },
         })
@@ -200,7 +200,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           select: {
             name: true,
             role: true,
-            clientProfile: {
+            clientProfiles: {
+              take: 1,
+              orderBy: { createdAt: 'desc' },
               select: {
                 trainer: {
                   select: {
@@ -223,7 +225,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           },
         })
 
-        const trainer = user?.clientProfile?.trainer ?? user?.trainerProfile ?? null
+        const trainer = user?.clientProfiles?.[0]?.trainer ?? user?.trainerProfile ?? null
         const recipientName = user?.name ?? null
 
         const rendered = renderLoginLinkEmail({ url, recipientName, trainer })

@@ -10,6 +10,9 @@ import { auth } from './auth'
 import { prisma } from './prisma'
 
 export const PREVIEW_COOKIE = 'pm-preview-client'
+// Pins which trainer relationship (clientProfile.id) is active for a client
+// who works with more than one trainer. Set by the trainer chooser/switcher.
+export const ACTIVE_TRAINER_COOKIE = 'pm-active-trainer'
 
 export interface ActiveClient {
   clientId: string
@@ -49,10 +52,25 @@ export const getActiveClient = cache(async (): Promise<ActiveClient | null> => {
   }
 
   if (session.user.role === 'CLIENT') {
-    const client = await prisma.clientProfile.findUnique({
-      where: { userId: session.user.id },
-      select: { id: true, userId: true },
-    })
+    // A user can have several client profiles (one per trainer). The active
+    // one is pinned by the pm-active-trainer cookie; otherwise we default to
+    // the most recent relationship. The chooser/switcher sets the cookie.
+    const store = await cookies()
+    const activeId = store.get(ACTIVE_TRAINER_COOKIE)?.value
+
+    let client = activeId
+      ? await prisma.clientProfile.findFirst({
+          where: { id: activeId, userId: session.user.id },
+          select: { id: true, userId: true },
+        })
+      : null
+    if (!client) {
+      client = await prisma.clientProfile.findFirst({
+        where: { userId: session.user.id },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, userId: true },
+      })
+    }
     if (!client) return null
     return {
       clientId: client.id,
@@ -64,3 +82,18 @@ export const getActiveClient = cache(async (): Promise<ActiveClient | null> => {
 
   return null
 })
+
+// The client profiles (one per trainer) available to the signed-in user, for
+// the trainer chooser/switcher. Returns [] for non-clients.
+export async function getClientTrainerOptions() {
+  const session = await auth()
+  if (!session || session.user.role !== 'CLIENT') return []
+  return prisma.clientProfile.findMany({
+    where: { userId: session.user.id },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      trainer: { select: { businessName: true, logoUrl: true, emailAccentColor: true } },
+    },
+  })
+}

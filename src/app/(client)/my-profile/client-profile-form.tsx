@@ -132,7 +132,7 @@ export function ClientProfileForm({
             <select
               value={timezone}
               onChange={e => setTimezone(e.target.value)}
-              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             >
               {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
             </select>
@@ -172,7 +172,7 @@ export function ClientProfileForm({
               />
             </div>
           ))}
-          <button type="button" onClick={addDog} className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700">
+          <button type="button" onClick={addDog} className="flex items-center gap-1.5 text-sm text-accent hover:opacity-80">
             <Plus className="h-4 w-4" /> Add another dog
           </button>
         </CardBody>

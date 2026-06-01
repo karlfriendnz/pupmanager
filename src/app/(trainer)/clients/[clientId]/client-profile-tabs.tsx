@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { SessionFormReport } from '@/components/session-form-report'
 import { ClientAchievementsPanel } from './client-achievements-panel'
 import { StatusToggle } from './status-toggle'
+import { DogGalleryManager } from './dog-gallery-manager'
 import Link from 'next/link'
 
 type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements'
@@ -611,6 +612,9 @@ export function ClientProfileTabs({
                       </div>
                     )}
                   </div>
+
+                  {/* Trainer-curated gallery — appears as the hero on the client's home */}
+                  <DogGalleryManager dogId={dog.id} />
 
                   {/* Dog-specific custom fields */}
                   {dogFieldGroups.map(group => {

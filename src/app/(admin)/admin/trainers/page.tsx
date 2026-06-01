@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { TrainerRow } from './trainer-actions'
 import type { Metadata } from 'next'
 
@@ -23,14 +24,28 @@ export default async function AdminTrainersPage({
     include: {
       trainerProfile: {
         select: {
+          id: true,
           businessName: true,
           subscriptionStatus: true,
           subscriptionPlan: { select: { name: true } },
           _count: { select: { clients: true } },
+          // Count of onboarding emails actually sent to this trainer.
+          onboardingProgress: { select: { _count: { select: { emails: true } } } },
         },
       },
     },
   })
+
+  // Onboarding progress per trainer — use the same live-derived completion the
+  // dashboard checklist uses (a step counts as done when the underlying action
+  // is done OR it was explicitly marked), not just the raw step-progress rows.
+  const onboarding = await Promise.all(
+    trainers.map(async t => {
+      if (!t.trainerProfile?.id) return { completed: 0, total: 0 }
+      const fab = await getOnboardingFabState(t.trainerProfile.id)
+      return { completed: fab.steps.filter(s => s.status === 'completed').length, total: fab.totalSteps }
+    }),
+  )
 
   return (
     <div>
@@ -57,12 +72,14 @@ export default async function AdminTrainersPage({
               <th className="text-left px-4 py-3">Business</th>
               <th className="text-left px-4 py-3">Plan</th>
               <th className="text-left px-4 py-3">Clients</th>
+              <th className="text-left px-4 py-3">Onboarding</th>
+              <th className="text-left px-4 py-3">Emails</th>
               <th className="text-left px-4 py-3">Joined</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
-            {trainers.map(t => (
+            {trainers.map((t, i) => (
               <TrainerRow key={t.id} trainer={{
                 id: t.id,
                 name: t.name,
@@ -71,6 +88,9 @@ export default async function AdminTrainersPage({
                 subscriptionPlanName: t.trainerProfile?.subscriptionPlan?.name ?? null,
                 subscriptionStatus: t.trainerProfile?.subscriptionStatus ?? null,
                 clientCount: t.trainerProfile?._count?.clients ?? 0,
+                onboardingCompleted: onboarding[i].completed,
+                onboardingTotal: onboarding[i].total,
+                onboardingEmails: t.trainerProfile?.onboardingProgress?._count?.emails ?? 0,
                 createdAt: t.createdAt,
               }} />
             ))}

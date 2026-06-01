@@ -110,7 +110,7 @@ model User {
 
   // Role-specific profiles
   trainerProfile TrainerProfile?
-  clientProfile  ClientProfile?
+  clientProfiles ClientProfile[]
 
   // Businesses this user belongs to as a trainer. The OWNER of a business has
   // both a trainerProfile (the business itself) AND an OWNER membership row;
@@ -252,11 +252,21 @@ model TrainerProfile {
   businessName     String
   phone            String?
   logoUrl          String?
+  website          String? // public website URL, shown to clients as a link in the app header
+  publicEmail      String? // public contact email shown to clients (may differ from login email)
   dashboardBgUrl   String? // background image shown on the client home dashboard
   inviteTemplate   String? @db.Text // customisable invite email template
   // Hex colour for the accent strip across the top of outbound emails.
   // Falls back to a violet default when null.
   emailAccentColor String?
+  // Client-app accent gradient — start + end hex. Drive --accent and
+  // --accent-strong in the (client) shell. Null falls back to emailAccentColor
+  // (start) / a derived darker shade (end), else the PupManager teal default.
+  appGradientStart String?
+  appGradientEnd   String?
+  // Short personal welcome shown to clients on their app home (set in the
+  // first-run personalization wizard, editable later in settings).
+  clientWelcomeNote String? @db.Text
 
   // Google Calendar integration
   googleCalendarRefreshToken String? @db.Text
@@ -416,7 +426,9 @@ model TrainerMembership {
 
 model ClientProfile {
   id        String  @id @default(cuid())
-  userId    String  @unique
+  // A user can hold several client relationships — one per trainer (tenant).
+  // Uniqueness is therefore on the (userId, trainerId) pair, not userId alone.
+  userId    String
   trainerId String // owning business (TrainerProfile = tenant)
   // The member trainer this client is assigned to within the business. Null =
   // unassigned (visible to owner/managers; not to any single staff member).
@@ -424,6 +436,10 @@ model ClientProfile {
   assignedMembershipId String?
   dogId     String? // set after onboarding
   status    String  @default("ACTIVE") // "ACTIVE" | "INACTIVE"
+  // Auto-generated "Sample" client seeded by the first-run personalization
+  // wizard so a brand-new trainer can preview the client app. Removed on
+  // demand or when the trainer adds their first real client.
+  isSample  Boolean @default(false)
   // Contact phone for the client (collected on intake). Lives on the
   // profile, not on User, mirroring TrainerProfile.phone — phone is a
   // per-trainer-relationship attribute (a client may share a phone
@@ -460,6 +476,8 @@ model ClientProfile {
   achievements      ClientAchievement[]
   enquiry           Enquiry?
 
+  @@unique([userId, trainerId])
+  @@index([userId])
   @@index([trainerId])
   @@index([assignedMembershipId])
   @@map("client_profiles")
@@ -484,9 +502,32 @@ model Dog {
   tasks         TrainingTask[]
   buddySessions SessionBuddy[]
   classEnrollments ClassEnrollment[]
+  media         DogMedia[]
 
   @@index([clientProfileId])
   @@map("dogs")
+}
+
+// Trainer-curated photo/video gallery for a dog. Surfaced as the hero on the
+// client home + dog profile. Mirrors session_attachments (public Blob URLs,
+// unguessable pathnames; the API endpoints enforce trainer ownership).
+model DogMedia {
+  id           String         @id @default(cuid())
+  dogId        String
+  trainerId    String // denormalised for fast permission checks
+  kind         AttachmentKind
+  url          String
+  thumbnailUrl String? // client-generated still for video previews
+  caption      String?        @db.Text
+  order        Int            @default(0)
+
+  createdAt DateTime @default(now())
+
+  dog Dog @relation(fields: [dogId], references: [id], onDelete: Cascade)
+
+  @@index([dogId])
+  @@index([trainerId])
+  @@map("dog_media")
 }
 
 // ─── Client Sharing ───────────────────────────────────────────────────────────
@@ -1577,6 +1618,10 @@ model OnboardingEmail {
   key         String    @unique
   subject     String
   body        String    @db.Text
+  // Optional intro text shown ABOVE the hero image.
+  topText     String?   @db.Text
+  // Optional hero image shown in the email (admin-uploaded, public Blob URL).
+  imageUrl    String?
   senderKey   String    @default("karl")
   // Examples:
   //   { "type": "on_signup" }

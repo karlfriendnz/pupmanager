@@ -49,6 +49,29 @@ export default async function DashboardPage({
   await initTrainerOnboarding(trainerId)
   const onboardingState = await getOnboardingState(trainerId)
 
+  // Branding seed for the first-run personalization wizard (only mounted for
+  // fresh signups by OnboardingPanel, but cheap to always fetch).
+  const brandingProfile = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: {
+      businessName: true, logoUrl: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true,
+      clientWelcomeNote: true, website: true, phone: true, publicEmail: true,
+      user: { select: { email: true } },
+    },
+  })
+  const branding = {
+    businessName: brandingProfile?.businessName ?? '',
+    logoUrl: brandingProfile?.logoUrl ?? null,
+    emailAccentColor: brandingProfile?.emailAccentColor ?? null,
+    appGradientStart: brandingProfile?.appGradientStart ?? null,
+    appGradientEnd: brandingProfile?.appGradientEnd ?? null,
+    clientWelcomeNote: brandingProfile?.clientWelcomeNote ?? null,
+    website: brandingProfile?.website ?? null,
+    phone: brandingProfile?.phone ?? null,
+    publicEmail: brandingProfile?.publicEmail ?? null,
+    signupEmail: brandingProfile?.user?.email ?? '',
+  }
+
   // Trainer's timezone drives all day-bounds and time formatting on this
   // server-rendered page. Vercel runs Node in UTC so without this every
   // time would render as UTC for everyone.
@@ -219,7 +242,7 @@ export default async function DashboardPage({
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
         <BookingRequestsPanel trainerId={trainerId} />
         <WaitlistNudge trainerId={trainerId} />
-        <OnboardingPanel state={onboardingState} />
+        <OnboardingPanel state={onboardingState} branding={branding} />
 
       {/* Vital stats strip — four tiles in one row: Notes, Invoice, Clients,
           Dogs. The first two link to /sessions/needs-notes; Clients/Dogs are

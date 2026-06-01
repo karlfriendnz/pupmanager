@@ -13,6 +13,17 @@
 
   --color-accent-400: #fbbf24;
   --color-accent-500: #f59e0b;
+
+  /* Per-trainer brand accent — driven by --accent (set on the client shell
+     from the trainer's brand colour, default teal). Tints derive via
+     color-mix so the whole client app re-themes from one value. */
+  --font-display: var(--font-baloo);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-tint: var(--accent-tint);
+  --color-surface: var(--surface);
 }
 
 /* Smooth scroll & comfortable tap targets on mobile */
@@ -159,6 +170,16 @@ button, a, [role="button"] {
   --pm-ink-500: #5b7682;
   --pm-ink-300: #b8cdd4;
   --pm-ink-100: #e6eef1;
+
+  /* Client-app theming — default accent = PupManager teal (--pm-brand-600).
+     The client shell overrides --accent per trainer; the tints + surface
+     below derive from it via color-mix, so one value re-skins the app. */
+  --accent:        #2a9da9;
+  --accent-strong: color-mix(in oklab, var(--accent), black 14%);
+  --accent-fg:     #ffffff;
+  --accent-soft:   color-mix(in srgb, var(--accent) 14%, white);
+  --accent-tint:   color-mix(in srgb, var(--accent) 7%, white);
+  --surface:       color-mix(in srgb, var(--accent) 4%, #f7fafb);
 }
 
 /* Pulsing dot rendered beside a sidebar menu item to point the trainer at

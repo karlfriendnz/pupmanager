@@ -244,7 +244,7 @@ const ONBOARDING_EMAILS = [
 
 Welcome to PupManager. Quick intro to who's behind this thing:
 
-I'm Karl. I build software. My partner Brooke is a dog trainer, and a few years ago I watched her spend an entire Sunday night writing up session notes, chasing clients for vax records, and cobbling together intake forms in Google Docs. That night turned into the next night. Then the next.
+I'm Karl. I build software. My partner Brooke is a dog trainer, and a few years ago I watched her spend an entire Sunday night writing up session notes, chasing clients for the homework they'd forgotten, and cobbling together intake forms in Google Docs. That night turned into the next night. Then the next.
 
 So we built PupManager. Brooke designs it from the trainer side — she's still seeing clients, still using it every day. I build it. The whole point is to give trainers their evenings back.
 

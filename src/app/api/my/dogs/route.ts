@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -13,11 +14,9 @@ export async function POST(req: Request) {
   const session = await auth()
   if (!session || session.user.role !== 'CLIENT') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
-  const clientProfile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true },
-  })
-  if (!clientProfile) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const active = await getActiveClient()
+  if (!active) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const clientProfile = { id: active.clientId }
 
   const body = await req.json()
   const parsed = schema.safeParse(body)

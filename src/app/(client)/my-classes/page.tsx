@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { GraduationCap, CheckCircle2, XCircle, Clock, Star } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Classes' }
@@ -38,28 +39,28 @@ export default async function MyClassesPage() {
   })
 
   return (
-    <div className="px-5 lg:px-8 pt-6 pb-10 max-w-3xl mx-auto w-full">
-      <h1 className="text-2xl font-bold text-slate-900">Classes</h1>
-      <p className="text-sm text-slate-500 mt-1">Group classes you&apos;re enrolled in, and how each session went.</p>
+    <>
+      <PageHeader title="Classes" subtitle="Group classes & how each session went" />
+      <div className="px-4 pt-5 pb-10 max-w-3xl mx-auto w-full">
 
       {enrollments.length === 0 && (
-        <div className="mt-10 flex flex-col items-center justify-center text-center">
-          <div className="h-16 w-16 rounded-2xl bg-slate-100 flex items-center justify-center">
-            <GraduationCap className="h-7 w-7 text-slate-400" />
+        <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-8 text-center">
+          <div className="mx-auto h-12 w-12 rounded-2xl bg-accent-soft flex items-center justify-center">
+            <GraduationCap className="h-6 w-6 text-accent" />
           </div>
-          <p className="mt-4 text-sm font-medium text-slate-600">No classes yet</p>
-          <p className="mt-1 text-xs text-slate-400 max-w-xs">
+          <p className="mt-3 text-sm font-semibold text-slate-700">No classes yet</p>
+          <p className="mt-1 text-xs text-slate-400">
             When your trainer enrols you in a group class it will show up here.
           </p>
         </div>
       )}
 
-      <div className="mt-6 flex flex-col gap-5">
+      <div className="flex flex-col gap-5">
         {enrollments.map(e => {
           const bySession = new Map(e.attendance.map(a => [a.sessionId, a]))
           const waitlisted = e.status === 'WAITLISTED'
           return (
-            <section key={e.id} className="rounded-2xl bg-white border border-slate-100 overflow-hidden">
+            <section key={e.id} className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900 truncate">{e.classRun.name}</p>
@@ -73,7 +74,7 @@ export default async function MyClassesPage() {
                     Waitlisted{e.waitlistPosition ? ` · #${e.waitlistPosition}` : ''}
                   </span>
                 ) : e.type === 'DROP_IN' ? (
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full flex-shrink-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-accent bg-accent-soft px-2 py-0.5 rounded-full flex-shrink-0">
                     Drop-in
                   </span>
                 ) : null}
@@ -135,6 +136,7 @@ export default async function MyClassesPage() {
           )
         })}
       </div>
-    </div>
+      </div>
+    </>
   )
 }

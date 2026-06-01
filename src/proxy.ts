@@ -12,6 +12,8 @@ const PUBLIC_PATHS = [
   '/api/webhooks', // Stripe + future inbound webhooks (signature-gated inside)
   '/form',       // public embed forms
   '/api/form',   // public form submission API
+  '/concepts',   // TEMP: client-home redesign concept previews (mock data, no auth) — remove before ship
+  '/concept-products', // TEMP: generated product images for the concept shop — remove before ship
   '/api/version', // build-id check for the stale-client reload guard (no secrets)
   // Universal Links / Android App Links discovery files. Apple and Google
   // fetch these on app install to verify domain↔app association; they
@@ -28,7 +30,7 @@ const TRAINER_PATHS = [
 ]
 
 // Client-only route prefixes
-const CLIENT_PATHS = ['/home', '/my-profile', '/my-messages', '/my-help', '/my-sessions', '/my-shop', '/notifications']
+const CLIENT_PATHS = ['/home', '/my-profile', '/my-messages', '/my-help', '/my-sessions', '/my-shop', '/notifications', '/my-classes', '/my-dogs', '/my-achievements', '/my-availability', '/switch-trainer']
 
 export default auth((req) => {
   const { pathname } = req.nextUrl
@@ -86,5 +88,5 @@ export default auth((req) => {
 export const config = {
   // Skip auth/role checks for static assets and App Router metadata routes
   // (manifest.json, icon, apple-icon, sitemap, robots) — these are public by design.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|icon|apple-icon|logo.png|icons/|sitemap.xml|robots.txt|public/).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|icon|apple-icon|logo.png|logo-wordmark.png|hero-illustration.png|icons/|sitemap.xml|robots.txt|public/).*)'],
 }

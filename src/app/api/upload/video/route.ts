@@ -32,19 +32,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'File too large (max 100 MB)' }, { status: 413 })
   }
 
-  const clientProfile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true },
-  })
-  if (!clientProfile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-
   const task = await prisma.trainingTask.findFirst({
-    where: { id: taskId, clientId: clientProfile.id },
+    where: { id: taskId, client: { userId: session.user.id } },
+    select: { id: true, clientId: true },
   })
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
 
   const ext = file.name.split('.').pop() ?? 'mp4'
-  const key = `videos/${clientProfile.id}/${taskId}/${crypto.randomUUID()}.${ext}`
+  const key = `videos/${task.clientId}/${taskId}/${crypto.randomUUID()}.${ext}`
 
   const buffer = Buffer.from(await file.arrayBuffer())
 

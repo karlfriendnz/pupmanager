@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveClient } from '@/lib/client-context'
 
 export async function GET() {
   const session = await auth()
@@ -8,10 +9,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   }
 
-  const profile = await prisma.clientProfile.findUnique({
-    where: { userId: session.user.id },
+  const active = await getActiveClient()
+  const profile = active ? await prisma.clientProfile.findUnique({
+    where: { id: active.clientId },
     select: { id: true, trainerId: true },
-  })
+  }) : null
   if (!profile) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const [products, pendingRequests] = await Promise.all([

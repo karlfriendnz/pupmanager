@@ -21,7 +21,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           <button type="submit" className="text-xs text-slate-400 hover:text-white">Sign out</button>
         </form>
       </header>
-      <main className="flex-1 p-6 max-w-6xl mx-auto w-full">{children}</main>
+      <main className="flex-1 p-6 w-full">{children}</main>
     </div>
   )
 }

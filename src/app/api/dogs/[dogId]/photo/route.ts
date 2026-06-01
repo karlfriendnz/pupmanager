@@ -51,11 +51,11 @@ export async function POST(
   // Auth: client owns the profile OR the calling trainer owns the client.
   let authorised = false
   if (session.user.role === 'CLIENT') {
-    const cp = await prisma.clientProfile.findUnique({
-      where: { userId: session.user.id },
+    const cp = await prisma.clientProfile.findFirst({
+      where: { userId: session.user.id, id: owningClientProfileId },
       select: { id: true },
     })
-    authorised = cp?.id === owningClientProfileId
+    authorised = !!cp
   } else if (session.user.role === 'TRAINER') {
     // The caller's business id (works for owners + invited members).
     const myCompanyId = session.user.trainerId
@@ -142,11 +142,11 @@ export async function DELETE(
 
   let authorised = false
   if (session.user.role === 'CLIENT') {
-    const cp = await prisma.clientProfile.findUnique({
-      where: { userId: session.user.id },
+    const cp = await prisma.clientProfile.findFirst({
+      where: { userId: session.user.id, id: owningClientProfileId },
       select: { id: true },
     })
-    authorised = cp?.id === owningClientProfileId
+    authorised = !!cp
   } else if (session.user.role === 'TRAINER') {
     if (session.user.trainerId && session.user.trainerId === owningTrainerId) authorised = true
   }

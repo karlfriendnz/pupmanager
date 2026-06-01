@@ -10,6 +10,7 @@ import {
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag,
   MoreHorizontal, X, Inbox, GraduationCap, Flame,
+  Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ArrowLeftRight,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
@@ -38,13 +39,25 @@ const TRAINER_MOBILE_PRIMARY_HREFS = new Set([
   '/dashboard', '/clients', '/schedule', '/messages',
 ])
 
-const CLIENT_NAV = [
+// Mobile bottom tabs (4 primary + a Menu hamburger added in the shell).
+const CLIENT_TABS = [
   { href: '/home', label: 'Home', icon: Home },
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
   { href: '/my-classes', label: 'Classes', icon: GraduationCap },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
-  { href: '/my-profile', label: 'Profile', icon: User },
 ]
+// Everything a client can reach — the full-screen menu (mobile).
+const CLIENT_MENU = [
+  { href: '/my-sessions', label: 'Sessions', icon: Calendar },
+  { href: '/my-classes', label: 'Classes', icon: GraduationCap },
+  { href: '/my-messages', label: 'Messages', icon: MessageSquare },
+  { href: '/my-shop', label: 'Shop', icon: ShoppingBag },
+  { href: '/my-achievements', label: 'Achievements', icon: Trophy },
+  { href: '/my-dogs', label: 'My dogs', icon: Dog },
+  { href: '/my-profile', label: 'My details', icon: User },
+]
+// Desktop sidebar = Home + everything in the menu.
+const CLIENT_SIDEBAR = [{ href: '/home', label: 'Home', icon: Home }, ...CLIENT_MENU]
 
 interface AppShellProps {
   role: 'TRAINER' | 'CLIENT'
@@ -101,6 +114,20 @@ interface AppShellProps {
    * everything; staff only see what they can act on. Empty = show all.
    */
   hiddenNavHrefs?: string[]
+  /**
+   * Client shell only: the trainer's public contact details, surfaced as
+   * icon links in the full-screen menu header. Any null/missing value is
+   * simply not rendered.
+   */
+  trainerContact?: { website?: string | null; phone?: string | null; email?: string | null }
+  /** Client shell only: show a "Switch trainer" entry (client has 2+ trainers). */
+  showTrainerSwitcher?: boolean
+  /**
+   * Client shell only: when set (the trainer's demo/preview), "Sign out"
+   * navigates here instead of actually signing out — so a previewing trainer
+   * lands back on their dashboard without having to log in again.
+   */
+  previewExitHref?: string | null
 }
 
 export function AppShell(props: AppShellProps) {
@@ -114,140 +141,195 @@ export function AppShell(props: AppShellProps) {
 }
 
 // ─── Client shell ────────────────────────────────────────────────────────────
-// Mobile-app-style layout: no sidebar on any viewport. Sticky brand header
-// on top, sticky bottom tab nav, centered narrow column on desktop.
+// PupManager-branded client app. Mobile: full-bleed pages + bottom tab bar +
+// a full-screen pull-down Menu. Desktop (md+): left sidebar, content fills.
 
-function ClientShell({ children, trainerLogo, businessName, clientNavHints, unreadCounts = {} }: AppShellProps) {
+function ClientShell({ children, trainerLogo, businessName, clientNavHints, unreadCounts = {}, trainerContact, showTrainerSwitcher, previewExitHref }: AppShellProps) {
+  const handleSignOut = () => {
+    if (previewExitHref) { window.location.href = previewExitHref; return }
+    signOut({ callbackUrl: '/login' })
+  }
   const pathname = usePathname()
+  // Append a "Switch trainer" entry when the client works with 2+ trainers.
+  const switchItem = { href: '/switch-trainer', label: 'Switch trainer', icon: ArrowLeftRight }
+  const menuItems = showTrainerSwitcher ? [...CLIENT_MENU, switchItem] : CLIENT_MENU
+  const sidebarItems = showTrainerSwitcher ? [...CLIENT_SIDEBAR, switchItem] : CLIENT_SIDEBAR
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [dragY, setDragY] = useState(0)
+  const dragStart = useRef<number | null>(null)
+  const moved = useRef(false)
+
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
+
+  // Close the menu on navigation.
+  useEffect(() => { setMenuOpen(false) }, [pathname])
+  // Lock background scroll while the full-screen menu is open.
+  useEffect(() => {
+    if (!menuOpen) { setDragY(0); return }
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [menuOpen])
+
+  // Pull-down-to-dismiss for the full-screen menu.
+  const onDragDown = (e: React.PointerEvent) => { dragStart.current = e.clientY; moved.current = false; e.currentTarget.setPointerCapture(e.pointerId) }
+  const onDragMove = (e: React.PointerEvent) => { if (dragStart.current == null) return; const dy = e.clientY - dragStart.current; if (dy > 5) moved.current = true; setDragY(dy > 0 ? dy : 0) }
+  const onDragUp = () => { const past = dragY > 110; dragStart.current = null; setDragY(0); if (past) setMenuOpen(false) }
+
+  // Translucent fills derived from the font colour so they read on any accent.
+  const chip = 'color-mix(in srgb, var(--accent-fg) 16%, transparent)'
+  const divider = 'color-mix(in srgb, var(--accent-fg) 15%, transparent)'
+
+  const contacts = [
+    trainerContact?.website ? { icon: Globe, href: trainerContact.website.startsWith('http') ? trainerContact.website : `https://${trainerContact.website}`, label: 'Website' } : null,
+    trainerContact?.phone ? { icon: Phone, href: `tel:${trainerContact.phone.replace(/\s/g, '')}`, label: 'Call' } : null,
+    trainerContact?.email ? { icon: Mail, href: `mailto:${trainerContact.email}`, label: 'Email' } : null,
+  ].filter(Boolean) as { icon: typeof Globe; href: string; label: string }[]
 
   return (
-    <div className="min-h-[100dvh] bg-slate-50">
-      <div className="mx-auto w-full max-w-md md:max-w-2xl lg:max-w-6xl bg-slate-50 min-h-[100dvh] flex flex-col relative">
-        {/* Top brand header — sticky background spans the page, but the
-            inner row is constrained to the same max-w-3xl as the feed below
-            so logo/menu align with the content column. */}
-        <header
-          className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-slate-100"
-          style={{ paddingTop: 'env(safe-area-inset-top)' }}
-        >
-          <div className="max-w-3xl mx-auto w-full flex items-center gap-3 px-5 lg:px-8 h-14 lg:h-16">
-            {/* Logo always routes back to /home — acts as the client app's
-                home button regardless of which page they're on. */}
-            <Link href="/home" aria-label="Home" className="flex items-center min-w-0">
-              {trainerLogo ? (
-                // Don't crop or round — the trainer's logo can be any
-                // aspect ratio (a horizontal wordmark, a non-square
-                // brand mark) and forcing it into a square with
-                // object-cover hacked off useful parts. object-contain
-                // preserves the full mark; we just bound the height.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-9 lg:h-10 w-auto max-w-[180px] object-contain" />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-9 w-9 lg:h-10 lg:w-10 rounded-xl" />
-              )}
-            </Link>
+    <div className="min-h-[100dvh] bg-surface md:flex">
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-64 bg-white border-r border-slate-100 z-30">
+        <Link href="/home" className="flex h-16 items-center gap-3 px-5 border-b border-slate-100">
+          {trainerLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-9 w-auto max-w-[170px] object-contain" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/logo.png" alt="PupManager" className="h-9 w-9 rounded-xl" />
+          )}
+        </Link>
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+          {sidebarItems.map((item) => {
+            const active = isActive(item.href)
+            const Icon = item.icon
+            const unread = unreadCounts[item.href] ?? 0
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors',
+                  active ? 'bg-accent-soft text-accent' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                )}
+              >
+                <Icon className="h-5 w-5 flex-shrink-0" />{item.label}
+                {unread > 0 && (
+                  <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white tabular-nums">{unread > 9 ? '9+' : unread}</span>
+                )}
+                {clientNavHints && !active && unread === 0 && (
+                  <span aria-hidden className="ml-auto h-2 w-2 rounded-full bg-indigo-500 animate-pm-menu-dot" />
+                )}
+              </Link>
+            )
+          })}
+        </nav>
+        <div className="border-t border-slate-100 p-3">
+          <button onClick={handleSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-50 transition-colors">
+            <LogOut className="h-5 w-5" />Sign out
+          </button>
+        </div>
+      </aside>
 
-            {/* Tablet+desktop: nav on the right with icon-on-top,
-                label-underneath. Phone: nav lives in the bottom tab bar so
-                this row only shows the sign-out icon. */}
-            <nav className="hidden md:flex items-center gap-1 ml-auto">
-              {CLIENT_NAV.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(item.href + '/')
+      {/* Content */}
+      <div className="flex-1 md:ml-64 min-h-[100dvh] flex flex-col">
+        <main className="flex-1 flex flex-col min-h-0 pb-24 md:pb-0">{children}</main>
+      </div>
+
+      {/* Mobile bottom tabs */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-100"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex">
+          {CLIENT_TABS.map((item) => {
+            const active = isActive(item.href) && !menuOpen
+            const Icon = item.icon
+            const unread = unreadCounts[item.href] ?? 0
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn('relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors', active ? 'text-accent' : 'text-slate-400 hover:text-slate-600')}
+              >
+                <Icon className={cn('h-[22px] w-[22px] transition-transform', active && 'scale-110')} strokeWidth={active ? 2.4 : 2} />
+                <span className="text-[10px] font-medium">{item.label}</span>
+                {unread > 0 && (
+                  <span className="absolute top-1.5 right-[18%] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white tabular-nums ring-2 ring-white">{unread > 9 ? '9+' : unread}</span>
+                )}
+                {clientNavHints && !active && unread === 0 && (
+                  <span aria-hidden className="pointer-events-none absolute top-1.5 right-[18%] h-2 w-2 rounded-full bg-indigo-500 animate-pm-menu-dot ring-2 ring-white" />
+                )}
+              </Link>
+            )
+          })}
+          <button onClick={() => setMenuOpen(o => !o)} className={cn('flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors', menuOpen ? 'text-accent' : 'text-slate-400 hover:text-slate-600')}>
+            <MenuIcon className="h-[22px] w-[22px]" strokeWidth={menuOpen ? 2.4 : 2} />
+            <span className="text-[10px] font-medium">Menu</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* Full-screen menu (mobile) */}
+      {menuOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-50 flex flex-col animate-pm-fade"
+          style={{
+            backgroundColor: 'var(--accent)', color: 'var(--accent-fg)',
+            transform: `translateY(${dragY}px)`,
+            opacity: 1 - Math.min(dragY / 700, 0.35),
+            transition: dragStart.current == null ? 'transform 240ms cubic-bezier(0.16,1,0.3,1), opacity 240ms' : 'none',
+          }}
+        >
+          <div
+            onPointerDown={onDragDown} onPointerMove={onDragMove} onPointerUp={onDragUp}
+            onClick={() => { if (!moved.current) setMenuOpen(false) }}
+            className="flex justify-center pb-2 cursor-grab active:cursor-grabbing"
+            style={{ touchAction: 'none', paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+          >
+            <span className="h-1.5 w-12 rounded-full" style={{ backgroundColor: chip }} />
+          </div>
+
+          <div className="px-5 pb-6 text-center">
+            {trainerLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={trainerLogo} alt={businessName ?? ''} className="h-10 w-auto max-w-[200px] object-contain mx-auto" />
+            ) : (
+              <p className="font-display text-2xl font-extrabold">{businessName ?? 'PupManager'}</p>
+            )}
+            {contacts.length > 0 && (
+              <div className="mt-4 flex items-center justify-center gap-3">
+                {contacts.map(c => (
+                  <a key={c.label} href={c.href} target="_blank" rel="noreferrer" aria-label={c.label} className="flex h-11 w-11 items-center justify-center rounded-full" style={{ backgroundColor: chip }}>
+                    <c.icon className="h-5 w-5" />
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-3 pb-10">
+            <div className="rounded-2xl overflow-hidden">
+              {menuItems.map((item, i) => {
                 const Icon = item.icon
-                const unread = unreadCounts[item.href] ?? 0
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      'relative flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[11px] font-medium transition-colors',
-                      active
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
-                    {item.label}
-                    {unread > 0 && (
-                      <span
-                        aria-label={`${unread} unread`}
-                        className="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white tabular-nums ring-2 ring-white"
-                      >
-                        {unread > 9 ? '9+' : unread}
-                      </span>
-                    )}
-                    {clientNavHints && !active && unread === 0 && (
-                      <span
-                        aria-hidden
-                        className="pointer-events-none absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-indigo-500 animate-pm-menu-dot ring-2 ring-white"
-                      />
-                    )}
+                  <Link key={item.href} href={item.href} className="w-full flex items-center gap-4 px-3 py-3.5 text-left" style={i > 0 ? { borderTop: `1px solid ${divider}` } : undefined}>
+                    <span className="flex h-9 w-9 items-center justify-center shrink-0"><Icon className="h-5 w-5" /></span>
+                    <span className="text-[15px] font-semibold flex-1">{item.label}</span>
+                    <ChevronRight className="h-4 w-4 shrink-0" style={{ opacity: 0.5 }} />
                   </Link>
                 )
               })}
-            </nav>
-
-            <button
-              onClick={() => signOut({ callbackUrl: '/login' })}
-              className="p-2 -mr-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors md:ml-2 ml-auto"
-              aria-label="Sign out"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+            </div>
+            <div className="mt-4 rounded-2xl overflow-hidden" style={{ borderTop: `1px solid ${divider}` }}>
+              <button onClick={handleSignOut} className="w-full flex items-center gap-4 px-3 py-3.5 text-left">
+                <span className="flex h-9 w-9 items-center justify-center shrink-0"><LogOut className="h-5 w-5" /></span>
+                <span className="text-[15px] font-medium flex-1">Sign out</span>
+              </button>
+            </div>
           </div>
-        </header>
-
-        {/* Main content — flex column so chat-style routes can grow a
-            single child to fill the available height (flex-1 + min-h-0)
-            and pin a composer at the bottom without needing a brittle
-            100dvh-minus-chrome height calc. */}
-        <main className="flex-1 flex flex-col min-h-0 pb-24 md:pb-8">
-          {children}
-        </main>
-
-        {/* Phone-only bottom tab nav. Tablet+desktop use the sticky top nav
-            inside the header instead. */}
-        <nav
-          className="md:hidden sticky bottom-0 z-40 bg-white/95 backdrop-blur border-t border-slate-100"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        >
-          <div className="flex">
-            {CLIENT_NAV.map((item) => {
-              const active = pathname === item.href || pathname.startsWith(item.href + '/')
-              const Icon = item.icon
-              const unread = unreadCounts[item.href] ?? 0
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors',
-                    active ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
-                  )}
-                >
-                  <Icon className={cn('h-5 w-5 transition-transform', active && 'scale-110')} />
-                  <span className="text-[10px] font-medium">{item.label}</span>
-                  {unread > 0 && (
-                    <span
-                      aria-label={`${unread} unread`}
-                      className="absolute top-1.5 right-[18%] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white tabular-nums ring-2 ring-white"
-                    >
-                      {unread > 9 ? '9+' : unread}
-                    </span>
-                  )}
-                  {clientNavHints && !active && unread === 0 && (
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute top-1.5 right-[18%] h-2 w-2 rounded-full bg-indigo-500 animate-pm-menu-dot ring-2 ring-white"
-                    />
-                  )}
-                </Link>
-              )
-            })}
-          </div>
-        </nav>
-      </div>
+        </div>
+      )}
     </div>
   )
 }
