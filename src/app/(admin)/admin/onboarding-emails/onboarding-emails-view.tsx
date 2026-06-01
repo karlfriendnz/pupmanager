@@ -91,8 +91,17 @@ function EmailPreview({ subject, body, topText, senderKey, imageUrl, imageHeight
             </div>
           )}
           <div style={{ padding: '18px 28px 8px', color: '#0f172a', fontSize: 14, lineHeight: 1.6, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" }} dangerouslySetInnerHTML={{ __html: bodyHtml }} />
-          <div style={{ padding: '16px 28px', background: '#fafaf9', borderTop: '1px solid #f1f5f9', color: '#94a3b8', fontSize: 12 }}>
-            PupManager · You’re receiving this because you signed up.
+          <div style={{ padding: '18px 28px', background: '#fafaf9', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
+            <p style={{ margin: '0 0 10px', fontSize: 12, color: '#64748b' }}>Get the PupManager app on your phone</p>
+            <a href="https://apps.apple.com/app/id6766399138" style={{ display: 'inline-block', margin: '0 3px' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/app-store-badge.png" alt="Download on the App Store" width={135} height={45} style={{ border: 0 }} />
+            </a>
+            <a href="https://play.google.com/store/apps/details?id=com.pupmanager.app" style={{ display: 'inline-block', margin: '0 3px' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/google-play-badge.png" alt="Get it on Google Play" width={135} height={45} style={{ border: 0 }} />
+            </a>
+            <p style={{ margin: '12px 0 0', fontSize: 12, color: '#94a3b8' }}>You’re receiving this because you signed up.</p>
           </div>
         </div>
       </div>

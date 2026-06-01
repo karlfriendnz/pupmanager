@@ -22,6 +22,8 @@ import { getOnboardingState } from '@/lib/onboarding/state'
 import { emailBodyToHtml, emailHtmlToText } from '@/lib/email-html'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com'
+const APP_STORE_URL = 'https://apps.apple.com/app/id6766399138'
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.pupmanager.app'
 const HOUR_MS = 3_600_000
 const DAY_MS = 86_400_000
 const PLATFORM_DOMAIN = '@pupmanager.com'
@@ -151,8 +153,11 @@ export function renderOnboardingEmail(
               ${topHtml}
               ${imageHtml}
               <div style="padding:18px 28px 8px;">${emailBodyToHtml(body)}</div>
-              <div style="padding:16px 28px;background:#fafaf9;border-top:1px solid #f1f5f9;">
-                <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.5;">You're receiving this because you started a PupManager trial.</p>
+              <div style="padding:18px 28px;background:#fafaf9;border-top:1px solid #f1f5f9;text-align:center;">
+                <p style="margin:0 0 10px;font-size:12px;color:#64748b;line-height:1.5;">Get the PupManager app on your phone</p>
+                <a href="${APP_STORE_URL}" style="display:inline-block;margin:0 3px;"><img src="https://app.pupmanager.com/app-store-badge.png" alt="Download on the App Store" width="135" height="45" style="border:0;height:45px;width:135px;" /></a>
+                <a href="${PLAY_STORE_URL}" style="display:inline-block;margin:0 3px;"><img src="https://app.pupmanager.com/google-play-badge.png" alt="Get it on Google Play" width="135" height="45" style="border:0;height:45px;width:135px;" /></a>
+                <p style="margin:12px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">You're receiving this because you started a PupManager trial.</p>
               </div>
             </td>
           </tr>
