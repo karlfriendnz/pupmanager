@@ -3,6 +3,7 @@ import type Stripe from 'stripe'
 import { prisma } from '@/lib/prisma'
 import { stripe, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
+import { loadPriceIndex } from '@/lib/billing'
 
 // Receives Stripe events for subscription lifecycle. The signature header
 // gates everything — without env.STRIPE_WEBHOOK_SECRET we 503 instead of
@@ -65,7 +66,6 @@ export async function POST(req: Request) {
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const trainerId = session.metadata?.trainerId
-  const planId = session.metadata?.planId
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id
 
   if (!trainerId || !subscriptionId) {
@@ -73,9 +73,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return
   }
 
-  // Pull the actual subscription so we can write the canonical period end
-  // and status — the checkout session itself doesn't expose those reliably.
+  // Pull the actual subscription so we can write the canonical period end,
+  // status, and the full set of line items (core + seats + add-ons).
   const sub = await stripe().subscriptions.retrieve(subscriptionId)
+  const recon = await reconcileSubscriptionItems(sub)
 
   // Founders Circle: stamp the seat here (not at checkout creation) so an
   // abandoned checkout never burns one. Only on the first completion — a
@@ -94,50 +95,104 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     data: {
       stripeSubscriptionId: sub.id,
       subscriptionStatus: mapStripeStatus(sub.status),
-      ...(planId ? { subscriptionPlanId: planId } : {}),
+      ...(recon.planId ? { subscriptionPlanId: recon.planId } : {}),
+      seatCount: recon.seatCount,
       ...founderStamp,
-      currentPeriodEnd: new Date(sub.items.data[0]?.current_period_end ? sub.items.data[0].current_period_end * 1000 : Date.now()),
+      currentPeriodEnd: recon.periodEnd ?? new Date(),
       // Trial is over the moment they pay — null it out so the banner
       // hides immediately.
       trialEndsAt: null,
     },
   })
+
+  await syncTrainerAddons(trainerId, recon.activeAddons)
 }
 
 async function handleSubscriptionChange(sub: Stripe.Subscription, deleted: boolean) {
   // Prefer the metadata trainerId (set when we created the checkout session)
   // so we don't have to round-trip via stripeCustomerId for new subs.
-  const trainerId = sub.metadata?.trainerId ?? null
+  let trainerId: string | null = sub.metadata?.trainerId ?? null
 
-  const periodEnd = sub.items.data[0]?.current_period_end
-    ? new Date(sub.items.data[0].current_period_end * 1000)
-    : null
-
-  // Map a Stripe price to one of our plans so we can keep
-  // subscriptionPlanId in sync if the trainer upgrades/downgrades.
-  const priceId = sub.items.data[0]?.price.id
-  const plan = priceId
-    ? await prisma.subscriptionPlan.findUnique({ where: { stripePriceId: priceId }, select: { id: true } })
-    : null
-
-  const data = {
-    stripeSubscriptionId: sub.id,
-    subscriptionStatus: deleted ? ('CANCELLED' as const) : mapStripeStatus(sub.status),
-    ...(plan ? { subscriptionPlanId: plan.id } : {}),
-    ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+  // Fallback: resolve the trainer by Stripe customer when metadata is
+  // missing (old subs from before we tagged, or anything created outside
+  // our flow). We need a concrete trainerId to reconcile add-on rows.
+  if (!trainerId) {
+    const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id
+    const byCustomer = await prisma.trainerProfile.findFirst({
+      where: { stripeCustomerId: customerId },
+      select: { id: true },
+    })
+    trainerId = byCustomer?.id ?? null
   }
-
-  if (trainerId) {
-    await prisma.trainerProfile.update({ where: { id: trainerId }, data })
+  if (!trainerId) {
+    console.warn('[stripe webhook] subscription change with no resolvable trainer', { sub: sub.id })
     return
   }
 
-  // Fallback: look up by customer if metadata is missing (old subs from
-  // before we started tagging, or anything created outside our flow).
-  const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id
-  await prisma.trainerProfile.updateMany({
-    where: { stripeCustomerId: customerId },
-    data,
+  const recon = await reconcileSubscriptionItems(sub)
+
+  await prisma.trainerProfile.update({
+    where: { id: trainerId },
+    data: {
+      stripeSubscriptionId: sub.id,
+      subscriptionStatus: deleted ? 'CANCELLED' : mapStripeStatus(sub.status),
+      ...(recon.planId ? { subscriptionPlanId: recon.planId } : {}),
+      ...(deleted ? {} : { seatCount: recon.seatCount }),
+      ...(recon.periodEnd ? { currentPeriodEnd: recon.periodEnd } : {}),
+    },
+  })
+
+  // A cancelled/deleted subscription has no live add-ons.
+  await syncTrainerAddons(trainerId, deleted ? [] : recon.activeAddons)
+}
+
+interface ReconResult {
+  planId: string | null
+  seatCount: number
+  periodEnd: Date | null
+  activeAddons: { itemId: string; subItemId: string }[]
+}
+
+// Walk a subscription's line items and classify each by price ID into the
+// Core plan, the per-seat charge, and the active add-ons — so we never
+// assume items.data[0] is the base. Seat count = seat-line quantity + the
+// one trainer included in Core.
+async function reconcileSubscriptionItems(sub: Stripe.Subscription): Promise<ReconResult> {
+  const index = await loadPriceIndex()
+  const result: ReconResult = { planId: null, seatCount: 1, periodEnd: null, activeAddons: [] }
+
+  for (const line of sub.items.data) {
+    if (!result.periodEnd && line.current_period_end) {
+      result.periodEnd = new Date(line.current_period_end * 1000)
+    }
+    const cls = index.get(line.price.id)
+    if (!cls) continue
+    if (cls.type === 'core') result.planId = cls.id
+    else if (cls.type === 'seat') result.seatCount = (line.quantity ?? 1) + 1
+    else if (cls.type === 'addon') result.activeAddons.push({ itemId: cls.id, subItemId: line.id })
+  }
+  return result
+}
+
+// Make the TrainerAddon rows mirror the live subscription: activate the
+// add-ons present (recording their Stripe subscription item id for later
+// pro-rata toggling), deactivate any that are no longer there.
+async function syncTrainerAddons(
+  trainerId: string,
+  activeAddons: { itemId: string; subItemId: string }[],
+) {
+  for (const { itemId, subItemId } of activeAddons) {
+    await prisma.trainerAddon.upsert({
+      where: { trainerId_itemId: { trainerId, itemId } },
+      create: { trainerId, itemId, stripeSubscriptionItemId: subItemId, active: true },
+      update: { stripeSubscriptionItemId: subItemId, active: true },
+    })
+  }
+
+  const activeIds = activeAddons.map(a => a.itemId)
+  await prisma.trainerAddon.updateMany({
+    where: { trainerId, active: true, itemId: { notIn: activeIds.length ? activeIds : ['__none__'] } },
+    data: { active: false, stripeSubscriptionItemId: null },
   })
 }
 

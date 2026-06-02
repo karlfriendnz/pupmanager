@@ -4,10 +4,12 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { stripe, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
-import { isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
+import { isCurrencyCode, isAddonId, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
+import { resolvePriceId } from '@/lib/billing'
 import { isFounderEligible } from '@/lib/founder'
 
 const TRIAL_DAYS = 10
+const MAX_SEATS = 50
 
 const schema = z.object({
   planId: z.string().min(1),
@@ -16,6 +18,12 @@ const schema = z.object({
   // is wired up we fall back to the legacy stripePriceId column
   // (treated as NZD) and let the trainer know they were billed in NZD.
   currency: z.string().refine(isCurrencyCode, 'Invalid currency').default(DEFAULT_CURRENCY),
+  // Total number of trainers (seats). The first is included in Core; any
+  // beyond that bill at the per-seat price. Clamped server-side.
+  seatCount: z.coerce.number().int().min(1).max(MAX_SEATS).default(1),
+  // Add-on ids the trainer switched on (subset of ADDONS). Unknown ids
+  // are rejected so we never try to bill for something that isn't sold.
+  addons: z.array(z.string().refine(isAddonId, 'Unknown add-on')).default([]),
   // Business profile fields captured on /billing/setup. We persist them
   // to TrainerProfile and feed them into the Stripe Customer + Checkout
   // Session so invoices show the right address. Phone, city and
@@ -60,10 +68,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status: 400 })
   }
   const {
-    planId, currency,
+    planId, currency, seatCount, addons,
     businessName, phone,
     addressLine1, addressLine2, addressCity, addressRegion, addressPostcode, addressCountry,
   } = parsed.data
+  const cur = currency as CurrencyCode
 
   const plan = await prisma.subscriptionPlan.findUnique({
     where: { id: planId },
@@ -71,23 +80,55 @@ export async function POST(req: Request) {
   })
   if (!plan || !plan.isActive) return NextResponse.json({ error: 'Plan not found' }, { status: 404 })
 
-  // Resolve the right Stripe Price ID for the trainer's chosen
-  // currency. Per-currency overrides win; legacy single-price column
-  // is the NZD fallback. If neither is set we can't open Checkout.
-  const idsByCurrency = (plan.stripePriceIdsByCurrency ?? {}) as Record<string, string>
-  const priceForCurrency = idsByCurrency[currency as CurrencyCode]
-    ?? (currency === DEFAULT_CURRENCY ? plan.stripePriceId : null)
-    ?? plan.stripePriceId
-  if (!priceForCurrency) {
+  // Resolve the Core price for the chosen currency (per-currency override
+  // wins; NZD column is the fallback). If neither is set we can't open
+  // Checkout for the base plan.
+  const corePrice = resolvePriceId(plan, cur)
+  if (!corePrice) {
     return NextResponse.json({ error: 'This plan isn\'t available for purchase yet' }, { status: 409 })
+  }
+
+  // Build the rest of the line items: extra seats + selected add-ons. We
+  // pull the seat + add-on BillingItems and resolve each to a Stripe price
+  // in the trainer's currency. A missing price for something the trainer
+  // asked for is a 409 — we never silently drop a paid line.
+  const extraSeats = Math.max(0, seatCount - 1)
+  const neededItemIds = [...(extraSeats > 0 ? ['seat'] : []), ...addons]
+  const items = neededItemIds.length
+    ? await prisma.billingItem.findMany({
+        where: { id: { in: neededItemIds }, isActive: true },
+        select: { id: true, kind: true, stripePriceId: true, stripePriceIdsByCurrency: true },
+      })
+    : []
+  const itemById = new Map(items.map(i => [i.id, i]))
+
+  const extraLineItems: { price: string; quantity: number }[] = []
+
+  if (extraSeats > 0) {
+    const seat = itemById.get('seat')
+    const seatPrice = seat ? resolvePriceId(seat, cur) : null
+    if (!seatPrice) {
+      return NextResponse.json({ error: 'Extra trainer seats aren\'t available for purchase yet' }, { status: 409 })
+    }
+    extraLineItems.push({ price: seatPrice, quantity: extraSeats })
+  }
+
+  for (const addonId of addons) {
+    const item = itemById.get(addonId)
+    const addonPrice = item && item.kind === 'ADDON' ? resolvePriceId(item, cur) : null
+    if (!addonPrice) {
+      return NextResponse.json({ error: 'One of the selected add-ons isn\'t available for purchase yet' }, { status: 409 })
+    }
+    extraLineItems.push({ price: addonPrice, quantity: 1 })
   }
 
   // Persist anything the form gave us before talking to Stripe — that
   // way an interrupted Checkout still leaves the trainer's record
-  // up-to-date and the next attempt pre-fills correctly. seats stays
-  // at 1 — multi-trainer is on the roadmap but not sold today.
+  // up-to-date and the next attempt pre-fills correctly. Add-on state is
+  // NOT written here: the webhook reconciles it from the real Stripe
+  // subscription so an abandoned checkout never flips a trainer's add-ons.
   const profileUpdate = {
-    seatCount: 1,
+    seatCount,
     ...(businessName    ? { businessName } : {}),
     ...(phone           ? { phone } : {}),
     ...(addressLine1    ? { addressLine1 } : {}),
@@ -165,19 +206,35 @@ export async function POST(req: Request) {
   const founder = await isFounderEligible(trainer.isFounder)
   const founderFlag = founder ? 'true' : 'false'
 
+  // Core first, then extra seats + add-ons. The webhook classifies each
+  // line back to core / seat / add-on by price ID, so order doesn't matter
+  // for correctness — Core leads only for tidy invoices.
+  const lineItems = [{ price: corePrice, quantity: 1 }, ...extraLineItems]
+
+  // Carry the selection in metadata for debugging/fallback; the webhook
+  // treats the actual subscription items as authoritative.
+  const billingMeta = {
+    trainerId,
+    planId: plan.id,
+    currency,
+    founder: founderFlag,
+    seatCount: String(seatCount),
+    addons: addons.join(','),
+  }
+
   const checkout = await stripeClient.checkout.sessions.create({
     mode: 'subscription',
     customer: customerId,
-    line_items: [{ price: priceForCurrency, quantity: 1 }],
+    line_items: lineItems,
     // We've already gathered the address — let Stripe trust it without
     // re-prompting. Falls back to "auto" if line1 is missing so we
     // still get a billing address either way.
     billing_address_collection: stripeAddress ? 'auto' : 'required',
     subscription_data: {
       trial_period_days: TRIAL_DAYS,
-      metadata: { trainerId, planId: plan.id, currency, founder: founderFlag },
+      metadata: billingMeta,
     },
-    metadata: { trainerId, planId: plan.id, currency, founder: founderFlag },
+    metadata: billingMeta,
     success_url: `${env.NEXT_PUBLIC_APP_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${env.NEXT_PUBLIC_APP_URL}/billing/cancel`,
     // Stripe Checkout rejects `discounts` together with

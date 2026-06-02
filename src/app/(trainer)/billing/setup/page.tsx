@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isStripeConfigured } from '@/lib/stripe'
 import { PLAN_NAME } from '@/lib/pricing'
+import { loadBillingConfig, configuredCurrencies as currenciesFor } from '@/lib/billing'
 import { SetupForm } from './setup-form'
 import type { Metadata } from 'next'
 
@@ -42,33 +43,30 @@ export default async function BillingSetupPage() {
   })
   if (!trainer) redirect('/login')
 
-  // We surface the marketing-site Solo tier as the active paid plan
-  // (the only one configured today). The DB row backing it is the
-  // cheapest non-zero SubscriptionPlan; we still need the planId for
-  // the API call, but the displayed price comes from the shared
-  // pricing table — not from priceMonthly — so the in-app surface
-  // never drifts from pupmanager.com/pricing. Plan name falls back
-  // to PLAN_NAME ("Solo plan") when the DB row hasn't been renamed.
-  const cheapestPaid = await prisma.subscriptionPlan.findFirst({
-    where: { isActive: true, priceMonthly: { gt: 0 } },
-    orderBy: { priceMonthly: 'asc' },
-    select: { id: true, name: true, stripePriceId: true, stripePriceIdsByCurrency: true },
-  })
+  // The Core base + the per-seat charge + the toggleable add-ons. The DB
+  // backs purchasability + per-currency Stripe wiring; the displayed
+  // numbers come from the shared pricing table (src/lib/pricing.ts) so
+  // the in-app surface never drifts from pupmanager.com/pricing. Plan
+  // name falls back to PLAN_NAME ("Core software") when the DB row
+  // hasn't been renamed.
+  const { core, seat, addons } = await loadBillingConfig()
 
-  const planId = cheapestPaid?.id ?? null
-  const planName = cheapestPaid?.name ?? PLAN_NAME
-  // "purchasable" only requires a default Stripe Price ID (NZD).
+  const planId = core?.id ?? null
+  const planName = core?.name ?? PLAN_NAME
+  // "purchasable" only requires a default Core Price ID (NZD).
   // Per-currency mappings are checked on the server at Checkout time;
   // unmapped currencies fall back to NZD with a UI note.
-  const purchasable = isStripeConfigured() && !!cheapestPaid?.stripePriceId
+  const purchasable = isStripeConfigured() && !!core?.stripePriceId
 
-  // Surface which currencies actually have a wired-up Stripe Price ID
-  // so the form can disable / annotate the others. The default
-  // currency (NZD) is always considered configured if the legacy
-  // stripePriceId column is set.
-  const idsByCurrency = (cheapestPaid?.stripePriceIdsByCurrency ?? {}) as Record<string, string>
-  const configuredCurrencies = new Set<string>(Object.keys(idsByCurrency))
-  if (cheapestPaid?.stripePriceId) configuredCurrencies.add('NZD')
+  // Which currencies have a wired-up Core price (NZD implied by the
+  // legacy column). Seats/add-ons are wired in the same pass, so we let
+  // Core's set drive the whole-form "billed in NZD" note.
+  const configuredCurrencies = core ? currenciesFor(core) : new Set<string>()
+
+  // Active add-ons (id-only — name/desc/price come from pricing.ts), and
+  // whether the per-seat charge is sellable yet.
+  const availableAddonIds = addons.map(a => a.id)
+  const seatAvailable = !!seat
 
   return (
     <div className="px-4 py-10 md:py-14 w-full max-w-xl mx-auto" style={{ color: 'var(--pm-ink-900)' }}>
@@ -89,6 +87,8 @@ export default async function BillingSetupPage() {
         planName={planName}
         purchasable={purchasable}
         configuredCurrencies={Array.from(configuredCurrencies)}
+        availableAddonIds={availableAddonIds}
+        seatAvailable={seatAvailable}
         defaults={{
           businessName: trainer.businessName ?? '',
           phone: trainer.phone ?? '',

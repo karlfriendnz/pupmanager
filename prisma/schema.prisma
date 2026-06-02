@@ -376,6 +376,7 @@ model TrainerProfile {
   badgeAwards        TrainerBadgeAward[]
   onboardingProgress TrainerOnboardingProgress?
   members            TrainerMembership[]        @relation("CompanyMembers")
+  addons             TrainerAddon[]
 
   @@map("trainer_profiles")
 }
@@ -1292,6 +1293,74 @@ model SubscriptionPlan {
   trainers TrainerProfile[]
 
   @@map("subscription_plans")
+}
+
+// ─── Billing Items (seats + add-ons) ──────────────────────────────────────────
+// The Core software base lives in SubscriptionPlan (id "core"). Everything
+// that stacks on top of it — the per-seat "extra trainer" charge and the
+// toggleable add-ons — is a BillingItem. Each carries the same Stripe price
+// shape as SubscriptionPlan (NZD default in `stripePriceId`, per-currency
+// overrides in `stripePriceIdsByCurrency`) so the price-resolution logic in
+// lib/billing.ts is shared. Prices mirror src/lib/pricing.ts / the marketing
+// site — the website is the source of truth.
+
+enum BillingItemKind {
+  SEAT
+  ADDON
+}
+
+model BillingItem {
+  // Stable string ids matching src/lib/pricing.ts: "seat", "achievements",
+  // "shop", "ai". Used as the join key on TrainerAddon and the lookup key
+  // when building Checkout line items.
+  id          String          @id
+  kind        BillingItemKind
+  name        String
+  description String?          @db.Text
+  // NZD reference price — display/sanity only; Stripe is authoritative.
+  priceMonthly Float
+  // Canonical (NZD) Stripe Price ID; per-currency overrides below. Null
+  // until wired to Stripe. Same semantics as SubscriptionPlan.
+  stripePriceId String?        @unique
+  // Shape: { "AUD": "price_…", "USD": "price_…" }. Falls back to
+  // stripePriceId (NZD) when a currency has no entry.
+  stripePriceIdsByCurrency Json @default("{}")
+  isActive    Boolean          @default(true)
+  // Display order in the /billing/setup add-on list.
+  sortOrder   Int              @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainerAddons TrainerAddon[]
+
+  @@map("billing_items")
+}
+
+// One row per (trainer, add-on) the trainer has switched on. The seat
+// charge is NOT tracked here — it's a quantity on TrainerProfile.seatCount.
+// stripeSubscriptionItemId lets us target the exact line item later for
+// pro-rata add/remove ("toggle any add-on anytime", phase 2).
+model TrainerAddon {
+  id        String  @id @default(cuid())
+  trainerId String
+  itemId    String // BillingItem.id, kind = ADDON
+  // Stripe subscription item id for this add-on's line. Null until the
+  // webhook reconciles the subscription after checkout.
+  stripeSubscriptionItemId String? @unique
+  // False = toggled off but row kept for history. The active set drives
+  // feature gating + billing.
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  item    BillingItem    @relation(fields: [itemId], references: [id])
+
+  @@unique([trainerId, itemId])
+  @@index([trainerId])
+  @@map("trainer_addons")
 }
 
 // ─── Training Library ─────────────────────────────────────────────────────────
