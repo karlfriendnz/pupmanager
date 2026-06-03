@@ -825,6 +825,7 @@ function FormFillerBody({
             imageUrls={imagesByQuestion[q.id] ?? []}
             onImagesChange={(urls) => setImagesByQuestion(prev => ({ ...prev, [q.id]: urls }))}
             sessionId={sessionId}
+            fill
           />
           <p className="text-[11px] text-emerald-700 mt-1.5">
             Saving will update the {linkedField.appliesTo === 'DOG' ? "dog's" : "client's"} record.
@@ -840,6 +841,7 @@ function FormFillerBody({
         imageUrls={imagesByQuestion[q.id] ?? []}
         onImagesChange={(urls) => setImagesByQuestion(prev => ({ ...prev, [q.id]: urls }))}
         sessionId={sessionId}
+        fill
       />
     )
   }
@@ -862,6 +864,8 @@ function FormFillerBody({
     hint?: string
     required?: boolean
     isPrivate?: boolean
+    // Long-text panels get a wider, page-filling writing column.
+    fill?: boolean
     control: React.ReactNode
   }[] = [
     {
@@ -879,6 +883,7 @@ function FormFillerBody({
       title: q.type === 'CUSTOM_FIELD' ? (linkedFieldMap.get(q.customFieldId)?.label ?? 'Linked field') : q.label,
       required: q.required,
       isPrivate: q.isPrivate,
+      fill: q.type === 'LONG_TEXT' || (q.type === 'CUSTOM_FIELD' && linkedFieldMap.get(q.customFieldId)?.type === 'TEXT'),
       control: renderControl(q),
     })),
     {
@@ -956,7 +961,7 @@ function FormFillerBody({
           >
             {stepPanels.map(p => (
               <div key={p.key} className="h-full w-full flex-shrink-0 overflow-y-auto">
-                <div className="mx-auto w-full max-w-xl px-6 py-8 sm:py-12">
+                <div className={`mx-auto w-full px-6 py-8 sm:py-12 ${p.fill ? 'max-w-3xl' : 'max-w-xl'}`}>
                   <div className="min-h-[3.5rem]">
                     <h2 className="text-2xl sm:text-[28px] font-bold leading-tight text-slate-900 flex items-start gap-2 flex-wrap">
                       <span>{p.title}</span>
@@ -1097,6 +1102,38 @@ function appendSpoken(prev: string, transcript: string): string {
   return trimmed ? `${trimmed} ${transcript}` : transcript
 }
 
+// Full-height, borderless writing surface for the one-at-a-time write-up
+// flow. Page-filling and chrome-less so it reads as "writing", not a field.
+// The mic + image tools sit quietly underneath.
+function ImmersiveText({
+  value, onChange, imageUrls, onImagesChange, sessionId,
+}: {
+  value: string
+  onChange: (v: string) => void
+  imageUrls?: string[]
+  onImagesChange?: (urls: string[]) => void
+  sessionId?: string
+}) {
+  return (
+    <div>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        autoFocus
+        placeholder="Start writing…"
+        className="min-h-[55vh] w-full resize-none border-0 bg-transparent p-0 text-lg leading-relaxed text-slate-900 placeholder:text-slate-300 focus:outline-none focus:ring-0"
+      />
+      <div className="mt-1 flex items-center gap-2">
+        <VoiceInput onAppend={t => onChange(appendSpoken(value, t))} />
+        {onImagesChange && (
+          <ImageUploadButton onUploaded={(added) => onImagesChange([...(imageUrls ?? []), ...added])} context={{ sessionId }} />
+        )}
+      </div>
+      {onImagesChange && <ImageGallery urls={imageUrls ?? []} onChange={onImagesChange} className="mt-2" />}
+    </div>
+  )
+}
+
 function BasicQuestionInput({
   type,
   value,
@@ -1104,6 +1141,7 @@ function BasicQuestionInput({
   imageUrls,
   onImagesChange,
   sessionId,
+  fill,
 }: {
   type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'
   value: string
@@ -1111,7 +1149,13 @@ function BasicQuestionInput({
   imageUrls?: string[]
   onImagesChange?: (urls: string[]) => void
   sessionId?: string
+  // `fill` = the one-at-a-time write-up flow: render long text as a big,
+  // borderless, page-filling writing area rather than a boxed textarea.
+  fill?: boolean
 }) {
+  if (type === 'LONG_TEXT' && fill) {
+    return <ImmersiveText value={value} onChange={onChange} imageUrls={imageUrls} onImagesChange={onImagesChange} sessionId={sessionId} />
+  }
   // NUMBER + RATING don't get a mic or image uploader — neither makes sense
   // for a single numeric value.
   if (type === 'NUMBER') {
@@ -1195,6 +1239,7 @@ function CustomFieldInput({
   imageUrls,
   onImagesChange,
   sessionId,
+  fill,
 }: {
   field: LinkedField
   value: string
@@ -1202,6 +1247,7 @@ function CustomFieldInput({
   imageUrls?: string[]
   onImagesChange?: (urls: string[]) => void
   sessionId?: string
+  fill?: boolean
 }) {
   if (field.type === 'NUMBER') {
     return (
@@ -1227,7 +1273,11 @@ function CustomFieldInput({
       </select>
     )
   }
-  // TEXT-style linked field — mic + upload stacked, gallery below.
+  // TEXT-style linked field — immersive in the one-at-a-time flow, else a
+  // standard boxed textarea (mic + upload stacked, gallery below).
+  if (fill) {
+    return <ImmersiveText value={value} onChange={onChange} imageUrls={imageUrls} onImagesChange={onImagesChange} sessionId={sessionId} />
+  }
   return (
     <div>
       <div className="flex gap-2 items-start">
