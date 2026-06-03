@@ -329,6 +329,11 @@ model TrainerProfile {
   // an escape hatch for comped accounts, support cases, or payment hiccups.
   // Set per-trainer from /admin/trainers. Null = no grace.
   gracePeriodUntil     DateTime?
+  // Dual-mode billing: when true this trainer bills against Stripe TEST mode
+  // (sandbox) — the test secret key + the *Test price columns — so the demo
+  // account can show the full billing flow without ever taking a real charge
+  // while everyone else is on live Stripe.
+  sandboxBilling       Boolean   @default(false)
   // Number of trainer seats the subscription was booked for. Mirrors
   // the Stripe subscription's quantity. 1 by default; bumps via the
   // slider on /billing/setup.
@@ -1291,6 +1296,10 @@ model SubscriptionPlan {
   // currency has no entry, we fall back to stripePriceId (NZD) and
   // surface that to the trainer in the UI.
   stripePriceIdsByCurrency Json @default("{}")
+  // Stripe TEST-mode price IDs (sandbox), mirroring the live columns above.
+  // Sandbox trainers (e.g. the demo) resolve against these instead.
+  stripePriceIdTest String?
+  stripePriceIdsByCurrencyTest Json @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1330,6 +1339,9 @@ model BillingItem {
   // Shape: { "AUD": "price_…", "USD": "price_…" }. Falls back to
   // stripePriceId (NZD) when a currency has no entry.
   stripePriceIdsByCurrency Json @default("{}")
+  // Stripe TEST-mode price IDs (sandbox), mirroring the live columns above.
+  stripePriceIdTest String?
+  stripePriceIdsByCurrencyTest Json @default("{}")
   isActive    Boolean          @default(true)
   // Display order in the /billing/setup add-on list.
   sortOrder   Int              @default(0)

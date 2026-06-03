@@ -113,7 +113,15 @@ async function main() {
     console.log(`✓ ${def.key.padEnd(13)} ${productId}  (${CURRENCIES.length} prices)`)
   }
 
-  console.log('\nWiring the DB…')
+  console.log(`\nWiring the DB (${MODE} columns)…`)
+
+  // Dual-mode: a TEST key writes the *Test price columns; a LIVE key writes
+  // the live columns. Run once per key to fill both sets on the same rows.
+  const TEST = MODE === 'TEST'
+  const priceCols = (nzd: string, byCurrency: Record<string, string>) =>
+    TEST
+      ? { stripePriceIdTest: nzd, stripePriceIdsByCurrencyTest: byCurrency }
+      : { stripePriceId: nzd, stripePriceIdsByCurrency: byCurrency }
 
   // Core → subscription_plans
   await prisma.subscriptionPlan.upsert({
@@ -121,9 +129,9 @@ async function main() {
     create: {
       id: 'core', name: PLAN_NAME, priceMonthly: CORE_PRICE.NZD, maxClients: null,
       description: 'Every core feature · unlimited clients and dogs',
-      stripePriceId: wired.core.nzd, stripePriceIdsByCurrency: wired.core.byCurrency,
+      ...priceCols(wired.core.nzd, wired.core.byCurrency),
     },
-    update: { isActive: true, stripePriceId: wired.core.nzd, stripePriceIdsByCurrency: wired.core.byCurrency },
+    update: { isActive: true, ...priceCols(wired.core.nzd, wired.core.byCurrency) },
   })
   const { count } = await prisma.subscriptionPlan.updateMany({
     where: { id: { not: 'core' } }, data: { isActive: false },
@@ -138,13 +146,13 @@ async function main() {
     const w = wired[item.id]
     await prisma.billingItem.upsert({
       where: { id: item.id },
-      create: { ...item, stripePriceId: w.nzd, stripePriceIdsByCurrency: w.byCurrency },
-      update: { isActive: true, stripePriceId: w.nzd, stripePriceIdsByCurrency: w.byCurrency },
+      create: { ...item, ...priceCols(w.nzd, w.byCurrency) },
+      update: { isActive: true, ...priceCols(w.nzd, w.byCurrency) },
     })
   }
 
-  console.log(`✓ wired core + ${items.length} billing items · deactivated ${count} legacy plan(s)`)
-  console.log(`\nDone (${MODE}). 30 prices live. Set STRIPE_WEBHOOK_SECRET in .env.local and run a test checkout.`)
+  console.log(`✓ wired core + ${items.length} billing items (${MODE} columns) · deactivated ${count} legacy plan(s)`)
+  console.log(`\nDone (${MODE}). 30 prices created. ${TEST ? 'Set STRIPE_SECRET_KEY_TEST + STRIPE_WEBHOOK_SECRET_TEST' : 'Set STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET'} in the relevant env, and run the other mode too.`)
 }
 
 main()

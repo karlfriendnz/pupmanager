@@ -60,6 +60,11 @@ const schema = z.object({
   // fields once we ship public pricing.
   STRIPE_SECRET_KEY: optionalString,
   STRIPE_WEBHOOK_SECRET: optionalString,
+  // Dual-mode billing: the TEST/sandbox key + webhook secret used by sandbox
+  // trainers (the demo). In prod STRIPE_SECRET_KEY is live and these are test;
+  // in local dev all of them are test keys.
+  STRIPE_SECRET_KEY_TEST: optionalString,
+  STRIPE_WEBHOOK_SECRET_TEST: optionalString,
   // Founders Circle coupon. Create in the Stripe dashboard as a coupon
   // with duration = "repeating", duration_in_months = 12, the founder
   // discount (percent_off or amount_off), and max_redemptions = 10 — the

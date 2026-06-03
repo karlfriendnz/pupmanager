@@ -44,9 +44,14 @@ export default async function BillingSetupPage() {
       trialEndsAt: true,
       stripeSubscriptionId: true,
       gracePeriodUntil: true,
+      sandboxBilling: true,
     },
   })
   if (!trainer) redirect('/login')
+
+  // Sandbox trainers (the demo) resolve against the test Stripe key + the
+  // test price columns, so they can run the whole flow without real charges.
+  const sandbox = trainer.sandboxBilling
 
   // Locked = the paywall sent them here (expired trial / no sub). Drives the
   // native message: an unlocked native trainer sees "you're all set"; a
@@ -66,12 +71,12 @@ export default async function BillingSetupPage() {
   // "purchasable" only requires a default Core Price ID (NZD).
   // Per-currency mappings are checked on the server at Checkout time;
   // unmapped currencies fall back to NZD with a UI note.
-  const purchasable = isStripeConfigured() && !!core?.stripePriceId
+  const purchasable = isStripeConfigured(sandbox) && !!(sandbox ? core?.stripePriceIdTest : core?.stripePriceId)
 
   // Which currencies have a wired-up Core price (NZD implied by the
   // legacy column). Seats/add-ons are wired in the same pass, so we let
   // Core's set drive the whole-form "billed in NZD" note.
-  const configuredCurrencies = core ? currenciesFor(core) : new Set<string>()
+  const configuredCurrencies = core ? currenciesFor(core, sandbox) : new Set<string>()
 
   // Active add-ons (id-only — name/desc/price come from pricing.ts), and
   // whether the per-seat charge is sellable yet.

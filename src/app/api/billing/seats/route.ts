@@ -5,16 +5,16 @@ import bcrypt from 'bcryptjs'
 import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
-import { stripe, isStripeConfigured } from '@/lib/stripe'
+import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { resolvePriceId, loadPriceIndex } from '@/lib/billing'
 import { isCurrencyCode, currencyMeta, SEAT_PRICE, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 
 // Resolve the trainer's billing currency from their Stripe subscription
-// (defaults to NZD). Shared by GET (price preview) and the validation below.
-async function subscriptionCurrency(subscriptionId: string | null | undefined): Promise<CurrencyCode> {
-  if (!subscriptionId || !isStripeConfigured()) return DEFAULT_CURRENCY
+// (defaults to NZD). `sandbox` selects test vs live Stripe.
+async function subscriptionCurrency(subscriptionId: string | null | undefined, sandbox: boolean): Promise<CurrencyCode> {
+  if (!subscriptionId || !isStripeConfigured(sandbox)) return DEFAULT_CURRENCY
   try {
-    const sub = await stripe().subscriptions.retrieve(subscriptionId)
+    const sub = await stripeFor(sandbox).subscriptions.retrieve(subscriptionId)
     const c = (sub.currency ?? '').toUpperCase()
     return isCurrencyCode(c) ? c : DEFAULT_CURRENCY
   } catch {
@@ -32,9 +32,9 @@ export async function GET() {
   }
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
-    select: { stripeSubscriptionId: true },
+    select: { stripeSubscriptionId: true, sandboxBilling: true },
   })
-  const cur = await subscriptionCurrency(trainer?.stripeSubscriptionId)
+  const cur = await subscriptionCurrency(trainer?.stripeSubscriptionId, trainer?.sandboxBilling ?? false)
   const meta = currencyMeta(cur)
   return NextResponse.json({ seatPrice: SEAT_PRICE[cur], symbol: meta.symbol, currency: meta.label })
 }
@@ -51,16 +51,22 @@ const schema = z.object({
 // per-seat line item quantity — the ONLY way to add seats, so the team can't
 // grow without paying. Charged immediately, pro-rata, to the card on file
 // (proration_behavior: 'always_invoice'); the UI confirms the change first.
-// A trainer with no subscription is told to subscribe. The
-// customer.subscription.updated webhook reconciles seatCount afterwards (we
-// also set it here so the team page updates immediately).
+// A trainer with no subscription is told to subscribe. Sandbox trainers run
+// against Stripe test mode end-to-end.
 export async function POST(req: Request) {
   const ctx = await getTrainerContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   if (!can('billing.seats', ctx.role, ctx.permissions)) {
     return NextResponse.json({ error: 'You don\'t have permission to add seats.' }, { status: 403 })
   }
-  if (!isStripeConfigured()) {
+
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: ctx.companyId },
+    select: { stripeSubscriptionId: true, sandboxBilling: true },
+  })
+  const sandbox = trainer?.sandboxBilling ?? false
+
+  if (!isStripeConfigured(sandbox)) {
     return NextResponse.json({ error: 'Billing not configured yet' }, { status: 503 })
   }
 
@@ -86,10 +92,6 @@ export async function POST(req: Request) {
     )
   }
 
-  const trainer = await prisma.trainerProfile.findUnique({
-    where: { id: ctx.companyId },
-    select: { stripeSubscriptionId: true },
-  })
   if (!trainer?.stripeSubscriptionId) {
     return NextResponse.json(
       { error: 'Subscribe to your plan to add trainer seats.', needsSubscription: true },
@@ -97,23 +99,23 @@ export async function POST(req: Request) {
     )
   }
 
-  const stripeClient = stripe()
+  const stripeClient = stripeFor(sandbox)
   const sub = await stripeClient.subscriptions.retrieve(trainer.stripeSubscriptionId)
 
-  // Resolve the seat price in the subscription's currency.
+  // Resolve the seat price in the subscription's currency + mode.
   const currency = (sub.currency ?? DEFAULT_CURRENCY).toUpperCase()
   const cur: CurrencyCode = isCurrencyCode(currency) ? currency : DEFAULT_CURRENCY
   const seatItem = await prisma.billingItem.findUnique({
     where: { id: 'seat' },
-    select: { stripePriceId: true, stripePriceIdsByCurrency: true },
+    select: { stripePriceId: true, stripePriceIdsByCurrency: true, stripePriceIdTest: true, stripePriceIdsByCurrencyTest: true },
   })
-  const seatPrice = seatItem ? resolvePriceId(seatItem, cur) : null
+  const seatPrice = seatItem ? resolvePriceId(seatItem, cur, sandbox) : null
   if (!seatPrice) {
     return NextResponse.json({ error: 'Extra seats aren\'t available for purchase yet.' }, { status: 409 })
   }
 
   // Find the existing seat line item on the subscription (if any).
-  const index = await loadPriceIndex()
+  const index = await loadPriceIndex(sandbox)
   const seatLine = sub.items.data.find(li => index.get(li.price.id)?.type === 'seat')
   const extraSeats = seatCount - 1 // first trainer is included in Core
 

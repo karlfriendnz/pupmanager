@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { stripe, isStripeConfigured } from '@/lib/stripe'
+import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
 import { isCurrencyCode, isAddonId, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 import { resolvePriceId } from '@/lib/billing'
@@ -55,7 +55,15 @@ export async function POST(req: Request) {
   const trainerId = session.user.trainerId
   if (!trainerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  if (!isStripeConfigured()) {
+  // Sandbox trainers (the demo) bill against Stripe test mode end-to-end —
+  // test key + the test price columns.
+  const trainerMode = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { sandboxBilling: true },
+  })
+  const sandbox = trainerMode?.sandboxBilling ?? false
+
+  if (!isStripeConfigured(sandbox)) {
     return NextResponse.json({ error: 'Billing not configured yet' }, { status: 503 })
   }
 
@@ -75,14 +83,14 @@ export async function POST(req: Request) {
 
   const plan = await prisma.subscriptionPlan.findUnique({
     where: { id: planId },
-    select: { id: true, name: true, stripePriceId: true, stripePriceIdsByCurrency: true, isActive: true },
+    select: { id: true, name: true, stripePriceId: true, stripePriceIdsByCurrency: true, stripePriceIdTest: true, stripePriceIdsByCurrencyTest: true, isActive: true },
   })
   if (!plan || !plan.isActive) return NextResponse.json({ error: 'Plan not found' }, { status: 404 })
 
-  // Resolve the Core price for the chosen currency (per-currency override
-  // wins; NZD column is the fallback). If neither is set we can't open
-  // Checkout for the base plan.
-  const corePrice = resolvePriceId(plan, cur)
+  // Resolve the Core price for the chosen currency + mode (per-currency
+  // override wins; NZD column is the fallback). If neither is set we can't
+  // open Checkout for the base plan.
+  const corePrice = resolvePriceId(plan, cur, sandbox)
   if (!corePrice) {
     return NextResponse.json({ error: 'This plan isn\'t available for purchase yet' }, { status: 409 })
   }
@@ -96,7 +104,7 @@ export async function POST(req: Request) {
   const items = neededItemIds.length
     ? await prisma.billingItem.findMany({
         where: { id: { in: neededItemIds }, isActive: true },
-        select: { id: true, kind: true, stripePriceId: true, stripePriceIdsByCurrency: true },
+        select: { id: true, kind: true, stripePriceId: true, stripePriceIdsByCurrency: true, stripePriceIdTest: true, stripePriceIdsByCurrencyTest: true },
       })
     : []
   const itemById = new Map(items.map(i => [i.id, i]))
@@ -105,7 +113,7 @@ export async function POST(req: Request) {
 
   if (extraSeats > 0) {
     const seat = itemById.get('seat')
-    const seatPrice = seat ? resolvePriceId(seat, cur) : null
+    const seatPrice = seat ? resolvePriceId(seat, cur, sandbox) : null
     if (!seatPrice) {
       return NextResponse.json({ error: 'Extra trainer seats aren\'t available for purchase yet' }, { status: 409 })
     }
@@ -114,7 +122,7 @@ export async function POST(req: Request) {
 
   for (const addonId of addons) {
     const item = itemById.get(addonId)
-    const addonPrice = item && item.kind === 'ADDON' ? resolvePriceId(item, cur) : null
+    const addonPrice = item && item.kind === 'ADDON' ? resolvePriceId(item, cur, sandbox) : null
     if (!addonPrice) {
       return NextResponse.json({ error: 'One of the selected add-ons isn\'t available for purchase yet' }, { status: 409 })
     }
@@ -162,7 +170,7 @@ export async function POST(req: Request) {
   const trialMsLeft = trainer.trialEndsAt ? trainer.trialEndsAt.getTime() - Date.now() : 0
   const trialDaysLeft = trialMsLeft > 0 ? Math.ceil(trialMsLeft / (24 * 60 * 60 * 1000)) : 0
 
-  const stripeClient = stripe()
+  const stripeClient = stripeFor(sandbox)
 
   // Stripe address shape — only meaningful if line1 is set. Stripe needs
   // a country code; we accept the country name from the form, so prefer
@@ -226,6 +234,7 @@ export async function POST(req: Request) {
     founder: founderFlag,
     seatCount: String(seatCount),
     addons: addons.join(','),
+    sandbox: String(sandbox),
   }
 
   const checkout = await stripeClient.checkout.sessions.create({

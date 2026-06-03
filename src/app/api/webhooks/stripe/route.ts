@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { prisma } from '@/lib/prisma'
-import { stripe, isStripeConfigured } from '@/lib/stripe'
+import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
 import { loadPriceIndex } from '@/lib/billing'
 
@@ -16,7 +16,14 @@ import { loadPriceIndex } from '@/lib/billing'
 //   - customer.subscription.updated:     plan change, renewal, past_due, etc.
 //   - customer.subscription.deleted:     cancellation
 export async function POST(req: Request) {
-  if (!isStripeConfigured() || !env.STRIPE_WEBHOOK_SECRET) {
+  // Dual-mode: a live event validates against STRIPE_WEBHOOK_SECRET; a sandbox
+  // (demo) event validates against STRIPE_WEBHOOK_SECRET_TEST. Try each
+  // configured secret — whichever verifies tells us which Stripe mode the
+  // event is from, so downstream calls use the matching key + price columns.
+  const candidates: { secret: string; sandbox: boolean }[] = []
+  if (env.STRIPE_WEBHOOK_SECRET && isStripeConfigured(false)) candidates.push({ secret: env.STRIPE_WEBHOOK_SECRET, sandbox: false })
+  if (env.STRIPE_WEBHOOK_SECRET_TEST && isStripeConfigured(true)) candidates.push({ secret: env.STRIPE_WEBHOOK_SECRET_TEST, sandbox: true })
+  if (!candidates.length) {
     return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 })
   }
 
@@ -28,27 +35,34 @@ export async function POST(req: Request) {
   // body via .text() before any JSON middleware touches it.
   const raw = await req.text()
 
-  let event: Stripe.Event
-  try {
-    event = stripe().webhooks.constructEvent(raw, sig, env.STRIPE_WEBHOOK_SECRET)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'unknown'
-    console.error('[stripe webhook] signature verification failed:', msg)
-    return NextResponse.json({ error: `Webhook signature: ${msg}` }, { status: 400 })
+  let event: Stripe.Event | null = null
+  let sandbox = false
+  for (const c of candidates) {
+    try {
+      event = stripeFor(c.sandbox).webhooks.constructEvent(raw, sig, c.secret)
+      sandbox = c.sandbox
+      break
+    } catch {
+      // not this secret — try the next
+    }
+  }
+  if (!event) {
+    console.error('[stripe webhook] signature verification failed for all configured secrets')
+    return NextResponse.json({ error: 'Webhook signature verification failed' }, { status: 400 })
   }
 
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
-        await handleCheckoutCompleted(session)
+        await handleCheckoutCompleted(session, sandbox)
         break
       }
       case 'customer.subscription.updated':
       case 'customer.subscription.created':
       case 'customer.subscription.deleted': {
         const sub = event.data.object as Stripe.Subscription
-        await handleSubscriptionChange(sub, event.type === 'customer.subscription.deleted')
+        await handleSubscriptionChange(sub, event.type === 'customer.subscription.deleted', sandbox)
         break
       }
       default:
@@ -64,7 +78,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ received: true })
 }
 
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session, sandbox: boolean) {
   const trainerId = session.metadata?.trainerId
   const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id
 
@@ -75,8 +89,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   // Pull the actual subscription so we can write the canonical period end,
   // status, and the full set of line items (core + seats + add-ons).
-  const sub = await stripe().subscriptions.retrieve(subscriptionId)
-  const recon = await reconcileSubscriptionItems(sub)
+  const sub = await stripeFor(sandbox).subscriptions.retrieve(subscriptionId)
+  const recon = await reconcileSubscriptionItems(sub, sandbox)
 
   // Founders Circle: stamp the seat here (not at checkout creation) so an
   // abandoned checkout never burns one. Only on the first completion — a
@@ -108,7 +122,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   await syncTrainerAddons(trainerId, recon.activeAddons)
 }
 
-async function handleSubscriptionChange(sub: Stripe.Subscription, deleted: boolean) {
+async function handleSubscriptionChange(sub: Stripe.Subscription, deleted: boolean, sandbox: boolean) {
   // Prefer the metadata trainerId (set when we created the checkout session)
   // so we don't have to round-trip via stripeCustomerId for new subs.
   let trainerId: string | null = sub.metadata?.trainerId ?? null
@@ -129,7 +143,7 @@ async function handleSubscriptionChange(sub: Stripe.Subscription, deleted: boole
     return
   }
 
-  const recon = await reconcileSubscriptionItems(sub)
+  const recon = await reconcileSubscriptionItems(sub, sandbox)
 
   await prisma.trainerProfile.update({
     where: { id: trainerId },
@@ -157,8 +171,8 @@ interface ReconResult {
 // Core plan, the per-seat charge, and the active add-ons — so we never
 // assume items.data[0] is the base. Seat count = seat-line quantity + the
 // one trainer included in Core.
-async function reconcileSubscriptionItems(sub: Stripe.Subscription): Promise<ReconResult> {
-  const index = await loadPriceIndex()
+async function reconcileSubscriptionItems(sub: Stripe.Subscription, sandbox: boolean): Promise<ReconResult> {
+  const index = await loadPriceIndex(sandbox)
   const result: ReconResult = { planId: null, seatCount: 1, periodEnd: null, activeAddons: [] }
 
   for (const line of sub.items.data) {

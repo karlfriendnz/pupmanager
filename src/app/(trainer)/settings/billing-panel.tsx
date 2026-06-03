@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { stripe, isStripeConfigured } from '@/lib/stripe'
+import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { formatDate } from '@/lib/utils'
 import type Stripe from 'stripe'
 
@@ -13,6 +13,7 @@ export async function BillingPanel({ companyId }: { companyId: string }) {
     where: { id: companyId },
     select: {
       stripeCustomerId: true,
+      sandboxBilling: true,
       subscriptionStatus: true,
       currentPeriodEnd: true,
       seatCount: true,
@@ -20,10 +21,11 @@ export async function BillingPanel({ companyId }: { companyId: string }) {
     },
   })
 
+  const sandbox = profile?.sandboxBilling ?? false
   let invoices: Stripe.Invoice[] = []
-  if (isStripeConfigured() && profile?.stripeCustomerId) {
+  if (isStripeConfigured(sandbox) && profile?.stripeCustomerId) {
     try {
-      const list = await stripe().invoices.list({ customer: profile.stripeCustomerId, limit: 24 })
+      const list = await stripeFor(sandbox).invoices.list({ customer: profile.stripeCustomerId, limit: 24 })
       invoices = list.data
     } catch {
       invoices = []
