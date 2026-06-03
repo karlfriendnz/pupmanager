@@ -5,6 +5,7 @@ import { UserPlus, Trash2, Pencil, Loader2, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
+import { Modal } from '@/components/ui/modal'
 import { useIsNative } from '@/lib/native'
 import {
   PERMISSION_CATALOGUE,
@@ -30,8 +31,10 @@ interface Member {
 interface TeamData {
   canManage: boolean
   isOwner: boolean
+  canAddSeats: boolean
   seatCount: number
   seatsUsed: number
+  hasSubscription: boolean
   members: Member[]
 }
 
@@ -145,7 +148,7 @@ export function TeamPanel() {
             )}
           </p>
         </div>
-        {data.isOwner && <SeatControl seatCount={data.seatCount} seatsUsed={data.seatsUsed} onChanged={load} />}
+        {data.canAddSeats && <AddSeatControl seatCount={data.seatCount} hasSubscription={data.hasSubscription} onChanged={load} />}
       </div>
 
       {data.canManage && <InviteForm onInvited={load} seatsLeft={seatsLeft} />}
@@ -159,22 +162,59 @@ export function TeamPanel() {
   )
 }
 
-// Owner-only seat adjuster. Updates seatCount directly (Stripe quantity wiring
-// is pending — see PATCH /api/trainer/team). Stepper keeps it simple.
-function SeatControl({ seatCount, seatsUsed, onChanged }: { seatCount: number; seatsUsed: number; onChanged: () => void }) {
+// "Add a seat" — a PAID upgrade gated by the billing.seats permission.
+// Increases the Stripe subscription's seat quantity (charged pro-rata); you
+// can't grow the team for free. A trainer with no subscription is sent to
+// subscribe first. The confirm modal re-authenticates with the user's
+// password before charging. Hidden in native (Apple 3.1.1).
+function AddSeatControl({ seatCount, hasSubscription, onChanged }: { seatCount: number; hasSubscription: boolean; onChanged: () => void }) {
+  const native = useIsNative()
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [price, setPrice] = useState<{ seatPrice: number; symbol: string; currency: string } | null>(null)
 
-  async function setSeats(next: number) {
-    if (next < 1 || next === seatCount) return
+  // Fetch the per-seat price in the trainer's billing currency when the
+  // modal opens, so the charge is shown in their currency.
+  useEffect(() => {
+    if (!open || price) return
+    fetch('/api/billing/seats')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.seatPrice != null) setPrice(d) })
+      .catch(() => {})
+  }, [open, price])
+
+  if (native) return null
+
+  // No subscription → seats are a paid feature they don't have yet.
+  if (!hasSubscription) {
+    return (
+      <a
+        href="/billing/setup"
+        className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold text-white"
+        style={{ background: 'var(--pm-brand-600)' }}
+      >
+        <UserPlus className="h-4 w-4" /> Upgrade to add trainers
+      </a>
+    )
+  }
+
+  function close() { setOpen(false); setPassword(''); setError(null) }
+
+  async function addSeat() {
+    if (!password) { setError('Enter your password to confirm.'); return }
     setSaving(true); setError(null)
     try {
-      const res = await fetch('/api/trainer/team', {
-        method: 'PATCH',
+      const res = await fetch('/api/billing/seats', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seatCount: next }),
+        body: JSON.stringify({ seatCount: seatCount + 1, password }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Could not update seats')
+      const json = await res.json().catch(() => ({}))
+      if (res.status === 409 && json.needsSubscription) { window.location.href = '/billing/setup'; return }
+      if (!res.ok) throw new Error(json.error ?? 'Could not add a seat')
+      close()
       onChanged()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong')
@@ -184,27 +224,44 @@ function SeatControl({ seatCount, seatsUsed, onChanged }: { seatCount: number; s
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-slate-500">Seats</span>
-        <div className="flex items-center rounded-xl border border-slate-200">
-          <button
-            type="button"
-            onClick={() => setSeats(seatCount - 1)}
-            disabled={saving || seatCount <= Math.max(1, seatsUsed)}
-            className="h-9 w-9 text-slate-600 hover:bg-slate-50 disabled:opacity-30 rounded-l-xl"
-          >−</button>
-          <span className="w-10 text-center text-sm font-medium tabular-nums">{seatCount}</span>
-          <button
-            type="button"
-            onClick={() => setSeats(seatCount + 1)}
-            disabled={saving}
-            className="h-9 w-9 text-slate-600 hover:bg-slate-50 disabled:opacity-30 rounded-r-xl"
-          >+</button>
-        </div>
+    <>
+      <div className="flex flex-col items-end gap-1">
+        <Button variant="secondary" onClick={() => setOpen(true)}>
+          <UserPlus className="h-4 w-4" /> Add a seat
+        </Button>
+        <span className="text-xs text-slate-400">Billed per seat, pro-rata</span>
       </div>
-      {error && <span className="text-xs text-red-600">{error}</span>}
-    </div>
+
+      {open && (
+        <Modal open onClose={close} title="Add a trainer seat">
+          <p className="text-sm text-slate-600">
+            This adds a paid trainer seat{price ? ` (${price.symbol}${price.seatPrice}/mo ${price.currency})` : ''} to
+            your subscription, billed per seat and pro-rated to your card on file now.
+            Confirm your password to continue.
+          </p>
+          <form
+            onSubmit={(e) => { e.preventDefault(); addSeat() }}
+            className="mt-4 flex flex-col gap-3"
+          >
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-slate-700">Your password</label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                autoFocus
+              />
+            </div>
+            {error && <p className="text-xs text-red-600">{error}</p>}
+            <div className="mt-1 flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={close} disabled={saving}>Cancel</Button>
+              <Button type="submit" loading={saving}>Confirm &amp; pay</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
   )
 }
 

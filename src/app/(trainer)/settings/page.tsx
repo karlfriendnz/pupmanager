@@ -6,6 +6,7 @@ import { TrainerSettingsForm } from './trainer-settings-form'
 import { SettingsTabs } from './settings-tabs'
 import { NotificationsPanel } from './notifications-panel'
 import { TeamPanel } from './team-panel'
+import { BillingPanel } from './billing-panel'
 import { FormsManager } from '../forms/forms-manager'
 import type { Question } from '../forms/session/session-forms-manager'
 import { PageHeader } from '@/components/shared/page-header'
@@ -74,6 +75,7 @@ export default async function TrainerSettingsPage() {
         profile={canEditSettings ? <TrainerSettingsForm user={user} profile={trainerProfile} /> : undefined}
         notifications={<NotificationsPanel notifyEmail={user.notifyEmail} notifyPush={user.notifyPush} />}
         team={<TeamPanel />}
+        billing={ctx.role === 'OWNER' ? <BillingPanel companyId={ctx.companyId} /> : undefined}
         forms={!canManageForms ? undefined :
           <FormsManager
             initialForms={embedForms.map(f => ({

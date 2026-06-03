@@ -324,6 +324,11 @@ model TrainerProfile {
   // End of the current paid period — drives the "renews on …" copy and
   // the access-cutoff job for cancelled subscriptions.
   currentPeriodEnd     DateTime?
+  // Admin-granted grace period. When set and in the future, the trainer
+  // keeps full platform access regardless of trial/subscription state —
+  // an escape hatch for comped accounts, support cases, or payment hiccups.
+  // Set per-trainer from /admin/trainers. Null = no grace.
+  gracePeriodUntil     DateTime?
   // Number of trainer seats the subscription was booked for. Mirrors
   // the Stripe subscription's quantity. 1 by default; bumps via the
   // slider on /billing/setup.

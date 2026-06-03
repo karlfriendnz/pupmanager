@@ -8,7 +8,6 @@ import { isCurrencyCode, isAddonId, DEFAULT_CURRENCY, type CurrencyCode } from '
 import { resolvePriceId } from '@/lib/billing'
 import { isFounderEligible } from '@/lib/founder'
 
-const TRIAL_DAYS = 10
 const MAX_SEATS = 50
 
 const schema = z.object({
@@ -144,6 +143,7 @@ export async function POST(req: Request) {
     select: {
       stripeCustomerId: true,
       isFounder: true,
+      trialEndsAt: true,
       businessName: true,
       phone: true,
       addressLine1: true,
@@ -155,6 +155,12 @@ export async function POST(req: Request) {
       user: { select: { email: true, name: true } },
     },
   })
+
+  // Only carry the trainer's *remaining* free trial into the subscription —
+  // never grant a fresh window. If their trial has already ended (or they
+  // never had one), there's no trial and the first invoice is charged today.
+  const trialMsLeft = trainer.trialEndsAt ? trainer.trialEndsAt.getTime() - Date.now() : 0
+  const trialDaysLeft = trialMsLeft > 0 ? Math.ceil(trialMsLeft / (24 * 60 * 60 * 1000)) : 0
 
   const stripeClient = stripe()
 
@@ -231,7 +237,8 @@ export async function POST(req: Request) {
     // still get a billing address either way.
     billing_address_collection: stripeAddress ? 'auto' : 'required',
     subscription_data: {
-      trial_period_days: TRIAL_DAYS,
+      // Continue only the days left on their free trial; expired/none → bill now.
+      ...(trialDaysLeft > 0 ? { trial_period_days: trialDaysLeft } : {}),
       metadata: billingMeta,
     },
     metadata: billingMeta,

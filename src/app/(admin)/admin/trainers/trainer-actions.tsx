@@ -16,6 +16,7 @@ type Trainer = {
   onboardingCompleted: number
   onboardingTotal: number
   onboardingEmails: number
+  gracePeriodUntil: Date | string | null
   createdAt: Date
 }
 
@@ -56,6 +57,26 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
     setDeleting(false)
     setConfirmDelete(false)
   }
+
+  // Grant (days > 0) or clear (days === null) an access grace period.
+  const [savingGrace, setSavingGrace] = useState(false)
+  async function setGrace(days: number | null) {
+    setSavingGrace(true)
+    setError(null)
+    const gracePeriodUntil =
+      days === null ? null : new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gracePeriodUntil }),
+    })
+    if (res.ok) router.refresh()
+    else setError('Failed to update grace period')
+    setSavingGrace(false)
+  }
+
+  const graceUntil = trainer.gracePeriodUntil ? new Date(trainer.gracePeriodUntil) : null
+  const graceActive = !!graceUntil && graceUntil.getTime() > Date.now()
 
   if (editing) {
     return (
@@ -103,6 +124,37 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
               </button>
             </div>
           </div>
+
+          {/* Access grace period — overrides the paywall regardless of plan/trial */}
+          <div className="mt-4 pt-3 border-t border-slate-600/50">
+            <p className="text-xs text-slate-400 mb-2">
+              Access grace period
+              {graceActive
+                ? <span className="text-green-300"> · active until {formatDate(graceUntil!)}</span>
+                : <span className="text-slate-500"> · none</span>}
+            </p>
+            <div className="flex gap-2 flex-wrap items-center">
+              {[7, 14, 30].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setGrace(d)}
+                  disabled={savingGrace}
+                  className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 h-8 rounded-lg disabled:opacity-50"
+                >
+                  +{d} days
+                </button>
+              ))}
+              {graceActive && (
+                <button
+                  onClick={() => setGrace(null)}
+                  disabled={savingGrace}
+                  className="text-xs text-rose-300 hover:text-rose-200 px-3 h-8 rounded-lg border border-rose-500/40 disabled:opacity-50"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
         </td>
       </tr>
     )
@@ -121,6 +173,11 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
         }`}>
           {trainer.subscriptionPlanName ?? 'No plan'} · {trainer.subscriptionStatus ?? '—'}
         </span>
+        {graceActive && (
+          <span className="ml-1.5 text-xs px-2 py-0.5 rounded-full bg-amber-900 text-amber-300" title={`Grace access until ${formatDate(graceUntil!)}`}>
+            Grace
+          </span>
+        )}
       </td>
       <td className="px-4 py-3 text-slate-300">{trainer.clientCount}</td>
       <td className="px-4 py-3">

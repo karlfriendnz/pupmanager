@@ -42,6 +42,9 @@ interface Props {
   availableAddonIds: string[]
   // Whether the per-seat "extra trainer" charge is sellable yet.
   seatAvailable: boolean
+  // True when the paywall sent them here (expired trial / no subscription).
+  // Only changes the native copy — web always shows the subscribe form.
+  locked: boolean
   defaults: {
     businessName: string
     phone: string
@@ -61,7 +64,7 @@ interface Props {
 // pupmanager.com/pricing).
 export function SetupForm({
   planId, planName, purchasable, configuredCurrencies,
-  availableAddonIds, seatAvailable, defaults,
+  availableAddonIds, seatAvailable, locked, defaults,
 }: Props) {
   const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY)
   const [seatCount, setSeatCount] = useState(1)
@@ -125,6 +128,23 @@ export function SetupForm({
   // already on a free trial, so we just send them into the app. Account
   // billing is a business matter handled entirely outside the app.
   if (native) {
+    // Locked trainers: their access has paused. We must NOT show pricing or
+    // any in-app purchase/"subscribe on the web" CTA (Apple Guideline 3.1.1),
+    // so we keep it to a neutral status message — billing is handled off-app.
+    if (locked) {
+      // Apple Guideline 3.1.1 / anti-steering: no pricing, no purchase CTA, and
+      // no directing the user off-app to pay (not even "go to the website").
+      // Purely informational — point them at support.
+      return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+          <p className="text-base font-semibold text-slate-900">Your access is paused</p>
+          <p className="mt-2 text-sm text-slate-600">
+            Your free trial has ended and your account access is paused. Please get in
+            touch and we&apos;ll help you get back up and running.
+          </p>
+        </div>
+      )
+    }
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
         <p className="text-base font-semibold text-slate-900">You&apos;re all set</p>
@@ -337,7 +357,7 @@ export function SetupForm({
           style={{ background: 'var(--pm-ink-50, #f5f8f9)' }}
         >
           <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--pm-ink-500)' }}>
-            Total after trial
+            {locked ? 'Billed today' : 'Total after trial'}
           </p>
           <p className="mt-1 flex items-baseline gap-1">
             <span className="text-2xl font-semibold" style={{ color: 'var(--pm-ink-900)' }}>{meta.symbol}</span>
@@ -350,7 +370,7 @@ export function SetupForm({
             {selectedAddons.size > 0 && ` · ${selectedAddons.size} add-on${selectedAddons.size === 1 ? '' : 's'}`}
           </p>
           <p className="mt-2 text-[11px] font-medium" style={{ color: 'var(--pm-brand-700)' }}>
-            Free for 10 days · cancel any time.
+            {locked ? 'Billed today · cancel any time.' : 'Free for 10 days · cancel any time.'}
           </p>
           {fallback && purchasable && (
             <p className="mt-2 text-[11px]" style={{ color: 'var(--pm-ink-500)' }}>

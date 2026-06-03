@@ -27,6 +27,7 @@ export default async function AdminTrainersPage({
           id: true,
           businessName: true,
           subscriptionStatus: true,
+          gracePeriodUntil: true,
           subscriptionPlan: { select: { name: true } },
           _count: { select: { clients: true } },
           // Count of onboarding emails actually sent to this trainer.
@@ -91,6 +92,7 @@ export default async function AdminTrainersPage({
                 onboardingCompleted: onboarding[i].completed,
                 onboardingTotal: onboarding[i].total,
                 onboardingEmails: t.trainerProfile?.onboardingProgress?._count?.emails ?? 0,
+                gracePeriodUntil: t.trainerProfile?.gracePeriodUntil ?? null,
                 createdAt: t.createdAt,
               }} />
             ))}
