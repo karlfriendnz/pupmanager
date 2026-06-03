@@ -29,12 +29,14 @@ for (const line of fs.readFileSync('.env.local', 'utf8').split('\n')) {
   if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
 }
 
-const LIVE = process.env.STRIPE_SECRET_KEY_LIVE
+const LIVE_RAW = process.env.STRIPE_SECRET_KEY_LIVE
 const TEST = process.env.STRIPE_SECRET_KEY_TEST
-if (!LIVE || !LIVE.startsWith('sk_live_')) {
+if (!LIVE_RAW || !LIVE_RAW.startsWith('sk_live_')) {
   console.error('Pass the live key inline: STRIPE_SECRET_KEY_LIVE=sk_live_… npx tsx scripts/setup-cutover.ts')
   process.exit(1)
 }
+// Typed as string so the guard's narrowing survives into nested functions.
+const LIVE: string = LIVE_RAW
 
 const URL = 'https://app.pupmanager.com/api/webhooks/stripe'
 const EVENTS: Stripe.WebhookEndpointCreateParams.EnabledEvent[] = [
