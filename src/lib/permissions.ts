@@ -33,6 +33,7 @@ export type PermissionKey =
   | 'settings.edit'
   | 'team.manage'
   | 'billing.view'
+  | 'billing.seats'
 
 export type PermissionMap = Partial<Record<PermissionKey, boolean>>
 
@@ -70,6 +71,7 @@ export const PERMISSION_CATALOGUE: PermissionDef[] = [
   { key: 'settings.edit', label: 'Edit business settings', description: 'Business profile, availability, branding.', group: 'Business' },
   { key: 'team.manage', label: 'Manage the team', description: 'Invite trainers, set roles and permissions.', group: 'Business' },
   { key: 'billing.view', label: 'View billing', description: 'See the subscription and billing pages.', group: 'Business' },
+  { key: 'billing.seats', label: 'Add seats', description: 'Add paid trainer seats to the subscription (charges the card on file).', group: 'Business' },
 ]
 
 const ALL_KEYS = PERMISSION_CATALOGUE.map((p) => p.key)
@@ -98,6 +100,7 @@ export const ROLE_DEFAULTS: Record<CompanyRole, PermissionMap> = {
     'settings.edit': true,
     'team.manage': false,
     'billing.view': false,
+    'billing.seats': false,
   },
 
   // Sees and manages only their own assigned clients/sessions; can message.
@@ -118,6 +121,7 @@ export const ROLE_DEFAULTS: Record<CompanyRole, PermissionMap> = {
     'settings.edit': false,
     'team.manage': false,
     'billing.view': false,
+    'billing.seats': false,
   },
 }
 

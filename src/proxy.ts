@@ -82,7 +82,12 @@ export default auth((req) => {
     }
   }
 
-  return NextResponse.next()
+  // Expose the current path to server components (the trainer layout reads
+  // this to gate access without re-deriving the route). Set on the request
+  // headers so it's available via `headers()` in RSC.
+  const requestHeaders = new Headers(req.headers)
+  requestHeaders.set('x-pathname', pathname)
+  return NextResponse.next({ request: { headers: requestHeaders } })
 })
 
 export const config = {

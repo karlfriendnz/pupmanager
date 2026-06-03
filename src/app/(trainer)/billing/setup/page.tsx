@@ -3,6 +3,9 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isStripeConfigured } from '@/lib/stripe'
 import { PLAN_NAME } from '@/lib/pricing'
+import { loadBillingConfig, configuredCurrencies as currenciesFor } from '@/lib/billing'
+import { trainerHasAccess } from '@/lib/access'
+import { WebOnly } from './web-only'
 import { SetupForm } from './setup-form'
 import type { Metadata } from 'next'
 
@@ -38,57 +41,80 @@ export default async function BillingSetupPage() {
       subscriptionStatus: true,
       subscriptionPlanId: true,
       currentPeriodEnd: true,
+      trialEndsAt: true,
+      stripeSubscriptionId: true,
+      gracePeriodUntil: true,
+      sandboxBilling: true,
     },
   })
   if (!trainer) redirect('/login')
 
-  // We surface the marketing-site Solo tier as the active paid plan
-  // (the only one configured today). The DB row backing it is the
-  // cheapest non-zero SubscriptionPlan; we still need the planId for
-  // the API call, but the displayed price comes from the shared
-  // pricing table — not from priceMonthly — so the in-app surface
-  // never drifts from pupmanager.com/pricing. Plan name falls back
-  // to PLAN_NAME ("Solo plan") when the DB row hasn't been renamed.
-  const cheapestPaid = await prisma.subscriptionPlan.findFirst({
-    where: { isActive: true, priceMonthly: { gt: 0 } },
-    orderBy: { priceMonthly: 'asc' },
-    select: { id: true, name: true, stripePriceId: true, stripePriceIdsByCurrency: true },
-  })
+  // Sandbox trainers (the demo) resolve against the test Stripe key + the
+  // test price columns, so they can run the whole flow without real charges.
+  const sandbox = trainer.sandboxBilling
 
-  const planId = cheapestPaid?.id ?? null
-  const planName = cheapestPaid?.name ?? PLAN_NAME
-  // "purchasable" only requires a default Stripe Price ID (NZD).
+  // Locked = the paywall sent them here (expired trial / no sub). Drives the
+  // native message: an unlocked native trainer sees "you're all set"; a
+  // locked one sees "access paused" — never an in-app purchase CTA (3.1.1).
+  const locked = !trainerHasAccess(trainer)
+
+  // The Core base + the per-seat charge + the toggleable add-ons. The DB
+  // backs purchasability + per-currency Stripe wiring; the displayed
+  // numbers come from the shared pricing table (src/lib/pricing.ts) so
+  // the in-app surface never drifts from pupmanager.com/pricing. Plan
+  // name falls back to PLAN_NAME ("Core software") when the DB row
+  // hasn't been renamed.
+  const { core, seat, addons } = await loadBillingConfig()
+
+  const planId = core?.id ?? null
+  const planName = core?.name ?? PLAN_NAME
+  // "purchasable" only requires a default Core Price ID (NZD).
   // Per-currency mappings are checked on the server at Checkout time;
   // unmapped currencies fall back to NZD with a UI note.
-  const purchasable = isStripeConfigured() && !!cheapestPaid?.stripePriceId
+  const purchasable = isStripeConfigured(sandbox) && !!(sandbox ? core?.stripePriceIdTest : core?.stripePriceId)
 
-  // Surface which currencies actually have a wired-up Stripe Price ID
-  // so the form can disable / annotate the others. The default
-  // currency (NZD) is always considered configured if the legacy
-  // stripePriceId column is set.
-  const idsByCurrency = (cheapestPaid?.stripePriceIdsByCurrency ?? {}) as Record<string, string>
-  const configuredCurrencies = new Set<string>(Object.keys(idsByCurrency))
-  if (cheapestPaid?.stripePriceId) configuredCurrencies.add('NZD')
+  // Which currencies have a wired-up Core price (NZD implied by the
+  // legacy column). Seats/add-ons are wired in the same pass, so we let
+  // Core's set drive the whole-form "billed in NZD" note.
+  const configuredCurrencies = core ? currenciesFor(core, sandbox) : new Set<string>()
+
+  // Active add-ons (id-only — name/desc/price come from pricing.ts), and
+  // whether the per-seat charge is sellable yet.
+  const availableAddonIds = addons.map(a => a.id)
+  const seatAvailable = !!seat
 
   return (
     <div className="px-4 py-10 md:py-14 w-full max-w-xl mx-auto" style={{ color: 'var(--pm-ink-900)' }}>
-      <div className="text-center mb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--pm-accent-500)' }}>
-          Set up your subscription
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-          One last thing
-        </h1>
-        <p className="mt-2 text-sm" style={{ color: 'var(--pm-ink-700)' }}>
-          Confirm your business details and pick your currency. We&apos;ll send you to Stripe to finish up.
-        </p>
-      </div>
+      {/* The heading is subscribe/pricing language — web only. In native the
+          SetupForm renders a neutral "access paused" card instead (3.1.1). */}
+      <WebOnly>
+        <div className="text-center mb-8">
+          {/* When locked, the teal paywall banner already says "trial ended", so
+              skip the duplicate eyebrow here. */}
+          {!locked && (
+            <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--pm-accent-500)' }}>
+              Set up your subscription
+            </p>
+          )}
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+            {locked ? 'Subscribe to keep going' : 'One last thing'}
+          </h1>
+          <p className="mt-2 text-sm" style={{ color: 'var(--pm-ink-700)' }}>
+            {locked
+              ? 'Your free trial is over. Pick your plan to get back into PupManager — you can cancel any time.'
+              : 'Confirm your business details and pick your currency. We\'ll send you to Stripe to finish up.'}
+          </p>
+        </div>
+      </WebOnly>
 
       <SetupForm
         planId={planId}
         planName={planName}
         purchasable={purchasable}
         configuredCurrencies={Array.from(configuredCurrencies)}
+        availableAddonIds={availableAddonIds}
+        seatAvailable={seatAvailable}
+        locked={locked}
         defaults={{
           businessName: trainer.businessName ?? '',
           phone: trainer.phone ?? '',
@@ -101,18 +127,22 @@ export default async function BillingSetupPage() {
         }}
       />
 
-      <p className="mt-8 text-center text-xs" style={{ color: 'var(--pm-ink-500)' }}>
-        Want a deeper look at the plans?{' '}
-        <a
-          href="https://pupmanager.com/pricing"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-semibold hover:underline"
-          style={{ color: 'var(--pm-brand-700)' }}
-        >
-          See pricing
-        </a>
-      </p>
+      {/* External pricing link — web only (steering off-app to purchase is the
+          thing Apple flags). */}
+      <WebOnly>
+        <p className="mt-8 text-center text-xs" style={{ color: 'var(--pm-ink-500)' }}>
+          Want a deeper look at the plans?{' '}
+          <a
+            href="https://pupmanager.com/pricing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold hover:underline"
+            style={{ color: 'var(--pm-brand-700)' }}
+          >
+            See pricing
+          </a>
+        </p>
+      </WebOnly>
     </div>
   )
 }

@@ -10,6 +10,10 @@ interface Props {
   // Server passes a Date; serialised to client as a string. Accept both so
   // the layout can keep its select { trialEndsAt: true } as-is.
   trialEndsAt: Date | string | null
+  // True once the trainer has a Stripe subscription. A subscriber inside
+  // their Stripe trial window is still TRIALING with a null trialEndsAt —
+  // without this flag the banner would misread that as "Trial finished".
+  hasSubscription?: boolean
 }
 
 type Tone = 'indigo' | 'rose' | 'red'
@@ -25,8 +29,14 @@ interface BannerCopy {
 // Resolves the trainer's billing state into the floating chip's content.
 // Single source of truth — keeps the JSX below dumb. Returns null when
 // nothing needs nagging (the trainer is on an active paid plan).
-function resolveCopy(status: Props['status'], trialEndsAt: Props['trialEndsAt']): BannerCopy | null {
+function resolveCopy(status: Props['status'], trialEndsAt: Props['trialEndsAt'], hasSubscription: boolean): BannerCopy | null {
   if (status === 'ACTIVE') return null
+
+  // A trainer with a subscription that's still in its Stripe trial window
+  // shows as TRIALING with a null trialEndsAt. They've already chosen a
+  // plan, so don't nag them to subscribe — only un-subscribed trials and
+  // genuine failures (PAST_DUE / CANCELLED) below should surface.
+  if (hasSubscription && status === 'TRIALING') return null
 
   // Normalise — server-rendered layout passes a Date; once the component
   // boots on the client the prop arrives as an ISO string.
@@ -88,7 +98,7 @@ function resolveCopy(status: Props['status'], trialEndsAt: Props['trialEndsAt'])
 // or an alert icon when something's gone wrong. Subtle shimmer on the
 // indigo variant + a hover lift make it feel less like a nag and more
 // like a living surface.
-export function TrialBanner({ status, trialEndsAt }: Props) {
+export function TrialBanner({ status, trialEndsAt, hasSubscription = false }: Props) {
   const pathname = usePathname()
   const native = useIsNative()
   // Never surface the billing nudge inside the native app — purchasing a
@@ -97,7 +107,7 @@ export function TrialBanner({ status, trialEndsAt }: Props) {
   if (native) return null
   if (pathname?.startsWith('/billing')) return null
 
-  const copy = resolveCopy(status, trialEndsAt)
+  const copy = resolveCopy(status, trialEndsAt, hasSubscription)
   if (!copy) return null
 
   // Three tones — indigo (relaxed heads-up), rose (warmer urgency,

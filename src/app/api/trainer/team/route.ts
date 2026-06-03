@@ -29,15 +29,20 @@ export async function GET() {
     }),
     prisma.trainerProfile.findUnique({
       where: { id: ctx.companyId },
-      select: { seatCount: true },
+      select: { seatCount: true, stripeSubscriptionId: true },
     }),
   ])
 
   return NextResponse.json({
     canManage: can('team.manage', ctx.role, ctx.permissions),
     isOwner: ctx.role === 'OWNER',
+    // Whether the caller holds the "Add seats" permission (owner-granted).
+    canAddSeats: can('billing.seats', ctx.role, ctx.permissions),
     seatCount: company?.seatCount ?? 1,
     seatsUsed: members.length,
+    // Whether the owner can buy seats (has a subscription) — drives the
+    // team page's "add seats" action vs a prompt to subscribe.
+    hasSubscription: !!company?.stripeSubscriptionId,
     members: members.map((m) => ({
       id: m.id,
       name: m.user.name,
@@ -166,34 +171,6 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, ...(emailError ? { emailError } : {}) }, { status: 201 })
 }
 
-const seatSchema = z.object({ seatCount: z.number().int().min(1).max(100) })
-
-// PATCH — set the number of trainer seats for the business. Owner-only.
-// NOTE: this updates seatCount directly; it does NOT yet change the Stripe
-// subscription quantity (the seat slider on /billing was shelved). When real
-// seat billing lands, this becomes a Stripe quantity update. Can't drop below
-// the number of seats currently in use.
-export async function PATCH(req: Request) {
-  const ctx = await getTrainerContext()
-  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  if (ctx.role !== 'OWNER') {
-    return NextResponse.json({ error: 'Only the business owner can change seats.' }, { status: 403 })
-  }
-
-  const parsed = seatSchema.safeParse(await req.json())
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid seat count' }, { status: 400 })
-
-  const used = await prisma.trainerMembership.count({ where: { companyId: ctx.companyId } })
-  if (parsed.data.seatCount < used) {
-    return NextResponse.json(
-      { error: `You have ${used} trainers — remove some before reducing seats below ${used}.` },
-      { status: 400 },
-    )
-  }
-
-  await prisma.trainerProfile.update({
-    where: { id: ctx.companyId },
-    data: { seatCount: parsed.data.seatCount },
-  })
-  return NextResponse.json({ ok: true, seatCount: parsed.data.seatCount })
-}
+// Seats are no longer settable for free here — adding a seat is a paid
+// upgrade handled by POST /api/billing/seats (Stripe quantity update). This
+// keeps team size tied to what the business actually pays for.

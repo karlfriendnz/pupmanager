@@ -7,6 +7,8 @@ const schema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
   businessName: z.string().min(1).optional(),
+  // Grace period: an ISO datetime to grant access until, or null to clear.
+  gracePeriodUntil: z.union([z.string().datetime(), z.null()]).optional(),
 })
 
 async function requireAdmin() {
@@ -26,7 +28,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ traine
   const user = await prisma.user.findUnique({ where: { id: trainerId, role: 'TRAINER' } })
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { name, email, businessName } = parsed.data
+  const { name, email, businessName, gracePeriodUntil } = parsed.data
 
   if (email && email !== user.email) {
     const conflict = await prisma.user.findUnique({ where: { email } })
@@ -38,10 +40,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ traine
     data: { ...(name !== undefined && { name }), ...(email !== undefined && { email }) },
   })
 
-  if (businessName !== undefined) {
+  const profileData = {
+    ...(businessName !== undefined && { businessName }),
+    // null clears the grace period; a string sets it; undefined leaves it.
+    ...(gracePeriodUntil !== undefined && {
+      gracePeriodUntil: gracePeriodUntil === null ? null : new Date(gracePeriodUntil),
+    }),
+  }
+  if (Object.keys(profileData).length > 0) {
     await prisma.trainerProfile.update({
       where: { userId: trainerId },
-      data: { businessName },
+      data: profileData,
     })
   }
 

@@ -1,5 +1,6 @@
 import { PrismaClient } from '../src/generated/prisma'
 import bcrypt from 'bcryptjs'
+import { PLAN_NAME, CORE_PRICE, SEAT_PRICE, ADDONS } from '../src/lib/pricing'
 
 const prisma = new PrismaClient()
 
@@ -67,18 +68,57 @@ async function main() {
     console.log('Created demo trainer:', trainerEmail)
   }
 
-  // Subscription plans
-  const plans = [
-    { name: 'Starter', priceMonthly: 0, maxClients: 3, description: 'Perfect for getting started' },
-    { name: 'Pro', priceMonthly: 29, maxClients: 25, description: 'For growing trainers' },
-    { name: 'Unlimited', priceMonthly: 79, maxClients: null, description: 'No limits' },
-  ]
+  // Billing — the Core base plan plus the seat + add-on BillingItems.
+  // Mirrors src/lib/pricing.ts / the marketing site (NZD is the canonical
+  // default; per-currency Stripe Price IDs are wired separately via
+  // scripts/setup-billing.ts). The old multi-tier seed (Starter/Pro/
+  // Unlimited) is gone; legacy plan rows are deactivated rather than
+  // deleted so any TrainerProfile.subscriptionPlanId FK stays valid, and
+  // so /billing/setup's "cheapest paid" query resolves to Core.
+  const core = {
+    id: 'core',
+    name: PLAN_NAME,
+    priceMonthly: CORE_PRICE.NZD,
+    maxClients: null,
+    description: 'Every core feature · unlimited clients and dogs',
+  }
+  await prisma.subscriptionPlan.upsert({
+    where: { id: core.id },
+    create: core,
+    update: { ...core, isActive: true },
+  })
+  await prisma.subscriptionPlan.updateMany({
+    where: { id: { not: core.id } },
+    data: { isActive: false },
+  })
 
-  for (const plan of plans) {
-    await prisma.subscriptionPlan.upsert({
-      where: { id: plan.name.toLowerCase() },
-      create: { id: plan.name.toLowerCase(), ...plan },
-      update: plan,
+  // Seat + add-on BillingItems. Seeded active (with NZD reference prices)
+  // so /billing/setup shows them even before Stripe is wired; the wire
+  // script fills in stripePriceId(s). Idempotent upsert keeps prices in
+  // sync with pricing.ts on every seed.
+  const billingItems: {
+    id: string
+    kind: 'SEAT' | 'ADDON'
+    name: string
+    description: string
+    priceMonthly: number
+    sortOrder: number
+  }[] = [
+    { id: 'seat', kind: 'SEAT', name: 'Extra trainer', description: 'An additional trainer seat on your account.', priceMonthly: SEAT_PRICE.NZD, sortOrder: 0 },
+    ...ADDONS.map((a, i) => ({
+      id: a.id,
+      kind: 'ADDON' as const,
+      name: a.name,
+      description: a.description,
+      priceMonthly: a.price.NZD,
+      sortOrder: i + 1,
+    })),
+  ]
+  for (const item of billingItems) {
+    await prisma.billingItem.upsert({
+      where: { id: item.id },
+      create: item,
+      update: { ...item, isActive: true },
     })
   }
 

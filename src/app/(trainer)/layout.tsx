@@ -1,11 +1,14 @@
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { trainerHasAccess } from '@/lib/access'
 import { getTrainerContext } from '@/lib/membership'
 import { can, type PermissionKey } from '@/lib/permissions'
 import { AppShell } from '@/components/shared/app-shell'
 import { OnboardingFab } from './onboarding-fab'
 import { TrialBanner } from './trial-banner'
+import { PaywallFrame } from './paywall-frame'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { STEP_TO_MENU } from '@/lib/onboarding/path-step'
 import { getStreak } from '@/lib/trainer-streak'
@@ -43,8 +46,24 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       logoUrl: true,
       subscriptionStatus: true,
       trialEndsAt: true,
+      stripeSubscriptionId: true,
+      gracePeriodUntil: true,
     },
   })
+
+  // Hard paywall: no pay, no access. A trainer whose free trial has lapsed
+  // without a subscription (or whose subscription has gone) can't use the
+  // platform at all — no nav, no chrome. They're bounced to /billing/setup
+  // and shown a bare full-screen subscribe screen. The billing pages are
+  // exempt from the redirect so they can actually subscribe (and so we don't
+  // loop). API routes enforce their own auth and aren't under this layout.
+  if (tp && !trainerHasAccess(tp)) {
+    const pathname = (await headers()).get('x-pathname') ?? ''
+    if (!pathname.startsWith('/billing')) {
+      redirect('/billing/setup')
+    }
+    return <PaywallFrame>{children}</PaywallFrame>
+  }
 
   const fabState = session.user.trainerId
     ? await getOnboardingFabState(session.user.trainerId)
@@ -129,6 +148,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
         <TrialBanner
           status={tp.subscriptionStatus}
           trialEndsAt={tp.trialEndsAt}
+          hasSubscription={!!tp.stripeSubscriptionId}
         />
       )}
       {/* FAB sits above the page content so when it's a sticky banner it

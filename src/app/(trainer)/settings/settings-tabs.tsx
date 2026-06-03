@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell, Users } from 'lucide-react'
+import { User, Pencil, Bell, Users, CreditCard } from 'lucide-react'
+import { useIsNative } from '@/lib/native'
 
 const ALL_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'forms', label: 'Forms', icon: Pencil },
   { id: 'team', label: 'Team', icon: Users },
+  { id: 'billing', label: 'Billing', icon: CreditCard },
 ] as const
 
 type TabId = typeof ALL_TABS[number]['id']
@@ -18,6 +20,7 @@ export function SettingsTabs({
   notifications,
   forms,
   team,
+  billing,
 }: {
   // Each tab renders only when its node is provided, so the page can hide tabs
   // a member lacks permission for (e.g. staff don't get Profile/Forms).
@@ -26,9 +29,13 @@ export function SettingsTabs({
   notifications: React.ReactNode
   forms?: React.ReactNode
   team?: React.ReactNode
+  billing?: React.ReactNode
 }) {
-  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, team }
-  const tabs = ALL_TABS.filter((t) => present[t.id] != null)
+  const native = useIsNative()
+  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, team, billing }
+  // Hide Billing inside the native app — subscription billing is handled on
+  // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
+  const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
   const tabIds = tabs.map((t) => t.id) as readonly TabId[]
 
   function readHashTab(): TabId | null {
@@ -96,6 +103,7 @@ export function SettingsTabs({
         <div className={tab === 'notifications' ? '' : 'hidden'}>{notifications}</div>
         {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}
         {team != null && <div className={tab === 'team' ? '' : 'hidden'}>{team}</div>}
+        {billing != null && !native && <div className={tab === 'billing' ? '' : 'hidden'}>{billing}</div>}
       </div>
     </div>
   )

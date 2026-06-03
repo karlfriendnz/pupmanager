@@ -813,11 +813,15 @@ export async function ensureDemoTrainer(prisma: PrismaClient): Promise<string> {
       businessName: DEMO_BUSINESS,
       subscriptionStatus: 'ACTIVE',
       trialEndsAt: null,
+      // The demo always bills against Stripe TEST mode (sandbox) so it can
+      // show the full billing flow without ever taking a real charge.
+      sandboxBilling: true,
     },
     update: {
       businessName: DEMO_BUSINESS,
       subscriptionStatus: 'ACTIVE',
       trialEndsAt: null,
+      sandboxBilling: true,
     },
   })
 
