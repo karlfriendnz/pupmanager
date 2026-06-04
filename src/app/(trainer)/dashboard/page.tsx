@@ -250,10 +250,13 @@ export default async function DashboardPage({
         actions={<StreakChip trainerId={trainerId} />}
       />
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
+        {/* While sample data is loaded the account looks set up, so show the
+            "remove sample data" banner instead of the get-set-up onboarding —
+            the two are mutually exclusive. Removing it brings onboarding back. */}
         {sampleClientCount > 0 && <SampleDataBanner count={sampleClientCount} />}
         <BookingRequestsPanel trainerId={trainerId} />
         <WaitlistNudge trainerId={trainerId} />
-        <OnboardingPanel state={onboardingState} branding={branding} />
+        {sampleClientCount === 0 && <OnboardingPanel state={onboardingState} branding={branding} />}
 
       {/* Vital stats strip — four tiles in one row: Notes, Invoice, Clients,
           Dogs. The first two link to /sessions/needs-notes; Clients/Dogs are
