@@ -1,61 +1,70 @@
 import { prisma } from '@/lib/prisma'
-import { getOnboardingFabState } from '@/lib/onboarding/state'
-import { TrainerRow } from './trainer-actions'
+import Link from 'next/link'
+import type { SubscriptionStatus } from '@/generated/prisma'
+import { TrainersTable } from './trainers-table'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Trainers' }
 
+// Lifecycle tabs over the trainers table. `statuses` undefined = no filter (All).
+const TABS: { key: string; label: string; statuses?: SubscriptionStatus[] }[] = [
+  { key: 'all',     label: 'All',              statuses: undefined },
+  { key: 'trial',   label: 'In Trial',         statuses: ['TRIALING'] },
+  { key: 'paying',  label: 'Paying customer',  statuses: ['ACTIVE', 'PAST_DUE'] },
+  { key: 'churned', label: 'Churned',          statuses: ['CANCELLED'] },
+]
+
 export default async function AdminTrainersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>
+  searchParams: Promise<{ q?: string; tab?: string }>
 }) {
-  const { q = '' } = await searchParams
+  const { q = '', tab = 'all' } = await searchParams
+  const current = TABS.find(t => t.key === tab) ?? TABS[0]
 
-  const trainers = await prisma.user.findMany({
-    where: {
-      role: 'TRAINER',
-      ...(q ? { OR: [
-        { name: { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } },
-      ]} : {}),
-    },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      trainerProfile: {
-        select: {
-          id: true,
-          businessName: true,
-          subscriptionStatus: true,
-          gracePeriodUntil: true,
-          subscriptionPlan: { select: { name: true } },
-          _count: { select: { clients: true } },
-          // Count of onboarding emails actually sent to this trainer.
-          onboardingProgress: { select: { _count: { select: { emails: true } } } },
-        },
-      },
-    },
-  })
-
-  // Onboarding progress per trainer — use the same live-derived completion the
-  // dashboard checklist uses (a step counts as done when the underlying action
-  // is done OR it was explicitly marked), not just the raw step-progress rows.
-  const onboarding = await Promise.all(
-    trainers.map(async t => {
-      if (!t.trainerProfile?.id) return { completed: 0, total: 0 }
-      const fab = await getOnboardingFabState(t.trainerProfile.id)
-      return { completed: fab.steps.filter(s => s.status === 'completed').length, total: fab.totalSteps }
-    }),
-  )
+  const [all, trial, paying, churned] = await Promise.all([
+    prisma.user.count({ where: { role: 'TRAINER' } }),
+    prisma.user.count({ where: { role: 'TRAINER', trainerProfile: { subscriptionStatus: 'TRIALING' } } }),
+    prisma.user.count({ where: { role: 'TRAINER', trainerProfile: { subscriptionStatus: { in: ['ACTIVE', 'PAST_DUE'] } } } }),
+    prisma.user.count({ where: { role: 'TRAINER', trainerProfile: { subscriptionStatus: 'CANCELLED' } } }),
+  ])
+  const counts: Record<string, number> = { all, trial, paying, churned }
 
   return (
     <div>
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold">Trainer Accounts</h1>
-        <p className="text-slate-400 text-sm mt-1">{trainers.length} trainer{trainers.length !== 1 ? 's' : ''} registered</p>
+        <p className="text-slate-400 text-sm mt-1">{all} trainer{all !== 1 ? 's' : ''} registered</p>
+      </div>
+
+      {/* Lifecycle tabs */}
+      <div className="flex items-center gap-1 mb-6 border-b border-slate-700">
+        {TABS.map(t => {
+          const active = t.key === current.key
+          const href = `/admin/trainers?tab=${t.key}${q ? `&q=${encodeURIComponent(q)}` : ''}`
+          return (
+            <Link
+              key={t.key}
+              href={href}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                active ? 'text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {t.label}
+              <span className={`text-xs px-1.5 py-0.5 rounded-full tabular-nums ${
+                active ? 'bg-blue-600/20 text-blue-300' : 'bg-slate-700/60 text-slate-400'
+              }`}>
+                {counts[t.key] ?? 0}
+              </span>
+              {active && <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-blue-500 rounded-full" />}
+            </Link>
+          )
+        })}
       </div>
 
       <form className="mb-6">
+        {/* Keep the active tab when searching. */}
+        <input type="hidden" name="tab" value={current.key} />
         <input
           name="q"
           defaultValue={q}
@@ -64,44 +73,7 @@ export default async function AdminTrainersPage({
         />
       </form>
 
-      <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
-              <th className="text-left px-4 py-3">Name</th>
-              <th className="text-left px-4 py-3">Email</th>
-              <th className="text-left px-4 py-3">Business</th>
-              <th className="text-left px-4 py-3">Plan</th>
-              <th className="text-left px-4 py-3">Clients</th>
-              <th className="text-left px-4 py-3">Onboarding</th>
-              <th className="text-left px-4 py-3">Emails</th>
-              <th className="text-left px-4 py-3">Joined</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {trainers.map((t, i) => (
-              <TrainerRow key={t.id} trainer={{
-                id: t.id,
-                name: t.name,
-                email: t.email,
-                businessName: t.trainerProfile?.businessName ?? null,
-                subscriptionPlanName: t.trainerProfile?.subscriptionPlan?.name ?? null,
-                subscriptionStatus: t.trainerProfile?.subscriptionStatus ?? null,
-                clientCount: t.trainerProfile?._count?.clients ?? 0,
-                onboardingCompleted: onboarding[i].completed,
-                onboardingTotal: onboarding[i].total,
-                onboardingEmails: t.trainerProfile?.onboardingProgress?._count?.emails ?? 0,
-                gracePeriodUntil: t.trainerProfile?.gracePeriodUntil ?? null,
-                createdAt: t.createdAt,
-              }} />
-            ))}
-          </tbody>
-        </table>
-        {trainers.length === 0 && (
-          <p className="text-center py-8 text-slate-500">No trainers found</p>
-        )}
-      </div>
+      <TrainersTable q={q} statuses={current.statuses} />
     </div>
   )
 }
