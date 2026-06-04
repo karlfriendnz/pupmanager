@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { ClientHomeView } from './home-view'
+import { AppInstallModal } from '../app-install-modal'
 import { computeAchievementProgress } from '@/lib/achievements'
 import type { Metadata } from 'next'
 
@@ -202,6 +203,8 @@ export default async function ClientHomePage() {
     : null
 
   return (
+    <>
+    <AppInstallModal />
     <ClientHomeView
       clientName={clientProfile.user.name ?? 'there'}
       businessName={clientProfile.trainer.businessName}
@@ -263,5 +266,6 @@ export default async function ClientHomePage() {
         progress: achievementProgress[a.id] ?? null,
       }))}
     />
+    </>
   )
 }
