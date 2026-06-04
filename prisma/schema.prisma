@@ -250,6 +250,10 @@ model TrainerProfile {
   id               String  @id @default(cuid())
   userId           String  @unique
   businessName     String
+  // URL-safe handle for the public branded client-login page
+  // (app.pupmanager.com/c/<slug>). Generated from businessName on demand,
+  // editable in settings. Nullable until first generated.
+  slug             String? @unique
   phone            String?
   logoUrl          String?
   website          String? // public website URL, shown to clients as a link in the app header

@@ -12,6 +12,8 @@ const PUBLIC_PATHS = [
   '/api/webhooks', // Stripe + future inbound webhooks (signature-gated inside)
   '/form',       // public embed forms
   '/api/form',   // public form submission API
+  '/c/',         // public per-trainer branded client login (/c/<slug>) — trailing slash so it can't match /clients
+
   '/concepts',   // TEMP: client-home redesign concept previews (mock data, no auth) — remove before ship
   '/concept-products', // TEMP: generated product images for the concept shop — remove before ship
   '/api/version', // build-id check for the stale-client reload guard (no secrets)
