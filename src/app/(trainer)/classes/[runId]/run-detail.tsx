@@ -19,6 +19,9 @@ type Run = {
   packageName: string
   allowDropIn: boolean
   allowWaitlist: boolean
+  priceCents: number | null
+  durationMins: number
+  sessionType: 'IN_PERSON' | 'VIRTUAL'
 }
 type SessionRow = { id: string; title: string; scheduledAt: string; sessionIndex: number | null; status: string }
 type Enrollment = {
@@ -98,92 +101,117 @@ export function RunDetail({
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Roster */}
+      {/* Class details */}
       <Card className="mb-5">
         <CardBody className="py-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-              <Users className="h-4 w-4 text-slate-400" /> Roster
-              <span className="text-sm font-normal text-slate-500">({seatsLabel})</span>
-            </h2>
-            <Button variant="secondary" onClick={() => setAdding(true)}>
-              <UserPlus className="h-4 w-4" /> Enrol client
-            </Button>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <Detail label="Schedule" value={run.scheduleNote || 'Weekly'} />
+            <Detail label="Starts" value={new Date(run.startDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} />
+            <Detail label="Sessions" value={String(sessions.length)} />
+            <Detail label="Length" value={`${run.durationMins} min`} />
+            <Detail label="Format" value={run.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'} />
+            <Detail label="Price" value={run.priceCents != null ? `$${(run.priceCents / 100).toFixed(run.priceCents % 100 === 0 ? 0 : 2)}` : '—'} />
           </div>
+          {(run.allowDropIn || run.allowWaitlist) && (
+            <p className="text-xs text-slate-400 mt-3">
+              {run.allowDropIn && 'Drop-ins allowed'}
+              {run.allowDropIn && run.allowWaitlist && ' · '}
+              {run.allowWaitlist && 'Waitlist enabled'}
+            </p>
+          )}
+        </CardBody>
+      </Card>
 
-          {enrolled.length === 0 ? (
-            <p className="text-sm text-slate-500 py-4 text-center">No one enrolled yet.</p>
-          ) : (
+      {/* Sessions (left) · Clients (right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+        {/* Sessions */}
+        <Card>
+          <CardBody className="py-5">
+            <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
+              <CalendarDays className="h-4 w-4 text-slate-400" /> Sessions
+              <span className="text-sm font-normal text-slate-500">({sessions.length})</span>
+            </h2>
             <ul className="divide-y divide-slate-100">
-              {enrolled.map(e => (
-                <li key={e.id} className="flex items-center gap-3 py-3">
+              {sessions.map(s => (
+                <li key={s.id} className="flex items-center gap-3 py-3">
+                  <span className="text-xs text-slate-400 w-6">{s.sessionIndex ?? '–'}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-900 truncate">{e.clientName}</p>
-                    <p className="text-xs text-slate-500">
-                      {e.dogName ?? 'No dog'}
-                      {e.type === 'DROP_IN' && <span className="ml-1.5 text-amber-600">· drop-in</span>}
-                      {e.source === 'SELF_SERVE' && <span className="ml-1.5 text-slate-400">· self-enrolled</span>}
-                    </p>
+                    <p className="text-sm font-medium text-slate-900 truncate">{s.title}</p>
+                    <p className="text-xs text-slate-500">{new Date(s.scheduledAt).toLocaleString()}</p>
                   </div>
-                  <button
-                    onClick={() => withdraw(e.id)}
-                    className="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"
-                  >
-                    Withdraw
-                  </button>
+                  <Button variant="ghost" onClick={() => setOpenSession(s)}>
+                    <ClipboardCheck className="h-4 w-4" /> Attendance
+                  </Button>
                 </li>
               ))}
             </ul>
-          )}
+          </CardBody>
+        </Card>
 
-          {waitlisted.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-slate-100">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
-                Waitlist ({waitlisted.length})
-              </p>
+        {/* Roster / clients */}
+        <Card>
+          <CardBody className="py-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                <Users className="h-4 w-4 text-slate-400" /> Clients
+                <span className="text-sm font-normal text-slate-500">({seatsLabel})</span>
+              </h2>
+              <Button variant="secondary" onClick={() => setAdding(true)}>
+                <UserPlus className="h-4 w-4" /> Enrol client
+              </Button>
+            </div>
+
+            {enrolled.length === 0 ? (
+              <p className="text-sm text-slate-500 py-4 text-center">No one enrolled yet.</p>
+            ) : (
               <ul className="divide-y divide-slate-100">
-                {waitlisted.map(e => (
-                  <li key={e.id} className="flex items-center gap-3 py-2">
-                    <span className="text-xs text-slate-400 w-5">{e.waitlistPosition}</span>
+                {enrolled.map(e => (
+                  <li key={e.id} className="flex items-center gap-3 py-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-slate-700 truncate">{e.clientName}</p>
+                      <p className="text-sm font-medium text-slate-900 truncate">{e.clientName}</p>
+                      <p className="text-xs text-slate-500">
+                        {e.dogName ?? 'No dog'}
+                        {e.type === 'DROP_IN' && <span className="ml-1.5 text-amber-600">· drop-in</span>}
+                        {e.source === 'SELF_SERVE' && <span className="ml-1.5 text-slate-400">· self-enrolled</span>}
+                      </p>
                     </div>
                     <button
                       onClick={() => withdraw(e.id)}
                       className="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"
                     >
-                      Remove
+                      Withdraw
                     </button>
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
-        </CardBody>
-      </Card>
+            )}
 
-      {/* Sessions */}
-      <Card>
-        <CardBody className="py-5">
-          <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
-            <CalendarDays className="h-4 w-4 text-slate-400" /> Sessions
-          </h2>
-          <ul className="divide-y divide-slate-100">
-            {sessions.map(s => (
-              <li key={s.id} className="flex items-center gap-3 py-3">
-                <span className="text-xs text-slate-400 w-6">{s.sessionIndex ?? '–'}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-900 truncate">{s.title}</p>
-                  <p className="text-xs text-slate-500">{new Date(s.scheduledAt).toLocaleString()}</p>
-                </div>
-                <Button variant="ghost" onClick={() => setOpenSession(s)}>
-                  <ClipboardCheck className="h-4 w-4" /> Attendance
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </CardBody>
-      </Card>
+            {waitlisted.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-slate-100">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                  Waitlist ({waitlisted.length})
+                </p>
+                <ul className="divide-y divide-slate-100">
+                  {waitlisted.map(e => (
+                    <li key={e.id} className="flex items-center gap-3 py-2">
+                      <span className="text-xs text-slate-400 w-5">{e.waitlistPosition}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-slate-700 truncate">{e.clientName}</p>
+                      </div>
+                      <button
+                        onClick={() => withdraw(e.id)}
+                        className="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      </div>
 
       {adding && (
         <EnrolModal
@@ -208,6 +236,15 @@ export function RunDetail({
       )}
       </div>
     </>
+  )
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="text-sm font-medium text-slate-800 mt-0.5 truncate">{value}</p>
+    </div>
   )
 }
 

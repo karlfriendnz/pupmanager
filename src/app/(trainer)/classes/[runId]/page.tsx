@@ -20,7 +20,7 @@ export default async function ClassRunPage({
   const run = await prisma.classRun.findFirst({
     where: { id: runId, trainerId },
     include: {
-      package: { select: { name: true, allowDropIn: true, allowWaitlist: true } },
+      package: { select: { name: true, allowDropIn: true, allowWaitlist: true, priceCents: true, durationMins: true, sessionType: true, capacity: true } },
       sessions: {
         orderBy: { sessionIndex: 'asc' },
         select: { id: true, title: true, scheduledAt: true, sessionIndex: true, status: true },
@@ -54,10 +54,13 @@ export default async function ClassRunPage({
         scheduleNote: run.scheduleNote,
         startDate: run.startDate.toISOString(),
         status: run.status,
-        capacity: run.capacity ?? null,
+        capacity: run.capacity ?? run.package.capacity ?? null,
         packageName: run.package.name,
         allowDropIn: run.package.allowDropIn,
         allowWaitlist: run.package.allowWaitlist,
+        priceCents: run.package.priceCents,
+        durationMins: run.package.durationMins,
+        sessionType: run.package.sessionType,
       }}
       sessions={run.sessions.map(s => ({
         id: s.id,
