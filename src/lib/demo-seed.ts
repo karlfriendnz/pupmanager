@@ -93,13 +93,17 @@ const PACKAGE_DEFS: Array<{
   sessionType: 'IN_PERSON' | 'VIRTUAL'
   priceCents: number | null
   color: string
+  // Group classes — the Classes page only surfaces runs when a group package
+  // exists, so the class-style packages are flagged isGroup with a capacity.
+  isGroup?: boolean
+  capacity?: number
 }> = [
-  { name: 'Puppy Foundations',     description: '4 sessions covering recall, sit, drop and loose-leash basics.', sessionCount: 4, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 38000, color: 'blue' },
-  { name: 'Reactive Rover',        description: '6-session behaviour plan for leash-reactive dogs.',              sessionCount: 6, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 72000, color: 'amber' },
+  { name: 'Puppy Foundations',     description: '4 sessions covering recall, sit, drop and loose-leash basics.', sessionCount: 4, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 38000, color: 'blue', isGroup: true, capacity: 8 },
+  { name: 'Reactive Rover',        description: '6-session behaviour plan for leash-reactive dogs.',              sessionCount: 6, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 72000, color: 'amber', isGroup: true, capacity: 6 },
   { name: 'Loose-Leash Bootcamp',  description: 'Three intensive walks focused on polite leash skills.',           sessionCount: 3, weeksBetween: 1, durationMins: 45, sessionType: 'IN_PERSON', priceCents: 28500, color: 'emerald' },
   { name: 'Virtual Coaching',      description: 'Weekly Zoom check-ins for owners working through a plan.',        sessionCount: 4, weeksBetween: 1, durationMins: 30, sessionType: 'VIRTUAL',   priceCents: 22000, color: 'cyan' },
   { name: 'Confident Adolescent',  description: '8-week programme for dogs aged 6–18 months.',                     sessionCount: 8, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 96000, color: 'purple' },
-  { name: 'Drop-In Class',         description: 'Single ad-hoc class — useful for tune-ups or specific skills.',   sessionCount: 1, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 9000,  color: 'rose' },
+  { name: 'Drop-In Class',         description: 'Single ad-hoc class — useful for tune-ups or specific skills.',   sessionCount: 1, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 9000,  color: 'rose', isGroup: true, capacity: 12 },
   { name: 'Anxious Dog Programme', description: '6 sessions building confidence in fearful or anxious dogs.',       sessionCount: 6, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 78000, color: 'teal' },
   { name: 'Trick Title Prep',      description: 'Fun 5-session course toward a Novice Trick Dog title.',            sessionCount: 5, weeksBetween: 1, durationMins: 45, sessionType: 'IN_PERSON', priceCents: 47500, color: 'pink' },
 ]
@@ -167,6 +171,20 @@ const PRODUCT_DEFS: Array<{
   { name: 'Reactivity ebook',        description: 'Full 60-page guide to leash reactivity.',           kind: 'DIGITAL',  priceCents: 2800, category: 'Guides',      featured: true  },
 ]
 
+// Map sample products to the concept-product photos used in the app mockups
+// (public/concept-products) so the Products grid + client "picked for you"
+// carousel show real imagery rather than blank tiles.
+const PRODUCT_IMAGES: Record<string, string> = {
+  'Long line — 10m': '/concept-products/leash.jpg',
+  'High-value treat pouch': '/concept-products/treats.jpg',
+  'Front-clip harness': '/concept-products/leash.jpg',
+  'Puppy starter kit': '/concept-products/puppykit.jpg',
+  'Loose-leash mini-guide': '/concept-products/clicker.jpg',
+  'Crate training playbook': '/concept-products/bed.jpg',
+  '1:1 video review': '/concept-products/chewtoy.jpg',
+  'Reactivity ebook': '/concept-products/chewtoy.jpg',
+}
+
 const ACHIEVEMENT_DEFS: Array<{
   name: string
   description: string
@@ -197,6 +215,9 @@ const ENQUIRY_MESSAGES = [
   'Hi! Just looking for general puppy classes — what do you offer?',
   'My dog jumps on every visitor. Help!',
   'Recall is non-existent off-leash. Where do we start?',
+  "Hi there — we've got a 10-month-old cocker spaniel called Maple who's an angel at home but a totally different dog on walks. She lunges and barks at other dogs and we're honestly starting to dread taking her out. We've tried a few bits from YouTube but nothing's really stuck. Would love a proper plan from someone who knows what they're doing — and to understand how many sessions we'd realistically be looking at.",
+  "Hello! We adopted a rescue about six weeks ago — he's roughly 2 years old and still very unsure of new people, especially men. He'll bark and back away, and last week he nipped at a friend who reached to pat him. He's wonderful with us so we know there's a lovely dog underneath; we just need help building his confidence and keeping everyone safe in the meantime. Do you offer something for this, and would the first session be at our home?",
+  "Morning — I have two dogs (a 4yo lab and a 1yo kelpie) and the younger one has started guarding toys and the couch from the older one. There've been a couple of scuffles, nothing serious yet, but I'd really like to get on top of it before it escalates. Could you let me know what a household-harmony package looks like, rough pricing, and whether you'd want to see them together or separately to start?",
 ]
 
 // ─── Reset ───────────────────────────────────────────────────────────────────
@@ -573,6 +594,8 @@ export async function seedDemoData(
         sessionType: p.sessionType,
         priceCents: p.priceCents,
         color: p.color,
+        isGroup: p.isGroup ?? false,
+        capacity: p.capacity ?? null,
         order: i,
       },
     }),
@@ -617,6 +640,7 @@ export async function seedDemoData(
       priceCents: p.priceCents,
       category: p.category,
       featured: p.featured,
+      imageUrl: PRODUCT_IMAGES[p.name] ?? null,
       order: i,
     })),
   })
@@ -904,10 +928,12 @@ export async function seedDemoData(
     { name: 'Reactive Rover Group', scheduleNote: 'Thursdays · 7:00pm', status: 'SCHEDULED', startOffset: 7, enrol: 5 },
     { name: 'Foundations Group', scheduleNote: 'Saturdays · 10:00am', status: 'COMPLETED', startOffset: -63, enrol: 7 },
   ]
+  // Class runs must sit on a GROUP package or the Classes page hides them.
+  const groupPkgs = packages.filter(p => p.isGroup)
   let classEnrolCount = 0
   for (let i = 0; i < classRunDefs.length; i++) {
     const def = classRunDefs[i]
-    const pkg = packages[i % packages.length]
+    const pkg = (groupPkgs.length ? groupPkgs : packages)[i % (groupPkgs.length || packages.length)]
     const start = new Date(now)
     start.setDate(start.getDate() + def.startOffset)
     start.setHours(18, 0, 0, 0)
