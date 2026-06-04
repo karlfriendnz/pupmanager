@@ -5,6 +5,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { renderClientInviteEmail, DEFAULT_INVITE_BODY } from '@/lib/client-invite-email'
+import { ensureTrainerSlug, clientInviteUrl } from '@/lib/slug'
 
 // Re-send the invite/sign-in link email. Generates a fresh
 // verificationToken (invalidating any older tokens we'd issued for
@@ -68,7 +69,8 @@ export async function POST(
     data: { identifier: client.user.email, token: inviteToken, expires },
   })
 
-  const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite?token=${inviteToken}&email=${encodeURIComponent(client.user.email)}`
+  const slug = await ensureTrainerSlug(trainerId)
+  const inviteUrl = clientInviteUrl(process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com', slug, inviteToken, client.user.email)
 
   const dogNames = [client.dog?.name, ...client.dogs.map(d => d.name)].filter((n): n is string => !!n)
 

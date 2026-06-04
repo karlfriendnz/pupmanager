@@ -46,6 +46,20 @@ export async function ensureTrainerSlug(trainerId: string): Promise<string | nul
   return null
 }
 
+// Build the invite/activation link sent to a client. Prefers the trainer's
+// branded /c/<slug> page (which shows the set-password flow when ?token= is
+// present); falls back to the generic /invite if no slug.
+export function clientInviteUrl(
+  baseUrl: string,
+  slug: string | null,
+  token: string,
+  email: string,
+): string {
+  const base = baseUrl.replace(/\/$/, '')
+  const qs = `token=${token}&email=${encodeURIComponent(email)}`
+  return slug ? `${base}/c/${slug}?${qs}` : `${base}/invite?${qs}`
+}
+
 // Validate a user-edited slug. Returns a normalised slug or an error string.
 export function validateSlug(input: string): { ok: true; slug: string } | { ok: false; error: string } {
   const slug = slugify(input)

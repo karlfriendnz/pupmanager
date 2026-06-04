@@ -6,6 +6,7 @@ import { z } from 'zod'
 import crypto from 'crypto'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { renderClientInviteEmail } from '@/lib/client-invite-email'
+import { ensureTrainerSlug, clientInviteUrl } from '@/lib/slug'
 
 const schema = z.object({
   clientName: z.string().min(2),
@@ -113,7 +114,8 @@ export async function POST(req: Request) {
   let emailError: string | null = null
 
   if (sendInvite && emailBody) {
-    const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite?token=${inviteToken}&email=${encodeURIComponent(clientEmail)}`
+    const slug = await ensureTrainerSlug(trainerProfile.id)
+    const inviteUrl = clientInviteUrl(process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com', slug, inviteToken, clientEmail)
 
     // Shared renderer — same branded shell as the re-invite nudge (white card,
     // accent strip, logo/initial avatar, app-store badges, "Sent with

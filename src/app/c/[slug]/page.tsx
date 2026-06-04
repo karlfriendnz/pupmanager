@@ -2,7 +2,9 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { Card, CardBody } from '@/components/ui/card'
+import { Alert } from '@/components/ui/alert'
 import { ClientLoginForm } from './client-login-form'
+import { InviteFlow } from '@/app/(auth)/invite/invite-flow'
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
@@ -21,10 +23,13 @@ export async function generateMetadata({
 
 export default async function TrainerClientLoginPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ token?: string; email?: string }>
 }) {
   const { slug } = await params
+  const { token, email } = await searchParams
 
   const trainer = await prisma.trainerProfile.findUnique({
     where: { slug },
@@ -43,8 +48,25 @@ export default async function TrainerClientLoginPage({
     : null
   const businessName = trainer.businessName || 'your trainer'
 
-  // "Not a client yet?" points at the trainer's own website if set, else a
-  // mailto to their public email — whichever exists.
+  // Activation: the invite email links here with ?token=&email=. If it's a
+  // valid, unexpired invite, show the set-password flow instead of login.
+  let activation: { token: string; email: string; greetName: string | null } | null = null
+  let inviteExpired = false
+  if (token && email) {
+    const record = await prisma.verificationToken.findUnique({ where: { token } })
+    if (record && record.identifier === email && record.expires >= new Date()) {
+      const u = await prisma.user.findUnique({ where: { email }, select: { name: true } })
+      const first = u?.name?.trim().split(/\s+/)[0]
+      activation = {
+        token,
+        email,
+        greetName: first ? first.charAt(0).toUpperCase() + first.slice(1) : null,
+      }
+    } else {
+      inviteExpired = true
+    }
+  }
+
   const website = trainer.website?.trim()
   const contactHref = website
     ? (/^https?:\/\//i.test(website) ? website : `https://${website}`)
@@ -73,18 +95,43 @@ export default async function TrainerClientLoginPage({
             </div>
           )}
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900">{businessName}</h1>
-            <p className="mt-1 text-sm text-slate-500">Sign in to your training space</p>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+              {activation
+                ? activation.greetName
+                  ? `Welcome, ${activation.greetName}`
+                  : `Welcome to ${businessName}`
+                : businessName}
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {activation
+                ? 'Set a password to finish setting up your account.'
+                : 'Sign in to your training space'}
+            </p>
           </div>
         </div>
 
         <Card className="w-full border-slate-100/80 shadow-md shadow-slate-900/5">
           <CardBody className="pt-6">
-            <ClientLoginForm
-              accentColor={accent}
-              businessName={businessName}
-              contactHref={contactHref}
-            />
+            {inviteExpired && (
+              <Alert variant="error" className="mb-4">
+                That invitation link has expired. Sign in below, or ask {businessName} for a new one.
+              </Alert>
+            )}
+            {activation ? (
+              <InviteFlow
+                token={activation.token}
+                email={activation.email}
+                accentColor={accent}
+                ctaLabel={trainer.businessName ? `Join ${trainer.businessName}` : 'Create my account'}
+                callbackUrl="/home"
+              />
+            ) : (
+              <ClientLoginForm
+                accentColor={accent}
+                businessName={businessName}
+                contactHref={contactHref}
+              />
+            )}
           </CardBody>
         </Card>
 
