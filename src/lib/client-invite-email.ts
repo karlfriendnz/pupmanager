@@ -4,7 +4,6 @@
 // the design in one place.
 
 import { escapeHtml } from './enquiries'
-import { APP_STORE_URL, PLAY_STORE_URL, APP_STORE_BADGE_URL, PLAY_STORE_BADGE_URL } from './store-links'
 
 export interface ClientInviteEmailArgs {
   clientName: string
@@ -89,13 +88,8 @@ export function renderClientInviteEmail(args: ClientInviteEmailArgs): RenderedCl
               <div style="padding:8px 32px 8px;">
                 ${htmlBody}
               </div>
-              <div style="padding:8px 32px 24px;text-align:center;">
+              <div style="padding:8px 32px 32px;text-align:center;">
                 <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;border-radius:12px;background:${accentColor};color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;line-height:1;">Join ${safeBusiness}</a>
-              </div>
-              <div style="padding:0 32px 32px;text-align:center;">
-                <p style="margin:0 0 10px;font-size:12px;color:#64748b;line-height:1.5;">Get the app on your phone</p>
-                <a href="${APP_STORE_URL}" style="display:inline-block;margin:0 3px;"><img src="${APP_STORE_BADGE_URL}" alt="Download on the App Store" width="135" height="45" style="border:0;height:45px;width:135px;" /></a>
-                <a href="${PLAY_STORE_URL}" style="display:inline-block;margin:0 3px;"><img src="${PLAY_STORE_BADGE_URL}" alt="Get it on Google Play" width="135" height="45" style="border:0;height:45px;width:135px;" /></a>
               </div>
               <div style="padding:20px 32px;background:#fafaf9;border-top:1px solid #f1f5f9;">
                 <p style="margin:0;font-size:13px;color:#475569;line-height:1.5;">
