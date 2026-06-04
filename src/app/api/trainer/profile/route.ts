@@ -3,9 +3,12 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { validateSlug } from '@/lib/slug'
 
 const patchSchema = z.object({
   businessName: z.string().min(2).optional(),
+  // Public client-login slug. Normalised + uniqueness-checked below.
+  slug: z.string().max(60).optional(),
   phone: z.string().optional(),
   logoUrl: z.string().url().optional().or(z.literal('')),
   website: z.string().max(200).optional().or(z.literal('')),
@@ -91,6 +94,22 @@ export async function PATCH(req: Request) {
   if (data.clientWelcomeNote === '') data.clientWelcomeNote = null as unknown as string
   if (data.website === '') data.website = null as unknown as string
   if (data.publicEmail === '') data.publicEmail = null as unknown as string
+
+  // Normalise + uniqueness-check the public client-login slug.
+  if (data.slug !== undefined) {
+    const result = validateSlug(data.slug)
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 })
+    }
+    const clash = await prisma.trainerProfile.findUnique({
+      where: { slug: result.slug },
+      select: { id: true },
+    })
+    if (clash && clash.id !== guard.companyId) {
+      return NextResponse.json({ error: 'That link is already taken — try another.' }, { status: 409 })
+    }
+    data.slug = result.slug
+  }
 
   // Merge intakeSystemFieldSections instead of replacing — the editor
   // sends one key at a time when the trainer drags a single system

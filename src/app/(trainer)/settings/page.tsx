@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
 import { TrainerSettingsForm } from './trainer-settings-form'
+import { ClientLoginLinkCard } from './client-login-link-card'
+import { ensureTrainerSlug } from '@/lib/slug'
 import { SettingsTabs } from './settings-tabs'
 import { NotificationsPanel } from './notifications-panel'
 import { TeamPanel } from './team-panel'
@@ -34,6 +36,11 @@ export default async function TrainerSettingsPage() {
   })
 
   if (!user || !trainerProfile) redirect('/login')
+
+  // Generate (lazily) the trainer's public slug for the branded client-login
+  // link shown on the Settings → Profile tab.
+  const clientLoginSlug = canEditSettings ? await ensureTrainerSlug(trainerProfile.id) : null
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com'
 
   // Forms data is only needed for the Forms tab — skip the queries for members
   // who can't manage forms (the tab won't render for them).
@@ -72,7 +79,12 @@ export default async function TrainerSettingsPage() {
       <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-[872px] mx-auto">
 
       <SettingsTabs
-        profile={canEditSettings ? <TrainerSettingsForm user={user} profile={trainerProfile} /> : undefined}
+        profile={canEditSettings ? (
+          <div className="flex flex-col gap-6">
+            <ClientLoginLinkCard slug={clientLoginSlug} baseUrl={appUrl} />
+            <TrainerSettingsForm user={user} profile={trainerProfile} />
+          </div>
+        ) : undefined}
         notifications={<NotificationsPanel notifyEmail={user.notifyEmail} notifyPush={user.notifyPush} />}
         team={<TeamPanel />}
         billing={ctx.role === 'OWNER' ? <BillingPanel companyId={ctx.companyId} /> : undefined}
