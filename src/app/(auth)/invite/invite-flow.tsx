@@ -57,7 +57,8 @@ export function InviteFlow({
       return
     }
 
-    // Client on the web — the whole point now is to get them onto the app.
+    // Client on the web — they're now signed in. Show a success screen with a
+    // clear primary path into their account + the app as a secondary nudge.
     setDone(true)
   }
 
@@ -70,26 +71,39 @@ export function InviteFlow({
             {greetName ? `You're all set, ${greetName}!` : "You're all set!"}
           </p>
           <p className="mt-1 text-sm text-slate-600">
-            {dogList
-              ? `Get the app to follow ${dogList}'s training, message your trainer, and see every session — wherever you are.`
-              : 'Get the app to follow your training, message your trainer, and see every session — wherever you are.'}
+            You&apos;re signed in already — no password to remember. Jump straight into
+            {dogList ? ` ${dogList}'s` : ' your'} training space.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
-          <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer" aria-label="Download on the App Store">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/app-store-badge.png" alt="Download on the App Store" className="h-12 w-auto" />
-          </a>
-          <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" aria-label="Get it on Google Play">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/google-play-badge.png" alt="Get it on Google Play" className="h-12 w-auto" />
-          </a>
-        </div>
+        {/* Primary: the obvious next step — they're already authenticated, so
+            this drops them straight into their account. */}
+        <Button
+          onClick={() => { window.location.href = '/home' }}
+          size="lg"
+          className="w-full"
+          style={accentColor ? { backgroundColor: accentColor } : undefined}
+        >
+          Go to my training space
+        </Button>
 
-        <a href="/home" className="pt-1 text-sm font-medium text-slate-500 underline-offset-2 hover:underline">
-          Continue in your browser →
-        </a>
+        {/* Secondary: install the native app (clearly the alternative, not the
+            thing blocking them from getting in). */}
+        <div className="w-full border-t border-slate-100 pt-4">
+          <p className="mb-3 text-xs font-medium text-slate-400">
+            {dogList ? `Or get the app to follow ${dogList} on the go` : 'Or get the app for the full experience'}
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer" aria-label="Download on the App Store">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/app-store-badge.png" alt="Download on the App Store" className="h-11 w-auto" />
+            </a>
+            <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" aria-label="Get it on Google Play">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/google-play-badge.png" alt="Get it on Google Play" className="h-11 w-auto" />
+            </a>
+          </div>
+        </div>
       </div>
     )
   }
