@@ -161,10 +161,7 @@ export default async function InvitePage({
             email={email}
             accentColor={accent}
             ctaLabel={businessName ? `Join ${businessName}` : 'Accept invitation'}
-            isClient={isClient}
             callbackUrl={callbackUrl}
-            greetName={greetName}
-            dogList={dogList}
           />
         </CardBody>
       </Card>
