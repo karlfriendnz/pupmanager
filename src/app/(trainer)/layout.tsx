@@ -7,7 +7,6 @@ import { getTrainerContext } from '@/lib/membership'
 import { can, type PermissionKey } from '@/lib/permissions'
 import { AppShell } from '@/components/shared/app-shell'
 import { OnboardingFab } from './onboarding-fab'
-import { TrialBanner } from './trial-banner'
 import { PaywallFrame } from './paywall-frame'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { STEP_TO_MENU } from '@/lib/onboarding/path-step'
@@ -141,16 +140,9 @@ export default async function TrainerLayout({ children }: { children: React.Reac
           </a>
         </div>
       )}
-      {/* Trial / payment-status banner — only renders when there's
-          something the trainer needs to know (trial running out, payment
-          past due, etc). Active paid subs see nothing. */}
-      {tp && (
-        <TrialBanner
-          status={tp.subscriptionStatus}
-          trialEndsAt={tp.trialEndsAt}
-          hasSubscription={!!tp.stripeSubscriptionId}
-        />
-      )}
+      {/* Trial / payment-status banner now lives in the dashboard header only
+          (see app/(trainer)/dashboard/page.tsx) instead of floating on every
+          page. */}
       {/* FAB sits above the page content so when it's a sticky banner it
           appears at the top of <main> rather than way below at the bottom. */}
       {fabState.show && fabState.nextStep && (

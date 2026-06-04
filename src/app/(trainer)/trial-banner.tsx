@@ -14,6 +14,9 @@ interface Props {
   // their Stripe trial window is still TRIALING with a null trialEndsAt —
   // without this flag the banner would misread that as "Trial finished".
   hasSubscription?: boolean
+  // 'floating' = the global bottom-right chip (legacy). 'header' = a compact
+  // inline pill for the dashboard top-right.
+  placement?: 'floating' | 'header'
 }
 
 type Tone = 'indigo' | 'rose' | 'red'
@@ -98,9 +101,10 @@ function resolveCopy(status: Props['status'], trialEndsAt: Props['trialEndsAt'],
 // or an alert icon when something's gone wrong. Subtle shimmer on the
 // indigo variant + a hover lift make it feel less like a nag and more
 // like a living surface.
-export function TrialBanner({ status, trialEndsAt, hasSubscription = false }: Props) {
+export function TrialBanner({ status, trialEndsAt, hasSubscription = false, placement = 'floating' }: Props) {
   const pathname = usePathname()
   const native = useIsNative()
+  const isHeader = placement === 'header'
   // Never surface the billing nudge inside the native app — purchasing a
   // subscription in-app would violate Apple Guideline 3.1.1 (IAP). Trainers
   // manage billing on the web. Also hide it on the /billing pages themselves.
@@ -141,31 +145,39 @@ export function TrialBanner({ status, trialEndsAt, hasSubscription = false }: Pr
   // Choose the leading visual: a day-count circle for an in-progress
   // trial (the number is the headline of the message anyway, big and
   // legible at a glance), or an alert icon for the warning states.
+  const circle = isHeader ? 'h-8 w-8 text-sm' : 'h-10 w-10 text-base'
+  const icon = isHeader ? 'h-4 w-4' : 'h-5 w-5'
   const leading = copy.daysLeft !== null && copy.daysLeft > 0 ? (
-    <div className={`shrink-0 grid place-items-center h-10 w-10 rounded-full font-bold text-base tabular-nums ${toneAvatar[copy.tone]}`}>
+    <div className={`shrink-0 grid place-items-center rounded-full font-bold tabular-nums ${circle} ${toneAvatar[copy.tone]}`}>
       {copy.daysLeft}
     </div>
   ) : (
-    <div className={`shrink-0 grid place-items-center h-10 w-10 rounded-full ${toneAvatar[copy.tone]}`}>
+    <div className={`shrink-0 grid place-items-center rounded-full ${circle} ${toneAvatar[copy.tone]}`}>
       {copy.tone === 'red'
-        ? <XCircle className="h-5 w-5" />
-        : <AlertTriangle className="h-5 w-5" />}
+        ? <XCircle className={icon} />
+        : <AlertTriangle className={icon} />}
     </div>
   )
+
+  const shell = isHeader
+    ? 'inline-flex items-center gap-2 pl-1.5 pr-1 py-1 rounded-xl shadow-sm'
+    : 'fixed right-2.5 bottom-[5.625rem] md:bottom-2.5 z-30 flex items-center gap-3 px-3 py-2.5 pr-2 rounded-2xl shadow-[0_18px_40px_-12px_rgba(15,23,42,0.35)] max-w-[calc(100%-1.25rem)] hover:-translate-y-0.5 hover:shadow-[0_24px_50px_-14px_rgba(15,23,42,0.45)]'
 
   return (
     <Link
       href="/signup"
       aria-label={`${copy.headline}: ${copy.subtext}`}
-      className={`group fixed right-2.5 bottom-[5.625rem] md:bottom-2.5 z-30 flex items-center gap-3 px-3 py-2.5 pr-2 rounded-2xl shadow-[0_18px_40px_-12px_rgba(15,23,42,0.35)] max-w-[calc(100%-1.25rem)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_50px_-14px_rgba(15,23,42,0.45)] ${toneShell[copy.tone]}`}
+      className={`group ${shell} transition-transform duration-200 ${toneShell[copy.tone]}`}
     >
       {leading}
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         <p className="text-[13px] font-semibold leading-tight tracking-tight">
           {copy.headline}
         </p>
-        <p className={`text-[11px] leading-tight mt-0.5 truncate ${toneSubtext[copy.tone]}`}>
+        {/* Subtext is helpful in the roomy floating chip; hide on small screens
+            in the header so it stays a tidy pill. */}
+        <p className={`text-[11px] leading-tight mt-0.5 truncate ${isHeader ? 'hidden lg:block' : ''} ${toneSubtext[copy.tone]}`}>
           {copy.subtext}
         </p>
       </div>

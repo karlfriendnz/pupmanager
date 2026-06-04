@@ -14,6 +14,7 @@ import { StreakChip } from '@/components/shared/streak-chip'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { OnboardingPanel } from './onboarding-panel'
 import { SampleDataBanner } from './sample-data-banner'
+import { TrialBanner } from '../trial-banner'
 import { initTrainerOnboarding } from '@/lib/onboarding/init'
 import { getOnboardingState } from '@/lib/onboarding/state'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
@@ -57,6 +58,7 @@ export default async function DashboardPage({
     select: {
       businessName: true, logoUrl: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true,
       clientWelcomeNote: true, website: true, phone: true, publicEmail: true,
+      subscriptionStatus: true, trialEndsAt: true, stripeSubscriptionId: true,
       user: { select: { email: true } },
     },
   })
@@ -247,13 +249,23 @@ export default async function DashboardPage({
     <>
       <PageHeader
         title={`Good ${getGreeting(tz)}, ${session.user.name?.split(' ')[0] ?? 'there'} 👋`}
-        actions={<StreakChip trainerId={trainerId} />}
+        actions={
+          <>
+            <TrialBanner
+              placement="header"
+              status={brandingProfile?.subscriptionStatus ?? 'TRIALING'}
+              trialEndsAt={brandingProfile?.trialEndsAt ?? null}
+              hasSubscription={!!brandingProfile?.stripeSubscriptionId}
+            />
+            <StreakChip trainerId={trainerId} />
+          </>
+        }
       />
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
         {/* While sample data is loaded the account looks set up, so show the
-            "remove sample data" banner instead of the get-set-up onboarding —
-            the two are mutually exclusive. Removing it brings onboarding back. */}
-        {sampleClientCount > 0 && <SampleDataBanner count={sampleClientCount} />}
+            "remove sample data" strip at the top and hide the get-set-up
+            onboarding. Removing the sample data brings the onboarding back. */}
+        {sampleClientCount > 0 && <SampleDataBanner />}
         <BookingRequestsPanel trainerId={trainerId} />
         <WaitlistNudge trainerId={trainerId} />
         {sampleClientCount === 0 && <OnboardingPanel state={onboardingState} branding={branding} />}
