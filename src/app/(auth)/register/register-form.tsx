@@ -21,6 +21,7 @@ const schema = z
     email: z.string().email('Please enter a valid email address'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string(),
+    promoCode: z.string().optional(),
   })
   .refine(d => d.password === d.confirmPassword, {
     message: 'Passwords do not match',
@@ -38,6 +39,9 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
   // the email or click the verify-button in the email which lands on
   // /verify-account?email=&code= and finishes the same flow.
   const [verifyEmail, setVerifyEmail] = useState<string | null>(null)
+  // Actual trial length granted (default 14, or the promo's period) — drives
+  // the success copy so it reflects the date the trial really ends.
+  const [trialDays, setTrialDays] = useState(14)
 
   const {
     register,
@@ -55,6 +59,7 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
         businessName: data.businessName,
         email: data.email,
         password: data.password,
+        promoCode: data.promoCode,
       }),
     })
 
@@ -64,11 +69,13 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
       return
     }
 
+    const body = await res.json().catch(() => ({}))
+    if (typeof body.trialDays === 'number') setTrialDays(body.trialDays)
     setVerifyEmail(data.email)
   }
 
   if (verifyEmail) {
-    return <VerifyStep email={verifyEmail} />
+    return <VerifyStep email={verifyEmail} trialDays={trialDays} />
   }
 
   return (
@@ -119,6 +126,17 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
             error={errors.confirmPassword?.message}
             {...register('confirmPassword')}
           />
+          <Input
+            label="Promo code"
+            type="text"
+            autoComplete="off"
+            autoCapitalize="characters"
+            placeholder="e.g. LAUNCH"
+            hint="Optional — extends your free trial."
+            className="uppercase placeholder:normal-case"
+            error={errors.promoCode?.message}
+            {...register('promoCode')}
+          />
           <Button type="submit" size="lg" className="w-full mt-1" loading={isSubmitting}>
             Create account
           </Button>
@@ -136,7 +154,7 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
 
 // ─── OTP step ──────────────────────────────────────────────────────────────
 
-function VerifyStep({ email }: { email: string }) {
+function VerifyStep({ email, trialDays }: { email: string; trialDays: number }) {
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [resentAt, setResentAt] = useState<number | null>(null)
@@ -192,7 +210,7 @@ function VerifyStep({ email }: { email: string }) {
           </div>
           <h2 className="text-xl font-semibold text-slate-900">Account verified 🎉</h2>
           <p className="text-sm text-slate-600 max-w-sm">
-            Your 14-day free trial has started. Sign in to set up your first programme.
+            Your {trialDays}-day free trial has started. Sign in to set up your first programme.
           </p>
           <Link
             href="/login"

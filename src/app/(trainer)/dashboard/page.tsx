@@ -13,6 +13,7 @@ import { BookingRequestsPanel } from '@/components/shared/booking-requests-panel
 import { StreakChip } from '@/components/shared/streak-chip'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { OnboardingPanel } from './onboarding-panel'
+import { SampleDataBanner } from './sample-data-banner'
 import { initTrainerOnboarding } from '@/lib/onboarding/init'
 import { getOnboardingState } from '@/lib/onboarding/state'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
@@ -71,6 +72,10 @@ export default async function DashboardPage({
     publicEmail: brandingProfile?.publicEmail ?? null,
     signupEmail: brandingProfile?.user?.email ?? '',
   }
+
+  // Whether the trainer currently has loaded sample data — drives the "remove
+  // sample data" banner. Sample clients are always part of a sample load.
+  const sampleClientCount = await prisma.clientProfile.count({ where: { trainerId, isSample: true } })
 
   // Trainer's timezone drives all day-bounds and time formatting on this
   // server-rendered page. Vercel runs Node in UTC so without this every
@@ -245,6 +250,7 @@ export default async function DashboardPage({
         actions={<StreakChip trainerId={trainerId} />}
       />
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
+        {sampleClientCount > 0 && <SampleDataBanner count={sampleClientCount} />}
         <BookingRequestsPanel trainerId={trainerId} />
         <WaitlistNudge trainerId={trainerId} />
         <OnboardingPanel state={onboardingState} branding={branding} />

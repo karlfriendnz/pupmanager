@@ -361,12 +361,16 @@ model TrainerProfile {
   addressRegion        String?
   addressPostcode      String?
   addressCountry       String?
+  // The promo code (if any) this trainer redeemed at signup — it set their
+  // trialEndsAt. Kept for attribution and so the admin can see redemptions.
+  promoCodeId          String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
   subscriptionPlan   SubscriptionPlan?          @relation(fields: [subscriptionPlanId], references: [id])
+  promoCode          PromoCode?                 @relation(fields: [promoCodeId], references: [id], onDelete: SetNull)
   clients            ClientProfile[]
   sharedClients      ClientShare[]              @relation("SharedByTrainer")
   receivedClients    ClientShare[]              @relation("SharedWithTrainer")
@@ -393,6 +397,32 @@ model TrainerProfile {
   addons             TrainerAddon[]
 
   @@map("trainer_profiles")
+}
+
+// ─── Promo codes ──────────────────────────────────────────────────────────────
+// A shared code a trainer enters at signup. When valid it SETS their total
+// trial length (trialEndsAt = signup + trialDays) instead of the default 10.
+// One code is reusable by many trainers; optional expiry + redemption cap.
+model PromoCode {
+  id             String    @id @default(cuid())
+  // Stored upper-cased; lookups upper-case the entered value so it's
+  // case-insensitive without a functional index.
+  code           String    @unique
+  // Total trial length (in days) granted when this code is used.
+  trialDays      Int
+  // Null = never expires. A code past this instant no longer redeems.
+  expiresAt      DateTime?
+  // Null = unlimited. Once redeemedCount reaches this, the code stops working.
+  maxRedemptions Int?
+  redeemedCount  Int       @default(0)
+  // Lets an admin pause a code without deleting it (and losing attribution).
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  redemptions    TrainerProfile[]
+
+  @@map("promo_codes")
 }
 
 // ─── Trainer Memberships (multi-trainer businesses) ───────────────────────────
@@ -732,6 +762,7 @@ model SessionBuddy {
 model Product {
   id          String      @id @default(cuid())
   trainerId   String
+  isSample    Boolean     @default(false)
   name        String
   description String?     @db.Text
   kind        ProductKind @default(PHYSICAL)
@@ -791,6 +822,9 @@ model ProductRequest {
 model Package {
   id                   String      @id @default(cuid())
   trainerId            String
+  // True for rows created by the trainer-facing "sample data" loader, so
+  // clearSampleData() can remove them without touching the trainer's real data.
+  isSample             Boolean     @default(false)
   name                 String
   description          String?     @db.Text
   sessionCount         Int         @default(3)
@@ -908,6 +942,7 @@ enum AttendanceStatus {
 model ClassRun {
   id          String         @id @default(cuid())
   trainerId   String
+  isSample    Boolean        @default(false)
   packageId   String
   name        String // e.g. "Spring Puppy Class"
   scheduleNote String?       // human cadence, e.g. "Tuesdays 6:00pm"
@@ -1118,6 +1153,7 @@ model TrainerBadgeAward {
 model SessionForm {
   id              String  @id @default(cuid())
   trainerId       String
+  isSample        Boolean @default(false)
   name            String
   description     String? @db.Text
   introText       String? @db.Text // shown above the questions during fill + on the report
@@ -1243,6 +1279,7 @@ model Notification {
 model CustomField {
   id        String          @id @default(cuid())
   trainerId String
+  isSample  Boolean         @default(false)
   label     String
   type      CustomFieldType
   required  Boolean         @default(false)
@@ -1389,6 +1426,7 @@ model TrainerAddon {
 model LibraryType {
   id        String   @id @default(cuid())
   trainerId String
+  isSample  Boolean  @default(false)
   name      String
   order     Int      @default(0)
   createdAt DateTime @default(now())
@@ -1455,6 +1493,7 @@ model ClientNotification {
 model AvailabilitySlot {
   id           String    @id @default(cuid())
   trainerId    String
+  isSample     Boolean   @default(false)
   title        String?
   dayOfWeek    Int? // 1=Mon … 7=Sun; null = one-off date
   date         DateTime? @db.Date
@@ -1515,6 +1554,7 @@ enum AchievementTrigger {
 model Achievement {
   id           String             @id @default(cuid())
   trainerId    String
+  isSample     Boolean            @default(false)
   name         String
   description  String?            @db.Text
   icon         String?
@@ -1564,6 +1604,7 @@ model ClientAchievement {
 model EmbedForm {
   id              String   @id @default(cuid())
   trainerId       String
+  isSample        Boolean  @default(false)
   title           String
   description     String?  @db.Text
   // JSON array of { key: string, required: boolean } for standard fields
@@ -1611,6 +1652,7 @@ model EmbedForm {
 model Enquiry {
   id        String  @id @default(cuid())
   trainerId String
+  isSample  Boolean @default(false)
   formId    String? // null if the source form was deleted
 
   // Snapshot of form values at submit time

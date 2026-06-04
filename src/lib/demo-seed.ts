@@ -330,11 +330,121 @@ export async function resetDemoData(prisma: PrismaClient, trainerId: string): Pr
   }
 }
 
+// ─── Clear only sample data ──────────────────────────────────────────────────
+
+export type ClearSampleResult = {
+  clients: number
+  packages: number
+  products: number
+  achievements: number
+  libraryTypes: number
+  customFields: number
+  embedForms: number
+  enquiries: number
+  availabilitySlots: number
+  classRuns: number
+  sessions: number
+  dogs: number
+  demoUsers: number
+}
+
+/**
+ * Remove ONLY the trainer-loaded sample data — rows tagged `isSample`, the
+ * synthetic sample clients, and everything hanging off them — leaving any real
+ * data the trainer has added untouched. FK-safe order, mirroring resetDemoData
+ * but scoped to sample rows / sample clients.
+ */
+export async function clearSampleData(prisma: PrismaClient, trainerId: string): Promise<ClearSampleResult> {
+  const sampleClients = await prisma.clientProfile.findMany({
+    where: { trainerId, isSample: true },
+    select: { dogId: true, userId: true, user: { select: { email: true } } },
+  })
+  const samplePrimaryDogIds = sampleClients.map(c => c.dogId).filter((x): x is string => Boolean(x))
+  const sampleUserIds = sampleClients
+    .filter(c => c.user?.email?.endsWith('@pupmanager.test'))
+    .map(c => c.userId)
+
+  const sampleClientWhere = { trainerId, isSample: true } as const
+
+  // Client-scoped leaf data (scoped to the sample clients).
+  await prisma.taskCompletion.deleteMany({ where: { task: { client: sampleClientWhere } } })
+  await prisma.trainingTask.deleteMany({ where: { client: sampleClientWhere } })
+  await prisma.clientAchievement.deleteMany({ where: { client: sampleClientWhere } })
+
+  // Sample enquiries + their messages.
+  await prisma.enquiryMessage.deleteMany({ where: { enquiry: { trainerId, isSample: true } } })
+  const enquiries = await prisma.enquiry.deleteMany({ where: { trainerId, isSample: true } })
+
+  // Sample group classes (attendance → enrolment → run). Seed creates no
+  // waitlist entries, so there are none to clear; real waitlist rows point at
+  // real runs, never these.
+  await prisma.sessionAttendance.deleteMany({ where: { enrollment: { classRun: { trainerId, isSample: true } } } })
+  await prisma.classEnrollment.deleteMany({ where: { classRun: { trainerId, isSample: true } } })
+  const classRuns = await prisma.classRun.deleteMany({ where: { trainerId, isSample: true } })
+
+  // Sessions + package assignments for sample clients — before deleting the
+  // clients (TrainingSession.clientId is SetNull, so order matters).
+  const sessions = await prisma.trainingSession.deleteMany({ where: { client: sampleClientWhere } })
+  await prisma.clientPackage.deleteMany({ where: { client: sampleClientWhere } })
+
+  const clients = await prisma.clientProfile.deleteMany({ where: sampleClientWhere })
+
+  // Sample trainer config. Packages must go after class runs — ClassRun.packageId
+  // is ON DELETE Restrict. LibraryType cascades to its themes/tasks.
+  const packages = await prisma.package.deleteMany({ where: { trainerId, isSample: true } })
+  const libraryTypes = await prisma.libraryType.deleteMany({ where: { trainerId, isSample: true } })
+  const products = await prisma.product.deleteMany({ where: { trainerId, isSample: true } })
+  const achievements = await prisma.achievement.deleteMany({ where: { trainerId, isSample: true } })
+  const customFields = await prisma.customField.deleteMany({ where: { trainerId, isSample: true } })
+  const embedForms = await prisma.embedForm.deleteMany({ where: { trainerId, isSample: true } })
+  const availabilitySlots = await prisma.availabilitySlot.deleteMany({ where: { trainerId, isSample: true } })
+  // Sample session-note form (recap responses already cascaded with the sample
+  // sessions; sample clients' messages + earned badges cascaded with the
+  // clients).
+  await prisma.sessionForm.deleteMany({ where: { trainerId, isSample: true } })
+
+  let dogs = { count: 0 }
+  if (samplePrimaryDogIds.length > 0) {
+    dogs = await prisma.dog.deleteMany({ where: { id: { in: samplePrimaryDogIds } } })
+  }
+  let demoUsers = { count: 0 }
+  if (sampleUserIds.length > 0) {
+    demoUsers = await prisma.user.deleteMany({
+      where: { id: { in: sampleUserIds }, email: { endsWith: '@pupmanager.test' } },
+    })
+  }
+
+  return {
+    clients: clients.count,
+    packages: packages.count,
+    products: products.count,
+    achievements: achievements.count,
+    libraryTypes: libraryTypes.count,
+    customFields: customFields.count,
+    embedForms: embedForms.count,
+    enquiries: enquiries.count,
+    availabilitySlots: availabilitySlots.count,
+    classRuns: classRuns.count,
+    sessions: sessions.count,
+    dogs: dogs.count,
+    demoUsers: demoUsers.count,
+  }
+}
+
 // ─── Seed ────────────────────────────────────────────────────────────────────
 
 export type SeedOptions = {
   clientCount?: number
   seed?: number
+  // Wipe the trainer's data before seeding (admin demo account). Trainer
+  // "sample data" loads pass false so real data is never touched.
+  reset?: boolean
+  // Tag every created row as sample so clearSampleData() can remove just these.
+  markSample?: boolean
+  // Run the "finalise as an established ACTIVE trainer" block (flips
+  // subscription to ACTIVE, nulls the logo, completes onboarding). Right for
+  // the demo account; trainers pass false so their trial/branding stay intact.
+  finalize?: boolean
 }
 
 export type SeedResult = {
@@ -355,6 +465,9 @@ export type SeedResult = {
   enquiries: number
   customFields: number
   availabilitySlots: number
+  earnedBadges: number
+  sessionRecaps: number
+  messages: number
 }
 
 /**
@@ -369,8 +482,27 @@ export async function seedDemoData(
 ): Promise<SeedResult> {
   const clientCount = opts.clientCount ?? 50
   const rand = rng(opts.seed ?? 0x70757070) // 'pupp'
+  const reset = opts.reset ?? true
+  const markSample = opts.markSample ?? false
+  const finalize = opts.finalize ?? true
 
-  await resetDemoData(prisma, trainerId)
+  if (reset) await resetDemoData(prisma, trainerId)
+
+  // The trainer's own User id — the sender for trainer→client sample messages.
+  const trainerUser = await prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { userId: true } })
+  const trainerUserId = trainerUser?.userId ?? null
+
+  // A few stock pup photos so sample dogs aren't all blank and the
+  // photo-forward client home reads real. Local first; the rest are Unsplash
+  // (cosmetic — falls back to the gradient/icon if one fails to load).
+  const SAMPLE_DOG_PHOTOS = [
+    '/sample-dog.jpg',
+    'https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=480&q=80',
+    'https://images.unsplash.com/photo-1518717758536-85ae29035b6d?w=480&q=80',
+    'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=480&q=80',
+    'https://images.unsplash.com/photo-1537151625747-768eb6cf92b2?w=480&q=80',
+    'https://images.unsplash.com/photo-1552053831-71594a27632d?w=480&q=80',
+  ]
 
   // ─── 1. Static-ish config ──────────────────────────────────────────────────
 
@@ -379,6 +511,7 @@ export async function seedDemoData(
     prisma.customField.create({
       data: {
         trainerId,
+        isSample: markSample,
         label: 'Lives with kids?',
         type: 'DROPDOWN',
         appliesTo: 'OWNER',
@@ -387,11 +520,12 @@ export async function seedDemoData(
       },
     }),
     prisma.customField.create({
-      data: { trainerId, label: 'Favourite treat', type: 'TEXT', appliesTo: 'DOG', order: 1 },
+      data: { trainerId, isSample: markSample, label: 'Favourite treat', type: 'TEXT', appliesTo: 'DOG', order: 1 },
     }),
     prisma.customField.create({
       data: {
         trainerId,
+        isSample: markSample,
         label: 'Energy level',
         type: 'DROPDOWN',
         appliesTo: 'DOG',
@@ -405,6 +539,7 @@ export async function seedDemoData(
   const embedForm = await prisma.embedForm.create({
     data: {
       trainerId,
+      isSample: markSample,
       title: 'Get in touch',
       description: 'Tell me about you and your dog and I will be in touch.',
       fields: [
@@ -420,7 +555,7 @@ export async function seedDemoData(
   // Availability — Mon–Sat 9–17.
   const availabilitySlots = await Promise.all([1, 2, 3, 4, 5, 6].map(dow =>
     prisma.availabilitySlot.create({
-      data: { trainerId, dayOfWeek: dow, startTime: '09:00', endTime: '17:00', title: 'Working hours' },
+      data: { trainerId, isSample: markSample, dayOfWeek: dow, startTime: '09:00', endTime: '17:00', title: 'Working hours' },
     }),
   ))
 
@@ -429,6 +564,7 @@ export async function seedDemoData(
     prisma.package.create({
       data: {
         trainerId,
+        isSample: markSample,
         name: p.name,
         description: p.description,
         sessionCount: p.sessionCount,
@@ -443,13 +579,13 @@ export async function seedDemoData(
   ))
 
   // Library tree — pre-generate type/theme IDs, three createMany calls.
-  const libraryTypeRows: Array<{ id: string; trainerId: string; name: string; order: number }> = []
+  const libraryTypeRows: Array<{ id: string; trainerId: string; isSample: boolean; name: string; order: number }> = []
   const libraryThemeRows: Array<{ id: string; typeId: string; name: string; order: number }> = []
   const libraryTaskRows: Array<{ themeId: string; title: string; description?: string; repetitions?: number; order: number }> = []
   for (let ti = 0; ti < LIBRARY_CONTENT.length; ti++) {
     const t = LIBRARY_CONTENT[ti]
     const typeId = randomUUID()
-    libraryTypeRows.push({ id: typeId, trainerId, name: t.type, order: ti })
+    libraryTypeRows.push({ id: typeId, trainerId, isSample: markSample, name: t.type, order: ti })
     for (let thi = 0; thi < t.themes.length; thi++) {
       const th = t.themes[thi]
       const themeId = randomUUID()
@@ -474,6 +610,7 @@ export async function seedDemoData(
   await prisma.product.createMany({
     data: PRODUCT_DEFS.map((p, i) => ({
       trainerId,
+      isSample: markSample,
       name: p.name,
       description: p.description,
       kind: p.kind,
@@ -483,23 +620,26 @@ export async function seedDemoData(
       order: i,
     })),
   })
-  await prisma.achievement.createMany({
-    data: ACHIEVEMENT_DEFS.map((a, i) => ({
-      trainerId,
-      name: a.name,
-      description: a.description,
-      color: a.color,
-      published: true,
-      triggerType: a.triggerType,
-      triggerValue: a.triggerValue,
-      order: i,
-    })),
-  })
+  // Pre-generate IDs so we can award some of these as earned badges below.
+  const achievementRows = ACHIEVEMENT_DEFS.map((a, i) => ({
+    id: randomUUID(),
+    trainerId,
+    isSample: markSample,
+    name: a.name,
+    description: a.description,
+    color: a.color,
+    published: true,
+    triggerType: a.triggerType,
+    triggerValue: a.triggerValue,
+    order: i,
+  }))
+  await prisma.achievement.createMany({ data: achievementRows })
 
   // ─── 2. Clients + dogs (3 createMany calls instead of 150 awaits) ──────────
 
   type CreatedClient = {
     profileId: string
+    userId: string
     dogId: string
     name: string
     email: string
@@ -507,8 +647,8 @@ export async function seedDemoData(
   }
   const createdClients: CreatedClient[] = []
   const userRows: Array<{ id: string; name: string; email: string; role: 'CLIENT'; emailVerified: Date }> = []
-  const dogRows: Array<{ id: string; name: string; breed: string; weight: number; dob: Date }> = []
-  const profileRows: Array<{ id: string; userId: string; trainerId: string; dogId: string; phone: string; status: string }> = []
+  const dogRows: Array<{ id: string; name: string; breed: string; weight: number; dob: Date; photoUrl: string | null }> = []
+  const profileRows: Array<{ id: string; userId: string; trainerId: string; isSample: boolean; dogId: string; phone: string; status: string }> = []
   for (let i = 0; i < clientCount; i++) {
     const first = FIRST_NAMES[Math.floor(rand() * FIRST_NAMES.length)]
     const last = LAST_NAMES[Math.floor(rand() * LAST_NAMES.length)]
@@ -521,18 +661,26 @@ export async function seedDemoData(
     const dogId = randomUUID()
     const profileId = randomUUID()
     const name = `${first} ${last}`
-    const email = `demo-client-${i + 1}@pupmanager.test`
+    // Scope the synthetic email to the trainer so two trainers (e.g. the admin
+    // demo account + any trial trainer loading sample data) never collide on
+    // the global User.email unique. Still ends in @pupmanager.test so reset /
+    // clearSampleData identify these as synthetic.
+    const email = `demo-client-${i + 1}-${trainerId}@pupmanager.test`
     userRows.push({ id: userId, name, email, role: 'CLIENT', emailVerified: new Date() })
-    dogRows.push({ id: dogId, name: dogName, breed, weight, dob })
+    // ~70% of dogs get a photo; the rest stay blank so the "add a photo" prompt
+    // still demonstrates.
+    const photoUrl = i % 10 < 7 ? SAMPLE_DOG_PHOTOS[i % SAMPLE_DOG_PHOTOS.length] : null
+    dogRows.push({ id: dogId, name: dogName, breed, weight, dob, photoUrl })
     profileRows.push({
       id: profileId,
       userId,
       trainerId,
+      isSample: markSample,
       dogId,
       phone: `+64 21 ${String(Math.floor(rand() * 9_000_000) + 1_000_000)}`,
       status: rand() < 0.92 ? 'ACTIVE' : 'INACTIVE',
     })
-    createdClients.push({ profileId, dogId, name, email, dogName })
+    createdClients.push({ profileId, userId, dogId, name, email, dogName })
   }
   await prisma.user.createMany({ data: userRows })
   await prisma.dog.createMany({ data: dogRows })
@@ -543,6 +691,7 @@ export async function seedDemoData(
   const now = new Date()
   const clientPackageRows: Array<{ id: string; packageId: string; clientId: string; startDate: Date }> = []
   const sessionRows: Array<{
+    id: string
     trainerId: string
     clientId: string
     dogId: string
@@ -564,6 +713,7 @@ export async function seedDemoData(
         start.setDate(start.getDate() + dayOffset)
         start.setHours(9 + Math.floor(rand() * 8), rand() < 0.5 ? 0 : 30, 0, 0)
         sessionRows.push({
+          id: randomUUID(),
           trainerId,
           clientId: c.profileId,
           dogId: c.dogId,
@@ -593,6 +743,7 @@ export async function seedDemoData(
         ? (rand() < 0.7 ? 'COMMENTED' : 'COMPLETED')
         : 'UPCOMING'
       sessionRows.push({
+        id: randomUUID(),
         trainerId,
         clientId: c.profileId,
         dogId: c.dogId,
@@ -660,6 +811,7 @@ export async function seedDemoData(
 
   const enquiryRows: Array<{
     trainerId: string
+    isSample: boolean
     formId: string
     name: string
     email: string
@@ -683,6 +835,7 @@ export async function seedDemoData(
       roll < 0.45 ? 'NEW' : roll < 0.75 ? 'ACCEPTED' : roll < 0.9 ? 'DECLINED' : 'ARCHIVED'
     enquiryRows.push({
       trainerId,
+      isSample: markSample,
       formId: embedForm.id,
       name: `${first} ${last}`,
       email: `enquiry-${i + 1}@example.com`,
@@ -712,7 +865,7 @@ export async function seedDemoData(
     start.setDate(start.getDate() + def.startOffset)
     start.setHours(18, 0, 0, 0)
     const run = await prisma.classRun.create({
-      data: { trainerId, packageId: pkg.id, name: def.name, scheduleNote: def.scheduleNote, startDate: start, capacity: 8, status: def.status },
+      data: { trainerId, isSample: markSample, packageId: pkg.id, name: def.name, scheduleNote: def.scheduleNote, startDate: start, capacity: 8, status: def.status },
     })
     const enrolClients = createdClients.slice(i * 8, i * 8 + def.enrol)
     for (const c of enrolClients) {
@@ -722,6 +875,115 @@ export async function seedDemoData(
       classEnrolCount++
     }
   }
+
+  // ─── 6b. Engagement: earned badges, written session recaps, messages ───────
+
+  // Earned badges — award the first 1–3 achievements to ~60% of clients.
+  const badgeRows: Array<{ clientId: string; achievementId: string; awardedBy: string; awardedAt: Date }> = []
+  for (const c of createdClients) {
+    if (rand() < 0.4) continue
+    const earnCount = 1 + Math.floor(rand() * 3)
+    for (let b = 0; b < earnCount && b < achievementRows.length; b++) {
+      badgeRows.push({ clientId: c.profileId, achievementId: achievementRows[b].id, awardedBy: 'system', awardedAt: new Date(now.getTime() - Math.floor(rand() * 30) * 86400_000) })
+    }
+  }
+  if (badgeRows.length) await prisma.clientAchievement.createMany({ data: badgeRows, skipDuplicates: true })
+
+  // A sample session-note form + a written recap on the most recent past session
+  // for ~half the clients, so the client's "last session recap" reads real.
+  const RECAP_NOTES = [
+    { intro: 'Great session today — really pleased with the progress.', worked: 'Loose-lead walking and focus around mild distractions.', hw: 'Five minutes of the name game daily, plus one short lead walk.' },
+    { intro: 'Lovely work today!', worked: 'Settle on the mat and a calm greeting routine.', hw: 'Practise the settle twice a day for a few minutes.' },
+    { intro: 'Solid session — building nicely on last week.', worked: 'Recall in the garden and impulse control at the doorway.', hw: 'Recall games in a low-distraction space, three times this week.' },
+  ]
+  const recapForm = await prisma.sessionForm.create({
+    data: {
+      trainerId,
+      isSample: markSample,
+      name: 'Session recap',
+      introText: 'Here’s how today went.',
+      questions: [
+        { id: 'worked_on', type: 'text', label: 'What we worked on' },
+        { id: 'homework', type: 'text', label: 'Homework before next time' },
+      ],
+      isActive: true,
+    },
+  })
+  const latestPastByClient = new Map<string, { id: string; at: number }>()
+  for (const s of sessionRows) {
+    if (s.status === 'UPCOMING') continue
+    const at = s.scheduledAt.getTime()
+    const cur = latestPastByClient.get(s.clientId)
+    if (!cur || at > cur.at) latestPastByClient.set(s.clientId, { id: s.id, at })
+  }
+  const recapRows: Array<{ sessionId: string; formId: string; answers: Record<string, string>; introMessage: string }> = []
+  let recapIdx = 0
+  for (const [, sess] of latestPastByClient) {
+    if (rand() < 0.5) continue
+    const note = RECAP_NOTES[recapIdx % RECAP_NOTES.length]
+    recapIdx++
+    recapRows.push({ sessionId: sess.id, formId: recapForm.id, answers: { worked_on: note.worked, homework: note.hw }, introMessage: note.intro })
+  }
+  if (recapRows.length) {
+    await prisma.sessionFormResponse.createMany({ data: recapRows, skipDuplicates: true })
+    // These sessions now have notes.
+    await prisma.trainingSession.updateMany({ where: { id: { in: recapRows.map(r => r.sessionId) } }, data: { status: 'COMMENTED' } })
+  }
+
+  // Sample message threads — trainer opener + client reply, sometimes an unread
+  // trainer follow-up, for ~60% of clients.
+  const MSG_OPENERS = [
+    'Great session today — {dog} did really well!',
+    'Lovely to see {dog} this week. Keep the homework ticking over!',
+    'Nice progress with {dog} today — onwards!',
+  ]
+  const MSG_REPLIES = [
+    'Thank you! We practised at home and it’s going well.',
+    'Thanks so much — really helpful as always.',
+    'Brilliant, thank you! See you next time.',
+  ]
+  const messageRows: Array<{ channel: 'TRAINER_CLIENT'; clientId: string; senderId: string; body: string; readAt: Date | null; createdAt: Date }> = []
+  if (trainerUserId) {
+    for (let i = 0; i < createdClients.length; i++) {
+      const c = createdClients[i]
+      if (rand() < 0.4) continue
+      const base = now.getTime() - (Math.floor(rand() * 6) + 1) * 86400_000
+      messageRows.push({ channel: 'TRAINER_CLIENT', clientId: c.profileId, senderId: trainerUserId, body: MSG_OPENERS[i % MSG_OPENERS.length].replace('{dog}', c.dogName), readAt: new Date(base + 3600_000), createdAt: new Date(base) })
+      messageRows.push({ channel: 'TRAINER_CLIENT', clientId: c.profileId, senderId: c.userId, body: MSG_REPLIES[i % MSG_REPLIES.length], readAt: new Date(base + 2 * 3600_000), createdAt: new Date(base + 3600_000) })
+      if (rand() < 0.5) {
+        messageRows.push({ channel: 'TRAINER_CLIENT', clientId: c.profileId, senderId: trainerUserId, body: 'Just checking in — any questions before our next session?', readAt: null, createdAt: new Date(base + 2 * 86400_000) })
+      }
+    }
+    if (messageRows.length) await prisma.message.createMany({ data: messageRows })
+  }
+
+  const result: SeedResult = {
+    classRuns: classRunDefs.length,
+    classEnrolments: classEnrolCount,
+    clients: createdClients.length,
+    dogs: createdClients.length,
+    packages: packages.length,
+    clientPackages: clientPackageRows.length,
+    sessions: sessionRows.length,
+    trainingTasks: taskRows.length,
+    taskCompletions: completionRows.length,
+    libraryTypes: libraryTypeRows.length,
+    libraryThemes: libraryThemeRows.length,
+    libraryTasks: libraryTaskRows.length,
+    products: PRODUCT_DEFS.length,
+    achievements: ACHIEVEMENT_DEFS.length,
+    enquiries: enquiryRows.length,
+    customFields: customFields.length,
+    availabilitySlots: availabilitySlots.length,
+    earnedBadges: badgeRows.length,
+    sessionRecaps: recapRows.length,
+    messages: messageRows.length,
+  }
+
+  // Trainers loading sample data into a live account stop here — the finalise
+  // block below is demo-account-only and would clobber their real
+  // subscription, branding and onboarding state.
+  if (!finalize) return result
 
   // ─── 7. Finalise as an established, fully set-up ACTIVE trainer ─────────────
   // Active (not trialing), no logo, intake form published; every client marked
@@ -746,25 +1008,7 @@ export async function seedDemoData(
     })
   }
 
-  return {
-    classRuns: classRunDefs.length,
-    classEnrolments: classEnrolCount,
-    clients: createdClients.length,
-    dogs: createdClients.length,
-    packages: packages.length,
-    clientPackages: clientPackageRows.length,
-    sessions: sessionRows.length,
-    trainingTasks: taskRows.length,
-    taskCompletions: completionRows.length,
-    libraryTypes: libraryTypeRows.length,
-    libraryThemes: libraryThemeRows.length,
-    libraryTasks: libraryTaskRows.length,
-    products: PRODUCT_DEFS.length,
-    achievements: ACHIEVEMENT_DEFS.length,
-    enquiries: enquiryRows.length,
-    customFields: customFields.length,
-    availabilitySlots: availabilitySlots.length,
-  }
+  return result
 }
 
 // ─── Demo trainer lookup ─────────────────────────────────────────────────────

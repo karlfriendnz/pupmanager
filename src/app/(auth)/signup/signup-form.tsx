@@ -10,6 +10,7 @@ const schema = z.object({
   name: z.string().min(2, 'Your name is required'),
   email: z.string().email('Enter a valid email'),
   password: z.string().min(8, 'At least 8 characters'),
+  promoCode: z.string().optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -95,6 +96,17 @@ export function SignupForm({ planId: _planId, planName, perSeatPrice, purchasabl
           type="password"
           autoComplete="new-password"
           className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </Field>
+
+      <Field label="Promo code" error={errors.promoCode?.message} hint="Optional — extends your free trial.">
+        <input
+          {...register('promoCode')}
+          type="text"
+          placeholder="e.g. LAUNCH"
+          autoComplete="off"
+          autoCapitalize="characters"
+          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm uppercase placeholder:normal-case focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </Field>
 

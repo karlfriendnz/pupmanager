@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { sendVerificationEmail } from '@/lib/auth-emails'
 import { notifyNewTrainerSignup } from '@/lib/notify-new-trainer'
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
+import { validatePromoCode } from '@/lib/promo'
 import crypto from 'crypto'
 
 const schema = z.object({
@@ -12,6 +13,8 @@ const schema = z.object({
   businessName: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(8),
+  // Optional promo code — when valid it sets the total trial length.
+  promoCode: z.string().max(40).optional(),
 })
 
 const TRIAL_DAYS = 14
@@ -37,15 +40,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message, details: flat }, { status: 400 })
   }
 
-  const { name, businessName, email, password } = parsed.data
+  const { name, businessName, email, password, promoCode } = parsed.data
 
   const existing = await prisma.user.findUnique({ where: { email } })
   if (existing) {
     return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 })
   }
 
+  // A valid promo code overrides the default trial length and shifts the end
+  // date to fit. An invalid one blocks signup with a specific message so the
+  // trainer can fix or clear it rather than silently getting the default.
+  let trialDays = TRIAL_DAYS
+  let promoCodeId: string | null = null
+  if (promoCode && promoCode.trim()) {
+    const result = await validatePromoCode(promoCode)
+    if (!result.ok) {
+      return NextResponse.json({ error: result.reason }, { status: 400 })
+    }
+    trialDays = result.promo.trialDays
+    promoCodeId = result.promo.id
+  }
+
   const passwordHash = await bcrypt.hash(password, 12)
-  const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
+  const trialEndsAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000)
 
   await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
@@ -74,6 +91,7 @@ export async function POST(req: Request) {
         businessName,
         // subscriptionStatus defaults to TRIALING; stamp the end date.
         trialEndsAt,
+        promoCodeId,
       },
     })
 
@@ -88,6 +106,14 @@ export async function POST(req: Request) {
         acceptedAt: new Date(),
       },
     })
+
+    // Count the redemption only once the account is committed.
+    if (promoCodeId) {
+      await tx.promoCode.update({
+        where: { id: promoCodeId },
+        data: { redeemedCount: { increment: 1 } },
+      })
+    }
   })
 
   // Generate + persist a 6-digit verification code. 10-minute expiry.
@@ -110,5 +136,5 @@ export async function POST(req: Request) {
   await notifyNewTrainerSignup({ name, businessName, email, source: 'register form' })
     .catch(err => console.error('[register] founder notify failed:', err))
 
-  return NextResponse.json({ ok: true, email }, { status: 201 })
+  return NextResponse.json({ ok: true, email, trialDays }, { status: 201 })
 }

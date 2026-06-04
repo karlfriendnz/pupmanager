@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { sendVerificationEmail } from '@/lib/auth-emails'
 import { notifyNewTrainerSignup } from '@/lib/notify-new-trainer'
+import { validatePromoCode } from '@/lib/promo'
 
 const TRIAL_DAYS = 10
 
@@ -32,6 +33,8 @@ const schema = z.object({
   businessName: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(8),
+  // Optional promo code — when valid it sets the total trial length.
+  promoCode: z.string().max(40).optional(),
 })
 
 function generateCode(): string {
@@ -50,15 +53,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message, details: flat }, { status: 400 })
   }
 
-  const { name, businessName, email, password } = parsed.data
+  const { name, businessName, email, password, promoCode } = parsed.data
 
   const existing = await prisma.user.findUnique({ where: { email } })
   if (existing) {
     return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 })
   }
 
+  // A valid promo code overrides the default trial length. An invalid one
+  // blocks signup with a specific message so the trainer can fix or clear it
+  // (rather than silently getting the standard 10 days and being confused).
+  let trialDays = TRIAL_DAYS
+  let promoCodeId: string | null = null
+  if (promoCode && promoCode.trim()) {
+    const result = await validatePromoCode(promoCode)
+    if (!result.ok) {
+      return NextResponse.json({ error: result.reason }, { status: 400 })
+    }
+    trialDays = result.promo.trialDays
+    promoCodeId = result.promo.id
+  }
+
   const passwordHash = await bcrypt.hash(password, 12)
-  const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
+  const trialEndsAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000)
 
   // Build the user + trainer atomically so we never leave a half-account
   // around if the second insert fails.
@@ -92,6 +109,7 @@ export async function POST(req: Request) {
         // the "X days left" banner. Address + seats + Stripe customer
         // get added on /billing/setup once they're past verification.
         trialEndsAt,
+        promoCodeId,
       },
     })
 
@@ -104,6 +122,14 @@ export async function POST(req: Request) {
         acceptedAt: new Date(),
       },
     })
+
+    // Count the redemption only once the account is committed.
+    if (promoCodeId) {
+      await tx.promoCode.update({
+        where: { id: promoCodeId },
+        data: { redeemedCount: { increment: 1 } },
+      })
+    }
   })
 
   // Verification email — fire-and-log; a transient Resend failure shouldn't
