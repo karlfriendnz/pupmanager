@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { Accordion, AccordionItem } from '@/components/ui/accordion'
+import { BrandPreview } from '@/components/brand-preview'
 import { ClientLoginLinkCard } from './client-login-link-card'
 import { TIMEZONES } from '@/lib/timezones'
 import { ImagePlus, Loader2 } from 'lucide-react'
@@ -196,6 +197,8 @@ export function TrainerSettingsForm({
 
       {/* Design */}
       <AccordionItem title="Design" subtitle="Logo, dashboard background and brand colours">
+        <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="min-w-0 flex-1">
         {designMsg && <Alert variant={designMsg === 'Saved!' ? 'success' : 'error'} className="mb-3">{designMsg}</Alert>}
         <form onSubmit={designForm.handleSubmit(saveDesign)} className="flex flex-col gap-4">
           {/* Logo upload */}
@@ -356,6 +359,20 @@ export function TrainerSettingsForm({
 
           <Button type="submit" size="sm" className="self-start" loading={designForm.formState.isSubmitting}>Save design</Button>
         </form>
+        </div>
+        <div className="hidden lg:block lg:w-[228px] lg:flex-shrink-0">
+          <div className="lg:sticky lg:top-4">
+            <BrandPreview
+              businessName={businessForm.watch('businessName')}
+              logoUrl={logoUrl || ''}
+              gradStart={appGradientStart || ''}
+              gradEnd={appGradientEnd || ''}
+              note=""
+            />
+            <p className="mt-3 text-center text-xs text-slate-400">Live preview of your client app</p>
+          </div>
+        </div>
+        </div>
       </AccordionItem>
 
       {/* Website — branded client login link for the trainer's own site */}
