@@ -233,7 +233,7 @@ export function ClientHomeView({
             </>
           ) : heroImg ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={heroImg} alt={dogName} className="absolute inset-0 h-full w-full object-cover" />
+            <img src={heroImg} alt={dogName} className="absolute inset-0 h-full w-full object-cover object-[50%_30%]" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundImage: 'linear-gradient(135deg,var(--accent),var(--accent-strong))' }}>
               <DogIcon className="h-16 w-16 text-white/80" />

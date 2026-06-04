@@ -14,8 +14,8 @@ import { ClientHomeView } from '@/app/(client)/home/home-view'
 const SAMPLE_DOG = {
   id: 'demo-dog',
   name: 'Bailey',
-  breed: 'Border Collie',
-  photoUrl: null,
+  breed: 'Golden Retriever',
+  photoUrl: '/sample-dog.jpg',
 }
 
 const SAMPLE_CLIENT_NAME = 'Sarah'
@@ -130,8 +130,13 @@ function DemoBanner() {
       </div>
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/70 hover:bg-white text-amber-800 text-xs font-medium transition-colors shrink-0"
+        className="relative inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-sm transition-colors shrink-0"
       >
+        {/* Pinging dot to draw the eye to the way out of the preview. */}
+        <span aria-hidden className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
+          <span className="absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-75 motion-safe:animate-ping" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
+        </span>
         <ArrowLeft className="h-3.5 w-3.5" />
         Exit preview
       </Link>

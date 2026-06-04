@@ -1,8 +1,10 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { Loader2, Upload, ImageIcon, ArrowRight, ArrowLeft, Check, Sparkles, PawPrint } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
+import { Loader2, Upload, ImageIcon, ArrowRight, ArrowLeft, Sparkles, PawPrint, Wand2, ChevronLeft, ChevronRight, FlaskConical } from 'lucide-react'
 import { BrandPreview } from '@/components/brand-preview'
+import { extractLogoColors, type LogoPalette } from '@/lib/logo-colors'
 
 // Drop in the real welcome video here (an MP4 URL or an embed). Until then the
 // step shows a branded "coming soon" placeholder.
@@ -32,7 +34,33 @@ export type WizardInitial = {
   signupEmail: string
 }
 
-const STEPS = ['Welcome', 'Make it yours', 'Your colours', 'Say hello', 'Take a look'] as const
+// Index 0 ('Welcome') is the unnumbered intro; the numbered count starts at
+// index 1, so "Make it yours" shows as Step 1 of 5.
+const STEPS = ['Welcome', 'Make it yours', 'Your colours', 'Say hello', 'Take a look', 'Sample data'] as const
+
+// Ready-to-go welcome notes (shown on the client's home screen). The wizard
+// pre-fills the first so trainers tweak rather than face a blank box; "Try
+// another" cycles them. Kept business-name-agnostic (the app header already
+// shows the business) and broken into short paragraphs — the client home
+// renders them with whitespace-pre-line, so they stay easy to read.
+const STARTER_LABELS = ['Warm', 'Simple', 'Reassuring'] as const
+const STARTER_NOTES = [
+  `Hi, and welcome.
+
+We're really glad you and your dog are here. Everything for your training now lives in one place: your sessions, what to work on at home, and how things are going.
+
+Have a look around, and message us whenever something comes up.`,
+  `Welcome,
+
+This is where you'll find your sessions, the homework to practise between them, and your dog's progress over time.
+
+Take a minute to get your bearings. If you're ever unsure about anything, just send us a message.`,
+  `Thanks for joining us.
+
+Your schedule, training notes and progress all live here, plus a direct line to us whenever you need it.
+
+No question is too small. We'll work through it together.`,
+]
 
 export function PersonalizationWizard({
   initial,
@@ -44,6 +72,17 @@ export function PersonalizationWizard({
   onSkip: () => Promise<void> | void
 }) {
   const [step, setStep] = useState(0)
+
+  // If we're returning from the client-app preview (opened from the last step),
+  // resume there instead of restarting at step 1.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('pm_wizard_resume_last') === '1') {
+        sessionStorage.removeItem('pm_wizard_resume_last')
+        setStep(STEPS.length - 1)
+      }
+    } catch { /* sessionStorage unavailable — ignore */ }
+  }, [])
   const [businessName, setBusinessName] = useState(initial.businessName === 'My Business' ? '' : initial.businessName)
   const [website, setWebsite] = useState(initial.website ?? '')
   const [phone, setPhone] = useState(initial.phone ?? '')
@@ -52,12 +91,45 @@ export function PersonalizationWizard({
   const [accent, setAccent] = useState(initial.emailAccentColor || DEFAULT_ACCENT)
   const [gradStart, setGradStart] = useState(initial.appGradientStart || DEFAULT_GRADIENT_START)
   const [gradEnd, setGradEnd] = useState(initial.appGradientEnd || DEFAULT_GRADIENT_END)
-  const [note, setNote] = useState(initial.clientWelcomeNote ?? '')
+  // Pre-fill a starter note for fresh trainers; keep an existing one untouched.
+  const [note, setNote] = useState(initial.clientWelcomeNote?.trim() ? initial.clientWelcomeNote : STARTER_NOTES[0])
+  const [starterIdx, setStarterIdx] = useState(0)
+  const noteRef = useRef<HTMLTextAreaElement>(null)
+
+  // Grow the welcome-note textarea to fit its content — on typing, on the
+  // pre-filled starter, and when "Try another" swaps the text. Keyed on `step`
+  // too so it sizes correctly once step 3 actually mounts the textarea.
+  useEffect(() => {
+    const el = noteRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [note, step])
 
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [seeding, setSeeding] = useState(false)
+  const [seedError, setSeedError] = useState<string | null>(null)
+  // Palette pulled from the uploaded logo — lets step 3 offer "Match my logo".
+  const [logoPalette, setLogoPalette] = useState<LogoPalette | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Apply a logo-derived palette to the brand colours (used on upload and from
+  // the "Match my logo" button on the colours step).
+  function applyPalette(p: LogoPalette) {
+    setGradStart(p.start)
+    setGradEnd(p.end)
+    setAccent(p.accent)
+  }
+
+  // Step through the ready-made welcome notes; the chosen one drops into the
+  // editable box to tweak. Purely local — no network call.
+  function pickStarter(dir: number) {
+    const i = (starterIdx + dir + STARTER_NOTES.length) % STARTER_NOTES.length
+    setStarterIdx(i)
+    setNote(STARTER_NOTES[i])
+  }
 
   async function saveProfile() {
     await fetch('/api/trainer/profile', {
@@ -90,6 +162,13 @@ export function PersonalizationWizard({
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setUploadError(body.error ?? 'Upload failed.'); return }
       setLogoUrl(body.url)
+      // Pull the brand colours straight from the logo and pre-fill step 3.
+      // Extracted from the local file (same-origin) so the canvas isn't tainted.
+      const palette = await extractLogoColors(file).catch(() => null)
+      if (palette) {
+        setLogoPalette(palette)
+        applyPalette(palette)
+      }
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -121,6 +200,23 @@ export function PersonalizationWizard({
     try { await onSkip() } finally { setBusy(false) }
   }
 
+  // Load sample data into the trainer's own account, then finish the wizard so
+  // they land on a populated dashboard (with the "remove sample data" banner).
+  async function loadSampleData() {
+    setSeeding(true)
+    setSeedError(null)
+    try {
+      const res = await fetch('/api/trainer/sample-data/seed', { method: 'POST' })
+      if (res.ok) { await onComplete(); return }
+      const body = await res.json().catch(() => ({}))
+      setSeedError(typeof body.error === 'string' ? body.error : 'Could not load sample data. Please try again.')
+    } catch {
+      setSeedError('Could not load sample data. Please try again.')
+    } finally {
+      setSeeding(false)
+    }
+  }
+
   const gs = HEX.test(gradStart) ? gradStart : DEFAULT_GRADIENT_START
   const ge = HEX.test(gradEnd) ? gradEnd : DEFAULT_GRADIENT_END
   const brandGradient = `linear-gradient(150deg, ${gs} 0%, ${ge} 100%)`
@@ -144,11 +240,6 @@ export function PersonalizationWizard({
           <div className="relative flex-1 grid place-items-center py-6">
             {showPhone ? (
               <BrandPreview businessName={businessName} logoUrl={logoUrl} gradStart={gradStart} gradEnd={gradEnd} note={note} />
-            ) : step === 4 ? (
-              <div className="text-center">
-                <div className="mx-auto h-20 w-20 rounded-3xl bg-white/15 ring-1 ring-white/30 backdrop-blur-sm grid place-items-center animate-pm-pop"><Sparkles className="h-9 w-9" /></div>
-                <p className="mt-4 text-lg font-display font-bold">All set!</p>
-              </div>
             ) : (
               <div className="text-center px-4">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -160,10 +251,10 @@ export function PersonalizationWizard({
 
           {/* progress */}
           <div className="relative">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 mb-2">Step {step + 1} of {STEPS.length} · {STEPS[step]}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 mb-2">{step === 0 ? STEPS[0] : `Step ${step} of ${STEPS.length - 1} · ${STEPS[step]}`}</p>
             <div className="flex gap-1.5">
-              {STEPS.map((_, i) => (
-                <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${i <= step ? 'bg-white' : 'bg-white/25'}`} />
+              {STEPS.slice(1).map((_, i) => (
+                <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${i + 1 <= step ? 'bg-white' : 'bg-white/25'}`} />
               ))}
             </div>
           </div>
@@ -178,7 +269,7 @@ export function PersonalizationWizard({
               <button onClick={skip} disabled={busy} className="text-xs text-white/80 hover:text-white">Skip</button>
             </div>
             <div className="mt-3 flex gap-1.5">
-              {STEPS.map((_, i) => <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? 'bg-white' : 'bg-white/25'}`} />)}
+              {STEPS.slice(1).map((_, i) => <div key={i} className={`h-1.5 flex-1 rounded-full ${i + 1 <= step ? 'bg-white' : 'bg-white/25'}`} />)}
             </div>
           </div>
           {/* desktop skip */}
@@ -211,22 +302,6 @@ export function PersonalizationWizard({
                 <label className="block text-sm font-medium text-slate-700 mt-6 mb-2">Business name</label>
                 <input value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Pawsome Dog Training" className="w-full h-12 rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-[15px] focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
 
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-6 mb-2">Public contact details</p>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1.5">Email</label>
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="hello@pawsome.co.nz" className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1.5">Phone</label>
-                    <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+64 21 123 4567" className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-slate-500 mb-1.5">Website</label>
-                    <input type="url" value={website} onChange={e => setWebsite(e.target.value)} placeholder="pawsome.co.nz" className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
-                  </div>
-                </div>
-
                 <label className="block text-sm font-medium text-slate-700 mt-6 mb-2">Logo</label>
                 <div className="flex items-center gap-4">
                   <div className="h-20 w-20 rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center flex-shrink-0 shadow-sm">
@@ -244,6 +319,23 @@ export function PersonalizationWizard({
                   </div>
                 </div>
                 {uploadError && <p className="text-xs text-red-500 mt-2">{uploadError}</p>}
+
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-6 mb-2">Public contact details</p>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1.5">Email</label>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="hello@pawsome.co.nz" className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1.5">Phone</label>
+                    <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+64 21 123 4567" className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-slate-500 mb-1.5">Website</label>
+                    <input type="url" value={website} onChange={e => setWebsite(e.target.value)} placeholder="pawsome.co.nz" className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
+                  </div>
+                </div>
+
                 <MobilePreview show={showPhone} businessName={businessName} logoUrl={logoUrl} gradStart={gradStart} gradEnd={gradEnd} note={note} />
               </div>
             )}
@@ -251,6 +343,19 @@ export function PersonalizationWizard({
             {step === 2 && (
               <div key="s2">
                 <StepHead title="Your colours" sub="Pick the gradient your clients see on buttons and highlights — the preview updates live." />
+                {logoPalette && (
+                  <div className="mt-4 flex items-center gap-2 rounded-xl bg-teal-50 border border-teal-100 px-3 py-2.5">
+                    <span className="flex items-center gap-1">
+                      {[logoPalette.start, logoPalette.end, logoPalette.accent].map((c, i) => (
+                        <span key={i} className="h-4 w-4 rounded-full ring-1 ring-black/10" style={{ backgroundColor: c }} />
+                      ))}
+                    </span>
+                    <p className="text-xs text-slate-600 flex-1">Pulled from your logo.</p>
+                    <button type="button" onClick={() => applyPalette(logoPalette)} className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 px-3 h-8 text-xs font-semibold text-white transition-colors">
+                      <Wand2 className="h-3.5 w-3.5" /> Match my logo
+                    </button>
+                  </div>
+                )}
                 <label className="block text-sm font-medium text-slate-700 mt-6 mb-2">App gradient</label>
                 <div className="h-14 w-full rounded-2xl border border-slate-200 mb-3 shadow-inner" style={{ backgroundImage: `linear-gradient(135deg, ${gs}, ${ge})` }} />
                 <div className="flex flex-wrap gap-4">
@@ -266,10 +371,23 @@ export function PersonalizationWizard({
 
             {step === 3 && (
               <div key="s3">
-                <StepHead title="Say hello" sub="A short, warm welcome shown on your clients’ home screen. Optional — but a lovely first impression." />
-                <label className="block text-sm font-medium text-slate-700 mt-6 mb-2">Welcome note</label>
-                <textarea value={note} onChange={e => setNote(e.target.value.slice(0, 500))} rows={5} placeholder="Welcome! So glad to have you and your pup with us. Tap around — your sessions, homework and progress all live here. — the team" className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-[15px] leading-relaxed focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
-                <p className="text-xs text-slate-400 mt-1.5">{note.length}/500</p>
+                <StepHead title="Say hello" sub="A short, warm welcome shown on your clients’ home screen. We’ve written one to start from — tweak it to sound like you." />
+                <div className="flex items-center justify-between mt-6 mb-2">
+                  <label className="block text-sm font-medium text-slate-700">Welcome note</label>
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex items-center rounded-lg border border-slate-200 bg-white">
+                      <button type="button" onClick={() => pickStarter(-1)} aria-label="Previous starter" className="h-8 w-8 grid place-items-center text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-l-lg transition-colors">
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <span className="px-1 w-[5.5rem] text-center text-xs font-medium text-slate-600 select-none">{STARTER_LABELS[starterIdx]}</span>
+                      <button type="button" onClick={() => pickStarter(1)} aria-label="Next starter" className="h-8 w-8 grid place-items-center text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-r-lg transition-colors">
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <textarea ref={noteRef} value={note} onChange={e => setNote(e.target.value.slice(0, 500))} rows={4} placeholder="Welcome! So glad to have you and your pup with us. Tap around — your sessions, homework and progress all live here. — the team" className="w-full min-h-[7rem] resize-none overflow-hidden rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-[15px] leading-relaxed focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
+                <p className="text-xs text-slate-400 mt-1.5">{note.length}/500 · edit it freely — this is just a starting point.</p>
                 <MobilePreview show={showPhone} businessName={businessName} logoUrl={logoUrl} gradStart={gradStart} gradEnd={gradEnd} note={note} />
               </div>
             )}
@@ -281,9 +399,57 @@ export function PersonalizationWizard({
                 </div>
                 <h2 className="font-display text-2xl font-bold text-slate-900 mt-5 tracking-tight">You’re set — take a look</h2>
                 <p className="text-[15px] text-slate-500 mt-2.5 leading-relaxed">Here’s a live preview of what your clients see — branded in your colours, with a sample pup. It’s just a demo; nothing’s added to your account.</p>
-                <a href="/preview-as" className="mt-6 inline-flex items-center gap-2 rounded-2xl px-6 h-12 text-sm font-semibold text-white shadow-lg hover:-translate-y-px transition-transform" style={{ backgroundImage: brandGradient }}>
+                <Link href="/preview-as" onClick={() => { try { sessionStorage.setItem('pm_wizard_resume_last', '1') } catch { /* ignore */ } }} className="mt-6 inline-flex items-center gap-2 rounded-2xl px-6 h-12 text-sm font-semibold text-white shadow-lg hover:-translate-y-px transition-transform" style={{ backgroundImage: brandGradient }}>
                   See the client app <ArrowRight className="h-4 w-4" />
-                </a>
+                </Link>
+              </div>
+            )}
+
+            {step === 5 && (
+              <div className="max-w-md mx-auto py-2" key="s5">
+                <div className="text-center">
+                  <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ backgroundImage: brandGradient }}>
+                    <FlaskConical className="h-8 w-8 text-white" />
+                  </div>
+                  <h2 className="font-display text-2xl font-bold text-slate-900 mt-5 tracking-tight">How do you want to start?</h2>
+                  <p className="text-[15px] text-slate-500 mt-2.5 leading-relaxed">Explore with sample data first, or jump straight into setting up your real business.</p>
+                </div>
+
+                <div className="mt-6 flex flex-col gap-3 text-left">
+                  {/* Explore with sample data → seed + finish */}
+                  <button
+                    type="button"
+                    onClick={loadSampleData}
+                    disabled={seeding || busy}
+                    className="group flex items-start gap-3 rounded-2xl border-2 border-slate-200 hover:border-teal-400 hover:bg-teal-50/50 p-4 text-left transition-colors disabled:opacity-60"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white" style={{ backgroundImage: brandGradient }}>
+                      {seeding ? <Loader2 className="h-5 w-5 animate-spin" /> : <FlaskConical className="h-5 w-5" />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-slate-800">{seeding ? 'Loading sample data…' : 'Explore with sample data'}</span>
+                      <span className="block text-[13px] text-slate-500 mt-0.5 leading-relaxed">Fill your account with sample clients, sessions and progress to play with. Wipe it in one click when you&apos;re ready — anything you add yourself stays.</span>
+                    </span>
+                  </button>
+
+                  {/* Start fresh → finish with a clean slate */}
+                  <button
+                    type="button"
+                    onClick={finish}
+                    disabled={busy || seeding}
+                    className="group flex items-start gap-3 rounded-2xl border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 p-4 text-left transition-colors disabled:opacity-60"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                      <Sparkles className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-slate-800">Start fresh</span>
+                      <span className="block text-[13px] text-slate-500 mt-0.5 leading-relaxed">Go straight to your empty dashboard and set up your real clients and packages.</span>
+                    </span>
+                  </button>
+                </div>
+
+                {seedError && <p className="text-xs text-red-500 mt-3 text-center">{seedError}</p>}
               </div>
             )}
           </div>
@@ -298,9 +464,9 @@ export function PersonalizationWizard({
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Continue <ArrowRight className="h-4 w-4" />
               </button>
             ) : (
-              <button onClick={finish} disabled={busy} className="inline-flex items-center gap-2 rounded-2xl px-6 h-12 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 shadow-md hover:-translate-y-px transition-all disabled:opacity-60 disabled:hover:translate-y-0">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Finish setup
-              </button>
+              // Last step ("Sample data") provides its own two choices — no
+              // separate footer action needed.
+              <span />
             )}
           </div>
         </div>
