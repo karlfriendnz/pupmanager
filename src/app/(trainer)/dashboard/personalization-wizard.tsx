@@ -207,12 +207,23 @@ export function PersonalizationWizard({
     setSeedError(null)
     try {
       const res = await fetch('/api/trainer/sample-data/seed', { method: 'POST' })
-      if (res.ok) { await onComplete(); return }
-      const body = await res.json().catch(() => ({}))
-      setSeedError(typeof body.error === 'string' ? body.error : 'Could not load sample data. Please try again.')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setSeedError(typeof body.error === 'string' ? body.error : 'Could not load sample data. Please try again.')
+        setSeeding(false)
+        return
+      }
+      // Mark the welcome done + tour started (same as finishing), then do one
+      // full navigation so the populated dashboard loads in a single clean pass.
+      // A soft router.refresh() here flashes the empty dashboard before the new
+      // data swaps in; a hard load avoids that. Keep "Loading…" up until we go.
+      await Promise.all([
+        fetch('/api/onboarding/tour/start', { method: 'POST' }),
+        fetch('/api/onboarding/welcome/dismiss', { method: 'POST' }),
+      ]).catch(() => {})
+      window.location.href = '/dashboard'
     } catch {
       setSeedError('Could not load sample data. Please try again.')
-    } finally {
       setSeeding(false)
     }
   }
