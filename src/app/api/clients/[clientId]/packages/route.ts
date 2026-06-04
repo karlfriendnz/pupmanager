@@ -106,20 +106,54 @@ export async function POST(
     dogId = dog.id
   }
 
-  // Block stacking duplicate forever-ongoing assignments. Each ongoing
-  // ClientPackage is independently topped up by extendOngoingPackages() on
-  // every schedule load, so two active ones for the same client+package
-  // double the sessions and make deletes look like they "come back".
+  // Block stacking duplicate forever-ongoing assignments — but only a true
+  // duplicate: same dog, same package, on the same weekly *slot* (day-of-week
+  // + time). extendOngoingPackages() tops up each ongoing assignment from its
+  // own last session's day/time, so two assignments on the SAME slot generate
+  // two identical series and make deletes look like they "come back". Two on
+  // DIFFERENT slots (e.g. Walk & Train Mon 10am AND Thu 2:30pm for the same
+  // dog) top up independently and never collide — that's a legitimate setup,
+  // as is the same package for a different dog in the household.
   // Fixed-count packages can still be assigned repeatedly (legitimate
   // repurchase) — only ongoing (sessionCount 0 + extendIndefinitely) stacks.
+  // dogId lives on the child sessions (not on ClientPackage), so we read each
+  // ongoing assignment's anchor session to compare slots.
   if (pkg.sessionCount === 0 && parsed.data.extendIndefinitely === true) {
-    const existingOngoing = await prisma.clientPackage.findFirst({
-      where: { clientId, packageId: pkg.id, extendIndefinitely: true },
-      select: { id: true },
+    // Minute-of-week (0..10079), so identical day-of-week + HH:mm collide
+    // regardless of which calendar week each falls in. UTC-based — Vercel runs
+    // in UTC and the top-up engine steps by whole 7-day intervals, so a weekly
+    // slot maps to a stable minute-of-week. Floored to the minute to absorb
+    // any sub-minute drift between stored and proposed times.
+    const WEEK_MIN = 7 * 24 * 60
+    const slotOf = (d: Date) => {
+      const m = Math.floor(d.getTime() / 60000) % WEEK_MIN
+      return m < 0 ? m + WEEK_MIN : m
+    }
+    const existing = await prisma.clientPackage.findMany({
+      where: {
+        clientId,
+        packageId: pkg.id,
+        extendIndefinitely: true,
+        sessions: { some: { dogId } },
+      },
+      select: {
+        // The latest session is the exact anchor extendOngoingPackages() uses
+        // to project this assignment forward, so it defines the live slot.
+        sessions: {
+          where: { dogId },
+          orderBy: { scheduledAt: 'desc' },
+          take: 1,
+          select: { scheduledAt: true },
+        },
+      },
     })
-    if (existingOngoing) {
+    const existingSlots = new Set(
+      existing.flatMap(a => a.sessions.map(s => slotOf(s.scheduledAt))),
+    )
+    const collides = sessionDates.some(d => existingSlots.has(slotOf(d)))
+    if (collides) {
       return NextResponse.json(
-        { error: 'This client already has an active ongoing assignment of this package. Edit or end that one instead of adding another.' },
+        { error: 'This dog already has an ongoing assignment of this package on that day and time. Pick a different day or time, or edit the existing one.' },
         { status: 409 },
       )
     }
