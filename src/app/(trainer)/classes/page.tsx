@@ -12,26 +12,18 @@ export default async function ClassesPage() {
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
 
-  const [groupPackages, runs] = await Promise.all([
-    prisma.package.findMany({
-      where: { trainerId, isGroup: true },
-      orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-      select: { id: true, name: true, sessionCount: true, capacity: true },
-    }),
-    prisma.classRun.findMany({
-      where: { trainerId },
-      orderBy: { startDate: 'desc' },
-      include: {
-        package: { select: { name: true, capacity: true } },
-        _count: { select: { sessions: true } },
-        enrollments: { where: { status: 'ENROLLED' }, select: { id: true } },
-      },
-    }),
-  ])
+  const runs = await prisma.classRun.findMany({
+    where: { trainerId },
+    orderBy: { startDate: 'desc' },
+    include: {
+      package: { select: { name: true, capacity: true } },
+      _count: { select: { sessions: true } },
+      enrollments: { where: { status: 'ENROLLED' }, select: { id: true } },
+    },
+  })
 
   return (
     <ClassesView
-      groupPackages={groupPackages}
       runs={runs.map(r => ({
         id: r.id,
         name: r.name,

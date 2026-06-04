@@ -148,6 +148,70 @@ export async function createClassRun(args: {
 }
 
 /**
+ * One-step class creation: a trainer describes the class inline (no separate
+ * "make a package first" step), and we transparently create the backing group
+ * Package, the ClassRun, and the shared session series together. The package
+ * is still created so pricing / re-running stays consistent with the rest of
+ * the system — it's just hidden from the 1:1 Packages list.
+ */
+export async function createClassWithPackage(args: {
+  trainerId: string
+  name: string
+  startDate: Date
+  sessionCount: number
+  weeksBetween: number
+  durationMins: number
+  sessionType: 'IN_PERSON' | 'VIRTUAL'
+  priceCents?: number | null
+  capacity?: number | null
+  color?: string | null
+  scheduleNote?: string | null
+}): Promise<{ id: string; sessionCount: number }> {
+  const count = args.sessionCount > 0 ? args.sessionCount : 1
+  const dates = generateSessionDates(args.startDate, count, args.weeksBetween)
+
+  return prisma.$transaction(async (tx) => {
+    const pkg = await tx.package.create({
+      data: {
+        trainerId: args.trainerId,
+        name: args.name,
+        sessionCount: count,
+        weeksBetween: args.weeksBetween,
+        durationMins: args.durationMins,
+        sessionType: args.sessionType,
+        priceCents: args.priceCents ?? null,
+        isGroup: true,
+        capacity: args.capacity ?? null,
+        color: args.color ?? null,
+        order: 0,
+      },
+    })
+    const run = await tx.classRun.create({
+      data: {
+        trainerId: args.trainerId,
+        packageId: pkg.id,
+        name: args.name,
+        scheduleNote: args.scheduleNote ?? null,
+        startDate: args.startDate,
+        capacity: args.capacity ?? null,
+      },
+    })
+    await tx.trainingSession.createMany({
+      data: dates.map((d, i) => ({
+        trainerId: args.trainerId,
+        classRunId: run.id,
+        sessionIndex: i + 1,
+        title: count > 1 ? `${args.name} — session ${i + 1}/${count}` : args.name,
+        scheduledAt: d,
+        durationMins: args.durationMins,
+        sessionType: args.sessionType,
+      })),
+    })
+    return { id: run.id, sessionCount: dates.length }
+  })
+}
+
+/**
  * Enrol a client+dog into a run. Server-authoritative capacity/waitlist —
  * the decision is recomputed inside the transaction so two concurrent
  * enrols can't both take the last seat. Drop-in stamps joinedAtIndex

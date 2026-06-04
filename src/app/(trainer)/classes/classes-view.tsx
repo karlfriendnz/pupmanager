@@ -10,7 +10,6 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { Plus, X, GraduationCap, Users, ChevronRight } from 'lucide-react'
 
-type GroupPackage = { id: string; name: string; sessionCount: number; capacity: number | null }
 type RunRow = {
   id: string
   name: string
@@ -29,13 +28,7 @@ const STATUS_STYLE: Record<RunRow['status'], string> = {
   CANCELLED: 'bg-red-50 text-red-600',
 }
 
-export function ClassesView({
-  groupPackages,
-  runs,
-}: {
-  groupPackages: GroupPackage[]
-  runs: RunRow[]
-}) {
+export function ClassesView({ runs }: { runs: RunRow[] }) {
   const router = useRouter()
   const [showCreate, setShowCreate] = useState(false)
 
@@ -43,38 +36,28 @@ export function ClassesView({
     <>
       <PageHeader
         title="Classes"
-        subtitle="Schedule a cohort of a group package — one shared timetable, a roster, capacity and waitlist."
+        subtitle="Run a class — pick the day, time and how many weeks. Clients enrol into one shared timetable with a roster, capacity and waitlist."
         actions={
-          groupPackages.length > 0 ? (
-            <Button onClick={() => setShowCreate(true)}>
-              <Plus className="h-4 w-4" /> New class run
-            </Button>
-          ) : undefined
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" /> New class
+          </Button>
         }
       />
 
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
-      {groupPackages.length === 0 ? (
+      {runs.length === 0 ? (
         <Card>
           <CardBody>
             <div className="text-center py-10 px-4">
               <GraduationCap className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-600 font-medium">No group packages yet</p>
+              <p className="text-slate-600 font-medium">No classes yet</p>
               <p className="text-sm text-slate-400 mt-1 max-w-sm mx-auto">
-                Create a package and tick &ldquo;This is a group class&rdquo; on it, then come back here to schedule a run.
+                Create your first class — e.g. &ldquo;Puppy Class, Thursdays 4pm for 6 weeks&rdquo;.
               </p>
-              <Link href="/packages" className="inline-block mt-4">
-                <Button variant="ghost">Go to packages</Button>
-              </Link>
+              <Button className="mt-4" onClick={() => setShowCreate(true)}>
+                <Plus className="h-4 w-4" /> New class
+              </Button>
             </div>
-          </CardBody>
-        </Card>
-      ) : runs.length === 0 ? (
-        <Card>
-          <CardBody>
-            <p className="text-center text-sm text-slate-500 py-10">
-              No class runs yet. Create your first one.
-            </p>
           </CardBody>
         </Card>
       ) : (
@@ -114,8 +97,7 @@ export function ClassesView({
       )}
 
       {showCreate && (
-        <CreateRunModal
-          groupPackages={groupPackages}
+        <CreateClassModal
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false)
@@ -128,28 +110,34 @@ export function ClassesView({
   )
 }
 
-function CreateRunModal({
-  groupPackages,
+// One-step class creation — no package step. Captures the class's own settings
+// (the backing group package is created transparently server-side).
+export function CreateClassModal({
   onClose,
   onCreated,
+  initialStart,
 }: {
-  groupPackages: GroupPackage[]
   onClose: () => void
   onCreated: () => void
+  initialStart?: string // datetime-local value to prefill (e.g. from the schedule)
 }) {
-  const [packageId, setPackageId] = useState(groupPackages[0]?.id ?? '')
   const [name, setName] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [scheduleNote, setScheduleNote] = useState('')
+  const [startDate, setStartDate] = useState(initialStart ?? '')
+  const [weeksBetween, setWeeksBetween] = useState('1')
+  const [sessionCount, setSessionCount] = useState('6')
+  const [durationMins, setDurationMins] = useState('60')
+  const [sessionType, setSessionType] = useState<'IN_PERSON' | 'VIRTUAL'>('IN_PERSON')
+  const [price, setPrice] = useState('')
   const [capacity, setCapacity] = useState('')
+  const [scheduleNote, setScheduleNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!packageId || !name.trim() || !startDate) {
-      setError('Package, name and start date are required.')
+    if (!name.trim() || !startDate) {
+      setError('Class name and first session date/time are required.')
       return
     }
     setSaving(true)
@@ -158,16 +146,20 @@ function CreateRunModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          packageId,
           name: name.trim(),
           startDate: new Date(startDate).toISOString(),
+          sessionCount: Math.max(1, Math.floor(Number(sessionCount) || 1)),
+          weeksBetween: Math.max(1, Math.floor(Number(weeksBetween) || 1)),
+          durationMins: Math.max(5, Math.floor(Number(durationMins) || 60)),
+          sessionType,
+          priceCents: price.trim() ? Math.round(Number(price) * 100) : null,
+          capacity: capacity.trim() ? Math.max(1, Math.floor(Number(capacity))) : null,
           scheduleNote: scheduleNote.trim() || null,
-          capacity: capacity.trim() ? Math.max(0, Math.floor(Number(capacity))) : null,
         }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setError(body.error ?? 'Could not create the class run.')
+        setError(typeof body.error === 'string' ? body.error : 'Could not create the class.')
         return
       }
       onCreated()
@@ -179,9 +171,9 @@ function CreateRunModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900">New class run</h2>
+      <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-slate-100 sticky top-0 bg-white">
+          <h2 className="font-semibold text-slate-900">New class</h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
@@ -189,55 +181,96 @@ function CreateRunModal({
         <form onSubmit={submit} className="p-5 flex flex-col gap-3">
           {error && <Alert variant="error">{error}</Alert>}
 
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Group package</label>
-            <select
-              value={packageId}
-              onChange={e => setPackageId(e.target.value)}
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {groupPackages.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.sessionCount} sessions)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <Input label="Class name" placeholder="Spring Puppy Class" value={name} onChange={e => setName(e.target.value)} />
+          <Input label="Class name" placeholder="Puppy Class" value={name} onChange={e => setName(e.target.value)} />
 
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">First session</label>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">First session (date &amp; time)</label>
             <input
               type="datetime-local"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <p className="text-[11px] text-slate-400 mt-1">Following sessions are spaced by the package&apos;s weeks-between.</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Repeats</label>
+              <select
+                value={weeksBetween}
+                onChange={e => setWeeksBetween(e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="1">Weekly</option>
+                <option value="2">Every 2 weeks</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">For how many weeks</label>
+              <input
+                type="number" min={1} max={52}
+                value={sessionCount}
+                onChange={e => setSessionCount(e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Session length (mins)</label>
+              <input
+                type="number" min={5} max={600} step={5}
+                value={durationMins}
+                onChange={e => setDurationMins(e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Format</label>
+              <select
+                value={sessionType}
+                onChange={e => setSessionType(e.target.value as 'IN_PERSON' | 'VIRTUAL')}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="IN_PERSON">In person</option>
+                <option value="VIRTUAL">Virtual</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Price <span className="text-slate-400">(optional)</span></label>
+              <input
+                type="number" min={0} step="0.01"
+                value={price}
+                onChange={e => setPrice(e.target.value)}
+                placeholder="e.g. 180"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Capacity <span className="text-slate-400">(optional)</span></label>
+              <input
+                type="number" min={1}
+                value={capacity}
+                onChange={e => setCapacity(e.target.value)}
+                placeholder="Unlimited"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
 
           <Input
             label="Schedule note (optional)"
-            placeholder="Tuesdays 6:00pm"
+            placeholder="Thursdays 4:00pm"
             value={scheduleNote}
             onChange={e => setScheduleNote(e.target.value)}
           />
 
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Capacity override (optional)</label>
-            <input
-              type="number"
-              min={0}
-              value={capacity}
-              onChange={e => setCapacity(e.target.value)}
-              placeholder="Defaults to the package capacity"
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
           <div className="flex gap-2 pt-2">
-            <Button type="submit" loading={saving}>Create run</Button>
+            <Button type="submit" loading={saving}>Create class</Button>
             <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
           </div>
         </form>

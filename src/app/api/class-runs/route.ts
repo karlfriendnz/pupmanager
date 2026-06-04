@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { createClassRun, ClassError } from '@/lib/class-runs'
+import { createClassRun, createClassWithPackage, ClassError } from '@/lib/class-runs'
 
 // GET  /api/class-runs        — every run for the trainer (+ enrolled count)
 // POST /api/class-runs        — create a run + its shared session series
@@ -40,11 +40,19 @@ export async function GET() {
 }
 
 const createSchema = z.object({
-  packageId: z.string().min(1),
   name: z.string().min(1).max(120),
   startDate: z.string().min(1),
   scheduleNote: z.string().max(120).nullable().optional(),
-  capacity: z.number().int().min(0).max(1000).nullable().optional(),
+  capacity: z.number().int().min(1).max(1000).nullable().optional(),
+  // One-step create (no existing package): the class's own settings.
+  sessionCount: z.number().int().min(1).max(52).optional(),
+  weeksBetween: z.number().int().min(1).max(8).optional(),
+  durationMins: z.number().int().min(5).max(600).optional(),
+  sessionType: z.enum(['IN_PERSON', 'VIRTUAL']).optional(),
+  priceCents: z.number().int().min(0).max(10_000_00).nullable().optional(),
+  color: z.string().max(20).nullable().optional(),
+  // Legacy: run off an existing group package.
+  packageId: z.string().min(1).optional(),
 })
 
 export async function POST(req: Request) {
@@ -59,20 +67,39 @@ export async function POST(req: Request) {
 
   const parsed = createSchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  const d = parsed.data
 
-  const startDate = new Date(parsed.data.startDate)
+  const startDate = new Date(d.startDate)
   if (Number.isNaN(startDate.getTime())) {
     return NextResponse.json({ error: 'Invalid startDate' }, { status: 400 })
   }
 
   try {
-    const run = await createClassRun({
+    if (d.packageId) {
+      // Legacy path: schedule a run off an existing group package.
+      const run = await createClassRun({
+        trainerId, packageId: d.packageId, name: d.name, startDate,
+        scheduleNote: d.scheduleNote ?? null, capacity: d.capacity ?? null,
+      })
+      return NextResponse.json({ ok: true, ...run }, { status: 201 })
+    }
+
+    // One-step path: needs the inline class settings.
+    if (d.sessionCount == null || d.durationMins == null || !d.sessionType) {
+      return NextResponse.json({ error: 'Missing class settings' }, { status: 400 })
+    }
+    const run = await createClassWithPackage({
       trainerId,
-      packageId: parsed.data.packageId,
-      name: parsed.data.name,
+      name: d.name,
       startDate,
-      scheduleNote: parsed.data.scheduleNote ?? null,
-      capacity: parsed.data.capacity ?? null,
+      sessionCount: d.sessionCount,
+      weeksBetween: d.weeksBetween ?? 1,
+      durationMins: d.durationMins,
+      sessionType: d.sessionType,
+      priceCents: d.priceCents ?? null,
+      capacity: d.capacity ?? null,
+      color: d.color ?? null,
+      scheduleNote: d.scheduleNote ?? null,
     })
     return NextResponse.json({ ok: true, ...run }, { status: 201 })
   } catch (err) {
