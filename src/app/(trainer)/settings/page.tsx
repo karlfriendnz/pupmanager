@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
 import { TrainerSettingsForm } from './trainer-settings-form'
-import { ClientLoginLinkCard } from './client-login-link-card'
 import { ensureTrainerSlug } from '@/lib/slug'
 import { SettingsTabs } from './settings-tabs'
 import { NotificationsPanel } from './notifications-panel'
@@ -80,10 +79,12 @@ export default async function TrainerSettingsPage() {
 
       <SettingsTabs
         profile={canEditSettings ? (
-          <div className="flex flex-col gap-6">
-            <ClientLoginLinkCard slug={clientLoginSlug} baseUrl={appUrl} />
-            <TrainerSettingsForm user={user} profile={trainerProfile} />
-          </div>
+          <TrainerSettingsForm
+            user={user}
+            profile={trainerProfile}
+            clientLoginSlug={clientLoginSlug}
+            appUrl={appUrl}
+          />
         ) : undefined}
         notifications={<NotificationsPanel notifyEmail={user.notifyEmail} notifyPush={user.notifyPush} />}
         team={<TeamPanel />}

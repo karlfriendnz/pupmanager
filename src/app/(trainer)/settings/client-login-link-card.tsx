@@ -8,8 +8,17 @@ import { Alert } from '@/components/ui/alert'
 
 // "Client login link" — the shareable, branded sign-in page a trainer drops
 // onto their own website. Shows the full URL with a copy button and lets them
-// customise the slug.
-export function ClientLoginLinkCard({ slug, baseUrl }: { slug: string | null; baseUrl: string }) {
+// customise the slug. `embedded` drops the outer card chrome + title when it
+// already sits inside an accordion/section.
+export function ClientLoginLinkCard({
+  slug,
+  baseUrl,
+  embedded = false,
+}: {
+  slug: string | null
+  baseUrl: string
+  embedded?: boolean
+}) {
   const router = useRouter()
   const [value, setValue] = useState(slug ?? '')
   const [savedSlug, setSavedSlug] = useState(slug)
@@ -57,12 +66,14 @@ export function ClientLoginLinkCard({ slug, baseUrl }: { slug: string | null; ba
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
-      <div className="flex items-center gap-2">
-        <Link2 className="h-4 w-4 text-slate-500" aria-hidden />
-        <h3 className="text-sm font-semibold text-slate-900">Client login link</h3>
-      </div>
-      <p className="mt-1 text-sm text-slate-500">
+    <div className={embedded ? '' : 'rounded-2xl border border-slate-200 bg-white p-5'}>
+      {!embedded && (
+        <div className="flex items-center gap-2">
+          <Link2 className="h-4 w-4 text-slate-500" aria-hidden />
+          <h3 className="text-sm font-semibold text-slate-900">Client login link</h3>
+        </div>
+      )}
+      <p className={embedded ? 'text-sm text-slate-500' : 'mt-1 text-sm text-slate-500'}>
         A sign-in page branded to your business. Add it to your website so clients can log in.
       </p>
 
