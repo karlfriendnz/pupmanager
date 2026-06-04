@@ -756,6 +756,34 @@ export async function seedDemoData(
       })
     }
   }
+  // Fill the upcoming calendar so the schedule reads as a busy practice: a few
+  // sessions on each of the next ~3 weeks of weekdays, spread across random
+  // clients. Tied to sample clients, so clearSampleData removes them too.
+  for (let d = 1; d <= 21; d++) {
+    const day = new Date(now)
+    day.setDate(day.getDate() + d)
+    const dow = day.getDay()
+    if (dow === 0 || dow === 6) continue // skip weekends
+    const perDay = 2 + Math.floor(rand() * 3) // 2–4 sessions per weekday
+    for (let k = 0; k < perDay; k++) {
+      const c = createdClients[Math.floor(rand() * createdClients.length)]
+      const slot = new Date(day)
+      slot.setHours(9 + Math.floor(rand() * 8), rand() < 0.5 ? 0 : 30, 0, 0)
+      sessionRows.push({
+        id: randomUUID(),
+        trainerId,
+        clientId: c.profileId,
+        dogId: c.dogId,
+        clientPackageId: null,
+        title: SESSION_TITLES[Math.floor(rand() * SESSION_TITLES.length)],
+        scheduledAt: slot,
+        durationMins: rand() < 0.5 ? 60 : 45,
+        sessionType: rand() < 0.85 ? 'IN_PERSON' : 'VIRTUAL',
+        status: 'UPCOMING',
+      })
+    }
+  }
+
   await prisma.clientPackage.createMany({ data: clientPackageRows })
   await prisma.trainingSession.createMany({ data: sessionRows })
 
