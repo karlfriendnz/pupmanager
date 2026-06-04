@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
-import { Users, UserPlus, X, CalendarDays, ClipboardCheck } from 'lucide-react'
+import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil } from 'lucide-react'
+import { ClassFormModal } from '../class-form-modal'
 
 type RunStatus = 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
 type Run = {
@@ -22,6 +23,9 @@ type Run = {
   priceCents: number | null
   durationMins: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
+  weeksBetween: number
+  sessionCount: number
+  hasAttendance: boolean
 }
 type SessionRow = { id: string; title: string; scheduledAt: string; sessionIndex: number | null; status: string }
 type Enrollment = {
@@ -52,6 +56,7 @@ export function RunDetail({
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [openSession, setOpenSession] = useState<SessionRow | null>(null)
 
   const enrolled = enrollments.filter(e => e.status === 'ENROLLED')
@@ -86,15 +91,20 @@ export function RunDetail({
         subtitle={`${run.packageName} · ${run.scheduleNote || new Date(run.startDate).toLocaleDateString()}`}
         back={{ href: '/classes', label: 'Classes' }}
         actions={
-          <select
-            value={run.status}
-            onChange={e => setStatus(e.target.value as RunStatus)}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(s => (
-              <option key={s} value={s}>{s.toLowerCase()}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setEditing(true)}>
+              <Pencil className="h-4 w-4" /> Edit
+            </Button>
+            <select
+              value={run.status}
+              onChange={e => setStatus(e.target.value as RunStatus)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(s => (
+                <option key={s} value={s}>{s.toLowerCase()}</option>
+              ))}
+            </select>
+          </div>
         }
       />
 
@@ -213,6 +223,30 @@ export function RunDetail({
         </Card>
       </div>
 
+      {editing && (
+        <ClassFormModal
+          mode="edit"
+          runId={run.id}
+          canReschedule={!run.hasAttendance}
+          initial={{
+            name: run.name,
+            startDateIso: run.startDate,
+            weeksBetween: run.weeksBetween,
+            sessionCount: run.sessionCount,
+            durationMins: run.durationMins,
+            sessionType: run.sessionType,
+            priceCents: run.priceCents,
+            capacity: run.capacity,
+            scheduleNote: run.scheduleNote,
+          }}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false)
+            router.refresh()
+          }}
+        />
+      )}
+
       {adding && (
         <EnrolModal
           runId={run.id}
@@ -308,7 +342,11 @@ function EnrolModal({
         <form onSubmit={submit} className="p-5 flex flex-col gap-3">
           {error && <Alert variant="error">{error}</Alert>}
           {candidates.length === 0 ? (
-            <p className="text-sm text-slate-500">Every active client is already enrolled.</p>
+            <p className="text-sm text-slate-500">
+              {clients.length === 0
+                ? "You don't have any clients yet — add a client first, then enrol them here."
+                : 'Every active client is already enrolled.'}
+            </p>
           ) : (
             <>
               <div>

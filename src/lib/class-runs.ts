@@ -212,6 +212,106 @@ export async function createClassWithPackage(args: {
 }
 
 /**
+ * Edit a class. Settings (name, price, capacity, duration, format, schedule
+ * note) always apply. Changing the *schedule* (start/cadence/weeks) rebuilds
+ * the session series — but only when no attendance has been recorded yet, so
+ * we never wipe history; otherwise it throws HAS_ATTENDANCE and the caller
+ * should keep the schedule fixed.
+ */
+export async function updateClass(args: {
+  runId: string
+  trainerId: string
+  name: string
+  scheduleNote: string | null
+  capacity: number | null
+  priceCents: number | null
+  durationMins: number
+  sessionType: 'IN_PERSON' | 'VIRTUAL'
+  startDate: Date
+  sessionCount: number
+  weeksBetween: number
+}): Promise<void> {
+  const run = await prisma.classRun.findFirst({
+    where: { id: args.runId, trainerId: args.trainerId },
+    include: {
+      package: true,
+      sessions: { select: { id: true, sessionIndex: true } },
+    },
+  })
+  if (!run) throw new ClassError('RUN_NOT_FOUND', 'Class not found')
+
+  const scheduleChanged =
+    run.startDate.getTime() !== args.startDate.getTime() ||
+    run.package.weeksBetween !== args.weeksBetween ||
+    run.package.sessionCount !== args.sessionCount
+
+  if (scheduleChanged) {
+    const attended = await prisma.sessionAttendance.count({
+      where: { session: { classRunId: run.id } },
+    })
+    if (attended > 0) {
+      throw new ClassError(
+        'HAS_ATTENDANCE',
+        "Can't reschedule a class that already has attendance recorded. Change the other details, or cancel this class and create a new one.",
+      )
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.package.update({
+      where: { id: run.packageId },
+      data: {
+        name: args.name,
+        priceCents: args.priceCents,
+        durationMins: args.durationMins,
+        sessionType: args.sessionType,
+        capacity: args.capacity,
+        sessionCount: args.sessionCount,
+        weeksBetween: args.weeksBetween,
+      },
+    })
+    await tx.classRun.update({
+      where: { id: run.id },
+      data: {
+        name: args.name,
+        scheduleNote: args.scheduleNote,
+        capacity: args.capacity,
+        startDate: args.startDate,
+      },
+    })
+
+    if (scheduleChanged) {
+      await tx.trainingSession.deleteMany({ where: { classRunId: run.id } })
+      const dates = generateSessionDates(args.startDate, args.sessionCount, args.weeksBetween)
+      await tx.trainingSession.createMany({
+        data: dates.map((d, i) => ({
+          trainerId: args.trainerId,
+          classRunId: run.id,
+          sessionIndex: i + 1,
+          title: args.sessionCount > 1 ? `${args.name} — session ${i + 1}/${args.sessionCount}` : args.name,
+          scheduledAt: d,
+          durationMins: args.durationMins,
+          sessionType: args.sessionType,
+        })),
+      })
+    } else {
+      // Schedule unchanged — propagate name/duration/format to existing sessions.
+      for (const s of run.sessions) {
+        const idx = s.sessionIndex ?? 1
+        await tx.trainingSession.update({
+          where: { id: s.id },
+          data: {
+            title: args.sessionCount > 1 ? `${args.name} — session ${idx}/${args.sessionCount}` : args.name,
+            durationMins: args.durationMins,
+            sessionType: args.sessionType,
+          },
+        })
+      }
+    }
+  })
+}
+
+/**
  * Enrol a client+dog into a run. Server-authoritative capacity/waitlist —
  * the decision is recomputed inside the transaction so two concurrent
  * enrols can't both take the last seat. Drop-in stamps joinedAtIndex

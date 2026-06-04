@@ -20,7 +20,7 @@ export default async function ClassRunPage({
   const run = await prisma.classRun.findFirst({
     where: { id: runId, trainerId },
     include: {
-      package: { select: { name: true, allowDropIn: true, allowWaitlist: true, priceCents: true, durationMins: true, sessionType: true, capacity: true } },
+      package: { select: { name: true, allowDropIn: true, allowWaitlist: true, priceCents: true, durationMins: true, sessionType: true, capacity: true, weeksBetween: true, sessionCount: true } },
       sessions: {
         orderBy: { sessionIndex: 'asc' },
         select: { id: true, title: true, scheduledAt: true, sessionIndex: true, status: true },
@@ -35,6 +35,11 @@ export default async function ClassRunPage({
     },
   })
   if (!run) notFound()
+
+  // Whether the schedule can still be edited (no attendance recorded yet).
+  const attendanceCount = await prisma.sessionAttendance.count({
+    where: { session: { classRunId: run.id } },
+  })
 
   const clients = await prisma.clientProfile.findMany({
     where: { trainerId, status: 'ACTIVE' },
@@ -61,6 +66,9 @@ export default async function ClassRunPage({
         priceCents: run.package.priceCents,
         durationMins: run.package.durationMins,
         sessionType: run.package.sessionType,
+        weeksBetween: run.package.weeksBetween,
+        sessionCount: run.package.sessionCount,
+        hasAttendance: attendanceCount > 0,
       }}
       sessions={run.sessions.map(s => ({
         id: s.id,

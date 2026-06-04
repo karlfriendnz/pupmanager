@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { updateClass, ClassError } from '@/lib/class-runs'
 
 async function ownRun(runId: string, trainerId: string) {
   return prisma.classRun.findFirst({ where: { id: runId, trainerId } })
@@ -63,10 +64,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ runId: 
 }
 
 const patchSchema = z.object({
+  // Status-only quick edit (the dropdown).
   status: z.enum(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED']).optional(),
+  // Full edit (the "Edit class" form). Presence of startDate marks a full edit.
   name: z.string().min(1).max(120).optional(),
   scheduleNote: z.string().max(120).nullable().optional(),
-  capacity: z.number().int().min(0).max(1000).nullable().optional(),
+  capacity: z.number().int().min(1).max(1000).nullable().optional(),
+  priceCents: z.number().int().min(0).max(10_000_00).nullable().optional(),
+  durationMins: z.number().int().min(5).max(600).optional(),
+  sessionType: z.enum(['IN_PERSON', 'VIRTUAL']).optional(),
+  startDate: z.string().min(1).optional(),
+  sessionCount: z.number().int().min(1).max(52).optional(),
+  weeksBetween: z.number().int().min(1).max(8).optional(),
 })
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ runId: string }> }) {
@@ -85,8 +94,46 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
   }
   const parsed = patchSchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  const d = parsed.data
 
-  const run = await prisma.classRun.update({ where: { id: runId }, data: parsed.data })
+  // Full edit — the form sends the complete class settings.
+  if (d.startDate != null && d.name != null && d.sessionCount != null && d.durationMins != null && d.sessionType) {
+    const startDate = new Date(d.startDate)
+    if (Number.isNaN(startDate.getTime())) {
+      return NextResponse.json({ error: 'Invalid startDate' }, { status: 400 })
+    }
+    try {
+      await updateClass({
+        runId, trainerId,
+        name: d.name,
+        scheduleNote: d.scheduleNote ?? null,
+        capacity: d.capacity ?? null,
+        priceCents: d.priceCents ?? null,
+        durationMins: d.durationMins,
+        sessionType: d.sessionType,
+        startDate,
+        sessionCount: d.sessionCount,
+        weeksBetween: d.weeksBetween ?? 1,
+      })
+      return NextResponse.json({ ok: true })
+    } catch (err) {
+      if (err instanceof ClassError) {
+        return NextResponse.json({ error: err.message, code: err.code }, { status: 400 })
+      }
+      throw err
+    }
+  }
+
+  // Quick edit — status / simple fields only.
+  const run = await prisma.classRun.update({
+    where: { id: runId },
+    data: {
+      ...(d.status !== undefined && { status: d.status }),
+      ...(d.name !== undefined && { name: d.name }),
+      ...(d.scheduleNote !== undefined && { scheduleNote: d.scheduleNote }),
+      ...(d.capacity !== undefined && { capacity: d.capacity }),
+    },
+  })
   return NextResponse.json({ ok: true, status: run.status })
 }
 
