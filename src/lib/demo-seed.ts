@@ -756,31 +756,50 @@ export async function seedDemoData(
       })
     }
   }
-  // Fill the upcoming calendar so the schedule reads as a busy practice: a few
-  // sessions on each of the next ~3 weeks of weekdays, spread across random
-  // clients. Tied to sample clients, so clearSampleData removes them too.
-  for (let d = 1; d <= 21; d++) {
+  // Keep the near-term calendar busy and varied. Each filled session borrows a
+  // package's name/duration/type (cycled so a day shows DIFFERENT packages),
+  // assigned to a random client. Tied to sample clients, so clearSampleData
+  // removes them too.
+  const pushFillSession = (slot: Date, pkgIndex: number) => {
+    const c = createdClients[Math.floor(rand() * createdClients.length)]
+    const pkg = packages[pkgIndex % packages.length]
+    sessionRows.push({
+      id: randomUUID(),
+      trainerId,
+      clientId: c.profileId,
+      dogId: c.dogId,
+      clientPackageId: null,
+      title: pkg.name,
+      scheduledAt: slot,
+      durationMins: pkg.durationMins,
+      sessionType: pkg.sessionType,
+      status: slot.getTime() < now.getTime() ? 'COMPLETED' : 'UPCOMING',
+    })
+  }
+
+  // Guarantee at least 3 sessions on each of today, tomorrow and the day after —
+  // each from a different package — so the dashboard's "today" + the next days
+  // are never empty.
+  for (let off = 0; off <= 2; off++) {
+    for (let k = 0; k < 3; k++) {
+      const day = new Date(now)
+      day.setDate(day.getDate() + off)
+      day.setHours(13 + k * 2, k % 2 === 0 ? 0 : 30, 0, 0) // afternoon spread
+      pushFillSession(day, off * 3 + k)
+    }
+  }
+
+  // Fill the rest of the next ~3 weeks of weekdays.
+  for (let d = 3; d <= 21; d++) {
     const day = new Date(now)
     day.setDate(day.getDate() + d)
     const dow = day.getDay()
     if (dow === 0 || dow === 6) continue // skip weekends
     const perDay = 2 + Math.floor(rand() * 3) // 2–4 sessions per weekday
     for (let k = 0; k < perDay; k++) {
-      const c = createdClients[Math.floor(rand() * createdClients.length)]
       const slot = new Date(day)
       slot.setHours(9 + Math.floor(rand() * 8), rand() < 0.5 ? 0 : 30, 0, 0)
-      sessionRows.push({
-        id: randomUUID(),
-        trainerId,
-        clientId: c.profileId,
-        dogId: c.dogId,
-        clientPackageId: null,
-        title: SESSION_TITLES[Math.floor(rand() * SESSION_TITLES.length)],
-        scheduledAt: slot,
-        durationMins: rand() < 0.5 ? 60 : 45,
-        sessionType: rand() < 0.85 ? 'IN_PERSON' : 'VIRTUAL',
-        status: 'UPCOMING',
-      })
+      pushFillSession(slot, Math.floor(rand() * packages.length))
     }
   }
 
@@ -895,8 +914,12 @@ export async function seedDemoData(
     const run = await prisma.classRun.create({
       data: { trainerId, isSample: markSample, packageId: pkg.id, name: def.name, scheduleNote: def.scheduleNote, startDate: start, capacity: 8, status: def.status },
     })
-    const enrolClients = createdClients.slice(i * 8, i * 8 + def.enrol)
-    for (const c of enrolClients) {
+    // Wrap-around offset so every class gets its full enrolment even when the
+    // sandbox only has ~12 clients (the old fixed i*8 slice left later classes
+    // empty). Indices stay distinct within a class (enrol < client count).
+    const enrol = Math.min(def.enrol, createdClients.length)
+    for (let e = 0; e < enrol; e++) {
+      const c = createdClients[(i * 5 + e) % createdClients.length]
       await prisma.classEnrollment.create({
         data: { classRunId: run.id, clientId: c.profileId, dogId: c.dogId, type: 'FULL', status: def.status === 'COMPLETED' ? 'COMPLETED' : 'ENROLLED', joinedAtIndex: 0 },
       })
