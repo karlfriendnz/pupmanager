@@ -148,19 +148,15 @@ export default async function InvitePage({
       <Card>
         <CardBody className="pt-6 flex flex-col gap-4 text-sm text-slate-600">
           <p>
-            {branded
-              ? dogList
-                ? `Accept your invitation to follow ${dogList}'s session notes, training plans and progress — all in one place.`
-                : 'Accept your invitation to see your session notes, training plans and progress — all in one place.'
-              : isClient
-                ? 'Click below to accept your invitation and get started.'
-                : 'Click below to accept and head to your dashboard.'}
+            {branded && dogList
+              ? `Set a password to finish setting up your account and follow ${dogList}'s training, message your trainer, and see every session.`
+              : 'Set a password to finish setting up your account — you’ll use it to sign in here and in the app.'}
           </p>
           <InviteFlow
             token={token}
             email={email}
             accentColor={accent}
-            ctaLabel={businessName ? `Join ${businessName}` : 'Accept invitation'}
+            ctaLabel={businessName ? `Join ${businessName}` : 'Create my account'}
             callbackUrl={callbackUrl}
           />
         </CardBody>

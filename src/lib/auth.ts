@@ -258,16 +258,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         token: { label: 'Token', type: 'text' },
         email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
         const parsed = z.object({
           token: z.string().min(1),
           email: z.string().email(),
+          // Optional: set a password on accept (the default flow). Omitted when
+          // the invitee opts for magic-link sign-in instead.
+          password: z.string().min(8).optional(),
         }).safeParse(credentials)
         if (!parsed.success) return null
 
         const { acceptInvite } = await import('@/lib/accept-invite')
-        const result = await acceptInvite(parsed.data.token, parsed.data.email)
+        const result = await acceptInvite(parsed.data.token, parsed.data.email, parsed.data.password)
         if (!result.ok) return null
 
         return result.user
