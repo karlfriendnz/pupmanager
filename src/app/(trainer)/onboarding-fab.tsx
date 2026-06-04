@@ -56,7 +56,7 @@ const STEP_ON_PAGE_HINT: Record<string, string> = {
   achievements: "Pick the achievements you'd like your clients to earn — tap any to publish.",
   client_view: "Click around to see what your clients see. Hit 'Exit preview' when you're done.",
   show_notes: "This is your notes screen — where you write up each session for your client. Have a look around.",
-  invite_client: "Click 'Invite client' (top right) to send your first sign-up link.",
+  invite_client: "Click 'Create new client' (top right) to add your first client and send their sign-up link.",
   invite_staff: "Click 'Invite' to send a teammate access — pick their role, then send.",
   download_app: "Scan the QR code with your phone's camera to install the app.",
   schedule_session: "Click any open time slot in the calendar to drop your first session in.",
