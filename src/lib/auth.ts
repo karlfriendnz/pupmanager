@@ -247,6 +247,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         })
       },
     }),
+    // One-click invite acceptance. The client clicks "Accept" on the branded
+    // /invite page (a real human action — a POST, so email-prefetch bots can't
+    // trigger it), we validate + consume the one-time invite token, and sign
+    // them straight in. Replaces the old two-email dance (accept → second
+    // magic-link email → click again).
+    Credentials({
+      id: 'invite-token',
+      name: 'invite',
+      credentials: {
+        token: { label: 'Token', type: 'text' },
+        email: { label: 'Email', type: 'email' },
+      },
+      async authorize(credentials) {
+        const parsed = z.object({
+          token: z.string().min(1),
+          email: z.string().email(),
+        }).safeParse(credentials)
+        if (!parsed.success) return null
+
+        const { acceptInvite } = await import('@/lib/accept-invite')
+        const result = await acceptInvite(parsed.data.token, parsed.data.email)
+        if (!result.ok) return null
+
+        return result.user
+      },
+    }),
     // Email/password for trainers
     Credentials({
       name: 'credentials',

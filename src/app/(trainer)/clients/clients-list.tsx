@@ -573,7 +573,7 @@ function EmptyState({ tab }: { tab: Props['tab'] }) {
           <p className="font-medium">No active clients</p>
           <p className="text-sm mt-1">Invite your first client to get started</p>
           <Link href="/clients/invite" className="mt-4 inline-block">
-            <Button size="sm"><UserPlus className="h-4 w-4" />Invite client</Button>
+            <Button size="sm"><UserPlus className="h-4 w-4" />Create new client</Button>
           </Link>
         </>
       ) : (

@@ -250,7 +250,7 @@ export default async function ClientsPage({
           <Link href="/clients/invite">
             <Button size="sm">
               <UserPlus className="h-4 w-4" />
-              <span className="hidden sm:inline">Invite client</span>
+              <span className="hidden sm:inline">Create new client</span>
             </Button>
           </Link>
         }
