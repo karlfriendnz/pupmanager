@@ -1,5 +1,7 @@
 'use client'
 
+import { DogPhotoPrompt } from './dog-photo-prompt'
+
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -265,6 +267,11 @@ export function ClientHomeView({
 
         <div className="mt-6 flex flex-col gap-6 pb-8">
           <p className="px-5 -mb-2 text-sm text-slate-500">Hi {firstName} 👋</p>
+
+          {/* ─── Nudge: add the dog's photo when none is set yet ─── */}
+          {primaryDog && !primaryDog.photoUrl && (
+            <DogPhotoPrompt dogId={primaryDog.id} dogName={primaryDog.name} />
+          )}
 
           {/* ─── Welcome note from the trainer ─── */}
           {welcomeNote?.trim() && (
