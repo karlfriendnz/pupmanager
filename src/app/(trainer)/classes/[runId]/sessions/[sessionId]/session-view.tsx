@@ -176,7 +176,7 @@ export function SessionView({
         }
       />
 
-      <div className="w-full max-w-xl mx-auto px-4 pt-4 pb-28">
+      <div className="w-full max-w-5xl mx-auto px-4 pt-4 pb-28">
         {error && <Alert variant="error" className="mb-3">{error}</Alert>}
 
         {!data ? (
@@ -184,7 +184,7 @@ export function SessionView({
 
         ) : notesRow ? (
           /* ─── Notes phase: write up one client ─── */
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 p-4 flex flex-col gap-3">
+          <div className="max-w-xl mx-auto rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 p-4 flex flex-col gap-3">
             <button onClick={() => setNotesFor(null)} className="self-start inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700">
               <ChevronLeft className="h-3.5 w-3.5" /> Back to attendance
             </button>
@@ -235,7 +235,7 @@ export function SessionView({
             {data.roster.length === 0 ? (
               <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 p-10 text-center text-sm text-slate-500">No enrolled clients to mark.</div>
             ) : (
-              <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 overflow-hidden divide-y divide-slate-100">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {data.roster.map(r => {
                   const d = draft[r.enrollmentId]
                   if (!d) return null
@@ -243,7 +243,7 @@ export function SessionView({
                   const present = d.status === 'PRESENT'
                   const showNote = noteOpen.has(r.enrollmentId) || !!d.note
                   return (
-                    <div key={r.enrollmentId} className={`relative ${meta.row}`}>
+                    <div key={r.enrollmentId} className={`relative rounded-2xl ring-1 ring-slate-100 ${meta.row || 'bg-white'}`}>
                       <div className="flex items-center">
                         {/* Tap = present/absent · hold = status menu */}
                         <button
@@ -319,7 +319,7 @@ export function SessionView({
       {/* Pinned bottom action bar (attendance phase) */}
       {data && !notesRow && data.roster.length > 0 && (
         <div className="sticky bottom-0 inset-x-0 border-t border-slate-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/75">
-          <div className="w-full max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <div className="w-full max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
             <span className="text-sm text-slate-500">
               {saved ? <span className="text-emerald-600 font-medium">{saved}</span> : <><span className="font-semibold text-slate-700">{presentCount}</span>/{data.roster.length} present</>}
             </span>
