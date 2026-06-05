@@ -92,6 +92,10 @@ interface Session {
     primaryFor: { id: string; user: { name: string | null; email: string } }[]
   } | null
   buddies: Buddy[]
+  // Group-class session: shared, no single client. Clicking routes to the
+  // class session page rather than the 1:1 modal.
+  classRunId: string | null
+  classRun: { name: string } | null
 }
 
 // A trainer in this business, for the "assigned trainer" picker. Only passed
@@ -473,6 +477,7 @@ function SessionBlock({
         // Primary: dog name (or buddy walk dogs / fallback to client).
         const primary = isBuddyWalk
           ? (allDogNames.length > 0 ? `🐕 ${allDogNames.join(', ')}` : 'Buddy walk')
+          : session.classRunId ? `👥 ${session.classRun?.name ?? session.title}`
           : session.dog?.name ? `🐕 ${session.dog.name}` : (clientName ?? session.title)
         if (primary) lines.push({ key: 'primary', text: primary, tone: 'strong' })
         // Trainer-chosen extras.
@@ -2876,6 +2881,8 @@ export function ScheduleView({
   }
 
   function handleSessionClick(s: Session) {
+    // Class sessions have their own page (attendance + per-client notes).
+    if (s.classRunId) { router.push(`/classes/${s.classRunId}/sessions/${s.id}`); return }
     setActiveSession(s)
   }
 
