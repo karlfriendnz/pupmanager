@@ -20,6 +20,31 @@
 import { randomUUID } from 'node:crypto'
 import type { PrismaClient } from '../generated/prisma'
 
+// Align a class-run start to the weekday + time named in its scheduleNote, so
+// the calendar matches the note (e.g. "Thursdays · 7:00pm" lands on a Thursday
+// at 7pm) instead of whatever weekday `now + offset` happened to fall on.
+// Snaps the date forward to the named weekday and sets the parsed time. Exported
+// for unit testing. No weekday in the note → only the time is applied; no time →
+// defaults to 18:00.
+const DOW: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 }
+export function noteToStart(base: Date, note: string): Date {
+  const d = new Date(base)
+  const dm = note.toLowerCase().match(/sunday|monday|tuesday|wednesday|thursday|friday|saturday/)
+  const tm = note.toLowerCase().match(/(\d{1,2}):(\d{2})\s*(am|pm)/)
+  let hour = 18, min = 0
+  if (tm) {
+    hour = parseInt(tm[1], 10) % 12
+    if (tm[3] === 'pm') hour += 12
+    min = parseInt(tm[2], 10)
+  }
+  if (dm) {
+    const diff = (DOW[dm[0]] - d.getDay() + 7) % 7
+    d.setDate(d.getDate() + diff)
+  }
+  d.setHours(hour, min, 0, 0)
+  return d
+}
+
 // ─── Deterministic RNG ───────────────────────────────────────────────────────
 // Mulberry32. Tiny, good enough for picking names/durations from pools.
 function rng(seed: number) {
@@ -930,27 +955,6 @@ export async function seedDemoData(
   ]
   // Class runs must sit on a GROUP package or the Classes page hides them.
   const groupPkgs = packages.filter(p => p.isGroup)
-  // Align a run's start to the weekday + time named in its scheduleNote so the
-  // calendar matches the note (e.g. "Thursdays · 7:00pm" lands on a Thursday at
-  // 7pm), instead of whatever weekday `now + offset` happened to fall on.
-  const DOW: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 }
-  function noteToStart(base: Date, note: string): Date {
-    const d = new Date(base)
-    const dm = note.toLowerCase().match(/sunday|monday|tuesday|wednesday|thursday|friday|saturday/)
-    const tm = note.toLowerCase().match(/(\d{1,2}):(\d{2})\s*(am|pm)/)
-    let hour = 18, min = 0
-    if (tm) {
-      hour = parseInt(tm[1], 10) % 12
-      if (tm[3] === 'pm') hour += 12
-      min = parseInt(tm[2], 10)
-    }
-    if (dm) {
-      const diff = (DOW[dm[0]] - d.getDay() + 7) % 7
-      d.setDate(d.getDate() + diff)
-    }
-    d.setHours(hour, min, 0, 0)
-    return d
-  }
   let classEnrolCount = 0
   for (let i = 0; i < classRunDefs.length; i++) {
     const def = classRunDefs[i]
