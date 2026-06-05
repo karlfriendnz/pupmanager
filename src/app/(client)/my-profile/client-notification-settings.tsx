@@ -93,17 +93,21 @@ export function ClientNotificationSettings() {
       <div className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-slate-100">
-              <th className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Notify me</th>
-              {CHANNELS.map(({ id, label, Icon }) => (
-                <th key={id} className="px-1 py-2 w-[60px]">
-                  <button type="button" onClick={() => toggleColumn(id)} className="flex flex-col items-center gap-1 w-full text-slate-500 hover:text-slate-700">
-                    <Icon className="h-4 w-4" />
-                    <span className="text-[11px] font-medium leading-none">{label}</span>
-                    <input type="checkbox" readOnly checked={columnOn(id)} className="h-4 w-4 accent-[var(--accent)] pointer-events-none" />
-                  </button>
-                </th>
-              ))}
+            <tr className="border-b border-slate-100 bg-slate-50/70">
+              <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Notify me</th>
+              {CHANNELS.map(({ id, label, Icon }) => {
+                const on = columnOn(id)
+                return (
+                  <th key={id} className="px-1 py-2.5 w-[64px]">
+                    <button type="button" onClick={() => toggleColumn(id)} title={`Toggle all ${label}`} className="flex flex-col items-center gap-1.5 w-full group">
+                      <span className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${on ? 'bg-accent text-white shadow-sm' : 'bg-white text-slate-400 ring-1 ring-slate-200 group-hover:text-slate-600'}`}>
+                        <Icon className="h-[18px] w-[18px]" />
+                      </span>
+                      <span className={`text-[11px] font-semibold leading-none ${on ? 'text-accent' : 'text-slate-500'}`}>{label}</span>
+                    </button>
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>
