@@ -151,7 +151,7 @@ export function RunDetail({
                     <p className="text-xs text-slate-500">{new Date(s.scheduledAt).toLocaleString()}</p>
                   </div>
                   <Button variant="ghost" onClick={() => setOpenSession(s)}>
-                    <ClipboardCheck className="h-4 w-4" /> Attendance
+                    <ClipboardCheck className="h-4 w-4" /> Open
                   </Button>
                 </li>
               ))}
@@ -398,13 +398,23 @@ function EnrolModal({
   )
 }
 
+type FormQuestion = { id: string; type: string; label?: string }
+type FormLite = { id: string; name: string; questions: FormQuestion[] }
 type RosterRow = {
   enrollmentId: string
   clientName: string
   dogName: string | null
   type: string
-  attendance: { status: AttStatus; note: string | null; scores: Record<string, unknown> } | null
+  status: AttStatus
+  report: { answers?: Record<string, string>; closing?: string | null } | null
 }
+type AttendanceData = {
+  sessionFormId: string | null
+  effectiveForm: FormLite | null
+  availableForms: FormLite[]
+  roster: RosterRow[]
+}
+type ClientDraft = { status: AttStatus; answers: Record<string, string>; recap: string }
 
 function AttendanceModal({
   runId,
@@ -415,8 +425,9 @@ function AttendanceModal({
   session: SessionRow
   onClose: () => void
 }) {
-  const [rows, setRows] = useState<RosterRow[] | null>(null)
-  const [draft, setDraft] = useState<Record<string, { status: AttStatus; note: string; rating: string }>>({})
+  const [data, setData] = useState<AttendanceData | null>(null)
+  const [formId, setFormId] = useState('')
+  const [draft, setDraft] = useState<Record<string, ClientDraft>>({})
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -424,49 +435,51 @@ function AttendanceModal({
   const load = useCallback(async () => {
     const res = await fetch(`/api/class-runs/${runId}/sessions/${session.id}/attendance`)
     if (!res.ok) {
-      setError('Could not load the roster.')
+      setError('Could not load the session.')
       return
     }
-    const data: RosterRow[] = await res.json()
-    setRows(data)
-    const d: Record<string, { status: AttStatus; note: string; rating: string }> = {}
-    for (const r of data) {
-      const sc = (r.attendance?.scores ?? {}) as { rating?: number }
-      d[r.enrollmentId] = {
-        status: r.attendance?.status ?? 'PRESENT',
-        note: r.attendance?.note ?? '',
-        rating: sc.rating != null ? String(sc.rating) : '',
+    const d: AttendanceData = await res.json()
+    setData(d)
+    setFormId(d.effectiveForm?.id ?? '')
+    const next: Record<string, ClientDraft> = {}
+    for (const r of d.roster) {
+      next[r.enrollmentId] = {
+        status: r.status,
+        answers: r.report?.answers ?? {},
+        recap: r.report?.closing ?? '',
       }
     }
-    setDraft(d)
+    setDraft(next)
   }, [runId, session.id])
 
-  useEffect(() => {
-    void load()
-  }, [load])
+  useEffect(() => { void load() }, [load])
+
+  const selectedForm = data?.availableForms.find(f => f.id === formId) ?? null
 
   async function save() {
-    if (!rows) return
+    if (!data) return
     setSaving(true)
     setError(null)
     try {
-      const records = rows.map(r => {
+      const records = data.roster.map(r => {
         const d = draft[r.enrollmentId]
-        const ratingNum = d.rating.trim() ? Number(d.rating) : null
         return {
           enrollmentId: r.enrollmentId,
           status: d.status,
-          note: d.note.trim() || null,
-          scores: ratingNum != null && !Number.isNaN(ratingNum) ? { rating: ratingNum } : {},
+          report: {
+            formId: formId || null,
+            answers: d.answers,
+            closing: d.recap.trim() || null,
+          },
         }
       })
       const res = await fetch(`/api/class-runs/${runId}/sessions/${session.id}/attendance`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ records }),
+        body: JSON.stringify({ sessionFormId: formId || null, records }),
       })
       if (!res.ok) {
-        setError('Could not save attendance.')
+        setError('Could not save the session.')
         return
       }
       setSaved(true)
@@ -474,6 +487,10 @@ function AttendanceModal({
     } finally {
       setSaving(false)
     }
+  }
+
+  function setAnswer(enrollmentId: string, qid: string, value: string) {
+    setDraft(p => ({ ...p, [enrollmentId]: { ...p[enrollmentId], answers: { ...p[enrollmentId].answers, [qid]: value } } }))
   }
 
   return (
@@ -491,65 +508,87 @@ function AttendanceModal({
         </div>
         <div className="p-5">
           {error && <Alert variant="error" className="mb-3">{error}</Alert>}
-          {saved && <Alert variant="success" className="mb-3">Attendance saved.</Alert>}
-          {!rows ? (
-            <p className="text-sm text-slate-500 py-6 text-center">Loading roster…</p>
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-slate-500 py-6 text-center">No enrolled clients to mark.</p>
+          {saved && <Alert variant="success" className="mb-3">Session saved.</Alert>}
+          {!data ? (
+            <p className="text-sm text-slate-500 py-6 text-center">Loading session…</p>
           ) : (
-            <div className="flex flex-col gap-3">
-              {rows.map(r => {
-                const d = draft[r.enrollmentId]
-                if (!d) return null
-                return (
-                  <div key={r.enrollmentId} className="rounded-xl border border-slate-200 p-3">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <p className="text-sm font-medium text-slate-900">
-                        {r.clientName}
-                        {r.dogName && <span className="text-slate-500 font-normal"> · {r.dogName}</span>}
-                      </p>
-                      <select
-                        value={d.status}
-                        onChange={e =>
-                          setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, status: e.target.value as AttStatus } }))
-                        }
-                        className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {ATT_STATUSES.map(s => (
-                          <option key={s} value={s}>{s.toLowerCase()}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={5}
-                        placeholder="Score 1–5"
-                        value={d.rating}
-                        onChange={e =>
-                          setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, rating: e.target.value } }))
-                        }
-                        className="w-24 h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Note for this dog (optional)"
-                        value={d.note}
-                        onChange={e =>
-                          setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))
-                        }
-                        className="flex-1 h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-              <div className="flex gap-2 pt-1">
-                <Button onClick={save} loading={saving}>Save attendance</Button>
+            <>
+              {/* Form for this session (defaults to the class form; override here). */}
+              <div className="mb-4">
+                <label className="text-sm font-medium text-slate-700 block mb-1.5">Form for this session</label>
+                <select
+                  value={formId}
+                  onChange={e => setFormId(e.target.value)}
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">No form</option>
+                  {data.availableForms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+
+              {data.roster.length === 0 ? (
+                <p className="text-sm text-slate-500 py-6 text-center">No enrolled clients to mark.</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {data.roster.map(r => {
+                    const d = draft[r.enrollmentId]
+                    if (!d) return null
+                    return (
+                      <div key={r.enrollmentId} className="rounded-xl border border-slate-200 p-3">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <p className="text-sm font-medium text-slate-900">
+                            {r.clientName}
+                            {r.dogName && <span className="text-slate-500 font-normal"> · {r.dogName}</span>}
+                          </p>
+                          <select
+                            value={d.status}
+                            onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, status: e.target.value as AttStatus } }))}
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {ATT_STATUSES.map(s => <option key={s} value={s}>{s.toLowerCase()}</option>)}
+                          </select>
+                        </div>
+
+                        {/* Per-client form answers + recap. */}
+                        {selectedForm && (
+                          <div className="flex flex-col gap-2 mb-2">
+                            {selectedForm.questions.map(q => {
+                              const label = q.label ?? 'Field'
+                              const val = d.answers[q.id] ?? ''
+                              const isLong = q.type === 'LONG_TEXT'
+                              const isNum = q.type === 'NUMBER' || q.type === 'RATING_1_5'
+                              return (
+                                <label key={q.id} className="block">
+                                  <span className="text-[11px] font-medium text-slate-500">{label}</span>
+                                  {isLong ? (
+                                    <textarea rows={2} value={val} onChange={e => setAnswer(r.enrollmentId, q.id, e.target.value)} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                  ) : (
+                                    <input type={isNum ? 'number' : 'text'} value={val} onChange={e => setAnswer(r.enrollmentId, q.id, e.target.value)} className="mt-0.5 w-full h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                  )}
+                                </label>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        <textarea
+                          rows={2}
+                          placeholder={selectedForm ? 'Recap message for this client (optional)' : 'Note for this client (optional)'}
+                          value={d.recap}
+                          onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, recap: e.target.value } }))}
+                          className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-3">
+                <Button onClick={save} loading={saving}>Save session</Button>
                 <Button variant="ghost" onClick={onClose}>Cancel</Button>
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
