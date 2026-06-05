@@ -88,13 +88,14 @@ export function ClientNotificationSettings() {
 
   return (
     <section className="md:max-w-xl">
-      <p className="text-sm text-slate-500 mb-4 flex items-center gap-1.5"><Bell className="h-4 w-4 text-accent" /> Tap to choose what you hear about and how.</p>
-
       <div className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50/70">
-              <th className="text-left px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Notify me</th>
+              <th className="text-left px-3 py-2.5 align-bottom">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Notify me</span>
+                <span className="block text-xs font-normal text-slate-400 mt-0.5 normal-case tracking-normal">Tap to choose what you hear about and how.</span>
+              </th>
               {CHANNELS.map(({ id, label, Icon }) => {
                 const on = columnOn(id)
                 return (
