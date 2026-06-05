@@ -69,7 +69,7 @@ export function NotificationsPanel({
       )}
       {rows && (
         <div className="flex flex-col gap-3">
-          {Object.values(NOTIFICATION_TYPES).map(meta => (
+          {Object.values(NOTIFICATION_TYPES).filter(meta => meta.audience !== 'client').map(meta => (
             <NotificationCard
               key={meta.type}
               meta={meta}
