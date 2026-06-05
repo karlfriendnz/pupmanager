@@ -166,6 +166,7 @@ export async function createClassWithPackage(args: {
   capacity?: number | null
   color?: string | null
   scheduleNote?: string | null
+  defaultSessionFormId?: string | null
 }): Promise<{ id: string; sessionCount: number }> {
   const count = args.sessionCount > 0 ? args.sessionCount : 1
   const dates = generateSessionDates(args.startDate, count, args.weeksBetween)
@@ -183,6 +184,7 @@ export async function createClassWithPackage(args: {
         isGroup: true,
         capacity: args.capacity ?? null,
         color: args.color ?? null,
+        defaultSessionFormId: args.defaultSessionFormId ?? null,
         order: 0,
       },
     })
@@ -230,6 +232,7 @@ export async function updateClass(args: {
   startDate: Date
   sessionCount: number
   weeksBetween: number
+  defaultSessionFormId?: string | null
 }): Promise<void> {
   const run = await prisma.classRun.findFirst({
     where: { id: args.runId, trainerId: args.trainerId },
@@ -268,6 +271,7 @@ export async function updateClass(args: {
         capacity: args.capacity,
         sessionCount: args.sessionCount,
         weeksBetween: args.weeksBetween,
+        ...(args.defaultSessionFormId !== undefined && { defaultSessionFormId: args.defaultSessionFormId }),
       },
     })
     await tx.classRun.update({

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
@@ -16,6 +16,7 @@ export type ClassInitial = {
   priceCents?: number | null
   capacity?: number | null
   scheduleNote?: string | null
+  defaultSessionFormId?: string | null
 }
 
 // ISO → the `YYYY-MM-DDTHH:mm` a datetime-local input expects, in local time.
@@ -53,8 +54,23 @@ export function ClassFormModal({
   const [price, setPrice] = useState(initial?.priceCents != null ? String(initial.priceCents / 100) : '')
   const [capacity, setCapacity] = useState(initial?.capacity != null ? String(initial.capacity) : '')
   const [scheduleNote, setScheduleNote] = useState(initial?.scheduleNote ?? '')
+  const [defaultFormId, setDefaultFormId] = useState(initial?.defaultSessionFormId ?? '')
+  const [forms, setForms] = useState<{ id: string; name: string }[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/session-forms')
+      .then(r => (r.ok ? r.json() : []))
+      .then((d: unknown) => {
+        if (!cancelled && Array.isArray(d)) {
+          setForms(d.map((f) => ({ id: (f as { id: string }).id, name: (f as { name: string }).name })))
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   const scheduleLocked = mode === 'edit' && !canReschedule
 
@@ -77,6 +93,7 @@ export function ClassFormModal({
         priceCents: price.trim() ? Math.round(Number(price) * 100) : null,
         capacity: capacity.trim() ? Math.max(1, Math.floor(Number(capacity))) : null,
         scheduleNote: scheduleNote.trim() || null,
+        defaultSessionFormId: defaultFormId || null,
       }
       const res = await fetch(mode === 'edit' ? `/api/class-runs/${runId}` : '/api/class-runs', {
         method: mode === 'edit' ? 'PATCH' : 'POST',
@@ -157,6 +174,15 @@ export function ClassFormModal({
               <label className="text-sm font-medium text-slate-700 block mb-1.5">Capacity <span className="text-slate-400">(optional)</span></label>
               <input type="number" min={1} value={capacity} onChange={e => setCapacity(e.target.value)} placeholder="Unlimited" className={fieldCls} />
             </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form <span className="text-slate-400">(optional)</span></label>
+            <select value={defaultFormId} onChange={e => setDefaultFormId(e.target.value)} className={fieldCls}>
+              <option value="">No form</option>
+              {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+            <p className="text-[11px] text-slate-400 mt-1">Used to write up each session. You can change it on a single session later.</p>
           </div>
 
           <Input label="Schedule note (optional)" placeholder="Thursdays 4:00pm" value={scheduleNote} onChange={e => setScheduleNote(e.target.value)} />

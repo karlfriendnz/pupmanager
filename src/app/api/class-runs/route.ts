@@ -51,6 +51,7 @@ const createSchema = z.object({
   sessionType: z.enum(['IN_PERSON', 'VIRTUAL']).optional(),
   priceCents: z.number().int().min(0).max(10_000_00).nullable().optional(),
   color: z.string().max(20).nullable().optional(),
+  defaultSessionFormId: z.string().nullable().optional(),
   // Legacy: run off an existing group package.
   packageId: z.string().min(1).optional(),
 })
@@ -100,6 +101,7 @@ export async function POST(req: Request) {
       capacity: d.capacity ?? null,
       color: d.color ?? null,
       scheduleNote: d.scheduleNote ?? null,
+      defaultSessionFormId: d.defaultSessionFormId ?? null,
     })
     return NextResponse.json({ ok: true, ...run }, { status: 201 })
   } catch (err) {

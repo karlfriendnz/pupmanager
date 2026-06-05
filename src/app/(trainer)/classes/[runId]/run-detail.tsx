@@ -25,6 +25,7 @@ type Run = {
   sessionType: 'IN_PERSON' | 'VIRTUAL'
   weeksBetween: number
   sessionCount: number
+  defaultSessionFormId: string | null
   hasAttendance: boolean
 }
 type SessionRow = { id: string; title: string; scheduledAt: string; sessionIndex: number | null; status: string }
@@ -238,6 +239,7 @@ export function RunDetail({
             priceCents: run.priceCents,
             capacity: run.capacity,
             scheduleNote: run.scheduleNote,
+            defaultSessionFormId: run.defaultSessionFormId,
           }}
           onClose={() => setEditing(false)}
           onSaved={() => {

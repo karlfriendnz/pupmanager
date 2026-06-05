@@ -657,6 +657,10 @@ model TrainingSession {
   // join point used for drop-in pricing.
   classRunId      String?
   sessionIndex    Int?
+  // Per-session session-form override for class sessions. Null = inherit the
+  // class's default form (the group package's defaultSessionFormId). Lets a run
+  // use one form for most sessions and a different one on, say, the last.
+  sessionFormId   String?
   title           String
   description     String?       @db.Text
   scheduledAt     DateTime
@@ -1003,6 +1007,10 @@ model SessionAttendance {
   status       AttendanceStatus @default(PRESENT)
   note         String?          @db.Text
   scores       Json             @default("{}")
+  // This client's own filled report for the session (per "each client has its
+  // own form"): { formId, answers: {qid:val}, images: {qid:[url]}, intro,
+  // closing }. Null = not written yet.
+  report       Json?
   markedAt     DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 

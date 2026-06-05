@@ -76,6 +76,7 @@ const patchSchema = z.object({
   startDate: z.string().min(1).optional(),
   sessionCount: z.number().int().min(1).max(52).optional(),
   weeksBetween: z.number().int().min(1).max(8).optional(),
+  defaultSessionFormId: z.string().nullable().optional(),
 })
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ runId: string }> }) {
@@ -114,6 +115,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
         startDate,
         sessionCount: d.sessionCount,
         weeksBetween: d.weeksBetween ?? 1,
+        defaultSessionFormId: d.defaultSessionFormId,
       })
       return NextResponse.json({ ok: true })
     } catch (err) {
