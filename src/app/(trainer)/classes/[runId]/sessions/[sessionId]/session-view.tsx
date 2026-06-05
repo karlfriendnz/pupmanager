@@ -193,13 +193,13 @@ export function SessionView({
                 <p className="text-sm text-slate-500 py-6 text-center">No enrolled clients to mark.</p>
               ) : (
                 <div className="overflow-x-auto -mx-2 md:mx-0">
-                  <table className="w-full text-sm">
+                  <table className="text-sm">
                     <thead>
                       <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 border-b border-slate-200">
                         <th className="py-2 px-3">Client</th>
                         <th className="py-2 px-3">Dog</th>
                         <th className="py-2 px-3">Status</th>
-                        <th className="py-2 px-3 w-full">Note</th>
+                        <th className="py-2 px-3">Note</th>
                         <th className="py-2 px-3 text-right">Notes</th>
                       </tr>
                     </thead>
@@ -226,7 +226,7 @@ export function SessionView({
                                 placeholder="Quick note (optional)"
                                 value={d.note}
                                 onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
-                                className="w-full h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-72 h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               />
                             </td>
                             <td className="py-2 px-3 text-right">
