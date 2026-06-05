@@ -258,17 +258,17 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   },
 
   // ─── Client-facing (the dog owner) ───────────────────────────────────────
-  // Toggleable channels are Phone (push) + Email only — the in-app feed is
-  // always written (it's the client's notification history), so it isn't a
-  // preference.
+  // Client channels: Phone (push), Email, App (the in-app notifications feed).
+  // For "before each session" each channel's leadMinutes holds which lead times
+  // it delivers, so the client can route each lead independently.
   CLIENT_ADDED_TO_PLAN: {
     type: 'CLIENT_ADDED_TO_PLAN',
     label: 'Added to a plan',
     description: "When your trainer books you into a package, class or session.",
     trigger: 'event',
     audience: 'client',
-    channels: ['PUSH', 'EMAIL'],
-    defaultChannels: ['PUSH', 'EMAIL'],
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaultChannels: ['PUSH', 'EMAIL', 'IN_APP'],
     defaults: {
       enabled: true,
       title: "You're booked in",
@@ -283,8 +283,8 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     description: "A rundown of the day's sessions each morning.",
     trigger: 'time-of-day',
     audience: 'client',
-    channels: ['PUSH', 'EMAIL'],
-    defaultChannels: ['PUSH'],
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaultChannels: ['PUSH', 'IN_APP'],
     defaults: {
       enabled: true,
       dailyAtHour: 8,
@@ -297,11 +297,11 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   CLIENT_SESSION_REMINDER: {
     type: 'CLIENT_SESSION_REMINDER',
     label: 'Before each session',
-    description: "A heads-up shortly before each session.",
+    description: "A heads-up before each session — pick the times and how you're reminded.",
     trigger: 'time-before-event',
     audience: 'client',
-    channels: ['PUSH', 'EMAIL'],
-    defaultChannels: ['PUSH'],
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaultChannels: ['PUSH', 'IN_APP'],
     defaults: {
       enabled: true,
       minutesBefore: 120,
@@ -317,8 +317,8 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     description: "When a session is rescheduled or cancelled.",
     trigger: 'event',
     audience: 'client',
-    channels: ['PUSH', 'EMAIL'],
-    defaultChannels: ['PUSH', 'EMAIL'],
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaultChannels: ['PUSH', 'EMAIL', 'IN_APP'],
     defaults: {
       enabled: true,
       title: 'Session updated — {{dogName}}',
@@ -333,8 +333,8 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     description: "When your trainer posts the write-up for a session.",
     trigger: 'event',
     audience: 'client',
-    channels: ['PUSH', 'EMAIL'],
-    defaultChannels: ['PUSH'],
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaultChannels: ['PUSH', 'IN_APP'],
     defaults: {
       enabled: true,
       title: 'Your recap is ready — {{dogName}}',

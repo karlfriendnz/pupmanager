@@ -28,9 +28,9 @@ export async function GET() {
           channel,
           enabled: s?.enabled ?? meta.defaults.enabled,
           minutesBefore: s?.minutesBefore ?? meta.defaults.minutesBefore ?? null,
-          // Empty stored leads → seed with the type's default lead so the
-          // client starts with a sensible reminder time selected.
-          leadMinutes: (s?.leadMinutes && s.leadMinutes.length) ? s.leadMinutes : (meta.defaults.minutesBefore ? [meta.defaults.minutesBefore] : []),
+          // No stored row → seed the type's default lead, but only on the
+          // channels that are on by default (so e.g. email starts empty).
+          leadMinutes: s ? s.leadMinutes : ((meta.defaultChannels ?? meta.channels).includes(channel) && meta.defaults.minutesBefore ? [meta.defaults.minutesBefore] : []),
           dailyAtHour: s?.dailyAtHour ?? meta.defaults.dailyAtHour ?? null,
           customTitle: s?.customTitle ?? null,
           customBody: s?.customBody ?? null,
