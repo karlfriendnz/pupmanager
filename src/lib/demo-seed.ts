@@ -998,12 +998,22 @@ export async function seedDemoData(
       name: 'Session recap',
       introText: 'Here’s how today went.',
       questions: [
-        { id: 'worked_on', type: 'text', label: 'What we worked on' },
-        { id: 'homework', type: 'text', label: 'Homework before next time' },
+        { id: 'worked_on', type: 'LONG_TEXT', label: 'What we worked on', required: false },
+        { id: 'homework', type: 'LONG_TEXT', label: 'Homework before next time', required: false },
       ],
       isActive: true,
     },
   })
+
+  // Connect one sample class to a form: give the first group package the recap
+  // form as its default, so that class's sessions inherit it (the others stay
+  // form-less to show both states).
+  if (groupPkgs[0]) {
+    await prisma.package.update({
+      where: { id: groupPkgs[0].id },
+      data: { defaultSessionFormId: recapForm.id },
+    })
+  }
   const latestPastByClient = new Map<string, { id: string; at: number }>()
   for (const s of sessionRows) {
     if (s.status === 'UPCOMING') continue
