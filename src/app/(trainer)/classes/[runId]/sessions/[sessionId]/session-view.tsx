@@ -134,7 +134,7 @@ export function SessionView({
         }
       />
 
-      <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
+      <div className="p-4 md:p-8 w-full">
         {error && <Alert variant="error" className="mb-3">{error}</Alert>}
         {saved && <Alert variant="success" className="mb-3">{saved}</Alert>}
 
