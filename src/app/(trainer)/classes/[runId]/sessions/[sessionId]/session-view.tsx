@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
@@ -176,16 +175,18 @@ export function SessionView({
 
   const notesRow = notesFor ? data?.roster.find(r => r.enrollmentId === notesFor) ?? null : null
   const presentCount = data ? data.roster.filter(r => draft[r.enrollmentId]?.status === 'PRESENT').length : 0
+  // "Reactive Rover Group — session 1/6" → "Session 1/6" (class name lives in the title).
+  const sessionLabel = sessionTitle.includes('—') ? sessionTitle.split('—').pop()!.trim().replace(/^session/i, 'Session') : null
 
   return (
     <>
       <PageHeader
-        title={sessionTitle}
-        subtitle={new Date(sessionScheduledAt).toLocaleString()}
-        actions={
-          <Link href={`/classes/${runId}`} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-700">
-            <ChevronLeft className="h-4 w-4" /> {runName}
-          </Link>
+        title={runName}
+        back={{ href: `/classes/${runId}`, label: 'Back to class' }}
+        subtitle={
+          <span suppressHydrationWarning>
+            {sessionLabel && <>{sessionLabel} · </>}{new Date(sessionScheduledAt).toLocaleString()}
+          </span>
         }
       />
 
