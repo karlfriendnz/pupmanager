@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
-import { sendEmail } from '@/lib/email'
+import { sendEmail, fromTrainer } from '@/lib/email'
+import { renderClientNotificationEmail } from '@/lib/client-notification-email'
 import { NOTIFICATION_TYPES, renderTemplate } from '@/lib/notification-types'
 import type { NotificationType, NotificationChannel } from '@/generated/prisma'
 
@@ -8,10 +9,12 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? '
 
 interface NotifyClientArgs {
   userId: string // the client's User.id (ClientProfile.userId)
+  trainerId: string // the trainer who triggered it — brands the email
   type: NotificationType // a CLIENT_* type
   vars?: Record<string, string> // substituted into the type's title/body templates
   link?: string // in-app path — feed item href + push tap target (e.g. /my-sessions/123)
-  emailHtml?: string // optional richer email body; otherwise built from title + body
+  ctaLabel?: string // email button label (defaults to "Open in PupManager")
+  sessions?: { when: string }[] // optional session list — shown as a table in the email
 }
 
 // Fan a client notification out to whichever channels the client has enabled
@@ -25,7 +28,7 @@ export async function notifyClient(args: NotifyClientArgs): Promise<void> {
   }
 }
 
-async function doNotify({ userId, type, vars = {}, link, emailHtml }: NotifyClientArgs) {
+async function doNotify({ userId, trainerId, type, vars = {}, link, ctaLabel, sessions }: NotifyClientArgs) {
   const meta = NOTIFICATION_TYPES[type]
   if (!meta || meta.audience !== 'client') return
 
@@ -61,22 +64,34 @@ async function doNotify({ userId, type, vars = {}, link, emailHtml }: NotifyClie
     }
   }
 
-  // Email (also gated by the user's master notifyEmail switch).
+  // Email — branded to the triggering trainer (logo, accent, business name).
+  // Also gated by the user's master notifyEmail switch.
   if (channelOn('EMAIL')) {
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, notifyEmail: true } })
-    if (user?.email && user.notifyEmail) {
-      await sendEmail({ to: user.email, subject: title, html: emailHtml ?? defaultEmailHtml(title, body, link) })
+    const [user, trainer] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { email: true, notifyEmail: true } }),
+      prisma.trainerProfile.findUnique({
+        where: { id: trainerId },
+        select: { businessName: true, logoUrl: true, emailAccentColor: true, user: { select: { name: true, email: true } } },
+      }),
+    ])
+    if (user?.email && user.notifyEmail && trainer) {
+      const email = renderClientNotificationEmail({
+        trainer,
+        title,
+        body,
+        detail: vars.detail ?? null,
+        sessions,
+        ctaLabel: ctaLabel ?? 'Open in PupManager',
+        ctaHref: `${APP_URL}${link ?? '/notifications'}`,
+      })
+      await sendEmail({
+        to: user.email,
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
+        from: fromTrainer(email.displayName),
+        replyTo: email.trainerEmail,
+      })
     }
   }
-}
-
-function defaultEmailHtml(title: string, body: string, link?: string): string {
-  const cta = link
-    ? `<p style="margin-top:20px"><a href="${APP_URL}${link}" style="background:#0d9488;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Open in PupManager</a></p>`
-    : ''
-  return `<div style="font-family:-apple-system,Segoe UI,sans-serif;color:#1e293b;max-width:480px">
-    <h2 style="margin:0 0 8px">${title}</h2>
-    <p style="margin:0;color:#475569">${body}</p>
-    ${cta}
-  </div>`
 }
