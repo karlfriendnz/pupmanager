@@ -56,9 +56,8 @@ export function ClientNotificationSettings() {
   if (!loaded) return <p className="text-sm text-slate-400 py-4">Loading…</p>
 
   return (
-    <section className="mt-10">
-      <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 mb-1"><Bell className="h-5 w-5 text-accent" /> Notifications</h2>
-      <p className="text-sm text-slate-500 mb-4">Choose what you hear about and how. Turn anything off you don&apos;t want.</p>
+    <section>
+      <p className="text-sm text-slate-500 mb-4 flex items-center gap-1.5"><Bell className="h-4 w-4 text-accent" /> Choose what you hear about and how. Turn anything off you don&apos;t want.</p>
 
       <div className="space-y-3">
         {CLIENT_TYPES.map(t => {
