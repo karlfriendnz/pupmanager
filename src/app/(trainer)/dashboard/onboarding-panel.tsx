@@ -133,13 +133,6 @@ export function OnboardingPanel({ state, branding }: { state: OnboardingState; b
           ])
           router.refresh()
         }}
-        onSkip={async () => {
-          setWelcomeDismissedLocal(true)
-          // Skip = dismiss the wizard without opting into the tour. The
-          // dashboard checklist is still available later.
-          await fetch('/api/onboarding/welcome/dismiss', { method: 'POST' })
-          router.refresh()
-        }}
       />
     )
   }

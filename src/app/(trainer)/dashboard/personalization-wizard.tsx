@@ -65,11 +65,9 @@ No question is too small. We'll work through it together.`,
 export function PersonalizationWizard({
   initial,
   onComplete,
-  onSkip,
 }: {
   initial: WizardInitial
   onComplete: () => Promise<void> | void
-  onSkip: () => Promise<void> | void
 }) {
   const [step, setStep] = useState(0)
 
@@ -195,11 +193,6 @@ export function PersonalizationWizard({
     }
   }
 
-  async function skip() {
-    setBusy(true)
-    try { await onSkip() } finally { setBusy(false) }
-  }
-
   // Load sample data into the trainer's own account, then finish the wizard so
   // they land on a populated dashboard (with the "remove sample data" banner).
   async function loadSampleData() {
@@ -275,19 +268,13 @@ export function PersonalizationWizard({
         <div className="flex-1 min-w-0 flex flex-col max-h-[94vh]">
           {/* mobile brand/progress bar */}
           <div className="md:hidden px-5 pt-5 pb-4 text-white" style={{ backgroundImage: brandGradient }}>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center">
               <span className="text-sm font-semibold truncate">{businessName.trim() || 'PupManager'}</span>
-              <button onClick={skip} disabled={busy} className="text-xs text-white/80 hover:text-white">Skip</button>
             </div>
             <div className="mt-3 flex gap-1.5">
               {STEPS.slice(1).map((_, i) => <div key={i} className={`h-1.5 flex-1 rounded-full ${i + 1 <= step ? 'bg-white' : 'bg-white/25'}`} />)}
             </div>
           </div>
-          {/* desktop skip */}
-          <div className="hidden md:flex justify-end px-8 pt-6">
-            <button onClick={skip} disabled={busy} className="text-xs font-medium text-slate-400 hover:text-slate-600 transition-colors">Skip for now</button>
-          </div>
-
           <div className="flex-1 overflow-y-auto px-6 md:px-8 py-6 md:py-7">
             {step === 0 && (
               <div className="max-w-lg mx-auto" key="s0">
