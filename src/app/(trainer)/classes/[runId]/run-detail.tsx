@@ -148,7 +148,7 @@ export function RunDetail({
                   <span className="text-xs text-slate-400 w-6">{s.sessionIndex ?? '–'}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-900 truncate">{s.title}</p>
-                    <p className="text-xs text-slate-500">{new Date(s.scheduledAt).toLocaleString()}</p>
+                    <p className="text-xs text-slate-500" suppressHydrationWarning>{new Date(s.scheduledAt).toLocaleString()}</p>
                   </div>
                   <Button variant="ghost" onClick={() => setOpenSession(s)}>
                     <ClipboardCheck className="h-4 w-4" /> Open
@@ -279,7 +279,9 @@ function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="text-sm font-medium text-slate-800 mt-0.5 truncate">{value}</p>
+      {/* Dates render in the viewer's locale/timezone, which differs from the
+          server's UTC SSR — suppress the expected hydration text mismatch. */}
+      <p className="text-sm font-medium text-slate-800 mt-0.5 truncate" suppressHydrationWarning>{value}</p>
     </div>
   )
 }
