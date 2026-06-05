@@ -443,18 +443,22 @@ function TrainerShell({
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <aside className={cn('hidden md:flex md:flex-col md:fixed md:inset-y-0 bg-white border-r border-slate-100 transition-all duration-200', sidebarWidth)}>
-        {/* Collapse/expand tab, floating on the sidebar's right border. */}
-        <button
-          type="button"
-          onClick={toggleCollapse}
-          title={collapsed ? 'Expand menu' : 'Collapse menu'}
-          aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
-          className="absolute top-5 right-0 z-20 flex h-6 w-6 translate-x-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm hover:text-slate-600 hover:border-slate-300"
-        >
-          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
-        </button>
+      {/* Collapse/expand tab — fixed on the sidebar's right border so it isn't
+          clipped by the aside. Tracks the sidebar width. */}
+      <button
+        type="button"
+        onClick={toggleCollapse}
+        title={collapsed ? 'Expand menu' : 'Collapse menu'}
+        aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+        className={cn(
+          'hidden md:flex fixed top-5 z-30 h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm hover:text-slate-600 hover:border-slate-300 transition-all duration-200',
+          collapsed ? 'left-16' : 'left-64',
+        )}
+      >
+        {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+      </button>
 
+      <aside className={cn('hidden md:flex md:flex-col md:fixed md:inset-y-0 bg-white border-r border-slate-100 transition-all duration-200', sidebarWidth)}>
         <div className={cn('flex h-16 items-center border-b border-slate-100', collapsed ? 'justify-center px-2' : 'gap-3 px-5')}>
           {trainerLogo ? (
             // eslint-disable-next-line @next/next/no-img-element
