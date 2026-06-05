@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Bell } from 'lucide-react'
+import { Bell, Mail, Smartphone } from 'lucide-react'
 import { NOTIFICATION_TYPES } from '@/lib/notification-types'
 import type { NotificationChannel } from '@/generated/prisma'
 
 const CLIENT_TYPES = Object.values(NOTIFICATION_TYPES).filter(m => m.audience === 'client')
 const CHANNEL_LABEL: Record<string, string> = { PUSH: 'Push', EMAIL: 'Email', IN_APP: 'In-app' }
+const CHANNEL_ICON: Record<string, typeof Bell> = { PUSH: Smartphone, EMAIL: Mail, IN_APP: Bell }
 const LEAD_OPTIONS: { label: string; minutes: number | null }[] = [
   { label: 'Off', minutes: null },
   { label: '30 min before', minutes: 30 },
@@ -72,6 +73,7 @@ export function ClientNotificationSettings() {
               <div className="flex flex-wrap gap-2">
                 {t.channels.map(ch => {
                   const r = row(t.type, ch)
+                  const Icon = CHANNEL_ICON[ch] ?? Bell
                   return (
                     <button
                       key={ch}
@@ -79,7 +81,7 @@ export function ClientNotificationSettings() {
                       onClick={() => save(t.type, ch, { enabled: !r.enabled })}
                       className={`inline-flex items-center gap-1.5 rounded-full px-3 h-8 text-xs font-medium border transition-colors ${r.enabled ? 'border-accent bg-accent-soft text-accent' : 'border-slate-200 text-slate-400'}`}
                     >
-                      <span className={`h-2 w-2 rounded-full ${r.enabled ? 'bg-accent' : 'bg-slate-300'}`} />
+                      <Icon className="h-3.5 w-3.5" />
                       {CHANNEL_LABEL[ch] ?? ch}
                     </button>
                   )
