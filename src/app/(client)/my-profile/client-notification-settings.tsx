@@ -6,8 +6,11 @@ import { NOTIFICATION_TYPES } from '@/lib/notification-types'
 import type { NotificationChannel } from '@/generated/prisma'
 
 const CLIENT_TYPES = Object.values(NOTIFICATION_TYPES).filter(m => m.audience === 'client')
-const CHANNEL_LABEL: Record<string, string> = { PUSH: 'Push', EMAIL: 'Email', IN_APP: 'In-app' }
-const CHANNEL_ICON: Record<string, typeof Bell> = { PUSH: Smartphone, EMAIL: Mail, IN_APP: Bell }
+const CHANNELS: { id: NotificationChannel; label: string; Icon: typeof Bell }[] = [
+  { id: 'PUSH', label: 'Push', Icon: Smartphone },
+  { id: 'EMAIL', label: 'Email', Icon: Mail },
+  { id: 'IN_APP', label: 'In-app', Icon: Bell },
+]
 const LEAD_OPTIONS: { label: string; minutes: number | null }[] = [
   { label: 'Off', minutes: null },
   { label: '30 min before', minutes: 30 },
@@ -48,73 +51,95 @@ export function ClientNotificationSettings() {
     }).catch(() => {})
   }
 
-  // Reminder timing applies across channels — write to every channel row so the
-  // cron can read it from any of them.
-  async function saveTimingAllChannels(type: string, patch: Partial<PrefRow>) {
-    for (const ch of meta(type).channels) await save(type, ch, patch)
+  // Check-all per channel column.
+  const channelAllOn = (channel: string) => CLIENT_TYPES.every(t => row(t.type, channel).enabled)
+  async function toggleColumn(channel: string) {
+    const target = !channelAllOn(channel)
+    for (const t of CLIENT_TYPES) await save(t.type, channel, { enabled: target })
+  }
+
+  // Reminder timing applies across channels — write to every channel row.
+  const reminder = CLIENT_TYPES.find(t => t.type === 'CLIENT_SESSION_REMINDER')
+  const timingRow = reminder ? row(reminder.type, reminder.channels[0]) : null
+  async function saveTiming(patch: Partial<PrefRow>) {
+    if (!reminder) return
+    for (const ch of reminder.channels) await save(reminder.type, ch, patch)
   }
 
   if (!loaded) return <p className="text-sm text-slate-400 py-4">Loading…</p>
 
   return (
     <section>
-      <p className="text-sm text-slate-500 mb-4 flex items-center gap-1.5"><Bell className="h-4 w-4 text-accent" /> Choose what you hear about and how. Turn anything off you don&apos;t want.</p>
+      <p className="text-sm text-slate-500 mb-4 flex items-center gap-1.5"><Bell className="h-4 w-4 text-accent" /> Tap to choose what you hear about and how.</p>
 
-      <div className="space-y-3">
-        {CLIENT_TYPES.map(t => {
-          const isReminder = t.type === 'CLIENT_SESSION_REMINDER'
-          // For the reminder, read timing off the first channel row.
-          const timingRow = isReminder ? row(t.type, t.channels[0]) : null
-          return (
-            <div key={t.type} className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4">
-              <p className="text-sm font-semibold text-slate-900">{t.label}</p>
-              <p className="text-xs text-slate-400 mb-3">{t.description}</p>
-
-              <div className="flex flex-wrap gap-2">
-                {t.channels.map(ch => {
-                  const r = row(t.type, ch)
-                  const Icon = CHANNEL_ICON[ch] ?? Bell
+      <div className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-slate-100">
+              <th className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Notify me</th>
+              {CHANNELS.map(({ id, label, Icon }) => (
+                <th key={id} className="px-1 py-2 w-[64px]">
+                  <button type="button" onClick={() => toggleColumn(id)} className="flex flex-col items-center gap-1 w-full text-slate-500 hover:text-slate-700">
+                    <Icon className="h-4 w-4" />
+                    <span className="text-[11px] font-medium leading-none">{label}</span>
+                    <input type="checkbox" readOnly checked={channelAllOn(id)} className="h-4 w-4 accent-[var(--accent)] pointer-events-none" />
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {CLIENT_TYPES.map(t => (
+              <tr key={t.type} className="border-t border-slate-50">
+                <td className="px-3 py-3 align-top">
+                  <p className="text-sm font-medium text-slate-900 leading-tight">{t.label}</p>
+                  <p className="text-xs text-slate-400 leading-tight mt-0.5">{t.description}</p>
+                </td>
+                {CHANNELS.map(({ id }) => {
+                  const r = row(t.type, id)
                   return (
-                    <button
-                      key={ch}
-                      type="button"
-                      onClick={() => save(t.type, ch, { enabled: !r.enabled })}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-3 h-8 text-xs font-medium border transition-colors ${r.enabled ? 'border-accent bg-accent-soft text-accent' : 'border-slate-200 text-slate-400'}`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {CHANNEL_LABEL[ch] ?? ch}
-                    </button>
+                    <td key={id} className="px-1 py-3 text-center align-middle">
+                      <input
+                        type="checkbox"
+                        checked={r.enabled}
+                        onChange={() => save(t.type, id, { enabled: !r.enabled })}
+                        aria-label={`${t.label} — ${id}`}
+                        className="h-5 w-5 accent-[var(--accent)] cursor-pointer"
+                      />
+                    </td>
                   )
                 })}
-              </div>
-
-              {isReminder && timingRow && (
-                <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col gap-3">
-                  <label className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-slate-700">Morning summary</span>
-                    <input
-                      type="checkbox"
-                      checked={timingRow.dailyAtHour != null}
-                      onChange={e => saveTimingAllChannels(t.type, { dailyAtHour: e.target.checked ? 8 : null })}
-                      className="h-5 w-5 accent-[var(--accent)]"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-slate-700">Before each session</span>
-                    <select
-                      value={timingRow.minutesBefore ?? ''}
-                      onChange={e => saveTimingAllChannels(t.type, { minutesBefore: e.target.value ? Number(e.target.value) : null })}
-                      className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                    >
-                      {LEAD_OPTIONS.map(o => <option key={o.label} value={o.minutes ?? ''}>{o.label}</option>)}
-                    </select>
-                  </label>
-                </div>
-              )}
-            </div>
-          )
-        })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+
+      {/* Reminder timing — only relevant to session reminders. */}
+      {timingRow && (
+        <div className="mt-4 rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4">
+          <p className="text-sm font-semibold text-slate-900 mb-3">Reminder timing</p>
+          <label className="flex items-center justify-between gap-2 py-1">
+            <span className="text-sm text-slate-700">Morning summary</span>
+            <input
+              type="checkbox"
+              checked={timingRow.dailyAtHour != null}
+              onChange={e => saveTiming({ dailyAtHour: e.target.checked ? 8 : null })}
+              className="h-5 w-5 accent-[var(--accent)] cursor-pointer"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-2 py-1">
+            <span className="text-sm text-slate-700">Before each session</span>
+            <select
+              value={timingRow.minutesBefore ?? ''}
+              onChange={e => saveTiming({ minutesBefore: e.target.value ? Number(e.target.value) : null })}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              {LEAD_OPTIONS.map(o => <option key={o.label} value={o.minutes ?? ''}>{o.label}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
     </section>
   )
 }
