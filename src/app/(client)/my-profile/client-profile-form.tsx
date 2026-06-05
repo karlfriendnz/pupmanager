@@ -33,10 +33,14 @@ export function ClientProfileForm({
   clientId,
   user,
   dogs: initialDogs,
+  view = 'profile',
 }: {
   clientId: string
   user: { name: string | null; email: string; timezone: string; notifyEmail: boolean; notifyPush: boolean }
   dogs: Dog[]
+  // Which section to show — the page tabs this between 'profile' and 'dogs'
+  // (same form instance + one save).
+  view?: 'profile' | 'dogs'
 }) {
   const router = useRouter()
   const [msg, setMsg] = useState<string | null>(null)
@@ -46,7 +50,9 @@ export function ClientProfileForm({
 
   const [name, setName] = useState(user.name ?? '')
   const [timezone, setTimezone] = useState(user.timezone)
-  const [notifyEmail, setNotifyEmail] = useState(user.notifyEmail)
+  // Saved unchanged — client notification email is now controlled per-category
+  // on the Notifications tab, so there's no master checkbox here.
+  const notifyEmail = user.notifyEmail
 
   const [dogs, setDogs] = useState<DogForm[]>(
     initialDogs.map(d => ({
@@ -122,6 +128,7 @@ export function ClientProfileForm({
     <div className="flex flex-col gap-6">
       {msg && <Alert variant={msg === 'Saved!' ? 'success' : 'error'}>{msg}</Alert>}
 
+      {view === 'profile' && (
       <Card>
         <CardBody className="pt-5 flex flex-col gap-4">
           <h2 className="font-semibold text-slate-900">My details</h2>
@@ -137,13 +144,11 @@ export function ClientProfileForm({
               {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
             </select>
           </div>
-          <label className="flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-700">Email reminders</span>
-            <input type="checkbox" className="h-5 w-5" checked={notifyEmail} onChange={e => setNotifyEmail(e.target.checked)} />
-          </label>
         </CardBody>
       </Card>
+      )}
 
+      {view === 'dogs' && (
       <Card>
         <CardBody className="pt-5 flex flex-col gap-4">
           <h2 className="font-semibold text-slate-900">My dogs</h2>
@@ -177,9 +182,11 @@ export function ClientProfileForm({
           </button>
         </CardBody>
       </Card>
+      )}
 
       <Button size="lg" className="w-full" loading={saving} onClick={onSubmit}>Save changes</Button>
 
+      {view === 'profile' && (
       <Card className="border-red-100">
         <CardBody className="pt-5">
           <h2 className="font-semibold text-red-700 mb-2">Delete account</h2>
@@ -197,6 +204,7 @@ export function ClientProfileForm({
           )}
         </CardBody>
       </Card>
+      )}
     </div>
   )
 }

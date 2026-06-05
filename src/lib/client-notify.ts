@@ -65,16 +65,17 @@ async function doNotify({ userId, trainerId, type, vars = {}, link, ctaLabel, se
   }
 
   // Email — branded to the triggering trainer (logo, accent, business name).
-  // Also gated by the user's master notifyEmail switch.
+  // The per-category EMAIL toggle (channelOn) is the sole control; the legacy
+  // master notifyEmail flag no longer gates client notifications.
   if (channelOn('EMAIL')) {
     const [user, trainer] = await Promise.all([
-      prisma.user.findUnique({ where: { id: userId }, select: { email: true, notifyEmail: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
       prisma.trainerProfile.findUnique({
         where: { id: trainerId },
         select: { businessName: true, logoUrl: true, emailAccentColor: true, user: { select: { name: true, email: true } } },
       }),
     ])
-    if (user?.email && user.notifyEmail && trainer) {
+    if (user?.email && trainer) {
       const email = renderClientNotificationEmail({
         trainer,
         title,
