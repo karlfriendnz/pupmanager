@@ -45,7 +45,7 @@ export async function GET(
       orderBy: { enrolledAt: 'asc' },
       include: {
         client: { select: { user: { select: { name: true } } } },
-        dog: { select: { name: true } },
+        dog: { select: { name: true, photoUrl: true, breed: true } },
         attendance: { where: { sessionId }, take: 1 },
       },
     }),
@@ -59,6 +59,8 @@ export async function GET(
       enrollmentId: e.id,
       clientName: e.client.user.name,
       dogName: e.dog?.name ?? null,
+      dogPhotoUrl: e.dog?.photoUrl ?? null,
+      dogBreed: e.dog?.breed ?? null,
       type: e.type,
       status: e.attendance[0]?.status ?? 'PRESENT',
       note: e.attendance[0]?.note ?? '',
