@@ -353,16 +353,17 @@ export function SessionView({
         <div className="sticky z-30 bottom-[calc(4rem_+_env(safe-area-inset-bottom))] md:bottom-0 inset-x-0 border-t border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
           <div className="w-full px-4 md:px-6 py-3">
             {selectMode ? (
-              <div className="flex items-center gap-2 overflow-x-auto">
-                <span className="text-sm text-slate-500 whitespace-nowrap mr-1"><span className="font-semibold text-slate-700">{selected.size}</span> selected</span>
-                {ALL_STATUSES.map(s => {
-                  const m = STATUS_META[s]
-                  return (
-                    <button key={s} type="button" disabled={selected.size === 0} onClick={() => applyToSelected(s)} className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 h-9 text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300 disabled:opacity-40 whitespace-nowrap">
-                      <span className={`h-2 w-2 rounded-full ${m.badge}`} />{m.label}
-                    </button>
-                  )
-                })}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-slate-500 whitespace-nowrap"><span className="font-semibold text-slate-700">{selected.size}</span> selected</span>
+                <select
+                  value=""
+                  disabled={selected.size === 0}
+                  onChange={e => { if (e.target.value) applyToSelected(e.target.value as AttStatus) }}
+                  className="h-10 rounded-xl bg-white px-3 text-sm font-medium text-slate-700 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
+                >
+                  <option value="">Mark as…</option>
+                  {ALL_STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                </select>
               </div>
             ) : (
               <div className="flex items-center justify-between gap-3">
