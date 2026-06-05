@@ -123,7 +123,8 @@ export default async function SchedulePage({
     where: {
       trainerId: trainerProfile.id,
       scheduledAt: { gte: weekStart, lte: weekEnd },
-      clientId: { not: null },
+      // 1:1 sessions (clientId set) or class sessions (classRunId set).
+      OR: [{ clientId: { not: null } }, { classRunId: { not: null } }],
       ...memberScope,
     },
     select: { scheduledAt: true },
@@ -163,14 +164,16 @@ export default async function SchedulePage({
       where: {
         trainerId: trainerProfile.id,
         scheduledAt: { gte: weekStart, lte: weekEnd },
-        // Skip sessions orphaned by client deletion — clientId is SetNull
-        // when the client is removed, so the session row sticks around but
-        // has nobody to attribute it to.
-        clientId: { not: null },
+        // Include 1:1 sessions (clientId set) and class sessions (classRunId
+        // set). Skip only sessions orphaned by client deletion — clientId is
+        // SetNull when a client is removed, leaving a row with nobody to
+        // attribute it to (and no classRun either).
+        OR: [{ clientId: { not: null } }, { classRunId: { not: null } }],
         ...memberScope,
       },
       include: {
         assignedTrainer: { select: { id: true, title: true, user: { select: { name: true } } } },
+        classRun: { select: { name: true } },
         dog: {
           select: {
             name: true,

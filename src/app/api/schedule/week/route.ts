@@ -62,10 +62,13 @@ export async function GET(req: Request) {
     where: {
       trainerId,
       scheduledAt: { gte: weekStart, lte: weekEnd },
+      // 1:1 (clientId set) or class (classRunId set); skip client-deleted orphans.
+      OR: [{ clientId: { not: null } }, { classRunId: { not: null } }],
       ...memberScope,
     },
     include: {
       assignedTrainer: { select: { id: true, title: true, user: { select: { name: true } } } },
+      classRun: { select: { name: true } },
       dog: {
         select: {
           name: true,
