@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
@@ -40,8 +41,6 @@ type Enrollment = {
 }
 type ClientOpt = { id: string; name: string; dogId: string | null; dogName: string | null }
 
-const ATT_STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'MAKEUP'] as const
-type AttStatus = (typeof ATT_STATUSES)[number]
 
 export function RunDetail({
   run,
@@ -58,7 +57,6 @@ export function RunDetail({
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState(false)
-  const [openSession, setOpenSession] = useState<SessionRow | null>(null)
 
   const enrolled = enrollments.filter(e => e.status === 'ENROLLED')
   const waitlisted = enrollments.filter(e => e.status === 'WAITLISTED')
@@ -150,9 +148,12 @@ export function RunDetail({
                     <p className="text-sm font-medium text-slate-900 truncate">{s.title}</p>
                     <p className="text-xs text-slate-500" suppressHydrationWarning>{new Date(s.scheduledAt).toLocaleString()}</p>
                   </div>
-                  <Button variant="ghost" onClick={() => setOpenSession(s)}>
+                  <Link
+                    href={`/classes/${run.id}/sessions/${s.id}`}
+                    className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                  >
                     <ClipboardCheck className="h-4 w-4" /> Open
-                  </Button>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -263,13 +264,6 @@ export function RunDetail({
         />
       )}
 
-      {openSession && (
-        <AttendanceModal
-          runId={run.id}
-          session={openSession}
-          onClose={() => setOpenSession(null)}
-        />
-      )}
       </div>
     </>
   )
@@ -400,228 +394,3 @@ function EnrolModal({
   )
 }
 
-type FormQuestion = { id: string; type: string; label?: string }
-type FormLite = { id: string; name: string; questions: FormQuestion[] }
-type RosterRow = {
-  enrollmentId: string
-  clientName: string
-  dogName: string | null
-  type: string
-  status: AttStatus
-  note: string
-  hasReport: boolean
-  report: { answers?: Record<string, string>; closing?: string | null } | null
-}
-type AttendanceData = {
-  sessionFormId: string | null
-  effectiveForm: FormLite | null
-  availableForms: FormLite[]
-  roster: RosterRow[]
-}
-type ClientDraft = { status: AttStatus; note: string; answers: Record<string, string>; recap: string }
-
-// The class session view. Two phases that happen at different times:
-//   1) Attendance — mark each enrolled client present/absent + a quick note.
-//   2) Notes — later, click a client's "Notes" to open the session form and
-//      write up their report.
-function AttendanceModal({
-  runId,
-  session,
-  onClose,
-}: {
-  runId: string
-  session: SessionRow
-  onClose: () => void
-}) {
-  const [data, setData] = useState<AttendanceData | null>(null)
-  const [formId, setFormId] = useState('')
-  const [draft, setDraft] = useState<Record<string, ClientDraft>>({})
-  const [notesFor, setNotesFor] = useState<string | null>(null) // enrollmentId being written up
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    const res = await fetch(`/api/class-runs/${runId}/sessions/${session.id}/attendance`)
-    if (!res.ok) {
-      setError('Could not load the session.')
-      return
-    }
-    const d: AttendanceData = await res.json()
-    setData(d)
-    setFormId(d.effectiveForm?.id ?? '')
-    setDraft(Object.fromEntries(d.roster.map(r => [r.enrollmentId, {
-      status: r.status,
-      note: r.note ?? '',
-      answers: r.report?.answers ?? {},
-      recap: r.report?.closing ?? '',
-    }])))
-  }, [runId, session.id])
-
-  useEffect(() => { void load() }, [load])
-
-  const selectedForm = data?.availableForms.find(f => f.id === formId) ?? null
-
-  async function put(body: object): Promise<boolean> {
-    const res = await fetch(`/api/class-runs/${runId}/sessions/${session.id}/attendance`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    return res.ok
-  }
-
-  // Phase 1: attendance (status + quick note for everyone).
-  async function saveAttendance() {
-    if (!data) return
-    setSaving(true); setError(null)
-    try {
-      const records = data.roster.map(r => ({ enrollmentId: r.enrollmentId, status: draft[r.enrollmentId].status, note: draft[r.enrollmentId].note.trim() || null }))
-      const ok = await put({ sessionFormId: formId || null, records })
-      if (!ok) { setError('Could not save attendance.'); return }
-      setSaved('Attendance saved.')
-      setTimeout(onClose, 600)
-    } finally { setSaving(false) }
-  }
-
-  // Phase 2: write up one client's report.
-  async function saveNotes(enrollmentId: string) {
-    const d = draft[enrollmentId]
-    setSaving(true); setError(null)
-    try {
-      const ok = await put({
-        sessionFormId: formId || null,
-        records: [{ enrollmentId, report: { formId: formId || null, answers: d.answers, closing: d.recap.trim() || null } }],
-      })
-      if (!ok) { setError('Could not save the notes.'); return }
-      setNotesFor(null)
-      setSaved('Notes saved.')
-      await load()
-      setTimeout(() => setSaved(null), 1500)
-    } finally { setSaving(false) }
-  }
-
-  function setAnswer(enrollmentId: string, qid: string, value: string) {
-    setDraft(p => ({ ...p, [enrollmentId]: { ...p[enrollmentId], answers: { ...p[enrollmentId].answers, [qid]: value } } }))
-  }
-
-  const notesRow = notesFor ? data?.roster.find(r => r.enrollmentId === notesFor) ?? null : null
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 sticky top-0 bg-white">
-          <div>
-            <h2 className="font-semibold text-slate-900">{session.title}</h2>
-            <p className="text-xs text-slate-500" suppressHydrationWarning>{new Date(session.scheduledAt).toLocaleString()}</p>
-          </div>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="p-5">
-          {error && <Alert variant="error" className="mb-3">{error}</Alert>}
-          {saved && <Alert variant="success" className="mb-3">{saved}</Alert>}
-
-          {!data ? (
-            <p className="text-sm text-slate-500 py-6 text-center">Loading session…</p>
-
-          ) : notesRow ? (
-            /* ─── Notes phase: write up one client ─── */
-            <div className="flex flex-col gap-3">
-              <button onClick={() => setNotesFor(null)} className="self-start text-xs font-medium text-slate-500 hover:text-slate-700">← Back to attendance</button>
-              <p className="text-sm font-semibold text-slate-900">
-                {notesRow.clientName}{notesRow.dogName && <span className="text-slate-500 font-normal"> · {notesRow.dogName}</span>}
-              </p>
-              {!selectedForm && <p className="text-xs text-slate-400">No form set for this session — pick one in the attendance view, or just write a recap below.</p>}
-              {selectedForm?.questions.map(q => {
-                const label = q.label ?? 'Field'
-                const val = draft[notesRow.enrollmentId].answers[q.id] ?? ''
-                const isLong = q.type === 'LONG_TEXT'
-                const isNum = q.type === 'NUMBER' || q.type === 'RATING_1_5'
-                return (
-                  <label key={q.id} className="block">
-                    <span className="text-[11px] font-medium text-slate-500">{label}</span>
-                    {isLong
-                      ? <textarea rows={3} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                      : <input type={isNum ? 'number' : 'text'} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-0.5 w-full h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />}
-                  </label>
-                )
-              })}
-              <label className="block">
-                <span className="text-[11px] font-medium text-slate-500">Recap message for the client (optional)</span>
-                <textarea rows={3} value={draft[notesRow.enrollmentId].recap} onChange={e => setDraft(p => ({ ...p, [notesRow.enrollmentId]: { ...p[notesRow.enrollmentId], recap: e.target.value } }))} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </label>
-              <div className="flex gap-2 pt-1">
-                <Button onClick={() => saveNotes(notesRow.enrollmentId)} loading={saving}>Save notes</Button>
-                <Button variant="ghost" onClick={() => setNotesFor(null)}>Back</Button>
-              </div>
-            </div>
-
-          ) : (
-            /* ─── Attendance phase: roster ─── */
-            <>
-              <div className="mb-4">
-                <label className="text-sm font-medium text-slate-700 block mb-1.5">Form for this session</label>
-                <select value={formId} onChange={e => setFormId(e.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">No form</option>
-                  {data.availableForms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                </select>
-              </div>
-
-              {data.roster.length === 0 ? (
-                <p className="text-sm text-slate-500 py-6 text-center">No enrolled clients to mark.</p>
-              ) : (
-                <div className="flex flex-col gap-2.5">
-                  {data.roster.map(r => {
-                    const d = draft[r.enrollmentId]
-                    if (!d) return null
-                    return (
-                      <div key={r.enrollmentId} className="rounded-xl border border-slate-200 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium text-slate-900 min-w-0 truncate">
-                            {r.clientName}{r.dogName && <span className="text-slate-500 font-normal"> · {r.dogName}</span>}
-                          </p>
-                          <select
-                            value={d.status}
-                            onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, status: e.target.value as AttStatus } }))}
-                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
-                          >
-                            {ATT_STATUSES.map(s => <option key={s} value={s}>{s.toLowerCase()}</option>)}
-                          </select>
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                          <input
-                            type="text"
-                            placeholder="Quick note (optional)"
-                            value={d.note}
-                            onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
-                            className="flex-1 h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setNotesFor(r.enrollmentId)}
-                            className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 px-3 h-9 text-xs font-medium text-slate-600 hover:text-blue-700"
-                          >
-                            <ClipboardCheck className="h-3.5 w-3.5" />
-                            {r.hasReport ? 'Notes ✓' : 'Notes'}
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-3">
-                <Button onClick={saveAttendance} loading={saving}>Save attendance</Button>
-                <Button variant="ghost" onClick={onClose}>Cancel</Button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
