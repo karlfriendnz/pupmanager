@@ -189,7 +189,7 @@ export function SessionView({
         }
       />
 
-      <div className="w-full px-4 md:px-6 pt-4 pb-28">
+      <div className="w-full px-4 md:px-6 pt-4 pb-40 md:pb-28">
         {error && <Alert variant="error" className="mb-3">{error}</Alert>}
 
         {!data ? (
@@ -350,7 +350,7 @@ export function SessionView({
 
       {/* Pinned bottom action bar (attendance phase) */}
       {data && !notesRow && data.roster.length > 0 && (
-        <div className="sticky bottom-0 inset-x-0 border-t border-slate-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/75">
+        <div className="sticky z-30 bottom-[calc(4rem_+_env(safe-area-inset-bottom))] md:bottom-0 inset-x-0 border-t border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
           <div className="w-full px-4 md:px-6 py-3">
             {selectMode ? (
               <div className="flex items-center gap-2 overflow-x-auto">
