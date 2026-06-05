@@ -197,6 +197,7 @@ export function SessionView({
                     <thead>
                       <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 border-b border-slate-200">
                         <th className="py-2 px-3">Client</th>
+                        <th className="py-2 px-3">Dog</th>
                         <th className="py-2 px-3 w-full">Note</th>
                         <th className="py-2 px-3">Status</th>
                         <th className="py-2 px-3 text-right">Notes</th>
@@ -208,9 +209,8 @@ export function SessionView({
                         if (!d) return null
                         return (
                           <tr key={r.enrollmentId}>
-                            <td className="py-2 px-3 font-medium text-slate-900 whitespace-nowrap">
-                              {r.clientName}{r.dogName && <span className="text-slate-500 font-normal"> · {r.dogName}</span>}
-                            </td>
+                            <td className="py-2 px-3 font-medium text-slate-900 whitespace-nowrap">{r.clientName}</td>
+                            <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{r.dogName ?? '—'}</td>
                             <td className="py-2 px-3">
                               <input
                                 type="text"
