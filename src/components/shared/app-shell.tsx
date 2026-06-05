@@ -451,11 +451,11 @@ function TrainerShell({
         title={collapsed ? 'Expand menu' : 'Collapse menu'}
         aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
         className={cn(
-          'hidden md:flex fixed top-3 z-30 h-6 w-6 -translate-x-1/2 items-center justify-center text-slate-400 hover:text-slate-600 transition-all duration-200',
+          'hidden md:flex fixed top-3 z-30 h-7 w-7 -translate-x-1/2 items-center justify-center text-slate-400 hover:text-slate-600 transition-all duration-200',
           collapsed ? 'left-16' : 'left-64',
         )}
       >
-        {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+        {collapsed ? <ChevronRight className="h-6 w-6" /> : <ChevronLeft className="h-6 w-6" />}
       </button>
 
       <aside className={cn('hidden md:flex md:flex-col md:fixed md:inset-y-0 bg-white border-r border-slate-100 transition-all duration-200', sidebarWidth)}>
