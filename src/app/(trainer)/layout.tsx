@@ -64,7 +64,14 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     return <PaywallFrame>{children}</PaywallFrame>
   }
 
-  const fabState = session.user.trainerId
+  // While the trainer is exploring with sample data the account already looks
+  // set up, so suppress all onboarding nudges (the FAB + the pulsing menu/page
+  // dots) — same idea as hiding the dashboard checklist.
+  const usingSampleData = session.user.trainerId
+    ? (await prisma.clientProfile.count({ where: { trainerId: session.user.trainerId, isSample: true } })) > 0
+    : false
+
+  const fabState = session.user.trainerId && !usingSampleData
     ? await getOnboardingFabState(session.user.trainerId)
     : { show: false, nextStep: null, steps: [], totalSteps: 0, allComplete: false }
 
