@@ -86,7 +86,7 @@ export default async function TrainerSettingsPage() {
             appUrl={appUrl}
           />
         ) : undefined}
-        notifications={<NotificationsPanel notifyEmail={user.notifyEmail} notifyPush={user.notifyPush} />}
+        notifications={<NotificationsPanel />}
         team={<TeamPanel />}
         billing={ctx.role === 'OWNER' ? <BillingPanel companyId={ctx.companyId} /> : undefined}
         forms={!canManageForms ? undefined :
