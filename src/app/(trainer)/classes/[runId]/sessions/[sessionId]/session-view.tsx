@@ -198,8 +198,8 @@ export function SessionView({
                       <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 border-b border-slate-200">
                         <th className="py-2 px-3">Client</th>
                         <th className="py-2 px-3">Dog</th>
-                        <th className="py-2 px-3 w-full">Note</th>
                         <th className="py-2 px-3">Status</th>
+                        <th className="py-2 px-3 w-full">Note</th>
                         <th className="py-2 px-3 text-right">Notes</th>
                       </tr>
                     </thead>
@@ -212,15 +212,6 @@ export function SessionView({
                             <td className="py-2 px-3 font-medium text-slate-900 whitespace-nowrap">{r.clientName}</td>
                             <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{r.dogName ?? '—'}</td>
                             <td className="py-2 px-3">
-                              <input
-                                type="text"
-                                placeholder="Quick note (optional)"
-                                value={d.note}
-                                onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
-                                className="w-full h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
-                            </td>
-                            <td className="py-2 px-3">
                               <select
                                 value={d.status}
                                 onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, status: e.target.value as AttStatus } }))}
@@ -228,6 +219,15 @@ export function SessionView({
                               >
                                 {ATT_STATUSES.map(s => <option key={s} value={s}>{s.toLowerCase()}</option>)}
                               </select>
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                type="text"
+                                placeholder="Quick note (optional)"
+                                value={d.note}
+                                onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
+                                className="w-full h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
                             </td>
                             <td className="py-2 px-3 text-right">
                               <button
