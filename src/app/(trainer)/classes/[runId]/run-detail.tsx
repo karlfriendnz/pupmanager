@@ -89,26 +89,26 @@ export function RunDetail({
         title={run.name}
         subtitle={run.scheduleNote ? `${run.scheduleNote} · ${seatsLabel}` : seatsLabel}
         back={{ href: '/classes', label: 'Classes' }}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => setEditing(true)}>
-              <Pencil className="h-4 w-4" /> <span className="hidden sm:inline">Edit</span>
-            </Button>
-            <select
-              value={run.status}
-              onChange={e => setStatus(e.target.value as RunStatus)}
-              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(s => (
-                <option key={s} value={s}>{s.toLowerCase()}</option>
-              ))}
-            </select>
-          </div>
-        }
       />
 
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
+
+      {/* Class controls — full width below the header so the title has room */}
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <select
+          value={run.status}
+          onChange={e => setStatus(e.target.value as RunStatus)}
+          className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(s => (
+            <option key={s} value={s}>{s.toLowerCase()}</option>
+          ))}
+        </select>
+        <Button variant="secondary" onClick={() => setEditing(true)}>
+          <Pencil className="h-4 w-4" /> Edit
+        </Button>
+      </div>
 
       {/* Class details */}
       <Card className="mb-5">
