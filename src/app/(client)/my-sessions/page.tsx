@@ -1,12 +1,26 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, Clock, MapPin, Video, ChevronRight } from 'lucide-react'
+import { Calendar, Clock, MapPin, Video, ChevronRight, Users } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Sessions' }
+
+const DONE = ['COMPLETED', 'COMMENTED', 'INVOICED']
+
+type Row = {
+  id: string
+  title: string
+  scheduledAt: Date
+  durationMins: number
+  sessionType: string
+  location: string | null
+  status: string
+  isClass: boolean
+  className: string | null
+}
 
 function formatDateTime(d: Date) {
   return d.toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
@@ -17,23 +31,42 @@ export default async function MySessionsPage() {
   if (!active) redirect('/login')
 
   const now = new Date()
-  const [upcoming, past] = await Promise.all([
+
+  // 1:1 sessions (direct client link) + group-class sessions (via the client's
+  // enrolments → the run's shared sessions). Merged into one timeline.
+  const [oneToOne, enrollments] = await Promise.all([
     prisma.trainingSession.findMany({
-      where: { clientId: active.clientId, scheduledAt: { gte: now }, status: 'UPCOMING' },
+      where: { clientId: active.clientId },
       orderBy: { scheduledAt: 'asc' },
-      select: { id: true, title: true, scheduledAt: true, durationMins: true, sessionType: true, location: true },
+      select: { id: true, title: true, scheduledAt: true, durationMins: true, sessionType: true, location: true, status: true },
     }),
-    prisma.trainingSession.findMany({
-      where: {
-        clientId: active.clientId,
-        OR: [{ scheduledAt: { lt: now } }, { status: { in: ['COMPLETED', 'COMMENTED', 'INVOICED'] } }],
+    prisma.classEnrollment.findMany({
+      where: { clientId: active.clientId, status: { not: 'WITHDRAWN' } },
+      select: {
+        classRun: {
+          select: {
+            name: true,
+            sessions: { select: { id: true, title: true, scheduledAt: true, durationMins: true, sessionType: true, location: true, status: true } },
+          },
+        },
       },
-      orderBy: { scheduledAt: 'desc' },
-      take: 50,
-      select: { id: true, title: true, scheduledAt: true, durationMins: true, sessionType: true, status: true },
     }),
   ])
 
+  const rows: Row[] = [
+    ...oneToOne.map(s => ({ ...s, isClass: false, className: null })),
+    ...enrollments.flatMap(e => e.classRun.sessions.map(s => ({ ...s, isClass: true, className: e.classRun.name }))),
+  ]
+
+  const upcoming = rows
+    .filter(s => s.scheduledAt >= now && s.status === 'UPCOMING')
+    .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
+  const past = rows
+    .filter(s => s.scheduledAt < now || DONE.includes(s.status))
+    .sort((a, b) => b.scheduledAt.getTime() - a.scheduledAt.getTime())
+    .slice(0, 50)
+
+  const titleOf = (s: Row) => (s.isClass ? s.className ?? s.title : s.title)
   const hasAny = upcoming.length > 0 || past.length > 0
   const [next, ...restUpcoming] = upcoming
 
@@ -58,9 +91,9 @@ export default async function MySessionsPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-xs font-medium text-white/75">{formatDateTime(next.scheduledAt)}</p>
-                      <h3 className="font-display text-xl font-bold mt-0.5">{next.title}</h3>
+                      <h3 className="font-display text-xl font-bold mt-0.5">{titleOf(next)}</h3>
                     </div>
-                    <span className="text-[10px] font-semibold bg-white/15 rounded-full px-2 py-1">Next</span>
+                    <span className="text-[10px] font-semibold bg-white/15 rounded-full px-2 py-1">{next.isClass ? 'Class' : 'Next'}</span>
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-sm text-white/90">
                     <Clock className="h-4 w-4 opacity-80" /> {next.durationMins} min
@@ -75,7 +108,9 @@ export default async function MySessionsPage() {
                     <Link key={s.id} href={`/my-sessions/${s.id}`} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors ${i > 0 ? 'border-t border-slate-100' : ''}`}>
                       <DateChip date={s.scheduledAt} tone="accent" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-slate-900 truncate">{s.title}</p>
+                        <p className="text-sm font-semibold text-slate-900 truncate flex items-center gap-1.5">
+                          {s.isClass && <Users className="h-3.5 w-3.5 text-teal-500 flex-shrink-0" />}{titleOf(s)}
+                        </p>
                         <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(s.scheduledAt)} · {s.durationMins} min</p>
                       </div>
                       <ChevronRight className="h-4 w-4 text-slate-300 flex-shrink-0" />
@@ -92,12 +127,14 @@ export default async function MySessionsPage() {
             <h2 className="font-display text-lg font-bold text-slate-900 mb-2.5">Past</h2>
             <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
               {past.map((s, i) => {
-                const done = s.status === 'COMPLETED' || s.status === 'COMMENTED' || s.status === 'INVOICED'
+                const done = DONE.includes(s.status)
                 return (
                   <Link key={s.id} href={`/my-sessions/${s.id}`} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors ${i > 0 ? 'border-t border-slate-100' : ''}`}>
                     <DateChip date={s.scheduledAt} tone="slate" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">{s.title}</p>
+                      <p className="text-sm font-semibold text-slate-900 truncate flex items-center gap-1.5">
+                        {s.isClass && <Users className="h-3.5 w-3.5 text-teal-500 flex-shrink-0" />}{titleOf(s)}
+                      </p>
                       <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(s.scheduledAt)} · {s.durationMins} min</p>
                     </div>
                     {done && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full uppercase tracking-wide">Done</span>}
