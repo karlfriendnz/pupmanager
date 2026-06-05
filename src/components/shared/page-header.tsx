@@ -2,7 +2,9 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type BackLink = { href: string; label?: string }
+// Either a Link (href) or a click handler (onClick — e.g. router.back() so
+// "back" returns to wherever the user actually came from).
+type BackLink = { href?: string; label?: string; onClick?: () => void }
 
 interface PageHeaderProps {
   title: string
@@ -45,13 +47,24 @@ export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) 
     >
       <div className="flex items-center gap-2 min-w-0 min-h-12">
         {back && (
-          <Link
-            href={back.href}
-            aria-label={back.label ?? 'Back'}
-            className="-ml-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 flex-shrink-0"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          back.onClick ? (
+            <button
+              type="button"
+              onClick={back.onClick}
+              aria-label={back.label ?? 'Back'}
+              className="-ml-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 flex-shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          ) : (
+            <Link
+              href={back.href ?? '#'}
+              aria-label={back.label ?? 'Back'}
+              className="-ml-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 flex-shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          )
         )}
         <div className="min-w-0 flex-1">
           <h1 className="text-base font-semibold text-slate-900 truncate leading-tight">{title}</h1>
