@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
-import { ClipboardCheck, ChevronLeft, Check, X, StickyNote } from 'lucide-react'
+import { ClipboardCheck, ChevronLeft, ChevronDown, Check, X, StickyNote } from 'lucide-react'
 
 type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'MAKEUP'
 
@@ -19,7 +19,7 @@ const STATUS_META: Record<AttStatus, { label: string; row: string; dot: string; 
   EXCUSED:  { label: 'Excused',  row: 'bg-sky-50',    dot: 'bg-sky-500 text-white',     text: 'text-sky-700' },
   MAKEUP:   { label: 'Makeup',   row: 'bg-violet-50', dot: 'bg-violet-500 text-white',  text: 'text-violet-700' },
 }
-const EXCEPTION_STATUSES: AttStatus[] = ['LATE', 'EXCUSED', 'MAKEUP']
+const ALL_STATUSES: AttStatus[] = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'MAKEUP']
 
 type FormQuestion = { id: string; type: string; label?: string }
 type FormLite = { id: string; name: string; questions: FormQuestion[] }
@@ -94,6 +94,23 @@ export function SessionView({
   }
   function setStatus(enrollmentId: string, s: AttStatus) {
     setDraft(p => ({ ...p, [enrollmentId]: { ...p[enrollmentId], status: s } }))
+  }
+  function toggleNote(id: string) {
+    setNoteOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  }
+
+  // Quick tap = toggle present/absent; press-and-hold = open the status menu.
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressed = useRef(false)
+  function startPress(id: string) {
+    longPressed.current = false
+    pressTimer.current = setTimeout(() => { longPressed.current = true; setMenuFor(id) }, 450)
+  }
+  function endPress() { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null } }
+  function rowTap(id: string) {
+    if (longPressed.current) { longPressed.current = false; return }
+    toggleStatus(id)
   }
 
   async function put(body: object): Promise<boolean> {
@@ -199,7 +216,7 @@ export function SessionView({
         ) : (
           /* ─── Attendance phase: roster ─── */
           <Card>
-            <CardBody className="flex flex-col gap-4">
+            <CardBody className="flex flex-col gap-3">
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Form for this session</label>
                 <select value={formId} onChange={e => setFormId(e.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -212,11 +229,11 @@ export function SessionView({
                 <p className="text-sm text-slate-500 py-6 text-center">No enrolled clients to mark.</p>
               ) : (
                 <>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs text-slate-400">Everyone starts <span className="text-emerald-600 font-medium">present</span> — tap a name to mark absent.</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-slate-400">Tap to mark absent · hold for more</p>
                     <span className="text-xs text-slate-400">{data.roster.filter(x => draft[x.enrollmentId]?.status === 'PRESENT').length}/{data.roster.length} present</span>
                   </div>
-                  <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+                  <div className="divide-y divide-slate-100">
                     {data.roster.map(r => {
                       const d = draft[r.enrollmentId]
                       if (!d) return null
@@ -224,13 +241,17 @@ export function SessionView({
                       const present = d.status === 'PRESENT'
                       const showNote = noteOpen.has(r.enrollmentId) || !!d.note
                       return (
-                        <div key={r.enrollmentId} className={meta.row}>
-                          <div className="flex items-center gap-1.5 px-2">
-                            {/* Tap target: toggles present/absent */}
+                        <div key={r.enrollmentId} className={`relative ${meta.row}`}>
+                          <div className="flex items-center">
+                            {/* Tap = present/absent · hold = status menu */}
                             <button
                               type="button"
-                              onClick={() => toggleStatus(r.enrollmentId)}
-                              className="flex items-center gap-2 flex-1 min-w-0 text-left py-1.5 active:opacity-70"
+                              onClick={() => rowTap(r.enrollmentId)}
+                              onPointerDown={() => startPress(r.enrollmentId)}
+                              onPointerUp={endPress}
+                              onPointerLeave={endPress}
+                              onPointerMove={endPress}
+                              className="flex items-center gap-2.5 flex-1 min-w-0 text-left py-1.5 pl-2 active:opacity-70 select-none"
                             >
                               <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ${meta.dot}`}>
                                 {present ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
@@ -238,43 +259,23 @@ export function SessionView({
                               <span className="text-sm text-slate-900 truncate">
                                 {r.clientName}{r.dogName && <span className="text-slate-400"> · {r.dogName}</span>}
                               </span>
-                              {!present && <span className={`ml-auto text-[11px] font-medium ${meta.text}`}>{meta.label}</span>}
+                              {!present && <span className={`ml-auto pl-2 text-[11px] font-medium ${meta.text}`}>{meta.label}</span>}
                             </button>
 
-                            {/* Exceptions picker (Late / Excused / Makeup) */}
-                            <select
-                              value={EXCEPTION_STATUSES.includes(d.status) ? d.status : ''}
-                              onChange={e => e.target.value && setStatus(r.enrollmentId, e.target.value as AttStatus)}
-                              className="h-7 rounded-md border border-slate-200 bg-white px-1 text-xs text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
-                              aria-label="Other status"
-                            >
-                              <option value="">⋯</option>
-                              {EXCEPTION_STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
-                            </select>
-
-                            {/* Quick note (tucked behind an icon) */}
-                            <button
-                              type="button"
-                              onClick={() => setNoteOpen(prev => { const n = new Set(prev); if (n.has(r.enrollmentId)) n.delete(r.enrollmentId); else n.add(r.enrollmentId); return n })}
-                              title="Quick note"
-                              className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border ${d.note ? 'border-blue-300 bg-blue-50 text-blue-600' : 'border-slate-200 text-slate-400 hover:text-slate-600'}`}
-                            >
-                              <StickyNote className="h-3.5 w-3.5" />
+                            {/* Borderless actions: status menu · note · write-up */}
+                            <button type="button" onClick={() => setMenuFor(menuFor === r.enrollmentId ? null : r.enrollmentId)} aria-label="Set status" className="flex-shrink-0 p-1.5 rounded-md text-slate-300 hover:text-slate-600 hover:bg-slate-100">
+                              <ChevronDown className="h-4 w-4" />
                             </button>
-
-                            {/* Write-up (separate phase) */}
-                            <button
-                              type="button"
-                              onClick={() => setNotesFor(r.enrollmentId)}
-                              title="Write up notes"
-                              className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border ${r.hasReport ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-slate-200 text-slate-400 hover:text-slate-600'}`}
-                            >
-                              <ClipboardCheck className="h-3.5 w-3.5" />
+                            <button type="button" onClick={() => toggleNote(r.enrollmentId)} title="Quick note" className={`flex-shrink-0 p-1.5 rounded-md hover:bg-slate-100 ${d.note ? 'text-blue-500' : 'text-slate-300 hover:text-slate-600'}`}>
+                              <StickyNote className="h-4 w-4" />
+                            </button>
+                            <button type="button" onClick={() => setNotesFor(r.enrollmentId)} title="Write up notes" className={`flex-shrink-0 p-1.5 mr-1 rounded-md hover:bg-slate-100 ${r.hasReport ? 'text-emerald-500' : 'text-slate-300 hover:text-slate-600'}`}>
+                              <ClipboardCheck className="h-4 w-4" />
                             </button>
                           </div>
 
                           {showNote && (
-                            <div className="px-2 pb-1.5 pl-9">
+                            <div className="pl-9 pr-2 pb-1.5">
                               <input
                                 type="text"
                                 placeholder="Quick note (optional)"
@@ -284,6 +285,24 @@ export function SessionView({
                                 className="w-full h-8 rounded-md border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               />
                             </div>
+                          )}
+
+                          {menuFor === r.enrollmentId && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />
+                              <div className="absolute right-2 top-8 z-20 w-36 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+                                {ALL_STATUSES.map(s => {
+                                  const m = STATUS_META[s]
+                                  return (
+                                    <button key={s} type="button" onClick={() => { setStatus(r.enrollmentId, s); setMenuFor(null) }} className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-slate-50">
+                                      <span className={`h-2.5 w-2.5 rounded-full ${m.dot}`} />
+                                      <span className={d.status === s ? `${m.text} font-medium` : 'text-slate-700'}>{m.label}</span>
+                                      {d.status === s && <Check className="h-3.5 w-3.5 ml-auto text-slate-400" />}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </>
                           )}
                         </div>
                       )
