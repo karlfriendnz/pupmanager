@@ -10,8 +10,7 @@ import {
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag,
   MoreHorizontal, X, Inbox, GraduationCap, Flame,
-  Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ArrowLeftRight,
-  PanelLeftClose, PanelLeftOpen,
+  Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ArrowLeftRight,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
@@ -445,39 +444,29 @@ function TrainerShell({
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <aside className={cn('hidden md:flex md:flex-col md:fixed md:inset-y-0 bg-white border-r border-slate-100 transition-all duration-200', sidebarWidth)}>
+        {/* Collapse/expand tab, floating on the sidebar's right border. */}
+        <button
+          type="button"
+          onClick={toggleCollapse}
+          title={collapsed ? 'Expand menu' : 'Collapse menu'}
+          aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+          className="absolute top-5 right-0 z-20 flex h-6 w-6 translate-x-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm hover:text-slate-600 hover:border-slate-300"
+        >
+          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+        </button>
+
         <div className={cn('flex h-16 items-center border-b border-slate-100', collapsed ? 'justify-center px-2' : 'gap-3 px-5')}>
-          {collapsed ? (
-            <button
-              type="button"
-              onClick={toggleCollapse}
-              title="Expand menu"
-              aria-label="Expand menu"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-            >
-              <PanelLeftOpen className="h-5 w-5" />
-            </button>
+          {trainerLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={trainerLogo} alt={businessName} className="h-8 w-8 rounded-lg object-cover" />
           ) : (
-            <>
-              {trainerLogo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={trainerLogo} alt={businessName} className="h-8 w-8 rounded-lg object-cover" />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg" />
-              )}
-              <span className="font-semibold text-slate-900 truncate">
-                {businessName ?? 'PupManager'}
-              </span>
-              <button
-                type="button"
-                onClick={toggleCollapse}
-                title="Collapse menu"
-                aria-label="Collapse menu"
-                className="ml-auto flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-              >
-                <PanelLeftClose className="h-4 w-4" />
-              </button>
-            </>
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg" />
+          )}
+          {!collapsed && (
+            <span className="font-semibold text-slate-900 truncate">
+              {businessName ?? 'PupManager'}
+            </span>
           )}
         </div>
 
