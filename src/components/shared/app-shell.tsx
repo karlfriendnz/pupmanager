@@ -451,7 +451,7 @@ function TrainerShell({
         title={collapsed ? 'Expand menu' : 'Collapse menu'}
         aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
         className={cn(
-          'hidden md:flex fixed top-5 z-30 h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm hover:text-slate-600 hover:border-slate-300 transition-all duration-200',
+          'hidden md:flex fixed top-3 z-30 h-6 w-6 -translate-x-1/2 items-center justify-center text-slate-400 hover:text-slate-600 transition-all duration-200',
           collapsed ? 'left-16' : 'left-64',
         )}
       >
