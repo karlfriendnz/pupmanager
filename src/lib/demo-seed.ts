@@ -930,13 +930,34 @@ export async function seedDemoData(
   ]
   // Class runs must sit on a GROUP package or the Classes page hides them.
   const groupPkgs = packages.filter(p => p.isGroup)
+  // Align a run's start to the weekday + time named in its scheduleNote so the
+  // calendar matches the note (e.g. "Thursdays · 7:00pm" lands on a Thursday at
+  // 7pm), instead of whatever weekday `now + offset` happened to fall on.
+  const DOW: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 }
+  function noteToStart(base: Date, note: string): Date {
+    const d = new Date(base)
+    const dm = note.toLowerCase().match(/sunday|monday|tuesday|wednesday|thursday|friday|saturday/)
+    const tm = note.toLowerCase().match(/(\d{1,2}):(\d{2})\s*(am|pm)/)
+    let hour = 18, min = 0
+    if (tm) {
+      hour = parseInt(tm[1], 10) % 12
+      if (tm[3] === 'pm') hour += 12
+      min = parseInt(tm[2], 10)
+    }
+    if (dm) {
+      const diff = (DOW[dm[0]] - d.getDay() + 7) % 7
+      d.setDate(d.getDate() + diff)
+    }
+    d.setHours(hour, min, 0, 0)
+    return d
+  }
   let classEnrolCount = 0
   for (let i = 0; i < classRunDefs.length; i++) {
     const def = classRunDefs[i]
     const pkg = (groupPkgs.length ? groupPkgs : packages)[i % (groupPkgs.length || packages.length)]
-    const start = new Date(now)
-    start.setDate(start.getDate() + def.startOffset)
-    start.setHours(18, 0, 0, 0)
+    const base = new Date(now)
+    base.setDate(base.getDate() + def.startOffset)
+    const start = noteToStart(base, def.scheduleNote)
     const run = await prisma.classRun.create({
       data: { trainerId, isSample: markSample, packageId: pkg.id, name: def.name, scheduleNote: def.scheduleNote, startDate: start, capacity: 8, status: def.status },
     })
