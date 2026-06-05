@@ -5,20 +5,22 @@ import { Bell, Mail, Smartphone } from 'lucide-react'
 import { NOTIFICATION_TYPES } from '@/lib/notification-types'
 import type { NotificationChannel } from '@/generated/prisma'
 
-const CLIENT_TYPES = Object.values(NOTIFICATION_TYPES).filter(m => m.audience === 'client')
+// Morning summary (CLIENT_SESSION_DIGEST) is hidden — clients didn't want it.
+const CLIENT_TYPES = Object.values(NOTIFICATION_TYPES).filter(m => m.audience === 'client' && m.type !== 'CLIENT_SESSION_DIGEST')
 // Toggleable channels only — the in-app feed is always on (it's the history).
 const CHANNELS: { id: NotificationChannel; label: string; Icon: typeof Bell }[] = [
   { id: 'PUSH', label: 'Phone', Icon: Smartphone },
   { id: 'EMAIL', label: 'Email', Icon: Mail },
 ]
-const LEAD_OPTIONS: { label: string; minutes: number }[] = [
-  { label: '30 min before', minutes: 30 },
-  { label: '1 hour before', minutes: 60 },
-  { label: '2 hours before', minutes: 120 },
-  { label: '1 day before', minutes: 24 * 60 },
+const LEAD_OPTIONS: { short: string; minutes: number }[] = [
+  { short: '30 min', minutes: 30 },
+  { short: '1 hour', minutes: 60 },
+  { short: '2 hours', minutes: 120 },
+  { short: '1 day', minutes: 24 * 60 },
 ]
+const REMINDER = 'CLIENT_SESSION_REMINDER'
 
-type PrefRow = { type: string; channel: string; enabled: boolean; minutesBefore: number | null; dailyAtHour: number | null }
+type PrefRow = { type: string; channel: string; enabled: boolean; minutesBefore: number | null; leadMinutes: number[]; dailyAtHour: number | null }
 
 export function ClientNotificationSettings() {
   const [prefs, setPrefs] = useState<Map<string, PrefRow>>(new Map())
@@ -37,8 +39,13 @@ export function ClientNotificationSettings() {
   useEffect(() => { void load() }, [load])
 
   const meta = (type: string) => NOTIFICATION_TYPES[type as keyof typeof NOTIFICATION_TYPES]
-  const row = (type: string, channel: string): PrefRow => prefs.get(`${type}:${channel}`)
-    ?? { type, channel, enabled: (meta(type).defaultChannels ?? meta(type).channels).includes(channel as NotificationChannel), minutesBefore: meta(type).defaults.minutesBefore ?? null, dailyAtHour: meta(type).defaults.dailyAtHour ?? null }
+  const row = (type: string, channel: string): PrefRow => prefs.get(`${type}:${channel}`) ?? {
+    type, channel,
+    enabled: (meta(type).defaultChannels ?? meta(type).channels).includes(channel as NotificationChannel),
+    minutesBefore: meta(type).defaults.minutesBefore ?? null,
+    leadMinutes: meta(type).defaults.minutesBefore ? [meta(type).defaults.minutesBefore!] : [],
+    dailyAtHour: meta(type).defaults.dailyAtHour ?? null,
+  }
 
   async function save(type: string, channel: string, patch: Partial<PrefRow>) {
     const next = { ...row(type, channel), ...patch }
@@ -46,7 +53,7 @@ export function ClientNotificationSettings() {
     await fetch('/api/notification-preferences', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, channel, enabled: next.enabled, minutesBefore: next.minutesBefore, dailyAtHour: next.dailyAtHour }),
+      body: JSON.stringify({ type, channel, enabled: next.enabled, minutesBefore: next.minutesBefore, leadMinutes: next.leadMinutes, dailyAtHour: next.dailyAtHour }),
     }).catch(() => {})
   }
 
@@ -56,10 +63,12 @@ export function ClientNotificationSettings() {
     for (const t of CLIENT_TYPES) await save(t.type, channel, { enabled: target })
   }
 
-  // The "before each session" lead time applies across that type's channels.
-  const leadMinutes = row('CLIENT_SESSION_REMINDER', 'PUSH').minutesBefore ?? 120
-  async function saveLead(minutes: number) {
-    for (const ch of CHANNELS) await save('CLIENT_SESSION_REMINDER', ch.id, { minutesBefore: minutes })
+  // Reminder lead times — a set the client can multi-select. Stored on every
+  // channel row of the reminder type so the cron can read it from any.
+  const leads = row(REMINDER, 'PUSH').leadMinutes
+  async function toggleLead(minutes: number) {
+    const next = leads.includes(minutes) ? leads.filter(m => m !== minutes) : [...leads, minutes].sort((a, b) => a - b)
+    for (const ch of CHANNELS) await save(REMINDER, ch.id, { leadMinutes: next })
   }
 
   if (!loaded) return <p className="text-sm text-slate-400 py-4">Loading…</p>
@@ -90,14 +99,22 @@ export function ClientNotificationSettings() {
                 <td className="px-3 py-3 align-top">
                   <p className="text-sm font-medium text-slate-900 leading-tight">{t.label}</p>
                   <p className="text-xs text-slate-400 leading-tight mt-0.5">{t.description}</p>
-                  {t.type === 'CLIENT_SESSION_REMINDER' && (
-                    <select
-                      value={leadMinutes}
-                      onChange={e => saveLead(Number(e.target.value))}
-                      className="mt-2 h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-accent"
-                    >
-                      {LEAD_OPTIONS.map(o => <option key={o.minutes} value={o.minutes}>{o.label}</option>)}
-                    </select>
+                  {t.type === REMINDER && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {LEAD_OPTIONS.map(o => {
+                        const on = leads.includes(o.minutes)
+                        return (
+                          <button
+                            key={o.minutes}
+                            type="button"
+                            onClick={() => toggleLead(o.minutes)}
+                            className={`rounded-full px-2.5 h-7 text-xs font-medium border transition-colors ${on ? 'border-accent bg-accent-soft text-accent' : 'border-slate-200 text-slate-400'}`}
+                          >
+                            {o.short}
+                          </button>
+                        )
+                      })}
+                    </div>
                   )}
                 </td>
                 {CHANNELS.map(({ id }) => {

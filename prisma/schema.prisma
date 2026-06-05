@@ -173,6 +173,9 @@ model NotificationPreference {
   enabled       Boolean             @default(true)
   // Time-relative (e.g. SESSION_REMINDER) — minutes before the event fires.
   minutesBefore Int?
+  // Like minutesBefore but allows MULTIPLE lead times (e.g. client picks
+  // "1 day before" + "2 hours before"). Empty = fall back to minutesBefore.
+  leadMinutes   Int[]               @default([])
   // Time-of-day (e.g. DAILY_SUMMARY) — hour 0–23 in the user's timezone.
   dailyAtHour   Int?
   // Optional per-user copy overrides. Support {{placeholders}} that the

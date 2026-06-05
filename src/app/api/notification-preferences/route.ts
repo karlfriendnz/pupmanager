@@ -28,6 +28,9 @@ export async function GET() {
           channel,
           enabled: s?.enabled ?? meta.defaults.enabled,
           minutesBefore: s?.minutesBefore ?? meta.defaults.minutesBefore ?? null,
+          // Empty stored leads → seed with the type's default lead so the
+          // client starts with a sensible reminder time selected.
+          leadMinutes: (s?.leadMinutes && s.leadMinutes.length) ? s.leadMinutes : (meta.defaults.minutesBefore ? [meta.defaults.minutesBefore] : []),
           dailyAtHour: s?.dailyAtHour ?? meta.defaults.dailyAtHour ?? null,
           customTitle: s?.customTitle ?? null,
           customBody: s?.customBody ?? null,
@@ -48,6 +51,7 @@ const updateSchema = z.object({
   channel: z.enum(['PUSH', 'EMAIL', 'IN_APP']),
   enabled: z.boolean().optional(),
   minutesBefore: z.number().int().min(1).max(7 * 24 * 60).nullable().optional(),
+  leadMinutes: z.array(z.number().int().min(1).max(7 * 24 * 60)).optional(),
   dailyAtHour: z.number().int().min(0).max(23).nullable().optional(),
   customTitle: z.string().max(200).nullable().optional(),
   customBody: z.string().max(500).nullable().optional(),
@@ -75,6 +79,7 @@ export async function PUT(req: Request) {
     const writable = {
       enabled: data.enabled ?? meta.defaults.enabled,
       minutesBefore: data.minutesBefore ?? null,
+      leadMinutes: data.leadMinutes ?? [],
       dailyAtHour: data.dailyAtHour ?? null,
       customTitle: data.customTitle ?? null,
       customBody: data.customBody ?? null,
