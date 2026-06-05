@@ -12,12 +12,12 @@ type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'MAKEUP'
 
 // Visual treatment per status. Present/Absent are the one-tap toggle; the rest
 // are the "exceptions" set via the small picker.
-const STATUS_META: Record<AttStatus, { label: string; ring: string; dot: string; text: string }> = {
-  PRESENT:  { label: 'Present',  ring: 'border-emerald-300 bg-emerald-50', dot: 'bg-emerald-500 text-white',  text: 'text-emerald-700' },
-  ABSENT:   { label: 'Absent',   ring: 'border-slate-200 bg-white',         dot: 'bg-slate-200 text-slate-500', text: 'text-slate-400' },
-  LATE:     { label: 'Late',     ring: 'border-amber-300 bg-amber-50',      dot: 'bg-amber-500 text-white',     text: 'text-amber-700' },
-  EXCUSED:  { label: 'Excused',  ring: 'border-sky-300 bg-sky-50',          dot: 'bg-sky-500 text-white',       text: 'text-sky-700' },
-  MAKEUP:   { label: 'Makeup',   ring: 'border-violet-300 bg-violet-50',    dot: 'bg-violet-500 text-white',    text: 'text-violet-700' },
+const STATUS_META: Record<AttStatus, { label: string; row: string; dot: string; text: string }> = {
+  PRESENT:  { label: 'Present',  row: '',             dot: 'bg-emerald-500 text-white', text: 'text-emerald-700' },
+  ABSENT:   { label: 'Absent',   row: 'bg-slate-50',  dot: 'bg-slate-300 text-white',   text: 'text-slate-500' },
+  LATE:     { label: 'Late',     row: 'bg-amber-50',  dot: 'bg-amber-500 text-white',   text: 'text-amber-700' },
+  EXCUSED:  { label: 'Excused',  row: 'bg-sky-50',    dot: 'bg-sky-500 text-white',     text: 'text-sky-700' },
+  MAKEUP:   { label: 'Makeup',   row: 'bg-violet-50', dot: 'bg-violet-500 text-white',  text: 'text-violet-700' },
 }
 const EXCEPTION_STATUSES: AttStatus[] = ['LATE', 'EXCUSED', 'MAKEUP']
 
@@ -212,8 +212,11 @@ export function SessionView({
                 <p className="text-sm text-slate-500 py-6 text-center">No enrolled clients to mark.</p>
               ) : (
                 <>
-                  <p className="text-xs text-slate-400 mb-2">Everyone starts <span className="text-emerald-600 font-medium">present</span> — tap a row to mark absent.</p>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-slate-400">Everyone starts <span className="text-emerald-600 font-medium">present</span> — tap a name to mark absent.</p>
+                    <span className="text-xs text-slate-400">{data.roster.filter(x => draft[x.enrollmentId]?.status === 'PRESENT').length}/{data.roster.length} present</span>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
                     {data.roster.map(r => {
                       const d = draft[r.enrollmentId]
                       if (!d) return null
@@ -221,65 +224,64 @@ export function SessionView({
                       const present = d.status === 'PRESENT'
                       const showNote = noteOpen.has(r.enrollmentId) || !!d.note
                       return (
-                        <div key={r.enrollmentId} className={`rounded-xl border transition-colors ${meta.ring}`}>
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-2 p-2">
-                            {/* Big tap target: toggles present/absent */}
+                        <div key={r.enrollmentId} className={meta.row}>
+                          <div className="flex items-center gap-1.5 px-2">
+                            {/* Tap target: toggles present/absent */}
                             <button
                               type="button"
                               onClick={() => toggleStatus(r.enrollmentId)}
-                              className="flex items-center gap-3 flex-1 min-w-[12rem] text-left rounded-lg px-1.5 py-1.5 -m-0.5 active:scale-[0.99] transition-transform"
+                              className="flex items-center gap-2 flex-1 min-w-0 text-left py-1.5 active:opacity-70"
                             >
-                              <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${meta.dot}`}>
-                                {present ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                              <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full ${meta.dot}`}>
+                                {present ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
                               </span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-medium text-slate-900 truncate">{r.clientName}</span>
-                                <span className="block text-xs text-slate-500 truncate">{r.dogName ?? '—'}</span>
+                              <span className="text-sm text-slate-900 truncate">
+                                {r.clientName}{r.dogName && <span className="text-slate-400"> · {r.dogName}</span>}
                               </span>
-                              <span className={`ml-auto text-xs font-medium ${meta.text}`}>{meta.label}</span>
+                              {!present && <span className={`ml-auto text-[11px] font-medium ${meta.text}`}>{meta.label}</span>}
                             </button>
 
                             {/* Exceptions picker (Late / Excused / Makeup) */}
                             <select
                               value={EXCEPTION_STATUSES.includes(d.status) ? d.status : ''}
                               onChange={e => e.target.value && setStatus(r.enrollmentId, e.target.value as AttStatus)}
-                              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="h-7 rounded-md border border-slate-200 bg-white px-1 text-xs text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
                               aria-label="Other status"
                             >
                               <option value="">⋯</option>
                               {EXCEPTION_STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
                             </select>
 
-                            {/* Note (tucked behind an icon) */}
+                            {/* Quick note (tucked behind an icon) */}
                             <button
                               type="button"
                               onClick={() => setNoteOpen(prev => { const n = new Set(prev); if (n.has(r.enrollmentId)) n.delete(r.enrollmentId); else n.add(r.enrollmentId); return n })}
                               title="Quick note"
-                              className={`flex h-9 w-9 items-center justify-center rounded-lg border ${d.note ? 'border-blue-300 bg-blue-50 text-blue-600' : 'border-slate-200 text-slate-400 hover:text-slate-600'}`}
+                              className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border ${d.note ? 'border-blue-300 bg-blue-50 text-blue-600' : 'border-slate-200 text-slate-400 hover:text-slate-600'}`}
                             >
-                              <StickyNote className="h-4 w-4" />
+                              <StickyNote className="h-3.5 w-3.5" />
                             </button>
 
                             {/* Write-up (separate phase) */}
                             <button
                               type="button"
                               onClick={() => setNotesFor(r.enrollmentId)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 px-3 h-9 text-xs font-medium text-slate-600 hover:text-blue-700 whitespace-nowrap"
+                              title="Write up notes"
+                              className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border ${r.hasReport ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-slate-200 text-slate-400 hover:text-slate-600'}`}
                             >
                               <ClipboardCheck className="h-3.5 w-3.5" />
-                              {r.hasReport ? 'Notes ✓' : 'Notes'}
                             </button>
                           </div>
 
                           {showNote && (
-                            <div className="px-2 pb-2">
+                            <div className="px-2 pb-1.5 pl-9">
                               <input
                                 type="text"
                                 placeholder="Quick note (optional)"
                                 value={d.note}
                                 autoFocus={noteOpen.has(r.enrollmentId) && !d.note}
                                 onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
-                                className="w-full h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full h-8 rounded-md border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               />
                             </div>
                           )}
