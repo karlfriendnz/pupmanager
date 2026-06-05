@@ -940,6 +940,24 @@ export async function seedDemoData(
     const run = await prisma.classRun.create({
       data: { trainerId, isSample: markSample, packageId: pkg.id, name: def.name, scheduleNote: def.scheduleNote, startDate: start, capacity: 8, status: def.status },
     })
+    // Generate the class's shared session series (weekly from the start) so the
+    // class detail page isn't empty — past ones completed, future ones upcoming.
+    const classSessionRows = []
+    for (let s = 0; s < pkg.sessionCount; s++) {
+      const d = new Date(start)
+      d.setDate(d.getDate() + s * Math.max(1, pkg.weeksBetween) * 7)
+      classSessionRows.push({
+        trainerId,
+        classRunId: run.id,
+        sessionIndex: s + 1,
+        title: pkg.sessionCount > 1 ? `${def.name} — session ${s + 1}/${pkg.sessionCount}` : def.name,
+        scheduledAt: d,
+        durationMins: pkg.durationMins,
+        sessionType: pkg.sessionType,
+        status: d.getTime() < now.getTime() ? ('COMPLETED' as const) : ('UPCOMING' as const),
+      })
+    }
+    await prisma.trainingSession.createMany({ data: classSessionRows })
     // Wrap-around offset so every class gets its full enrolment even when the
     // sandbox only has ~12 clients (the old fixed i*8 slice left later classes
     // empty). Indices stay distinct within a class (enrol < client count).
