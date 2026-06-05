@@ -408,6 +408,8 @@ type RosterRow = {
   dogName: string | null
   type: string
   status: AttStatus
+  note: string
+  hasReport: boolean
   report: { answers?: Record<string, string>; closing?: string | null } | null
 }
 type AttendanceData = {
@@ -416,8 +418,12 @@ type AttendanceData = {
   availableForms: FormLite[]
   roster: RosterRow[]
 }
-type ClientDraft = { status: AttStatus; answers: Record<string, string>; recap: string }
+type ClientDraft = { status: AttStatus; note: string; answers: Record<string, string>; recap: string }
 
+// The class session view. Two phases that happen at different times:
+//   1) Attendance — mark each enrolled client present/absent + a quick note.
+//   2) Notes — later, click a client's "Notes" to open the session form and
+//      write up their report.
 function AttendanceModal({
   runId,
   session,
@@ -430,9 +436,10 @@ function AttendanceModal({
   const [data, setData] = useState<AttendanceData | null>(null)
   const [formId, setFormId] = useState('')
   const [draft, setDraft] = useState<Record<string, ClientDraft>>({})
+  const [notesFor, setNotesFor] = useState<string | null>(null) // enrollmentId being written up
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [saved, setSaved] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/class-runs/${runId}/sessions/${session.id}/attendance`)
@@ -443,57 +450,62 @@ function AttendanceModal({
     const d: AttendanceData = await res.json()
     setData(d)
     setFormId(d.effectiveForm?.id ?? '')
-    const next: Record<string, ClientDraft> = {}
-    for (const r of d.roster) {
-      next[r.enrollmentId] = {
-        status: r.status,
-        answers: r.report?.answers ?? {},
-        recap: r.report?.closing ?? '',
-      }
-    }
-    setDraft(next)
+    setDraft(Object.fromEntries(d.roster.map(r => [r.enrollmentId, {
+      status: r.status,
+      note: r.note ?? '',
+      answers: r.report?.answers ?? {},
+      recap: r.report?.closing ?? '',
+    }])))
   }, [runId, session.id])
 
   useEffect(() => { void load() }, [load])
 
   const selectedForm = data?.availableForms.find(f => f.id === formId) ?? null
 
-  async function save() {
+  async function put(body: object): Promise<boolean> {
+    const res = await fetch(`/api/class-runs/${runId}/sessions/${session.id}/attendance`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    return res.ok
+  }
+
+  // Phase 1: attendance (status + quick note for everyone).
+  async function saveAttendance() {
     if (!data) return
-    setSaving(true)
-    setError(null)
+    setSaving(true); setError(null)
     try {
-      const records = data.roster.map(r => {
-        const d = draft[r.enrollmentId]
-        return {
-          enrollmentId: r.enrollmentId,
-          status: d.status,
-          report: {
-            formId: formId || null,
-            answers: d.answers,
-            closing: d.recap.trim() || null,
-          },
-        }
-      })
-      const res = await fetch(`/api/class-runs/${runId}/sessions/${session.id}/attendance`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionFormId: formId || null, records }),
-      })
-      if (!res.ok) {
-        setError('Could not save the session.')
-        return
-      }
-      setSaved(true)
+      const records = data.roster.map(r => ({ enrollmentId: r.enrollmentId, status: draft[r.enrollmentId].status, note: draft[r.enrollmentId].note.trim() || null }))
+      const ok = await put({ sessionFormId: formId || null, records })
+      if (!ok) { setError('Could not save attendance.'); return }
+      setSaved('Attendance saved.')
       setTimeout(onClose, 600)
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
+  }
+
+  // Phase 2: write up one client's report.
+  async function saveNotes(enrollmentId: string) {
+    const d = draft[enrollmentId]
+    setSaving(true); setError(null)
+    try {
+      const ok = await put({
+        sessionFormId: formId || null,
+        records: [{ enrollmentId, report: { formId: formId || null, answers: d.answers, closing: d.recap.trim() || null } }],
+      })
+      if (!ok) { setError('Could not save the notes.'); return }
+      setNotesFor(null)
+      setSaved('Notes saved.')
+      await load()
+      setTimeout(() => setSaved(null), 1500)
+    } finally { setSaving(false) }
   }
 
   function setAnswer(enrollmentId: string, qid: string, value: string) {
     setDraft(p => ({ ...p, [enrollmentId]: { ...p[enrollmentId], answers: { ...p[enrollmentId].answers, [qid]: value } } }))
   }
+
+  const notesRow = notesFor ? data?.roster.find(r => r.enrollmentId === notesFor) ?? null : null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -502,7 +514,7 @@ function AttendanceModal({
         <div className="flex items-center justify-between p-5 border-b border-slate-100 sticky top-0 bg-white">
           <div>
             <h2 className="font-semibold text-slate-900">{session.title}</h2>
-            <p className="text-xs text-slate-500">{new Date(session.scheduledAt).toLocaleString()}</p>
+            <p className="text-xs text-slate-500" suppressHydrationWarning>{new Date(session.scheduledAt).toLocaleString()}</p>
           </div>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
@@ -510,19 +522,49 @@ function AttendanceModal({
         </div>
         <div className="p-5">
           {error && <Alert variant="error" className="mb-3">{error}</Alert>}
-          {saved && <Alert variant="success" className="mb-3">Session saved.</Alert>}
+          {saved && <Alert variant="success" className="mb-3">{saved}</Alert>}
+
           {!data ? (
             <p className="text-sm text-slate-500 py-6 text-center">Loading session…</p>
+
+          ) : notesRow ? (
+            /* ─── Notes phase: write up one client ─── */
+            <div className="flex flex-col gap-3">
+              <button onClick={() => setNotesFor(null)} className="self-start text-xs font-medium text-slate-500 hover:text-slate-700">← Back to attendance</button>
+              <p className="text-sm font-semibold text-slate-900">
+                {notesRow.clientName}{notesRow.dogName && <span className="text-slate-500 font-normal"> · {notesRow.dogName}</span>}
+              </p>
+              {!selectedForm && <p className="text-xs text-slate-400">No form set for this session — pick one in the attendance view, or just write a recap below.</p>}
+              {selectedForm?.questions.map(q => {
+                const label = q.label ?? 'Field'
+                const val = draft[notesRow.enrollmentId].answers[q.id] ?? ''
+                const isLong = q.type === 'LONG_TEXT'
+                const isNum = q.type === 'NUMBER' || q.type === 'RATING_1_5'
+                return (
+                  <label key={q.id} className="block">
+                    <span className="text-[11px] font-medium text-slate-500">{label}</span>
+                    {isLong
+                      ? <textarea rows={3} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      : <input type={isNum ? 'number' : 'text'} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-0.5 w-full h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />}
+                  </label>
+                )
+              })}
+              <label className="block">
+                <span className="text-[11px] font-medium text-slate-500">Recap message for the client (optional)</span>
+                <textarea rows={3} value={draft[notesRow.enrollmentId].recap} onChange={e => setDraft(p => ({ ...p, [notesRow.enrollmentId]: { ...p[notesRow.enrollmentId], recap: e.target.value } }))} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </label>
+              <div className="flex gap-2 pt-1">
+                <Button onClick={() => saveNotes(notesRow.enrollmentId)} loading={saving}>Save notes</Button>
+                <Button variant="ghost" onClick={() => setNotesFor(null)}>Back</Button>
+              </div>
+            </div>
+
           ) : (
+            /* ─── Attendance phase: roster ─── */
             <>
-              {/* Form for this session (defaults to the class form; override here). */}
               <div className="mb-4">
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Form for this session</label>
-                <select
-                  value={formId}
-                  onChange={e => setFormId(e.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
+                <select value={formId} onChange={e => setFormId(e.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">No form</option>
                   {data.availableForms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
@@ -531,55 +573,41 @@ function AttendanceModal({
               {data.roster.length === 0 ? (
                 <p className="text-sm text-slate-500 py-6 text-center">No enrolled clients to mark.</p>
               ) : (
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5">
                   {data.roster.map(r => {
                     const d = draft[r.enrollmentId]
                     if (!d) return null
                     return (
                       <div key={r.enrollmentId} className="rounded-xl border border-slate-200 p-3">
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <p className="text-sm font-medium text-slate-900">
-                            {r.clientName}
-                            {r.dogName && <span className="text-slate-500 font-normal"> · {r.dogName}</span>}
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-slate-900 min-w-0 truncate">
+                            {r.clientName}{r.dogName && <span className="text-slate-500 font-normal"> · {r.dogName}</span>}
                           </p>
                           <select
                             value={d.status}
                             onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, status: e.target.value as AttStatus } }))}
-                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
                           >
                             {ATT_STATUSES.map(s => <option key={s} value={s}>{s.toLowerCase()}</option>)}
                           </select>
                         </div>
-
-                        {/* Per-client form answers + recap. */}
-                        {selectedForm && (
-                          <div className="flex flex-col gap-2 mb-2">
-                            {selectedForm.questions.map(q => {
-                              const label = q.label ?? 'Field'
-                              const val = d.answers[q.id] ?? ''
-                              const isLong = q.type === 'LONG_TEXT'
-                              const isNum = q.type === 'NUMBER' || q.type === 'RATING_1_5'
-                              return (
-                                <label key={q.id} className="block">
-                                  <span className="text-[11px] font-medium text-slate-500">{label}</span>
-                                  {isLong ? (
-                                    <textarea rows={2} value={val} onChange={e => setAnswer(r.enrollmentId, q.id, e.target.value)} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                                  ) : (
-                                    <input type={isNum ? 'number' : 'text'} value={val} onChange={e => setAnswer(r.enrollmentId, q.id, e.target.value)} className="mt-0.5 w-full h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                                  )}
-                                </label>
-                              )
-                            })}
-                          </div>
-                        )}
-
-                        <textarea
-                          rows={2}
-                          placeholder={selectedForm ? 'Recap message for this client (optional)' : 'Note for this client (optional)'}
-                          value={d.recap}
-                          onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, recap: e.target.value } }))}
-                          className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="text"
+                            placeholder="Quick note (optional)"
+                            value={d.note}
+                            onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
+                            className="flex-1 h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setNotesFor(r.enrollmentId)}
+                            className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 px-3 h-9 text-xs font-medium text-slate-600 hover:text-blue-700"
+                          >
+                            <ClipboardCheck className="h-3.5 w-3.5" />
+                            {r.hasReport ? 'Notes ✓' : 'Notes'}
+                          </button>
+                        </div>
                       </div>
                     )
                   })}
@@ -587,7 +615,7 @@ function AttendanceModal({
               )}
 
               <div className="flex gap-2 pt-3">
-                <Button onClick={save} loading={saving}>Save session</Button>
+                <Button onClick={saveAttendance} loading={saving}>Save attendance</Button>
                 <Button variant="ghost" onClick={onClose}>Cancel</Button>
               </div>
             </>

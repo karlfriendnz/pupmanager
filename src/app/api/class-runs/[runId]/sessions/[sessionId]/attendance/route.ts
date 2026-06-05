@@ -61,6 +61,8 @@ export async function GET(
       dogName: e.dog?.name ?? null,
       type: e.type,
       status: e.attendance[0]?.status ?? 'PRESENT',
+      note: e.attendance[0]?.note ?? '',
+      hasReport: !!e.attendance[0]?.report,
       report: (e.attendance[0]?.report ?? null) as { answers?: Record<string, string>; intro?: string | null; closing?: string | null } | null,
     })),
   })
@@ -74,8 +76,11 @@ const putSchema = z.object({
     .array(
       z.object({
         enrollmentId: z.string().min(1),
-        status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'MAKEUP']),
-        // This client's own report for the session.
+        // Attendance phase (taken at the session). All optional so the notes
+        // phase can save a report later without resending these.
+        status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'MAKEUP']).optional(),
+        note: z.string().max(4000).nullable().optional(),
+        // Notes phase (written up later): this client's own filled form.
         report: z
           .object({
             formId: z.string().nullable().optional(),
@@ -140,10 +145,22 @@ export async function PUT(
             closing: r.report.closing ?? null,
           }
         : undefined
+      // Update only the fields this save provided, so the attendance phase and
+      // the (later) notes phase don't clobber each other.
       return prisma.sessionAttendance.upsert({
         where: { sessionId_enrollmentId: { sessionId, enrollmentId: r.enrollmentId } },
-        create: { sessionId, enrollmentId: r.enrollmentId, status: r.status, ...(report && { report }) },
-        update: { status: r.status, ...(report && { report }) },
+        create: {
+          sessionId,
+          enrollmentId: r.enrollmentId,
+          status: r.status ?? 'PRESENT',
+          ...(r.note !== undefined && { note: r.note }),
+          ...(report && { report }),
+        },
+        update: {
+          ...(r.status !== undefined && { status: r.status }),
+          ...(r.note !== undefined && { note: r.note }),
+          ...(report && { report }),
+        },
       })
     }),
   )
