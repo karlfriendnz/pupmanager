@@ -148,11 +148,17 @@ enum NotificationType {
   DAILY_SUMMARY // morning digest of today's sessions/tasks
   WEEKLY_SUMMARY // Sunday-evening wrap of the week + week-ahead glance
   STREAK_UPDATE // daily nudge about the trainer's weekly engagement streak
+  // ─── Client-facing (the dog owner) ───
+  CLIENT_ADDED_TO_PLAN // trainer added the client to a session / package / class
+  CLIENT_SESSION_REMINDER // upcoming session — morning digest and/or n minutes before
+  CLIENT_SESSION_CHANGED // a session was rescheduled or cancelled
+  CLIENT_RECAP_READY // the trainer posted the write-up for a session
 }
 
 enum NotificationChannel {
   PUSH
   EMAIL
+  IN_APP // shows in the client's notifications feed
 }
 
 // Per-(user, type, channel) preference. Absence of a row means "use the
@@ -1272,13 +1278,17 @@ model Message {
 // ─── Notifications ────────────────────────────────────────────────────────────
 
 model Notification {
-  id        String    @id @default(cuid())
+  id        String            @id @default(cuid())
   userId    String
   title     String
   body      String
+  // Optional category + deep link so the feed can group/route. Null = legacy.
+  type      NotificationType?
+  link      String?
   readAt    DateTime?
-  createdAt DateTime  @default(now())
+  createdAt DateTime          @default(now())
 
+  @@index([userId])
   @@map("notifications")
 }
 
