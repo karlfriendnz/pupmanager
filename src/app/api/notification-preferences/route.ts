@@ -45,7 +45,7 @@ export async function GET() {
 
 const updateSchema = z.object({
   type: z.string(),
-  channel: z.enum(['PUSH', 'EMAIL']),
+  channel: z.enum(['PUSH', 'EMAIL', 'IN_APP']),
   enabled: z.boolean().optional(),
   minutesBefore: z.number().int().min(1).max(7 * 24 * 60).nullable().optional(),
   dailyAtHour: z.number().int().min(0).max(23).nullable().optional(),
