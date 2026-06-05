@@ -85,6 +85,8 @@ export function SessionView({
   const [notesFor, setNotesFor] = useState<string | null>(null)
   const [noteOpen, setNoteOpen] = useState<Set<string>>(new Set())
   const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
@@ -152,6 +154,7 @@ export function SessionView({
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressed = useRef(false)
   function startPress(id: string) {
+    if (selectMode) return
     longPressed.current = false
     pressTimer.current = setTimeout(() => { longPressed.current = true; setMenuFor(id) }, 450)
   }
@@ -159,6 +162,16 @@ export function SessionView({
   function rowTap(id: string) {
     if (longPressed.current) { longPressed.current = false; return }
     toggleStatus(id)
+  }
+
+  // Bulk selection mode: pick several, then apply one status to all.
+  function toggleSelected(id: string) {
+    setSelected(p => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  }
+  function exitSelect() { setSelectMode(false); setSelected(new Set()) }
+  function applyToSelected(s: AttStatus) {
+    setDraft(p => { const next = { ...p }; selected.forEach(id => { if (next[id]) next[id] = { ...next[id], status: s } }); return next })
+    exitSelect()
   }
 
   const notesRow = notesFor ? data?.roster.find(r => r.enrollmentId === notesFor) ?? null : null
@@ -176,7 +189,7 @@ export function SessionView({
         }
       />
 
-      <div className="w-full max-w-5xl mx-auto px-4 pt-4 pb-28">
+      <div className="w-full max-w-2xl mx-auto px-4 pt-4 pb-28">
         {error && <Alert variant="error" className="mb-3">{error}</Alert>}
 
         {!data ? (
@@ -224,7 +237,7 @@ export function SessionView({
           /* ─── Attendance phase ─── */
           <>
             {/* Form for this session — a quiet inline control */}
-            <div className="flex items-center gap-2 mb-3 text-sm">
+            <div className="flex items-center gap-2 mb-2 text-sm">
               <span className="text-slate-400">Form</span>
               <select value={formId} onChange={e => setFormId(e.target.value)} className="flex-1 h-9 rounded-xl bg-white px-3 text-sm text-slate-700 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">No form</option>
@@ -232,10 +245,22 @@ export function SessionView({
               </select>
             </div>
 
+            {/* Select-mode toggle */}
+            {data.roster.length > 0 && (
+              <div className="flex items-center justify-between mb-2 px-0.5">
+                {selectMode
+                  ? <button type="button" onClick={() => setSelected(new Set(data.roster.map(r => r.enrollmentId)))} className="text-xs font-medium text-blue-600 hover:text-blue-700">Select all</button>
+                  : <p className="text-xs text-slate-400">Tap to mark · hold for options</p>}
+                {selectMode
+                  ? <button type="button" onClick={exitSelect} className="text-xs font-medium text-slate-500 hover:text-slate-700">Cancel</button>
+                  : <button type="button" onClick={() => setSelectMode(true)} className="text-xs font-medium text-blue-600 hover:text-blue-700">Select</button>}
+              </div>
+            )}
+
             {data.roster.length === 0 ? (
               <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 p-10 text-center text-sm text-slate-500">No enrolled clients to mark.</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="flex flex-col gap-2">
                 {data.roster.map(r => {
                   const d = draft[r.enrollmentId]
                   if (!d) return null
@@ -243,18 +268,23 @@ export function SessionView({
                   const present = d.status === 'PRESENT'
                   const showNote = noteOpen.has(r.enrollmentId) || !!d.note
                   return (
-                    <div key={r.enrollmentId} className={`relative rounded-2xl ring-1 ring-slate-100 ${meta.row || 'bg-white'}`}>
+                    <div key={r.enrollmentId} className={`relative rounded-2xl ${selected.has(r.enrollmentId) ? 'ring-2 ring-blue-400 bg-blue-50' : `ring-1 ring-slate-100 ${meta.row || 'bg-white'}`}`}>
                       <div className="flex items-center">
-                        {/* Tap = present/absent · hold = status menu */}
+                        {/* Tap = present/absent (or select) · hold = status menu */}
                         <button
                           type="button"
-                          onClick={() => rowTap(r.enrollmentId)}
+                          onClick={() => selectMode ? toggleSelected(r.enrollmentId) : rowTap(r.enrollmentId)}
                           onPointerDown={() => startPress(r.enrollmentId)}
                           onPointerUp={endPress}
                           onPointerLeave={endPress}
                           onPointerMove={endPress}
                           className="flex items-center gap-3 flex-1 min-w-0 text-left px-3 py-2 active:opacity-70 select-none"
                         >
+                          {selectMode && (
+                            <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 ${selected.has(r.enrollmentId) ? 'bg-blue-500 border-blue-500 text-white' : 'border-slate-300'}`}>
+                              {selected.has(r.enrollmentId) && <Check className="h-3 w-3" />}
+                            </span>
+                          )}
                           <StatusAvatar name={r.clientName} photoUrl={r.dogPhotoUrl} status={d.status} />
                           <span className="min-w-0">
                             <span className="block text-sm font-medium text-slate-900 truncate">{r.clientName}</span>
@@ -265,7 +295,8 @@ export function SessionView({
                           </span>
                         </button>
 
-                        {/* Trailing actions — borderless, muted */}
+                        {/* Trailing actions — hidden in select mode */}
+                        {!selectMode && <>
                         <button type="button" onClick={() => setMenuFor(menuFor === r.enrollmentId ? null : r.enrollmentId)} aria-label="Set status" className="flex-shrink-0 p-2 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100">
                           <ChevronDown className="h-4 w-4" />
                         </button>
@@ -275,6 +306,7 @@ export function SessionView({
                         <button type="button" onClick={() => setNotesFor(r.enrollmentId)} title="Write up notes" className={`flex-shrink-0 p-2 mr-1 rounded-lg hover:bg-slate-100 ${r.hasReport ? 'text-emerald-500' : 'text-slate-300 hover:text-slate-600'}`}>
                           <ClipboardCheck className="h-4 w-4" />
                         </button>
+                        </>}
                       </div>
 
                       {showNote && (
@@ -319,11 +351,27 @@ export function SessionView({
       {/* Pinned bottom action bar (attendance phase) */}
       {data && !notesRow && data.roster.length > 0 && (
         <div className="sticky bottom-0 inset-x-0 border-t border-slate-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/75">
-          <div className="w-full max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-            <span className="text-sm text-slate-500">
-              {saved ? <span className="text-emerald-600 font-medium">{saved}</span> : <><span className="font-semibold text-slate-700">{presentCount}</span>/{data.roster.length} present</>}
-            </span>
-            <Button onClick={saveAttendance} loading={saving}>Save attendance</Button>
+          <div className="w-full max-w-2xl mx-auto px-4 py-3">
+            {selectMode ? (
+              <div className="flex items-center gap-2 overflow-x-auto">
+                <span className="text-sm text-slate-500 whitespace-nowrap mr-1"><span className="font-semibold text-slate-700">{selected.size}</span> selected</span>
+                {ALL_STATUSES.map(s => {
+                  const m = STATUS_META[s]
+                  return (
+                    <button key={s} type="button" disabled={selected.size === 0} onClick={() => applyToSelected(s)} className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 h-9 text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300 disabled:opacity-40 whitespace-nowrap">
+                      <span className={`h-2 w-2 rounded-full ${m.badge}`} />{m.label}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-slate-500">
+                  {saved ? <span className="text-emerald-600 font-medium">{saved}</span> : <><span className="font-semibold text-slate-700">{presentCount}</span>/{data.roster.length} present</>}
+                </span>
+                <Button onClick={saveAttendance} loading={saving}>Save attendance</Button>
+              </div>
+            )}
           </div>
         </div>
       )}
