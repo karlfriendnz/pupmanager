@@ -446,17 +446,38 @@ function TrainerShell({
     <div className="flex min-h-screen flex-col md:flex-row">
       <aside className={cn('hidden md:flex md:flex-col md:fixed md:inset-y-0 bg-white border-r border-slate-100 transition-all duration-200', sidebarWidth)}>
         <div className={cn('flex h-16 items-center border-b border-slate-100', collapsed ? 'justify-center px-2' : 'gap-3 px-5')}>
-          {trainerLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={trainerLogo} alt={businessName} className="h-8 w-8 rounded-lg object-cover" />
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={toggleCollapse}
+              title="Expand menu"
+              aria-label="Expand menu"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+            >
+              <PanelLeftOpen className="h-5 w-5" />
+            </button>
           ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg" />
-          )}
-          {!collapsed && (
-            <span className="font-semibold text-slate-900 truncate">
-              {businessName ?? 'PupManager'}
-            </span>
+            <>
+              {trainerLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={trainerLogo} alt={businessName} className="h-8 w-8 rounded-lg object-cover" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg" />
+              )}
+              <span className="font-semibold text-slate-900 truncate">
+                {businessName ?? 'PupManager'}
+              </span>
+              <button
+                type="button"
+                onClick={toggleCollapse}
+                title="Collapse menu"
+                aria-label="Collapse menu"
+                className="ml-auto flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </button>
+            </>
           )}
         </div>
 
@@ -514,21 +535,6 @@ function TrainerShell({
             )
           })}
         </nav>
-
-        {/* Collapse / expand the sidebar (persisted to localStorage). */}
-        <button
-          type="button"
-          onClick={toggleCollapse}
-          title={collapsed ? 'Expand menu' : 'Collapse menu'}
-          aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
-          className={cn(
-            'mx-3 mb-1 flex items-center rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors',
-            collapsed ? 'justify-center h-10 w-10 mx-auto' : 'gap-2 px-3 py-2',
-          )}
-        >
-          {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4 flex-shrink-0" />}
-          {!collapsed && <span className="text-sm font-medium">Collapse</span>}
-        </button>
 
         {/* Always-visible engagement streak. The flex-1 <nav> above
             pushes this + the user block to the bottom of the sidebar.
