@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Dog, ShoppingBag, ArrowRight, DollarSign } from 'lucide-react'
+import { Dog, ShoppingBag, ArrowRight, DollarSign, Users } from 'lucide-react'
 import { cn, formatSessionTitle } from '@/lib/utils'
 
 export type SessionRowStatus = 'UPCOMING' | 'COMPLETED' | 'COMMENTED' | 'INVOICED'
@@ -18,6 +18,10 @@ export interface SessionRowSession {
   invoicedAt?: Date | string | null
   location?: string | null
   clientId?: string | null
+  // Group-class session: shared session with no single client. When set the
+  // card shows the class name + a "Class" badge and links to the class session.
+  classRunId?: string | null
+  classRun?: { name: string } | null
   client?: { user: { name: string | null; email: string } } | null
   dog?: {
     name: string
@@ -81,13 +85,14 @@ export function SessionRowCard({
     ? start.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', timeZone: tz })
     : null
 
+  const isClass = !!s.classRunId
   const clientUser = s.client?.user ?? s.dog?.primaryFor?.[0]?.user
   const clientName = clientUser ? (clientUser.name ?? clientUser.email) : null
   const displayTitle = formatSessionTitle(s.title)
 
   const card = (
     <Link
-      href={href ?? `/sessions/${s.id}`}
+      href={href ?? (isClass ? `/classes/${s.classRunId}/sessions/${s.id}` : `/sessions/${s.id}`)}
       aria-label={`Open session: ${displayTitle}`}
       className={cn(
         'block rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden transition-all hover:shadow-md hover:-translate-y-px hover:border-blue-200 flex-1 min-w-0',
@@ -124,7 +129,13 @@ export function SessionRowCard({
         {/* Body — stacked on mobile, single row on desktop. */}
         <div className="flex-1 min-w-0 px-3 py-2 sm:py-0 sm:px-3.5 flex flex-col sm:flex-row sm:items-center gap-y-0.5 sm:gap-y-0 sm:gap-x-2">
           <div className="inline-flex items-center gap-1.5 min-w-0">
-            {s.dog ? (
+            {isClass ? (
+              <>
+                <Users className="h-3.5 w-3.5 text-teal-500 flex-shrink-0" aria-hidden />
+                <p className="text-sm font-semibold text-slate-900 truncate">{s.classRun?.name ?? displayTitle}</p>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 flex-shrink-0">Class</span>
+              </>
+            ) : s.dog ? (
               <>
                 <Dog className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" aria-hidden />
                 <p className="text-sm font-semibold text-slate-900 truncate">{s.dog.name}</p>

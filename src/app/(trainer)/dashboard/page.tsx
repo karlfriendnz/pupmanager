@@ -102,10 +102,10 @@ export default async function DashboardPage({
     where: {
       trainerId,
       scheduledAt: { gte: focusStart, lte: focusEnd },
-      // Hide sessions whose client was deleted. clientId is `onDelete: SetNull`,
-      // so a deleted client leaves orphan rows; we treat them as gone here
-      // rather than auto-removing them so trainers don't lose past records.
-      clientId: { not: null },
+      // Include 1:1 sessions (clientId set) and group-class sessions
+      // (classRunId set). clientId is `onDelete: SetNull`, so a deleted client
+      // leaves orphan rows — those (no client AND no class) stay hidden.
+      OR: [{ clientId: { not: null } }, { classRunId: { not: null } }],
     },
     include: {
       client: { select: { user: { select: { name: true, email: true } } } },
@@ -115,6 +115,7 @@ export default async function DashboardPage({
           primaryFor: { select: { user: { select: { name: true, email: true } } } },
         },
       },
+      classRun: { select: { name: true } },
     },
     orderBy: { scheduledAt: 'asc' },
   })
