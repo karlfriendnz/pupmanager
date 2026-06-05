@@ -6,10 +6,20 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
-import { ClipboardCheck, ChevronLeft } from 'lucide-react'
+import { ClipboardCheck, ChevronLeft, Check, X, StickyNote } from 'lucide-react'
 
-const ATT_STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'MAKEUP'] as const
-type AttStatus = (typeof ATT_STATUSES)[number]
+type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'MAKEUP'
+
+// Visual treatment per status. Present/Absent are the one-tap toggle; the rest
+// are the "exceptions" set via the small picker.
+const STATUS_META: Record<AttStatus, { label: string; ring: string; dot: string; text: string }> = {
+  PRESENT:  { label: 'Present',  ring: 'border-emerald-300 bg-emerald-50', dot: 'bg-emerald-500 text-white',  text: 'text-emerald-700' },
+  ABSENT:   { label: 'Absent',   ring: 'border-slate-200 bg-white',         dot: 'bg-slate-200 text-slate-500', text: 'text-slate-400' },
+  LATE:     { label: 'Late',     ring: 'border-amber-300 bg-amber-50',      dot: 'bg-amber-500 text-white',     text: 'text-amber-700' },
+  EXCUSED:  { label: 'Excused',  ring: 'border-sky-300 bg-sky-50',          dot: 'bg-sky-500 text-white',       text: 'text-sky-700' },
+  MAKEUP:   { label: 'Makeup',   ring: 'border-violet-300 bg-violet-50',    dot: 'bg-violet-500 text-white',    text: 'text-violet-700' },
+}
+const EXCEPTION_STATUSES: AttStatus[] = ['LATE', 'EXCUSED', 'MAKEUP']
 
 type FormQuestion = { id: string; type: string; label?: string }
 type FormLite = { id: string; name: string; questions: FormQuestion[] }
@@ -75,7 +85,16 @@ export function SessionView({
 
   useEffect(() => { void load() }, [load])
 
+  const [noteOpen, setNoteOpen] = useState<Set<string>>(new Set())
   const selectedForm = data?.availableForms.find(f => f.id === formId) ?? null
+
+  // Tap toggles Present ⇄ Absent (a special status resets to Present).
+  function toggleStatus(enrollmentId: string) {
+    setDraft(p => ({ ...p, [enrollmentId]: { ...p[enrollmentId], status: p[enrollmentId].status === 'PRESENT' ? 'ABSENT' : 'PRESENT' } }))
+  }
+  function setStatus(enrollmentId: string, s: AttStatus) {
+    setDraft(p => ({ ...p, [enrollmentId]: { ...p[enrollmentId], status: s } }))
+  }
 
   async function put(body: object): Promise<boolean> {
     const res = await fetch(`/api/class-runs/${runId}/sessions/${sessionId}/attendance`, {
@@ -192,59 +211,83 @@ export function SessionView({
               {data.roster.length === 0 ? (
                 <p className="text-sm text-slate-500 py-6 text-center">No enrolled clients to mark.</p>
               ) : (
-                <div className="overflow-x-auto -mx-2 md:mx-0">
-                  <table className="text-sm">
-                    <thead>
-                      <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 border-b border-slate-200">
-                        <th className="py-2 px-3">Client</th>
-                        <th className="py-2 px-3">Dog</th>
-                        <th className="py-2 px-3">Status</th>
-                        <th className="py-2 px-3">Note</th>
-                        <th className="py-2 px-3 text-right">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {data.roster.map(r => {
-                        const d = draft[r.enrollmentId]
-                        if (!d) return null
-                        return (
-                          <tr key={r.enrollmentId}>
-                            <td className="py-2 px-3 font-medium text-slate-900 whitespace-nowrap">{r.clientName}</td>
-                            <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{r.dogName ?? '—'}</td>
-                            <td className="py-2 px-3">
-                              <select
-                                value={d.status}
-                                onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, status: e.target.value as AttStatus } }))}
-                                className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              >
-                                {ATT_STATUSES.map(s => <option key={s} value={s}>{s.toLowerCase()}</option>)}
-                              </select>
-                            </td>
-                            <td className="py-2 px-3">
+                <>
+                  <p className="text-xs text-slate-400 mb-2">Everyone starts <span className="text-emerald-600 font-medium">present</span> — tap a row to mark absent.</p>
+                  <div className="flex flex-col gap-2">
+                    {data.roster.map(r => {
+                      const d = draft[r.enrollmentId]
+                      if (!d) return null
+                      const meta = STATUS_META[d.status]
+                      const present = d.status === 'PRESENT'
+                      const showNote = noteOpen.has(r.enrollmentId) || !!d.note
+                      return (
+                        <div key={r.enrollmentId} className={`rounded-xl border transition-colors ${meta.ring}`}>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-2 p-2">
+                            {/* Big tap target: toggles present/absent */}
+                            <button
+                              type="button"
+                              onClick={() => toggleStatus(r.enrollmentId)}
+                              className="flex items-center gap-3 flex-1 min-w-[12rem] text-left rounded-lg px-1.5 py-1.5 -m-0.5 active:scale-[0.99] transition-transform"
+                            >
+                              <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${meta.dot}`}>
+                                {present ? <Check className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-medium text-slate-900 truncate">{r.clientName}</span>
+                                <span className="block text-xs text-slate-500 truncate">{r.dogName ?? '—'}</span>
+                              </span>
+                              <span className={`ml-auto text-xs font-medium ${meta.text}`}>{meta.label}</span>
+                            </button>
+
+                            {/* Exceptions picker (Late / Excused / Makeup) */}
+                            <select
+                              value={EXCEPTION_STATUSES.includes(d.status) ? d.status : ''}
+                              onChange={e => e.target.value && setStatus(r.enrollmentId, e.target.value as AttStatus)}
+                              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              aria-label="Other status"
+                            >
+                              <option value="">⋯</option>
+                              {EXCEPTION_STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                            </select>
+
+                            {/* Note (tucked behind an icon) */}
+                            <button
+                              type="button"
+                              onClick={() => setNoteOpen(prev => { const n = new Set(prev); if (n.has(r.enrollmentId)) n.delete(r.enrollmentId); else n.add(r.enrollmentId); return n })}
+                              title="Quick note"
+                              className={`flex h-9 w-9 items-center justify-center rounded-lg border ${d.note ? 'border-blue-300 bg-blue-50 text-blue-600' : 'border-slate-200 text-slate-400 hover:text-slate-600'}`}
+                            >
+                              <StickyNote className="h-4 w-4" />
+                            </button>
+
+                            {/* Write-up (separate phase) */}
+                            <button
+                              type="button"
+                              onClick={() => setNotesFor(r.enrollmentId)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 px-3 h-9 text-xs font-medium text-slate-600 hover:text-blue-700 whitespace-nowrap"
+                            >
+                              <ClipboardCheck className="h-3.5 w-3.5" />
+                              {r.hasReport ? 'Notes ✓' : 'Notes'}
+                            </button>
+                          </div>
+
+                          {showNote && (
+                            <div className="px-2 pb-2">
                               <input
                                 type="text"
                                 placeholder="Quick note (optional)"
                                 value={d.note}
+                                autoFocus={noteOpen.has(r.enrollmentId) && !d.note}
                                 onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
-                                className="w-72 h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               />
-                            </td>
-                            <td className="py-2 px-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => setNotesFor(r.enrollmentId)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 px-3 h-9 text-xs font-medium text-slate-600 hover:text-blue-700 whitespace-nowrap"
-                              >
-                                <ClipboardCheck className="h-3.5 w-3.5" />
-                                {r.hasReport ? 'Notes ✓' : 'Notes'}
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
               )}
 
               <div className="flex gap-2">
