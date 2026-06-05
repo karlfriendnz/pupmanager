@@ -197,31 +197,29 @@ export function SessionView({
                     const d = draft[r.enrollmentId]
                     if (!d) return null
                     return (
-                      <div key={r.enrollmentId} className="rounded-xl border border-slate-200 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium text-slate-900 min-w-0 truncate">
+                      <div key={r.enrollmentId} className="rounded-xl border border-slate-200 p-2.5">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-slate-900 w-40 shrink-0 truncate">
                             {r.clientName}{r.dogName && <span className="text-slate-500 font-normal"> · {r.dogName}</span>}
                           </p>
-                          <select
-                            value={d.status}
-                            onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, status: e.target.value as AttStatus } }))}
-                            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
-                          >
-                            {ATT_STATUSES.map(s => <option key={s} value={s}>{s.toLowerCase()}</option>)}
-                          </select>
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
                           <input
                             type="text"
                             placeholder="Quick note (optional)"
                             value={d.note}
                             onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
-                            className="flex-1 h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="flex-1 min-w-0 h-9 rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
+                          <select
+                            value={d.status}
+                            onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, status: e.target.value as AttStatus } }))}
+                            className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 shrink-0"
+                          >
+                            {ATT_STATUSES.map(s => <option key={s} value={s}>{s.toLowerCase()}</option>)}
+                          </select>
                           <button
                             type="button"
                             onClick={() => setNotesFor(r.enrollmentId)}
-                            className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 px-3 h-9 text-xs font-medium text-slate-600 hover:text-blue-700"
+                            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 px-3 h-9 text-xs font-medium text-slate-600 hover:text-blue-700"
                           >
                             <ClipboardCheck className="h-3.5 w-3.5" />
                             {r.hasReport ? 'Notes ✓' : 'Notes'}
