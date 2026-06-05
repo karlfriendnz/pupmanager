@@ -46,10 +46,9 @@ async function doNotify({ userId, trainerId, type, vars = {}, link, ctaLabel, se
   const title = renderTemplate(meta.defaults.title, vars)
   const body = renderTemplate(meta.defaults.body, vars)
 
-  // In-app feed.
-  if (channelOn('IN_APP')) {
-    await prisma.notification.create({ data: { userId, type, title, body, link: link ?? null } })
-  }
+  // In-app feed — always written; it's the client's notification history, not
+  // an opt-in channel.
+  await prisma.notification.create({ data: { userId, type, title, body, link: link ?? null } })
 
   // Push (iOS).
   if (channelOn('PUSH')) {

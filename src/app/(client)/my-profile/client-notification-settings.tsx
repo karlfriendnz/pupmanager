@@ -6,13 +6,12 @@ import { NOTIFICATION_TYPES } from '@/lib/notification-types'
 import type { NotificationChannel } from '@/generated/prisma'
 
 const CLIENT_TYPES = Object.values(NOTIFICATION_TYPES).filter(m => m.audience === 'client')
+// Toggleable channels only — the in-app feed is always on (it's the history).
 const CHANNELS: { id: NotificationChannel; label: string; Icon: typeof Bell }[] = [
-  { id: 'PUSH', label: 'Push', Icon: Smartphone },
+  { id: 'PUSH', label: 'Phone', Icon: Smartphone },
   { id: 'EMAIL', label: 'Email', Icon: Mail },
-  { id: 'IN_APP', label: 'In-app', Icon: Bell },
 ]
-const LEAD_OPTIONS: { label: string; minutes: number | null }[] = [
-  { label: 'Off', minutes: null },
+const LEAD_OPTIONS: { label: string; minutes: number }[] = [
   { label: '30 min before', minutes: 30 },
   { label: '1 hour before', minutes: 60 },
   { label: '2 hours before', minutes: 120 },
@@ -51,26 +50,23 @@ export function ClientNotificationSettings() {
     }).catch(() => {})
   }
 
-  // Check-all per channel column.
   const channelAllOn = (channel: string) => CLIENT_TYPES.every(t => row(t.type, channel).enabled)
   async function toggleColumn(channel: string) {
     const target = !channelAllOn(channel)
     for (const t of CLIENT_TYPES) await save(t.type, channel, { enabled: target })
   }
 
-  // Reminder timing applies across channels — write to every channel row.
-  const reminder = CLIENT_TYPES.find(t => t.type === 'CLIENT_SESSION_REMINDER')
-  const timingRow = reminder ? row(reminder.type, reminder.channels[0]) : null
-  async function saveTiming(patch: Partial<PrefRow>) {
-    if (!reminder) return
-    for (const ch of reminder.channels) await save(reminder.type, ch, patch)
+  // The "before each session" lead time applies across that type's channels.
+  const leadMinutes = row('CLIENT_SESSION_REMINDER', 'PUSH').minutesBefore ?? 120
+  async function saveLead(minutes: number) {
+    for (const ch of CHANNELS) await save('CLIENT_SESSION_REMINDER', ch.id, { minutesBefore: minutes })
   }
 
   if (!loaded) return <p className="text-sm text-slate-400 py-4">Loading…</p>
 
   return (
-    <section>
-      <p className="text-sm text-slate-500 mb-4 flex items-center gap-1.5"><Bell className="h-4 w-4 text-accent" /> Tap to choose what you hear about and how.</p>
+    <section className="md:max-w-xl">
+      <p className="text-sm text-slate-500 mb-4 flex items-center gap-1.5"><Bell className="h-4 w-4 text-accent" /> Tap to choose what you hear about and how. Everything also shows in your in-app notifications.</p>
 
       <div className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
         <table className="w-full">
@@ -78,7 +74,7 @@ export function ClientNotificationSettings() {
             <tr className="border-b border-slate-100">
               <th className="text-left px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Notify me</th>
               {CHANNELS.map(({ id, label, Icon }) => (
-                <th key={id} className="px-1 py-2 w-[64px]">
+                <th key={id} className="px-1 py-2 w-[72px]">
                   <button type="button" onClick={() => toggleColumn(id)} className="flex flex-col items-center gap-1 w-full text-slate-500 hover:text-slate-700">
                     <Icon className="h-4 w-4" />
                     <span className="text-[11px] font-medium leading-none">{label}</span>
@@ -94,6 +90,15 @@ export function ClientNotificationSettings() {
                 <td className="px-3 py-3 align-top">
                   <p className="text-sm font-medium text-slate-900 leading-tight">{t.label}</p>
                   <p className="text-xs text-slate-400 leading-tight mt-0.5">{t.description}</p>
+                  {t.type === 'CLIENT_SESSION_REMINDER' && (
+                    <select
+                      value={leadMinutes}
+                      onChange={e => saveLead(Number(e.target.value))}
+                      className="mt-2 h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-accent"
+                    >
+                      {LEAD_OPTIONS.map(o => <option key={o.minutes} value={o.minutes}>{o.label}</option>)}
+                    </select>
+                  )}
                 </td>
                 {CHANNELS.map(({ id }) => {
                   const r = row(t.type, id)
@@ -114,32 +119,6 @@ export function ClientNotificationSettings() {
           </tbody>
         </table>
       </div>
-
-      {/* Reminder timing — only relevant to session reminders. */}
-      {timingRow && (
-        <div className="mt-4 rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4">
-          <p className="text-sm font-semibold text-slate-900 mb-3">Reminder timing</p>
-          <label className="flex items-center justify-between gap-2 py-1">
-            <span className="text-sm text-slate-700">Morning summary</span>
-            <input
-              type="checkbox"
-              checked={timingRow.dailyAtHour != null}
-              onChange={e => saveTiming({ dailyAtHour: e.target.checked ? 8 : null })}
-              className="h-5 w-5 accent-[var(--accent)] cursor-pointer"
-            />
-          </label>
-          <label className="flex items-center justify-between gap-2 py-1">
-            <span className="text-sm text-slate-700">Before each session</span>
-            <select
-              value={timingRow.minutesBefore ?? ''}
-              onChange={e => saveTiming({ minutesBefore: e.target.value ? Number(e.target.value) : null })}
-              className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {LEAD_OPTIONS.map(o => <option key={o.label} value={o.minutes ?? ''}>{o.label}</option>)}
-            </select>
-          </label>
-        </div>
-      )}
     </section>
   )
 }

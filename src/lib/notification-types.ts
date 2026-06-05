@@ -258,14 +258,17 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   },
 
   // ─── Client-facing (the dog owner) ───────────────────────────────────────
+  // Toggleable channels are Phone (push) + Email only — the in-app feed is
+  // always written (it's the client's notification history), so it isn't a
+  // preference.
   CLIENT_ADDED_TO_PLAN: {
     type: 'CLIENT_ADDED_TO_PLAN',
     label: 'Added to a plan',
     description: "When your trainer books you into a package, class or session.",
     trigger: 'event',
     audience: 'client',
-    channels: ['PUSH', 'EMAIL', 'IN_APP'],
-    defaultChannels: ['PUSH', 'EMAIL', 'IN_APP'],
+    channels: ['PUSH', 'EMAIL'],
+    defaultChannels: ['PUSH', 'EMAIL'],
     defaults: {
       enabled: true,
       title: "You're booked in",
@@ -274,18 +277,34 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     placeholders: ['trainerName', 'dogName', 'planName', 'detail'],
     sampleValues: { trainerName: 'Jess', dogName: 'Bailey', planName: 'Puppy Foundations', detail: '6 sessions · Thursdays 6pm' },
   },
-  CLIENT_SESSION_REMINDER: {
-    type: 'CLIENT_SESSION_REMINDER',
-    label: 'Session reminders',
-    description: "Reminders for your upcoming sessions — a morning summary and/or a heads-up shortly before each one.",
-    trigger: 'time-before-event',
+  CLIENT_SESSION_DIGEST: {
+    type: 'CLIENT_SESSION_DIGEST',
+    label: 'Morning summary',
+    description: "A rundown of the day's sessions each morning.",
+    trigger: 'time-of-day',
     audience: 'client',
-    channels: ['PUSH', 'EMAIL', 'IN_APP'],
-    defaultChannels: ['PUSH', 'IN_APP'],
+    channels: ['PUSH', 'EMAIL'],
+    defaultChannels: ['PUSH'],
     defaults: {
       enabled: true,
-      minutesBefore: 120,   // per-session lead (null in the row = off)
-      dailyAtHour: 8,       // morning digest (null in the row = off)
+      dailyAtHour: 8,
+      title: "Today's sessions",
+      body: '{{summary}}',
+    },
+    placeholders: ['summary'],
+    sampleValues: { summary: 'Puppy Foundations at 6:00 pm' },
+  },
+  CLIENT_SESSION_REMINDER: {
+    type: 'CLIENT_SESSION_REMINDER',
+    label: 'Before each session',
+    description: "A heads-up shortly before each session.",
+    trigger: 'time-before-event',
+    audience: 'client',
+    channels: ['PUSH', 'EMAIL'],
+    defaultChannels: ['PUSH'],
+    defaults: {
+      enabled: true,
+      minutesBefore: 120,
       title: 'Upcoming session — {{dogName}}',
       body: '{{planName}} at {{startTime}}',
     },
@@ -298,8 +317,8 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     description: "When a session is rescheduled or cancelled.",
     trigger: 'event',
     audience: 'client',
-    channels: ['PUSH', 'EMAIL', 'IN_APP'],
-    defaultChannels: ['PUSH', 'EMAIL', 'IN_APP'],
+    channels: ['PUSH', 'EMAIL'],
+    defaultChannels: ['PUSH', 'EMAIL'],
     defaults: {
       enabled: true,
       title: 'Session updated — {{dogName}}',
@@ -314,8 +333,8 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     description: "When your trainer posts the write-up for a session.",
     trigger: 'event',
     audience: 'client',
-    channels: ['PUSH', 'EMAIL', 'IN_APP'],
-    defaultChannels: ['PUSH', 'IN_APP'],
+    channels: ['PUSH', 'EMAIL'],
+    defaultChannels: ['PUSH'],
     defaults: {
       enabled: true,
       title: 'Your recap is ready — {{dogName}}',

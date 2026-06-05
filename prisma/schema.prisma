@@ -150,7 +150,8 @@ enum NotificationType {
   STREAK_UPDATE // daily nudge about the trainer's weekly engagement streak
   // ─── Client-facing (the dog owner) ───
   CLIENT_ADDED_TO_PLAN // trainer added the client to a session / package / class
-  CLIENT_SESSION_REMINDER // upcoming session — morning digest and/or n minutes before
+  CLIENT_SESSION_DIGEST // morning summary of the day's sessions
+  CLIENT_SESSION_REMINDER // a heads-up n minutes before each session
   CLIENT_SESSION_CHANGED // a session was rescheduled or cancelled
   CLIENT_RECAP_READY // the trainer posted the write-up for a session
 }
