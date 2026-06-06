@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { resolvePref } from '@/lib/notification-prefs'
 import type { NotificationType } from '@/generated/prisma'
@@ -51,4 +52,40 @@ export async function sendTrainerEmail(
   } catch (err) {
     console.error('[trainer-email] failed:', err instanceof Error ? err.message : 'unknown')
   }
+}
+
+/**
+ * Send a trainer notification on BOTH push and email, each gated by its own
+ * per-type toggle. For event-driven trainer notifications (not the cron paths,
+ * which already manage their own push). `path` is the in-app deep-link; the
+ * email links to APP_URL + path. Fire-and-forget.
+ */
+export async function notifyTrainer(
+  userId: string,
+  type: NotificationType,
+  subs: Record<string, string> = {},
+  path: string = '/dashboard',
+): Promise<void> {
+  // Push
+  try {
+    const pushPref = await resolvePref(userId, type, 'PUSH')
+    if (pushPref.enabled) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { notifyPush: true, deviceTokens: { where: { platform: 'IOS' }, select: { token: true } } },
+      })
+      if (user?.notifyPush && user.deviceTokens.length > 0) {
+        const results = await sendApns(user.deviceTokens.map(d => d.token), {
+          alert: { title: renderTemplate(pushPref.title, subs), body: renderTemplate(pushPref.body, subs) },
+          customData: { type, path },
+        })
+        const stale = results.filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason)).map(r => r.token)
+        if (stale.length > 0) await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
+      }
+    }
+  } catch (err) {
+    console.error('[notify-trainer push] failed:', err instanceof Error ? err.message : 'unknown')
+  }
+  // Email — gated by the EMAIL toggle inside the helper.
+  await sendTrainerEmail(userId, type, subs, `${APP_URL}${path}`)
 }
