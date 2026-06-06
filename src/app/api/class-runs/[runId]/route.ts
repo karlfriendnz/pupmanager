@@ -4,9 +4,26 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { updateClass, ClassError } from '@/lib/class-runs'
+import { notifyClient } from '@/lib/client-notify'
 
 async function ownRun(runId: string, trainerId: string) {
   return prisma.classRun.findFirst({ where: { id: runId, trainerId } })
+}
+
+// Tell every enrolled client about a class change (reschedule / cancellation).
+async function notifyRunClients(opts: { runId: string; trainerId: string; planName: string; detail: string; link: string; sessions?: { when: string }[] }) {
+  const enrollments = await prisma.classEnrollment.findMany({
+    where: { classRunId: opts.runId, status: 'ENROLLED' },
+    select: { client: { select: { userId: true } }, dog: { select: { name: true } } },
+  })
+  for (const e of enrollments) {
+    if (!e.client?.userId) continue
+    await notifyClient({
+      userId: e.client.userId, trainerId: opts.trainerId, type: 'CLIENT_SESSION_CHANGED',
+      vars: { dogName: e.dog?.name ?? 'your dog', planName: opts.planName, detail: opts.detail },
+      link: opts.link, ctaLabel: 'View class', sessions: opts.sessions,
+    })
+  }
 }
 
 // GET /api/class-runs/[runId] — run detail: sessions + roster + waitlist.
@@ -104,7 +121,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
       return NextResponse.json({ error: 'Invalid startDate' }, { status: 400 })
     }
     try {
-      await updateClass({
+      const result = await updateClass({
         runId, trainerId,
         name: d.name,
         scheduleNote: d.scheduleNote ?? null,
@@ -117,6 +134,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
         weeksBetween: d.weeksBetween ?? 1,
         defaultSessionFormId: d.defaultSessionFormId,
       })
+      // Only a genuine time change regenerates sessions — notify clients then.
+      if (result.scheduleChanged) {
+        const runDetail = await prisma.classRun.findUnique({
+          where: { id: runId },
+          select: { name: true, sessions: { where: { scheduledAt: { gte: new Date() } }, orderBy: { scheduledAt: 'asc' }, select: { scheduledAt: true } } },
+        })
+        await notifyRunClients({
+          runId, trainerId, planName: runDetail?.name ?? d.name,
+          detail: 'Rescheduled — here are the new times',
+          link: '/my-sessions',
+          sessions: (runDetail?.sessions ?? []).map(s => ({ when: s.scheduledAt.toLocaleString('en-NZ', { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) })),
+        })
+      }
       return NextResponse.json({ ok: true })
     } catch (err) {
       if (err instanceof ClassError) {
@@ -127,6 +157,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
   }
 
   // Quick edit — status / simple fields only.
+  const before = await prisma.classRun.findUnique({ where: { id: runId }, select: { status: true, name: true } })
   const run = await prisma.classRun.update({
     where: { id: runId },
     data: {
@@ -136,6 +167,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
       ...(d.capacity !== undefined && { capacity: d.capacity }),
     },
   })
+  // Notify enrolled clients when a class is newly cancelled.
+  if (d.status === 'CANCELLED' && before?.status !== 'CANCELLED') {
+    await notifyRunClients({ runId, trainerId, planName: before?.name ?? 'your class', detail: 'This class has been cancelled', link: '/my-sessions' })
+  }
   return NextResponse.json({ ok: true, status: run.status })
 }
 
@@ -165,5 +200,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ runI
     return NextResponse.json({ ok: true, deleted: true })
   }
   await prisma.classRun.update({ where: { id: runId }, data: { status: 'CANCELLED' } })
+  await notifyRunClients({ runId, trainerId, planName: run.name, detail: 'This class has been cancelled', link: '/my-sessions' })
   return NextResponse.json({ ok: true, cancelled: true })
 }

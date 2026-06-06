@@ -233,7 +233,7 @@ export async function updateClass(args: {
   sessionCount: number
   weeksBetween: number
   defaultSessionFormId?: string | null
-}): Promise<void> {
+}): Promise<{ scheduleChanged: boolean }> {
   const run = await prisma.classRun.findFirst({
     where: { id: args.runId, trainerId: args.trainerId },
     include: {
@@ -313,6 +313,8 @@ export async function updateClass(args: {
       }
     }
   })
+
+  return { scheduleChanged }
 }
 
 /**

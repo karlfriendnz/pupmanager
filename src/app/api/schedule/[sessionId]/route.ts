@@ -2,7 +2,26 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { safeEvaluate } from '@/lib/achievements'
+import { notifyClient } from '@/lib/client-notify'
 import { z } from 'zod'
+
+// Notify a client their session moved/was cancelled. Fire-and-forget.
+async function notifySessionChanged(opts: {
+  clientId: string; trainerId: string; dogId: string | null; title: string; at: Date; detail: (when: string) => string; link: string
+}) {
+  const [client, dog] = await Promise.all([
+    prisma.clientProfile.findUnique({ where: { id: opts.clientId }, select: { userId: true, user: { select: { timezone: true } } } }),
+    opts.dogId ? prisma.dog.findUnique({ where: { id: opts.dogId }, select: { name: true } }) : Promise.resolve(null),
+  ])
+  if (!client?.userId) return
+  const tz = client.user?.timezone ?? 'Pacific/Auckland'
+  const when = opts.at.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+  await notifyClient({
+    userId: client.userId, trainerId: opts.trainerId, type: 'CLIENT_SESSION_CHANGED',
+    vars: { dogName: dog?.name ?? 'your dog', planName: opts.title, detail: opts.detail(when) },
+    link: opts.link, ctaLabel: 'View session',
+  })
+}
 
 const patchSchema = z.object({
   scheduledAt: z.string().optional(),
@@ -213,6 +232,19 @@ export async function PATCH(
     await safeEvaluate(cid)
   }
 
+  // Tell the client when a future session is moved to a new time.
+  if (
+    parsed.data.scheduledAt !== undefined &&
+    existing.clientId &&
+    updated.scheduledAt.getTime() !== existing.scheduledAt.getTime() &&
+    updated.scheduledAt.getTime() > Date.now()
+  ) {
+    await notifySessionChanged({
+      clientId: existing.clientId, trainerId, dogId: existing.dogId, title: existing.title,
+      at: updated.scheduledAt, detail: when => `Moved to ${when}`, link: `/my-sessions/${sessionId}`,
+    })
+  }
+
   return NextResponse.json(updated)
 }
 
@@ -273,6 +305,16 @@ export async function DELETE(
 
   const idsToDelete = [sessionId, ...followers.map(f => f.id)]
   await prisma.trainingSession.deleteMany({ where: { id: { in: idsToDelete } } })
+
+  // Tell the client when a future session is cancelled.
+  if (trainingSession.clientId && trainingSession.scheduledAt.getTime() > Date.now()) {
+    await notifySessionChanged({
+      clientId: trainingSession.clientId, trainerId: trainerProfile.id, dogId: trainingSession.dogId, title: trainingSession.title,
+      at: trainingSession.scheduledAt,
+      detail: when => `Cancelled — was ${when}${propagate ? ' (and later sessions)' : ''}`,
+      link: '/my-sessions',
+    })
+  }
 
   // "Delete this + following" on a forever-ongoing assignment must also stop
   // the assignment regenerating. Otherwise extendOngoingPackages() (which runs
