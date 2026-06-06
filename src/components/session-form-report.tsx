@@ -941,7 +941,7 @@ function FormFillerBody({
 
         {/* Progress */}
         <div className="px-6 pt-5 flex-shrink-0">
-          <div className="mx-auto w-full max-w-xl">
+          <div className="mx-auto w-full max-w-2xl">
             <div className="flex items-center justify-between text-xs font-semibold text-slate-400 mb-2">
               <span className="truncate pr-2">{panel.eyebrow}</span>
               <span className="tabular-nums flex-shrink-0">{curStep + 1} / {stepPanels.length}</span>
@@ -961,7 +961,7 @@ function FormFillerBody({
           >
             {stepPanels.map(p => (
               <div key={p.key} className="h-full w-full flex-shrink-0 overflow-y-auto">
-                <div className={`mx-auto w-full px-6 py-8 sm:py-12 ${p.fill ? 'max-w-3xl' : 'max-w-xl'}`}>
+                <div className="mx-auto w-full px-6 py-8 sm:py-12 max-w-2xl">
                   <div className="min-h-[3.5rem]">
                     <h2 className="text-2xl sm:text-[28px] font-bold leading-tight text-slate-900 flex items-start gap-2 flex-wrap">
                       <span>{p.title}</span>
@@ -983,7 +983,7 @@ function FormFillerBody({
 
         {error && (
           <div className="px-6 flex-shrink-0">
-            <div className="mx-auto w-full max-w-xl text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-2">{error}</div>
+            <div className="mx-auto w-full max-w-2xl text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-2">{error}</div>
           </div>
         )}
 
@@ -993,7 +993,7 @@ function FormFillerBody({
           className="border-t border-slate-100 flex-shrink-0 bg-white"
           style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
-          <div className="mx-auto w-full max-w-xl px-6 py-3.5 flex items-center justify-between gap-3">
+          <div className="mx-auto w-full max-w-2xl px-6 py-3.5 flex items-center justify-between gap-3">
             <button
               type="button"
               onClick={() => setStep(Math.max(0, curStep - 1))}
@@ -1116,22 +1116,20 @@ function ImmersiveText({
 }) {
   return (
     <div>
-      <div className="relative rounded-2xl bg-slate-50 border border-transparent focus-within:border-blue-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-50 transition-all">
-        <textarea
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          autoFocus
-          placeholder="Start writing…"
-          className="w-full min-h-[38vh] resize-none bg-transparent px-4 pt-4 pb-14 text-base leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none"
-        />
-        <div className="absolute bottom-2 left-2 flex items-center gap-1">
-          <VoiceInput onAppend={t => onChange(appendSpoken(value, t))} />
-          {onImagesChange && (
-            <ImageUploadButton onUploaded={(added) => onImagesChange([...(imageUrls ?? []), ...added])} context={{ sessionId }} />
-          )}
-        </div>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        autoFocus
+        placeholder="Start writing…"
+        className="min-h-[55vh] w-full resize-none border-0 bg-transparent p-0 text-lg leading-relaxed text-slate-900 placeholder:text-slate-300 focus:outline-none focus:ring-0"
+      />
+      <div className="mt-1 flex items-center gap-2">
+        <VoiceInput onAppend={t => onChange(appendSpoken(value, t))} />
+        {onImagesChange && (
+          <ImageUploadButton onUploaded={(added) => onImagesChange([...(imageUrls ?? []), ...added])} context={{ sessionId }} />
+        )}
       </div>
-      {onImagesChange && <ImageGallery urls={imageUrls ?? []} onChange={onImagesChange} className="mt-3" />}
+      {onImagesChange && <ImageGallery urls={imageUrls ?? []} onChange={onImagesChange} className="mt-2" />}
     </div>
   )
 }
