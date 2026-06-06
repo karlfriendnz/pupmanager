@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
+import { notifyClient } from '@/lib/client-notify'
 import { z } from 'zod'
 
 // GET  — the roster for one shared class session (every live enrolment
@@ -137,6 +138,20 @@ export async function PUT(
   )
 
   const rows = parsed.data.records.filter(r => valid.has(r.enrollmentId))
+
+  // Which enrolments already had a non-empty report — so we notify the client
+  // only on the FIRST recap, not on edits.
+  const reportHasContent = (rep: unknown): boolean => {
+    const r = rep as { answers?: Record<string, unknown>; closing?: string | null } | null
+    if (!r) return false
+    return Object.values(r.answers ?? {}).some(v => String(v ?? '').trim() !== '') || !!(r.closing && r.closing.trim())
+  }
+  const existingReports = await prisma.sessionAttendance.findMany({
+    where: { sessionId, enrollmentId: { in: rows.map(r => r.enrollmentId) } },
+    select: { enrollmentId: true, report: true },
+  })
+  const hadReport = new Set(existingReports.filter(a => reportHasContent(a.report)).map(a => a.enrollmentId))
+
   await prisma.$transaction(
     rows.map(r => {
       const report = r.report
@@ -166,6 +181,30 @@ export async function PUT(
       })
     }),
   )
+
+  // "Your recap is ready" to clients whose report was just written first time.
+  const newly = rows.filter(r => reportHasContent(r.report) && !hadReport.has(r.enrollmentId))
+  if (newly.length > 0) {
+    const [enrollments, trainer] = await Promise.all([
+      prisma.classEnrollment.findMany({
+        where: { id: { in: newly.map(r => r.enrollmentId) } },
+        select: { id: true, client: { select: { userId: true } }, dog: { select: { name: true } }, classRun: { select: { name: true } } },
+      }),
+      prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { name: true } } } }),
+    ])
+    const trainerName = trainer?.user?.name ?? trainer?.businessName ?? 'Your trainer'
+    for (const e of enrollments) {
+      if (!e.client?.userId) continue
+      await notifyClient({
+        userId: e.client.userId,
+        trainerId,
+        type: 'CLIENT_RECAP_READY',
+        vars: { trainerName, dogName: e.dog?.name ?? 'your dog', planName: e.classRun?.name ?? 'your class' },
+        link: `/my-sessions/${sessionId}`,
+        ctaLabel: 'See your recap',
+      })
+    }
+  }
 
   return NextResponse.json({ ok: true, saved: rows.length })
 }
