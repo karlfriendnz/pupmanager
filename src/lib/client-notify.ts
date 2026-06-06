@@ -15,6 +15,7 @@ interface NotifyClientArgs {
   link?: string // in-app path — feed item href + push tap target (e.g. /my-sessions/123)
   ctaLabel?: string // email button label (defaults to "Open in PupManager")
   sessions?: { when: string }[] // optional session list — shown as a table in the email
+  channels?: NotificationChannel[] // send ONLY via these (overrides prefs) — used by the reminder cron for per-lead routing
 }
 
 // Fan a client notification out to whichever channels the client has enabled
@@ -28,17 +29,19 @@ export async function notifyClient(args: NotifyClientArgs): Promise<void> {
   }
 }
 
-async function doNotify({ userId, trainerId, type, vars = {}, link, ctaLabel, sessions }: NotifyClientArgs) {
+async function doNotify({ userId, trainerId, type, vars = {}, link, ctaLabel, sessions, channels }: NotifyClientArgs) {
   const meta = NOTIFICATION_TYPES[type]
   if (!meta || meta.audience !== 'client') return
 
-  // A channel is on if the client has a row saying so, else the type's
-  // default-on set (push+feed for most; email only where we opt it in).
-  const rows = await prisma.notificationPreference.findMany({ where: { userId, type } })
+  // A channel is on if: an explicit override was passed (per-lead routing), else
+  // the client's stored row, else the type's default-on set.
+  const override = channels ? new Set<NotificationChannel>(channels) : null
+  const rows = override ? [] : await prisma.notificationPreference.findMany({ where: { userId, type } })
   const byChannel = new Map(rows.map(r => [r.channel, r]))
   const defaultOn = new Set<NotificationChannel>(meta.defaultChannels ?? meta.channels)
   const channelOn = (ch: NotificationChannel) => {
     if (!meta.channels.includes(ch)) return false
+    if (override) return override.has(ch)
     const row = byChannel.get(ch)
     return row ? row.enabled : defaultOn.has(ch)
   }

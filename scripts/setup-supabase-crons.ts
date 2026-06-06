@@ -15,6 +15,9 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   // Hourly: the route fires per-trainer at THEIR local 8pm (training-day
   // notes reminder), so it must be evaluated every hour.
   { name: 'pm-streak-update', schedule: '0 * * * *', path: 'streak-update' },
+  // Client "before each session" reminders. The route dedups (ClientReminderSent),
+  // so it's safe to run often — every 15 min keeps reminder times tight.
+  { name: 'pm-client-session-reminders', schedule: '*/15 * * * *', path: 'client-session-reminders' },
   // NOTE: pm-enquiry-followups is intentionally NOT listed here. This script
   // inlines the local CRON_SECRET, which has drifted from the prod value, so
   // these jobs currently 401 (verify via net._http_response). The followups
