@@ -244,7 +244,12 @@ export async function PATCH(
     updated.scheduledAt.getTime() > Date.now()
   ) {
     await prisma.trainingSession.updateMany({
-      where: { id: { in: [sessionId, ...followerIds] }, clientId: { not: null }, scheduledAt: { gt: new Date() } },
+      where: {
+        id: { in: [sessionId, ...followerIds] },
+        scheduledAt: { gt: new Date() },
+        // Only clients who've set up their account (accepted the invite).
+        client: { is: { user: { emailVerified: { not: null } } } },
+      },
       data: { rescheduleNotifyPendingAt: new Date() },
     })
   }

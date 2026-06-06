@@ -9,11 +9,15 @@ async function trainerId() {
   return session.user.trainerId
 }
 
+// Only notify clients who've actually set up their account (accepted the
+// invite → emailVerified is stamped). No point pinging someone who hasn't
+// activated yet.
+const activated = { user: { emailVerified: { not: null } } }
 const pendingWhere = (tid: string) => ({
   trainerId: tid,
   rescheduleNotifyPendingAt: { not: null },
   scheduledAt: { gt: new Date() },
-  clientId: { not: null },
+  client: { is: activated },
 })
 
 // GET — the pending reschedules grouped by client (drives the banner list).
@@ -45,7 +49,7 @@ export async function POST(req: Request) {
   const selected: string[] | null = Array.isArray(body?.clientUserIds) ? body.clientUserIds : null
 
   const pending = await prisma.trainingSession.findMany({
-    where: selected ? { ...pendingWhere(tid), client: { userId: { in: selected } } } : pendingWhere(tid),
+    where: selected ? { ...pendingWhere(tid), client: { is: { ...activated, userId: { in: selected } } } } : pendingWhere(tid),
     select: {
       id: true, scheduledAt: true, title: true,
       client: { select: { userId: true, user: { select: { timezone: true } } } },
@@ -91,7 +95,7 @@ export async function DELETE(req: Request) {
   const body = await req.json().catch(() => ({}))
   const selected: string[] | null = Array.isArray(body?.clientUserIds) ? body.clientUserIds : null
   const res = await prisma.trainingSession.updateMany({
-    where: selected ? { ...pendingWhere(tid), client: { userId: { in: selected } } } : pendingWhere(tid),
+    where: selected ? { ...pendingWhere(tid), client: { is: { ...activated, userId: { in: selected } } } } : pendingWhere(tid),
     data: { rescheduleNotifyPendingAt: null },
   })
   return NextResponse.json({ ok: true, cleared: res.count })
