@@ -18,8 +18,11 @@ const pendingWhere = (tid: string) => ({
   trainerId: tid,
   rescheduleNotifyPendingAt: { not: null },
   scheduledAt: { gt: new Date() },
-  // 1:1 with an activated client, OR any class session (members resolved below).
-  OR: [{ client: { is: activated } }, { classRunId: { not: null } }],
+  // 1:1 with an activated client, OR a class with ≥1 activated member.
+  OR: [
+    { client: { is: activated } },
+    { classRun: { is: { enrollments: { some: activatedEnroll } } } },
+  ],
 })
 
 const fmt = (d: Date, tz: string) => d.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })

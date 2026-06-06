@@ -250,7 +250,7 @@ export async function PATCH(
         scheduledAt: { gt: new Date() },
         OR: [
           { client: { is: { user: { emailVerified: { not: null } } } } },
-          { classRunId: { not: null } },
+          { classRun: { is: { enrollments: { some: { status: 'ENROLLED', client: { is: { user: { emailVerified: { not: null } } } } } } } } },
         ],
       },
       data: { rescheduleNotifyPendingAt: new Date() },
