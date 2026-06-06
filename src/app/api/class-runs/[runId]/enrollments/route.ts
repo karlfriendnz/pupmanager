@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { enrollInRun, ClassError } from '@/lib/class-runs'
+import { notifyClient } from '@/lib/client-notify'
 
 // POST /api/class-runs/[runId]/enrollments
 // Trainer-assigned enrolment. Capacity / waitlist / drop-in are decided
@@ -12,6 +13,8 @@ const schema = z.object({
   clientId: z.string().min(1),
   dogId: z.string().min(1).nullable().optional(),
   type: z.enum(['FULL', 'DROP_IN']).optional(),
+  // Whether to tell the client they've been enrolled. Default true.
+  notify: z.boolean().optional(),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ runId: string }> }) {
@@ -47,6 +50,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       type: parsed.data.type ?? 'FULL',
       source: 'TRAINER',
     })
+
+    // Tell the client they're in (skip waitlisted spots + the trainer opt-out).
+    if (parsed.data.notify !== false && (result as { status?: string }).status !== 'WAITLISTED') {
+      const [runDetail, clientUser, trainer, dog] = await Promise.all([
+        prisma.classRun.findUnique({ where: { id: runId }, select: { name: true, sessions: { where: { scheduledAt: { gte: new Date() } }, orderBy: { scheduledAt: 'asc' }, select: { scheduledAt: true } } } }),
+        prisma.clientProfile.findUnique({ where: { id: parsed.data.clientId }, select: { userId: true, user: { select: { timezone: true } } } }),
+        prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { name: true } } } }),
+        parsed.data.dogId ? prisma.dog.findUnique({ where: { id: parsed.data.dogId }, select: { name: true } }) : Promise.resolve(null),
+      ])
+      if (clientUser?.userId && runDetail) {
+        const tz = clientUser.user?.timezone ?? 'Pacific/Auckland'
+        await notifyClient({
+          userId: clientUser.userId,
+          trainerId,
+          type: 'CLIENT_ADDED_TO_PLAN',
+          vars: {
+            trainerName: trainer?.user?.name ?? trainer?.businessName ?? 'Your trainer',
+            dogName: dog?.name ?? 'your dog',
+            planName: runDetail.name,
+            detail: `${runDetail.sessions.length} session${runDetail.sessions.length === 1 ? '' : 's'}`,
+          },
+          link: '/my-sessions',
+          ctaLabel: 'View your sessions',
+          sessions: runDetail.sessions.map(s => ({ when: s.scheduledAt.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) })),
+        })
+      }
+    }
+
     return NextResponse.json({ ok: true, ...result }, { status: 201 })
   } catch (err) {
     if (err instanceof ClassError) {

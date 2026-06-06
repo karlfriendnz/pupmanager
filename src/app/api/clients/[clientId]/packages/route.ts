@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import { safeEvaluate } from '@/lib/achievements'
+import { notifyClient } from '@/lib/client-notify'
 import { z } from 'zod'
 
 // Returns the client's active package assignments. Used by the session
@@ -50,6 +51,9 @@ const schema = z.object({
   // Trainer ticks this when they've already sent the invoice (Xero/QBO/cash).
   // Stamps invoicedAt = now; otherwise leaves it null.
   markInvoiced: z.boolean().optional(),
+  // Whether to notify the client they've been booked in. Default true; the
+  // trainer can untick it (e.g. when back-filling history).
+  notify: z.boolean().optional(),
 })
 
 export async function POST(
@@ -210,6 +214,34 @@ export async function POST(
 
   // FIRST_PACKAGE_ASSIGNED trigger fires here.
   await safeEvaluate(clientId)
+
+  // Notify the client they've been booked in — unless the trainer opted out or
+  // every session is in the past (a history back-fill).
+  if (parsed.data.notify !== false && sessionDates.some(d => d.getTime() > Date.now())) {
+    const [clientProfile, trainer, dog] = await Promise.all([
+      prisma.clientProfile.findUnique({ where: { id: clientId }, select: { userId: true, user: { select: { timezone: true } } } }),
+      prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { name: true } } } }),
+      dogId ? prisma.dog.findUnique({ where: { id: dogId }, select: { name: true } }) : Promise.resolve(null),
+    ])
+    if (clientProfile?.userId) {
+      const tz = clientProfile.user?.timezone ?? 'Pacific/Auckland'
+      const sorted = [...sessionDates].sort((a, b) => a.getTime() - b.getTime())
+      await notifyClient({
+        userId: clientProfile.userId,
+        trainerId,
+        type: 'CLIENT_ADDED_TO_PLAN',
+        vars: {
+          trainerName: trainer?.user?.name ?? trainer?.businessName ?? 'Your trainer',
+          dogName: dog?.name ?? 'your dog',
+          planName: pkg.name,
+          detail: `${sessionDates.length} session${sessionDates.length === 1 ? '' : 's'}`,
+        },
+        link: '/my-sessions',
+        ctaLabel: 'View your sessions',
+        sessions: sorted.map(d => ({ when: d.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) })),
+      })
+    }
+  }
 
   return NextResponse.json(
     { ok: true, assignmentId: created.id, count: sessionDates.length },
