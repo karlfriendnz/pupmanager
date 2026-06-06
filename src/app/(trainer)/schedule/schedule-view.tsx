@@ -3120,20 +3120,20 @@ export function ScheduleView({
 
       {dropWarning && (
         <div className="px-4 md:px-6">
-          <div className="mb-3 rounded-xl bg-red-50 px-4 py-3 flex items-start gap-2.5">
+          <div className="mb-3 rounded-2xl bg-white ring-1 ring-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] px-4 py-3 flex items-start gap-2.5">
             <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-red-800">
+              <p className="text-sm font-semibold text-slate-900">
                 {dropWarning.count} conflict{dropWarning.count > 1 ? 's' : ''} after drop
               </p>
-              <p className="text-xs text-red-700 mt-0.5 leading-relaxed">
+              <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
                 Overlaps {dropWarning.sample.map(s => `${s.title} (${new Date(s.scheduledAt).toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })})`).join(', ')}
                 {dropWarning.count > dropWarning.sample.length ? ', and more' : ''}.
               </p>
             </div>
             <button
               onClick={() => setDropWarning(null)}
-              className="p-0.5 text-red-400 hover:text-red-600 shrink-0"
+              className="p-0.5 text-slate-300 hover:text-slate-500 shrink-0"
               aria-label="Dismiss"
             >
               <X className="h-4 w-4" />

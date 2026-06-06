@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { Button } from '@/components/ui/button'
 
 type PendingClient = { userId: string; name: string; count: number }
 
-// Sits above the schedule. Flat alert (matches the app's Alert language) —
-// Notify everyone, or Customise to pick specific clients. Only lists clients
-// who've set up their account (the API filters by activation).
+// Sits above the schedule. Uses the app's card + brand-button language (white
+// card, teal primary) rather than a coloured alert band. Notify everyone, or
+// Customise to pick clients. Only lists clients who've activated their account.
 export function RescheduleBanner() {
   const [sessions, setSessions] = useState(0)
   const [clients, setClients] = useState<PendingClient[]>([])
@@ -36,7 +37,9 @@ export function RescheduleBanner() {
 
   if (sessions === 0) {
     return note ? (
-      <div className="mb-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">{note}</div>
+      <div className="mb-3 rounded-2xl bg-white ring-1 ring-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] px-4 py-3 text-sm font-medium text-slate-700">
+        {note}
+      </div>
     ) : null
   }
 
@@ -76,55 +79,43 @@ export function RescheduleBanner() {
   const peopleLabel = clients.length === 1 ? "1 client hasn't been told" : `${clients.length} clients haven't been told`
 
   return (
-    <div className="mb-3 rounded-xl bg-amber-50 px-4 py-3 text-amber-900">
-      <div className="flex items-center gap-x-2 gap-y-2 flex-wrap">
+    <div className="mb-3 rounded-2xl bg-white ring-1 ring-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] px-4 py-3">
+      <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
+        <span className="h-2 w-2 rounded-full bg-accent shrink-0" />
         <p className="text-sm">
-          <span className="font-semibold">{sessions} session{sessions === 1 ? '' : 's'} rescheduled</span>
-          <span className="text-amber-700"> · {expanded ? 'choose who to notify' : peopleLabel}</span>
+          <span className="font-semibold text-slate-900">{sessions} session{sessions === 1 ? '' : 's'} rescheduled</span>
+          <span className="text-slate-400"> · {expanded ? 'choose who to notify' : peopleLabel}</span>
         </p>
 
         {!expanded && (
-          <div className="ml-auto flex items-center gap-1">
-            <button type="button" onClick={dismissAll} disabled={busy !== null}
-              className="text-sm font-medium text-amber-700 hover:text-amber-900 px-2.5 py-1.5 rounded-lg hover:bg-amber-100/70 disabled:opacity-50">
-              Dismiss
-            </button>
-            <button type="button" onClick={() => setExpanded(true)} disabled={busy !== null}
-              className="text-sm font-medium text-amber-800 px-2.5 py-1.5 rounded-lg hover:bg-amber-100/70 disabled:opacity-50">
-              Customise
-            </button>
-            <button type="button" onClick={() => send(null)} disabled={busy !== null}
-              className="text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 px-3.5 py-1.5 rounded-lg disabled:opacity-60">
-              {busy === 'send' ? 'Sending…' : 'Notify clients'}
-            </button>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={dismissAll} disabled={busy !== null}>Dismiss</Button>
+            <Button variant="secondary" size="sm" onClick={() => setExpanded(true)} disabled={busy !== null}>Customise</Button>
+            <Button variant="primary" size="sm" onClick={() => send(null)} loading={busy === 'send'}>Notify clients</Button>
           </div>
         )}
       </div>
 
       {expanded && (
         <>
-          <div className="mt-3 rounded-lg bg-white divide-y divide-slate-100 max-h-52 overflow-auto">
+          <div className="mt-3 rounded-xl ring-1 ring-slate-100 divide-y divide-slate-100 max-h-52 overflow-auto">
             <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer">
-              <input type="checkbox" checked={allOn} onChange={toggleAll} className="h-4 w-4 accent-amber-600 cursor-pointer" />
+              <input type="checkbox" checked={allOn} onChange={toggleAll} className="h-4 w-4 accent-[var(--accent)] cursor-pointer" />
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Everyone</span>
             </label>
             {clients.map(c => (
               <label key={c.userId} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50">
-                <input type="checkbox" checked={selected.has(c.userId)} onChange={() => toggle(c.userId)} className="h-4 w-4 accent-amber-600 cursor-pointer" />
+                <input type="checkbox" checked={selected.has(c.userId)} onChange={() => toggle(c.userId)} className="h-4 w-4 accent-[var(--accent)] cursor-pointer" />
                 <span className="text-sm text-slate-800 flex-1 truncate">{c.name}</span>
                 <span className="text-xs text-slate-400 shrink-0">{c.count} session{c.count === 1 ? '' : 's'}</span>
               </label>
             ))}
           </div>
-          <div className="flex items-center gap-1 mt-3 justify-end">
-            <button type="button" onClick={() => setExpanded(false)} disabled={busy !== null}
-              className="text-sm font-medium text-amber-700 px-2.5 py-1.5 rounded-lg hover:bg-amber-100/70 disabled:opacity-50">
-              Back
-            </button>
-            <button type="button" onClick={() => send([...selected])} disabled={busy !== null || selected.size === 0}
-              className="text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 px-3.5 py-1.5 rounded-lg disabled:opacity-50">
-              {busy === 'send' ? 'Sending…' : `Notify ${selected.size} selected`}
-            </button>
+          <div className="flex items-center gap-2 mt-3 justify-end">
+            <Button variant="ghost" size="sm" onClick={() => setExpanded(false)} disabled={busy !== null}>Back</Button>
+            <Button variant="primary" size="sm" onClick={() => send([...selected])} disabled={busy !== null || selected.size === 0} loading={busy === 'send'}>
+              Notify {selected.size} selected
+            </Button>
           </div>
         </>
       )}
