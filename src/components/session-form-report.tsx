@@ -940,8 +940,8 @@ function FormFillerBody({
         </div>
 
         {/* Progress */}
-        <div className="px-6 pt-5 flex-shrink-0">
-          <div className="mx-auto w-full max-w-2xl">
+        <div className="pt-5 flex-shrink-0">
+          <div className="mx-auto w-full max-w-2xl px-6">
             <div className="flex items-center justify-between text-xs font-semibold text-slate-400 mb-2">
               <span className="truncate pr-2">{panel.eyebrow}</span>
               <span className="tabular-nums flex-shrink-0">{curStep + 1} / {stepPanels.length}</span>
