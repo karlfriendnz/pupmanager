@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition, Fragment } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
-import { Loader2, Bell, Mail, Smartphone, Send, ChevronDown } from 'lucide-react'
+import { Loader2, Bell, Mail, Smartphone, Send } from 'lucide-react'
 import { NOTIFICATION_TYPES } from '@/lib/notification-types'
 
 type NotificationType = keyof typeof NOTIFICATION_TYPES
@@ -91,6 +91,7 @@ export function NotificationsPanel() {
                     </th>
                   )
                 })}
+                <th className="px-2 py-2.5 w-[100px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -103,20 +104,8 @@ export function NotificationsPanel() {
                   <Fragment key={meta.type}>
                     <tr className="border-t border-slate-50">
                       <td className="px-3 py-3 align-top">
-                        {canExpand ? (
-                          <button type="button" onClick={() => setExpanded(open ? null : meta.type)} className="flex items-start gap-1.5 text-left w-full">
-                            <ChevronDown className={`h-4 w-4 text-slate-300 shrink-0 mt-0.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-                            <span className="min-w-0">
-                              <span className="block text-sm font-medium text-slate-900 leading-tight">{meta.label}</span>
-                              <span className="block text-xs text-slate-400 leading-tight mt-0.5">{meta.description}</span>
-                            </span>
-                          </button>
-                        ) : (
-                          <div className="pl-[22px]">
-                            <span className="block text-sm font-medium text-slate-900 leading-tight">{meta.label}</span>
-                            <span className="block text-xs text-slate-400 leading-tight mt-0.5">{meta.description}</span>
-                          </div>
-                        )}
+                        <span className="block text-sm font-medium text-slate-900 leading-tight">{meta.label}</span>
+                        <span className="block text-xs text-slate-400 leading-tight mt-0.5">{meta.description}</span>
                       </td>
                       {CHANNELS.map(({ id }) => {
                         if (!supports(meta.type, id)) return <td key={id} className="text-center text-slate-200">—</td>
@@ -127,10 +116,17 @@ export function NotificationsPanel() {
                           </td>
                         )
                       })}
+                      <td className="px-2 py-3 text-right align-middle">
+                        {canExpand && (
+                          <button type="button" onClick={() => setExpanded(open ? null : meta.type)} className={`inline-flex items-center rounded-lg px-2.5 h-8 text-xs font-medium border transition-colors ${open ? 'border-accent bg-accent-soft text-accent' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                            {open ? 'Done' : 'Customise'}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                     {open && (
                       <tr className="bg-slate-50/50">
-                        <td colSpan={1 + CHANNELS.length} className="px-3 pb-3 pt-1">
+                        <td colSpan={2 + CHANNELS.length} className="px-3 pb-3 pt-1">
                           <div className="flex flex-col gap-3">
                             {CHANNELS.filter(c => supports(meta.type, c.id)).map(c => {
                               const r = rowOf(meta.type, c.id)
