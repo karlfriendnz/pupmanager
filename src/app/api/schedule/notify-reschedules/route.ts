@@ -16,25 +16,36 @@ const pendingWhere = (tid: string) => ({
   clientId: { not: null },
 })
 
-// GET — how many reschedules are waiting to be sent (drives the banner).
+// GET — the pending reschedules grouped by client (drives the banner list).
 export async function GET() {
   const tid = await trainerId()
   if (!tid) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const pending = await prisma.trainingSession.findMany({
     where: pendingWhere(tid),
-    select: { clientId: true },
+    select: { client: { select: { userId: true, user: { select: { name: true } } } }, dog: { select: { name: true } } },
   })
-  const clients = new Set(pending.map(p => p.clientId))
-  return NextResponse.json({ sessions: pending.length, clients: clients.size })
+  const byUser = new Map<string, { userId: string; name: string; count: number }>()
+  for (const p of pending) {
+    const uid = p.client?.userId
+    if (!uid) continue
+    const e = byUser.get(uid) ?? { userId: uid, name: p.client?.user?.name ?? 'Client', count: 0 }
+    e.count++
+    byUser.set(uid, e)
+  }
+  return NextResponse.json({ sessions: pending.length, clients: [...byUser.values()] })
 }
 
-// POST — send the pending reschedules: one summary per client, then clear.
-export async function POST() {
+// POST — send the pending reschedules (optionally only to the chosen clients):
+// one summary per client, then clear those flags. Unselected stay pending.
+export async function POST(req: Request) {
   const tid = await trainerId()
   if (!tid) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
+  const body = await req.json().catch(() => ({}))
+  const selected: string[] | null = Array.isArray(body?.clientUserIds) ? body.clientUserIds : null
+
   const pending = await prisma.trainingSession.findMany({
-    where: pendingWhere(tid),
+    where: selected ? { ...pendingWhere(tid), client: { userId: { in: selected } } } : pendingWhere(tid),
     select: {
       id: true, scheduledAt: true, title: true,
       client: { select: { userId: true, user: { select: { timezone: true } } } },
@@ -43,7 +54,6 @@ export async function POST() {
     orderBy: { scheduledAt: 'asc' },
   })
 
-  // Group by client so each person gets a single "your schedule changed" note.
   const byClient = new Map<string, typeof pending>()
   for (const s of pending) {
     const uid = s.client?.userId
@@ -57,9 +67,7 @@ export async function POST() {
     const tz = group[0].client?.user?.timezone ?? 'Pacific/Auckland'
     const fmt = (d: Date) => d.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
     const dogName = group.find(g => g.dog?.name)?.dog?.name ?? 'your dog'
-    const detail = group.length === 1
-      ? `Moved to ${fmt(group[0].scheduledAt)}`
-      : `${group.length} sessions rescheduled`
+    const detail = group.length === 1 ? `Moved to ${fmt(group[0].scheduledAt)}` : `${group.length} sessions rescheduled`
     await notifyClient({
       userId, trainerId: tid, type: 'CLIENT_SESSION_CHANGED',
       vars: { dogName, planName: group.length === 1 ? group[0].title : 'Your sessions', detail },
@@ -76,12 +84,14 @@ export async function POST() {
   return NextResponse.json({ ok: true, clients: byClient.size, sessions: pending.length })
 }
 
-// DELETE — dismiss without telling anyone (clear the flags).
-export async function DELETE() {
+// DELETE — dismiss without telling anyone. Optionally only the chosen clients.
+export async function DELETE(req: Request) {
   const tid = await trainerId()
   if (!tid) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const body = await req.json().catch(() => ({}))
+  const selected: string[] | null = Array.isArray(body?.clientUserIds) ? body.clientUserIds : null
   const res = await prisma.trainingSession.updateMany({
-    where: pendingWhere(tid),
+    where: selected ? { ...pendingWhere(tid), client: { userId: { in: selected } } } : pendingWhere(tid),
     data: { rescheduleNotifyPendingAt: null },
   })
   return NextResponse.json({ ok: true, cleared: res.count })
