@@ -142,7 +142,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     defaults: {
       enabled: true,
       title: 'New client onboard 🎉',
-      body: '{{clientName}} just signed up{{#dogName}} with {{dogName}}{{/dogName}}.',
+      body: '{{clientName}} just signed up with {{dogName}}.',
     },
     placeholders: ['clientName', 'dogName'],
     sampleValues: {

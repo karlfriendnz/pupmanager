@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { notifyTrainer } from '@/lib/trainer-notify'
 
 export type AcceptedInviteUser = {
   id: string
@@ -80,6 +81,27 @@ export async function acceptInvite(
     }),
     prisma.verificationToken.delete({ where: { token } }),
   ])
+
+  // Tell the trainer(s) their invited client just activated their account.
+  if (user.role === 'CLIENT') {
+    try {
+      const profiles = await prisma.clientProfile.findMany({
+        where: { userId: user.id },
+        select: { id: true, dog: { select: { name: true } }, trainer: { select: { user: { select: { id: true } } } } },
+      })
+      for (const p of profiles) {
+        if (!p.trainer?.user?.id) continue
+        await notifyTrainer(
+          p.trainer.user.id,
+          'NEW_CLIENT_INVITE_ACCEPTED',
+          { clientName: user.name ?? 'A new client', dogName: p.dog?.name ?? 'their dog' },
+          `/clients/${p.id}`,
+        )
+      }
+    } catch (err) {
+      console.error('[accept-invite] notify failed:', err instanceof Error ? err.message : 'unknown')
+    }
+  }
 
   return { ok: true, user: { id: user.id, email: user.email!, name: user.name, role: user.role } }
 }
