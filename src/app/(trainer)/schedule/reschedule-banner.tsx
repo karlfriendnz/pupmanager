@@ -38,8 +38,11 @@ export function RescheduleBanner() {
 
   if (sessions === 0) {
     return note ? (
-      <div className="mb-3 rounded-xl bg-emerald-50 text-emerald-700 text-sm px-4 py-2.5 flex items-center gap-2">
-        <Send className="h-4 w-4" /> {note}
+      <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(16,185,129,0.25)]">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shrink-0">
+          <Send className="h-[18px] w-[18px]" />
+        </span>
+        <span className="text-sm font-medium text-emerald-800">{note}</span>
       </div>
     ) : null
   }
@@ -81,10 +84,12 @@ export function RescheduleBanner() {
   const peopleLabel = clients.length === 1 ? "1 client hasn't been told yet" : `${clients.length} clients haven't been told yet`
 
   return (
-    <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+    <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(217,119,6,0.25)]">
       <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
-        <CalendarClock className="h-5 w-5 text-amber-600 shrink-0" />
-        <span className="text-sm font-medium text-amber-900">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-600 shrink-0">
+          <CalendarClock className="h-[18px] w-[18px]" />
+        </span>
+        <span className="text-sm font-semibold text-amber-900">
           {sessions} session{sessions === 1 ? '' : 's'} rescheduled
         </span>
         <span className="text-sm text-amber-700">— {expanded ? 'choose who to notify' : peopleLabel}</span>

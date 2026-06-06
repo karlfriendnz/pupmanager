@@ -3119,24 +3119,28 @@ export function ScheduleView({
       )}
 
       {dropWarning && (
-        <div className="flex items-start gap-2 px-4 md:px-6 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800">
-          <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-500" />
-          <div className="flex-1">
-            <p className="font-medium">
-              {dropWarning.count} conflict{dropWarning.count > 1 ? 's' : ''} after drop
-            </p>
-            <p className="mt-0.5">
-              Overlaps {dropWarning.sample.map(s => `${s.title} (${new Date(s.scheduledAt).toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })})`).join(', ')}
-              {dropWarning.count > dropWarning.sample.length ? ', and more' : ''}.
-            </p>
+        <div className="px-4 md:px-6">
+          <div className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 flex items-start gap-3 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(225,29,72,0.25)]">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-rose-600 shrink-0">
+              <AlertTriangle className="h-[18px] w-[18px]" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-rose-900">
+                {dropWarning.count} conflict{dropWarning.count > 1 ? 's' : ''} after drop
+              </p>
+              <p className="text-xs text-rose-700 mt-0.5 leading-relaxed">
+                Overlaps {dropWarning.sample.map(s => `${s.title} (${new Date(s.scheduledAt).toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })})`).join(', ')}
+                {dropWarning.count > dropWarning.sample.length ? ', and more' : ''}.
+              </p>
+            </div>
+            <button
+              onClick={() => setDropWarning(null)}
+              className="p-1 text-rose-400 hover:text-rose-600 shrink-0"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            onClick={() => setDropWarning(null)}
-            className="p-0.5 text-amber-600 hover:text-amber-800"
-            aria-label="Dismiss"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
         </div>
       )}
 
