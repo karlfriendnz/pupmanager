@@ -692,6 +692,10 @@ model TrainingSession {
   reminderPushSentAt      DateTime?
   // Same idea for the "ends in ~5 min — write session notes" reminder.
   notesReminderPushSentAt DateTime?
+  // Set when this session was rescheduled but the client hasn't been told yet.
+  // The trainer batch-sends pending reschedules from a banner, so dragging
+  // sessions around doesn't fire a notification on every move.
+  rescheduleNotifyPendingAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -188,6 +188,7 @@ export async function PATCH(
     },
   })
 
+  let followerIds: string[] = []
   if (propagate) {
     const followers = await prisma.trainingSession.findMany({
       where: {
@@ -204,6 +205,7 @@ export async function PATCH(
       },
       select: { id: true, scheduledAt: true },
     })
+    followerIds = followers.map(f => f.id)
     const deltaMs = parsed.data.scheduledAt
       ? new Date(parsed.data.scheduledAt).getTime() - existing.scheduledAt.getTime()
       : 0
@@ -232,16 +234,18 @@ export async function PATCH(
     await safeEvaluate(cid)
   }
 
-  // Tell the client when a future session is moved to a new time.
+  // Don't notify the client on every move — the trainer may be shuffling the
+  // calendar. Instead flag the moved future sessions as "pending notify"; the
+  // trainer batch-sends them from the schedule banner once they're done.
   if (
     parsed.data.scheduledAt !== undefined &&
     existing.clientId &&
     updated.scheduledAt.getTime() !== existing.scheduledAt.getTime() &&
     updated.scheduledAt.getTime() > Date.now()
   ) {
-    await notifySessionChanged({
-      clientId: existing.clientId, trainerId, dogId: existing.dogId, title: existing.title,
-      at: updated.scheduledAt, detail: when => `Moved to ${when}`, link: `/my-sessions/${sessionId}`,
+    await prisma.trainingSession.updateMany({
+      where: { id: { in: [sessionId, ...followerIds] }, clientId: { not: null }, scheduledAt: { gt: new Date() } },
+      data: { rescheduleNotifyPendingAt: new Date() },
     })
   }
 

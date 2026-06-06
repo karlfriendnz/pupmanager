@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext } from 'react'
 import { ymdInTz, minutesIntoDayInTz, dateParts } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
+import { RescheduleBanner } from './reschedule-banner'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -1723,6 +1724,8 @@ function SessionModal({
     }
     setSession(prev => ({ ...prev, ...updates }))
     onSessionsUpdate(session.id, updates)
+    // A reschedule from the editor also defers the client notice to the banner.
+    window.dispatchEvent(new Event('reschedule-pending-changed'))
     if (scope === 'following') {
       // Following sessions changed too; reload page data so the calendar
       // reflects all the shifted blocks at once.
@@ -2842,6 +2845,8 @@ export function ScheduleView({
       router.refresh()
       return
     }
+    // Let the reschedule banner know there are sessions awaiting a client notice.
+    window.dispatchEvent(new Event('reschedule-pending-changed'))
 
     // Conflict detection: fetch existing sessions covering all the moved
     // intervals and look for overlaps with sessions we didn't ourselves move.
@@ -3074,6 +3079,11 @@ export function ScheduleView({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Pending reschedules — batch-notify clients instead of firing per drag. */}
+      <div className="px-4 md:px-6 pt-3">
+        <RescheduleBanner />
       </div>
 
       {/* Mobile-only search field, revealed by the search icon-button above.
