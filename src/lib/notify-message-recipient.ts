@@ -3,6 +3,7 @@ import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
 import { resolvePref } from '@/lib/notification-prefs'
 import { renderTemplate } from '@/lib/notification-types'
 import { sendTrainerEmail } from '@/lib/trainer-notify'
+import { notifyClient } from '@/lib/client-notify'
 
 const APP_URL = 'https://app.pupmanager.com'
 
@@ -35,6 +36,7 @@ async function doNotify({ messageId, clientId, senderId, body }: NotifyArgs) {
     where: { id: clientId },
     select: {
       userId: true,
+      trainerId: true,
       user: { select: { id: true, name: true, email: true } },
       trainer: {
         select: {
@@ -63,37 +65,42 @@ async function doNotify({ messageId, clientId, senderId, body }: NotifyArgs) {
   const subs = { senderName, clientName, preview }
   const isTrainerRecipient = recipientUser.id === trainerUser.id
 
-  // Push — honour the recipient's NEW_MESSAGE push pref (defaults on, so a
-  // client who's never opened settings still gets pushes).
-  const pushPref = await resolvePref(recipientUser.id, 'NEW_MESSAGE', 'PUSH')
-  if (pushPref.enabled) {
-    const tokens = await prisma.deviceToken.findMany({
-      where: { userId: recipientUser.id, platform: 'IOS' },
-      select: { token: true },
-    })
-    if (tokens.length > 0) {
-      // Deep-link target depends on which side the recipient is on.
-      const path = isTrainerRecipient ? `/messages/${clientId}` : `/my-messages`
-      const results = await sendApns(
-        tokens.map(t => t.token),
-        {
-          alert: { title: renderTemplate(pushPref.title, subs), body: renderTemplate(pushPref.body, subs) },
-          customData: { type: 'new-message', messageId, path },
-        },
-      )
-      // GC tokens APNs reports as dead (uninstall, wipe, bundle-id mismatch).
-      const stale = results
-        .filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason))
-        .map(r => r.token)
-      if (stale.length > 0) {
-        await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
+  if (isTrainerRecipient) {
+    // Trainer side: NEW_MESSAGE push + email, each gated by its own toggle.
+    const pushPref = await resolvePref(trainerUser.id, 'NEW_MESSAGE', 'PUSH')
+    if (pushPref.enabled) {
+      const tokens = await prisma.deviceToken.findMany({
+        where: { userId: trainerUser.id, platform: 'IOS' },
+        select: { token: true },
+      })
+      if (tokens.length > 0) {
+        const results = await sendApns(
+          tokens.map(t => t.token),
+          {
+            alert: { title: renderTemplate(pushPref.title, subs), body: renderTemplate(pushPref.body, subs) },
+            customData: { type: 'new-message', messageId, path: `/messages/${clientId}` },
+          },
+        )
+        const stale = results
+          .filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason))
+          .map(r => r.token)
+        if (stale.length > 0) {
+          await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
+        }
       }
     }
-  }
-
-  // Email — only the trainer side, since NEW_MESSAGE is a trainer-facing type.
-  if (isTrainerRecipient) {
     await sendTrainerEmail(trainerUser.id, 'NEW_MESSAGE', subs, `${APP_URL}/messages/${clientId}`)
+  } else {
+    // Client side: route through the client engine so push/email/feed all
+    // honour the client's CLIENT_NEW_MESSAGE settings.
+    await notifyClient({
+      userId: clientUser.id,
+      trainerId: profile.trainerId,
+      type: 'CLIENT_NEW_MESSAGE',
+      vars: { senderName, preview },
+      link: '/my-messages',
+      ctaLabel: 'Open messages',
+    })
   }
 }
 

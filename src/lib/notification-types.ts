@@ -343,6 +343,22 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     placeholders: ['trainerName', 'dogName', 'planName'],
     sampleValues: { trainerName: 'Jess', dogName: 'Bailey', planName: 'Tuesday session' },
   },
+  CLIENT_NEW_MESSAGE: {
+    type: 'CLIENT_NEW_MESSAGE',
+    label: 'Messages',
+    description: 'When your trainer sends you a message.',
+    trigger: 'event',
+    audience: 'client',
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaultChannels: ['PUSH', 'IN_APP'],
+    defaults: {
+      enabled: true,
+      title: 'New message from {{senderName}}',
+      body: '{{preview}}',
+    },
+    placeholders: ['senderName', 'preview'],
+    sampleValues: { senderName: 'Jess', preview: 'See you Thursday at 6!' },
+  },
 }
 
 // Substitute {{placeholder}} tokens. Unknown placeholders are left as-is

@@ -154,6 +154,7 @@ enum NotificationType {
   CLIENT_SESSION_REMINDER // a heads-up n minutes before each session
   CLIENT_SESSION_CHANGED // a session was rescheduled or cancelled
   CLIENT_RECAP_READY // the trainer posted the write-up for a session
+  CLIENT_NEW_MESSAGE // the trainer sent the client a message
 }
 
 enum NotificationChannel {
