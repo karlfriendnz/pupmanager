@@ -48,7 +48,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     label: 'Upcoming session',
     description: 'Heads-up that one of your sessions is starting soon.',
     trigger: 'time-before-event',
-    channels: ['PUSH'],
+    channels: ['PUSH', 'EMAIL'],
     defaults: {
       enabled: true,
       minutesBefore: 20,
@@ -71,7 +71,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     // — interpretation lives in the cron, not in this metadata.
     description: 'Nudge to write session notes near the end of a session, while it\'s still fresh.',
     trigger: 'time-before-event',
-    channels: ['PUSH'],
+    channels: ['PUSH', 'EMAIL'],
     defaults: {
       enabled: true,
       minutesBefore: 5,
@@ -155,7 +155,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     label: 'Client finished today',
     description: 'A client completed every training task you assigned today.',
     trigger: 'event',
-    channels: ['PUSH'],
+    channels: ['PUSH', 'EMAIL'],
     defaults: {
       enabled: false, // off by default — high-volume trainers would get spammed
       title: 'All done ✅ — {{dogName}}',
@@ -219,7 +219,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     label: 'New message',
     description: 'Someone sent you a message in the app.',
     trigger: 'event',
-    channels: ['PUSH'],
+    channels: ['PUSH', 'EMAIL'],
     defaults: {
       enabled: true,
       title: 'Message from {{senderName}}',
@@ -241,7 +241,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     label: 'Notes reminder',
     description: "An evening nudge on training days — if you haven't logged in or finished your session notes by 8pm, we'll remind you so your training-day streak stays alive. Copy we look after for you.",
     trigger: 'time-of-day',
-    channels: ['PUSH'],
+    channels: ['PUSH', 'EMAIL'],
     // Locked: one curated line, fixed 8pm time, training days only.
     customisable: false,
     defaults: {
