@@ -234,12 +234,13 @@ export async function PATCH(
     await safeEvaluate(cid)
   }
 
-  // Don't notify the client on every move — the trainer may be shuffling the
-  // calendar. Instead flag the moved future sessions as "pending notify"; the
-  // trainer batch-sends them from the schedule banner once they're done.
+  // Don't notify on every move — the trainer may be shuffling the calendar.
+  // Instead flag the moved future sessions as "pending notify"; the trainer
+  // batch-sends from the schedule banner. Covers 1:1 (activated client) and
+  // class sessions (members resolved when sent).
   if (
     parsed.data.scheduledAt !== undefined &&
-    existing.clientId &&
+    (existing.clientId || existing.classRunId) &&
     updated.scheduledAt.getTime() !== existing.scheduledAt.getTime() &&
     updated.scheduledAt.getTime() > Date.now()
   ) {
@@ -247,8 +248,10 @@ export async function PATCH(
       where: {
         id: { in: [sessionId, ...followerIds] },
         scheduledAt: { gt: new Date() },
-        // Only clients who've set up their account (accepted the invite).
-        client: { is: { user: { emailVerified: { not: null } } } },
+        OR: [
+          { client: { is: { user: { emailVerified: { not: null } } } } },
+          { classRunId: { not: null } },
+        ],
       },
       data: { rescheduleNotifyPendingAt: new Date() },
     })
