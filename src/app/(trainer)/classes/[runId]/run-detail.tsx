@@ -297,6 +297,7 @@ function EnrolModal({
   const candidates = clients.filter(c => !existing.has(c.name))
   const [clientId, setClientId] = useState(candidates[0]?.id ?? '')
   const [type, setType] = useState<'FULL' | 'DROP_IN'>('FULL')
+  const [notify, setNotify] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -313,7 +314,7 @@ function EnrolModal({
       const res = await fetch(`/api/class-runs/${runId}/enrollments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, dogId: c?.dogId ?? null, type }),
+        body: JSON.stringify({ clientId, dogId: c?.dogId ?? null, type, notify }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -381,6 +382,15 @@ function EnrolModal({
                   </div>
                 </div>
               )}
+              <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={notify}
+                  onChange={e => setNotify(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span className="text-sm text-slate-700">Notify the client they&apos;re enrolled</span>
+              </label>
               <div className="flex gap-2 pt-2">
                 <Button type="submit" loading={saving}>Enrol</Button>
                 <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>

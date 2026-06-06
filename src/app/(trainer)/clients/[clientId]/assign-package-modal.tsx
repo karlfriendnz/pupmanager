@@ -116,6 +116,7 @@ function AssignModal({
   // Trainer ticks this when they've already sent the invoice for the package
   // outside PupManager (Xero/QBO/cash). Stamps invoicedAt on the assignment.
   const [markInvoiced, setMarkInvoiced] = useState(false)
+  const [notify, setNotify] = useState(true)
 
   const pkg = packages.find(p => p.id === packageId)!
   const isOngoing = pkg.sessionCount === 0
@@ -168,7 +169,7 @@ function AssignModal({
     const res = await fetch(`/api/clients/${clientId}/packages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ packageId, sessionDates, dogId, markInvoiced }),
+      body: JSON.stringify({ packageId, sessionDates, dogId, markInvoiced, notify }),
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
@@ -340,6 +341,21 @@ function AssignModal({
               Already invoiced
               <span className="block text-[11px] text-slate-400 mt-0.5">
                 Tick if you&apos;ve sent the invoice for this package outside PupManager (Xero, QuickBooks, etc).
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
+            <input
+              type="checkbox"
+              checked={notify}
+              onChange={e => setNotify(e.target.checked)}
+              className="h-4 w-4 mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0"
+            />
+            <span className="text-sm text-slate-700 leading-snug">
+              Notify the client
+              <span className="block text-[11px] text-slate-400 mt-0.5">
+                Lets them know they&apos;re booked in, via their notification settings. Untick when back-filling history.
               </span>
             </span>
           </label>
