@@ -2,6 +2,9 @@ import { prisma } from '@/lib/prisma'
 import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
 import { resolvePref } from '@/lib/notification-prefs'
 import { renderTemplate } from '@/lib/notification-types'
+import { sendTrainerEmail } from '@/lib/trainer-notify'
+
+const APP_URL = 'https://app.pupmanager.com'
 
 // Push the recipient of a freshly-created Message. "Recipient" = whichever
 // party in the trainer↔client thread didn't send it. Fire-and-forget from
@@ -54,48 +57,43 @@ async function doNotify({ messageId, clientId, senderId, body }: NotifyArgs) {
     : null
   if (!recipientUser || !senderUser) return
 
-  // Honour the recipient's NEW_MESSAGE PUSH preference. resolvePref
-  // falls back to defaults (enabled: true) when no row exists, so a
-  // client who's never visited a settings page still gets pushes.
-  const pref = await resolvePref(recipientUser.id, 'NEW_MESSAGE', 'PUSH')
-  if (!pref.enabled) return
-
-  const tokens = await prisma.deviceToken.findMany({
-    where: { userId: recipientUser.id, platform: 'IOS' },
-    select: { token: true },
-  })
-  if (tokens.length === 0) return
-
   const senderName = senderUser.name ?? senderUser.email ?? 'Someone'
   const clientName = clientUser.name ?? clientUser.email ?? 'Your client'
   const preview = previewMessage(body)
-
-  const title = renderTemplate(pref.title, { senderName, clientName, preview })
-  const renderedBody = renderTemplate(pref.body, { senderName, clientName, preview })
-
-  // Deep-link target depends on which side the recipient is on. Trainer
-  // gets the per-client thread page; client gets the unified messages
-  // surface. The native shell's appUrlOpen handler navigates the
-  // WebView to this path when the user taps the notification.
+  const subs = { senderName, clientName, preview }
   const isTrainerRecipient = recipientUser.id === trainerUser.id
-  const path = isTrainerRecipient ? `/messages/${clientId}` : `/my-messages`
 
-  const results = await sendApns(
-    tokens.map(t => t.token),
-    {
-      alert: { title, body: renderedBody },
-      customData: { type: 'new-message', messageId, path },
-    },
-  )
+  // Push — honour the recipient's NEW_MESSAGE push pref (defaults on, so a
+  // client who's never opened settings still gets pushes).
+  const pushPref = await resolvePref(recipientUser.id, 'NEW_MESSAGE', 'PUSH')
+  if (pushPref.enabled) {
+    const tokens = await prisma.deviceToken.findMany({
+      where: { userId: recipientUser.id, platform: 'IOS' },
+      select: { token: true },
+    })
+    if (tokens.length > 0) {
+      // Deep-link target depends on which side the recipient is on.
+      const path = isTrainerRecipient ? `/messages/${clientId}` : `/my-messages`
+      const results = await sendApns(
+        tokens.map(t => t.token),
+        {
+          alert: { title: renderTemplate(pushPref.title, subs), body: renderTemplate(pushPref.body, subs) },
+          customData: { type: 'new-message', messageId, path },
+        },
+      )
+      // GC tokens APNs reports as dead (uninstall, wipe, bundle-id mismatch).
+      const stale = results
+        .filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason))
+        .map(r => r.token)
+      if (stale.length > 0) {
+        await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
+      }
+    }
+  }
 
-  // Garbage-collect tokens APNs reports as no longer valid (uninstall,
-  // device wipe, bundle-id mismatch). Without this we'd keep retrying
-  // forever and burning APNs quota.
-  const stale = results
-    .filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason))
-    .map(r => r.token)
-  if (stale.length > 0) {
-    await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
+  // Email — only the trainer side, since NEW_MESSAGE is a trainer-facing type.
+  if (isTrainerRecipient) {
+    await sendTrainerEmail(trainerUser.id, 'NEW_MESSAGE', subs, `${APP_URL}/messages/${clientId}`)
   }
 }
 

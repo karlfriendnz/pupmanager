@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma'
 import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { getStreak, todayStatus, syncBadges } from '@/lib/trainer-streak'
+import { sendTrainerEmail } from '@/lib/trainer-notify'
+
+const APP_URL = 'https://app.pupmanager.com'
 
 // Invoked HOURLY by a Supabase pg_cron job (NOT a Vercel cron). For each
 // push-enabled trainer whose local time is 8pm: if today is a training
@@ -36,24 +39,26 @@ export async function GET(req: Request) {
   const candidates = await prisma.user.findMany({
     where: {
       role: 'TRAINER',
-      notifyPush: true,
       trainerProfile: { isNot: null },
-      deviceTokens: { some: { platform: 'IOS' } },
     },
     select: {
       id: true,
       timezone: true,
+      notifyPush: true,
       trainerProfile: { select: { id: true } },
       deviceTokens: { where: { platform: 'IOS' }, select: { token: true } },
-      notificationPreferences: { where: { type: 'STREAK_UPDATE', channel: 'PUSH' } },
+      notificationPreferences: { where: { type: 'STREAK_UPDATE' } },
     },
   })
 
-  // Only trainers whose local time is the reminder hour right now and
-  // who haven't disabled the notification.
+  // Only trainers whose local time is the reminder hour right now and who want
+  // it on at least one channel.
   const due = candidates.filter(u => {
-    const pref = u.notificationPreferences[0]
-    if (pref && !pref.enabled) return false
+    const pushPref = u.notificationPreferences.find(p => p.channel === 'PUSH')
+    const emailPref = u.notificationPreferences.find(p => p.channel === 'EMAIL')
+    const wantsPush = u.notifyPush && (pushPref?.enabled ?? true) && u.deviceTokens.length > 0
+    const wantsEmail = emailPref?.enabled ?? (meta.defaultChannels ?? meta.channels).includes('EMAIL')
+    if (!wantsPush && !wantsEmail) return false
     return localParts(u.timezone).hour === REMIND_HOUR
   })
 
@@ -89,20 +94,26 @@ export async function GET(req: Request) {
         : `Finish today's session notes before the day's out.`
     const subs = { message: streakLine, weeks: String(current) }
 
-    const results = await sendApns(
-      u.deviceTokens.map(d => d.token),
-      {
-        alert: {
-          title: renderTemplate(meta.defaults.title, subs),
-          body: renderTemplate(meta.defaults.body, subs),
+    const pushPref = u.notificationPreferences.find(p => p.channel === 'PUSH')
+    if (u.notifyPush && (pushPref?.enabled ?? true) && u.deviceTokens.length > 0) {
+      const results = await sendApns(
+        u.deviceTokens.map(d => d.token),
+        {
+          alert: {
+            title: renderTemplate(meta.defaults.title, subs),
+            body: renderTemplate(meta.defaults.body, subs),
+          },
+          customData: { type: 'streak-notes-reminder' },
         },
-        customData: { type: 'streak-notes-reminder' },
-      },
-    )
-    for (const r of results) {
-      if (r.ok) pushed++
-      else if (r.reason && INVALID_TOKEN_REASONS.has(r.reason)) tokensToDelete.push(r.token)
+      )
+      for (const r of results) {
+        if (r.ok) pushed++
+        else if (r.reason && INVALID_TOKEN_REASONS.has(r.reason)) tokensToDelete.push(r.token)
+      }
     }
+
+    // Email channel — gated by its own per-type toggle inside the helper.
+    await sendTrainerEmail(u.id, 'STREAK_UPDATE', subs, `${APP_URL}/dashboard`)
   }
 
   if (tokensToDelete.length > 0) {

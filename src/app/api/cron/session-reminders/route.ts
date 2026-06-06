@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma'
 import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { resolvePrefsForUsers } from '@/lib/notification-prefs'
+import { sendTrainerEmail } from '@/lib/trainer-notify'
+
+const APP_URL = 'https://app.pupmanager.com'
 
 // Cron tick interval — must match Supabase pg_cron schedule. Defines the
 // fuzziness window for matching a session against a trainer's chosen lead time.
@@ -84,19 +87,17 @@ export async function GET(req: Request) {
       const inWindow = minutesUntilStart > 0 && Math.abs(minutesUntilStart - lead) <= TICK_INTERVAL_MIN / 2
 
       if (inWindow) {
-        if (!trainerUser.notifyPush || !pref.enabled || trainerUser.deviceTokens.length === 0) {
-          await prisma.trainingSession.update({ where: { id: s.id }, data: { reminderPushSentAt: now } })
-        } else {
-          const startTime = s.scheduledAt.toLocaleTimeString('en-NZ', {
-            hour: 'numeric', minute: '2-digit', hour12: true, timeZone: trainerUser.timezone,
-          })
-          const subs = {
-            dogName: s.dog?.name ?? '',
-            clientName: s.client?.user?.name ?? '',
-            title: s.title,
-            startTime,
-            minutesBefore: String(lead),
-          }
+        const startTime = s.scheduledAt.toLocaleTimeString('en-NZ', {
+          hour: 'numeric', minute: '2-digit', hour12: true, timeZone: trainerUser.timezone,
+        })
+        const subs = {
+          dogName: s.dog?.name ?? '',
+          clientName: s.client?.user?.name ?? '',
+          title: s.title,
+          startTime,
+          minutesBefore: String(lead),
+        }
+        if (trainerUser.notifyPush && pref.enabled && trainerUser.deviceTokens.length > 0) {
           const results = await sendApns(trainerUser.deviceTokens.map(d => d.token), {
             alert: { title: renderTemplate(pref.title, subs), body: renderTemplate(pref.body, subs) },
             // `path` is consumed by the native shell's tap handler to deep-link
@@ -107,8 +108,10 @@ export async function GET(req: Request) {
             if (r.ok) startPushes++
             else if (r.reason && INVALID_TOKEN_REASONS.has(r.reason)) tokensToDelete.push(r.token)
           }
-          await prisma.trainingSession.update({ where: { id: s.id }, data: { reminderPushSentAt: now } })
         }
+        // Email channel — gated by its own per-type toggle inside the helper.
+        await sendTrainerEmail(trainerUser.id, 'SESSION_REMINDER', subs, `${APP_URL}/sessions/${s.id}`)
+        await prisma.trainingSession.update({ where: { id: s.id }, data: { reminderPushSentAt: now } })
       }
     }
 
@@ -127,20 +130,18 @@ export async function GET(req: Request) {
       const inWindow = minutesUntilEnd > 0 && Math.abs(minutesUntilEnd - lead) <= TICK_INTERVAL_MIN / 2
 
       if (inWindow) {
-        if (!trainerUser.notifyPush || !pref.enabled || trainerUser.deviceTokens.length === 0) {
-          await prisma.trainingSession.update({ where: { id: s.id }, data: { notesReminderPushSentAt: now } })
-        } else {
-          const endsAt = new Date(s.scheduledAt.getTime() + s.durationMins * 60_000)
-          const endTime = endsAt.toLocaleTimeString('en-NZ', {
-            hour: 'numeric', minute: '2-digit', hour12: true, timeZone: trainerUser.timezone,
-          })
-          const subs = {
-            dogName: s.dog?.name ?? '',
-            clientName: s.client?.user?.name ?? '',
-            title: s.title,
-            endTime,
-            minutesBefore: String(lead),
-          }
+        const endsAt = new Date(s.scheduledAt.getTime() + s.durationMins * 60_000)
+        const endTime = endsAt.toLocaleTimeString('en-NZ', {
+          hour: 'numeric', minute: '2-digit', hour12: true, timeZone: trainerUser.timezone,
+        })
+        const subs = {
+          dogName: s.dog?.name ?? '',
+          clientName: s.client?.user?.name ?? '',
+          title: s.title,
+          endTime,
+          minutesBefore: String(lead),
+        }
+        if (trainerUser.notifyPush && pref.enabled && trainerUser.deviceTokens.length > 0) {
           const results = await sendApns(trainerUser.deviceTokens.map(d => d.token), {
             alert: { title: renderTemplate(pref.title, subs), body: renderTemplate(pref.body, subs) },
             // Deep-link straight to the session page with a #notes anchor so
@@ -151,8 +152,9 @@ export async function GET(req: Request) {
             if (r.ok) notesPushes++
             else if (r.reason && INVALID_TOKEN_REASONS.has(r.reason)) tokensToDelete.push(r.token)
           }
-          await prisma.trainingSession.update({ where: { id: s.id }, data: { notesReminderPushSentAt: now } })
         }
+        await sendTrainerEmail(trainerUser.id, 'SESSION_NOTES_REMINDER', subs, `${APP_URL}/sessions/${s.id}#notes`)
+        await prisma.trainingSession.update({ where: { id: s.id }, data: { notesReminderPushSentAt: now } })
       }
     }
   }

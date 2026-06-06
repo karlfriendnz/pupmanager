@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma'
 import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
+import { sendTrainerEmail } from '@/lib/trainer-notify'
+
+const APP_URL = 'https://app.pupmanager.com'
 
 // Runs hourly. For each trainer whose `dailyAtHour` matches the current hour
 // in their timezone (push channel enabled), composes and sends a one-line
@@ -26,26 +29,28 @@ export async function GET(req: Request) {
   const candidates = await prisma.user.findMany({
     where: {
       role: 'TRAINER',
-      notifyPush: true,
       trainerProfile: { isNot: null },
-      deviceTokens: { some: { platform: 'IOS' } },
     },
     select: {
       id: true,
       timezone: true,
+      notifyPush: true,
       trainerProfile: { select: { id: true } },
       deviceTokens: { where: { platform: 'IOS' }, select: { token: true } },
       notificationPreferences: {
-        where: { type: 'DAILY_SUMMARY', channel: 'PUSH' },
+        where: { type: 'DAILY_SUMMARY' },
       },
     },
   })
 
   const due: typeof candidates = []
   for (const u of candidates) {
-    const pref = u.notificationPreferences[0]
-    if (pref && !pref.enabled) continue
-    const hourPref = pref?.dailyAtHour ?? defaultHour
+    const pushPref = u.notificationPreferences.find(p => p.channel === 'PUSH')
+    const emailPref = u.notificationPreferences.find(p => p.channel === 'EMAIL')
+    const wantsPush = u.notifyPush && (pushPref?.enabled ?? true) && u.deviceTokens.length > 0
+    const wantsEmail = emailPref?.enabled ?? (meta.defaultChannels ?? meta.channels).includes('EMAIL')
+    if (!wantsPush && !wantsEmail) continue
+    const hourPref = pushPref?.dailyAtHour ?? emailPref?.dailyAtHour ?? defaultHour
     const localHour = Number(new Date().toLocaleString('en-US', {
       hour: 'numeric', hour12: false, timeZone: u.timezone,
     }))
@@ -81,7 +86,7 @@ export async function GET(req: Request) {
       }),
     ])
 
-    const pref = u.notificationPreferences[0]
+    const pref = u.notificationPreferences.find(p => p.channel === 'PUSH')
 
     // Day-off path: when there's nothing booked AND the trainer hasn't
     // opted out, swap the digest for a warm "take the day off" copy.
@@ -102,18 +107,22 @@ export async function GET(req: Request) {
         : '—',
     }
 
-    const results = await sendApns(
-      u.deviceTokens.map(d => d.token),
-      {
-        alert: { title: renderTemplate(title, subs), body: renderTemplate(body, subs) },
-        customData: { type: dayOff ? 'daily-summary-day-off' : 'daily-summary' },
-      },
-    )
-
-    for (const r of results) {
-      if (r.ok) pushed++
-      else if (r.reason && INVALID_TOKEN_REASONS.has(r.reason)) tokensToDelete.push(r.token)
+    if (u.notifyPush && (pref?.enabled ?? true) && u.deviceTokens.length > 0) {
+      const results = await sendApns(
+        u.deviceTokens.map(d => d.token),
+        {
+          alert: { title: renderTemplate(title, subs), body: renderTemplate(body, subs) },
+          customData: { type: dayOff ? 'daily-summary-day-off' : 'daily-summary' },
+        },
+      )
+      for (const r of results) {
+        if (r.ok) pushed++
+        else if (r.reason && INVALID_TOKEN_REASONS.has(r.reason)) tokensToDelete.push(r.token)
+      }
     }
+
+    // Email channel — gated by its own per-type toggle inside the helper.
+    await sendTrainerEmail(u.id, 'DAILY_SUMMARY', subs, `${APP_URL}/dashboard`)
   }
 
   if (tokensToDelete.length > 0) {
