@@ -26,6 +26,8 @@ const pendingWhere = (tid: string) => ({
 })
 
 const fmt = (d: Date, tz: string) => d.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+// "Puppy Foundations — session 2/6" → "Puppy Foundations"
+const planTitle = (t: string) => t.replace(/\s+[—-]\s+session.*$/i, '').trim()
 
 // GET — pending reschedules grouped by affected client (drives the banner list).
 export async function GET() {
@@ -34,28 +36,41 @@ export async function GET() {
   const pending = await prisma.trainingSession.findMany({
     where: pendingWhere(tid),
     select: {
-      clientId: true,
+      clientId: true, title: true,
+      dog: { select: { name: true } },
+      clientPackage: { select: { package: { select: { name: true } } } },
       client: { select: { userId: true, user: { select: { name: true, emailVerified: true } } } },
       classRunId: true,
-      classRun: { select: { enrollments: { where: activatedEnroll, select: { client: { select: { userId: true, user: { select: { name: true } } } } } } } },
+      classRun: { select: { name: true, enrollments: { where: activatedEnroll, select: { client: { select: { userId: true, user: { select: { name: true } } } }, dog: { select: { name: true } } } } } },
     },
   })
-  const byUser = new Map<string, { userId: string; name: string; count: number }>()
-  const add = (userId: string, name: string) => {
-    const e = byUser.get(userId) ?? { userId, name, count: 0 }
-    e.count++
-    byUser.set(userId, e)
+
+  type Row = { userId: string; name: string; count: number; dogs: Set<string>; plans: Set<string> }
+  const byUser = new Map<string, Row>()
+  const ensure = (userId: string, name: string): Row => {
+    let e = byUser.get(userId)
+    if (!e) { e = { userId, name, count: 0, dogs: new Set(), plans: new Set() }; byUser.set(userId, e) }
+    return e
   }
   for (const s of pending) {
+    const plan = s.classRunId ? s.classRun?.name : (s.clientPackage?.package?.name ?? planTitle(s.title))
     if (s.clientId && s.client?.userId && s.client.user?.emailVerified) {
-      add(s.client.userId, s.client.user?.name ?? 'Client')
+      const e = ensure(s.client.userId, s.client.user?.name ?? 'Client')
+      e.count++
+      if (s.dog?.name) e.dogs.add(s.dog.name)
+      if (plan) e.plans.add(plan)
     } else if (s.classRunId) {
       for (const en of s.classRun?.enrollments ?? []) {
-        if (en.client?.userId) add(en.client.userId, en.client.user?.name ?? 'Client')
+        if (!en.client?.userId) continue
+        const e = ensure(en.client.userId, en.client.user?.name ?? 'Client')
+        e.count++
+        if (en.dog?.name) e.dogs.add(en.dog.name)
+        if (plan) e.plans.add(plan)
       }
     }
   }
-  return NextResponse.json({ sessions: pending.length, clients: [...byUser.values()] })
+  const clients = [...byUser.values()].map(e => ({ userId: e.userId, name: e.name, count: e.count, dogs: [...e.dogs], plans: [...e.plans] }))
+  return NextResponse.json({ sessions: pending.length, clients })
 }
 
 // POST — send the pending reschedules (optionally only to the chosen clients):

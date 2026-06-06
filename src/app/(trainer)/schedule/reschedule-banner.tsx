@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 
-type PendingClient = { userId: string; name: string; count: number }
+type PendingClient = { userId: string; name: string; count: number; dogs: string[]; plans: string[] }
 
 // Sits above the schedule. Uses the app's card + brand-button language (white
 // card, teal primary) rather than a coloured alert band. Notify everyone, or
@@ -103,13 +103,19 @@ export function RescheduleBanner() {
               <input type="checkbox" checked={allOn} onChange={toggleAll} className="h-4 w-4 accent-[var(--accent)] cursor-pointer" />
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Everyone</span>
             </label>
-            {clients.map(c => (
-              <label key={c.userId} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50">
-                <input type="checkbox" checked={selected.has(c.userId)} onChange={() => toggle(c.userId)} className="h-4 w-4 accent-[var(--accent)] cursor-pointer" />
-                <span className="text-sm text-slate-800 flex-1 truncate">{c.name}</span>
-                <span className="text-xs text-slate-400 shrink-0">{c.count} session{c.count === 1 ? '' : 's'}</span>
-              </label>
-            ))}
+            {clients.map(c => {
+              const sub = [c.dogs.join(', '), c.plans.join(', ')].filter(Boolean).join(' · ')
+              return (
+                <label key={c.userId} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50">
+                  <input type="checkbox" checked={selected.has(c.userId)} onChange={() => toggle(c.userId)} className="h-4 w-4 accent-[var(--accent)] cursor-pointer" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-slate-800 truncate">{c.name}</p>
+                    {sub && <p className="text-xs text-slate-400 truncate">{sub}</p>}
+                  </div>
+                  <span className="text-xs text-slate-400 shrink-0">{c.count} session{c.count === 1 ? '' : 's'}</span>
+                </label>
+              )
+            })}
           </div>
           <div className="flex items-center gap-2 mt-3 justify-end">
             <Button variant="ghost" size="sm" onClick={() => setExpanded(false)} disabled={busy !== null}>Back</Button>
