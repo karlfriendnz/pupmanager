@@ -1116,20 +1116,22 @@ function ImmersiveText({
 }) {
   return (
     <div>
-      <textarea
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        autoFocus
-        placeholder="Start writing…"
-        className="min-h-[55vh] w-full resize-none border-0 bg-transparent p-0 text-lg leading-relaxed text-slate-900 placeholder:text-slate-300 focus:outline-none focus:ring-0"
-      />
-      <div className="mt-1 flex items-center gap-2">
-        <VoiceInput onAppend={t => onChange(appendSpoken(value, t))} />
-        {onImagesChange && (
-          <ImageUploadButton onUploaded={(added) => onImagesChange([...(imageUrls ?? []), ...added])} context={{ sessionId }} />
-        )}
+      <div className="relative rounded-2xl bg-slate-50 border border-transparent focus-within:border-blue-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-50 transition-all">
+        <textarea
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          autoFocus
+          placeholder="Start writing…"
+          className="w-full min-h-[38vh] resize-none bg-transparent px-4 pt-4 pb-14 text-base leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none"
+        />
+        <div className="absolute bottom-2 left-2 flex items-center gap-1">
+          <VoiceInput onAppend={t => onChange(appendSpoken(value, t))} />
+          {onImagesChange && (
+            <ImageUploadButton onUploaded={(added) => onImagesChange([...(imageUrls ?? []), ...added])} context={{ sessionId }} />
+          )}
+        </div>
       </div>
-      {onImagesChange && <ImageGallery urls={imageUrls ?? []} onChange={onImagesChange} className="mt-2" />}
+      {onImagesChange && <ImageGallery urls={imageUrls ?? []} onChange={onImagesChange} className="mt-3" />}
     </div>
   )
 }
