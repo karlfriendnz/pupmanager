@@ -95,18 +95,28 @@ export function NotificationsPanel() {
             </thead>
             <tbody>
               {TRAINER_TYPES.map(meta => {
-                const open = expanded === meta.type
+                // Auto-curated types (fixed timing + copy) have nothing to edit,
+                // so they aren't expandable — just the channel toggles.
+                const canExpand = meta.customisable !== false
+                const open = canExpand && expanded === meta.type
                 return (
                   <Fragment key={meta.type}>
                     <tr className="border-t border-slate-50">
                       <td className="px-3 py-3 align-top">
-                        <button type="button" onClick={() => setExpanded(open ? null : meta.type)} className="flex items-start gap-1.5 text-left w-full">
-                          <ChevronDown className={`h-4 w-4 text-slate-300 shrink-0 mt-0.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-                          <span className="min-w-0">
+                        {canExpand ? (
+                          <button type="button" onClick={() => setExpanded(open ? null : meta.type)} className="flex items-start gap-1.5 text-left w-full">
+                            <ChevronDown className={`h-4 w-4 text-slate-300 shrink-0 mt-0.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium text-slate-900 leading-tight">{meta.label}</span>
+                              <span className="block text-xs text-slate-400 leading-tight mt-0.5">{meta.description}</span>
+                            </span>
+                          </button>
+                        ) : (
+                          <div className="pl-[22px]">
                             <span className="block text-sm font-medium text-slate-900 leading-tight">{meta.label}</span>
                             <span className="block text-xs text-slate-400 leading-tight mt-0.5">{meta.description}</span>
-                          </span>
-                        </button>
+                          </div>
+                        )}
                       </td>
                       {CHANNELS.map(({ id }) => {
                         if (!supports(meta.type, id)) return <td key={id} className="text-center text-slate-200">—</td>
