@@ -98,24 +98,33 @@ export function RescheduleBanner() {
 
       {expanded && (
         <>
-          <div className="mt-3 rounded-xl ring-1 ring-slate-100 divide-y divide-slate-100 max-h-52 overflow-auto">
-            <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer">
-              <input type="checkbox" checked={allOn} onChange={toggleAll} className="h-4 w-4 accent-[var(--accent)] cursor-pointer" />
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Everyone</span>
-            </label>
-            {clients.map(c => {
-              const sub = [c.dogs.join(', '), c.plans.join(', ')].filter(Boolean).join(' · ')
-              return (
-                <label key={c.userId} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50">
-                  <input type="checkbox" checked={selected.has(c.userId)} onChange={() => toggle(c.userId)} className="h-4 w-4 accent-[var(--accent)] cursor-pointer" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-slate-800 truncate">{c.name}</p>
-                    {sub && <p className="text-xs text-slate-400 truncate">{sub}</p>}
-                  </div>
-                  <span className="text-xs text-slate-400 shrink-0">{c.count} session{c.count === 1 ? '' : 's'}</span>
-                </label>
-              )
-            })}
+          <div className="mt-3 rounded-xl ring-1 ring-slate-100 max-h-56 overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50/95 backdrop-blur">
+                <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-3 py-2 w-9">
+                    <input type="checkbox" checked={allOn} onChange={toggleAll} aria-label="Select all" className="h-4 w-4 accent-[var(--accent)] cursor-pointer align-middle" />
+                  </th>
+                  <th className="px-2 py-2">Client</th>
+                  <th className="px-2 py-2">Dog</th>
+                  <th className="px-2 py-2">Package / class</th>
+                  <th className="px-2 py-2 text-right">Sessions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clients.map(c => (
+                  <tr key={c.userId} onClick={() => toggle(c.userId)} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50">
+                    <td className="px-3 py-2">
+                      <input type="checkbox" checked={selected.has(c.userId)} onChange={() => toggle(c.userId)} onClick={e => e.stopPropagation()} className="h-4 w-4 accent-[var(--accent)] cursor-pointer align-middle" />
+                    </td>
+                    <td className="px-2 py-2 font-medium text-slate-800 whitespace-nowrap">{c.name}</td>
+                    <td className="px-2 py-2 text-slate-600">{c.dogs.join(', ') || '—'}</td>
+                    <td className="px-2 py-2 text-slate-600">{c.plans.join(', ') || '—'}</td>
+                    <td className="px-2 py-2 text-right text-slate-400 tabular-nums">{c.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           <div className="flex items-center gap-2 mt-3 justify-end">
             <Button variant="ghost" size="sm" onClick={() => setExpanded(false)} disabled={busy !== null}>Back</Button>
