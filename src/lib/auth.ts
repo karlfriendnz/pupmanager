@@ -100,6 +100,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   callbacks: {
+    // Soft delete gate: a deactivated account is blocked from signing in (its
+    // data is retained for possible reinstatement). Returning false denies the
+    // sign-in. Runs for every provider (credentials, OAuth, magic link).
+    async signIn({ user }) {
+      if (user?.id) {
+        const u = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { deactivatedAt: true },
+        })
+        if (u?.deactivatedAt) return false
+      }
+      return true
+    },
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as { role?: string }).role

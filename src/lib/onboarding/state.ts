@@ -24,6 +24,7 @@ export interface FabStep {
   order: number
   ctaHref: string
   status: 'pending' | 'in_progress' | 'completed' | 'skipped'
+  demo?: boolean
 }
 
 // Computes what the floating "Continue setup" card on trainer pages should
@@ -52,6 +53,7 @@ export async function getOnboardingFabState(trainerId: string): Promise<{
     order: s.order,
     ctaHref: s.ctaHref,
     status: s.status,
+    demo: s.demo,
   }))
   const totalSteps = allSteps.length
   const allComplete = totalSteps > 0 && allSteps.every(s => s.status === 'completed')
@@ -95,7 +97,10 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
   // 4 queries instead of 8: profile + per-relation counts collapse into one
   // findUnique via _count, and the limbo client doubles as the "any client
   // exists" signal so we drop the separate clientCount query.
-  const [steps, progress, profileWithCounts, limbo, invitedClientCount, staffCount] = await Promise.all([
+  const [
+    steps, progress, profileWithCounts, limbo, invitedClientCount, staffCount,
+    realClients, realPackages, realAchievements, realAvailability, realSessions,
+  ] = await Promise.all([
     prisma.onboardingStep.findMany({
       where: { publishedAt: { not: null } },
       orderBy: { order: 'asc' },
@@ -147,9 +152,29 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
     // Team members beyond the owner — any MANAGER/STAFF membership (pending or
     // accepted) means the trainer has invited someone. Drives invite_staff.
     prisma.trainerMembership.count({ where: { companyId: trainerId, role: { not: 'OWNER' } } }),
+    // REAL (non-sample) counts for the sample-able steps. When a step is
+    // satisfied only by demo/sample data (total > 0 but real === 0) the UI
+    // labels it "Demo data" so the trainer knows it isn't done for real yet.
+    prisma.clientProfile.count({ where: { trainerId, isSample: false } }),
+    prisma.package.count({ where: { trainerId, isSample: false } }),
+    prisma.achievement.count({ where: { trainerId, isSample: false, published: true } }),
+    prisma.availabilitySlot.count({ where: { trainerId, isSample: false } }),
+    // A session is "real" unless it belongs to a sample client — demo sessions
+    // are always attached to sample clients.
+    prisma.trainingSession.count({ where: { trainerId, NOT: { client: { isSample: true } } } }),
   ])
 
   const counts = profileWithCounts?._count ?? { embedForms: 0, sessionForms: 0, packages: 0, clients: 0, customFields: 0, achievements: 0, trainingSessions: 0, availabilitySlots: 0 }
+
+  // A step is "demo-only" when it's satisfied purely by sample data: the total
+  // (which includes sample rows) is > 0 but the real count is 0. Keyed by step.
+  const demoOnly: Record<string, boolean> = {
+    create_client: counts.clients > 0 && realClients === 0,
+    program_package: counts.packages > 0 && realPackages === 0,
+    achievements: counts.achievements > 0 && realAchievements === 0,
+    availability: counts.availabilitySlots > 0 && realAvailability === 0,
+    schedule_session: counts.trainingSessions > 0 && realSessions === 0,
+  }
 
   // Live-derived completion — a step is "done" if either the underlying state
   // exists OR the trainer explicitly marked it complete.
@@ -197,6 +222,9 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
     else if (exp?.skipped) status = 'skipped'
     else if (exp?.started) status = 'in_progress'
     else status = 'pending'
+    // Completed only because demo/sample data exists (no real record yet, and
+    // the trainer didn't explicitly confirm the step).
+    const demo = status === 'completed' && !exp?.completed && !!demoOnly[s.key]
     return {
       key: s.key,
       order: s.order,
@@ -207,6 +235,7 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
       skippable: s.skippable,
       skipWarning: s.skipWarning,
       status,
+      demo,
     }
   })
 

@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Pencil, Trash2, X, Check, LogIn } from 'lucide-react'
+import { Pencil, Trash2, X, Check, LogIn, Ban, RotateCcw, AlertTriangle } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 
 type Trainer = {
@@ -12,11 +13,14 @@ type Trainer = {
   businessName: string | null
   subscriptionPlanName: string | null
   subscriptionStatus: string | null
+  trialEndsAt: Date | string | null
+  isInternal: boolean
   clientCount: number
   onboardingCompleted: number
   onboardingTotal: number
   onboardingEmails: number
   gracePeriodUntil: Date | string | null
+  deactivatedAt: Date | string | null
   createdAt: Date
 }
 
@@ -24,9 +28,14 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false)
+  const [togglingActive, setTogglingActive] = useState(false)
+  const [showHardDelete, setShowHardDelete] = useState(false)
+  const [confirmText, setConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const isActive = !trainer.deactivatedAt
 
   const [name, setName] = useState(trainer.name ?? '')
   const [email, setEmail] = useState(trainer.email)
@@ -50,12 +59,41 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
     setSaving(false)
   }
 
-  async function handleDelete() {
+  // Soft delete: deactivate (active=false) or reinstate (active=true). Never
+  // removes data — just toggles the sign-in block.
+  async function setActive(active: boolean) {
+    setTogglingActive(true)
+    setError(null)
+    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active }),
+    })
+    if (res.ok) {
+      router.refresh()
+      setConfirmDeactivate(false)
+    } else {
+      const data = await res.json().catch(() => ({}))
+      setError(typeof data.error === 'string' ? data.error : 'Failed to update account')
+    }
+    setTogglingActive(false)
+  }
+
+  // Hard delete: permanent removal. Only reachable from the typed-confirmation
+  // modal, and the server also requires the account to be deactivated first.
+  async function handleHardDelete() {
     setDeleting(true)
+    setError(null)
     const res = await fetch(`/api/admin/trainers/${trainer.id}`, { method: 'DELETE' })
-    if (res.ok) router.refresh()
+    if (res.ok) {
+      router.refresh()
+      setShowHardDelete(false)
+    } else {
+      const data = await res.json().catch(() => ({}))
+      setError(typeof data.error === 'string' ? data.error : 'Failed to delete trainer')
+      setShowHardDelete(false)
+    }
     setDeleting(false)
-    setConfirmDelete(false)
   }
 
   // Grant (days > 0) or clear (days === null) an access grace period.
@@ -75,8 +113,39 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
     setSavingGrace(false)
   }
 
+  // Apply a fresh N-day trial from today (sets trialEndsAt + flips to TRIALING).
+  const [savingTrial, setSavingTrial] = useState(false)
+  async function applyTrial(days: number) {
+    setSavingTrial(true)
+    setError(null)
+    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ applyTrialDays: days }),
+    })
+    if (res.ok) router.refresh()
+    else setError('Failed to apply trial')
+    setSavingTrial(false)
+  }
+
+  // Mark/unmark this as a PupManager-owned (internal/test) account.
+  const [savingInternal, setSavingInternal] = useState(false)
+  async function toggleInternal() {
+    setSavingInternal(true)
+    setError(null)
+    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isInternal: !trainer.isInternal }),
+    })
+    if (res.ok) router.refresh()
+    else setError('Failed to update account flag')
+    setSavingInternal(false)
+  }
+
   const graceUntil = trainer.gracePeriodUntil ? new Date(trainer.gracePeriodUntil) : null
   const graceActive = !!graceUntil && graceUntil.getTime() > Date.now()
+  const trialEnds = trainer.trialEndsAt ? new Date(trainer.trialEndsAt) : null
 
   if (editing) {
     return (
@@ -125,6 +194,28 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
             </div>
           </div>
 
+          {/* Trial period — apply a fresh trial from today */}
+          <div className="mt-4 pt-3 border-t border-slate-600/50">
+            <p className="text-xs text-slate-400 mb-2">
+              Trial
+              {trialEnds
+                ? <span className="text-slate-300"> · ends {formatDate(trialEnds)}</span>
+                : <span className="text-slate-500"> · none</span>}
+            </p>
+            <div className="flex gap-2 flex-wrap items-center">
+              {[30, 60, 100].map(d => (
+                <button
+                  key={d}
+                  onClick={() => applyTrial(d)}
+                  disabled={savingTrial}
+                  className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 h-8 rounded-lg disabled:opacity-50"
+                >
+                  {d}-day trial
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Access grace period — overrides the paywall regardless of plan/trial */}
           <div className="mt-4 pt-3 border-t border-slate-600/50">
             <p className="text-xs text-slate-400 mb-2">
@@ -155,15 +246,51 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
               )}
             </div>
           </div>
+
+          {/* Internal / PupManager-owned account flag */}
+          <div className="mt-4 pt-3 border-t border-slate-600/50">
+            <p className="text-xs text-slate-400 mb-2">
+              Account type
+              {trainer.isInternal
+                ? <span className="text-purple-300"> · PupManager (internal/test)</span>
+                : <span className="text-slate-500"> · real customer</span>}
+            </p>
+            <button
+              onClick={toggleInternal}
+              disabled={savingInternal}
+              className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 h-8 rounded-lg disabled:opacity-50"
+            >
+              {trainer.isInternal ? 'Unmark as ours' : 'Mark as ours (internal)'}
+            </button>
+          </div>
         </td>
       </tr>
     )
   }
 
   return (
-    <tr className="border-b border-slate-700/50 hover:bg-slate-700/30">
-      <td className="px-4 py-3 text-white">{trainer.name ?? '—'}</td>
-      <td className="px-4 py-3 text-slate-300">{trainer.email}</td>
+    <tr className={`border-b border-slate-700/50 hover:bg-slate-700/30 ${isActive ? '' : 'opacity-60'}`}>
+      <td className="px-4 py-3 text-white">
+        <span className="group relative inline-flex items-center gap-1.5">
+          <span className="cursor-default border-b border-dotted border-slate-500/60">
+            {trainer.name ?? '—'}
+          </span>
+          {trainer.isInternal && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-900 text-purple-300">
+              Ours
+            </span>
+          )}
+          {!isActive && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-500/40">
+              Inactive
+            </span>
+          )}
+          {/* Instant email tooltip on hover (native title is unreliable). */}
+          <span className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs text-slate-200 shadow-lg ring-1 ring-slate-700 group-hover:block">
+            {trainer.email}
+          </span>
+        </span>
+      </td>
       <td className="px-4 py-3 text-slate-300">{trainer.businessName ?? '—'}</td>
       <td className="px-4 py-3">
         <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -178,6 +305,24 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
             Grace
           </span>
         )}
+      </td>
+      <td className="px-4 py-3">
+        {(() => {
+          if (!trialEnds) return <span className="text-slate-500">—</span>
+          const days = Math.ceil((trialEnds.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+          const expired = days < 0
+          return (
+            <span
+              className={`text-sm ${expired ? 'text-rose-300' : days <= 3 ? 'text-amber-300' : 'text-slate-300'}`}
+              title={expired ? 'Trial expired' : `${days} day${days === 1 ? '' : 's'} left`}
+            >
+              {formatDate(trialEnds)}
+              <span className="ml-1 text-xs text-slate-500">
+                {expired ? '(expired)' : `(${days}d)`}
+              </span>
+            </span>
+          )
+        })()}
       </td>
       <td className="px-4 py-3 text-slate-300">{trainer.clientCount}</td>
       <td className="px-4 py-3">
@@ -202,6 +347,7 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
       </td>
       <td className="px-4 py-3 text-slate-400">{formatDate(trainer.createdAt)}</td>
       <td className="px-4 py-3">
+        {error && <p className="text-red-400 text-xs mb-1.5 max-w-[14rem]">{error}</p>}
         <div className="flex items-center gap-1">
           <a
             href={`/api/admin/impersonate/${trainer.id}`}
@@ -217,24 +363,108 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
-          {confirmDelete ? (
-            <div className="flex items-center gap-1.5 ml-1">
-              <span className="text-xs text-red-400">Delete?</span>
-              <button onClick={handleDelete} disabled={deleting} className="text-xs text-red-400 hover:text-red-300 font-medium disabled:opacity-50">
-                {deleting ? '…' : 'Yes'}
+
+          {isActive ? (
+            // Active account → soft-delete (deactivate), with inline confirm.
+            confirmDeactivate ? (
+              <div className="flex items-center gap-1.5 ml-1">
+                <span className="text-xs text-amber-400">Deactivate?</span>
+                <button onClick={() => setActive(false)} disabled={togglingActive} className="text-xs text-amber-400 hover:text-amber-300 font-medium disabled:opacity-50">
+                  {togglingActive ? '…' : 'Yes'}
+                </button>
+                <button onClick={() => setConfirmDeactivate(false)} className="text-xs text-slate-500 hover:text-slate-300">No</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDeactivate(true)}
+                className="p-1.5 text-slate-400 hover:text-amber-400 rounded-lg hover:bg-slate-700 transition-colors"
+                title="Deactivate (block sign-in, keep data)"
+              >
+                <Ban className="h-3.5 w-3.5" />
               </button>
-              <button onClick={() => setConfirmDelete(false)} className="text-xs text-slate-500 hover:text-slate-300">No</button>
-            </div>
+            )
           ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-700 transition-colors"
-              title="Delete"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            // Deactivated account → reinstate OR permanently delete.
+            <>
+              <button
+                onClick={() => setActive(true)}
+                disabled={togglingActive}
+                className="p-1.5 text-slate-400 hover:text-green-400 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50"
+                title="Reactivate account"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => { setConfirmText(''); setShowHardDelete(true) }}
+                className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-700 transition-colors"
+                title="Delete permanently"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
           )}
         </div>
+
+        {/* Permanent-delete confirmation modal — requires typing the email.
+            Portaled to <body> so it escapes the table's stacking context (else
+            other rows bleed through it) and rendered on a solid background. */}
+        {showHardDelete && typeof document !== 'undefined' && createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
+            onClick={() => !deleting && setShowHardDelete(false)}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-6 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-red-950 p-2 text-red-400">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-white">Permanently delete this account?</h2>
+                  <p className="text-sm text-slate-400 mt-1">
+                    This erases <span className="text-slate-200">{trainer.name ?? trainer.email}</span> and
+                    all of their data — clients, dogs, sessions, packages, and history.
+                    <span className="text-red-300"> This cannot be undone.</span>
+                  </p>
+                </div>
+              </div>
+
+              <label className="block text-xs text-slate-400 mt-5 mb-1.5">
+                Type <span className="text-slate-200 font-medium select-all">{trainer.email}</span> to confirm
+              </label>
+              <input
+                autoFocus
+                value={confirmText}
+                onChange={e => setConfirmText(e.target.value)}
+                placeholder={trainer.email}
+                className="w-full h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+
+              {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+
+              <div className="flex justify-end gap-2 mt-5">
+                <button
+                  onClick={() => setShowHardDelete(false)}
+                  disabled={deleting}
+                  className="text-sm text-slate-300 hover:text-white px-4 h-9 rounded-lg border border-slate-600 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleHardDelete}
+                  disabled={deleting || confirmText.trim() !== trainer.email}
+                  className="flex items-center gap-1.5 text-sm bg-red-600 hover:bg-red-700 text-white px-4 h-9 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleting ? 'Deleting…' : 'Delete permanently'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
       </td>
     </tr>
   )

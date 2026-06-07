@@ -7,11 +7,15 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = { title: 'Trainers' }
 
 // Lifecycle tabs over the trainers table. `statuses` undefined = no filter (All).
-const TABS: { key: string; label: string; statuses?: SubscriptionStatus[] }[] = [
-  { key: 'all',     label: 'All',              statuses: undefined },
-  { key: 'trial',   label: 'In Trial',         statuses: ['TRIALING'] },
-  { key: 'paying',  label: 'Paying customer',  statuses: ['ACTIVE', 'PAST_DUE'] },
-  { key: 'churned', label: 'Churned',          statuses: ['CANCELLED'] },
+// `ours` shows only PupManager-owned (internal) accounts; `inactive` shows only
+// soft-deleted accounts. All the lifecycle tabs exclude both.
+const TABS: { key: string; label: string; statuses?: SubscriptionStatus[]; ours?: boolean; inactive?: boolean }[] = [
+  { key: 'all',      label: 'All',              statuses: undefined },
+  { key: 'trial',    label: 'In Trial',         statuses: ['TRIALING'] },
+  { key: 'paying',   label: 'Paying customer',  statuses: ['ACTIVE', 'PAST_DUE'] },
+  { key: 'churned',  label: 'Churned',          statuses: ['CANCELLED'] },
+  { key: 'ours',     label: 'Ours',             ours: true },
+  { key: 'inactive', label: 'Inactive',         inactive: true },
 ]
 
 export default async function AdminTrainersPage({
@@ -22,13 +26,18 @@ export default async function AdminTrainersPage({
   const { q = '', tab = 'all' } = await searchParams
   const current = TABS.find(t => t.key === tab) ?? TABS[0]
 
-  const [all, trial, paying, churned] = await Promise.all([
-    prisma.user.count({ where: { role: 'TRAINER' } }),
-    prisma.user.count({ where: { role: 'TRAINER', trainerProfile: { subscriptionStatus: 'TRIALING' } } }),
-    prisma.user.count({ where: { role: 'TRAINER', trainerProfile: { subscriptionStatus: { in: ['ACTIVE', 'PAST_DUE'] } } } }),
-    prisma.user.count({ where: { role: 'TRAINER', trainerProfile: { subscriptionStatus: 'CANCELLED' } } }),
+  // Lifecycle counts cover real, active accounts: not deactivated and not
+  // internal ("Ours"). Those two get their own tabs/counts.
+  const real = { deactivatedAt: null, NOT: { trainerProfile: { isInternal: true } } }
+  const [all, trial, paying, churned, ours, inactive] = await Promise.all([
+    prisma.user.count({ where: { role: 'TRAINER', ...real } }),
+    prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { subscriptionStatus: 'TRIALING' } } }),
+    prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { subscriptionStatus: { in: ['ACTIVE', 'PAST_DUE'] } } } }),
+    prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { subscriptionStatus: 'CANCELLED' } } }),
+    prisma.user.count({ where: { role: 'TRAINER', deactivatedAt: null, trainerProfile: { isInternal: true } } }),
+    prisma.user.count({ where: { role: 'TRAINER', deactivatedAt: { not: null } } }),
   ])
-  const counts: Record<string, number> = { all, trial, paying, churned }
+  const counts: Record<string, number> = { all, trial, paying, churned, ours, inactive }
 
   return (
     <div>
@@ -73,7 +82,12 @@ export default async function AdminTrainersPage({
         />
       </form>
 
-      <TrainersTable q={q} statuses={current.statuses} />
+      <TrainersTable
+        q={q}
+        statuses={current.statuses}
+        deactivated={current.inactive ? 'only' : 'exclude'}
+        internal={current.ours ? 'only' : current.inactive ? 'all' : 'exclude'}
+      />
     </div>
   )
 }

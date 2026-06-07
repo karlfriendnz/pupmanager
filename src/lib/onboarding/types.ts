@@ -13,6 +13,9 @@ export interface OnboardingStepView {
   skippable: boolean
   skipWarning: string | null
   status: StepStatus
+  // True when this step counts as completed only because demo/sample data
+  // satisfies it (no real record yet). UI labels these "Demo data".
+  demo?: boolean
 }
 
 export interface LimboClient {

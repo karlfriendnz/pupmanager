@@ -27,6 +27,12 @@ const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.pupman
 const HOUR_MS = 3_600_000
 const DAY_MS = 86_400_000
 const PLATFORM_DOMAIN = '@pupmanager.com'
+// Drip activation cutoff. Trainers who signed up BEFORE this never enter the
+// sequence — the system went live 2026-06-07 and we don't retro-blast the
+// pre-launch cohort. Signups from this moment on (incl. that day's) get the
+// drips normally. This replaces the old "backfill the email log" suppression,
+// which wrongly inflated the admin "Emails sent" count. (NZ midnight = UTC+12.)
+const DRIP_ACTIVATION = new Date('2026-06-07T00:00:00+12:00')
 // Addresses that should never receive onboarding/trial emails (test/junk accounts).
 const SUPPRESSED_RECIPIENTS = new Set(['t9rc8rb5j8@privaterelay.appleid.com'])
 
@@ -57,7 +63,8 @@ type ProgressRow = {
     businessName: string
     subscriptionStatus: string
     trialEndsAt: Date | null
-    user: { name: string | null; email: string | null }
+    isInternal: boolean
+    user: { name: string | null; email: string | null; createdAt: Date; deactivatedAt: Date | null }
   } | null
 }
 
@@ -220,7 +227,8 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
           businessName: true,
           subscriptionStatus: true,
           trialEndsAt: true,
-          user: { select: { name: true, email: true } },
+          isInternal: true,
+          user: { select: { name: true, email: true, createdAt: true, deactivatedAt: true } },
         },
       },
     },
@@ -232,6 +240,11 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
     const t = p.trainer
     const email = t?.user?.email
     if (!email || email.toLowerCase().endsWith(PLATFORM_DOMAIN) || SUPPRESSED_RECIPIENTS.has(email.toLowerCase())) continue
+    // Only "proper" trainers: skip internal/test ("Ours") accounts and any
+    // deactivated (soft-deleted) account.
+    if (t!.isInternal || t!.user.deactivatedAt) continue
+    // Pre-launch cohort: never enter the sequence (see DRIP_ACTIVATION).
+    if (t!.user.createdAt < DRIP_ACTIVATION) continue
 
     const alreadySent = new Set(p.emails.map(e => e.emailKey))
     const firstName = t!.user.name?.split(' ')[0]?.trim() || 'there'

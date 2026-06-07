@@ -421,6 +421,14 @@ function ChecklistWidget({
               )}>
                 {s.title}
               </span>
+              {s.demo && (
+                <span
+                  className="text-[10px] font-medium uppercase tracking-wide text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full shrink-0"
+                  title="Completed with demo data — add your own to make it real"
+                >
+                  Demo data
+                </span>
+              )}
               {s.status === 'skipped' && (
                 <span className="text-[10px] font-medium uppercase tracking-wide text-amber-600 shrink-0">Skipped</span>
               )}
