@@ -38,11 +38,12 @@ export default async function AdminOnboardingEmailsPage() {
       </div>
 
       {totalSent === 0 && (
-        <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-          <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-200">
-            The onboarding-email <strong>sender isn’t active yet</strong> (the hourly trigger cron was never built — see
-            <span className="font-mono"> docs/onboarding-brief.md</span> “Phase 4”). These are templates only; nothing has been dispatched, which is why every sent count is 0.
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-3">
+          <AlertTriangle className="h-5 w-5 text-sky-400 shrink-0 mt-0.5" />
+          <p className="text-sm text-sky-200">
+            The hourly sender <strong>is live</strong>. It only dispatches <strong>published</strong> templates to real
+            trainers who signed up <strong>on/after the 2026-06-07 launch</strong> — internal (“Ours”), deactivated, and
+            pre-launch accounts are skipped by design. A count of 0 is expected until an eligible trainer hits a trigger.
           </p>
         </div>
       )}
