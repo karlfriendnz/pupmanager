@@ -243,8 +243,11 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
     // Only "proper" trainers: skip internal/test ("Ours") accounts and any
     // deactivated (soft-deleted) account.
     if (t!.isInternal || t!.user.deactivatedAt) continue
-    // Pre-launch cohort: never enter the sequence (see DRIP_ACTIVATION).
-    if (t!.user.createdAt < DRIP_ACTIVATION) continue
+    // Pre-launch cohort: never enter the sequence. Keyed off the onboarding
+    // start (set on first dashboard load), NOT the immutable signup date — so
+    // an admin can re-enrol a trainer "as if starting today" by resetting
+    // TrainerOnboardingProgress.startedAt to now.
+    if (p.startedAt < DRIP_ACTIVATION) continue
 
     const alreadySent = new Set(p.emails.map(e => e.emailKey))
     const firstName = t!.user.name?.split(' ')[0]?.trim() || 'there'

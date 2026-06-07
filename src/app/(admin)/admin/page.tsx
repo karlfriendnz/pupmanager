@@ -6,11 +6,13 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = { title: 'Admin Dashboard' }
 
 export default async function AdminDashboardPage() {
-  const [totalTrainers, activeTrainers, totalClients, totalDogs] = await Promise.all([
-    prisma.user.count({ where: { role: 'TRAINER' } }),
-    prisma.trainerProfile.count({ where: { subscriptionStatus: { in: ['ACTIVE', 'TRIALING'] } } }),
-    prisma.user.count({ where: { role: 'CLIENT' } }),
-    prisma.dog.count(),
+  // Real trainers only — never count internal ("Ours") or deactivated accounts.
+  const real = { role: 'TRAINER' as const, deactivatedAt: null, NOT: { trainerProfile: { isInternal: true } } }
+  const [totalTrainers, totalTrialists, totalCustomers] = await Promise.all([
+    // Total trainers = paying customers + trialists (excludes churned/cancelled).
+    prisma.user.count({ where: { ...real, trainerProfile: { subscriptionStatus: { in: ['ACTIVE', 'PAST_DUE', 'TRIALING'] } } } }),
+    prisma.user.count({ where: { ...real, trainerProfile: { subscriptionStatus: 'TRIALING' } } }),
+    prisma.user.count({ where: { ...real, trainerProfile: { subscriptionStatus: { in: ['ACTIVE', 'PAST_DUE'] } } } }),
   ])
 
   return (
@@ -21,12 +23,11 @@ export default async function AdminDashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
         {[
           { label: 'Total trainers', value: totalTrainers },
-          { label: 'Active / trialling', value: activeTrainers },
-          { label: 'Total clients', value: totalClients },
-          { label: 'Total dogs', value: totalDogs },
+          { label: 'Trialists', value: totalTrialists },
+          { label: 'Customers (paying)', value: totalCustomers },
         ].map(s => (
           <div key={s.label} className="bg-slate-800 rounded-2xl p-5 border border-slate-700">
             <p className="text-3xl font-bold text-white">{s.value}</p>
