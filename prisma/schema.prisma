@@ -678,6 +678,10 @@ model TrainingSession {
   // join point used for drop-in pricing.
   classRunId      String?
   sessionIndex    Int?
+  // Links the sessions of a recurring "buddies walk" (a group dog walk created
+  // from the schedule). Lets a dog added later be applied to just this walk,
+  // this + following walks, or the whole series. Null for non-walk sessions.
+  walkSeriesId    String?
   // Per-session session-form override for class sessions. Null = inherit the
   // class's default form (the group package's defaultSessionFormId). Lets a run
   // use one form for most sessions and a different one on, say, the last.
@@ -730,6 +734,7 @@ model TrainingSession {
   @@index([scheduledAt])
   @@index([clientPackageId])
   @@index([classRunId])
+  @@index([walkSeriesId])
   @@map("training_sessions")
 }
 

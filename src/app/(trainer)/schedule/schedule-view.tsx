@@ -19,6 +19,9 @@ import {
 import {
   AssignPackageFromScheduleModal,
 } from './assign-package-from-schedule'
+import { SlotTypeChooser, type SlotAddType } from './slot-type-chooser'
+import { NewWalkModal } from './new-walk-modal'
+import { ClassFormModal } from '../classes/class-form-modal'
 import { ScheduleSettings } from './schedule-settings'
 import { ScheduleReport } from './schedule-report'
 import { SessionFormReport } from '@/components/session-form-report'
@@ -97,6 +100,9 @@ interface Session {
   // class session page rather than the 1:1 modal.
   classRunId: string | null
   classRun: { name: string } | null
+  // Set when this session is part of a recurring "buddies walk" series — drives
+  // the this / following / whole-series scope chooser when adding a dog.
+  walkSeriesId: string | null
 }
 
 // A trainer in this business, for the "assigned trainer" picker. Only passed
@@ -477,7 +483,7 @@ function SessionBlock({
         const lines: { key: string; text: string; tone: 'strong' | 'soft' }[] = []
         // Primary: dog name (or buddy walk dogs / fallback to client).
         const primary = isBuddyWalk
-          ? (allDogNames.length > 0 ? `🐕 ${allDogNames.join(', ')}` : 'Buddy walk')
+          ? (allDogNames.length > 0 ? `🐕 ${allDogNames.join(', ')}` : 'Group walk')
           : session.classRunId ? `👥 ${session.classRun?.name ?? session.title}`
           : session.dog?.name ? `🐕 ${session.dog.name}` : (clientName ?? session.title)
         if (primary) lines.push({ key: 'primary', text: primary, tone: 'strong' })
@@ -1554,6 +1560,8 @@ function SessionModal({
   const [showBuddyPicker, setShowBuddyPicker] = useState(false)
   const [buddyClientId, setBuddyClientId] = useState<string>('')
   const [buddyDogId, setBuddyDogId] = useState<string | null>(null)
+  // For recurring walk series: add the dog to all walks by default.
+  const [buddyScope, setBuddyScope] = useState<'this' | 'following' | 'series'>('series')
   const [savingBuddy, setSavingBuddy] = useState(false)
   const [buddyError, setBuddyError] = useState<string | null>(null)
 
@@ -1769,10 +1777,11 @@ function SessionModal({
     setBuddyError(null)
     setSavingBuddy(true)
     try {
+      const scope = session.walkSeriesId ? buddyScope : 'this'
       const res = await fetch(`/api/schedule/${session.id}/buddies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId: buddyClientId, dogId: buddyDogId }),
+        body: JSON.stringify({ clientId: buddyClientId, dogId: buddyDogId, scope }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -1786,6 +1795,8 @@ function SessionModal({
       setShowBuddyPicker(false)
       setBuddyClientId('')
       setBuddyDogId(null)
+      // Other walks in the series changed too — refresh so their blocks reflect it.
+      if (session.walkSeriesId && scope !== 'this') router.refresh()
     } finally {
       setSavingBuddy(false)
     }
@@ -2074,15 +2085,15 @@ function SessionModal({
           {!isBuddyWalk && clientId && !showBuddyPicker && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Buddies</p>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Group walk</p>
                 <button
                   onClick={() => { setShowBuddyPicker(true); setBuddyError(null) }}
                   className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
                 >
-                  <Plus className="h-3 w-3" /> Add buddy
+                  <Plus className="h-3 w-3" /> Add dog
                 </button>
               </div>
-              <p className="text-xs text-slate-400">No buddies. Add another client + dog to turn this into a buddy walk.</p>
+              <p className="text-xs text-slate-400">No extra dogs yet — add another client + dog to make this a group walk.</p>
             </div>
           )}
 
@@ -2090,7 +2101,7 @@ function SessionModal({
           {clientId && showBuddyPicker && (
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
-                {isBuddyWalk ? 'Add attendee' : 'Add buddy'}
+                {isBuddyWalk ? 'Add dog' : 'Add to group walk'}
               </p>
               <div className="border border-slate-200 rounded-xl p-3 flex flex-col gap-2.5">
                 {buddyError && <p className="text-xs text-red-500">{buddyError}</p>}
@@ -2135,6 +2146,20 @@ function SessionModal({
                         </button>
                       ))}
                     </div>
+                  </div>
+                )}
+                {session.walkSeriesId && (
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-500 block mb-1">Apply to</label>
+                    <select
+                      value={buddyScope}
+                      onChange={e => setBuddyScope(e.target.value as 'this' | 'following' | 'series')}
+                      className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="series">All walks in this series</option>
+                      <option value="following">This and following walks</option>
+                      <option value="this">Just this walk</option>
+                    </select>
                   </div>
                 )}
                 <div className="flex gap-2 pt-1">
@@ -2701,6 +2726,11 @@ export function ScheduleView({
   // pinned to it. When opened from the header button, time is undefined and
   // session 1 uses availability search like the others.
   const [assignAt, setAssignAt]         = useState<{ date: string; time?: string } | null>(null)
+  // Slot-click "what do you want to add?" chooser, and the create flows it
+  // branches to: a group class (ClassFormModal) and a buddies walk (NewWalkModal).
+  const [slotChooser, setSlotChooser]   = useState<{ date: string; time?: string } | null>(null)
+  const [classModal, setClassModal]     = useState<{ startDateIso: string; sessionCount?: number } | null>(null)
+  const [walkAt, setWalkAt]             = useState<{ date: string; time?: string } | null>(null)
   const [activeSession, setActiveSession] = useState<Session | null>(null)
   // Surfaced after a drag-drop when the new time(s) overlap an existing
   // session. The drop is allowed (the trainer might be intentionally double-
@@ -2771,8 +2801,23 @@ export function ScheduleView({
     }
   }
 
+  // Clicking an empty slot opens the type chooser first; each choice then opens
+  // the matching create flow.
   function openAssignModal(dateStr: string, time?: string) {
-    setAssignAt({ date: dateStr, time })
+    setSlotChooser({ date: dateStr, time })
+  }
+
+  function handleSlotChoice(type: SlotAddType) {
+    const at = slotChooser
+    setSlotChooser(null)
+    if (!at) return
+    // Wall-clock slot → instant for the class/walk forms (browser-local, which
+    // matches the trainer's own timezone in normal use).
+    const iso = new Date(`${at.date}T${at.time ?? '09:00'}:00`).toISOString()
+    if (type === 'session') setAssignAt(at)
+    else if (type === 'buddies') setWalkAt(at)
+    else if (type === 'class') setClassModal({ startDateIso: iso })
+    else if (type === 'dropin') setClassModal({ startDateIso: iso, sessionCount: 1 })
   }
 
   async function handleDeleteSession(id: string, scope: 'this' | 'following' = 'this') {
@@ -3178,6 +3223,15 @@ export function ScheduleView({
       </div>
 
       {/* ── Modals ───────────────────────────────────────────────────────────── */}
+      {slotChooser && (
+        <SlotTypeChooser
+          date={slotChooser.date}
+          time={slotChooser.time}
+          onSelect={handleSlotChoice}
+          onClose={() => setSlotChooser(null)}
+        />
+      )}
+
       {assignAt && (
         <AssignPackageFromScheduleModal
           clients={clients.map(c => ({ id: c.id, name: c.name, dogs: c.dogs }))}
@@ -3186,6 +3240,25 @@ export function ScheduleView({
           defaultStartDate={assignAt.date}
           defaultStartTime={assignAt.time}
           onClose={() => setAssignAt(null)}
+        />
+      )}
+
+      {walkAt && (
+        <NewWalkModal
+          clients={clients.map(c => ({ id: c.id, name: c.name, dogs: c.dogs }))}
+          defaultStartDate={walkAt.date}
+          defaultStartTime={walkAt.time}
+          onClose={() => setWalkAt(null)}
+          onCreated={() => { setWalkAt(null); router.refresh() }}
+        />
+      )}
+
+      {classModal && (
+        <ClassFormModal
+          mode="create"
+          initial={{ startDateIso: classModal.startDateIso, sessionCount: classModal.sessionCount }}
+          onClose={() => setClassModal(null)}
+          onSaved={() => { setClassModal(null); router.refresh() }}
         />
       )}
 

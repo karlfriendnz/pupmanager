@@ -500,7 +500,7 @@ function DeliveryAndExtras({ total }: { total: CommonTotals }) {
         <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Also of note</p>
         <div className="grid grid-cols-2 gap-y-2 gap-x-3 text-sm">
           <Pulse label="Upcoming" value={total.upcoming} accent="indigo" />
-          <Pulse label="Buddies" value={total.buddyCount} icon={<UserPlus className="h-3 w-3" />} accent="rose" />
+          <Pulse label="Group walkers" value={total.buddyCount} icon={<UserPlus className="h-3 w-3" />} accent="rose" />
           <Pulse label="Commented" value={total.byStatus.COMMENTED} accent="emerald" />
           <Pulse label="Invoiced" value={total.byStatus.INVOICED} accent="amber" />
         </div>
