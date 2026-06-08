@@ -27,6 +27,22 @@ const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.pupman
 const HOUR_MS = 3_600_000
 const DAY_MS = 86_400_000
 const PLATFORM_DOMAIN = '@pupmanager.com'
+// Deliver onboarding/trial emails in the trainer's morning. The cron ticks
+// hourly (top of the hour); we only act during the trainer's 9 o'clock hour in
+// their own timezone, so each trainer gets their batch once a day at ~9am local
+// — and it tracks DST automatically (computed live, not a fixed UTC time).
+const SEND_HOUR = 9
+
+// Hour (0-23) right now in the given IANA timezone, or null if it's invalid.
+function localHourIn(tz: string): number | null {
+  try {
+    const h = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hour12: false }).format(new Date())
+    const n = Number(h)
+    return Number.isFinite(n) ? n % 24 : null
+  } catch {
+    return null
+  }
+}
 // Drip activation cutoff. Trainers who signed up BEFORE this never enter the
 // sequence — the system went live 2026-06-07 and we don't retro-blast the
 // pre-launch cohort. Signups from this moment on (incl. that day's) get the
@@ -64,7 +80,7 @@ type ProgressRow = {
     subscriptionStatus: string
     trialEndsAt: Date | null
     isInternal: boolean
-    user: { name: string | null; email: string | null; createdAt: Date; deactivatedAt: Date | null }
+    user: { name: string | null; email: string | null; createdAt: Date; deactivatedAt: Date | null; timezone: string }
   } | null
 }
 
@@ -228,7 +244,7 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
           subscriptionStatus: true,
           trialEndsAt: true,
           isInternal: true,
-          user: { select: { name: true, email: true, createdAt: true, deactivatedAt: true } },
+          user: { select: { name: true, email: true, createdAt: true, deactivatedAt: true, timezone: true } },
         },
       },
     },
@@ -248,6 +264,9 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
     // an admin can re-enrol a trainer "as if starting today" by resetting
     // TrainerOnboardingProgress.startedAt to now.
     if (p.startedAt < DRIP_ACTIVATION) continue
+    // Deliver in the trainer's morning: only act during their 9am hour, in
+    // their own timezone (the hourly cron tick that lands in that window sends).
+    if (localHourIn(t!.user.timezone || 'Pacific/Auckland') !== SEND_HOUR) continue
 
     const alreadySent = new Set(p.emails.map(e => e.emailKey))
     const firstName = t!.user.name?.split(' ')[0]?.trim() || 'there'
