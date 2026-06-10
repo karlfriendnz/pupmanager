@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { routeDistance } from '@/lib/routing'
 import { formatDate } from '@/lib/utils'
 import { ClientProfileTabs } from './client-profile-tabs'
 import { ClientActionsMenu } from './client-actions-menu'
@@ -27,84 +28,95 @@ export default async function ClientDetailPage({
   const { client: clientAccess, canEdit } = access
   const isPrimaryTrainer = clientAccess.trainerId === access.trainerId
 
-  const client = await prisma.clientProfile.findUnique({
-    where: { id: clientId },
-    include: {
-      user: { select: { name: true, email: true, emailVerified: true, createdAt: true } },
-      dog: true,
-      dogs: true,
-      diaryEntries: {
-        orderBy: { date: 'desc' },
-        take: 20,
-        include: { completion: true },
+  // One parallel fan-out — every query here only needs `access`, which is
+  // already resolved, so there's no reason to run them serially.
+  const [
+    client,
+    trainingSessions,
+    customFields,
+    packages,
+    availabilitySlots,
+    teamMembers,
+    products,
+    pendingProductRequests,
+    baseProfile,
+  ] = await Promise.all([
+    prisma.clientProfile.findUnique({
+      where: { id: clientId },
+      include: {
+        user: { select: { name: true, email: true, emailVerified: true, createdAt: true } },
+        dog: true,
+        dogs: true,
+        diaryEntries: { orderBy: { date: 'desc' }, take: 20, include: { completion: true } },
+        customFieldValues: true,
       },
-      customFieldValues: true,
-    },
-  })
+    }),
+    prisma.trainingSession.findMany({
+      where: { clientId },
+      orderBy: { scheduledAt: 'desc' },
+      include: { dog: { select: { name: true } } },
+    }),
+    // Custom fields from the client's primary trainer.
+    prisma.customField.findMany({
+      where: { trainerId: clientAccess.trainerId },
+      orderBy: { order: 'asc' },
+    }),
+    // Packages owned by the *current* trainer (co-managers see their own).
+    canEdit
+      ? prisma.package.findMany({
+          where: { trainerId: access.trainerId },
+          orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+        })
+      : Promise.resolve([]),
+    canEdit
+      ? prisma.availabilitySlot.findMany({
+          where: { trainerId: access.trainerId },
+          orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+        })
+      : Promise.resolve([]),
+    // Business members for the assigned-trainer picker (primary trainer only).
+    (canEdit && isPrimaryTrainer)
+      ? prisma.trainerMembership.findMany({
+          where: { companyId: clientAccess.trainerId },
+          select: { id: true, role: true, user: { select: { name: true, email: true } } },
+          orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
+        })
+      : Promise.resolve([]),
+    // Products from the primary trainer's shop (for "Add to next session").
+    canEdit
+      ? prisma.product.findMany({
+          where: { trainerId: clientAccess.trainerId, active: true },
+          orderBy: [{ category: 'asc' }, { order: 'asc' }, { createdAt: 'desc' }],
+          select: { id: true, name: true, kind: true, priceCents: true, imageUrl: true, category: true },
+        })
+      : Promise.resolve([]),
+    prisma.productRequest.findMany({
+      where: { clientId, status: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, note: true, product: { select: { id: true, name: true, kind: true, imageUrl: true } } },
+    }),
+    prisma.trainerProfile.findUnique({
+      where: { id: access.trainerId },
+      select: { baseLat: true, baseLng: true },
+    }),
+  ])
 
   if (!client) notFound()
 
-  const trainingSessions = await prisma.trainingSession.findMany({
-    where: { clientId },
-    orderBy: { scheduledAt: 'desc' },
-    include: {
-      dog: { select: { name: true } },
-    },
-  })
-
-  // Fetch custom fields from the client's primary trainer
-  const customFields = await prisma.customField.findMany({
-    where: { trainerId: clientAccess.trainerId },
-    orderBy: { order: 'asc' },
-  })
-
-  // Packages owned by the *current* trainer (so co-managers see their own packages)
-  const packages = canEdit
-    ? await prisma.package.findMany({
-        where: { trainerId: access.trainerId },
-        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-      })
-    : []
-
-  const availabilitySlots = canEdit
-    ? await prisma.availabilitySlot.findMany({
-        where: { trainerId: access.trainerId },
-        orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
-      })
-    : []
-
-  // Trainers in the business, for the assigned-trainer picker. Only the primary
-  // trainer's business members are offered, and only when there's more than one.
-  const teamMembers = (canEdit && isPrimaryTrainer)
-    ? await prisma.trainerMembership.findMany({
-        where: { companyId: clientAccess.trainerId },
-        select: { id: true, role: true, user: { select: { name: true, email: true } } },
-        orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
-      })
-    : []
-
-  // Products from the client's primary trainer (their effective shop) — used
-  // to populate the "Add to next session" picker on the overview tab.
-  const products = canEdit
-    ? await prisma.product.findMany({
-        where: { trainerId: clientAccess.trainerId, active: true },
-        orderBy: [{ category: 'asc' }, { order: 'asc' }, { createdAt: 'desc' }],
-        select: {
-          id: true, name: true, kind: true, priceCents: true,
-          imageUrl: true, category: true,
-        },
-      })
-    : []
-
-  const pendingProductRequests = await prisma.productRequest.findMany({
-    where: { clientId, status: 'PENDING' },
-    orderBy: { createdAt: 'asc' },
-    select: {
-      id: true,
-      note: true,
-      product: { select: { id: true, name: true, kind: true, imageUrl: true } },
-    },
-  })
+  // Driving distance from the trainer's base to this client (guarded — null if
+  // either has no location set, or Google is unreachable). One external call
+  // after the batch, since it needs both the client's and base's coordinates.
+  let distanceFromBase: string | null = null
+  if (
+    client.addressLat != null && client.addressLng != null &&
+    baseProfile?.baseLat != null && baseProfile?.baseLng != null
+  ) {
+    const d = await routeDistance(
+      { lat: baseProfile.baseLat, lng: baseProfile.baseLng },
+      { lat: client.addressLat, lng: client.addressLng },
+    )
+    if (d) distanceFromBase = `${(d.distanceMeters / 1000).toFixed(1)} km · ${Math.round(d.durationSec / 60)} min drive`
+  }
 
   const fieldValueMap = Object.fromEntries(client.customFieldValues.map(v => [
     v.dogId ? `${v.fieldId}:${v.dogId}` : v.fieldId,
@@ -234,6 +246,8 @@ export default async function ClientDetailPage({
           email: client.user.email,
           phone: client.phone,
           clientSince: formatDate(client.user.createdAt),
+          address: client.addressLine,
+          distanceFromBase,
         }}
         status={client.status}
       />

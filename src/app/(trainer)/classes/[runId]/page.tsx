@@ -17,39 +17,38 @@ export default async function ClassRunPage({
   if (!trainerId) redirect('/login')
 
   const { runId } = await params
-  const run = await prisma.classRun.findFirst({
-    where: { id: runId, trainerId },
-    include: {
-      package: { select: { name: true, allowDropIn: true, allowWaitlist: true, priceCents: true, durationMins: true, sessionType: true, capacity: true, weeksBetween: true, sessionCount: true, defaultSessionFormId: true } },
-      sessions: {
-        orderBy: { sessionIndex: 'asc' },
-        select: { id: true, title: true, scheduledAt: true, sessionIndex: true, status: true },
-      },
-      enrollments: {
-        orderBy: [{ status: 'asc' }, { waitlistPosition: 'asc' }, { enrolledAt: 'asc' }],
-        include: {
-          client: { select: { id: true, user: { select: { name: true } } } },
-          dog: { select: { id: true, name: true } },
+  // attendanceCount filters by classRunId === runId (the param), so it doesn't
+  // depend on the run lookup — fan all three out in parallel.
+  const [run, attendanceCount, clients] = await Promise.all([
+    prisma.classRun.findFirst({
+      where: { id: runId, trainerId },
+      include: {
+        package: { select: { name: true, allowDropIn: true, allowWaitlist: true, priceCents: true, durationMins: true, sessionType: true, capacity: true, weeksBetween: true, sessionCount: true, defaultSessionFormId: true } },
+        sessions: {
+          orderBy: { sessionIndex: 'asc' },
+          select: { id: true, title: true, scheduledAt: true, sessionIndex: true, status: true },
+        },
+        enrollments: {
+          orderBy: [{ status: 'asc' }, { waitlistPosition: 'asc' }, { enrolledAt: 'asc' }],
+          include: {
+            client: { select: { id: true, user: { select: { name: true } } } },
+            dog: { select: { id: true, name: true } },
+          },
         },
       },
-    },
-  })
+    }),
+    prisma.sessionAttendance.count({ where: { session: { classRunId: runId } } }),
+    prisma.clientProfile.findMany({
+      where: { trainerId, status: 'ACTIVE' },
+      select: {
+        id: true,
+        user: { select: { name: true } },
+        dog: { select: { id: true, name: true } },
+      },
+      orderBy: { user: { name: 'asc' } },
+    }),
+  ])
   if (!run) notFound()
-
-  // Whether the schedule can still be edited (no attendance recorded yet).
-  const attendanceCount = await prisma.sessionAttendance.count({
-    where: { session: { classRunId: run.id } },
-  })
-
-  const clients = await prisma.clientProfile.findMany({
-    where: { trainerId, status: 'ACTIVE' },
-    select: {
-      id: true,
-      user: { select: { name: true } },
-      dog: { select: { id: true, name: true } },
-    },
-    orderBy: { user: { name: 'asc' } },
-  })
 
   return (
     <RunDetail

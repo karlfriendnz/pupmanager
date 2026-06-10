@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { DogPhotoUpload } from '@/components/shared/dog-photo-upload'
+import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
 
 type Tab = 'dogs' | 'details'
 
@@ -37,6 +38,10 @@ type Props = {
   initialName: string
   initialEmail: string
   initialPhone: string
+  initialAddress: string | null
+  /** Trainer's base — biases the address autocomplete toward their city. */
+  biasLat: number | null
+  biasLng: number | null
   /** False for co-managers — field renders read-only with a hint. */
   canEditEmail: boolean
   initialDogs: Dog[]
@@ -80,27 +85,39 @@ function FieldInput({
           <option value="">Select...</option>
           {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
         </select>
-      ) : (
+      ) : field.type === 'NUMBER' ? (
         <input
-          type={field.type === 'NUMBER' ? 'number' : 'text'}
+          type="number"
           value={value}
           onChange={e => onChange(e.target.value)}
           className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      ) : (
+        // Free-text answers are usually sentences/paragraphs — a multi-line,
+        // resizable box rather than a cramped single line.
+        <textarea
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          rows={2}
+          className="w-full min-h-[3rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       )}
     </div>
   )
 }
 
-export function EditClientForm({ clientId, initialName, initialEmail, initialPhone, canEditEmail, initialDogs, customFields, initialFieldValues }: Props) {
+export function EditClientForm({ clientId, initialName, initialEmail, initialPhone, initialAddress, biasLat, biasLng, canEditEmail, initialDogs, customFields, initialFieldValues }: Props) {
   const router = useRouter()
-  const [tab, setTab] = useState<Tab>('dogs')
+  const searchParams = useSearchParams()
+  // Open straight to Details when linked with ?tab=details (e.g. route manager).
+  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'details' ? 'details' : 'dogs')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [name, setName] = useState(initialName)
   const [email, setEmail] = useState(initialEmail)
   const [phone, setPhone] = useState(initialPhone)
+  const [address, setAddress] = useState(initialAddress ?? '')
   const [dogs, setDogs] = useState<Dog[]>(initialDogs)
   const [expandedDog, setExpandedDog] = useState<number>(0)
   const [fieldValues, setFieldValues] = useState<Record<string, string>>(initialFieldValues)
@@ -404,6 +421,23 @@ export function EditClientForm({ clientId, initialName, initialEmail, initialPho
                   className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">Address</label>
+                <PlaceAutocomplete
+                  initialValue={address}
+                  placeholder="Search address…"
+                  bias={biasLat != null && biasLng != null ? { lat: biasLat, lng: biasLng } : null}
+                  onSelect={async r => {
+                    setAddress(r.address)
+                    await fetch(`/api/clients/${clientId}/location`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(r),
+                    })
+                  }}
+                />
+                <p className="text-[11px] text-slate-400">Used by the route planner to map and optimise visits.</p>
+              </div>
             </CardBody>
           </Card>
 
@@ -411,7 +445,7 @@ export function EditClientForm({ clientId, initialName, initialEmail, initialPho
             <Card key={group.category ?? '__uncategorised__'}>
               <CardBody className="pt-5 flex flex-col gap-1">
                 <h2 className="font-semibold text-slate-900 mb-4">{group.category ?? 'Additional details'}</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                   {group.fields.map(field => (
                     <FieldInput
                       key={field.id}

@@ -1,4 +1,5 @@
 import { redirect, notFound } from 'next/navigation'
+import { after } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Card } from '@/components/ui/card'
@@ -28,8 +29,9 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   if (!enquiry) notFound()
 
   // First-view: clear the dashboard badge as soon as the trainer opens it.
+  // Deferred to after() — it's a side effect that doesn't change this render.
   if (!enquiry.viewedAt) {
-    await prisma.enquiry.update({ where: { id }, data: { viewedAt: new Date() } })
+    after(() => prisma.enquiry.update({ where: { id }, data: { viewedAt: new Date() } }).catch(() => {}))
   }
 
   // Resolve labels for snapshotted custom-field answers.

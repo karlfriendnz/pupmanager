@@ -385,6 +385,13 @@ model TrainerProfile {
   // The promo code (if any) this trainer redeemed at signup — it set their
   // trialEndsAt. Kept for attribution and so the admin can see redemptions.
   promoCodeId          String?
+  // Route manager start/end point ("leave from and return to base"). Captured
+  // via Places Autocomplete; lat/lng come from the picked place. Null = the
+  // route manager asks them to set a base before optimising.
+  baseAddress          String?
+  baseLat              Float?
+  baseLng              Float?
+  basePlaceId          String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -511,6 +518,13 @@ model ClientProfile {
   // per-trainer-relationship attribute (a client may share a phone
   // with another household member who has their own User row).
   phone     String?
+  // Visit location for the route manager. Captured via Places Autocomplete, so
+  // lat/lng come from the picked place (no separate geocoding call). placeId is
+  // kept for re-lookup/dedup. All null until an address is set.
+  addressLine    String?
+  addressLat     Float?
+  addressLng     Float?
+  addressPlaceId String?
 
   // Set when an invitation email is actually sent to the client (via the
   // invite form with notifications on, or a re-invite). Null = the client
@@ -732,6 +746,10 @@ model TrainingSession {
   @@index([assignedMembershipId])
   @@index([clientId])
   @@index([scheduledAt])
+  // Composite for the hot path: "this trainer's sessions in a date range"
+  // (schedule grid, dashboard, route day) — one index scan instead of
+  // filtering a trainerId or scheduledAt index.
+  @@index([trainerId, scheduledAt])
   @@index([clientPackageId])
   @@index([classRunId])
   @@index([walkSeriesId])
@@ -1287,6 +1305,9 @@ model Message {
   senderId String
   body     String         @db.Text
   readAt   DateTime?
+  // Set once the deferred-email fallback has been sent (or deliberately skipped)
+  // for this message, so the message-email-fallback cron never double-emails.
+  emailFallbackSentAt DateTime?
 
   createdAt DateTime @default(now())
 
@@ -1296,6 +1317,8 @@ model Message {
   @@index([clientId])
   @@index([senderId])
   @@index([createdAt])
+  // Hot path for the fallback cron: unread, un-emailed messages by age.
+  @@index([channel, readAt, emailFallbackSentAt, createdAt])
   @@map("messages")
 }
 

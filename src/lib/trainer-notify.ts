@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
-import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
+import { sendPush } from '@/lib/push'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { resolvePref } from '@/lib/notification-prefs'
 import type { NotificationType } from '@/generated/prisma'
@@ -72,15 +72,13 @@ export async function notifyTrainer(
     if (pushPref.enabled) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { notifyPush: true, deviceTokens: { where: { platform: 'IOS' }, select: { token: true } } },
+        select: { notifyPush: true },
       })
-      if (user?.notifyPush && user.deviceTokens.length > 0) {
-        const results = await sendApns(user.deviceTokens.map(d => d.token), {
+      if (user?.notifyPush) {
+        await sendPush(userId, {
           alert: { title: renderTemplate(pushPref.title, subs), body: renderTemplate(pushPref.body, subs) },
           customData: { type, path },
         })
-        const stale = results.filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason)).map(r => r.token)
-        if (stale.length > 0) await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
       }
     }
   } catch (err) {

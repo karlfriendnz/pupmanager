@@ -14,7 +14,7 @@ import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, CalendarDays, Columns3, List,
-  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, BarChart2,
+  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, BarChart2, Navigation,
 } from 'lucide-react'
 import {
   AssignPackageFromScheduleModal,
@@ -815,14 +815,16 @@ function WeekGrid({
           const isSelected = ds === selectedDate
           return (
             <div key={ds} className={`py-2.5 text-center border-r border-slate-100 last:border-r-0 ${isToday ? 'bg-blue-50/50' : ''}`}>
-              <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-medium">
-                {d.toLocaleDateString('en-NZ', { weekday: 'short' })}
-              </span>
-              <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full mt-0.5 text-sm font-bold ${
-                isToday ? 'bg-blue-600 text-white' : isSelected ? 'bg-slate-100 text-slate-900' : 'text-slate-800'
-              }`}>
-                {d.getDate()}
-              </span>
+              <Link href={`/schedule/route?date=${ds}`} className="block group" title="Plan the route for this day">
+                <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-medium">
+                  {d.toLocaleDateString('en-NZ', { weekday: 'short' })}
+                </span>
+                <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full mt-0.5 text-sm font-bold transition-shadow group-hover:ring-2 group-hover:ring-[var(--pm-brand-600,#2a9da9)] ${
+                  isToday ? 'bg-blue-600 text-white' : isSelected ? 'bg-slate-100 text-slate-900' : 'text-slate-800'
+                }`}>
+                  {d.getDate()}
+                </span>
+              </Link>
             </div>
           )
         })}
@@ -3066,6 +3068,12 @@ export function ScheduleView({
               <Calendar className="h-3.5 w-3.5" />
             </span>
           )}
+
+          <Link href={`/schedule/route?date=${selectedDate}`}>
+            <Button variant="secondary" size="sm" title="Plan the route for this day" aria-label="Route">
+              <Navigation className="h-4 w-4" /> <span className="hidden sm:inline">Route</span>
+            </Button>
+          </Link>
 
           <Button variant="secondary" size="sm" onClick={() => setShowReport(true)} title="Weekly report" aria-label="Weekly report">
             <BarChart2 className="h-4 w-4" /> <span className="hidden sm:inline">Reports</span>

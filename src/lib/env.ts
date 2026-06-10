@@ -43,6 +43,10 @@ const schema = z.object({
   APNS_BUNDLE_ID: z.string().min(1),
   APNS_PRIVATE_KEY: z.string().includes('BEGIN PRIVATE KEY', { message: 'APNS_PRIVATE_KEY must be the full .p8 contents' }),
 
+  // FCM (Android push) — optional. The whole Firebase service-account JSON
+  // (minified). When unset, Android push is simply skipped (iOS unaffected).
+  FCM_SERVICE_ACCOUNT: optionalString,
+
   // Google OAuth — used for both Sign in with Google AND Calendar API.
   // Optional: providers register only when both ID and secret are present.
   GOOGLE_CLIENT_ID: optionalString,

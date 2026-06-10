@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
+import { sendPush } from '@/lib/push'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { renderClientNotificationEmail } from '@/lib/client-notification-email'
 import { NOTIFICATION_TYPES, renderTemplate } from '@/lib/notification-types'
@@ -54,23 +54,21 @@ async function doNotify({ userId, trainerId, type, vars = {}, link, ctaLabel, se
     await prisma.notification.create({ data: { userId, type, title, body, link: link ?? null } })
   }
 
-  // Push (iOS).
+  // Push — iOS (APNs) + Android (FCM) via the unified sender.
   if (channelOn('PUSH')) {
-    const tokens = await prisma.deviceToken.findMany({ where: { userId, platform: 'IOS' }, select: { token: true } })
-    if (tokens.length > 0) {
-      const results = await sendApns(tokens.map(t => t.token), {
-        alert: { title, body },
-        customData: { type, path: link ?? '/notifications' },
-      })
-      const stale = results.filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason)).map(r => r.token)
-      if (stale.length > 0) await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
-    }
+    await sendPush(userId, { alert: { title, body }, customData: { type, path: link ?? '/notifications' } })
   }
 
   // Email — branded to the triggering trainer (logo, accent, business name).
   // The per-category EMAIL toggle (channelOn) is the sole control; the legacy
   // master notifyEmail flag no longer gates client notifications.
-  if (channelOn('EMAIL')) {
+  //
+  // Deferred-email types (e.g. new-message) skip the immediate email so the app
+  // (push + in-app chat) is the first touch — a cron sends the email later only
+  // if the client still hasn't read it. A forced `channels` override (that's how
+  // the cron calls back in) bypasses the defer and sends the email now.
+  const deferEmail = meta.emailDeferMinutes != null && !override
+  if (channelOn('EMAIL') && !deferEmail) {
     const [user, trainer] = await Promise.all([
       prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
       prisma.trainerProfile.findUnique({

@@ -42,6 +42,43 @@ export default async function ClientsPage({
     : 'active'
   const status = tab === 'inactive' ? 'INACTIVE' : tab === 'new' ? 'NEW' : 'ACTIVE'
 
+  // Start the independent list queries together so they run in parallel against
+  // the remote DB (awaited below where first used).
+  const ownedClientsP = prisma.clientProfile.findMany({
+    where: { trainerId, status, ...memberScope },
+    include: {
+      user: { select: { name: true, email: true } },
+      dog: { select: { name: true, breed: true } },
+      dogs: { select: { name: true } },
+      diaryEntries: {
+        where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+        select: { id: true, completion: { select: { id: true } } },
+      },
+    },
+    orderBy: { user: { name: 'asc' } },
+  })
+  const sharedClientsP = (tab === 'active') ? prisma.clientShare.findMany({
+    where: { sharedWithId: trainerId, shareType: 'CO_MANAGE' },
+    include: {
+      client: {
+        include: {
+          user: { select: { name: true, email: true } },
+          dog: { select: { name: true, breed: true } },
+          dogs: { select: { name: true } },
+          diaryEntries: {
+            where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+            select: { id: true, completion: { select: { id: true } } },
+          },
+        },
+      },
+    },
+  }) : Promise.resolve([])
+  const customFieldsP = prisma.customField.findMany({
+    where: { trainerId },
+    select: { id: true, label: true, appliesTo: true },
+    orderBy: [{ category: 'asc' }, { order: 'asc' }, { label: 'asc' }],
+  })
+
   const [newCount, activeCount, inactiveCount, waitlistCount] = await Promise.all([
     prisma.clientProfile.count({ where: { trainerId, status: 'NEW', ...memberScope } }),
     prisma.clientProfile.count({ where: { trainerId, status: 'ACTIVE', ...memberScope } }),
@@ -104,37 +141,8 @@ export default async function ClientsPage({
   // Fetch the full tab unfiltered — search now happens client-side as the user
   // types so there's no per-keystroke round-trip. For trainer client lists
   // (typically <500) the bandwidth and JS-filter cost is trivial.
-  const ownedClients = await prisma.clientProfile.findMany({
-    where: { trainerId, status, ...memberScope },
-    include: {
-      user: { select: { name: true, email: true } },
-      dog: { select: { name: true, breed: true } },
-      dogs: { select: { name: true } },
-      diaryEntries: {
-        where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-        select: { id: true, completion: { select: { id: true } } },
-      },
-    },
-    orderBy: { user: { name: 'asc' } },
-  })
-
-  // CO_MANAGE shared clients (only show in active tab)
-  const sharedClients = (tab === 'active') ? await prisma.clientShare.findMany({
-    where: { sharedWithId: trainerId, shareType: 'CO_MANAGE' },
-    include: {
-      client: {
-        include: {
-          user: { select: { name: true, email: true } },
-          dog: { select: { name: true, breed: true } },
-          dogs: { select: { name: true } },
-          diaryEntries: {
-            where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-            select: { id: true, completion: { select: { id: true } } },
-          },
-        },
-      },
-    },
-  }) : []
+  const ownedClients = await ownedClientsP
+  const sharedClients = await sharedClientsP
 
   // Fetch the next upcoming session per client (across all trainers — a shared
   // client's "next session" is whichever comes soonest, regardless of who
@@ -197,11 +205,7 @@ export default async function ClientsPage({
   // Custom-field columns. The picker shows every custom field defined by the
   // trainer; we only fetch values for fields actually selected (via the
   // "custom:<id>" entries in clientListColumns) to keep page payloads small.
-  const customFields = await prisma.customField.findMany({
-    where: { trainerId },
-    select: { id: true, label: true, appliesTo: true },
-    orderBy: [{ category: 'asc' }, { order: 'asc' }, { label: 'asc' }],
-  })
+  const customFields = await customFieldsP
   // Fields whose values we need: any selected as a column AND the field
   // currently used for grouping (if any). Deduplicate.
   const selectedCustomIdsSet = new Set<string>(

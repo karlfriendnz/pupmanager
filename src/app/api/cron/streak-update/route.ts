@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
+import { sendPush } from '@/lib/push'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { getStreak, todayStatus, syncBadges } from '@/lib/trainer-streak'
 import { sendTrainerEmail } from '@/lib/trainer-notify'
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
       timezone: true,
       notifyPush: true,
       trainerProfile: { select: { id: true } },
-      deviceTokens: { where: { platform: 'IOS' }, select: { token: true } },
+      deviceTokens: { select: { token: true } },
       notificationPreferences: { where: { type: 'STREAK_UPDATE' } },
     },
   })
@@ -64,7 +64,6 @@ export async function GET(req: Request) {
 
   let pushed = 0
   let badgesAwarded = 0
-  const tokensToDelete: string[] = []
 
   for (const u of due) {
     if (!u.trainerProfile) continue
@@ -96,35 +95,25 @@ export async function GET(req: Request) {
 
     const pushPref = u.notificationPreferences.find(p => p.channel === 'PUSH')
     if (u.notifyPush && (pushPref?.enabled ?? true) && u.deviceTokens.length > 0) {
-      const results = await sendApns(
-        u.deviceTokens.map(d => d.token),
-        {
-          alert: {
-            title: renderTemplate(meta.defaults.title, subs),
-            body: renderTemplate(meta.defaults.body, subs),
-          },
-          customData: { type: 'streak-notes-reminder' },
+      const { sent } = await sendPush(u.id, {
+        alert: {
+          title: renderTemplate(meta.defaults.title, subs),
+          body: renderTemplate(meta.defaults.body, subs),
         },
-      )
-      for (const r of results) {
-        if (r.ok) pushed++
-        else if (r.reason && INVALID_TOKEN_REASONS.has(r.reason)) tokensToDelete.push(r.token)
-      }
+        customData: { type: 'streak-notes-reminder' },
+      })
+      pushed += sent
     }
 
     // Email channel — gated by its own per-type toggle inside the helper.
     await sendTrainerEmail(u.id, 'STREAK_UPDATE', subs, `${APP_URL}/dashboard`)
   }
 
-  if (tokensToDelete.length > 0) {
-    await prisma.deviceToken.deleteMany({ where: { token: { in: tokensToDelete } } })
-  }
 
   return NextResponse.json({
     candidatesScanned: candidates.length,
     due: due.length,
     pushesSent: pushed,
     badgesAwarded,
-    tokensInvalidated: tokensToDelete.length,
   })
 }

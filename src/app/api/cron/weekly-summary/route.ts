@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
+import { sendPush } from '@/lib/push'
 import { sendEmail } from '@/lib/email'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
@@ -49,7 +49,7 @@ export async function GET(req: Request) {
       notifyPush: true,
       notifyEmail: true,
       trainerProfile: { select: { id: true, businessName: true } },
-      deviceTokens: { where: { platform: 'IOS' }, select: { token: true } },
+      deviceTokens: { select: { token: true } },
       notificationPreferences: { where: { type: 'WEEKLY_SUMMARY' } },
     },
   })
@@ -74,7 +74,6 @@ export async function GET(req: Request) {
 
   let pushed = 0
   let emailed = 0
-  const tokensToDelete: string[] = []
 
   for (const u of due) {
     if (!u.trainerProfile) continue
@@ -179,20 +178,14 @@ export async function GET(req: Request) {
         nextWeekSessions: String(nextWeekSessions.length),
         nextWeekTasks: String(nextWeekTasks.length),
       }
-      const results = await sendApns(
-        u.deviceTokens.map(d => d.token),
-        {
-          alert: {
-            title: renderTemplate(meta.defaults.title, subs),
-            body: renderTemplate(meta.defaults.body, subs),
-          },
-          customData: { type: 'weekly-summary' },
+      const { sent } = await sendPush(u.id, {
+        alert: {
+          title: renderTemplate(meta.defaults.title, subs),
+          body: renderTemplate(meta.defaults.body, subs),
         },
-      )
-      for (const r of results) {
-        if (r.ok) pushed++
-        else if (r.reason && INVALID_TOKEN_REASONS.has(r.reason)) tokensToDelete.push(r.token)
-      }
+        customData: { type: 'weekly-summary' },
+      })
+      pushed += sent
     }
 
     // ─── Email ───────────────────────────────────────────────────────
@@ -225,16 +218,12 @@ export async function GET(req: Request) {
     }
   }
 
-  if (tokensToDelete.length > 0) {
-    await prisma.deviceToken.deleteMany({ where: { token: { in: tokensToDelete } } })
-  }
 
   return NextResponse.json({
     candidatesScanned: candidates.length,
     due: due.length,
     pushesSent: pushed,
     emailsSent: emailed,
-    tokensInvalidated: tokensToDelete.length,
   })
 }
 

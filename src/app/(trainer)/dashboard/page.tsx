@@ -46,14 +46,15 @@ export default async function DashboardPage({
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
 
-  // Idempotent: creates the TrainerOnboardingProgress row + seeds default
-  // achievements on first visit. Cheap (one indexed lookup) on every load after.
-  await initTrainerOnboarding(trainerId)
-  const onboardingState = await getOnboardingState(trainerId)
+  const sp = await searchParams
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  const NOTES_DONE_STATUSES = ['COMMENTED', 'COMPLETED', 'INVOICED']
 
-  // Branding seed for the first-run personalization wizard (only mounted for
-  // fresh signups by OnboardingPanel, but cheap to always fetch).
-  const brandingProfile = await prisma.trainerProfile.findUnique({
+  // Start every independent query at once so they run in parallel against the
+  // remote DB rather than serially (each round-trip is ~100ms+ — stacking ten
+  // of them is what made this page slow). Awaited below where first used.
+  const onboardingP = (async () => { await initTrainerOnboarding(trainerId); return getOnboardingState(trainerId) })()
+  const brandingP = prisma.trainerProfile.findUnique({
     where: { id: trainerId },
     select: {
       businessName: true, logoUrl: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true,
@@ -62,6 +63,56 @@ export default async function DashboardPage({
       user: { select: { email: true } },
     },
   })
+  const sampleCountP = prisma.clientProfile.count({ where: { trainerId, isSample: true } })
+  const trainerUserP = prisma.user.findUnique({ where: { id: session.user.id }, select: { timezone: true } })
+  const clientsP = prisma.clientProfile.findMany({
+    where: { trainerId },
+    include: {
+      user: { select: { name: true, email: true } },
+      dog: { select: { name: true } },
+      dogs: { select: { id: true } },
+      diaryEntries: { where: { date: { gte: sevenDaysAgo } }, select: { id: true, completion: { select: { id: true } } } },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+  const recentEnquiriesP = prisma.enquiry.findMany({
+    where: { trainerId, status: 'NEW' },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, name: true, dogName: true, status: true, viewedAt: true, createdAt: true },
+    take: 5,
+  })
+  const unviewedEnquiryCountP = prisma.enquiry.count({ where: { trainerId, status: 'NEW', viewedAt: null } })
+  const sessionsToActionP = prisma.trainingSession.findMany({
+    where: {
+      trainerId,
+      scheduledAt: { lt: new Date() },
+      clientId: { not: null },
+      OR: [
+        { AND: [{ formResponses: { none: {} } }, { status: { notIn: NOTES_DONE_STATUSES as ('COMMENTED' | 'COMPLETED' | 'INVOICED')[] } }] },
+        { invoicedAt: null },
+      ],
+    },
+    select: {
+      invoicedAt: true,
+      status: true,
+      _count: { select: { formResponses: true } },
+      clientPackage: { select: { package: { select: { priceCents: true, sessionCount: true } } } },
+    },
+  })
+  const pendingProductRequestsP = prisma.productRequest.findMany({
+    where: { client: { trainerId }, status: 'PENDING' },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      createdAt: true,
+      note: true,
+      client: { select: { id: true, user: { select: { name: true, email: true } } } },
+      product: { select: { id: true, name: true, kind: true, imageUrl: true } },
+    },
+  })
+
+  const onboardingState = await onboardingP
+  const brandingProfile = await brandingP
   const branding = {
     businessName: brandingProfile?.businessName ?? '',
     logoUrl: brandingProfile?.logoUrl ?? null,
@@ -77,26 +128,20 @@ export default async function DashboardPage({
 
   // Whether the trainer currently has loaded sample data — drives the "remove
   // sample data" banner. Sample clients are always part of a sample load.
-  const sampleClientCount = await prisma.clientProfile.count({ where: { trainerId, isSample: true } })
+  const sampleClientCount = await sampleCountP
 
   // Trainer's timezone drives all day-bounds and time formatting on this
   // server-rendered page. Vercel runs Node in UTC so without this every
   // time would render as UTC for everyone.
-  const trainerUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { timezone: true },
-  })
+  const trainerUser = await trainerUserP
   const tz = trainerUser?.timezone ?? 'Pacific/Auckland'
 
-  const sp = await searchParams
   const todayDateStr = todayInTz(tz)
   const focusDateStr = (sp.date && parseLocalDate(sp.date)) ? sp.date! : todayDateStr
   const focusDate = parseLocalDate(focusDateStr)!
   const focusStart = startOfDayInTz(focusDateStr, tz)
   const focusEnd = endOfDayInTz(focusDateStr, tz)
   const isToday = focusDateStr === todayDateStr
-
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
   const todaysSessionsRaw = await prisma.trainingSession.findMany({
     where: {
@@ -137,19 +182,7 @@ export default async function DashboardPage({
   const nextHref = `/dashboard?date=${toDateStr(nextDate)}`
   const todayHref = `/dashboard`
 
-  const clients = await prisma.clientProfile.findMany({
-    where: { trainerId },
-    include: {
-      user: { select: { name: true, email: true } },
-      dog: { select: { name: true } },
-      dogs: { select: { id: true } },
-      diaryEntries: {
-        where: { date: { gte: sevenDaysAgo } },
-        select: { id: true, completion: { select: { id: true } } },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
+  const clients = await clientsP
 
   const totalClients = clients.length
   const activeClients = clients.filter(c => c.status === 'ACTIVE').length
@@ -163,22 +196,8 @@ export default async function DashboardPage({
   // Recent enquiries — only NEW (still pending decision). Accepted and
   // declined ones drop off the dashboard once actioned; trainer can find
   // them under the respective tabs on /enquiries.
-  const recentEnquiries = await prisma.enquiry.findMany({
-    where: { trainerId, status: 'NEW' },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      name: true,
-      dogName: true,
-      status: true,
-      viewedAt: true,
-      createdAt: true,
-    },
-    take: 5,
-  })
-  const unviewedEnquiryCount = await prisma.enquiry.count({
-    where: { trainerId, status: 'NEW', viewedAt: null },
-  })
+  const recentEnquiries = await recentEnquiriesP
+  const unviewedEnquiryCount = await unviewedEnquiryCountP
 
   // Past sessions still needing notes OR an invoice — the dashboard CTA links
   // to /sessions/needs-notes which is now framed as a generic "to do" list.
@@ -187,26 +206,7 @@ export default async function DashboardPage({
   // Sessions marked complete/commented/invoiced no longer "need notes" — only
   // a missing write-up on a not-yet-completed session counts (mirrors the
   // /sessions/needs-notes page).
-  const NOTES_DONE_STATUSES = ['COMMENTED', 'COMPLETED', 'INVOICED']
-  const sessionsToAction = await prisma.trainingSession.findMany({
-    where: {
-      trainerId,
-      scheduledAt: { lt: new Date() },
-      clientId: { not: null },
-      OR: [
-        { AND: [{ formResponses: { none: {} } }, { status: { notIn: NOTES_DONE_STATUSES as ('COMMENTED' | 'COMPLETED' | 'INVOICED')[] } }] },
-        { invoicedAt: null },
-      ],
-    },
-    select: {
-      invoicedAt: true,
-      status: true,
-      _count: { select: { formResponses: true } },
-      clientPackage: {
-        select: { package: { select: { priceCents: true, sessionCount: true } } },
-      },
-    },
-  })
+  const sessionsToAction = await sessionsToActionP
   const sessionsToActionCount = sessionsToAction.length
   const wrapNotesCount = sessionsToAction.filter(s => s._count.formResponses === 0 && !(NOTES_DONE_STATUSES as readonly string[]).includes(s.status)).length
   const wrapInvoiceCount = sessionsToAction.filter(s => s.invoicedAt == null).length
@@ -225,17 +225,7 @@ export default async function DashboardPage({
 
   // Pending product requests across this trainer's clients — shown as a panel
   // so the trainer can fulfil items at the next session and dismiss the chip.
-  const pendingProductRequests = await prisma.productRequest.findMany({
-    where: { client: { trainerId }, status: 'PENDING' },
-    orderBy: { createdAt: 'asc' },
-    select: {
-      id: true,
-      createdAt: true,
-      note: true,
-      client: { select: { id: true, user: { select: { name: true, email: true } } } },
-      product: { select: { id: true, name: true, kind: true, imageUrl: true } },
-    },
-  })
+  const pendingProductRequests = await pendingProductRequestsP
 
   // Index requests by client so we can show them inline on each "Coming up
   // today" session row — the trainer sees what to bring at a glance.

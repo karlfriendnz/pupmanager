@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
+import { sendPush as sendDevicePush } from '@/lib/push'
 import { sendEmail } from '@/lib/email'
 import { env } from '@/lib/env'
 import { resolvePref } from '@/lib/notification-prefs'
@@ -68,12 +68,6 @@ async function sendPush(
   const pref = await resolvePref(trainerUserId, 'NEW_ENQUIRY', 'PUSH')
   if (!pref.enabled) return
 
-  const tokens = await prisma.deviceToken.findMany({
-    where: { userId: trainerUserId, platform: 'IOS' },
-    select: { token: true },
-  })
-  if (tokens.length === 0) return
-
   // Belt-and-braces: if the resolved template renders to an empty
   // string (e.g. a stored pref row with `customTitle: ''` slipped
   // through, or every placeholder was empty), iOS falls back to
@@ -84,28 +78,12 @@ async function sendPush(
   const title = rawTitle || `New enquiry from ${values.name || 'someone'}`
   const body = rawBody || (values.email ? `Reply to ${values.email}` : 'Tap to open the enquiry.')
 
-  console.log('[notify-enquiry-trainer push]', {
-    enquiryId,
-    trainerUserId,
-    tokenCount: tokens.length,
-    title,
-    bodyLength: body.length,
+  console.log('[notify-enquiry-trainer push]', { enquiryId, trainerUserId, title, bodyLength: body.length })
+
+  await sendDevicePush(trainerUserId, {
+    alert: { title, body },
+    customData: { type: 'new-enquiry', enquiryId, path: `/enquiries/${enquiryId}` },
   })
-
-  const results = await sendApns(
-    tokens.map(t => t.token),
-    {
-      alert: { title, body },
-      customData: { type: 'new-enquiry', enquiryId, path: `/enquiries/${enquiryId}` },
-    },
-  )
-
-  const stale = results
-    .filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason))
-    .map(r => r.token)
-  if (stale.length > 0) {
-    await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
-  }
 }
 
 interface EnquiryForEmail {

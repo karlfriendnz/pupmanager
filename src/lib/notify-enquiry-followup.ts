@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
+import { sendPush as sendDevicePush } from '@/lib/push'
 import { sendEmail } from '@/lib/email'
 import { env } from '@/lib/env'
 import { resolvePref } from '@/lib/notification-prefs'
@@ -73,12 +73,6 @@ async function sendPush(
   const pref = await resolvePref(trainerUserId, 'ENQUIRY_FOLLOWUP_REMINDER', 'PUSH')
   if (!pref.enabled) return
 
-  const tokens = await prisma.deviceToken.findMany({
-    where: { userId: trainerUserId, platform: 'IOS' },
-    select: { token: true },
-  })
-  if (tokens.length === 0) return
-
   // Belt-and-braces fallback so iOS never shows the bare word "Notification"
   // if a stored pref row renders to an empty string.
   const rawTitle = renderTemplate(pref.title, values).trim()
@@ -88,17 +82,10 @@ async function sendPush(
     rawBody ||
     `${values.name || 'An enquiry'} has been waiting ${values.waited} with no reply.`
 
-  const results = await sendApns(tokens.map(t => t.token), {
+  await sendDevicePush(trainerUserId, {
     alert: { title, body },
     customData: { type: 'enquiry-followup', enquiryId, path: `/enquiries/${enquiryId}` },
   })
-
-  const stale = results
-    .filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason))
-    .map(r => r.token)
-  if (stale.length > 0) {
-    await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
-  }
 }
 
 interface EnquiryForEmail {

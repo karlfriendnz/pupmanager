@@ -40,6 +40,10 @@ export interface NotificationTypeMeta {
   // preference row yet — lets us default push+feed but not email. Falls back
   // to all `channels` when omitted.
   defaultChannels?: NotificationChannel[]
+  // When set, the EMAIL channel is NOT sent immediately — the app (push + feed)
+  // is the first touch and a cron emails the client only if they still haven't
+  // read it after this many minutes. Used for new-message (app-first chat).
+  emailDeferMinutes?: number
 }
 
 export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> = {
@@ -350,7 +354,14 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     trigger: 'event',
     audience: 'client',
     channels: ['PUSH', 'EMAIL', 'IN_APP'],
-    defaultChannels: ['PUSH', 'IN_APP'],
+    // Email is ON by default: most clients don't have the iOS app, so without
+    // it a trainer's message reaches them via push (app only) or in-app feed
+    // (only if they open the app) — i.e. silently for everyone else. Clients
+    // can still turn email off in their notification settings.
+    defaultChannels: ['PUSH', 'EMAIL', 'IN_APP'],
+    // App-first: push + in-app chat land immediately; the email only fires via
+    // the message-email-fallback cron if the client hasn't read it within 60 min.
+    emailDeferMinutes: 60,
     defaults: {
       enabled: true,
       title: 'New message from {{senderName}}',

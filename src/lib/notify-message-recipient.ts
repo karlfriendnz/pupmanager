@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
+import { sendPush } from '@/lib/push'
 import { resolvePref } from '@/lib/notification-prefs'
 import { renderTemplate } from '@/lib/notification-types'
 import { sendTrainerEmail } from '@/lib/trainer-notify'
@@ -69,25 +69,10 @@ async function doNotify({ messageId, clientId, senderId, body }: NotifyArgs) {
     // Trainer side: NEW_MESSAGE push + email, each gated by its own toggle.
     const pushPref = await resolvePref(trainerUser.id, 'NEW_MESSAGE', 'PUSH')
     if (pushPref.enabled) {
-      const tokens = await prisma.deviceToken.findMany({
-        where: { userId: trainerUser.id, platform: 'IOS' },
-        select: { token: true },
+      await sendPush(trainerUser.id, {
+        alert: { title: renderTemplate(pushPref.title, subs), body: renderTemplate(pushPref.body, subs) },
+        customData: { type: 'new-message', messageId, path: `/messages/${clientId}` },
       })
-      if (tokens.length > 0) {
-        const results = await sendApns(
-          tokens.map(t => t.token),
-          {
-            alert: { title: renderTemplate(pushPref.title, subs), body: renderTemplate(pushPref.body, subs) },
-            customData: { type: 'new-message', messageId, path: `/messages/${clientId}` },
-          },
-        )
-        const stale = results
-          .filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason))
-          .map(r => r.token)
-        if (stale.length > 0) {
-          await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
-        }
-      }
     }
     await sendTrainerEmail(trainerUser.id, 'NEW_MESSAGE', subs, `${APP_URL}/messages/${clientId}`)
   } else {

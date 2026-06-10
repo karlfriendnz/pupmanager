@@ -97,7 +97,7 @@ interface Props {
   // Built-in contact fields surfaced at the top of the Details tab so
   // the trainer-defined custom fields aren't the only thing there. The
   // page header used to render these and got noisy.
-  contact: { email: string | null; phone: string | null; clientSince: string }
+  contact: { email: string | null; phone: string | null; clientSince: string; address: string | null; distanceFromBase: string | null }
   // ACTIVE / INACTIVE / NEW — used to render the status toggle inside
   // the Contact card on the Details tab (used to live in the page
   // header but cluttered the top of the page).
@@ -685,6 +685,20 @@ export function ClientProfileTabs({
                 <div>
                   <p className="text-xs text-slate-400 mb-0.5">Client since</p>
                   <p className="text-slate-800">{contact.clientSince}</p>
+                </div>
+                {contact.address && (
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-slate-400 mb-0.5">Address</p>
+                    <p className="text-slate-800">{contact.address}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-slate-400 mb-0.5">From base</p>
+                  {contact.distanceFromBase ? (
+                    <p className="text-slate-800">{contact.distanceFromBase}</p>
+                  ) : (
+                    <p className="text-slate-300">—</p>
+                  )}
                 </div>
               </div>
             </CardBody>

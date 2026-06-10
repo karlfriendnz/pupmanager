@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
@@ -26,7 +27,9 @@ export default async function MessagesPage({
   // their last message, and a per-thread unread count. NEW (invite
   // not yet accepted) clients bucket into Active so an in-flight
   // onboarding chat doesn't get hidden.
-  const clients = await prisma.clientProfile.findMany({
+  // Fetch the client list AND the open thread (if any) in parallel — the
+  // thread only needs the clientId, so it doesn't have to wait for the list.
+  const clientsP = prisma.clientProfile.findMany({
     where: { trainerId },
     include: {
       user: { select: { name: true, email: true } },
@@ -51,6 +54,9 @@ export default async function MessagesPage({
     },
     orderBy: { createdAt: 'asc' },
   })
+  // Trainer-scoped so a stray ?client= can't surface someone else's thread.
+  const threadP = selectedClientId ? loadMessages(selectedClientId, trainerId) : Promise.resolve([])
+  const [clients, loadedThread] = await Promise.all([clientsP, threadP])
 
   function sortKey(c: typeof clients[number]): number {
     const lastMs = c.messages[0]?.createdAt?.getTime() ?? 0
@@ -99,18 +105,18 @@ export default async function MessagesPage({
         displayName: found.user.name ?? found.user.email ?? 'Client',
         dogName: found.dog?.name ?? null,
       }
-      threadMessages = await loadMessages(selectedClientId)
+      threadMessages = loadedThread
 
-      // Mark unread messages as read — opening a thread is the read
-      // signal, same behaviour the old /messages/[clientId] page had.
+      // Mark unread as read AFTER the response — it's the "I opened this"
+      // signal for next time, so it never needs to block the render.
       const unreadIds = threadMessages
         .filter(m => m.senderId !== session.user.id)
         .map(m => m.id)
       if (unreadIds.length > 0) {
-        await prisma.message.updateMany({
+        after(() => prisma.message.updateMany({
           where: { id: { in: unreadIds }, readAt: null },
           data: { readAt: new Date() },
-        })
+        }).catch(() => {}))
       }
     }
   }
@@ -150,9 +156,9 @@ export default async function MessagesPage({
   )
 }
 
-async function loadMessages(clientId: string) {
+async function loadMessages(clientId: string, trainerId: string) {
   const msgs = await prisma.message.findMany({
-    where: { clientId, channel: 'TRAINER_CLIENT' },
+    where: { clientId, channel: 'TRAINER_CLIENT', client: { trainerId } },
     include: { sender: { select: { name: true, email: true } } },
     orderBy: { createdAt: 'asc' },
   })

@@ -27,6 +27,7 @@ export default async function EditClientPage({
     select: {
       id: true,
       phone: true,
+      addressLine: true,
       user: { select: { name: true, email: true } },
       dog: { select: { id: true, name: true, breed: true, weight: true, dob: true, notes: true, photoUrl: true } },
       dogs: { select: { id: true, name: true, breed: true, weight: true, dob: true, notes: true, photoUrl: true } },
@@ -35,12 +36,17 @@ export default async function EditClientPage({
 
   if (!client) notFound()
 
-  const [customFields, fieldValues] = await Promise.all([
+  const [customFields, fieldValues, tp] = await Promise.all([
     prisma.customField.findMany({
       where: { trainerId: access.client.trainerId },
       orderBy: { order: 'asc' },
     }),
     prisma.customFieldValue.findMany({ where: { clientId } }),
+    // The trainer's base biases the address autocomplete toward their city.
+    prisma.trainerProfile.findUnique({
+      where: { id: access.client.trainerId },
+      select: { baseLat: true, baseLng: true },
+    }),
   ])
 
   function dogToForm(d: { id: string; name: string; breed: string | null; weight: number | null; dob: Date | null; notes: string | null; photoUrl: string | null }, isPrimary: boolean) {
@@ -74,6 +80,9 @@ export default async function EditClientPage({
         initialName={client.user.name ?? ''}
         initialEmail={client.user.email ?? ''}
         initialPhone={client.phone ?? ''}
+        initialAddress={client.addressLine}
+        biasLat={tp?.baseLat ?? null}
+        biasLng={tp?.baseLng ?? null}
         // Email is the client's login credential — only the primary
         // trainer can change it (co-managers see the field disabled).
         canEditEmail={access.client.trainerId === access.trainerId}

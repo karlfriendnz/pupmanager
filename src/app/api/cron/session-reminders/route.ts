@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
+import { sendPush } from '@/lib/push'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { resolvePrefsForUsers } from '@/lib/notification-prefs'
 import { sendTrainerEmail } from '@/lib/trainer-notify'
@@ -51,7 +51,6 @@ export async function GET(req: Request) {
               id: true,
               notifyPush: true,
               timezone: true,
-              deviceTokens: { where: { platform: 'IOS' } },
             },
           },
         },
@@ -71,7 +70,6 @@ export async function GET(req: Request) {
 
   const startMeta = NOTIFICATION_TYPES.SESSION_REMINDER
   const notesMeta = NOTIFICATION_TYPES.SESSION_NOTES_REMINDER
-  const tokensToDelete: string[] = []
   let startPushes = 0
   let notesPushes = 0
 
@@ -97,17 +95,14 @@ export async function GET(req: Request) {
           startTime,
           minutesBefore: String(lead),
         }
-        if (trainerUser.notifyPush && pref.enabled && trainerUser.deviceTokens.length > 0) {
-          const results = await sendApns(trainerUser.deviceTokens.map(d => d.token), {
+        if (trainerUser.notifyPush && pref.enabled) {
+          // `path` is consumed by the native shell's tap handler to deep-link
+          // straight to the relevant session page.
+          const { sent } = await sendPush(trainerUser.id, {
             alert: { title: renderTemplate(pref.title, subs), body: renderTemplate(pref.body, subs) },
-            // `path` is consumed by the native shell's tap handler to deep-link
-            // straight to the relevant session page.
             customData: { sessionId: s.id, type: 'session-reminder', path: `/sessions/${s.id}` },
           })
-          for (const r of results) {
-            if (r.ok) startPushes++
-            else if (r.reason && INVALID_TOKEN_REASONS.has(r.reason)) tokensToDelete.push(r.token)
-          }
+          startPushes += sent
         }
         // Email channel — gated by its own per-type toggle inside the helper.
         await sendTrainerEmail(trainerUser.id, 'SESSION_REMINDER', subs, `${APP_URL}/sessions/${s.id}`)
@@ -141,17 +136,14 @@ export async function GET(req: Request) {
           endTime,
           minutesBefore: String(lead),
         }
-        if (trainerUser.notifyPush && pref.enabled && trainerUser.deviceTokens.length > 0) {
-          const results = await sendApns(trainerUser.deviceTokens.map(d => d.token), {
+        if (trainerUser.notifyPush && pref.enabled) {
+          // Deep-link straight to the session page with a #notes anchor so
+          // the page can scroll/focus the notes editor when added.
+          const { sent } = await sendPush(trainerUser.id, {
             alert: { title: renderTemplate(pref.title, subs), body: renderTemplate(pref.body, subs) },
-            // Deep-link straight to the session page with a #notes anchor so
-            // the page can scroll/focus the notes editor when added.
             customData: { sessionId: s.id, type: 'session-notes-reminder', path: `/sessions/${s.id}#notes` },
           })
-          for (const r of results) {
-            if (r.ok) notesPushes++
-            else if (r.reason && INVALID_TOKEN_REASONS.has(r.reason)) tokensToDelete.push(r.token)
-          }
+          notesPushes += sent
         }
         await sendTrainerEmail(trainerUser.id, 'SESSION_NOTES_REMINDER', subs, `${APP_URL}/sessions/${s.id}#notes`)
         await prisma.trainingSession.update({ where: { id: s.id }, data: { notesReminderPushSentAt: now } })
@@ -159,14 +151,9 @@ export async function GET(req: Request) {
     }
   }
 
-  if (tokensToDelete.length > 0) {
-    await prisma.deviceToken.deleteMany({ where: { token: { in: tokensToDelete } } })
-  }
-
   return NextResponse.json({
     sessionsConsidered: sessions.length,
     startPushes,
     notesPushes,
-    tokensInvalidated: tokensToDelete.length,
   })
 }

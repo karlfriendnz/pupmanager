@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
+import { sendPush } from '@/lib/push'
 import { sendEmail } from '@/lib/email'
 import { NOTIFICATION_TYPES, renderTemplate } from '@/lib/notification-types'
 import { resolvePref } from '@/lib/notification-prefs'
@@ -99,33 +99,25 @@ export async function POST(req: Request) {
       })
     }
 
-    const tokens = await prisma.deviceToken.findMany({
-      where: { userId: session.user.id, platform: 'IOS' },
-    })
-    if (tokens.length === 0) {
-      return NextResponse.json({ ok: false, reason: 'no-devices', message: 'No iOS devices registered. Open the app on iPhone, allow notifications, then try again.' })
-    }
-
     // Pick a realistic deep-link path so tapping the test push lands on the
     // page the real notification would. For session-related types, link to the
     // user's most recent session (or fall back to /dashboard if none exist).
     const path = await deepLinkFor(session.user.id, meta.type)
 
-    const results = await sendApns(tokens.map(t => t.token), {
+    const { sent, total, results } = await sendPush(session.user.id, {
       alert: { title, body },
       customData: { type: 'preview', notificationType: meta.type, path },
     })
+    if (total === 0) {
+      return NextResponse.json({ ok: false, reason: 'no-devices', message: 'No devices registered. Open the app, allow notifications, then try again.' })
+    }
 
-    const stale = results.filter(r => !r.ok && r.reason && INVALID_TOKEN_REASONS.has(r.reason)).map(r => r.token)
-    if (stale.length > 0) await prisma.deviceToken.deleteMany({ where: { token: { in: stale } } })
-
-    const sent = results.filter(r => r.ok).length
     return NextResponse.json({
       ok: sent > 0,
       sent,
-      failed: results.length - sent,
+      failed: total - sent,
       preview: { title, body },
-      details: results.map(r => ({ ok: r.ok, status: r.status, reason: r.reason })),
+      details: results.map(r => ({ platform: r.platform, ok: r.ok, status: r.status, reason: r.reason })),
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'

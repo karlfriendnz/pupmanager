@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { ScheduleView } from './schedule-view'
@@ -78,27 +79,24 @@ export default async function SchedulePage({
   })
   if (!trainerProfile) redirect('/login')
 
-  // Trainers in this business, for the assigned-trainer picker. Only fed to the
-  // view when there's more than one (the picker hides itself otherwise).
-  const teamMembers = await prisma.trainerMembership.findMany({
+  // Trainers in this business, for the assigned-trainer picker (awaited in the
+  // parallel batch below).
+  const teamMembersP = prisma.trainerMembership.findMany({
     where: { companyId: trainerProfile.id },
     select: { id: true, role: true, title: true, user: { select: { name: true, email: true } } },
     orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
   })
 
-  // Top up forever-ongoing assignments before fetching sessions, so the
-  // current view always includes any newly-generated bookings. Failure
-  // here is non-fatal (the trainer's existing sessions still render),
-  // but log so we notice if it's failing consistently.
-  await extendOngoingPackages(trainerProfile.id).catch(err => {
+  // Top up forever-ongoing assignments AFTER the response is sent, so it never
+  // blocks the render. The generated bookings are weeks ahead (off the current
+  // view), so showing them on the next load is fine — and this was the single
+  // biggest cost on every schedule load.
+  after(() => extendOngoingPackages(trainerProfile.id).catch(err => {
     console.error('[schedule] extendOngoingPackages failed', err)
-  })
+  }))
 
-  // Onboarding nudges (the indigo dot on the Hours button) only fire while
-  // the trainer's still in the wizard. Once they're done, the schedule
-  // page is just the schedule page.
-  const fabState = await getOnboardingFabState(trainerProfile.id)
-  const showHints = fabState.show
+  // Onboarding hint dot (awaited in the parallel batch below).
+  const fabStateP = getOnboardingFabState(trainerProfile.id)
 
   // The trainer's configured timezone is the single source of truth for
   // every date/time the calendar shows — never the device or UTC.
@@ -119,7 +117,7 @@ export default async function SchedulePage({
   // whole column, which has burned trainers expecting WYSIWYG).
   // We don't mutate the trainer's persisted preference — the column
   // only appears for weeks that actually need it.
-  const sessionsOnHiddenDays = await prisma.trainingSession.findMany({
+  const sessionsOnHiddenDaysP = prisma.trainingSession.findMany({
     where: {
       trainerId: trainerProfile.id,
       scheduledAt: { gte: weekStart, lte: weekEnd },
@@ -129,15 +127,6 @@ export default async function SchedulePage({
     },
     select: { scheduledAt: true },
   })
-  const hiddenDaysWithSessions = new Set<number>()
-  for (const s of sessionsOnHiddenDays) {
-    const js = dateParts(s.scheduledAt, tz).weekday // 0=Sun..6=Sat, trainer tz
-    const iso = js === 0 ? 7 : js                    // schedule uses 1=Mon..7=Sun
-    if (!configuredDays.includes(iso)) hiddenDaysWithSessions.add(iso)
-  }
-  const scheduleDaysArr = hiddenDaysWithSessions.size > 0
-    ? [...configuredDays, ...hiddenDaysWithSessions].sort((a, b) => a - b)
-    : configuredDays
 
   // Inspect the trainer's selected schedule-extra fields up-front so we can
   // skip expensive lookups (session client compliance, custom values) when
@@ -153,8 +142,12 @@ export default async function SchedulePage({
     .filter(c => c.startsWith('custom:'))
     .map(c => c.slice('custom:'.length))
 
-  // Single parallel fan-out instead of three sequential awaits.
-  const [customFields, sessions, availabilitySlots, clients, packages] = await Promise.all([
+  // Single parallel fan-out — every independent query (incl. team members,
+  // onboarding state, and the hidden-day probe) runs at once.
+  const [teamMembers, fabState, sessionsOnHiddenDays, customFields, sessions, availabilitySlots, clients, packages] = await Promise.all([
+    teamMembersP,
+    fabStateP,
+    sessionsOnHiddenDaysP,
     prisma.customField.findMany({
       where: { trainerId: trainerProfile.id },
       select: { id: true, label: true, appliesTo: true },
@@ -219,6 +212,20 @@ export default async function SchedulePage({
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
     }),
   ])
+
+  const showHints = fabState.show
+
+  // Auto-expand visible weekdays when this week has sessions on a normally
+  // hidden day, so they don't silently vanish from the grid.
+  const hiddenDaysWithSessions = new Set<number>()
+  for (const s of sessionsOnHiddenDays) {
+    const js = dateParts(s.scheduledAt, tz).weekday // 0=Sun..6=Sat, trainer tz
+    const iso = js === 0 ? 7 : js                    // schedule uses 1=Mon..7=Sun
+    if (!configuredDays.includes(iso)) hiddenDaysWithSessions.add(iso)
+  }
+  const scheduleDaysArr = hiddenDaysWithSessions.size > 0
+    ? [...configuredDays, ...hiddenDaysWithSessions].sort((a, b) => a - b)
+    : configuredDays
 
   // Resolve a clientId for every session (direct link or via primary-dog
   // owner) so we can attach client-level extras used by the block renderer.
