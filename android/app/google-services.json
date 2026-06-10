@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "318725505721",
+    "project_id": "pupmanager-ccff3",
+    "storage_bucket": "pupmanager-ccff3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:318725505721:android:e48b1ec6e9f0f70e341168",
+        "android_client_info": {
+          "package_name": "com.pupmanager.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwMqquaAB6GnHCIxI4xjEPpw-EscnpXzs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
