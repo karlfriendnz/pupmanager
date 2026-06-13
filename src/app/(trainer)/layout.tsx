@@ -16,6 +16,23 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') redirect('/login')
 
+  // Email-verification gate. Credentials sign-ups can't reach here unverified
+  // (authorize() blocks them), but Apple-native sign-ups mint a session
+  // directly and start unverified — their tell is an unverified email with NO
+  // linked OAuth Account row (Google/Apple-web sign-ins always create one, so
+  // they're unaffected). Hold them on the verify screen until they enter the
+  // 6-digit code we emailed. Skipped during admin impersonation so admins can
+  // still inspect such an account.
+  if (!session.user.impersonatorId) {
+    const u = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { emailVerified: true, _count: { select: { accounts: true } } },
+    })
+    if (u && !u.emailVerified && u._count.accounts === 0) {
+      redirect(`/verify-account?email=${encodeURIComponent(session.user.email ?? '')}&next=/dashboard`)
+    }
+  }
+
   // Hide nav items this trainer can't act on (role + permissions). Owners and
   // managers see everything; staff get a focused menu. Maps each gated nav
   // href to the permission that unlocks it.

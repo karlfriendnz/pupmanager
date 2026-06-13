@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { z } from 'zod'
+import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { setSessionCookie } from '@/lib/session-cookie'
+import { sendVerificationEmail } from '@/lib/auth-emails'
+
+function generateCode(): string {
+  // Cryptographically random 6-digit code, zero-padded (mirrors /register).
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0')
+}
 
 // Native "Sign in with Apple" (iOS ASAuthorization sheet, via
 // @capacitor-community/apple-sign-in). The app does the in-app Apple flow and
@@ -38,16 +45,15 @@ export async function POST(req: Request) {
   }
 
   // 1. Verify the token is a genuine, unexpired Apple token for our app.
+  // We deliberately ignore Apple's own email_verified claim: every Apple
+  // sign-up is put through our own 6-digit email verification below.
   let email: string | null = null
-  let emailVerified = false
   try {
     const { payload } = await jwtVerify(parsed.data.identityToken, APPLE_JWKS, {
       issuer: 'https://appleid.apple.com',
       audience: allowedAudiences(),
     })
     email = typeof payload.email === 'string' ? payload.email.toLowerCase() : null
-    // Apple sends email_verified as a boolean or the string "true".
-    emailVerified = payload.email_verified === true || payload.email_verified === 'true'
   } catch {
     return NextResponse.json({ error: 'Could not verify your Apple sign-in. Please try again.' }, { status: 401 })
   }
@@ -65,6 +71,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'That account isn\'t a trainer account.' }, { status: 403 })
   }
 
+  // Every Apple sign-up must confirm a 6-digit code emailed to them before they
+  // can use the app — even though Apple already verifies the address — so we
+  // hold a deliverable email on file for billing/onboarding/drip mail. Once an
+  // account is verified we never ask again. Apple's own email_verified claim is
+  // intentionally NOT used to skip this step.
+  let needsVerification = false
+
   let user = existing
   if (!user) {
     const name = parsed.data.fullName?.trim() || null
@@ -73,15 +86,25 @@ export async function POST(req: Request) {
         email,
         name,
         role: 'TRAINER',
-        emailVerified: emailVerified ? new Date() : null,
+        // Always start unverified — the code we email below is the gate.
+        emailVerified: null,
       },
     })
+    needsVerification = true
     // Mirror the OAuth createUser flow: give the new trainer a business shell
     // they own, so the dashboard renders instead of looping. businessName
-    // starts empty — onboarding step 1 prompts them to fill it in.
+    // starts empty — onboarding step 1 prompts them to fill it in. Stamp a
+    // 10-day trial like the /signup, /register and web-OAuth flows — without
+    // it the trial banner reads the null end date as "Trial finished" on day
+    // one (the bug that left Apple-native sign-ups with no trial window).
+    const TRIAL_DAYS = 10
     const profile = await prisma.trainerProfile.upsert({
       where: { userId: user.id },
-      create: { userId: user.id, businessName: '' },
+      create: {
+        userId: user.id,
+        businessName: '',
+        trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
+      },
       update: {},
     })
     await prisma.trainerMembership.upsert({
@@ -89,13 +112,41 @@ export async function POST(req: Request) {
       create: { companyId: profile.id, userId: user.id, role: 'OWNER', acceptedAt: new Date() },
       update: {},
     })
-  } else if (parsed.data.fullName && !user.name) {
-    // Backfill the name on an existing nameless account from Apple's first send.
-    await prisma.user.update({ where: { id: user.id }, data: { name: parsed.data.fullName.trim() } })
+  } else {
+    if (parsed.data.fullName && !user.name) {
+      // Backfill the name on an existing nameless account from Apple's first send.
+      await prisma.user.update({ where: { id: user.id }, data: { name: parsed.data.fullName.trim() } })
+    }
+    // An existing Apple account that never finished verifying (e.g. signed up
+    // before this gate, or bailed last time) is asked again on this sign-in.
+    if (!user.emailVerified) needsVerification = true
+  }
+
+  // Issue + email a fresh 6-digit code for any account still needing
+  // verification. Clear prior codes so the latest is the only valid one. Email
+  // failure never blocks sign-in — they can hit "Resend" on the verify screen.
+  if (needsVerification) {
+    const code = generateCode()
+    const expires = new Date(Date.now() + 10 * 60 * 1000)
+    await prisma.verificationToken.deleteMany({ where: { identifier: email } })
+    await prisma.verificationToken.create({ data: { identifier: email, token: code, expires } })
+    const tp = await prisma.trainerProfile.findUnique({
+      where: { userId: user.id },
+      select: { businessName: true },
+    })
+    await sendVerificationEmail({
+      to: email,
+      name: user.name ?? email,
+      businessName: tp?.businessName || 'your business',
+      code,
+    }).catch(err => console.error('[apple-native] verification email failed:', err))
   }
 
   // 3. Mint the session — the jwt callback backfills trainerId on next request.
-  const res = NextResponse.json({ ok: true })
+  // We still mint it even when verification is pending: Apple users have no
+  // password to sign back in with, so they stay authenticated while the
+  // trainer layout holds them on the verify screen until the code is entered.
+  const res = NextResponse.json({ ok: true, requiresVerification: needsVerification, email })
   await setSessionCookie(res, {
     id: user.id,
     sub: user.id,

@@ -31,9 +31,18 @@ export function AppleNativeButton({ callbackUrl }: { callbackUrl?: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identityToken: response.identityToken, fullName }),
       })
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
         setError(typeof data.error === 'string' ? data.error : 'Sign in failed. Please try again.')
+        return
+      }
+      // New / not-yet-verified Apple accounts must confirm the emailed code
+      // before the app opens. The session is already minted, so once they
+      // verify they continue straight to the dashboard.
+      if (data.requiresVerification) {
+        const email = typeof data.email === 'string' ? data.email : ''
+        const next = callbackUrl ?? '/dashboard'
+        window.location.href = `/verify-account?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`
         return
       }
       window.location.href = callbackUrl ?? '/dashboard'

@@ -12,6 +12,9 @@ export function VerifyAccountForm() {
   const params = useSearchParams()
   const initialEmail = params.get('email') ?? ''
   const initialCode = params.get('code') ?? ''
+  // When present (the Apple-native flow), the user already has a session, so on
+  // success we continue straight there instead of sending them to /login.
+  const next = params.get('next') ?? ''
 
   const [email, setEmail] = useState(initialEmail)
   const [code, setCode] = useState(initialCode)
@@ -49,6 +52,12 @@ export function VerifyAccountForm() {
     }
     setVerified(true)
     setSubmitting(false)
+    // Apple flow: session already exists, so go straight on. Full navigation so
+    // the server layout re-reads the now-verified state. Short beat to let the
+    // success state paint first.
+    if (next) {
+      setTimeout(() => { window.location.href = next }, 900)
+    }
   }
 
   async function handleResend() {
@@ -76,14 +85,27 @@ export function VerifyAccountForm() {
           </div>
           <h2 className="text-xl font-semibold text-slate-900">Account verified 🎉</h2>
           <p className="text-sm text-slate-600 max-w-sm">
-            Your 14-day free trial has started. Sign in to set up your first programme.
+            {next
+              ? 'Your free trial has started — taking you to your dashboard…'
+              : 'Your free trial has started. Sign in to set up your first programme.'}
           </p>
-          <Link
-            href="/login"
-            className="mt-4 inline-flex items-center justify-center w-full max-w-xs rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-3 transition-colors"
-          >
-            Sign in to PupManager
-          </Link>
+          {next ? (
+            // Already signed in (Apple flow). Full navigation so the server
+            // layout re-reads the now-verified state and lets them through.
+            <a
+              href={next}
+              className="mt-4 inline-flex items-center justify-center w-full max-w-xs rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-3 transition-colors"
+            >
+              Continue
+            </a>
+          ) : (
+            <Link
+              href="/login"
+              className="mt-4 inline-flex items-center justify-center w-full max-w-xs rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-3 transition-colors"
+            >
+              Sign in to PupManager
+            </Link>
+          )}
         </CardBody>
       </Card>
     )
