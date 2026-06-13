@@ -111,6 +111,8 @@ export async function GET(req: Request) {
           scheduledAt: { gte: weekStart, lte: weekEnd },
           status: 'COMPLETED',
           clientId: { not: null },
+          // Demo/sample sessions must not pad the wrap-up (or its revenue).
+          client: { isSample: false },
         },
         orderBy: { scheduledAt: 'asc' },
         include: sessionInclude,
@@ -120,12 +122,13 @@ export async function GET(req: Request) {
           trainerId,
           scheduledAt: { gte: nextStart, lte: nextEnd },
           clientId: { not: null },
+          client: { isSample: false },
         },
         orderBy: { scheduledAt: 'asc' },
         include: sessionInclude,
       }),
       prisma.trainingTask.findMany({
-        where: { client: { trainerId }, date: { gte: nextStart, lte: nextEnd } },
+        where: { client: { trainerId, isSample: false }, date: { gte: nextStart, lte: nextEnd } },
         orderBy: { date: 'asc' },
         include: {
           client: { select: { user: { select: { name: true } } } },

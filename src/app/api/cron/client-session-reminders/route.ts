@@ -30,6 +30,8 @@ export async function GET(req: Request) {
       scheduledAt: { gt: now, lte: horizon },
       status: 'UPCOMING',
       OR: [{ clientId: { not: null } }, { classRunId: { not: null } }],
+      // Don't remind sample clients about demo sessions (1:1 or sample class).
+      NOT: { OR: [{ client: { isSample: true } }, { classRun: { isSample: true } }] },
     },
     select: {
       id: true, scheduledAt: true, title: true, trainerId: true, clientId: true,

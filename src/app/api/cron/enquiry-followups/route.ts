@@ -32,6 +32,9 @@ export async function GET(req: Request) {
   const enquiries = await prisma.enquiry.findMany({
     where: {
       status: 'NEW',
+      // Never nudge on demo/sample enquiries — they're seeded as NEW with
+      // backdated createdAt, so they'd otherwise trip every threshold at once.
+      isSample: false,
       createdAt: { lte: new Date(now - firstThresholdMs) },
       followupReminderLevel: { lt: THRESHOLDS_H.length },
       messages: { none: { direction: 'OUTBOUND' } },

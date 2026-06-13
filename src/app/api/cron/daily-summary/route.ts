@@ -74,10 +74,12 @@ export async function GET(req: Request) {
       trainerId: u.trainerProfile.id,
       scheduledAt: { gte: start, lte: end },
       clientId: { not: null },
+      // Exclude demo/sample sessions so the digest reflects real bookings only.
+      client: { isSample: false },
     }
     const [sessionCount, clientCount, firstSession] = await Promise.all([
       prisma.trainingSession.count({ where: dailyWhere }),
-      prisma.clientProfile.count({ where: { trainerId: u.trainerProfile.id } }),
+      prisma.clientProfile.count({ where: { trainerId: u.trainerProfile.id, isSample: false } }),
       prisma.trainingSession.findFirst({
         where: dailyWhere,
         orderBy: { scheduledAt: 'asc' },

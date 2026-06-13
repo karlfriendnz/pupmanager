@@ -12,7 +12,9 @@ export async function GET(req: Request) {
   }
 
   const clients = await prisma.clientProfile.findMany({
-    where: { status: 'ACTIVE' },
+    // Skip sample clients — awarding achievements on demo data can fire client
+    // notifications and pollutes their stats.
+    where: { status: 'ACTIVE', isSample: false },
     select: { id: true },
   })
 

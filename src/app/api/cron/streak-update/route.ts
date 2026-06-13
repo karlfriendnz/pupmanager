@@ -74,9 +74,15 @@ export async function GET(req: Request) {
 
     // Badge sync (cheap; surfaces on /awards regardless of the push).
     const [clients, sessionsDelivered] = await Promise.all([
-      prisma.clientProfile.count({ where: { trainerId } }),
+      prisma.clientProfile.count({ where: { trainerId, isSample: false } }),
       prisma.trainingSession.count({
-        where: { trainerId, status: { in: ['COMPLETED', 'COMMENTED', 'INVOICED'] } },
+        where: {
+          trainerId,
+          status: { in: ['COMPLETED', 'COMMENTED', 'INVOICED'] },
+          // Don't count demo sessions toward earned badges (keeps real class
+          // sessions, which have no client, in the tally).
+          NOT: { OR: [{ client: { isSample: true } }, { classRun: { isSample: true } }] },
+        },
       }),
     ])
     badgesAwarded += (

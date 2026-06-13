@@ -36,6 +36,10 @@ export async function GET(req: Request) {
         { reminderPushSentAt: null },
         { notesReminderPushSentAt: null },
       ],
+      // Skip demo/sample sessions — they belong to a sample client (1:1) or a
+      // sample class run, and should never generate real reminders. Real
+      // sessions (incl. real class sessions with no client) are unaffected.
+      NOT: { OR: [{ client: { isSample: true } }, { classRun: { isSample: true } }] },
     },
     include: {
       dog: { select: { name: true } },

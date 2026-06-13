@@ -26,6 +26,7 @@ export async function GET(req: Request) {
       readAt: null,              // client hasn't opened the chat
       emailFallbackSentAt: null, // we haven't emailed about it yet
       createdAt: { lt: cutoff }, // older than the defer window
+      client: { isSample: false }, // never email demo/sample clients
     },
     orderBy: { createdAt: 'asc' },
     take: 500,

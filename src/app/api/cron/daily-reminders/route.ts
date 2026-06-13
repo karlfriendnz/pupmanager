@@ -26,6 +26,8 @@ export async function GET(req: Request) {
   // Find all clients who: have tasks today, haven't completed all of them, and have email notifications on
   const clients = await prisma.clientProfile.findMany({
     where: {
+      // Never email demo/sample clients (their addresses are @pupmanager.test).
+      isSample: false,
       user: { notifyEmail: true },
       diaryEntries: {
         some: {
