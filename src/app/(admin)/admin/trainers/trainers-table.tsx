@@ -70,6 +70,22 @@ export async function TrainersTable({
     },
   })
 
+  // "Sample data" flag per trainer — same signal the trainer app uses to know a
+  // brand-new account is still on the first-run preview records: any remaining
+  // ClientProfile with isSample=true (see (trainer)/layout.tsx + dashboard).
+  // One groupBy keeps it to a single extra query for the whole page.
+  const profileIds = trainers
+    .map(t => t.trainerProfile?.id)
+    .filter((id): id is string => Boolean(id))
+  const sampleGroups = profileIds.length
+    ? await prisma.clientProfile.groupBy({
+        by: ['trainerId'],
+        where: { trainerId: { in: profileIds }, isSample: true },
+        _count: { _all: true },
+      })
+    : []
+  const sampleByTrainer = new Map(sampleGroups.map(g => [g.trainerId, g._count._all]))
+
   // Onboarding progress per trainer — use the same live-derived completion the
   // dashboard checklist uses (a step counts as done when the underlying action
   // is done OR it was explicitly marked), not just the raw step-progress rows.
@@ -109,6 +125,7 @@ export async function TrainersTable({
               trialEndsAt: t.trainerProfile?.trialEndsAt ?? null,
               isInternal: t.trainerProfile?.isInternal ?? false,
               clientCount: t.trainerProfile?._count?.clients ?? 0,
+              sampleClientCount: t.trainerProfile?.id ? (sampleByTrainer.get(t.trainerProfile.id) ?? 0) : 0,
               onboardingCompleted: onboarding[i].completed,
               onboardingTotal: onboarding[i].total,
               onboardingEmails: t.trainerProfile?.onboardingProgress?._count?.emails ?? 0,

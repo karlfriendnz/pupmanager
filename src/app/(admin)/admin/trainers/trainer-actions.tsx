@@ -16,6 +16,10 @@ type Trainer = {
   trialEndsAt: Date | string | null
   isInternal: boolean
   clientCount: number
+  // >0 when the trainer still has first-run "Sample" preview clients they
+  // haven't cleared — surfaced as a badge so admins can spot accounts that
+  // haven't started entering real data yet.
+  sampleClientCount: number
   onboardingCompleted: number
   onboardingTotal: number
   onboardingEmails: number
@@ -278,6 +282,14 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           {trainer.isInternal && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-purple-900 text-purple-300">
               Ours
+            </span>
+          )}
+          {trainer.sampleClientCount > 0 && (
+            <span
+              className="text-xs px-2 py-0.5 rounded-full bg-cyan-900 text-cyan-300"
+              title={`Still on first-run sample data — ${trainer.sampleClientCount} sample client${trainer.sampleClientCount === 1 ? '' : 's'} not yet cleared`}
+            >
+              Sample data
             </span>
           )}
           {!isActive && (

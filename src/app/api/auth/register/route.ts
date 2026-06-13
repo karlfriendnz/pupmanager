@@ -17,7 +17,7 @@ const schema = z.object({
   promoCode: z.string().max(40).optional(),
 })
 
-const TRIAL_DAYS = 14
+const TRIAL_DAYS = 10
 
 function generateCode(): string {
   // Cryptographically random 6-digit code. Padded so leading-zero codes still

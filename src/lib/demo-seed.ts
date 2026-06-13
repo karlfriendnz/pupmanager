@@ -91,6 +91,42 @@ const BREEDS = [
   'Greyhound', 'Mixed breed', 'Bichon', 'Rottweiler', 'Mastiff',
 ]
 
+// Real Auckland streets across a spread of suburbs, with approximate lat/lng for
+// each suburb centre. Demo clients are all Auckland-based so the map/address UI
+// reads convincingly. House numbers are filled in per-client at seed time.
+const AUCKLAND_STREETS: Array<{ street: string; suburb: string; postcode: string; lat: number; lng: number }> = [
+  { street: 'Ponsonby Road',     suburb: 'Ponsonby',      postcode: '1011', lat: -36.8530, lng: 174.7460 },
+  { street: 'Jervois Road',      suburb: 'Herne Bay',     postcode: '1011', lat: -36.8460, lng: 174.7380 },
+  { street: 'Great North Road',  suburb: 'Grey Lynn',     postcode: '1021', lat: -36.8660, lng: 174.7350 },
+  { street: 'Sandringham Road',  suburb: 'Sandringham',   postcode: '1025', lat: -36.8880, lng: 174.7330 },
+  { street: 'Dominion Road',     suburb: 'Mount Eden',    postcode: '1024', lat: -36.8790, lng: 174.7480 },
+  { street: 'Mount Eden Road',   suburb: 'Mount Eden',    postcode: '1024', lat: -36.8820, lng: 174.7640 },
+  { street: 'Manukau Road',      suburb: 'Epsom',         postcode: '1023', lat: -36.8930, lng: 174.7780 },
+  { street: 'Remuera Road',      suburb: 'Remuera',       postcode: '1050', lat: -36.8810, lng: 174.7990 },
+  { street: 'Tamaki Drive',      suburb: 'Mission Bay',   postcode: '1071', lat: -36.8500, lng: 174.8330 },
+  { street: 'St Heliers Bay Road', suburb: 'St Heliers',  postcode: '1071', lat: -36.8530, lng: 174.8560 },
+  { street: 'Lake Road',         suburb: 'Takapuna',      postcode: '0622', lat: -36.7870, lng: 174.7700 },
+  { street: 'Hurstmere Road',    suburb: 'Takapuna',      postcode: '0622', lat: -36.7880, lng: 174.7740 },
+  { street: 'Beach Road',        suburb: 'Devonport',     postcode: '0624', lat: -36.8330, lng: 174.7960 },
+  { street: 'East Coast Road',   suburb: 'Browns Bay',    postcode: '0630', lat: -36.7160, lng: 174.7480 },
+  { street: 'Glenfield Road',    suburb: 'Glenfield',     postcode: '0629', lat: -36.7790, lng: 174.7250 },
+  { street: 'Onewa Road',        suburb: 'Birkenhead',    postcode: '0626', lat: -36.8120, lng: 174.7290 },
+  { street: 'New North Road',    suburb: 'Kingsland',     postcode: '1021', lat: -36.8740, lng: 174.7480 },
+  { street: 'Richardson Road',   suburb: 'Mount Roskill', postcode: '1041', lat: -36.9090, lng: 174.7280 },
+  { street: 'Stoddard Road',     suburb: 'Mount Roskill', postcode: '1041', lat: -36.9050, lng: 174.7180 },
+  { street: 'Pah Road',          suburb: 'Royal Oak',     postcode: '1023', lat: -36.9100, lng: 174.7790 },
+  { street: 'Great South Road',  suburb: 'Greenlane',     postcode: '1051', lat: -36.8950, lng: 174.8000 },
+  { street: 'Ellerslie-Panmure Highway', suburb: 'Ellerslie', postcode: '1051', lat: -36.8980, lng: 174.8090 },
+  { street: 'Ti Rakau Drive',    suburb: 'Pakuranga',     postcode: '2010', lat: -36.9050, lng: 174.8880 },
+  { street: 'Pakuranga Road',    suburb: 'Howick',        postcode: '2014', lat: -36.8990, lng: 174.9300 },
+  { street: 'Universal Drive',   suburb: 'Henderson',     postcode: '0610', lat: -36.8770, lng: 174.6390 },
+  { street: 'Lincoln Road',      suburb: 'Henderson',     postcode: '0610', lat: -36.8650, lng: 174.6280 },
+  { street: 'Don Buck Road',     suburb: 'Massey',        postcode: '0614', lat: -36.8330, lng: 174.6080 },
+  { street: 'Hobsonville Road',  suburb: 'Hobsonville',   postcode: '0618', lat: -36.7920, lng: 174.6560 },
+  { street: 'Great South Road',  suburb: 'Manukau',       postcode: '2104', lat: -36.9930, lng: 174.8790 },
+  { street: 'Roscommon Road',    suburb: 'Manurewa',      postcode: '2102', lat: -37.0190, lng: 174.8870 },
+]
+
 const SESSION_TITLES = [
   'Loose-leash walking',
   'Recall practice',
@@ -697,7 +733,7 @@ export async function seedDemoData(
   const createdClients: CreatedClient[] = []
   const userRows: Array<{ id: string; name: string; email: string; role: 'CLIENT'; emailVerified: Date }> = []
   const dogRows: Array<{ id: string; name: string; breed: string; weight: number; dob: Date; photoUrl: string | null }> = []
-  const profileRows: Array<{ id: string; userId: string; trainerId: string; isSample: boolean; dogId: string; phone: string; status: string }> = []
+  const profileRows: Array<{ id: string; userId: string; trainerId: string; isSample: boolean; dogId: string; phone: string; status: string; addressLine: string; addressLat: number; addressLng: number }> = []
   for (let i = 0; i < clientCount; i++) {
     const first = FIRST_NAMES[Math.floor(rand() * FIRST_NAMES.length)]
     const last = LAST_NAMES[Math.floor(rand() * LAST_NAMES.length)]
@@ -720,6 +756,10 @@ export async function seedDemoData(
     // still demonstrates.
     const photoUrl = i % 10 < 7 ? SAMPLE_DOG_PHOTOS[i % SAMPLE_DOG_PHOTOS.length] : null
     dogRows.push({ id: dogId, name: dogName, breed, weight, dob, photoUrl })
+    // Every demo client gets a real Auckland address. House number is random;
+    // lat/lng jitter a touch off the suburb centre so map pins don't all stack.
+    const addr = AUCKLAND_STREETS[Math.floor(rand() * AUCKLAND_STREETS.length)]
+    const houseNo = Math.floor(rand() * 200) + 1
     profileRows.push({
       id: profileId,
       userId,
@@ -728,6 +768,9 @@ export async function seedDemoData(
       dogId,
       phone: `+64 21 ${String(Math.floor(rand() * 9_000_000) + 1_000_000)}`,
       status: rand() < 0.92 ? 'ACTIVE' : 'INACTIVE',
+      addressLine: `${houseNo} ${addr.street}, ${addr.suburb}, Auckland ${addr.postcode}`,
+      addressLat: addr.lat + (rand() - 0.5) * 0.006,
+      addressLng: addr.lng + (rand() - 0.5) * 0.006,
     })
     createdClients.push({ profileId, userId, dogId, name, email, dogName })
   }
