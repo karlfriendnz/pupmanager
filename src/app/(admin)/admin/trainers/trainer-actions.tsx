@@ -3,8 +3,24 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Pencil, Trash2, X, Check, LogIn, Ban, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Pencil, Trash2, X, Check, LogIn, Ban, RotateCcw, AlertTriangle, Mail, Loader2 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
+
+// Shape returned by GET /api/admin/trainers/[trainerId]/onboarding-emails
+type EmailReport = {
+  enrolled: boolean
+  enrollmentNote: string | null
+  timezone: string
+  sent: Array<{ key: string; subject: string; senderKey: string; sentAt: string }>
+  upcoming: Array<{
+    key: string
+    subject: string
+    senderKey: string
+    status: 'eligible' | 'scheduled' | 'waiting' | 'skip'
+    dueAt: string | null
+    note: string
+  }>
+}
 
 type Trainer = {
   id: string
@@ -38,6 +54,30 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
   const [confirmText, setConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Expandable onboarding/trial email report — lazy-loaded on first open.
+  const [showEmails, setShowEmails] = useState(false)
+  const [report, setReport] = useState<EmailReport | null>(null)
+  const [loadingReport, setLoadingReport] = useState(false)
+  const [reportError, setReportError] = useState<string | null>(null)
+
+  async function toggleEmails() {
+    const next = !showEmails
+    setShowEmails(next)
+    if (next && !report && !loadingReport) {
+      setLoadingReport(true)
+      setReportError(null)
+      try {
+        const res = await fetch(`/api/admin/trainers/${trainer.id}/onboarding-emails`)
+        if (!res.ok) throw new Error()
+        setReport(await res.json())
+      } catch {
+        setReportError('Could not load the email report.')
+      } finally {
+        setLoadingReport(false)
+      }
+    }
+  }
 
   const isActive = !trainer.deactivatedAt
 
@@ -273,6 +313,7 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
   }
 
   return (
+    <>
     <tr className={`border-b border-slate-700/50 hover:bg-slate-700/30 ${isActive ? '' : 'opacity-60'}`}>
       <td className="px-4 py-3 text-white">
         <span className="group relative inline-flex items-center gap-1.5">
@@ -282,14 +323,6 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           {trainer.isInternal && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-purple-900 text-purple-300">
               Ours
-            </span>
-          )}
-          {trainer.sampleClientCount > 0 && (
-            <span
-              className="text-xs px-2 py-0.5 rounded-full bg-cyan-900 text-cyan-300"
-              title={`Still on first-run sample data — ${trainer.sampleClientCount} sample client${trainer.sampleClientCount === 1 ? '' : 's'} not yet cleared`}
-            >
-              Sample data
             </span>
           )}
           {!isActive && (
@@ -339,6 +372,20 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
       <td className="px-4 py-3 text-slate-300">{trainer.clientCount}</td>
       <td className="px-4 py-3">
         {(() => {
+          // While the trainer is still on first-run sample data, onboarding
+          // progress is derived from their (empty) real data and reads as 0/N
+          // — misleading. Show a "Sample data" badge instead until they clear
+          // it, then the live progress bar takes over.
+          if (trainer.sampleClientCount > 0) {
+            return (
+              <span
+                className="text-xs px-2 py-0.5 rounded-full bg-cyan-900 text-cyan-300"
+                title={`Still on first-run sample data — ${trainer.sampleClientCount} sample client${trainer.sampleClientCount === 1 ? '' : 's'} not yet cleared`}
+              >
+                Sample data
+              </span>
+            )
+          }
           const { onboardingCompleted: done, onboardingTotal: total } = trainer
           const pct = total > 0 ? Math.round((done / total) * 100) : 0
           const complete = total > 0 && done >= total
@@ -361,6 +408,14 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
       <td className="px-4 py-3">
         {error && <p className="text-red-400 text-xs mb-1.5 max-w-[14rem]">{error}</p>}
         <div className="flex items-center gap-1">
+          <button
+            onClick={toggleEmails}
+            className={`p-1.5 rounded-lg hover:bg-slate-700 transition-colors ${showEmails ? 'text-blue-400 bg-slate-700' : 'text-slate-400 hover:text-blue-400'}`}
+            title="Onboarding & trial emails"
+            aria-expanded={showEmails}
+          >
+            <Mail className="h-3.5 w-3.5" />
+          </button>
           <a
             href={`/api/admin/impersonate/${trainer.id}`}
             className="p-1.5 text-slate-400 hover:text-green-400 rounded-lg hover:bg-slate-700 transition-colors"
@@ -479,5 +534,88 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
         )}
       </td>
     </tr>
+    {showEmails && (
+      <tr className="bg-slate-900/60">
+        <td colSpan={9} className="px-4 py-4">
+          {loadingReport ? (
+            <div className="flex items-center gap-2 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading email history…
+            </div>
+          ) : reportError ? (
+            <p className="text-sm text-rose-400">{reportError}</p>
+          ) : report ? (
+            <div className="flex flex-col gap-4">
+              {!report.enrolled && report.enrollmentNote && (
+                <p className="text-xs px-3 py-2 rounded-lg bg-amber-950/60 text-amber-300 border border-amber-500/30">
+                  {report.enrollmentNote}
+                </p>
+              )}
+
+              <div className="grid gap-5 md:grid-cols-2">
+                {/* Received */}
+                <div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                    Received ({report.sent.length})
+                  </h4>
+                  {report.sent.length === 0 ? (
+                    <p className="text-sm text-slate-500">No emails sent yet.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1.5">
+                      {report.sent.map(e => (
+                        <li key={e.key} className="flex items-start justify-between gap-3 text-sm">
+                          <span className="flex items-start gap-2 text-slate-200">
+                            <Check className="h-3.5 w-3.5 mt-0.5 shrink-0 text-emerald-400" />
+                            <span>{e.subject}</span>
+                          </span>
+                          <span className="shrink-0 text-xs text-slate-500 tabular-nums">{formatDate(e.sentAt)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Upcoming */}
+                <div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                    Upcoming ({report.upcoming.filter(u => u.status !== 'skip').length})
+                  </h4>
+                  {report.upcoming.length === 0 ? (
+                    <p className="text-sm text-slate-500">Nothing scheduled.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1.5">
+                      {report.upcoming.map(e => {
+                        const chip =
+                          e.status === 'eligible' ? 'bg-blue-900 text-blue-300' :
+                          e.status === 'scheduled' ? 'bg-slate-700 text-slate-300' :
+                          e.status === 'waiting' ? 'bg-purple-900/70 text-purple-300' :
+                          'bg-slate-800 text-slate-500'
+                        const label =
+                          e.status === 'eligible' ? 'Sending soon' :
+                          e.status === 'scheduled' ? (e.dueAt ? formatDate(e.dueAt) : 'Scheduled') :
+                          e.status === 'waiting' ? 'Waiting' :
+                          'Won’t send'
+                        return (
+                          <li key={e.key} className={`flex items-start justify-between gap-3 text-sm ${e.status === 'skip' ? 'opacity-50' : ''}`}>
+                            <span className="flex flex-col">
+                              <span className="text-slate-200">{e.subject}</span>
+                              <span className="text-xs text-slate-500">{e.note}</span>
+                            </span>
+                            <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full tabular-nums ${chip}`}>{label}</span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                  {report.enrolled && (
+                    <p className="mt-2 text-[11px] text-slate-500">Delivered at ~9am in the trainer’s timezone ({report.timezone}).</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </td>
+      </tr>
+    )}
+    </>
   )
 }

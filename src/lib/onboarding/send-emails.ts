@@ -26,7 +26,7 @@ const APP_STORE_URL = 'https://apps.apple.com/app/id6766399138'
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.pupmanager.app'
 const HOUR_MS = 3_600_000
 const DAY_MS = 86_400_000
-const PLATFORM_DOMAIN = '@pupmanager.com'
+export const PLATFORM_DOMAIN = '@pupmanager.com'
 // Deliver onboarding/trial emails in the trainer's morning. The cron ticks
 // hourly (top of the hour); we only act during the trainer's 9 o'clock hour in
 // their own timezone, so each trainer gets their batch once a day at ~9am local
@@ -48,9 +48,9 @@ function localHourIn(tz: string): number | null {
 // pre-launch cohort. Signups from this moment on (incl. that day's) get the
 // drips normally. This replaces the old "backfill the email log" suppression,
 // which wrongly inflated the admin "Emails sent" count. (NZ midnight = UTC+12.)
-const DRIP_ACTIVATION = new Date('2026-06-07T00:00:00+12:00')
+export const DRIP_ACTIVATION = new Date('2026-06-07T00:00:00+12:00')
 // Addresses that should never receive onboarding/trial emails (test/junk accounts).
-const SUPPRESSED_RECIPIENTS = new Set(['t9rc8rb5j8@privaterelay.appleid.com'])
+export const SUPPRESSED_RECIPIENTS = new Set(['t9rc8rb5j8@privaterelay.appleid.com'])
 
 // Where replies to each founder voice land. Mirrors the addresses used by
 // notify-new-trainer.ts.
