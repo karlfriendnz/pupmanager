@@ -64,6 +64,9 @@ export default async function DashboardPage({
     },
   })
   const sampleCountP = prisma.clientProfile.count({ where: { trainerId, isSample: true } })
+  // Real (non-sample) client count — once it reaches 3 the sample-data banner
+  // nudges the trainer to clear the demo records and focus on the real thing.
+  const realClientCountP = prisma.clientProfile.count({ where: { trainerId, isSample: false } })
   const trainerUserP = prisma.user.findUnique({ where: { id: session.user.id }, select: { timezone: true } })
   const clientsP = prisma.clientProfile.findMany({
     where: { trainerId },
@@ -129,6 +132,7 @@ export default async function DashboardPage({
   // Whether the trainer currently has loaded sample data — drives the "remove
   // sample data" banner. Sample clients are always part of a sample load.
   const sampleClientCount = await sampleCountP
+  const realClientCount = await realClientCountP
 
   // Trainer's timezone drives all day-bounds and time formatting on this
   // server-rendered page. Vercel runs Node in UTC so without this every
@@ -256,7 +260,7 @@ export default async function DashboardPage({
         {/* While sample data is loaded the account looks set up, so show the
             "remove sample data" strip at the top and hide the get-set-up
             onboarding. Removing the sample data brings the onboarding back. */}
-        {sampleClientCount > 0 && <SampleDataBanner />}
+        {sampleClientCount > 0 && <SampleDataBanner realClientCount={realClientCount} />}
         <BookingRequestsPanel trainerId={trainerId} />
         <WaitlistNudge trainerId={trainerId} />
         {sampleClientCount === 0 && <OnboardingPanel state={onboardingState} branding={branding} />}

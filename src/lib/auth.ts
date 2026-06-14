@@ -78,20 +78,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         update: {},
       })
     },
-    // Aha trigger — when a CLIENT user signs in, mark their trainer's onboarding
-    // as aha-reached (idempotent via the null filter). This is fire-and-forget;
-    // failure must not block sign-in. Sample-data clients will need to be
-    // excluded once the demo system (Phase 3) lands.
+    // Aha trigger — when a real CLIENT signs in, mark onboarding as aha-reached
+    // for each of their trainers (idempotent via the null filter). Sample/demo
+    // clients (isSample) do NOT count, per the onboarding brief's aha
+    // definition. Fire-and-forget; failure must never block sign-in.
     async signIn({ user }) {
       try {
         if (user.role !== 'CLIENT' || !user.id) return
-        const client = await prisma.clientProfile.findFirst({
-          where: { userId: user.id },
+        // One client can belong to multiple trainers (Scenario B), so mark aha
+        // for all of them. Exclude sample clients.
+        const clients = await prisma.clientProfile.findMany({
+          where: { userId: user.id, isSample: false },
           select: { trainerId: true },
         })
-        if (!client) return
+        if (clients.length === 0) return
         await prisma.trainerOnboardingProgress.updateMany({
-          where: { trainerId: client.trainerId, ahaReachedAt: null },
+          where: { trainerId: { in: clients.map(c => c.trainerId) }, ahaReachedAt: null },
           data: { ahaReachedAt: new Date() },
         })
       } catch {

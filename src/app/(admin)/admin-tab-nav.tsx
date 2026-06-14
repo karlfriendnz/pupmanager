@@ -4,10 +4,13 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LayoutDashboard, Users, Package, Database, ClipboardList, Mail, Ticket } from 'lucide-react'
 
+// `match` (optional) overrides the active-state prefix — the Onboarding tab
+// spans three sibling routes (-steps / -emails / -funnel), so it highlights for
+// the whole /admin/onboarding namespace, not just its landing href.
 const TABS = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/trainers', label: 'Trainers', icon: Users },
-  { href: '/admin/onboarding-emails', label: 'Onboarding', icon: Mail },
+  { href: '/admin/onboarding-steps', label: 'Onboarding', icon: Mail, match: '/admin/onboarding' },
   { href: '/admin/plans', label: 'Plans', icon: Package },
   { href: '/admin/promo-codes', label: 'Promo codes', icon: Ticket },
   { href: '/admin/demo', label: 'Demo data', icon: Database },
@@ -20,9 +23,12 @@ export function AdminTabNav() {
   return (
     <nav className="flex items-center gap-1">
       {TABS.map(tab => {
-        const active = tab.href === '/admin'
-          ? pathname === '/admin'
-          : pathname === tab.href || pathname.startsWith(tab.href + '/')
+        const match = 'match' in tab ? (tab as { match?: string }).match : undefined
+        const active = match
+          ? pathname.startsWith(match)
+          : tab.href === '/admin'
+            ? pathname === '/admin'
+            : pathname === tab.href || pathname.startsWith(tab.href + '/')
         const Icon = tab.icon
         return (
           <Link

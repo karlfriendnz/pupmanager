@@ -111,6 +111,19 @@ export async function POST(req: Request) {
     })
   })
 
+  // Onboarding drip anchor: stamp the trainer's FIRST sent invite so the
+  // invite-chase emails (24h / 72h after_first_invite_sent) can fire. Matches
+  // the invitedAt semantics above (only when actually sending). updateMany +
+  // null guard makes it idempotent and a no-op if there's no progress row yet.
+  if (sendInvite) {
+    await prisma.trainerOnboardingProgress
+      .updateMany({
+        where: { trainerId: trainerProfile.id, firstInviteSentAt: null },
+        data: { firstInviteSentAt: new Date() },
+      })
+      .catch(err => console.error('[invite] firstInviteSentAt stamp failed:', err))
+  }
+
   let emailError: string | null = null
 
   if (sendInvite && emailBody) {

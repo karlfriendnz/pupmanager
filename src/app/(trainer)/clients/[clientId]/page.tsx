@@ -8,6 +8,7 @@ import { ClientProfileTabs } from './client-profile-tabs'
 import { ClientActionsMenu } from './client-actions-menu'
 import { AssignedTrainerControl } from './assigned-trainer-control'
 import { PageHeader } from '@/components/shared/page-header'
+import { SampleRecordBadge } from '@/components/sample-record-badge'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Client profile' }
@@ -166,6 +167,12 @@ export default async function ClientDetailPage({
         }
       />
       <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
+
+      {client.isSample && (
+        <div className="mb-4">
+          <SampleRecordBadge />
+        </div>
+      )}
 
       {teamMembers.length > 1 && (
         <AssignedTrainerControl

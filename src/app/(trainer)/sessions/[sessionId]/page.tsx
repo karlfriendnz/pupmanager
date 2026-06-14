@@ -13,6 +13,7 @@ import { SessionAttachments } from '@/components/session-attachments'
 import { OpenSessionLink } from './open-session-link'
 import { SessionMoreMenu } from './session-more-menu'
 import { PageHeader } from '@/components/shared/page-header'
+import { SampleRecordBadge } from '@/components/sample-record-badge'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Session notes' }
@@ -40,7 +41,7 @@ export default async function SessionPage({
       clientId: { not: null },
     },
     include: {
-      client: { select: { id: true, user: { select: { name: true, email: true } } } },
+      client: { select: { id: true, isSample: true, user: { select: { name: true, email: true } } } },
       dog: {
         select: {
           name: true,
@@ -104,6 +105,12 @@ export default async function SessionPage({
         }
       />
       <div className="p-4 md:p-8 w-full max-w-3xl lg:max-w-6xl xl:max-w-7xl mx-auto">
+
+      {trainingSession.client?.isSample && (
+        <div className="mb-4">
+          <SampleRecordBadge />
+        </div>
+      )}
 
       {/* Desktop (lg+): two-column layout — left rail with the session's
           metadata + primary actions, right column with the form report,

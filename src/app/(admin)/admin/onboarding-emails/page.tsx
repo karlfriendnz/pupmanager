@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { AlertTriangle } from 'lucide-react'
 import { OnboardingEmailsView } from './onboarding-emails-view'
+import { OnboardingSubNav } from '../onboarding-subnav'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Onboarding emails' }
@@ -30,6 +31,7 @@ export default async function AdminOnboardingEmailsPage() {
 
   return (
     <div>
+      <OnboardingSubNav />
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Onboarding Emails</h1>
         <p className="text-slate-400 text-sm mt-1">

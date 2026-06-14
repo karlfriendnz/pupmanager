@@ -1,8 +1,51 @@
 # PupManager Self-Serve Onboarding — Brief
 
-> **Status:** Phase 1 (schema + seed) shipped 2026-05-07. Phases 2–7 pending.
+> **Status (updated 2026-06-14):** Phases 1–6 effectively shipped. Phase 7 (Brooke
+> copy review + cross-client render QA) and a few optional polish items remain — see
+> "Current state" below. The wizard UX intentionally diverged from the original
+> "7-step modal" design (see note).
 > **Owner:** Karl (build), Brooke (copy + trainer voice review).
 > **Living doc:** update as decisions change. This is the source of truth for the onboarding initiative.
+
+---
+
+## Current state (2026-06-14)
+
+What's actually built (supersedes the per-phase "pending" notes further down):
+
+- **Phase 2 — built, different shape than the brief.** Instead of a single "7-step
+  modal", the live UX is: a 6-step first-run **PersonalizationWizard**
+  (`dashboard/personalization-wizard.tsx`: welcome → branding → colours → welcome
+  note → client preview → load sample data), a **dashboard checklist** widget
+  (`dashboard/onboarding-panel.tsx`) driven by the DB `OnboardingStep` rows, a
+  cross-page **FAB** (`onboarding-fab.tsx`), a **celebration** overlay, and step
+  start/complete/skip APIs under `/api/onboarding/steps/[key]/*`. Per-trainer init +
+  default achievements seed on first dashboard load (`lib/onboarding/init.ts`).
+  **Decision (2026-06-14): keep this UX; the "7-step modal" line is superseded.**
+- **Phase 3 — built.** Sample-data seed/clear (`/api/trainer/sample-data/*`),
+  dashboard "exploring with sample data" banner, per-record `SampleRecordBadge`
+  ("Sample data — only you can see this") on the client + session detail pages, and
+  an auto-escalating prompt to clear once the trainer has 3+ real clients.
+- **Phase 4 — built.** Hourly cron (`/api/cron/onboarding-emails`) + sender
+  (`lib/onboarding/send-emails.ts`), all 6 emails seeded/published, karl/brooke
+  senders, 9am-local delivery, dedup, pre-launch suppression. **Fixed 2026-06-14:**
+  `firstInviteSentAt` is now stamped on the first sent invite (it was never written,
+  so the 24h/72h invite-chase emails could not fire). Aha trigger now excludes
+  sample clients.
+- **Phase 5 — built.** Admin CMS at `/admin/onboarding-{steps,emails,funnel}` with a
+  shared sub-nav: **Steps** editor (drag-reorder, edit copy/skip-warning,
+  publish/unpublish — no create/delete since step keys are wired to completion
+  logic), **Emails** editor (pre-existing), and **Funnel**.
+- **Phase 6 — built.** Funnel analytics: signup→aha conversion, median time-to-aha,
+  limbo count, per-step completion (live-derived, iterates trainers — fine at
+  current scale, move to aggregates later).
+
+**Remaining:**
+- Phase 7: Brooke reviews trainer voice on the 6 emails + step copy; cross-client
+  email render + dark-mode QA.
+- Confirm `brooke@pupmanager.com` Resend DNS (SPF/DKIM/DMARC) so her drips don't spam.
+- Optional polish: `SampleRecordBadge` on more surfaces (clients list rows,
+  packages/achievements cards) — currently on the client + session detail pages only.
 
 ---
 
@@ -181,12 +224,12 @@ Auth: existing `(admin)` route group already gates by `session.user.role === 'AD
 | # | Phase | Status | Notes |
 |---|---|---|---|
 | 1 | Schema + migration + seed default steps & emails | ✅ Done 2026-05-07 | Live in Supabase. Ran `prisma db push` (dev/prod share DB). |
-| 2 | Modal wizard + dashboard checklist widget | ⏳ Next | Includes per-trainer init: `TrainerOnboardingProgress` + `DEFAULT_ACHIEVEMENTS` seed on first dashboard load. |
-| 3 | Demo data system | Pending | Sample client/dog + auto-populate + cleanup. Possibly extend `prisma/seed-demo.ts` patterns. |
-| 4 | Cron + Resend drip sender (HTML emails via React Email) | Pending | Hourly cron, evaluates `triggerRule` per trainer. Needs DNS for `brooke@pupmanager.com`. |
-| 5 | Admin CMS for steps & emails | Pending | New `/admin/onboarding` route + tab. |
-| 6 | Funnel analytics view | Pending | Read-only admin tab. |
-| 7 | QA pass + iterate copy | Pending | Brooke reviews trainer voice; cross-client email rendering; dark-mode QA. |
+| 2 | Wizard + dashboard checklist widget | ✅ Done | Shipped as PersonalizationWizard + DB-driven checklist + FAB + celebration (not a single 7-step modal — decision 2026-06-14). Per-trainer init + default achievements on first dashboard load. |
+| 3 | Demo data system | ✅ Done | Seed/clear, dashboard banner, per-record `SampleRecordBadge`, 3-real-client auto-prompt. |
+| 4 | Cron + Resend drip sender | ✅ Done | Hourly cron evaluates `triggerRule` per trainer; HTML rendered from DB body. `firstInviteSentAt` stamp fixed 2026-06-14. Still needs `brooke@pupmanager.com` DNS confirmation. |
+| 5 | Admin CMS for steps & emails | ✅ Done | `/admin/onboarding-{steps,emails,funnel}` with shared sub-nav. Steps editor = edit/reorder/publish (no create/delete). |
+| 6 | Funnel analytics view | ✅ Done | Read-only `/admin/onboarding-funnel`: conversion, time-to-aha, limbo, per-step completion. |
+| 7 | QA pass + iterate copy | ⏳ Remaining | Brooke reviews trainer voice; cross-client email rendering; dark-mode QA; confirm brooke@ DNS. |
 
 ---
 
