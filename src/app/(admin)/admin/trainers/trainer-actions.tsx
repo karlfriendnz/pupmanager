@@ -405,9 +405,12 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
         </span>
       </td>
       <td className="px-4 py-3 text-slate-400">{formatDate(trainer.createdAt)}</td>
-      <td className="px-4 py-3">
-        {error && <p className="text-red-400 text-xs mb-1.5 max-w-[14rem]">{error}</p>}
-        <div className="flex items-center gap-1">
+      <td className="px-4 py-3 align-middle">
+        {/* Center the icon inside every control identically. The impersonate
+            action is an <a> while the rest are <button>s, so relying on default
+            element layout left its icon off-centre; forcing each direct child to
+            inline-flex + center makes them all line up regardless of tag. */}
+        <div className="flex items-center justify-end gap-1 whitespace-nowrap [&>*]:inline-flex [&>*]:items-center [&>*]:justify-center">
           <button
             onClick={toggleEmails}
             className={`p-1.5 rounded-lg hover:bg-slate-700 transition-colors ${showEmails ? 'text-blue-400 bg-slate-700' : 'text-slate-400 hover:text-blue-400'}`}
@@ -471,6 +474,9 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
             </>
           )}
         </div>
+        {/* Errors render below the icon row so a failed action never shifts the
+            icons out of alignment with the other rows. */}
+        {error && <p className="text-red-400 text-xs mt-1 text-right max-w-[14rem] ml-auto">{error}</p>}
 
         {/* Permanent-delete confirmation modal — requires typing the email.
             Portaled to <body> so it escapes the table's stacking context (else

@@ -99,7 +99,10 @@ export async function TrainersTable({
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-      <table className="w-full text-sm">
+      {/* [&_td]:align-middle — table cells default to baseline alignment, which
+          left the action icons sitting on the text baseline; middle keeps every
+          column (and the icon row) vertically centered. */}
+      <table className="w-full text-sm [&_td]:align-middle">
         <thead>
           <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
             <th className="text-left px-4 py-3">Name</th>
