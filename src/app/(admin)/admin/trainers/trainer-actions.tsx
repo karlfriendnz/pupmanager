@@ -404,7 +404,18 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           {trainer.onboardingEmails} sent
         </span>
       </td>
-      <td className="px-4 py-3 text-slate-400">{formatDate(trainer.createdAt)}</td>
+      <td className="px-4 py-3 text-slate-400">
+        <span className="group relative inline-block">
+          <span className="cursor-default border-b border-dotted border-slate-500/60">
+            {formatDate(trainer.createdAt)}
+          </span>
+          {/* Hover tooltip with the full join timestamp (native title is
+              unreliable — same instant-tooltip pattern as the email one above). */}
+          <span className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs text-slate-200 shadow-lg ring-1 ring-slate-700 group-hover:block">
+            Joined {new Date(trainer.createdAt).toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+          </span>
+        </span>
+      </td>
       <td className="px-4 py-3 align-middle">
         {/* Center the icon inside every control identically. The impersonate
             action is an <a> while the rest are <button>s, so relying on default
