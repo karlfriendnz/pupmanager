@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: 'Onboarding emails' }
 
 export default async function AdminOnboardingEmailsPage() {
   const [emails, sentCounts] = await Promise.all([
-    prisma.onboardingEmail.findMany({ orderBy: { createdAt: 'asc' } }),
+    prisma.onboardingEmail.findMany({ orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
     prisma.trainerOnboardingEmailLog.groupBy({ by: ['emailKey'], _count: { _all: true } }),
   ])
   const sentByKey = new Map(sentCounts.map(c => [c.emailKey, c._count._all]))
@@ -26,6 +26,11 @@ export default async function AdminOnboardingEmailsPage() {
     topText: e.topText,
     imageUrl: e.imageUrl,
     imageHeight: e.imageHeight,
+    linkUrl: e.linkUrl,
+    imageUrl2: e.imageUrl2,
+    imageHeight2: e.imageHeight2,
+    linkUrl2: e.linkUrl2,
+    bottomText: e.bottomText,
     sent: sentByKey.get(e.key) ?? 0,
   }))
 

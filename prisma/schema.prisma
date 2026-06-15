@@ -1839,6 +1839,18 @@ model OnboardingEmail {
   imageUrl    String?
   // Optional fixed display height for the image in px (null = natural/auto).
   imageHeight Int?
+  // Optional click-through link for the first image (wraps it in an <a href>).
+  linkUrl      String?
+  // Optional SECOND image block, shown below the body (admin-uploaded Blob URL).
+  imageUrl2    String?
+  imageHeight2 Int?
+  // Optional click-through link for the second image.
+  linkUrl2     String?
+  // Optional THIRD text block, shown below the second image.
+  bottomText   String?  @db.Text
+  // Manual position within the admin "series" list (lower = earlier). Send
+  // timing is still driven by triggerRule; this only controls list order.
+  sortOrder    Int      @default(0)
   senderKey   String    @default("karl")
   // Examples:
   //   { "type": "on_signup" }

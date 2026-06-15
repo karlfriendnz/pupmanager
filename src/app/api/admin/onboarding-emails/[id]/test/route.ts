@@ -31,9 +31,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     subject: typeof o.subject === 'string' ? o.subject : email.subject,
     body: typeof o.body === 'string' ? o.body : email.body,
     topText: o.topText !== undefined ? (o.topText as string | null) : email.topText,
+    bottomText: o.bottomText !== undefined ? (o.bottomText as string | null) : email.bottomText,
     senderKey: typeof o.senderKey === 'string' ? o.senderKey : email.senderKey,
     imageUrl: o.imageUrl !== undefined ? (o.imageUrl as string | null) : email.imageUrl,
     imageHeight: o.imageHeight !== undefined ? (o.imageHeight as number | null) : email.imageHeight,
+    linkUrl: o.linkUrl !== undefined ? (o.linkUrl as string | null) : email.linkUrl,
+    imageUrl2: o.imageUrl2 !== undefined ? (o.imageUrl2 as string | null) : email.imageUrl2,
+    imageHeight2: o.imageHeight2 !== undefined ? (o.imageHeight2 as number | null) : email.imageHeight2,
+    linkUrl2: o.linkUrl2 !== undefined ? (o.linkUrl2 as string | null) : email.linkUrl2,
   }
 
   const r = renderOnboardingEmail(tmpl, SAMPLE_CTX)

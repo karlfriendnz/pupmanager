@@ -34,8 +34,26 @@ const TRAINER_PATHS = [
 // Client-only route prefixes
 const CLIENT_PATHS = ['/home', '/my-profile', '/my-messages', '/my-help', '/my-sessions', '/my-shop', '/notifications', '/my-classes', '/my-dogs', '/my-achievements', '/my-availability', '/switch-trainer']
 
+// The admin area lives under app.pupmanager.com/admin. `admin.pupmanager.com`
+// is a convenience host that just redirects there — no separate deployment,
+// no separate session. A deep link under /admin is preserved; anything else on
+// the admin host lands on the dashboard.
+const ADMIN_HOST = 'admin.pupmanager.com'
+const CANONICAL_HOST = 'app.pupmanager.com'
+
 export default auth((req) => {
-  const { pathname } = req.nextUrl
+  const { pathname, search } = req.nextUrl
+
+  // Bounce the admin convenience subdomain to the canonical host first, before
+  // any auth/role logic (works even when signed out — they then hit /login on
+  // the canonical host as usual). Temporary redirect so we stay free to switch
+  // to a real subdomain split later without a browser-cached 308 in the way.
+  const host = (req.headers.get('host') ?? req.nextUrl.host).split(':')[0].toLowerCase()
+  if (host === ADMIN_HOST) {
+    const target = pathname.startsWith('/admin') ? pathname : '/admin'
+    return NextResponse.redirect(`https://${CANONICAL_HOST}${target}${search}`)
+  }
+
   const isPublic = PUBLIC_PATHS.some(p => pathname.startsWith(p))
 
   if (!req.auth && !isPublic) {

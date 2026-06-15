@@ -100,20 +100,24 @@ export async function TrainersTable({
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
+      {/* overflow-x-auto + min-w on the table lets the 10 columns scroll
+          horizontally on a phone instead of squashing into an unreadable mess. */}
+      <div className="overflow-x-auto">
       {/* [&_td]:align-middle — table cells default to baseline alignment, which
           left the action icons sitting on the text baseline; middle keeps every
           column (and the icon row) vertically centered. */}
-      <table className="w-full text-sm [&_td]:align-middle">
+      <table className="w-full min-w-[900px] text-sm [&_td]:align-middle">
         <thead>
           <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
             <th className="text-left px-4 py-3">Name</th>
             <th className="text-left px-4 py-3">Business</th>
+            <th className="text-left px-4 py-3">Country</th>
             <th className="text-left px-4 py-3">Plan</th>
-            <th className="text-left px-4 py-3">Trial ends</th>
             <th className="text-left px-4 py-3">Clients</th>
             <th className="text-left px-4 py-3">Onboarding</th>
             <th className="text-left px-4 py-3">Emails</th>
             <th className="text-left px-4 py-3">Joined</th>
+            <th className="text-left px-4 py-3">Trial ends</th>
             <th className="px-4 py-3" />
           </tr>
         </thead>
@@ -141,6 +145,7 @@ export async function TrainersTable({
           ))}
         </tbody>
       </table>
+      </div>
       {trainers.length === 0 && (
         <p className="text-center py-8 text-slate-500">No trainers found</p>
       )}

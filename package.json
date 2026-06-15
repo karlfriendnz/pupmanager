@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS=--max-old-space-size=4096 next dev --webpack -p 7777",
+    "dev": "NODE_OPTIONS=--max-old-space-size=4096 dotenv -e .env.livedb.local -- next dev --webpack -p 7777",
+    "dev:live": "NODE_OPTIONS=--max-old-space-size=4096 dotenv -e .env.livedb.local -- next dev --webpack -p 7777",
+    "dev:local": "NODE_OPTIONS=--max-old-space-size=4096 next dev --webpack -p 7777",
     "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",

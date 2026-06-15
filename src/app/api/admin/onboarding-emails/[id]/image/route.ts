@@ -14,6 +14,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!session || session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { id } = await params
+  // ?slot=2 targets the second image block; default (or 1) is the primary image.
+  const slot = new URL(req.url).searchParams.get('slot') === '2' ? 2 : 1
   const email = await prisma.onboardingEmail.findUnique({ where: { id }, select: { id: true } })
   if (!email) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -27,7 +29,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const pathname = `onboarding-emails/${id}/${crypto.randomUUID()}.${ext}`
   try {
     const blob = await put(pathname, file, { access: 'public', addRandomSuffix: false, contentType: file.type || 'image/jpeg' })
-    await prisma.onboardingEmail.update({ where: { id }, data: { imageUrl: blob.url } })
+    await prisma.onboardingEmail.update({ where: { id }, data: slot === 2 ? { imageUrl2: blob.url } : { imageUrl: blob.url } })
     return NextResponse.json({ url: blob.url })
   } catch (err) {
     console.error('Onboarding email image upload failed:', err)
@@ -35,11 +37,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-// Remove the image.
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+// Remove the image. ?slot=2 clears the second image block.
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session || session.user.role !== 'ADMIN') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const { id } = await params
-  await prisma.onboardingEmail.update({ where: { id }, data: { imageUrl: null } })
+  const slot = new URL(req.url).searchParams.get('slot') === '2' ? 2 : 1
+  await prisma.onboardingEmail.update({ where: { id }, data: slot === 2 ? { imageUrl2: null } : { imageUrl: null } })
   return NextResponse.json({ ok: true })
 }

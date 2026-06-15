@@ -140,11 +140,11 @@ async function seedOnboarding() {
     })
   }
 
-  for (const email of ONBOARDING_EMAILS) {
+  for (const [i, email] of ONBOARDING_EMAILS.entries()) {
     await prisma.onboardingEmail.upsert({
       where: { key: email.key },
-      create: { ...email, publishedAt: new Date() },
-      update: email,
+      create: { ...email, sortOrder: i + 1, publishedAt: new Date() },
+      update: { ...email, sortOrder: i + 1 },
     })
   }
 

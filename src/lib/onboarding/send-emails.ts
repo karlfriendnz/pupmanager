@@ -141,24 +141,34 @@ function fillTokens(s: string, ctx: Record<string, string>): string {
 // preview (teal strip → logo → optional top text → image at text width → body
 // → footer). Card capped at 700px.
 export function renderOnboardingEmail(
-  tmpl: { subject: string; body: string; topText: string | null; imageUrl: string | null; imageHeight: number | null; senderKey: string },
+  tmpl: { subject: string; body: string; topText: string | null; imageUrl: string | null; imageHeight: number | null; linkUrl?: string | null; imageUrl2?: string | null; imageHeight2?: number | null; linkUrl2?: string | null; bottomText?: string | null; senderKey: string },
   ctx: Record<string, string>,
 ) {
   const subject = fillTokens(tmpl.subject, ctx)
   const topText = tmpl.topText?.trim() ? fillTokens(tmpl.topText, ctx) : ''
   const body = fillTokens(tmpl.body, ctx)
+  const bottomText = tmpl.bottomText?.trim() ? fillTokens(tmpl.bottomText, ctx) : ''
 
   const topInner = topText ? emailBodyToHtml(topText) : ''
   const topHtml = topInner ? `<div style="padding:18px 28px 0;">${topInner}</div>` : ''
-  const imgStyle = tmpl.imageHeight
-    ? `display:inline-block;height:${tmpl.imageHeight}px;width:auto;max-width:100%;border:0;border-radius:12px;`
-    : `display:block;width:100%;border:0;border-radius:12px;`
-  // Email clients honour the height ATTRIBUTE far more reliably than CSS height
-  // (Gmail ignores CSS height with width:auto and renders near full width).
-  const heightAttr = tmpl.imageHeight ? ` height="${tmpl.imageHeight}"` : ''
-  const imageHtml = tmpl.imageUrl
-    ? `<div style="padding:16px 28px 0;text-align:center;"><img src="${escapeHtml(tmpl.imageUrl)}" alt=""${heightAttr} style="${imgStyle}" /></div>`
-    : ''
+  // Shared image renderer for both blocks — height attribute over CSS height
+  // because email clients (Gmail) honour the attribute far more reliably.
+  const imageBlock = (url: string | null | undefined, height: number | null | undefined, link?: string | null): string => {
+    if (!url) return ''
+    const style = height
+      ? `display:inline-block;height:${height}px;width:auto;max-width:100%;border:0;border-radius:12px;`
+      : `display:block;width:100%;border:0;border-radius:12px;`
+    const heightAttr = height ? ` height="${height}"` : ''
+    const img = `<img src="${escapeHtml(url)}" alt=""${heightAttr} style="${style}" />`
+    // Wrap in an anchor so the image is clickable when a link is set (tokens
+    // like {{billingUrl}} are filled, same as the body).
+    const href = link?.trim() ? fillTokens(link.trim(), ctx) : ''
+    const inner = href ? `<a href="${escapeHtml(href)}" target="_blank" style="text-decoration:none;">${img}</a>` : img
+    return `<div style="padding:16px 28px 0;text-align:center;">${inner}</div>`
+  }
+  const imageHtml = imageBlock(tmpl.imageUrl, tmpl.imageHeight, tmpl.linkUrl)
+  const image2Html = imageBlock(tmpl.imageUrl2, tmpl.imageHeight2, tmpl.linkUrl2)
+  const bottomHtml = bottomText ? `<div style="padding:18px 28px 8px;">${emailBodyToHtml(bottomText)}</div>` : ''
 
   const html = `<!doctype html>
 <html lang="en">
@@ -181,6 +191,8 @@ export function renderOnboardingEmail(
               ${topHtml}
               ${imageHtml}
               <div style="padding:18px 28px 8px;">${emailBodyToHtml(body)}</div>
+              ${image2Html}
+              ${bottomHtml}
               <div style="padding:18px 28px;background:#fafaf9;border-top:1px solid #f1f5f9;text-align:center;">
                 <p style="margin:0 0 10px;font-size:12px;color:#64748b;line-height:1.5;">Get the PupManager app on your phone</p>
                 <a href="${APP_STORE_URL}" style="display:inline-block;margin:0 3px;"><img src="https://app.pupmanager.com/app-store-badge.png" alt="Download on the App Store" width="135" height="45" style="border:0;height:45px;width:135px;" /></a>
@@ -203,7 +215,7 @@ export function renderOnboardingEmail(
 </body>
 </html>`
 
-  const text = [emailHtmlToText(topText), emailHtmlToText(body)].filter(Boolean).join('\n\n')
+  const text = [emailHtmlToText(topText), emailHtmlToText(body), emailHtmlToText(bottomText)].filter(Boolean).join('\n\n')
 
   const senderName = FOUNDER_NAME[tmpl.senderKey] ?? 'Karl'
   return {

@@ -47,25 +47,23 @@ Stuck on anything? Just hit reply — Brooke or I will get back to you.
 PupManager`,
   },
   {
-    key: 'trial_transform_workday',
-    senderKey: 'karl',
+    key: 'trial_help_thrive',
+    senderKey: 'brooke',
     triggerRule: { type: 'after_signup', hours: 84 },
-    subject: 'How PupManager transforms your work day',
+    subject: 'Here to help your business thrive',
     body: `Hi {{trainerName}},
 
-Picture a normal training week without the evening admin.
+Brooke here. I'm a dog trainer too, so I know the bit nobody warns you about when you go out on your own: you didn't sign up to run admin, chase invoices and rebuild your intake form every month — you signed up to train dogs.
 
-A client books in through your page — no back-and-forth texts. You run the session and write your notes once, right there on your phone. Your client sees them instantly, along with the homework you've set, and ticks it off through the week. Their dog's progress builds up on its own.
+That's exactly the part we want to take off your plate. A few things trainers tell us make the biggest difference early on:
 
-No spreadsheets. No "what did we cover last time?". No Sunday night catching up on paperwork.
+1. Let clients book and rebook themselves — no more text tag.
+2. Keep every dog's notes, photos and homework in one place you can pull up in seconds.
+3. Look properly professional from day one, even as a one-person business.
 
-That's the shift PupManager is built for — you spend your time with the dogs, and the admin mostly runs itself.
+We're genuinely here to help {{businessName}} grow, not just to hand you another app. If there's something you're trying to set up — or something you wish PupManager did — just reply. Karl or I read every one.
 
-Have a proper play this week: set up one client and run a session, and you'll feel the difference.
-
-Need a hand? Just reply — Brooke or I will get back to you.
-
-— Karl & Brooke
+— Brooke & Karl
 PupManager`,
   },
   {
@@ -123,6 +121,28 @@ If anything isn't clicking yet, tell me what you're trying to do and we'll get b
 PupManager`,
   },
   {
+    key: 'trial_transform_workday',
+    senderKey: 'karl',
+    triggerRule: { type: 'trial_days_left', days: 5 },
+    subject: 'How PupManager transforms your work day',
+    body: `Hi {{trainerName}},
+
+Picture a normal training week without the evening admin.
+
+A client books in through your page — no back-and-forth texts. You run the session and write your notes once, right there on your phone. Your client sees them instantly, along with the homework you've set, and ticks it off through the week. Their dog's progress builds up on its own.
+
+No spreadsheets. No "what did we cover last time?". No Sunday night catching up on paperwork.
+
+That's the shift PupManager is built for — you spend your time with the dogs, and the admin mostly runs itself.
+
+There's still time left on your trial — have a proper play this week: set up one client and run a session, and you'll feel the difference.
+
+Need a hand? Just reply — Brooke or I will get back to you.
+
+— Karl & Brooke
+PupManager`,
+  },
+  {
     key: 'trial_3days_left',
     senderKey: 'karl',
     triggerRule: { type: 'trial_days_left', days: 3 },
@@ -176,15 +196,16 @@ PupManager`,
 
 async function main() {
   let created = 0
-  for (const e of TRIAL_EMAILS) {
+  for (const [i, e] of TRIAL_EMAILS.entries()) {
     // NON-DESTRUCTIVE: only create missing templates. We deliberately do NOT
     // update existing rows — their subject/body/etc. are the source of truth in
     // the admin editor, and an `update` here would clobber admin edits (it did,
     // once). Edit copy in the admin, not by re-running this seed.
+    // (Reordering existing rows is handled by the matching migration, not here.)
     const existing = await prisma.onboardingEmail.findUnique({ where: { key: e.key }, select: { id: true } })
     if (existing) continue
     await prisma.onboardingEmail.create({
-      data: { key: e.key, subject: e.subject, body: e.body, senderKey: e.senderKey, triggerRule: e.triggerRule, publishedAt: null },
+      data: { key: e.key, subject: e.subject, body: e.body, senderKey: e.senderKey, triggerRule: e.triggerRule, sortOrder: i + 1, publishedAt: null },
     })
     created++
   }

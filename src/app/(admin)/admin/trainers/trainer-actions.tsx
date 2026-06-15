@@ -216,7 +216,7 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
   if (editing) {
     return (
       <tr className="border-b border-slate-700/50 bg-slate-700/40">
-        <td colSpan={9} className="px-4 py-4">
+        <td colSpan={10} className="px-4 py-4">
           {error && <p className="text-red-400 text-xs mb-3">{error}</p>}
           <div className="flex gap-3 flex-wrap items-end">
             <div className="flex flex-col gap-1">
@@ -342,15 +342,6 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           <span className="cursor-default border-b border-dotted border-slate-500/60">
             {trainer.name ?? '—'}
           </span>
-          {trainer.signupCountry && (
-            <span
-              className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 tabular-nums"
-              title={`Signed up in ${trainer.signupCountry}`}
-            >
-              <span aria-hidden>{flagEmoji(trainer.signupCountry)}</span>
-              {trainer.signupCountry}
-            </span>
-          )}
           {trainer.isInternal && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-purple-900 text-purple-300">
               Ours
@@ -369,36 +360,35 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
       </td>
       <td className="px-4 py-3 text-slate-300">{trainer.businessName ?? '—'}</td>
       <td className="px-4 py-3">
+        {trainer.signupCountry ? (
+          <span
+            className="inline-flex items-center gap-1.5 text-sm text-slate-300 tabular-nums"
+            title={`Signed up in ${trainer.signupCountry}`}
+          >
+            <span aria-hidden className="text-base leading-none">{flagEmoji(trainer.signupCountry)}</span>
+            {trainer.signupCountry}
+          </span>
+        ) : (
+          <span className="text-slate-600">—</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
         <span className={`text-xs px-2 py-0.5 rounded-full ${
           trainer.subscriptionStatus === 'ACTIVE' ? 'bg-green-900 text-green-300' :
           trainer.subscriptionStatus === 'TRIALING' ? 'bg-blue-900 text-blue-300' :
           'bg-slate-700 text-slate-400'
         }`}>
-          {trainer.subscriptionPlanName ?? 'No plan'} · {trainer.subscriptionStatus ?? '—'}
+          {trainer.subscriptionStatus === 'TRIALING'
+            ? 'Trial'
+            : trainer.subscriptionStatus === 'ACTIVE'
+              ? (trainer.subscriptionPlanName ?? 'Active')
+              : (trainer.subscriptionStatus ?? 'No plan')}
         </span>
         {graceActive && (
           <span className="ml-1.5 text-xs px-2 py-0.5 rounded-full bg-amber-900 text-amber-300" title={`Grace access until ${formatDate(graceUntil!)}`}>
             Grace
           </span>
         )}
-      </td>
-      <td className="px-4 py-3">
-        {(() => {
-          if (!trialEnds) return <span className="text-slate-500">—</span>
-          const days = Math.ceil((trialEnds.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
-          const expired = days < 0
-          return (
-            <span
-              className={`text-sm ${expired ? 'text-rose-300' : days <= 3 ? 'text-amber-300' : 'text-slate-300'}`}
-              title={expired ? 'Trial expired' : `${days} day${days === 1 ? '' : 's'} left`}
-            >
-              {formatDate(trialEnds)}
-              <span className="ml-1 text-xs text-slate-500">
-                {expired ? '(expired)' : `(${days}d)`}
-              </span>
-            </span>
-          )
-        })()}
       </td>
       <td className="px-4 py-3 text-slate-300">{trainer.clientCount}</td>
       <td className="px-4 py-3">
@@ -446,6 +436,24 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
             Joined {new Date(trainer.createdAt).toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
           </span>
         </span>
+      </td>
+      <td className="px-4 py-3">
+        {(() => {
+          if (!trialEnds) return <span className="text-slate-500">—</span>
+          const days = Math.ceil((trialEnds.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+          const expired = days < 0
+          return (
+            <span
+              className={`text-sm ${expired ? 'text-rose-300' : days <= 3 ? 'text-amber-300' : 'text-slate-300'}`}
+              title={expired ? 'Trial expired' : `${days} day${days === 1 ? '' : 's'} left`}
+            >
+              {formatDate(trialEnds)}
+              <span className="ml-1 text-xs text-slate-500">
+                {expired ? '(expired)' : `(${days}d)`}
+              </span>
+            </span>
+          )
+        })()}
       </td>
       <td className="px-4 py-3 align-middle">
         {/* Center the icon inside every control identically. The impersonate
@@ -584,7 +592,7 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
     </tr>
     {showEmails && (
       <tr className="bg-slate-900/60">
-        <td colSpan={9} className="px-4 py-4">
+        <td colSpan={10} className="px-4 py-4">
           {loadingReport ? (
             <div className="flex items-center gap-2 text-sm text-slate-400">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading email history…
