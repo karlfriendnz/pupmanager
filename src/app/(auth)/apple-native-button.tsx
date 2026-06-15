@@ -11,6 +11,41 @@ import { useState } from 'react'
 export function AppleNativeButton({ callbackUrl }: { callbackUrl?: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // When Apple hides the email (or returns a relay address), the server asks us
+  // to collect a real one. We stash the verified Apple payload and re-post it
+  // with the typed email.
+  const [pending, setPending] = useState<{ identityToken: string; fullName?: string } | null>(null)
+  const [emailInput, setEmailInput] = useState('')
+
+  // POST the (re-)submission to the server and route on the response.
+  async function submit(payload: { identityToken: string; fullName?: string; email?: string }) {
+    const res = await fetch('/api/auth/apple-native', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setError(typeof data.error === 'string' ? data.error : 'Sign in failed. Please try again.')
+      return
+    }
+    // Apple gave us no usable email — ask the user to type a real one, then
+    // re-post the same Apple token alongside it.
+    if (data.requiresEmail) {
+      setPending({ identityToken: payload.identityToken, fullName: payload.fullName })
+      return
+    }
+    // New / not-yet-verified Apple accounts must confirm the emailed code
+    // before the app opens. The session is already minted, so once they
+    // verify they continue straight to the dashboard.
+    if (data.requiresVerification) {
+      const email = typeof data.email === 'string' ? data.email : ''
+      const next = callbackUrl ?? '/dashboard'
+      window.location.href = `/verify-account?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`
+      return
+    }
+    window.location.href = callbackUrl ?? '/dashboard'
+  }
 
   async function handle() {
     setBusy(true)
@@ -26,26 +61,7 @@ export function AppleNativeButton({ callbackUrl }: { callbackUrl?: string }) {
       })
 
       const fullName = [response.givenName, response.familyName].filter(Boolean).join(' ') || undefined
-      const res = await fetch('/api/auth/apple-native', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identityToken: response.identityToken, fullName }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(typeof data.error === 'string' ? data.error : 'Sign in failed. Please try again.')
-        return
-      }
-      // New / not-yet-verified Apple accounts must confirm the emailed code
-      // before the app opens. The session is already minted, so once they
-      // verify they continue straight to the dashboard.
-      if (data.requiresVerification) {
-        const email = typeof data.email === 'string' ? data.email : ''
-        const next = callbackUrl ?? '/dashboard'
-        window.location.href = `/verify-account?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`
-        return
-      }
-      window.location.href = callbackUrl ?? '/dashboard'
+      await submit({ identityToken: response.identityToken, fullName })
     } catch (e) {
       // A user cancelling the sheet throws too — don't show an error for that.
       const msg = e instanceof Error ? e.message : ''
@@ -53,6 +69,51 @@ export function AppleNativeButton({ callbackUrl }: { callbackUrl?: string }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function submitEmail(e: React.FormEvent) {
+    e.preventDefault()
+    if (!pending) return
+    setBusy(true)
+    setError(null)
+    try {
+      await submit({ ...pending, email: emailInput.trim() })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Email-collection step: Apple withheld a usable address.
+  if (pending) {
+    return (
+      <form onSubmit={submitEmail} className="mb-4 flex flex-col gap-2">
+        <p className="text-sm text-slate-600">
+          Apple hid your email, so we need a real address to send your verification code and account updates.
+        </p>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <input
+          type="email"
+          required
+          autoFocus
+          value={emailInput}
+          onChange={e => setEmailInput(e.target.value)}
+          placeholder="you@yourbusiness.com"
+          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          type="submit"
+          disabled={busy || !emailInput.trim()}
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-black text-white text-sm font-medium hover:bg-slate-800 transition-colors disabled:opacity-60"
+        >
+          {busy ? 'Continuing…' : 'Continue'}
+        </button>
+        <div className="my-2 flex items-center gap-3 text-[11px] uppercase tracking-wider text-slate-400">
+          <span className="h-px flex-1 bg-slate-200" />
+          or
+          <span className="h-px flex-1 bg-slate-200" />
+        </div>
+      </form>
+    )
   }
 
   return (

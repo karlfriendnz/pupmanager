@@ -11,6 +11,7 @@ import { PaywallFrame } from './paywall-frame'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { STEP_TO_MENU } from '@/lib/onboarding/path-step'
 import { getStreak } from '@/lib/trainer-streak'
+import { isPrivateRelayEmail } from '@/lib/auth-emails'
 
 export default async function TrainerLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -26,8 +27,15 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   if (!session.user.impersonatorId) {
     const u = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { emailVerified: true, _count: { select: { accounts: true } } },
+      select: { email: true, emailVerified: true, _count: { select: { accounts: true } } },
     })
+    // Apple "Hide My Email" users (native OR web-OAuth — the latter HAS an
+    // account row, so the unverified check below misses them) must swap their
+    // private-relay address for a real, deliverable one. Hold them on the
+    // verify screen in "replace email" mode until they do.
+    if (u && isPrivateRelayEmail(u.email)) {
+      redirect(`/verify-account?email=${encodeURIComponent(u.email ?? '')}&next=/dashboard&relay=1`)
+    }
     if (u && !u.emailVerified && u._count.accounts === 0) {
       redirect(`/verify-account?email=${encodeURIComponent(session.user.email ?? '')}&next=/dashboard`)
     }

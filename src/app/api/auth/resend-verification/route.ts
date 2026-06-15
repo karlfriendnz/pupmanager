@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
-import { sendVerificationEmail } from '@/lib/auth-emails'
+import { sendVerificationEmail, isPrivateRelayEmail } from '@/lib/auth-emails'
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 
 const schema = z.object({ email: z.string().email() })
@@ -30,7 +30,9 @@ export async function POST(req: Request) {
     include: { trainerProfile: true },
   })
 
-  if (user && user.role === 'TRAINER' && !user.emailVerified) {
+  // Never resend to an Apple private-relay address — it won't deliver. The
+  // trainer layout routes such users to the "replace email" step instead.
+  if (user && user.role === 'TRAINER' && !user.emailVerified && !isPrivateRelayEmail(user.email)) {
     const code = generateCode()
     const expires = new Date(Date.now() + 10 * 60 * 1000)
 

@@ -4,7 +4,7 @@ import { z } from 'zod'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { setSessionCookie } from '@/lib/session-cookie'
-import { sendVerificationEmail } from '@/lib/auth-emails'
+import { sendVerificationEmail, isPrivateRelayEmail } from '@/lib/auth-emails'
 
 function generateCode(): string {
   // Cryptographically random 6-digit code, zero-padded (mirrors /register).
@@ -36,6 +36,9 @@ const schema = z.object({
   // Apple only returns the name on the *first* authorization, so the client
   // forwards it when present.
   fullName: z.string().optional(),
+  // A real email the user typed when Apple gave us a private-relay address (or
+  // no email at all). The client re-posts with this after we ask for it.
+  email: z.string().email().optional(),
 })
 
 export async function POST(req: Request) {
@@ -58,17 +61,49 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Could not verify your Apple sign-in. Please try again.' }, { status: 401 })
   }
 
-  if (!email) {
-    // Happens if the user previously hid their email and Apple didn't resend
-    // it; without an email we can't match or create a trainer account.
-    return NextResponse.json({ error: 'Apple did not share an email address. Please sign in with email instead.' }, { status: 400 })
+  // `email` here is whatever Apple gave us — a real address, a private relay
+  // address (Hide My Email), or null. We require a REAL, deliverable email on
+  // every Apple account, so a relay/missing address triggers the client to
+  // collect one and re-post it as `email`.
+  const appleEmail = email
+  const provided = parsed.data.email?.trim().toLowerCase()
+
+  // A typed email must itself be real — never accept another relay address.
+  if (provided && isPrivateRelayEmail(provided)) {
+    return NextResponse.json({ error: 'Please enter a real email address, not a private Apple relay address.' }, { status: 400 })
   }
 
-  // 2. Find or create the trainer.
-  const existing = await prisma.user.findUnique({ where: { email } })
+  // 2. Find the existing trainer. Returning users are keyed by the email Apple
+  // gives us (stable per app — including the relay address); also match a typed
+  // real email so a relay user who is converting isn't duplicated.
+  let user = appleEmail ? await prisma.user.findUnique({ where: { email: appleEmail } }) : null
+  if (!user && provided) user = await prisma.user.findUnique({ where: { email: provided } })
 
-  if (existing && existing.role !== 'TRAINER') {
+  if (user && user.role !== 'TRAINER') {
     return NextResponse.json({ error: 'That account isn\'t a trainer account.' }, { status: 403 })
+  }
+
+  // The deliverable email to put on the account: a freshly typed real one wins,
+  // else an existing real email, else the Apple address if it happens to be real.
+  const realEmail =
+    (provided && !isPrivateRelayEmail(provided)) ? provided :
+    (user?.email && !isPrivateRelayEmail(user.email)) ? user.email :
+    (appleEmail && !isPrivateRelayEmail(appleEmail)) ? appleEmail :
+    null
+
+  // No real email yet (Apple hid it / gave a relay address and the user hasn't
+  // typed one). Ask the client to collect a real email, then re-post — we don't
+  // create or modify anything until we have a deliverable address.
+  if (!realEmail) {
+    return NextResponse.json({ requiresEmail: true, appleEmail: appleEmail ?? null }, { status: 200 })
+  }
+
+  // A typed email already belonging to a *different* account is a conflict.
+  if (provided) {
+    const clash = await prisma.user.findUnique({ where: { email: provided }, select: { id: true } })
+    if (clash && (!user || clash.id !== user.id)) {
+      return NextResponse.json({ error: 'That email is already in use. Try signing in with it instead.' }, { status: 409 })
+    }
   }
 
   // Every Apple sign-up must confirm a 6-digit code emailed to them before they
@@ -78,12 +113,11 @@ export async function POST(req: Request) {
   // intentionally NOT used to skip this step.
   let needsVerification = false
 
-  let user = existing
   if (!user) {
     const name = parsed.data.fullName?.trim() || null
     user = await prisma.user.create({
       data: {
-        email,
+        email: realEmail,
         name,
         role: 'TRAINER',
         // Always start unverified — the code we email below is the gate.
@@ -115,9 +149,14 @@ export async function POST(req: Request) {
       update: {},
     })
   } else {
+    // Returning user — swap a relay/placeholder address for the real one they
+    // just gave us, and verify it before they're let in again.
+    if (user.email !== realEmail) {
+      user = await prisma.user.update({ where: { id: user.id }, data: { email: realEmail, emailVerified: null } })
+    }
     if (parsed.data.fullName && !user.name) {
       // Backfill the name on an existing nameless account from Apple's first send.
-      await prisma.user.update({ where: { id: user.id }, data: { name: parsed.data.fullName.trim() } })
+      user = await prisma.user.update({ where: { id: user.id }, data: { name: parsed.data.fullName.trim() } })
     }
     // An existing Apple account that never finished verifying (e.g. signed up
     // before this gate, or bailed last time) is asked again on this sign-in.
@@ -130,15 +169,15 @@ export async function POST(req: Request) {
   if (needsVerification) {
     const code = generateCode()
     const expires = new Date(Date.now() + 10 * 60 * 1000)
-    await prisma.verificationToken.deleteMany({ where: { identifier: email } })
-    await prisma.verificationToken.create({ data: { identifier: email, token: code, expires } })
+    await prisma.verificationToken.deleteMany({ where: { identifier: realEmail } })
+    await prisma.verificationToken.create({ data: { identifier: realEmail, token: code, expires } })
     const tp = await prisma.trainerProfile.findUnique({
       where: { userId: user.id },
       select: { businessName: true },
     })
     await sendVerificationEmail({
-      to: email,
-      name: user.name ?? email,
+      to: realEmail,
+      name: user.name ?? realEmail,
       businessName: tp?.businessName || 'your business',
       code,
     }).catch(err => console.error('[apple-native] verification email failed:', err))
@@ -148,7 +187,7 @@ export async function POST(req: Request) {
   // We still mint it even when verification is pending: Apple users have no
   // password to sign back in with, so they stay authenticated while the
   // trainer layout holds them on the verify screen until the code is entered.
-  const res = NextResponse.json({ ok: true, requiresVerification: needsVerification, email })
+  const res = NextResponse.json({ ok: true, requiresVerification: needsVerification, email: realEmail })
   await setSessionCookie(res, {
     id: user.id,
     sub: user.id,

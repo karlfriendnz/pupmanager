@@ -15,6 +15,9 @@ export function VerifyAccountForm() {
   // When present (the Apple-native flow), the user already has a session, so on
   // success we continue straight there instead of sending them to /login.
   const next = params.get('next') ?? ''
+  // relay=1 → the signed-in user is on a private Apple relay address and must
+  // swap in a real, deliverable email before we'll send/verify a code.
+  const relayParam = params.get('relay') === '1'
 
   const [email, setEmail] = useState(initialEmail)
   const [code, setCode] = useState(initialCode)
@@ -25,9 +28,16 @@ export function VerifyAccountForm() {
   const [resending, setResending] = useState(false)
   const codeInputRef = useRef<HTMLInputElement>(null)
 
+  // Relay-email replacement step.
+  const [needRealEmail, setNeedRealEmail] = useState(relayParam)
+  const [newEmail, setNewEmail] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+
   // One-click verify: when both params arrived in the URL, auto-submit on
-  // mount so tapping the email button feels instantaneous.
+  // mount so tapping the email button feels instantaneous. Skipped in relay
+  // mode — there's no code yet; we collect a real email first.
   useEffect(() => {
+    if (relayParam) return
     if (initialEmail && /^\d{6}$/.test(initialCode)) {
       void verify(initialEmail, initialCode)
     } else {
@@ -35,6 +45,26 @@ export function VerifyAccountForm() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function submitNewEmail(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setSendingEmail(true)
+    const res = await fetch('/api/auth/set-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: newEmail.trim() }),
+    })
+    const body = await res.json().catch(() => ({}))
+    setSendingEmail(false)
+    if (!res.ok) {
+      setError(body.error ?? 'Could not update your email. Try again.')
+      return
+    }
+    setEmail(body.email ?? newEmail.trim())
+    setNeedRealEmail(false)
+    setResentAt(Date.now())
+  }
 
   async function verify(emailArg: string, codeArg: string) {
     setError(null)
@@ -106,6 +136,46 @@ export function VerifyAccountForm() {
               Sign in to PupManager
             </Link>
           )}
+        </CardBody>
+      </Card>
+    )
+  }
+
+  // Relay-email step: ask for a real address before showing the code field.
+  if (needRealEmail) {
+    return (
+      <Card>
+        <CardBody className="pt-6 flex flex-col gap-4">
+          <div className="text-center flex flex-col items-center gap-2">
+            <div className="h-14 w-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Mail className="h-7 w-7" />
+            </div>
+            <h2 className="text-xl font-semibold text-slate-900">Confirm your email</h2>
+            <p className="text-sm text-slate-500 max-w-sm">
+              You signed in with Apple&apos;s “Hide My Email”, so we don&apos;t have an address that can
+              receive your verification code or account updates. Enter a real email to continue.
+            </p>
+          </div>
+
+          {error && <Alert variant="error">{error}</Alert>}
+
+          <form onSubmit={submitNewEmail} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Your email address</label>
+              <input
+                type="email"
+                value={newEmail}
+                onChange={e => setNewEmail(e.target.value)}
+                autoComplete="email"
+                autoFocus
+                placeholder="you@yourbusiness.com"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <Button type="submit" size="lg" disabled={sendingEmail || !newEmail.trim()}>
+              {sendingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send my code'}
+            </Button>
+          </form>
         </CardBody>
       </Card>
     )

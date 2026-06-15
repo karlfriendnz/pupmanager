@@ -1,5 +1,13 @@
 import { Resend } from 'resend'
 
+// Apple "Hide My Email" hands us a relay address (…@privaterelay.appleid.com).
+// Our verification / drip / billing mail doesn't reliably reach those, so every
+// Apple account must swap in a real, deliverable email. Single source of truth
+// for "is this a private Apple relay address".
+export function isPrivateRelayEmail(email: string | null | undefined): boolean {
+  return (email ?? '').trim().toLowerCase().endsWith('@privaterelay.appleid.com')
+}
+
 interface VerificationEmailArgs {
   to: string
   name: string
