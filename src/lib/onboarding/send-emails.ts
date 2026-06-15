@@ -264,9 +264,11 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
     // an admin can re-enrol a trainer "as if starting today" by resetting
     // TrainerOnboardingProgress.startedAt to now.
     if (p.startedAt < DRIP_ACTIVATION) continue
-    // Deliver in the trainer's morning: only act during their 9am hour, in
-    // their own timezone (the hourly cron tick that lands in that window sends).
-    if (localHourIn(t!.user.timezone || 'Pacific/Auckland') !== SEND_HOUR) continue
+    // Time-based drips (nudges/chases) are delivered in the trainer's morning —
+    // only during their local 9am hour. The welcome (on_signup) is EXEMPT so it
+    // lands right after signup, going out on the next hourly tick instead of
+    // waiting until the next morning. Gate is applied per-template below.
+    const isSendHour = localHourIn(t!.user.timezone || 'Pacific/Auckland') === SEND_HOUR
 
     const alreadySent = new Set(p.emails.map(e => e.emailKey))
     const firstName = t!.user.name?.split(' ')[0]?.trim() || 'there'
@@ -281,8 +283,13 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
 
     for (const tmpl of published) {
       if (alreadySent.has(tmpl.key)) continue
+      const rule = tmpl.triggerRule as Trigger
+      // Welcome (on_signup) sends any hour; everything else waits for the
+      // trainer's 9am window. Skip non-immediate templates outside that window.
+      const immediate = rule.type === 'on_signup'
+      if (!immediate && !isSendHour) continue
       base.evaluated++
-      if (!(await isEligible(tmpl.triggerRule as Trigger, p as ProgressRow, now))) {
+      if (!(await isEligible(rule, p as ProgressRow, now))) {
         base.skipped++
         continue
       }
