@@ -359,6 +359,10 @@ model TrainerProfile {
   // /admin/trainers so we can visually tag — and later exclude from metrics —
   // accounts that are "ours".
   isInternal           Boolean   @default(false)
+  // ISO 3166-1 alpha-2 country code captured from the signup request's IP geo
+  // (Vercel's x-vercel-ip-country) at account creation. Null for older accounts
+  // / signups without geo. Surfaced as a flag in /admin/trainers.
+  signupCountry        String?
   // Number of trainer seats the subscription was booked for. Mirrors
   // the Stripe subscription's quantity. 1 by default; bumps via the
   // slider on /billing/setup.

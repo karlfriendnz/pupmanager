@@ -92,6 +92,9 @@ export async function POST(req: Request) {
         // subscriptionStatus defaults to TRIALING; stamp the end date.
         trialEndsAt,
         promoCodeId,
+        // Country of signup from Vercel's IP geo header (ISO alpha-2), for the
+        // admin flag. Null in local dev / when the header is absent.
+        signupCountry: req.headers.get('x-vercel-ip-country')?.toUpperCase() || null,
       },
     })
 

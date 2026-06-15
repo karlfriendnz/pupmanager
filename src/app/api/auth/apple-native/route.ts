@@ -104,6 +104,8 @@ export async function POST(req: Request) {
         userId: user.id,
         businessName: '',
         trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
+        // Country of signup from Vercel's IP geo header (ISO alpha-2).
+        signupCountry: req.headers.get('x-vercel-ip-country')?.toUpperCase() || null,
       },
       update: {},
     })

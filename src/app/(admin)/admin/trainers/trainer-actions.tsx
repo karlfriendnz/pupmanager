@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { Pencil, Trash2, X, Check, LogIn, Ban, RotateCcw, AlertTriangle, Mail, Loader2 } from 'lucide-react'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatDateTime } from '@/lib/utils'
 
 // Shape returned by GET /api/admin/trainers/[trainerId]/onboarding-emails
 type EmailReport = {
@@ -31,6 +31,9 @@ type Trainer = {
   subscriptionStatus: string | null
   trialEndsAt: Date | string | null
   isInternal: boolean
+  // ISO 3166-1 alpha-2 country of signup (from IP geo), or null. Rendered as a
+  // flag + code chip.
+  signupCountry: string | null
   clientCount: number
   // >0 when the trainer still has first-run "Sample" preview clients they
   // haven't cleared — surfaced as a badge so admins can spot accounts that
@@ -42,6 +45,25 @@ type Trainer = {
   gracePeriodUntil: Date | string | null
   deactivatedAt: Date | string | null
   createdAt: Date
+}
+
+// ISO 3166-1 alpha-2 → flag emoji (regional indicator pair). Null for anything
+// that isn't a clean 2-letter code.
+function flagEmoji(iso: string | null): string | null {
+  if (!iso || iso.length !== 2 || !/^[A-Za-z]{2}$/.test(iso)) return null
+  const cc = iso.toUpperCase()
+  return String.fromCodePoint(...[...cc].map(c => 0x1f1e6 + c.charCodeAt(0) - 65))
+}
+
+// Compact join stamp in NZT: "DD MMM - H:MM AM/PM", e.g. "14 Jun - 4:37 PM".
+function joinedLabel(d: Date | string): string {
+  const parts = new Intl.DateTimeFormat('en-NZ', {
+    timeZone: 'Pacific/Auckland', day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+  }).formatToParts(new Date(d))
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? ''
+  // Normalise the meridiem ("pm" / "p.m." → "PM") for a clean, consistent label.
+  const ap = get('dayPeriod').replace(/\./g, '').toUpperCase()
+  return `${get('day')} ${get('month')} - ${get('hour')}:${get('minute')} ${ap}`
 }
 
 export function TrainerRow({ trainer }: { trainer: Trainer }) {
@@ -320,6 +342,15 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           <span className="cursor-default border-b border-dotted border-slate-500/60">
             {trainer.name ?? '—'}
           </span>
+          {trainer.signupCountry && (
+            <span
+              className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 tabular-nums"
+              title={`Signed up in ${trainer.signupCountry}`}
+            >
+              <span aria-hidden>{flagEmoji(trainer.signupCountry)}</span>
+              {trainer.signupCountry}
+            </span>
+          )}
           {trainer.isInternal && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-purple-900 text-purple-300">
               Ours
@@ -406,8 +437,8 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
       </td>
       <td className="px-4 py-3 text-slate-400">
         <span className="group relative inline-block">
-          <span className="cursor-default border-b border-dotted border-slate-500/60">
-            {formatDate(trainer.createdAt)}
+          <span className="cursor-default border-b border-dotted border-slate-500/60 tabular-nums">
+            {joinedLabel(trainer.createdAt)}
           </span>
           {/* Hover tooltip with the full join timestamp (native title is
               unreliable — same instant-tooltip pattern as the email one above). */}
@@ -568,66 +599,77 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
                 </p>
               )}
 
-              <div className="grid gap-5 md:grid-cols-2">
-                {/* Received */}
-                <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
-                    Received ({report.sent.length})
-                  </h4>
-                  {report.sent.length === 0 ? (
-                    <p className="text-sm text-slate-500">No emails sent yet.</p>
-                  ) : (
-                    <ul className="flex flex-col gap-1.5">
-                      {report.sent.map(e => (
-                        <li key={e.key} className="flex items-start justify-between gap-3 text-sm">
-                          <span className="flex items-start gap-2 text-slate-200">
-                            <Check className="h-3.5 w-3.5 mt-0.5 shrink-0 text-emerald-400" />
-                            <span>{e.subject}</span>
-                          </span>
-                          <span className="shrink-0 text-xs text-slate-500 tabular-nums">{formatDate(e.sentAt)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                {/* Upcoming */}
-                <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
-                    Upcoming ({report.upcoming.filter(u => u.status !== 'skip').length})
-                  </h4>
-                  {report.upcoming.length === 0 ? (
-                    <p className="text-sm text-slate-500">Nothing scheduled.</p>
-                  ) : (
-                    <ul className="flex flex-col gap-1.5">
-                      {report.upcoming.map(e => {
+              {/* One combined, chronological table — sent history first, then
+                  what's queued. Clearer than the old Received | Upcoming split. */}
+              {report.sent.length === 0 && report.upcoming.length === 0 ? (
+                <p className="text-sm text-slate-500">No onboarding emails for this trainer.</p>
+              ) : (
+                <div className="overflow-hidden rounded-lg border border-slate-700">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-700 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                        <th className="px-3 py-2 font-medium">Email</th>
+                        <th className="px-3 py-2 font-medium">When (NZT)</th>
+                        <th className="px-3 py-2 font-medium text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ...report.sent.map(e => ({
+                          rowKey: `sent-${e.key}`,
+                          subject: e.subject,
+                          note: null as string | null,
+                          status: 'sent' as 'sent' | 'eligible' | 'scheduled' | 'waiting' | 'skip',
+                          when: formatDateTime(e.sentAt, 'Pacific/Auckland'),
+                        })),
+                        ...report.upcoming.map(e => ({
+                          rowKey: `up-${e.key}`,
+                          subject: e.subject,
+                          note: e.note,
+                          status: e.status,
+                          when:
+                            e.status === 'eligible' ? 'Within the hour' :
+                            e.status === 'scheduled' ? (e.dueAt ? `~9am ${formatDate(e.dueAt)}` : 'Scheduled') :
+                            '—',
+                        })),
+                      ].map(r => {
                         const chip =
-                          e.status === 'eligible' ? 'bg-blue-900 text-blue-300' :
-                          e.status === 'scheduled' ? 'bg-slate-700 text-slate-300' :
-                          e.status === 'waiting' ? 'bg-purple-900/70 text-purple-300' :
+                          r.status === 'sent' ? 'bg-emerald-900 text-emerald-300' :
+                          r.status === 'eligible' ? 'bg-blue-900 text-blue-300' :
+                          r.status === 'scheduled' ? 'bg-slate-700 text-slate-300' :
+                          r.status === 'waiting' ? 'bg-purple-900/70 text-purple-300' :
                           'bg-slate-800 text-slate-500'
-                        const label =
-                          e.status === 'eligible' ? 'Sending soon' :
-                          e.status === 'scheduled' ? (e.dueAt ? formatDate(e.dueAt) : 'Scheduled') :
-                          e.status === 'waiting' ? 'Waiting' :
+                        const chipLabel =
+                          r.status === 'sent' ? 'Sent' :
+                          r.status === 'eligible' ? 'Sending soon' :
+                          r.status === 'scheduled' ? 'Scheduled' :
+                          r.status === 'waiting' ? 'Waiting' :
                           'Won’t send'
                         return (
-                          <li key={e.key} className={`flex items-start justify-between gap-3 text-sm ${e.status === 'skip' ? 'opacity-50' : ''}`}>
-                            <span className="flex flex-col">
-                              <span className="text-slate-200">{e.subject}</span>
-                              <span className="text-xs text-slate-500">{e.note}</span>
-                            </span>
-                            <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full tabular-nums ${chip}`}>{label}</span>
-                          </li>
+                          <tr key={r.rowKey} className={`border-b border-slate-700/40 last:border-0 ${r.status === 'skip' ? 'opacity-50' : ''}`}>
+                            <td className="px-3 py-2 align-top">
+                              <div className="text-slate-200">{r.subject}</div>
+                              {r.note && <div className="text-xs text-slate-500">{r.note}</div>}
+                            </td>
+                            <td className="px-3 py-2 align-top text-xs text-slate-400 tabular-nums whitespace-nowrap">{r.when}</td>
+                            <td className="px-3 py-2 align-top text-right">
+                              <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${chip}`}>
+                                {r.status === 'sent' && <Check className="h-3 w-3" />}
+                                {chipLabel}
+                              </span>
+                            </td>
+                          </tr>
                         )
                       })}
-                    </ul>
-                  )}
-                  {report.enrolled && (
-                    <p className="mt-2 text-[11px] text-slate-500">Delivered at ~9am in the trainer’s timezone ({report.timezone}).</p>
-                  )}
+                    </tbody>
+                  </table>
                 </div>
-              </div>
+              )}
+              {report.enrolled && (
+                <p className="text-[11px] text-slate-500">
+                  Times in NZT. Time-based emails go out in the ~9am batch in the trainer’s timezone ({report.timezone}); the welcome sends within the hour of signup.
+                </p>
+              )}
             </div>
           ) : null}
         </td>
