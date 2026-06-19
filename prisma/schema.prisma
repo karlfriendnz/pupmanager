@@ -263,27 +263,27 @@ model VerificationToken {
 // ─── Trainer Profile ─────────────────────────────────────────────────────────
 
 model TrainerProfile {
-  id               String  @id @default(cuid())
-  userId           String  @unique
-  businessName     String
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  businessName      String
   // URL-safe handle for the public branded client-login page
   // (app.pupmanager.com/c/<slug>). Generated from businessName on demand,
   // editable in settings. Nullable until first generated.
-  slug             String? @unique
-  phone            String?
-  logoUrl          String?
-  website          String? // public website URL, shown to clients as a link in the app header
-  publicEmail      String? // public contact email shown to clients (may differ from login email)
-  dashboardBgUrl   String? // background image shown on the client home dashboard
-  inviteTemplate   String? @db.Text // customisable invite email template
+  slug              String? @unique
+  phone             String?
+  logoUrl           String?
+  website           String? // public website URL, shown to clients as a link in the app header
+  publicEmail       String? // public contact email shown to clients (may differ from login email)
+  dashboardBgUrl    String? // background image shown on the client home dashboard
+  inviteTemplate    String? @db.Text // customisable invite email template
   // Hex colour for the accent strip across the top of outbound emails.
   // Falls back to a violet default when null.
-  emailAccentColor String?
+  emailAccentColor  String?
   // Client-app accent gradient — start + end hex. Drive --accent and
   // --accent-strong in the (client) shell. Null falls back to emailAccentColor
   // (start) / a derived darker shade (end), else the PupManager teal default.
-  appGradientStart String?
-  appGradientEnd   String?
+  appGradientStart  String?
+  appGradientEnd    String?
   // Short personal welcome shown to clients on their app home (set in the
   // first-run personalization wizard, editable later in settings).
   clientWelcomeNote String? @db.Text
@@ -297,23 +297,23 @@ model TrainerProfile {
   // The base scheduleStart/EndHour pair drives the desktop grid; the
   // mobile pair (nullable) overrides on phones so trainers can run a
   // tighter window on small screens. Null = fall back to the base pair.
-  scheduleStartHour       Int     @default(7) // inclusive
-  scheduleEndHour         Int     @default(21) // exclusive (last hour shown is end-1)
-  scheduleMobileStartHour Int? // mobile-only override; null falls back to scheduleStartHour
-  scheduleMobileEndHour   Int? // mobile-only override; null falls back to scheduleEndHour
-  scheduleDays        Json    @default("[1,2,3,4,5,6,7]")
+  scheduleStartHour         Int     @default(7) // inclusive
+  scheduleEndHour           Int     @default(21) // exclusive (last hour shown is end-1)
+  scheduleMobileStartHour   Int? // mobile-only override; null falls back to scheduleStartHour
+  scheduleMobileEndHour     Int? // mobile-only override; null falls back to scheduleEndHour
+  scheduleDays              Json    @default("[1,2,3,4,5,6,7]")
   // Up to 2 extra fields rendered on schedule blocks. Allowed ids:
   // "location" | "description" | "sessionType" | "duration" | "title"
-  scheduleExtraFields Json    @default("[]")
+  scheduleExtraFields       Json    @default("[]")
   // Ordered list of intake-form section names (string[]). Lets trainers create
   // empty sections and drag fields into them; without this, a section only
   // "existed" if at least one field had that category. Fields whose category
   // doesn't appear in this list pile into a "Fields without a section" bucket.
-  intakeSectionOrder  Json    @default("[]")
+  intakeSectionOrder        Json    @default("[]")
   // Whether the intake form is published (visible to clients). Defaults to
   // false so newly-seeded intake fields don't go live until the trainer
   // explicitly publishes from the intake editor.
-  intakeFormPublished Boolean @default(false)
+  intakeFormPublished       Boolean @default(false)
   // Per-trainer assignment of the three core "system" intake fields
   // (name, email, phone) to a section in intakeSectionOrder. Shape:
   // { name?: string|null, email?: string|null, phone?: string|null }.
@@ -321,26 +321,26 @@ model TrainerProfile {
   // also lack a section). Stored separately from CustomField.category
   // because the system fields aren't custom fields — they back real
   // columns on User/ClientProfile.
-  intakeSystemFieldSections Json @default("{}")
+  intakeSystemFieldSections Json    @default("{}")
   // Trainer-chosen visible columns on /clients. Allowed ids:
   // "email" | "dog" | "breed" | "extraDogs" | "nextSession" | "compliance" | "shared" | "custom:<id>"
-  clientListColumns   Json    @default("[\"email\",\"dog\",\"nextSession\",\"compliance\"]")
+  clientListColumns         Json    @default("[\"email\",\"dog\",\"nextSession\",\"compliance\"]")
   // Grouping for /clients. null = flat list. "nextDay" = group by day of
   // next booking. "custom:<id>" = group by custom-field value.
-  clientListGroupBy   String?
+  clientListGroupBy         String?
 
   // Subscription
-  subscriptionPlanId String?
-  subscriptionStatus SubscriptionStatus @default(TRIALING)
+  subscriptionPlanId   String?
+  subscriptionStatus   SubscriptionStatus @default(TRIALING)
   // When the free trial expires. Stamped on signup (now + 14 days). Null
   // for paid plans that don't have a trial window or trainers who never
   // had one (legacy accounts).
-  trialEndsAt        DateTime?
+  trialEndsAt          DateTime?
   // Stripe identifiers — populated lazily, the first time the trainer
   // hits Checkout. Customer is reused across plan changes; subscription
   // and price flip when they upgrade/downgrade.
-  stripeCustomerId     String?   @unique
-  stripeSubscriptionId String?   @unique
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
   // End of the current paid period — drives the "renews on …" copy and
   // the access-cutoff job for cancelled subscriptions.
   currentPeriodEnd     DateTime?
@@ -353,12 +353,12 @@ model TrainerProfile {
   // (sandbox) — the test secret key + the *Test price columns — so the demo
   // account can show the full billing flow without ever taking a real charge
   // while everyone else is on live Stripe.
-  sandboxBilling       Boolean   @default(false)
+  sandboxBilling       Boolean            @default(false)
   // Internal/test account flag. When true this is a PupManager-owned account
   // (our own testing/demo logins), not a real customer. Set from
   // /admin/trainers so we can visually tag — and later exclude from metrics —
   // accounts that are "ours".
-  isInternal           Boolean   @default(false)
+  isInternal           Boolean            @default(false)
   // ISO 3166-1 alpha-2 country code captured from the signup request's IP geo
   // (Vercel's x-vercel-ip-country) at account creation. Null for older accounts
   // / signups without geo. Surfaced as a flag in /admin/trainers.
@@ -366,7 +366,7 @@ model TrainerProfile {
   // Number of trainer seats the subscription was booked for. Mirrors
   // the Stripe subscription's quantity. 1 by default; bumps via the
   // slider on /billing/setup.
-  seatCount            Int       @default(1)
+  seatCount            Int                @default(1)
   // Founders Circle: the first FOUNDER_SEATS (10) trainers to subscribe
   // get a Stripe coupon that holds the founder rate for 12 months, then
   // the subscription auto-reverts to standard pricing (the coupon's
@@ -375,8 +375,8 @@ model TrainerProfile {
   // creation, so an abandoned checkout never burns a founder seat. The
   // Stripe coupon's own max_redemptions is the hard cap; this flag drives
   // the "N of 10 left" gate and founder copy.
-  isFounder        Boolean   @default(false)
-  founderClaimedAt DateTime?
+  isFounder            Boolean            @default(false)
+  founderClaimedAt     DateTime?
   // Business postal address — captured on /billing/setup, used for
   // Stripe customer billing details, invoice rendering, and tax-region
   // reporting. All optional so existing trainers don't get blocked.
@@ -396,6 +396,25 @@ model TrainerProfile {
   baseLat              Float?
   baseLng              Float?
   basePlaceId          String?
+
+  // ─── Stripe Connect (Flow B: client→trainer payments) ──────────────────────
+  // Separate money flow from the trainer's own subscription above. The trainer
+  // onboards a Stripe Connect *Express* account; clients pay them via hosted
+  // Checkout (destination charge), Stripe takes our application fee and pays
+  // the trainer out. None of the stripeCustomerId/stripeSubscriptionId fields
+  // above are involved — those are the trainer's subscription TO PupManager.
+  connectAccountId        String?   @unique // acct_… (Express). Null = not started.
+  connectChargesEnabled   Boolean   @default(false) // mirrors account.charges_enabled
+  connectPayoutsEnabled   Boolean   @default(false) // mirrors account.payouts_enabled
+  connectDetailsSubmitted Boolean   @default(false) // account.details_submitted (KYC done)
+  connectOnboardedAt      DateTime? // first time charges + payouts both true
+  // Trainer's payout / pricing currency for client payments — ISO 4217
+  // lower-case (Stripe convention). Seeded from signupCountry on first onboard.
+  // SEPARATE from the per-checkout currency used by the subscription flow.
+  payoutCurrency          String?
+  // Master switch the trainer flips once onboarded — lets them connect but keep
+  // prices display-only until they're ready to actually take payments.
+  acceptPaymentsEnabled   Boolean   @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -428,6 +447,7 @@ model TrainerProfile {
   onboardingProgress TrainerOnboardingProgress?
   members            TrainerMembership[]        @relation("CompanyMembers")
   addons             TrainerAddon[]
+  payments           Payment[]
 
   @@map("trainer_profiles")
 }
@@ -453,7 +473,7 @@ model PromoCode {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  redemptions    TrainerProfile[]
+  redemptions TrainerProfile[]
 
   @@map("promo_codes")
 }
@@ -503,33 +523,33 @@ model TrainerMembership {
 // ─── Client & Dog ────────────────────────────────────────────────────────────
 
 model ClientProfile {
-  id        String  @id @default(cuid())
+  id                   String  @id @default(cuid())
   // A user can hold several client relationships — one per trainer (tenant).
   // Uniqueness is therefore on the (userId, trainerId) pair, not userId alone.
-  userId    String
-  trainerId String // owning business (TrainerProfile = tenant)
+  userId               String
+  trainerId            String // owning business (TrainerProfile = tenant)
   // The member trainer this client is assigned to within the business. Null =
   // unassigned (visible to owner/managers; not to any single staff member).
   // Distinct from trainerId, which is the tenant the client's data lives under.
   assignedMembershipId String?
-  dogId     String? // set after onboarding
-  status    String  @default("ACTIVE") // "ACTIVE" | "INACTIVE"
+  dogId                String? // set after onboarding
+  status               String  @default("ACTIVE") // "ACTIVE" | "INACTIVE"
   // Auto-generated "Sample" client seeded by the first-run personalization
   // wizard so a brand-new trainer can preview the client app. Removed on
   // demand or when the trainer adds their first real client.
-  isSample  Boolean @default(false)
+  isSample             Boolean @default(false)
   // Contact phone for the client (collected on intake). Lives on the
   // profile, not on User, mirroring TrainerProfile.phone — phone is a
   // per-trainer-relationship attribute (a client may share a phone
   // with another household member who has their own User row).
-  phone     String?
+  phone                String?
   // Visit location for the route manager. Captured via Places Autocomplete, so
   // lat/lng come from the picked place (no separate geocoding call). placeId is
   // kept for re-lookup/dedup. All null until an address is set.
-  addressLine    String?
-  addressLat     Float?
-  addressLng     Float?
-  addressPlaceId String?
+  addressLine          String?
+  addressLat           Float?
+  addressLng           Float?
+  addressPlaceId       String?
 
   // Set when an invitation email is actually sent to the client (via the
   // invite form with notifications on, or a re-invite). Null = the client
@@ -559,6 +579,7 @@ model ClientProfile {
   productRequests   ProductRequest[]
   buddySessions     SessionBuddy[]
   achievements      ClientAchievement[]
+  payments          Payment[]
   enquiry           Enquiry?
 
   @@unique([userId, trainerId])
@@ -581,13 +602,13 @@ model Dog {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  primaryFor    ClientProfile[]   @relation("PrimaryDog")
-  owner         ClientProfile?    @relation("AdditionalDogs", fields: [clientProfileId], references: [id])
-  sessions      TrainingSession[]
-  tasks         TrainingTask[]
-  buddySessions SessionBuddy[]
+  primaryFor       ClientProfile[]   @relation("PrimaryDog")
+  owner            ClientProfile?    @relation("AdditionalDogs", fields: [clientProfileId], references: [id])
+  sessions         TrainingSession[]
+  tasks            TrainingTask[]
+  buddySessions    SessionBuddy[]
   classEnrollments ClassEnrollment[]
-  media         DogMedia[]
+  media            DogMedia[]
 
   @@index([clientProfileId])
   @@map("dogs")
@@ -681,55 +702,55 @@ model TaskCompletion {
 // ─── Scheduling ──────────────────────────────────────────────────────────────
 
 model TrainingSession {
-  id              String        @id @default(cuid())
-  trainerId       String // owning business (tenant)
+  id                   String        @id @default(cuid())
+  trainerId            String // owning business (tenant)
   // The member trainer running this session. Null = unassigned (sole-trainer
   // businesses leave this null; the owner is implied). Drives the calendar
   // colour/filter and staff scoping in multi-trainer businesses.
   assignedMembershipId String?
-  clientId        String? // direct client link (optional, in addition to dogId)
-  dogId           String?
-  clientPackageId String? // membership in an assigned package
+  clientId             String? // direct client link (optional, in addition to dogId)
+  dogId                String?
+  clientPackageId      String? // membership in an assigned package
   // Group classes: a shared session belongs to a ClassRun (cohort) rather
   // than a single client. For group sessions clientId/dogId stay null —
   // attendance is tracked per-enrollee via SessionAttendance. sessionIndex
   // is the 1-based position within the run ("session 3 of 6"), also the
   // join point used for drop-in pricing.
-  classRunId      String?
-  sessionIndex    Int?
+  classRunId           String?
+  sessionIndex         Int?
   // Links the sessions of a recurring "buddies walk" (a group dog walk created
   // from the schedule). Lets a dog added later be applied to just this walk,
   // this + following walks, or the whole series. Null for non-walk sessions.
-  walkSeriesId    String?
+  walkSeriesId         String?
   // Per-session session-form override for class sessions. Null = inherit the
   // class's default form (the group package's defaultSessionFormId). Lets a run
   // use one form for most sessions and a different one on, say, the last.
-  sessionFormId   String?
+  sessionFormId        String?
   // The booking page this session was created from (instant book, accepted
   // prospect, or confirmed request). Drives BEFORE/AFTER_SESSION automations.
   // SetNull so deleting the page leaves the session intact.
-  bookingPageId   String?
-  title           String
-  description     String?       @db.Text
-  scheduledAt     DateTime
-  durationMins    Int           @default(60)
-  sessionType     SessionType   @default(IN_PERSON)
-  status          SessionStatus @default(UPCOMING)
+  bookingPageId        String?
+  title                String
+  description          String?       @db.Text
+  scheduledAt          DateTime
+  durationMins         Int           @default(60)
+  sessionType          SessionType   @default(IN_PERSON)
+  status               SessionStatus @default(UPCOMING)
   // Whether the trainer has invoiced this session (Xero/QBO/manual). Tracked
   // separately from `status` because invoicing can happen before OR after the
   // session is marked complete — the lifecycles are orthogonal. Null = not
   // invoiced; set = invoiced at this timestamp.
-  invoicedAt      DateTime?
-  location        String?
-  virtualLink     String?
+  invoicedAt           DateTime?
+  location             String?
+  virtualLink          String?
 
   googleCalendarEventId String?
 
   // Set when the "starting in ~20 min" push reminder has been delivered to the
   // trainer, so the cron loop never sends two pushes for the same session.
-  reminderPushSentAt      DateTime?
+  reminderPushSentAt        DateTime?
   // Same idea for the "ends in ~5 min — write session notes" reminder.
-  notesReminderPushSentAt DateTime?
+  notesReminderPushSentAt   DateTime?
   // Set when this session was rescheduled but the client hasn't been told yet.
   // The trainer batch-sends pending reschedules from a banner, so dragging
   // sessions around doesn't fire a notification on every move.
@@ -738,20 +759,21 @@ model TrainingSession {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trainer                  TrainerProfile        @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  assignedTrainer          TrainerMembership?    @relation("AssignedTrainer", fields: [assignedMembershipId], references: [id], onDelete: SetNull)
-  client                   ClientProfile?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  dog                      Dog?                  @relation(fields: [dogId], references: [id])
-  clientPackage            ClientPackage?        @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
+  trainer                  TrainerProfile          @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  assignedTrainer          TrainerMembership?      @relation("AssignedTrainer", fields: [assignedMembershipId], references: [id], onDelete: SetNull)
+  client                   ClientProfile?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  dog                      Dog?                    @relation(fields: [dogId], references: [id])
+  clientPackage            ClientPackage?          @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
   tasks                    TrainingTask[]
   formResponses            SessionFormResponse[]
   fulfilledProductRequests ProductRequest[]
   buddies                  SessionBuddy[]
   attachments              SessionAttachment[]
-  classRun                 ClassRun?             @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  classRun                 ClassRun?               @relation(fields: [classRunId], references: [id], onDelete: Cascade)
   attendance               SessionAttendance[]
-  bookingPage              BookingPage?          @relation(fields: [bookingPageId], references: [id], onDelete: SetNull)
+  bookingPage              BookingPage?            @relation(fields: [bookingPageId], references: [id], onDelete: SetNull)
   automationSends          BookingAutomationSend[]
+  paymentItem              PaymentItem?
 
   @@index([trainerId])
   @@index([assignedMembershipId])
@@ -776,7 +798,7 @@ model TrainingSession {
 model SessionAttachment {
   id           String         @id @default(cuid())
   sessionId    String
-  trainerId    String         // denormalised for fast permission checks
+  trainerId    String // denormalised for fast permission checks
   kind         AttachmentKind
   // Public Blob URL. We don't gate access via signing for v1 — the
   // pathname includes the session + attachment id so URLs are
@@ -789,7 +811,7 @@ model SessionAttachment {
   caption      String?        @db.Text
   // Stored for display ("12 sec") and for soft-quota calculations later.
   sizeBytes    Int
-  durationMs   Int?           // videos only
+  durationMs   Int? // videos only
 
   createdAt DateTime @default(now())
 
@@ -844,8 +866,9 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trainer  TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  requests ProductRequest[]
+  trainer      TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  requests     ProductRequest[]
+  paymentItems PaymentItem[]
 
   @@index([trainerId])
   @@index([category])
@@ -884,65 +907,65 @@ model ProductRequest {
 // ─── Packages ─────────────────────────────────────────────────────────────────
 
 model Package {
-  id                   String      @id @default(cuid())
-  trainerId            String
+  id                       String      @id @default(cuid())
+  trainerId                String
   // True for rows created by the trainer-facing "sample data" loader, so
   // clearSampleData() can remove them without touching the trainer's real data.
-  isSample             Boolean     @default(false)
-  name                 String
-  description          String?     @db.Text
-  sessionCount         Int         @default(3)
-  weeksBetween         Int         @default(2) // gap between sessions, in weeks
-  durationMins         Int         @default(60) // default duration applied to created sessions
-  sessionType          SessionType @default(IN_PERSON)
+  isSample                 Boolean     @default(false)
+  name                     String
+  description              String?     @db.Text
+  sessionCount             Int         @default(3)
+  weeksBetween             Int         @default(2) // gap between sessions, in weeks
+  durationMins             Int         @default(60) // default duration applied to created sessions
+  sessionType              SessionType @default(IN_PERSON)
   // Prices in cents to avoid float precision issues. specialPriceCents is an
   // optional discounted price the trainer can offer for promotions, etc.
-  priceCents           Int? // null = unpriced
-  specialPriceCents    Int? // null = no special price
+  priceCents               Int? // null = unpriced
+  specialPriceCents        Int? // null = no special price
   // Optional schedule colour (Tailwind palette key, eg "blue"). When set,
   // sessions assigned to this package render in that colour on the calendar.
-  color                String?
-  order                Int         @default(0) // display order, lowest first
+  color                    String?
+  order                    Int         @default(0) // display order, lowest first
   // Optional default session form. When a session is opened with this package
   // and no form responses exist, the default form is auto-attached.
-  defaultSessionFormId String?
+  defaultSessionFormId     String?
   // When false, suppress the SESSION_NOTES_REMINDER push for sessions in this
   // package. Some packages (e.g. drop-in classes) don't need a follow-up.
   // Defaults to true so existing packages keep firing reminders.
-  requireSessionNotes  Boolean     @default(true)
+  requireSessionNotes      Boolean     @default(true)
   // ─── Group classes ──────────────────────────────────────────────────────
   // When isGroup, the package is a sellable class template. A trainer
   // schedules one or more ClassRuns (cohorts) off it; each run owns ONE
   // shared session series that many clients enrol into. isGroup=false
   // packages keep the 1:1 ClientPackage path untouched.
-  isGroup              Boolean     @default(false)
+  isGroup                  Boolean     @default(false)
   // Max enrolments per run (null = unlimited). A run may override this.
-  capacity             Int?
+  capacity                 Int?
   // Allow clients to join a run after it has started (rolling drop-in),
   // paying per remaining session at dropInPriceCents.
-  allowDropIn          Boolean     @default(false)
-  dropInPriceCents     Int?
+  allowDropIn              Boolean     @default(false)
+  dropInPriceCents         Int?
   // Full runs accept a waitlist that auto-promotes on withdrawal.
-  allowWaitlist        Boolean     @default(false)
+  allowWaitlist            Boolean     @default(false)
   // Exposed on the public embed surface for client self-enrolment.
-  publicEnrollment     Boolean     @default(false)
+  publicEnrollment         Boolean     @default(false)
   // Client self-booking from their availability tab. clientSelfBook
   // opts the package in; selfBookRequiresApproval gates whether the
   // pick creates a pending BookingRequest (true) or books instantly
   // (false). Only meaningful when clientSelfBook is true.
-  clientSelfBook           Boolean @default(false)
-  selfBookRequiresApproval Boolean @default(true)
+  clientSelfBook           Boolean     @default(false)
+  selfBookRequiresApproval Boolean     @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trainer            TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  trainer            TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   assignments        ClientPackage[]
   classRuns          ClassRun[]
   waitlistEntries    WaitlistEntry[]
   bookingRequests    BookingRequest[]
   bookingPages       BookingPage[]
-  defaultSessionForm SessionForm?    @relation("PackageDefaultSessionForm", fields: [defaultSessionFormId], references: [id], onDelete: SetNull)
+  defaultSessionForm SessionForm?     @relation("PackageDefaultSessionForm", fields: [defaultSessionFormId], references: [id], onDelete: SetNull)
 
   @@index([trainerId])
   @@index([defaultSessionFormId])
@@ -950,22 +973,23 @@ model Package {
 }
 
 model ClientPackage {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   packageId          String
   clientId           String
   startDate          DateTime
-  assignedAt         DateTime @default(now())
+  assignedAt         DateTime  @default(now())
   // When true, the schedule auto-creates more sessions on the package's
   // cadence so the calendar always has ~6 weeks of sessions ahead.
-  extendIndefinitely Boolean  @default(false)
+  extendIndefinitely Boolean   @default(false)
   // Manual flag the trainer ticks when they've sent the invoice for this
   // assignment outside PupManager (Xero/QBO/cash). Null = not invoiced yet.
   // Once we wire real billing this is what the financial layer keys off.
   invoicedAt         DateTime?
 
-  package  Package           @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  client   ClientProfile     @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  sessions TrainingSession[]
+  package     Package           @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  client      ClientProfile     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sessions    TrainingSession[]
+  paymentItem PaymentItem?
 
   @@index([clientId])
   @@index([packageId])
@@ -976,13 +1000,13 @@ model ClientPackage {
 
 enum ClassRunStatus {
   SCHEDULED // created, may still be taking enrolments before it starts
-  RUNNING   // first session has happened
+  RUNNING // first session has happened
   COMPLETED // all sessions done
   CANCELLED // called off; sessions cancelled, enrolments closed
 }
 
 enum EnrollmentType {
-  FULL    // enrolled for the whole run from the start
+  FULL // enrolled for the whole run from the start
   DROP_IN // joined mid-run, pays per remaining session
 }
 
@@ -1005,15 +1029,15 @@ enum AttendanceStatus {
 // series (sessions have classRunId set, clientId null). Capacity falls
 // back to the package's when null here.
 model ClassRun {
-  id          String         @id @default(cuid())
-  trainerId   String
-  isSample    Boolean        @default(false)
-  packageId   String
-  name        String // e.g. "Spring Puppy Class"
-  scheduleNote String?       // human cadence, e.g. "Tuesdays 6:00pm"
-  startDate   DateTime
-  capacity    Int? // per-run override of Package.capacity
-  status      ClassRunStatus @default(SCHEDULED)
+  id           String         @id @default(cuid())
+  trainerId    String
+  isSample     Boolean        @default(false)
+  packageId    String
+  name         String // e.g. "Spring Puppy Class"
+  scheduleNote String? // human cadence, e.g. "Tuesdays 6:00pm"
+  startDate    DateTime
+  capacity     Int? // per-run override of Package.capacity
+  status       ClassRunStatus @default(SCHEDULED)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1031,26 +1055,27 @@ model ClassRun {
 // A client+dog's membership in a ClassRun. Replaces ClientPackage for the
 // group path. Waitlist is a status + position, auto-promoted on withdrawal.
 model ClassEnrollment {
-  id              String           @id @default(cuid())
-  classRunId      String
-  clientId        String
-  dogId           String?
-  type            EnrollmentType   @default(FULL)
-  status          EnrollmentStatus @default(ENROLLED)
-  waitlistPosition Int?            // set only while WAITLISTED
+  id               String           @id @default(cuid())
+  classRunId       String
+  clientId         String
+  dogId            String?
+  type             EnrollmentType   @default(FULL)
+  status           EnrollmentStatus @default(ENROLLED)
+  waitlistPosition Int? // set only while WAITLISTED
   // For DROP_IN: the 1-based session index they joined at, so pricing
   // and the roster only count sessions from here on.
-  joinedAtIndex   Int?
-  source          String           @default("TRAINER") // "TRAINER" | "SELF_SERVE"
+  joinedAtIndex    Int?
+  source           String           @default("TRAINER") // "TRAINER" | "SELF_SERVE"
   // Mirrors ClientPackage.invoicedAt — manual until billing is wired.
-  invoicedAt      DateTime?
-  enrolledAt      DateTime         @default(now())
-  withdrawnAt     DateTime?
+  invoicedAt       DateTime?
+  enrolledAt       DateTime         @default(now())
+  withdrawnAt      DateTime?
 
-  classRun   ClassRun            @relation(fields: [classRunId], references: [id], onDelete: Cascade)
-  client     ClientProfile       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  dog        Dog?                @relation(fields: [dogId], references: [id], onDelete: SetNull)
-  attendance SessionAttendance[]
+  classRun    ClassRun            @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  client      ClientProfile       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dog         Dog?                @relation(fields: [dogId], references: [id], onDelete: SetNull)
+  attendance  SessionAttendance[]
+  paymentItem PaymentItem?
 
   @@unique([classRunId, clientId, dogId])
   @@index([classRunId])
@@ -1094,36 +1119,36 @@ enum WaitlistStatus {
   WAITING
   CONTACTED // trainer has reached out, not yet booked
   SCHEDULED // converted into a booking
-  REMOVED   // no longer waiting (declined / went elsewhere)
+  REMOVED // no longer waiting (declined / went elsewhere)
 }
 
 model WaitlistEntry {
-  id        String         @id @default(cuid())
-  trainerId String
+  id                 String         @id @default(cuid())
+  trainerId          String
   // Optional link to an existing client. When null this is a prospect —
   // name is always set; email/phone are the contact snapshot.
-  clientId  String?
-  name      String
-  email     String?
-  phone     String?
+  clientId           String?
+  name               String
+  email              String?
+  phone              String?
   // What they want. packageId = a specific package of interest (optional);
   // request = freeform ("6-week reactive course, weekday evenings").
-  packageId   String?
-  request     String?      @db.Text
-  sessionType SessionType?
+  packageId          String?
+  request            String?        @db.Text
+  sessionType        SessionType?
   // Time preferences for matching to openings. preferredDays holds
   // ISO weekday numbers (1=Mon … 7=Sun); empty = any day. The time
   // window mirrors AvailabilitySlot's "HH:MM" 24-hr strings.
-  preferredDays     Int[]      @default([])
-  preferredTimeStart String?   // "HH:MM" or null = any
-  preferredTimeEnd   String?   // "HH:MM" or null = any
-  earliestStart     DateTime?  @db.Date
-  notes             String?    @db.Text
+  preferredDays      Int[]          @default([])
+  preferredTimeStart String? // "HH:MM" or null = any
+  preferredTimeEnd   String? // "HH:MM" or null = any
+  earliestStart      DateTime?      @db.Date
+  notes              String?        @db.Text
   // Manual ordering — lower = higher priority (top of the list).
-  priority    Int            @default(0)
-  status      WaitlistStatus @default(WAITING)
-  contactedAt DateTime?
-  convertedAt DateTime?
+  priority           Int            @default(0)
+  status             WaitlistStatus @default(WAITING)
+  contactedAt        DateTime?
+  convertedAt        DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1151,24 +1176,24 @@ enum BookingRequestStatus {
 }
 
 model BookingRequest {
-  id        String               @id @default(cuid())
-  trainerId String
-  clientId  String
-  packageId String
-  dogId     String?
+  id                       String               @id @default(cuid())
+  trainerId                String
+  clientId                 String
+  packageId                String
+  dogId                    String?
   // Proposed session datetimes (ISO strings), generated from the
   // client's chosen start on the package cadence. The trainer can
   // adjust on the calendar after confirming.
-  sessionDates Json               @default("[]")
-  status       BookingRequestStatus @default(PENDING)
+  sessionDates             Json                 @default("[]")
+  status                   BookingRequestStatus @default(PENDING)
   // The booking page this request came from (soft ref), so confirming it can
   // stamp the resulting sessions with the page for BEFORE/AFTER automations.
-  bookingPageId String?
-  note         String?            @db.Text
+  bookingPageId            String?
+  note                     String?              @db.Text
   // Set on confirm — links to the created assignment for traceability.
   resultingClientPackageId String?
-  createdAt DateTime @default(now())
-  decidedAt DateTime?
+  createdAt                DateTime             @default(now())
+  decidedAt                DateTime?
 
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   client  ClientProfile  @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -1187,11 +1212,11 @@ model BookingRequest {
 // (lib/trainer-streak.ts, like NOTIFICATION_TYPES); only awards persist.
 
 model TrainerActivityWeek {
-  id        String   @id @default(cuid())
-  trainerId String
+  id              String   @id @default(cuid())
+  trainerId       String
   // ISO week key, e.g. "2026-W20" (lexically sortable within a year;
   // streak math uses a parsed week index, not string order).
-  isoWeek   String
+  isoWeek         String
   firstActivityAt DateTime @default(now())
 
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
@@ -1315,12 +1340,12 @@ model TemplateTask {
 // ─── Messaging ────────────────────────────────────────────────────────────────
 
 model Message {
-  id       String         @id @default(cuid())
-  channel  MessageChannel
-  clientId String // the client this message thread relates to
-  senderId String
-  body     String         @db.Text
-  readAt   DateTime?
+  id                  String         @id @default(cuid())
+  channel             MessageChannel
+  clientId            String // the client this message thread relates to
+  senderId            String
+  body                String         @db.Text
+  readAt              DateTime?
   // Set once the deferred-email fallback has been sent (or deliberately skipped)
   // for this message, so the message-email-fallback cron never double-emails.
   emailFallbackSentAt DateTime?
@@ -1413,29 +1438,29 @@ model CustomFieldValue {
 // ─── Subscription Plans ───────────────────────────────────────────────────────
 
 model SubscriptionPlan {
-  id           String  @id @default(cuid())
-  name         String
-  description  String? @db.Text
-  priceMonthly Float
-  maxClients   Int? // null = unlimited
-  featureFlags Json    @default("{}")
-  isActive     Boolean @default(true)
+  id                           String  @id @default(cuid())
+  name                         String
+  description                  String? @db.Text
+  priceMonthly                 Float
+  maxClients                   Int? // null = unlimited
+  featureFlags                 Json    @default("{}")
+  isActive                     Boolean @default(true)
   // Stripe Price ID this plan maps to (e.g. price_1Abc…). Null while a
   // plan exists in our DB but hasn't been wired to Stripe yet — the
   // checkout flow filters those out so the trainer can't pick a plan
   // we can't actually charge for. Treated as the NZD default; per-
   // currency overrides live in stripePriceIdsByCurrency.
-  stripePriceId String? @unique
+  stripePriceId                String? @unique
   // Per-currency Stripe Price IDs. Shape: { "AUD": "price_…", "USD": "price_…" }.
   // The /billing/setup page lets the trainer pick a currency; we look
   // up the matching price here at Checkout time. If the chosen
   // currency has no entry, we fall back to stripePriceId (NZD) and
   // surface that to the trainer in the UI.
-  stripePriceIdsByCurrency Json @default("{}")
+  stripePriceIdsByCurrency     Json    @default("{}")
   // Stripe TEST-mode price IDs (sandbox), mirroring the live columns above.
   // Sandbox trainers (e.g. the demo) resolve against these instead.
-  stripePriceIdTest String?
-  stripePriceIdsByCurrencyTest Json @default("{}")
+  stripePriceIdTest            String?
+  stripePriceIdsByCurrencyTest Json    @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1463,24 +1488,24 @@ model BillingItem {
   // Stable string ids matching src/lib/pricing.ts: "seat", "achievements",
   // "shop", "ai". Used as the join key on TrainerAddon and the lookup key
   // when building Checkout line items.
-  id          String          @id
-  kind        BillingItemKind
-  name        String
-  description String?          @db.Text
+  id                           String          @id
+  kind                         BillingItemKind
+  name                         String
+  description                  String?         @db.Text
   // NZD reference price — display/sanity only; Stripe is authoritative.
-  priceMonthly Float
+  priceMonthly                 Float
   // Canonical (NZD) Stripe Price ID; per-currency overrides below. Null
   // until wired to Stripe. Same semantics as SubscriptionPlan.
-  stripePriceId String?        @unique
+  stripePriceId                String?         @unique
   // Shape: { "AUD": "price_…", "USD": "price_…" }. Falls back to
   // stripePriceId (NZD) when a currency has no entry.
-  stripePriceIdsByCurrency Json @default("{}")
+  stripePriceIdsByCurrency     Json            @default("{}")
   // Stripe TEST-mode price IDs (sandbox), mirroring the live columns above.
-  stripePriceIdTest String?
-  stripePriceIdsByCurrencyTest Json @default("{}")
-  isActive    Boolean          @default(true)
+  stripePriceIdTest            String?
+  stripePriceIdsByCurrencyTest Json            @default("{}")
+  isActive                     Boolean         @default(true)
   // Display order in the /billing/setup add-on list.
-  sortOrder   Int              @default(0)
+  sortOrder                    Int             @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1495,15 +1520,15 @@ model BillingItem {
 // stripeSubscriptionItemId lets us target the exact line item later for
 // pro-rata add/remove ("toggle any add-on anytime", phase 2).
 model TrainerAddon {
-  id        String  @id @default(cuid())
-  trainerId String
-  itemId    String // BillingItem.id, kind = ADDON
+  id                       String  @id @default(cuid())
+  trainerId                String
+  itemId                   String // BillingItem.id, kind = ADDON
   // Stripe subscription item id for this add-on's line. Null until the
   // webhook reconciles the subscription after checkout.
   stripeSubscriptionItemId String? @unique
   // False = toggled off but row kept for history. The active set drives
   // feature gating + billing.
-  active    Boolean @default(true)
+  active                   Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1514,6 +1539,118 @@ model TrainerAddon {
   @@unique([trainerId, itemId])
   @@index([trainerId])
   @@map("trainer_addons")
+}
+
+// ─── Client→Trainer payments (Flow B, Stripe Connect Express) ─────────────────
+// A Payment is one hosted-Checkout charge a client made to a trainer, settled on
+// the platform account as a *destination charge* (transfer_data.destination =
+// the trainer's Connect account, application_fee_amount = our platform cut).
+// Stripe handles the split + payout; we just record the result and fulfil what
+// was bought. PaymentItem rows link a payment to the things it created
+// (ClientPackage / TrainingSession / Product / ClassEnrollment). This is wholly
+// separate from the trainer's own subscription to PupManager.
+
+enum PaymentStatus {
+  PENDING // Checkout session created, not yet paid
+  PAID // payment_intent succeeded
+  FAILED
+  REFUNDED // fully refunded
+  PARTIALLY_REFUNDED
+  DISPUTED // chargeback opened
+  CANCELLED // session expired / abandoned
+}
+
+enum PurchasableKind {
+  PACKAGE // → ClientPackage created/activated
+  SESSION // → single TrainingSession (booking-page slot)
+  PRODUCT // → Product purchase
+  CLASS_ENROLLMENT // → ClassEnrollment (group / drop-in)
+}
+
+model Payment {
+  id        String  @id @default(cuid())
+  trainerId String
+  // ClientProfile.id — null for a prospect paying before conversion.
+  clientId  String?
+
+  // Stripe identifiers. The Checkout Session/PaymentIntent live on the platform
+  // account; the resulting charge sits on the connected account.
+  stripeCheckoutSessionId String? @unique
+  stripePaymentIntentId   String? @unique
+  stripeChargeId          String?
+  // Denormalised acct_… that received the funds (survives trainer edits).
+  connectAccountId        String
+
+  // Money in minor units. amountTotal = what the client paid.
+  amountTotal          Int
+  currency             String // ISO 4217 lower-case, matches payoutCurrency at sale time
+  applicationFeeAmount Int // our platform fee, minor units
+  amountRefunded       Int           @default(0)
+  status               PaymentStatus @default(PENDING)
+  // Which Stripe mode this lived in (mirrors TrainerProfile.sandboxBilling at
+  // sale time) so webhooks/refunds reach for the right key pair.
+  sandbox              Boolean       @default(false)
+  // Human description of what was bought, denormalised for the earnings list so
+  // deleting a Package/Product never orphans payment history.
+  description          String?
+
+  createdAt DateTime  @default(now())
+  paidAt    DateTime?
+  updatedAt DateTime  @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  client  ClientProfile? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  items   PaymentItem[]
+  refunds Refund[]
+
+  @@index([trainerId, status])
+  @@index([clientId])
+  @@map("payments")
+}
+
+model PaymentItem {
+  id          String          @id @default(cuid())
+  paymentId   String
+  kind        PurchasableKind
+  // Snapshot of name + unit price at sale time (history survives edits/deletes).
+  description String
+  unitAmount  Int
+  quantity    Int             @default(1)
+
+  // Links to the fulfilled rows, set on payment success. One-to-one for the
+  // session/package/enrollment a payment created; product can repeat across
+  // payments so it's a plain FK.
+  clientPackageId   String? @unique
+  trainingSessionId String? @unique
+  productId         String?
+  classEnrollmentId String? @unique
+  // What to create on payment success, captured at checkout time, e.g.
+  // { packageId, slotIso, dogId, bookingPageId, quantity }.
+  intent            Json?
+
+  payment         Payment          @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  clientPackage   ClientPackage?   @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
+  trainingSession TrainingSession? @relation(fields: [trainingSessionId], references: [id], onDelete: SetNull)
+  product         Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  classEnrollment ClassEnrollment? @relation(fields: [classEnrollmentId], references: [id], onDelete: SetNull)
+
+  @@index([paymentId])
+  @@map("payment_items")
+}
+
+model Refund {
+  id             String   @id @default(cuid())
+  paymentId      String
+  stripeRefundId String   @unique
+  amount         Int // minor units
+  reason         String? // trainer note or Stripe reason
+  status         String // "pending" | "succeeded" | "failed"
+  createdAt      DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@map("refunds")
 }
 
 // ─── Training Library ─────────────────────────────────────────────────────────
@@ -1684,9 +1821,9 @@ model BookingPage {
 
 // When an automation fires relative to a booking.
 enum BookingAutomationTrigger {
-  ON_BOOKING     // immediately when the slot is booked / requested
+  ON_BOOKING // immediately when the slot is booked / requested
   BEFORE_SESSION // offsetMinutes before the session start
-  AFTER_SESSION  // offsetMinutes after the session start
+  AFTER_SESSION // offsetMinutes after the session start
 }
 
 // A trainer-authored email that fires automatically off a booking-page booking.
@@ -1804,26 +1941,26 @@ model ClientAchievement {
 // ─── Embed Forms ──────────────────────────────────────────────────────────────
 
 model EmbedForm {
-  id              String   @id @default(cuid())
-  trainerId       String
-  isSample        Boolean  @default(false)
-  title           String
-  description     String?  @db.Text
+  id                     String   @id @default(cuid())
+  trainerId              String
+  isSample               Boolean  @default(false)
+  title                  String
+  description            String?  @db.Text
   // JSON array of { key: string, required: boolean } for standard fields
   // Keys: phone | dogName | dogBreed | dogWeight | dogDob | message
-  fields          Json     @default("[]")
+  fields                 Json     @default("[]")
   // JSON string[] of CustomField ids to include
-  customFieldIds  Json     @default("[]")
-  thankYouTitle   String?  @db.Text
-  thankYouMessage String?  @db.Text
-  isActive        Boolean  @default(true)
+  customFieldIds         Json     @default("[]")
+  thankYouTitle          String?  @db.Text
+  thankYouMessage        String?  @db.Text
+  isActive               Boolean  @default(true)
   // Styling — let trainers match the form to their site's brand.
   // showBorder draws the slate-200 card border around field groups;
   // off for embeds where the parent page already provides framing.
   // buttonColor is a hex string (e.g. "#2563eb") for the submit
   // button; null falls back to the platform blue.
-  showBorder      Boolean  @default(true)
-  buttonColor     String?
+  showBorder             Boolean  @default(true)
+  buttonColor            String?
   // Welcome email — sent by acceptEnquiry when a trainer accepts an
   // enquiry from this form and opts into the magic-link invite. All
   // null/default values fall back to the platform copy in
@@ -1835,8 +1972,8 @@ model EmbedForm {
   welcomeIntro           String?  @db.Text
   welcomeShowDiaryButton Boolean  @default(true)
   welcomeButtonLabel     String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   trainer   TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   enquiries Enquiry[]
@@ -1869,16 +2006,16 @@ model Enquiry {
   // { customFieldId: value } map of custom-field answers, snapshotted
   customFieldValues Json      @default("{}")
 
-  status          EnquiryStatus @default(NEW)
+  status                EnquiryStatus @default(NEW)
   // Set when the trainer first opens the enquiry — drives the dashboard badge.
-  viewedAt        DateTime?
+  viewedAt              DateTime?
   // Highest follow-up nudge already sent for this unanswered enquiry:
   // 0 = none, 1 = 6h, 2 = 18h, 3 = 24h, 4 = 36h. The enquiry-followups cron
   // bumps this as each threshold passes; reset is unnecessary because a reply
   // or status change takes the enquiry out of the cron's "unanswered" query.
-  followupReminderLevel Int     @default(0)
+  followupReminderLevel Int           @default(0)
   // Populated after Accept; gives a forward link to the resulting client.
-  clientProfileId String?       @unique
+  clientProfileId       String?       @unique
 
   // Set when the enquiry came from the public Calendly-style booking page:
   // the prospect's chosen slot (UTC instant) and the package they picked
@@ -1960,16 +2097,16 @@ model OnboardingStep {
 // `senderKey` selects the founder voice ("karl" | "brooke") for from-address
 // and signature.
 model OnboardingEmail {
-  id          String    @id @default(cuid())
-  key         String    @unique
-  subject     String
-  body        String    @db.Text
+  id           String    @id @default(cuid())
+  key          String    @unique
+  subject      String
+  body         String    @db.Text
   // Optional intro text shown ABOVE the hero image.
-  topText     String?   @db.Text
+  topText      String?   @db.Text
   // Optional hero image shown in the email (admin-uploaded, public Blob URL).
-  imageUrl    String?
+  imageUrl     String?
   // Optional fixed display height for the image in px (null = natural/auto).
-  imageHeight Int?
+  imageHeight  Int?
   // Optional click-through link for the first image (wraps it in an <a href>).
   linkUrl      String?
   // Optional SECOND image block, shown below the body (admin-uploaded Blob URL).
@@ -1978,18 +2115,18 @@ model OnboardingEmail {
   // Optional click-through link for the second image.
   linkUrl2     String?
   // Optional THIRD text block, shown below the second image.
-  bottomText   String?  @db.Text
+  bottomText   String?   @db.Text
   // Manual position within the admin "series" list (lower = earlier). Send
   // timing is still driven by triggerRule; this only controls list order.
-  sortOrder    Int      @default(0)
-  senderKey   String    @default("karl")
+  sortOrder    Int       @default(0)
+  senderKey    String    @default("karl")
   // Examples:
   //   { "type": "on_signup" }
   //   { "type": "after_signup", "hours": 24, "requireStepIncomplete": "business_profile" }
   //   { "type": "after_first_invite_sent", "hours": 24, "requireNoClientSignedIn": true }
   //   { "type": "on_aha_reached" }
-  triggerRule Json
-  publishedAt DateTime?
+  triggerRule  Json
+  publishedAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

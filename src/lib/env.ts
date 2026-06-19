@@ -69,6 +69,17 @@ const schema = z.object({
   // in local dev all of them are test keys.
   STRIPE_SECRET_KEY_TEST: optionalString,
   STRIPE_WEBHOOK_SECRET_TEST: optionalString,
+  // Stripe Connect (Flow B: client→trainer payments). Separate signing secret
+  // for the Connect webhook endpoint (events carry a connected-account id and a
+  // different secret than the subscription webhook above). Test mirror for the
+  // sandbox/demo trainer. Optional — when unset, Connect onboarding/checkout is
+  // off and surfaces degrade via isStripeConfigured().
+  STRIPE_CONNECT_WEBHOOK_SECRET: optionalString,
+  STRIPE_CONNECT_WEBHOOK_SECRET_TEST: optionalString,
+  // Platform fee taken on each client→trainer payment, in basis points
+  // (500 = 5%). Passed straight to Stripe as application_fee_amount on the
+  // destination charge — Stripe does the actual split + payout. Defaults to 5%.
+  PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(10000).default(500),
   // Founders Circle coupon. Create in the Stripe dashboard as a coupon
   // with duration = "repeating", duration_in_months = 12, the founder
   // discount (percent_off or amount_off), and max_redemptions = 10 — the
