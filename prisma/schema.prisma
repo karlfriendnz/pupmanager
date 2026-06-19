@@ -1585,6 +1585,11 @@ model Payment {
   amountTotal          Int
   currency             String // ISO 4217 lower-case, matches payoutCurrency at sale time
   applicationFeeAmount Int // our platform fee, minor units
+  // Stripe's processing ("credit card") fee for this charge, minor units. Read
+  // from the charge's balance_transaction on payment success and shown on the
+  // invoice/earnings breakdown (gross − card fee − platform fee = net). Null
+  // until the webhook fills it in.
+  stripeFeeAmount      Int?
   amountRefunded       Int           @default(0)
   status               PaymentStatus @default(PENDING)
   // Which Stripe mode this lived in (mirrors TrainerProfile.sandboxBilling at

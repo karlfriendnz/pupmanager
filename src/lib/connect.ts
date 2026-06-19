@@ -99,7 +99,7 @@ export async function createOnboardingLink(accountId: string, sandbox: boolean):
     account: accountId,
     type: 'account_onboarding',
     refresh_url: `${APP_URL}/api/connect/account/refresh`,
-    return_url: `${APP_URL}/settings/payments?onboarded=1`,
+    return_url: `${APP_URL}/settings?tab=payments&onboarded=1`,
   })
   return link.url
 }

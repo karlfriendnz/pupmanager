@@ -25,6 +25,7 @@ CREATE TABLE "payments" (
     "amountTotal" INTEGER NOT NULL,
     "currency" TEXT NOT NULL,
     "applicationFeeAmount" INTEGER NOT NULL,
+    "stripeFeeAmount" INTEGER,
     "amountRefunded" INTEGER NOT NULL DEFAULT 0,
     "status" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
     "sandbox" BOOLEAN NOT NULL DEFAULT false,

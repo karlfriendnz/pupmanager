@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell, Users, CreditCard } from 'lucide-react'
+import { User, Pencil, Bell, Users, CreditCard, Wallet } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 
 const ALL_TABS = [
@@ -10,6 +10,7 @@ const ALL_TABS = [
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'forms', label: 'Forms', icon: Pencil },
   { id: 'team', label: 'Team', icon: Users },
+  { id: 'payments', label: 'Payments', icon: Wallet },
   { id: 'billing', label: 'Billing', icon: CreditCard },
 ] as const
 
@@ -20,6 +21,7 @@ export function SettingsTabs({
   notifications,
   forms,
   team,
+  payments,
   billing,
 }: {
   // Each tab renders only when its node is provided, so the page can hide tabs
@@ -29,10 +31,11 @@ export function SettingsTabs({
   notifications: React.ReactNode
   forms?: React.ReactNode
   team?: React.ReactNode
+  payments?: React.ReactNode
   billing?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, team, billing }
+  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, team, payments, billing }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -103,6 +106,7 @@ export function SettingsTabs({
         <div className={tab === 'notifications' ? '' : 'hidden'}>{notifications}</div>
         {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}
         {team != null && <div className={tab === 'team' ? '' : 'hidden'}>{team}</div>}
+        {payments != null && <div className={tab === 'payments' ? '' : 'hidden'}>{payments}</div>}
         {billing != null && !native && <div className={tab === 'billing' ? '' : 'hidden'}>{billing}</div>}
       </div>
     </div>
