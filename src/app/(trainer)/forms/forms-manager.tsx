@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Plus, X, Copy, Check, Trash2, Pencil, ExternalLink,
+  Plus, Copy, Check, Trash2, Pencil, ExternalLink,
   Globe, ToggleLeft, ToggleRight, Code2, FileText,
   ClipboardList,
 } from 'lucide-react'
@@ -90,7 +90,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 // Page-style embed form editor. Renders in a dedicated route (/forms/embed/new
 // or /forms/embed/[formId]) — the parent page provides the chrome (back link
 // + title), this component owns the form fields, save/delete/toggle, and the
-// embed code reveal. Save and delete redirect back to /settings?tab=forms.
+// embed code reveal. Save and delete redirect back to /website.
 export function EmbedFormEditor({
   initial,
   customFields,
@@ -209,7 +209,7 @@ export function EmbedFormEditor({
       setSaving(false)
       return
     }
-    router.push('/settings?tab=forms')
+    router.push('/website')
     router.refresh()
   }
 
@@ -227,7 +227,7 @@ export function EmbedFormEditor({
     if (!initial) return
     const res = await fetch(`/api/embed-forms/${initial.id}`, { method: 'DELETE' })
     if (!res.ok) return
-    router.push('/settings?tab=forms')
+    router.push('/website')
     router.refresh()
   }
 
@@ -631,21 +631,18 @@ const TYPE_BADGE: Record<FormType, { label: string; cls: string; Icon: typeof Gl
 }
 
 export function FormsManager({
-  initialForms,
   initialSessionForms,
   intakeCustomFields,
   intakeFormPublished,
 }: {
-  initialForms: EmbedForm[]
   initialSessionForms: SessionFormRow[]
   intakeCustomFields: IntakeCustomField[]
   intakeFormPublished: boolean
 }) {
   const router = useRouter()
   // Forms list is read-only here — actual edits live on dedicated routes.
-  const forms = initialForms
+  // Embed (lead-capture) forms now live on the Website tab.
   const sessionForms = initialSessionForms
-  const [picking, setPicking] = useState(false)
 
   const intakeFieldCount = intakeCustomFields.length
 
@@ -653,11 +650,11 @@ export function FormsManager({
     <>
       <div className="flex flex-col items-start gap-3 mb-4">
         <p className="text-sm text-slate-500">
-          All your forms in one place. Intake gates new clients, embed forms capture leads, session forms record reports.
+          Intake gates new clients and session forms record reports. Lead-capture embed forms now live on the Website tab.
         </p>
-        <Button size="sm" onClick={() => setPicking(true)}>
+        <Button size="sm" onClick={() => router.push('/forms/session/new')}>
           <Plus className="h-4 w-4" />
-          New form
+          New session form
         </Button>
       </div>
 
@@ -672,36 +669,6 @@ export function FormsManager({
           published={intakeFormPublished}
           onEdit={() => router.push('/forms/intake')}
         />
-
-        {/* Embed forms */}
-        {forms.map(form => (
-          <div key={form.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <div className="flex items-center gap-4 p-4">
-              <TypeBadgeIcon type="EMBED" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-slate-900 truncate">{form.title}</p>
-                  <TypeBadge type="EMBED" />
-                  <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                    form.isActive ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                  }`}>
-                    {form.isActive ? 'Published' : 'Draft'}
-                  </span>
-                </div>
-                {form.description && <p className="text-sm text-slate-400 truncate mt-0.5">{form.description}</p>}
-                <p className="text-xs text-slate-400 mt-1">
-                  {form.fields.length + form.customFieldIds.length} optional field{form.fields.length + form.customFieldIds.length !== 1 ? 's' : ''} configured
-                </p>
-              </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <button onClick={() => router.push(`/forms/embed/${form.id}`)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit form">
-                  <Pencil className="h-4 w-4" />{/* Publish, preview, embed code, delete are inside the editor page. */}
-                </button>
-              </div>
-            </div>
-
-          </div>
-        ))}
 
         {/* Session forms */}
         {sessionForms.map(f => (
@@ -734,22 +701,9 @@ export function FormsManager({
         ))}
       </div>
 
-      {/* Type picker for "+ New form" */}
-      {picking && (
-        <TypePicker
-          onPick={(type) => {
-            setPicking(false)
-            if (type === 'EMBED') router.push('/forms/embed/new')
-            else if (type === 'SESSION') router.push('/forms/session/new')
-          }}
-          onClose={() => setPicking(false)}
-        />
-      )}
-
       {/* Editor modals replaced by dedicated routes:
-          /forms/embed/new + /forms/embed/[formId]
           /forms/session/new + /forms/session/[formId]
-          /forms/intake */}
+          /forms/intake (embed forms live on the Website tab) */}
     </>
   )
 }
@@ -810,45 +764,6 @@ function FormRowCard({
         <div className="flex items-center gap-1 flex-shrink-0">
           <button onClick={onEdit} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit">
             <Pencil className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function TypePicker({ onPick, onClose }: { onPick: (t: 'EMBED' | 'SESSION') => void; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-slate-900">New form</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <p className="text-sm text-slate-500 mb-4">Pick a form type. (Intake is a singleton — edit it from the row above.)</p>
-        <div className="grid grid-cols-1 gap-2">
-          <button
-            onClick={() => onPick('EMBED')}
-            className="flex items-start gap-3 text-left rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors p-3"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-700 flex-shrink-0"><Globe className="h-4 w-4" /></div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900">Embed form</p>
-              <p className="text-xs text-slate-500 mt-0.5">Public lead-capture form to embed on your website. Submissions land in your enquiries.</p>
-            </div>
-          </button>
-          <button
-            onClick={() => onPick('SESSION')}
-            className="flex items-start gap-3 text-left rounded-xl border border-slate-200 hover:border-violet-300 hover:bg-violet-50 transition-colors p-3"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-700 flex-shrink-0"><FileText className="h-4 w-4" /></div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900">Session form</p>
-              <p className="text-xs text-slate-500 mt-0.5">Template you attach to a training session to capture a structured report.</p>
-            </div>
           </button>
         </div>
       </div>

@@ -45,6 +45,20 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
     : []
   const labelById = Object.fromEntries(fields.map(f => [f.id, f.label]))
 
+  // Format the requested booking slot (if any) in the trainer's timezone.
+  let bookedLabel: string | null = null
+  if (enquiry.bookedSlotAt) {
+    const trainerUser = await prisma.trainerProfile.findUnique({
+      where: { id: trainerId },
+      select: { user: { select: { timezone: true } } },
+    })
+    const tz = trainerUser?.user.timezone ?? 'UTC'
+    bookedLabel = new Intl.DateTimeFormat('en-NZ', {
+      timeZone: tz, weekday: 'long', day: 'numeric', month: 'long',
+      hour: 'numeric', minute: '2-digit',
+    }).format(enquiry.bookedSlotAt)
+  }
+
   return (
     <>
       <PageHeader
@@ -54,6 +68,20 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         actions={<StatusPill status={enquiry.status} />}
       />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+
+      {bookedLabel && (
+        <Card className="p-5 mb-4 border-violet-200 bg-violet-50/50">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-violet-600 mb-1">Requested booking</h2>
+          <p className="text-sm font-semibold text-slate-900">{bookedLabel}</p>
+          <p className="text-xs text-slate-500 mt-1">
+            {enquiry.status === 'NEW'
+              ? 'Accepting this enquiry will add the session to your calendar.'
+              : enquiry.status === 'ACCEPTED'
+                ? 'The session was added to your calendar.'
+                : 'This time was not booked.'}
+          </p>
+        </Card>
+      )}
 
       <Card className="p-5 mb-4">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Contact</h2>

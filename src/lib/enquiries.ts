@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { prisma } from './prisma'
 import { env } from './env'
 import { sendEmail } from './email'
+import { materializeBooking } from './booking-page'
 
 // Convert an enquiry into a real client. Mirrors what the form submit
 // endpoint used to do inline:
@@ -9,6 +10,8 @@ import { sendEmail } from './email'
 //   2. Create Dog if dog details were captured
 //   3. Create ClientProfile linking user → trainer → dog
 //   4. Materialise the snapshotted customFieldValues into CustomFieldValue rows
+//   4b. If the enquiry came from the public booking page (bookedSlotAt set),
+//       place the booked session / package series onto the calendar
 //   5. (Opt-in) Issue a NextAuth-compatible magic-link token + welcome email
 //   6. Mark the enquiry ACCEPTED with a back-link to the ClientProfile
 //
@@ -50,6 +53,41 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
       })()
     : null
 
+  // If the enquiry arrived from the public booking page, resolve what to book
+  // up-front so the conversion transaction can also place the session(s). The
+  // package (if any) and the booking-page defaults (single-session duration /
+  // type) are read here, outside the transaction.
+  let booked:
+    | {
+        slotAt: Date
+        pkg: { id: string; name: string; sessionCount: number; weeksBetween: number; durationMins: number; sessionType: import('@/generated/prisma').SessionType } | null
+        duration: number
+        sessionType: import('@/generated/prisma').SessionType
+        title: string
+      }
+    | null = null
+  if (enquiry.bookedSlotAt) {
+    const pkg = enquiry.bookedPackageId
+      ? await prisma.package.findFirst({
+          where: { id: enquiry.bookedPackageId, trainerId: enquiry.trainerId },
+          select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, sessionType: true },
+        })
+      : null
+    const page = enquiry.bookedPageId
+      ? await prisma.bookingPage.findUnique({
+          where: { id: enquiry.bookedPageId },
+          select: { slotLengthMins: true, sessionType: true, headline: true },
+        })
+      : null
+    booked = {
+      slotAt: enquiry.bookedSlotAt,
+      pkg,
+      duration: page?.slotLengthMins ?? 60,
+      sessionType: page?.sessionType ?? 'IN_PERSON',
+      title: page?.headline?.trim() || `${enquiry.trainer.businessName} session`,
+    }
+  }
+
   const clientProfileId = await prisma.$transaction(async tx => {
     const clientUser = await tx.user.create({
       data: { name: enquiry.name, email: enquiry.email, role: 'CLIENT' },
@@ -76,6 +114,23 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
         status: 'ACTIVE',
       },
     })
+
+    // Place the booked session(s) onto the calendar as part of the conversion,
+    // so accepting a booking-page prospect both creates the client and books
+    // their chosen slot.
+    if (booked) {
+      await materializeBooking(tx, {
+        trainerId: enquiry.trainerId,
+        clientId: clientProfile.id,
+        dogId,
+        slotAt: booked.slotAt,
+        pkg: booked.pkg,
+        singleDurationMins: booked.duration,
+        singleSessionType: booked.sessionType,
+        singleTitle: booked.title,
+        bookingPageId: enquiry.bookedPageId,
+      })
+    }
 
     const entries = Object.entries(customFieldSnapshot).filter(([, v]) => v?.trim())
     if (entries.length > 0) {

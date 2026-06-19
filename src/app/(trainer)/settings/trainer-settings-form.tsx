@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { Accordion, AccordionItem } from '@/components/ui/accordion'
 import { BrandPreview } from '@/components/brand-preview'
-import { ClientLoginLinkCard } from './client-login-link-card'
 import { TIMEZONES } from '@/lib/timezones'
 import { ImagePlus, Loader2 } from 'lucide-react'
 
@@ -57,13 +56,9 @@ Your Trainer`
 export function TrainerSettingsForm({
   user,
   profile,
-  clientLoginSlug,
-  appUrl,
 }: {
   user: { name: string | null; email: string; timezone: string }
   profile: { businessName: string; phone: string | null; logoUrl: string | null; dashboardBgUrl: string | null; inviteTemplate: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null }
-  clientLoginSlug: string | null
-  appUrl: string
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
@@ -373,11 +368,6 @@ export function TrainerSettingsForm({
           </div>
         </div>
         </div>
-      </AccordionItem>
-
-      {/* Website — branded client login link for the trainer's own site */}
-      <AccordionItem title="Website" subtitle="A branded sign-in link for your clients">
-        <ClientLoginLinkCard slug={clientLoginSlug} baseUrl={appUrl} embedded />
       </AccordionItem>
 
       {/* Invite email template */}

@@ -29,6 +29,7 @@ const TRAINER_NAV = [
   { href: '/achievements', label: 'Achievements', icon: Trophy },
   { href: '/enquiries',    label: 'Enquiries',    icon: Inbox },
   { href: '/messages',     label: 'Messages',     icon: MessageSquare },
+  { href: '/website',      label: 'Website',      icon: Globe },
   { href: '/settings',     label: 'Settings',     icon: Settings },
   { href: '/help',         label: 'Help',         icon: HelpCircle },
 ]

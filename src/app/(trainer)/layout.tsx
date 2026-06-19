@@ -53,6 +53,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     '/achievements': 'achievements.manage',
     '/enquiries': 'enquiries.manage',
     '/messages': 'messages.send',
+    '/website': 'settings.edit',
   }
   const hiddenNavHrefs = ctx
     ? Object.entries(NAV_PERMISSION)

@@ -64,6 +64,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       dogId: reqRow.dogId,
       pkg: reqRow.package,
       sessionDates: dates,
+      bookingPageId: reqRow.bookingPageId,
     })
     await tx.bookingRequest.update({
       where: { id },

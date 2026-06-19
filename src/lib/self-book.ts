@@ -41,6 +41,9 @@ export async function createBookingAssignment(
     dogId: string | null
     pkg: { name: string; sessionCount: number; durationMins: number; sessionType: 'IN_PERSON' | 'VIRTUAL' }
     sessionDates: Date[]
+    // The booking page this assignment came from, if any — stamped on each
+    // session so BEFORE/AFTER booking automations can target them.
+    bookingPageId?: string | null
   },
 ): Promise<string> {
   const assignment = await tx.clientPackage.create({
@@ -56,6 +59,7 @@ export async function createBookingAssignment(
       clientId: args.clientId,
       dogId: args.dogId,
       clientPackageId: assignment.id,
+      bookingPageId: args.bookingPageId ?? null,
       title: sessionTitle(args.pkg.name, args.pkg.sessionCount, i),
       scheduledAt: d,
       durationMins: args.pkg.durationMins,

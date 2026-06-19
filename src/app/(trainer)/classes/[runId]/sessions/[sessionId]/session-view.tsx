@@ -227,7 +227,7 @@ export function SessionView({
               const isNum = q.type === 'NUMBER' || q.type === 'RATING_1_5'
               return (
                 <label key={q.id} className="block">
-                  <span className="text-[11px] font-medium text-slate-500">{label}</span>
+                  <span className="text-sm font-medium text-slate-700">{label}</span>
                   {isLong
                     ? <textarea rows={3} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     : <input type={isNum ? 'number' : 'text'} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 w-full h-10 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />}
@@ -235,7 +235,7 @@ export function SessionView({
               )
             })}
             <label className="block">
-              <span className="text-[11px] font-medium text-slate-500">Recap message for the client (optional)</span>
+              <span className="text-sm font-medium text-slate-700">Recap message for the client (optional)</span>
               <textarea rows={3} value={draft[notesRow.enrollmentId].recap} onChange={e => setDraft(p => ({ ...p, [notesRow.enrollmentId]: { ...p[notesRow.enrollmentId], recap: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
             <div className="flex gap-2 pt-1">

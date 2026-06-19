@@ -415,6 +415,7 @@ model TrainerProfile {
   sentNotifications  ClientNotification[]
   availabilitySlots  AvailabilitySlot[]
   blackoutPeriods    BlackoutPeriod[]
+  bookingPages       BookingPage[]
   packages           Package[]
   sessionForms       SessionForm[]
   products           Product[]
@@ -704,6 +705,10 @@ model TrainingSession {
   // class's default form (the group package's defaultSessionFormId). Lets a run
   // use one form for most sessions and a different one on, say, the last.
   sessionFormId   String?
+  // The booking page this session was created from (instant book, accepted
+  // prospect, or confirmed request). Drives BEFORE/AFTER_SESSION automations.
+  // SetNull so deleting the page leaves the session intact.
+  bookingPageId   String?
   title           String
   description     String?       @db.Text
   scheduledAt     DateTime
@@ -745,11 +750,14 @@ model TrainingSession {
   attachments              SessionAttachment[]
   classRun                 ClassRun?             @relation(fields: [classRunId], references: [id], onDelete: Cascade)
   attendance               SessionAttendance[]
+  bookingPage              BookingPage?          @relation(fields: [bookingPageId], references: [id], onDelete: SetNull)
+  automationSends          BookingAutomationSend[]
 
   @@index([trainerId])
   @@index([assignedMembershipId])
   @@index([clientId])
   @@index([scheduledAt])
+  @@index([bookingPageId])
   // Composite for the hot path: "this trainer's sessions in a date range"
   // (schedule grid, dashboard, route day) — one index scan instead of
   // filtering a trainerId or scheduledAt index.
@@ -933,6 +941,7 @@ model Package {
   classRuns          ClassRun[]
   waitlistEntries    WaitlistEntry[]
   bookingRequests    BookingRequest[]
+  bookingPages       BookingPage[]
   defaultSessionForm SessionForm?    @relation("PackageDefaultSessionForm", fields: [defaultSessionFormId], references: [id], onDelete: SetNull)
 
   @@index([trainerId])
@@ -1152,6 +1161,9 @@ model BookingRequest {
   // adjust on the calendar after confirming.
   sessionDates Json               @default("[]")
   status       BookingRequestStatus @default(PENDING)
+  // The booking page this request came from (soft ref), so confirming it can
+  // stamp the resulting sessions with the page for BEFORE/AFTER automations.
+  bookingPageId String?
   note         String?            @db.Text
   // Set on confirm — links to the created assignment for traceability.
   resultingClientPackageId String?
@@ -1610,6 +1622,113 @@ model BlackoutPeriod {
   @@map("blackout_periods")
 }
 
+// Calendly-style public booking page. One config row per trainer, exposed at
+// /c/<slug>/book. Discrete bookable time-slots are derived at request time
+// from the trainer's AvailabilitySlots minus blackouts and existing sessions,
+// sliced by slotLengthMins/slotIntervalMins. A pick by an existing client runs
+// the self-book engine (instant or BookingRequest per requiresApproval); a pick
+// by a public prospect creates an Enquiry the trainer accepts (the accept both
+// converts them to a client and books the chosen slot). Optionally tied to a
+// package, in which case the chosen slot is session 1 and the rest auto-place
+// on the package cadence; with no package each pick books a single session.
+model BookingPage {
+  id               String      @id @default(cuid())
+  trainerId        String
+  // URL segment under /c/<trainerSlug>/book/<slug>. Unique per trainer. A
+  // trainer can run several pages (e.g. "intro-call", "puppy-class") each with
+  // their own package, slot rules and approval setting.
+  slug             String
+  // Internal label (also the default public headline if none set).
+  name             String      @default("Book a session")
+  order            Int         @default(0)
+  enabled          Boolean     @default(false)
+  headline         String?
+  intro            String?     @db.Text
+  // Trainer-set slot granularity. slotLengthMins is the session length each
+  // slot represents; slotIntervalMins is the step between consecutive slot
+  // starts (e.g. 60-min slots every 30 min produces overlapping start times).
+  slotLengthMins   Int         @default(60)
+  slotIntervalMins Int         @default(60)
+  // Per-link instant-vs-approval choice for booking by an existing client.
+  // (Prospects always route through Enquiry accept, which is itself approval.)
+  requiresApproval Boolean     @default(true)
+  // Earliest a slot may be booked, in hours from now — stops same-minute books.
+  minNoticeHours   Int         @default(12)
+  // How far ahead slots are offered.
+  windowDays       Int         @default(28)
+  // Per-page availability window. When availStartTime + availEndTime are both
+  // set, the page generates slots directly from these (availDays + the daily
+  // window) instead of the trainer's global schedule availability. Times are
+  // "HH:MM" 24h; availDays is ISO weekdays (1=Mon..7=Sun).
+  availDays        Json        @default("[1,2,3,4,5]")
+  availStartTime   String?
+  availEndTime     String?
+  // Optional package the booking kicks off. Null = single one-off session of
+  // slotLengthMins. SetNull so deleting the package just reverts to single.
+  packageId        String?
+  sessionType      SessionType @default(IN_PERSON)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer     TrainerProfile      @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  package     Package?            @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  automations BookingAutomation[]
+  sessions    TrainingSession[]
+
+  @@unique([trainerId, slug])
+  @@index([trainerId])
+  @@index([packageId])
+  @@map("booking_pages")
+}
+
+// When an automation fires relative to a booking.
+enum BookingAutomationTrigger {
+  ON_BOOKING     // immediately when the slot is booked / requested
+  BEFORE_SESSION // offsetMinutes before the session start
+  AFTER_SESSION  // offsetMinutes after the session start
+}
+
+// A trainer-authored email that fires automatically off a booking-page booking.
+// ON_BOOKING sends inline at booking time; BEFORE/AFTER_SESSION are picked up by
+// the booking-automations cron once their offset relative to the session is due.
+// Subject/body are plain text with {name} {dog} {time} {business} placeholders.
+model BookingAutomation {
+  id            String                   @id @default(cuid())
+  bookingPageId String
+  trigger       BookingAutomationTrigger
+  // Minutes relative to the session start for BEFORE/AFTER. Ignored for ON_BOOKING.
+  offsetMinutes Int                      @default(1440)
+  enabled       Boolean                  @default(true)
+  subject       String
+  body          String                   @db.Text
+  order         Int                      @default(0)
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  bookingPage BookingPage             @relation(fields: [bookingPageId], references: [id], onDelete: Cascade)
+  sends       BookingAutomationSend[]
+
+  @@index([bookingPageId])
+  @@map("booking_automations")
+}
+
+// One row per (automation, session) already sent — dedups the time-based cron
+// so a reminder/follow-up goes out exactly once even if ticks overlap.
+model BookingAutomationSend {
+  id           String   @id @default(cuid())
+  automationId String
+  sessionId    String
+  sentAt       DateTime @default(now())
+
+  automation BookingAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  session    TrainingSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([automationId, sessionId])
+  @@index([sessionId])
+  @@map("booking_automation_sends")
+}
+
 // ─── Trainer-defined Achievements ────────────────────────────────────────────
 
 enum AchievementTrigger {
@@ -1760,6 +1879,18 @@ model Enquiry {
   followupReminderLevel Int     @default(0)
   // Populated after Accept; gives a forward link to the resulting client.
   clientProfileId String?       @unique
+
+  // Set when the enquiry came from the public Calendly-style booking page:
+  // the prospect's chosen slot (UTC instant) and the package they picked
+  // (if the booking page offers one). On Accept these materialise into a
+  // TrainingSession / package series so converting the prospect to a client
+  // also books their session. bookedPackageId is a soft reference (no FK) —
+  // it's re-validated against the trainer's packages at accept time.
+  // bookedPageId points at the originating BookingPage (soft ref) so a
+  // single-session booking can recover its duration / session type on accept.
+  bookedSlotAt    DateTime?
+  bookedPackageId String?
+  bookedPageId    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
