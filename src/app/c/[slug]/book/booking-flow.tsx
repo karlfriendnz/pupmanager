@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { Calendar, Clock, Loader2, CheckCircle2, ChevronLeft } from 'lucide-react'
+import { openExternal } from '@/lib/external-link'
 
 interface Slot {
   iso: string
@@ -98,6 +99,11 @@ export function BookingFlow({
         // A taken slot is gone — drop back to the picker so they re-choose.
         if (body.code === 'SLOT_TAKEN') setSlot(null)
         return
+      }
+      // Pay-to-confirm page → hand off to Stripe; the webhook books on success.
+      if (body.mode === 'payment' && body.url) {
+        openExternal(body.url)
+        return // keep the spinner up while we leave for Stripe
       }
       setResult((body.mode as Result) ?? (willRequest ? 'requested' : 'booked'))
     } finally {

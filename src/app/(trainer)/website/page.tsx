@@ -49,6 +49,8 @@ export default async function WebsitePage() {
             slotLengthMins: p.slotLengthMins,
             slotIntervalMins: p.slotIntervalMins,
             requiresApproval: p.requiresApproval,
+            requiresPayment: p.requiresPayment,
+            priceCents: p.priceCents,
             minNoticeHours: p.minNoticeHours,
             windowDays: p.windowDays,
             availDays: Array.isArray(p.availDays) ? (p.availDays as number[]) : [],

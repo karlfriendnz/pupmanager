@@ -28,6 +28,8 @@ export interface BookingPageRow {
   slotLengthMins: number
   slotIntervalMins: number
   requiresApproval: boolean
+  requiresPayment: boolean
+  priceCents: number | null
   minNoticeHours: number
   windowDays: number
   availDays: number[]

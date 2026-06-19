@@ -1,9 +1,23 @@
 import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
+import type { Prisma, SessionType } from '@/generated/prisma'
 import { prisma } from '@/lib/prisma'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
 import { readAccountFlags } from '@/lib/connect'
+import { materializeBooking } from '@/lib/booking-page'
+
+// Shape of PaymentItem.intent for a scheduled booking (PACKAGE / SESSION),
+// captured at checkout time and replayed here to create the calendar rows.
+interface ScheduledIntent {
+  slotIso?: string
+  dogId?: string | null
+  packageId?: string | null
+  bookingPageId?: string | null
+  singleDurationMins?: number
+  singleSessionType?: SessionType
+  singleTitle?: string
+}
 
 // Connect webhook — SEPARATE from the subscription webhook (/api/webhooks/stripe).
 // Connect events come from a different Stripe endpoint with their own signing
@@ -74,6 +88,14 @@ export async function POST(req: Request) {
         await markPaidAndFulfil(pi.metadata?.paymentId ?? null, sandbox, pi.id)
         break
       }
+      case 'charge.refunded': {
+        await reconcileRefund(event.data.object as Stripe.Charge)
+        break
+      }
+      case 'charge.dispute.created': {
+        await markDisputed((event.data.object as Stripe.Dispute).charge)
+        break
+      }
       default:
         // Silent ack — handled in later phases or genuinely not ours.
         break
@@ -133,7 +155,9 @@ async function markPaidAndFulfil(paymentId: string | null, sandbox: boolean, piI
     })
 
     for (const item of payment.items) {
-      if (item.kind === 'PRODUCT' && item.productId && payment.clientId) {
+      if (!payment.clientId) continue // can't fulfil without a client
+
+      if (item.kind === 'PRODUCT' && item.productId) {
         // A paid product becomes a FULFILLED request the trainer hands over.
         await tx.productRequest.create({
           data: {
@@ -144,10 +168,98 @@ async function markPaidAndFulfil(paymentId: string | null, sandbox: boolean, piI
             note: 'Paid in PupManager',
           },
         })
+      } else if (item.kind === 'PACKAGE' || item.kind === 'SESSION') {
+        await fulfilScheduledBooking(tx, {
+          itemId: item.id,
+          trainerId: payment.trainerId,
+          clientId: payment.clientId,
+          intent: (item.intent ?? null) as ScheduledIntent | null,
+          paidAt: new Date(),
+        })
       }
-      // PACKAGE / SESSION / CLASS_ENROLLMENT fulfilment lands in later phases.
+      // CLASS_ENROLLMENT fulfilment lands in a later phase.
     }
   })
+}
+
+// Schedule the paid booking (single session or a package's session series)
+// using the same materializeBooking path the free booking flows use, then link
+// + stamp the resulting ClientPackage. Re-loads the package fresh so cadence/
+// duration reflect the current definition.
+async function fulfilScheduledBooking(
+  tx: Prisma.TransactionClient,
+  args: {
+    itemId: string
+    trainerId: string
+    clientId: string
+    intent: ScheduledIntent | null
+    paidAt: Date
+  },
+) {
+  const intent = args.intent
+  if (!intent?.slotIso) {
+    console.error('[stripe connect webhook] scheduled item missing slotIso', args.itemId)
+    return
+  }
+  const slotAt = new Date(intent.slotIso)
+  if (Number.isNaN(slotAt.getTime())) return
+
+  let pkg: { id: string; name: string; sessionCount: number; weeksBetween: number; durationMins: number; sessionType: SessionType } | null = null
+  if (intent.packageId) {
+    const p = await tx.package.findUnique({
+      where: { id: intent.packageId },
+      select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, sessionType: true },
+    })
+    if (p) pkg = p
+  }
+
+  const clientPackageId = await materializeBooking(tx, {
+    trainerId: args.trainerId,
+    clientId: args.clientId,
+    dogId: intent.dogId ?? null,
+    slotAt,
+    pkg,
+    singleDurationMins: intent.singleDurationMins ?? 60,
+    singleSessionType: intent.singleSessionType ?? 'IN_PERSON',
+    singleTitle: intent.singleTitle ?? pkg?.name ?? 'Session',
+    bookingPageId: intent.bookingPageId ?? null,
+  })
+
+  if (clientPackageId) {
+    // Link the payment to the assignment and stamp the legacy invoiced flag.
+    await tx.paymentItem.update({ where: { id: args.itemId }, data: { clientPackageId } })
+    await tx.clientPackage.update({ where: { id: clientPackageId }, data: { invoicedAt: args.paidAt } })
+  }
+}
+
+// Reconcile a Payment's refunded amount + status from the authoritative charge
+// (amount_refunded is the running total Stripe holds, so this is idempotent).
+async function reconcileRefund(charge: Stripe.Charge) {
+  const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id ?? null
+  const payment = await prisma.payment.findFirst({
+    where: { OR: [{ stripeChargeId: charge.id }, ...(piId ? [{ stripePaymentIntentId: piId }] : [])] },
+    select: { id: true, amountTotal: true },
+  })
+  if (!payment) return
+
+  const amountRefunded = charge.amount_refunded ?? 0
+  const status = charge.refunded || amountRefunded >= payment.amountTotal
+    ? 'REFUNDED'
+    : amountRefunded > 0
+      ? 'PARTIALLY_REFUNDED'
+      : 'PAID'
+
+  await prisma.payment.update({
+    where: { id: payment.id },
+    data: { amountRefunded, status, stripeChargeId: charge.id },
+  })
+}
+
+async function markDisputed(chargeRef: string | Stripe.Charge) {
+  const chargeId = typeof chargeRef === 'string' ? chargeRef : chargeRef.id
+  const payment = await prisma.payment.findFirst({ where: { stripeChargeId: chargeId }, select: { id: true } })
+  if (!payment) return
+  await prisma.payment.update({ where: { id: payment.id }, data: { status: 'DISPUTED' } })
 }
 
 async function handleAccountUpdated(account: Stripe.Account) {

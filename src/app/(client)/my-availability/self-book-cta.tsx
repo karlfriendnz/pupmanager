@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { CalendarPlus, X, Loader2, CheckCircle2 } from 'lucide-react'
+import { openExternal } from '@/lib/external-link'
 
 type Pkg = {
   id: string
@@ -79,6 +80,11 @@ function SelfBookModal({ onClose }: { onClose: () => void }) {
       if (!res.ok) {
         setError(typeof b.error === 'string' ? b.error : 'Could not book.')
         return
+      }
+      // Paid package → hand off to Stripe; the webhook books on success.
+      if (b.mode === 'payment' && b.url) {
+        openExternal(b.url)
+        return // keep the spinner up while we leave for Stripe
       }
       setDone(b.mode === 'booked' ? 'booked' : 'requested')
     } finally {

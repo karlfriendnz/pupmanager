@@ -44,6 +44,8 @@ export default async function BookingPageEditRoute({ params }: { params: Promise
     slotLengthMins: page.slotLengthMins,
     slotIntervalMins: page.slotIntervalMins,
     requiresApproval: page.requiresApproval,
+    requiresPayment: page.requiresPayment,
+    priceCents: page.priceCents,
     minNoticeHours: page.minNoticeHours,
     windowDays: page.windowDays,
     availDays: Array.isArray(page.availDays) ? (page.availDays as number[]) : [],

@@ -9,6 +9,9 @@ import { generateSessionDates } from '@/lib/self-book'
 import { safeEvaluate } from '@/lib/achievements'
 import { notifyEnquiryTrainer } from '@/lib/notify-enquiry-trainer'
 import { runOnBookingAutomations } from '@/lib/booking-automations'
+import { createConnectCheckout } from '@/lib/connect-checkout'
+import { isConnectConfigured } from '@/lib/connect'
+import { env } from '@/lib/env'
 
 // Public booking endpoint for a single booking page: /c/<slug>/book/<pageSlug>.
 //   GET  — current bookable slots (for the picker to refresh).
@@ -24,6 +27,12 @@ async function loadEnabledPage(slug: string, pageSlug: string) {
       id: true,
       businessName: true,
       user: { select: { timezone: true } },
+      // Connect/payment state for pay-to-confirm pages.
+      acceptPaymentsEnabled: true,
+      connectChargesEnabled: true,
+      connectAccountId: true,
+      payoutCurrency: true,
+      sandboxBilling: true,
       bookingPages: { where: { slug: pageSlug } },
     },
   })
@@ -36,7 +45,7 @@ async function loadPackage(trainerId: string, packageId: string | null) {
   if (!packageId) return null
   return prisma.package.findFirst({
     where: { id: packageId, trainerId },
-    select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, sessionType: true },
+    select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, sessionType: true, priceCents: true, specialPriceCents: true },
   })
 }
 
@@ -104,6 +113,51 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   }
 
   if (client) {
+    const singleTitle = page.headline?.trim() || page.name || `${trainer.businessName} session`
+
+    // ── Pay-to-confirm: charge first, the webhook books on success. Payment
+    // supersedes approval. Falls through to the free flow if no price/payments. ──
+    if (page.requiresPayment) {
+      const price = pkg ? (pkg.specialPriceCents ?? pkg.priceCents) : page.priceCents
+      if (price && price > 0 && trainer.acceptPaymentsEnabled && trainer.connectChargesEnabled && trainer.connectAccountId) {
+        const sandbox = trainer.sandboxBilling
+        if (!isConnectConfigured(sandbox)) {
+          return NextResponse.json({ error: 'Payments are not configured yet' }, { status: 503 })
+        }
+        const base = `${env.NEXT_PUBLIC_APP_URL}/c/${slug}/book/${pageSlug}`
+        const { url } = await createConnectCheckout({
+          sandbox,
+          trainerId: trainer.id,
+          connectAccountId: trainer.connectAccountId,
+          clientId: client.id,
+          currency: trainer.payoutCurrency ?? 'nzd',
+          description: pkg?.name ?? singleTitle,
+          lines: [
+            {
+              kind: pkg ? 'PACKAGE' : 'SESSION',
+              description: pkg?.name ?? singleTitle,
+              unitAmount: price,
+              quantity: 1,
+              intent: {
+                packageId: pkg?.id ?? null,
+                slotIso: slotAt.toISOString(),
+                dogId: client.dogId,
+                bookingPageId: page.id,
+                singleDurationMins: page.slotLengthMins,
+                singleSessionType: page.sessionType,
+                singleTitle,
+              },
+            },
+          ],
+          successUrl: `${base}?purchase=success`,
+          cancelUrl: `${base}?purchase=cancelled`,
+        })
+        if (!url) return NextResponse.json({ error: 'Could not start checkout' }, { status: 502 })
+        return NextResponse.json({ ok: true, mode: 'payment', url }, { status: 201 })
+      }
+      // No resolvable price or payments off — fall through to the free flow.
+    }
+
     // ── Existing client: honour instant-vs-approval (packages only). ──
     if (pkg && page.requiresApproval) {
       await prisma.bookingRequest.create({
@@ -129,7 +183,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
         pkg: pkg ? { ...pkg } : null,
         singleDurationMins: page.slotLengthMins,
         singleSessionType: page.sessionType,
-        singleTitle: page.headline?.trim() || page.name || `${trainer.businessName} session`,
+        singleTitle,
         bookingPageId: page.id,
       }),
     )

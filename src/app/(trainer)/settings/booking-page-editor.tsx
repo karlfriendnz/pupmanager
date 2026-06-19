@@ -59,6 +59,8 @@ export function BookingPageEditor({
           slotLengthMins: cfg.slotLengthMins,
           slotIntervalMins: cfg.slotIntervalMins,
           requiresApproval: cfg.requiresApproval,
+          requiresPayment: cfg.requiresPayment,
+          priceCents: cfg.priceCents,
           minNoticeHours: cfg.minNoticeHours,
           windowDays: cfg.windowDays,
           availDays: cfg.availDays,
@@ -231,6 +233,38 @@ export function BookingPageEditor({
               <option value="VIRTUAL">Virtual</option>
             </select>
           </>
+        )}
+
+        {/* Payment — requires the trainer to have payments switched on (Settings
+            → Payments). When on, the slot is held until the client pays. */}
+        <div className="mt-5 flex items-start justify-between gap-4 border-t border-slate-100 pt-4">
+          <div>
+            <p className="text-sm font-medium text-slate-800">Require payment to book</p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {cfg.packageId
+                ? 'Charges the package price. The slot is booked once paid.'
+                : 'Client pays before the slot is confirmed. Turn on payments in Settings → Payments first.'}
+            </p>
+          </div>
+          <Toggle checked={cfg.requiresPayment} onChange={v => set('requiresPayment', v)} label="Require payment" />
+        </div>
+        {cfg.requiresPayment && !cfg.packageId && (
+          <div className="mt-3">
+            <label className="block text-xs font-medium text-slate-700">Price</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={cfg.priceCents == null ? '' : (cfg.priceCents / 100).toString()}
+              onChange={e => {
+                const v = e.target.value
+                set('priceCents', v === '' ? null : Math.round(parseFloat(v) * 100))
+              }}
+              placeholder="0.00"
+              className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="mt-1 text-xs text-slate-400">Charged in your payout currency.</p>
+          </div>
         )}
       </section>
 

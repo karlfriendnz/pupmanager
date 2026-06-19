@@ -1794,6 +1794,14 @@ model BookingPage {
   // Per-link instant-vs-approval choice for booking by an existing client.
   // (Prospects always route through Enquiry accept, which is itself approval.)
   requiresApproval Boolean     @default(true)
+  // Pay-to-confirm: when true an existing client must pay before the slot is
+  // booked (the connect webhook materialises it on success). Payment supersedes
+  // requiresApproval. The price is the package's (when packageId is set) or
+  // priceCents for a single-session page. Prospects still route via Enquiry.
+  requiresPayment  Boolean     @default(false)
+  // Single-session price (minor units) when the page has no package. Ignored
+  // for package pages — those charge the package's own price.
+  priceCents       Int?
   // Earliest a slot may be booked, in hours from now — stops same-minute books.
   minNoticeHours   Int         @default(12)
   // How far ahead slots are offered.

@@ -4,6 +4,9 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { safeEvaluate } from '@/lib/achievements'
 import { generateSessionDates, createBookingAssignment } from '@/lib/self-book'
+import { createConnectCheckout } from '@/lib/connect-checkout'
+import { isConnectConfigured } from '@/lib/connect'
+import { env } from '@/lib/env'
 
 // GET  /api/my/self-book  — packages this client may self-book
 // POST /api/my/self-book  — book one (instant or pending request)
@@ -63,6 +66,60 @@ export async function POST(req: Request) {
   }
 
   const dates = generateSessionDates(start, pkg.sessionCount, pkg.weeksBetween)
+
+  // Paid packages: when the package has a price and the trainer takes payments,
+  // the booking is pay-to-confirm — we don't create calendar rows now; the
+  // connect webhook does that once the payment succeeds. Payment is the gate,
+  // so this path supersedes the approval flow below.
+  const price = pkg.specialPriceCents ?? pkg.priceCents
+  if (price && price > 0) {
+    const trainer = await prisma.trainerProfile.findUnique({
+      where: { id: ctx.trainerId },
+      select: {
+        acceptPaymentsEnabled: true,
+        connectChargesEnabled: true,
+        connectAccountId: true,
+        payoutCurrency: true,
+        sandboxBilling: true,
+      },
+    })
+    if (trainer?.acceptPaymentsEnabled && trainer.connectChargesEnabled && trainer.connectAccountId) {
+      const sandbox = trainer.sandboxBilling
+      if (!isConnectConfigured(sandbox)) {
+        return NextResponse.json({ error: 'Payments are not configured yet' }, { status: 503 })
+      }
+      const avail = `${env.NEXT_PUBLIC_APP_URL}/my-availability`
+      const { url } = await createConnectCheckout({
+        sandbox,
+        trainerId: ctx.trainerId,
+        connectAccountId: trainer.connectAccountId,
+        clientId: ctx.clientId,
+        currency: trainer.payoutCurrency ?? 'nzd',
+        description: pkg.name,
+        lines: [
+          {
+            kind: 'PACKAGE',
+            description: pkg.name,
+            unitAmount: price,
+            quantity: 1,
+            intent: {
+              packageId: pkg.id,
+              slotIso: start.toISOString(),
+              dogId: ctx.dogId,
+              singleDurationMins: pkg.durationMins,
+              singleSessionType: pkg.sessionType,
+              singleTitle: pkg.name,
+            },
+          },
+        ],
+        successUrl: `${avail}?purchase=success`,
+        cancelUrl: `${avail}?purchase=cancelled`,
+      })
+      if (!url) return NextResponse.json({ error: 'Could not start checkout' }, { status: 502 })
+      return NextResponse.json({ ok: true, mode: 'payment', url }, { status: 201 })
+    }
+    // Trainer hasn't enabled payments — fall through to the normal flow.
+  }
 
   if (pkg.selfBookRequiresApproval) {
     await prisma.bookingRequest.create({

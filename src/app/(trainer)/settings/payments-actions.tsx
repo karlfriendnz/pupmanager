@@ -39,6 +39,45 @@ export function ConnectButton({ label }: { label: string }) {
   )
 }
 
+/** Full refund of a single payment. */
+export function RefundButton({ paymentId }: { paymentId: string }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function refund() {
+    if (!confirm('Refund this payment in full? The money is returned to the client.')) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/trainer/payments/${paymentId}/refund`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      if (res.ok) {
+        router.refresh()
+      } else {
+        const b = await res.json().catch(() => ({}))
+        setError(typeof b.error === 'string' ? b.error : 'Could not refund.')
+      }
+    } catch {
+      setError('Could not refund.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <span className="inline-flex flex-col items-end">
+      <button onClick={refund} disabled={busy} className="text-xs font-medium text-rose-600 hover:text-rose-700 disabled:opacity-50">
+        {busy ? 'Refunding…' : 'Refund'}
+      </button>
+      {error && <span className="mt-0.5 text-[10px] text-rose-500">{error}</span>}
+    </span>
+  )
+}
+
 /** Master switch: only enabled once the account can take charges. */
 export function AcceptPaymentsToggle({ initial }: { initial: boolean }) {
   const router = useRouter()
