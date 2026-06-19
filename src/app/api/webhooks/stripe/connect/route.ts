@@ -6,6 +6,8 @@ import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
 import { readAccountFlags } from '@/lib/connect'
 import { materializeBooking } from '@/lib/booking-page'
+import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automations'
+import { sendEmail } from '@/lib/email'
 
 // Shape of PaymentItem.intent for a scheduled booking (PACKAGE / SESSION),
 // captured at checkout time and replayed here to create the calendar rows.
@@ -158,10 +160,17 @@ async function markPaidAndFulfil(paymentId: string | null, eventSandbox: boolean
   const bt = charge?.balance_transaction as Stripe.BalanceTransaction | null
   const stripeFeeAmount = bt?.fee ?? null
 
+  // Post-commit side effects (emails) — collected inside the tx, run after it
+  // commits so a flaky email can never roll back a paid booking.
+  const booked: { bookingPageId: string; slotAt: Date }[] = []
+  const collisions: Date[] = []
+  let didFulfil = false
+
   await prisma.$transaction(async (tx) => {
     // Re-check inside the tx so concurrent deliveries can't both fulfil.
     const fresh = await tx.payment.findUnique({ where: { id: paymentId }, select: { status: true } })
     if (!fresh || fresh.status === 'PAID') return
+    didFulfil = true
 
     await tx.payment.update({
       where: { id: paymentId },
@@ -189,23 +198,85 @@ async function markPaidAndFulfil(paymentId: string | null, eventSandbox: boolean
           },
         })
       } else if (item.kind === 'PACKAGE' || item.kind === 'SESSION') {
-        await fulfilScheduledBooking(tx, {
+        const r = await fulfilScheduledBooking(tx, {
           itemId: item.id,
           trainerId: payment.trainerId,
           clientId: payment.clientId,
           intent: (item.intent ?? null) as ScheduledIntent | null,
           paidAt: new Date(),
         })
+        if (r.booked && r.bookingPageId && r.slotAt) booked.push({ bookingPageId: r.bookingPageId, slotAt: r.slotAt })
+        if (r.collided && r.slotAt) collisions.push(r.slotAt)
       }
       // CLASS_ENROLLMENT fulfilment lands in a later phase.
     }
   })
+
+  if (didFulfil && (booked.length || collisions.length)) {
+    await runBookingSideEffects(payment.trainerId, payment.clientId, booked, collisions)
+  }
+}
+
+// After a paid booking commits: fire the page's ON_BOOKING automations to the
+// client (same confirmation a free booking sends), and email the trainer if a
+// slot collided so they can rebook/refund rather than it failing silently.
+async function runBookingSideEffects(
+  trainerId: string,
+  clientId: string | null,
+  booked: { bookingPageId: string; slotAt: Date }[],
+  collisions: Date[],
+) {
+  const [trainer, client] = await Promise.all([
+    prisma.trainerProfile.findUnique({
+      where: { id: trainerId },
+      select: { businessName: true, user: { select: { email: true, timezone: true } } },
+    }),
+    clientId
+      ? prisma.clientProfile.findUnique({
+          where: { id: clientId },
+          select: { user: { select: { name: true, email: true } }, dog: { select: { name: true } } },
+        })
+      : Promise.resolve(null),
+  ])
+  const tz = trainer?.user?.timezone ?? 'Pacific/Auckland'
+  const businessName = trainer?.businessName ?? 'Your trainer'
+
+  if (client?.user?.email) {
+    for (const b of booked) {
+      await runOnBookingAutomations({
+        bookingPageId: b.bookingPageId,
+        recipientEmail: client.user.email,
+        name: client.user.name ?? 'there',
+        dogName: client.dog?.name ?? null,
+        sessionAt: b.slotAt,
+        tz,
+        businessName,
+      }).catch(err => console.error('[connect webhook] on-booking automations failed', err))
+    }
+  }
+
+  if (collisions.length && trainer?.user?.email) {
+    const when = collisions.map(d => formatBookingTime(d, tz)).join(', ')
+    await sendEmail({
+      to: trainer.user.email,
+      subject: 'Action needed: a paid booking couldn’t be scheduled',
+      html: `<p>A client paid for a booking but the time (${when}) was taken before their payment cleared, so it wasn’t added to your calendar.</p><p>Please rebook them at another time or refund the payment from <strong>Settings → Payments</strong>.</p>`,
+      text: `A client paid but their slot (${when}) was taken before payment cleared. Rebook or refund from Settings → Payments.`,
+    }).catch(err => console.error('[connect webhook] collision alert failed', err))
+  }
 }
 
 // Schedule the paid booking (single session or a package's session series)
 // using the same materializeBooking path the free booking flows use, then link
 // + stamp the resulting ClientPackage. Re-loads the package fresh so cadence/
 // duration reflect the current definition.
+interface BookingOutcome {
+  booked: boolean
+  collided: boolean
+  bookingPageId: string | null
+  slotAt: Date | null
+}
+
 async function fulfilScheduledBooking(
   tx: Prisma.TransactionClient,
   args: {
@@ -215,14 +286,15 @@ async function fulfilScheduledBooking(
     intent: ScheduledIntent | null
     paidAt: Date
   },
-) {
+): Promise<BookingOutcome> {
+  const none: BookingOutcome = { booked: false, collided: false, bookingPageId: null, slotAt: null }
   const intent = args.intent
   if (!intent?.slotIso) {
     console.error('[stripe connect webhook] scheduled item missing slotIso', args.itemId)
-    return
+    return none
   }
   const slotAt = new Date(intent.slotIso)
-  if (Number.isNaN(slotAt.getTime())) return
+  if (Number.isNaN(slotAt.getTime())) return none
 
   let pkg: { id: string; name: string; sessionCount: number; weeksBetween: number; durationMins: number; sessionType: SessionType } | null = null
   if (intent.packageId) {
@@ -246,7 +318,7 @@ async function fulfilScheduledBooking(
     console.error('[stripe connect webhook] slot taken before payment cleared — paid but NOT booked', {
       itemId: args.itemId, trainerId: args.trainerId, slotIso: intent.slotIso,
     })
-    return
+    return { booked: false, collided: true, bookingPageId: intent.bookingPageId ?? null, slotAt }
   }
 
   const clientPackageId = await materializeBooking(tx, {
@@ -266,6 +338,8 @@ async function fulfilScheduledBooking(
     await tx.paymentItem.update({ where: { id: args.itemId }, data: { clientPackageId } })
     await tx.clientPackage.update({ where: { id: clientPackageId }, data: { invoicedAt: args.paidAt } })
   }
+
+  return { booked: true, collided: false, bookingPageId: intent.bookingPageId ?? null, slotAt }
 }
 
 // Reconcile a Payment's refunded amount + status from the authoritative charge

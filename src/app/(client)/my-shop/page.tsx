@@ -48,12 +48,14 @@ export default async function MyShopPage() {
       },
     }),
     prisma.productRequest.findMany({
-      where: { clientId: profile.id, status: 'PENDING' },
-      select: { productId: true },
+      where: { clientId: profile.id, status: { in: ['PENDING', 'FULFILLED'] } },
+      select: { productId: true, status: true },
     }),
   ])
 
-  const requestedIds = new Set(pendingRequests.map(r => r.productId))
+  const requestedIds = new Set(pendingRequests.filter(r => r.status === 'PENDING').map(r => r.productId))
+  // A digital product the client has actually paid for unlocks its download.
+  const purchasedIds = new Set(pendingRequests.filter(r => r.status === 'FULFILLED').map(r => r.productId))
 
   return (
     <div className="px-5 lg:px-8 pt-6 max-w-3xl mx-auto w-full">
@@ -77,6 +79,7 @@ export default async function MyShopPage() {
             category: p.category,
             featured: p.featured,
             requested: requestedIds.has(p.id),
+            purchased: purchasedIds.has(p.id),
           }))}
         />
       </div>

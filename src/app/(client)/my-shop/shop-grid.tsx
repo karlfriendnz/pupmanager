@@ -21,6 +21,7 @@ interface Product {
   category: string | null
   featured: boolean
   requested: boolean
+  purchased?: boolean
 }
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -240,11 +241,13 @@ function ProductModal({
   buying: boolean
   buyError: string | null
 }) {
-  // Digital products can be downloaded immediately if a file is attached;
-  // they don't need to be requested. Physical products use the request flow.
-  const canDownload = product.kind === 'DIGITAL' && !!product.downloadUrl
+  // Digital downloads: free ones (no price / payments off) download immediately;
+  // a PRICED digital product must be purchased first, then the download unlocks.
+  const isPaidDigital = product.kind === 'DIGITAL' && payable
+  const canDownload =
+    product.kind === 'DIGITAL' && !!product.downloadUrl && (!isPaidDigital || !!product.purchased)
   // Apple Guideline 3.1.1: don't offer digital goods for purchase in the app.
-  const digitalBlockedNative = payable && product.kind === 'DIGITAL' && native
+  const digitalBlockedNative = isPaidDigital && !product.purchased && native
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
