@@ -4,9 +4,11 @@ import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Star, Package as PackageIcon, FileDown, Download, ShoppingBag, X, Tag,
-  Check, Loader2,
+  Check, Loader2, CreditCard,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useIsNative, nativePlatform } from '@/lib/native'
+import { openExternal } from '@/lib/external-link'
 
 interface Product {
   id: string
@@ -21,19 +23,62 @@ interface Product {
   requested: boolean
 }
 
-function formatPrice(cents: number | null) {
-  if (cents == null) return 'Contact trainer'
-  return `$${(cents / 100).toFixed(2)}`
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  nzd: '$', aud: '$', cad: '$', usd: '$', gbp: '£', eur: '€', zar: 'R',
 }
 
-export function ShopGrid({ products }: { products: Product[] }) {
+function formatPrice(cents: number | null, currency: string | null) {
+  if (cents == null) return 'Contact trainer'
+  const symbol = currency ? CURRENCY_SYMBOLS[currency.toLowerCase()] ?? '' : '$'
+  return `${symbol}${(cents / 100).toFixed(2)}`
+}
+
+export function ShopGrid({
+  products,
+  acceptPayments = false,
+  currency = null,
+}: {
+  products: Product[]
+  acceptPayments?: boolean
+  currency?: string | null
+}) {
   const router = useRouter()
+  const native = useIsNative()
   const [, startTransition] = useTransition()
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [open, setOpen] = useState<Product | null>(null)
   // Optimistic overrides for the requested flag — keys are product IDs.
   const [optimisticRequested, setOptimisticRequested] = useState<Record<string, boolean>>({})
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [buyingId, setBuyingId] = useState<string | null>(null)
+  const [buyError, setBuyError] = useState<string | null>(null)
+
+  // A product is buyable when the trainer takes payments and it has a price.
+  function isPayable(p: Product) {
+    return acceptPayments && p.priceCents != null && p.priceCents > 0
+  }
+
+  async function buy(p: Product) {
+    if (buyingId) return
+    setBuyingId(p.id)
+    setBuyError(null)
+    try {
+      const res = await fetch(`/api/my/products/${p.id}/buy`, {
+        method: 'POST',
+        headers: { 'x-pm-platform': nativePlatform() },
+      })
+      const body = await res.json().catch(() => ({}))
+      if (res.ok && body.url) {
+        openExternal(body.url)
+        return // leaving for Stripe — keep the spinner up
+      }
+      setBuyError(typeof body.error === 'string' ? body.error : 'Could not start checkout.')
+    } catch {
+      setBuyError('Could not start checkout.')
+    } finally {
+      setBuyingId(null)
+    }
+  }
 
   function isRequested(p: Product) {
     return optimisticRequested[p.id] ?? p.requested
@@ -130,7 +175,7 @@ export function ShopGrid({ products }: { products: Product[] }) {
             <div className="p-3">
               <p className="text-sm font-semibold text-slate-900 line-clamp-2 leading-tight">{p.name}</p>
               <div className="mt-1">
-                <span className="text-sm font-semibold text-slate-700">{formatPrice(p.priceCents)}</span>
+                <span className="text-sm font-semibold text-slate-700">{formatPrice(p.priceCents, currency)}</span>
               </div>
             </div>
           </button>
@@ -141,9 +186,15 @@ export function ShopGrid({ products }: { products: Product[] }) {
       {open && (
         <ProductModal
           product={{ ...open, requested: isRequested(open) }}
+          currency={currency}
+          payable={isPayable(open)}
+          native={native}
           onClose={() => setOpen(null)}
           onToggleRequest={() => toggleRequest(open)}
+          onBuy={() => buy(open)}
           busy={busyId === open.id}
+          buying={buyingId === open.id}
+          buyError={buyError}
         />
       )}
     </div>
@@ -168,18 +219,32 @@ function CategoryChip({ children, active, onClick }: { children: React.ReactNode
 
 function ProductModal({
   product,
+  currency,
+  payable,
+  native,
   onClose,
   onToggleRequest,
+  onBuy,
   busy,
+  buying,
+  buyError,
 }: {
   product: Product
+  currency: string | null
+  payable: boolean
+  native: boolean
   onClose: () => void
   onToggleRequest: () => void
+  onBuy: () => void
   busy: boolean
+  buying: boolean
+  buyError: string | null
 }) {
   // Digital products can be downloaded immediately if a file is attached;
   // they don't need to be requested. Physical products use the request flow.
   const canDownload = product.kind === 'DIGITAL' && !!product.downloadUrl
+  // Apple Guideline 3.1.1: don't offer digital goods for purchase in the app.
+  const digitalBlockedNative = payable && product.kind === 'DIGITAL' && native
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -207,7 +272,7 @@ function ProductModal({
               <p className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1">{product.category}</p>
             )}
             <h2 className="text-xl font-bold text-slate-900">{product.name}</h2>
-            <p className="mt-1 text-lg font-semibold text-slate-700">{formatPrice(product.priceCents)}</p>
+            <p className="mt-1 text-lg font-semibold text-slate-700">{formatPrice(product.priceCents, currency)}</p>
           </div>
 
           {product.description && (
@@ -223,6 +288,21 @@ function ProductModal({
             >
               <Download className="h-4 w-4" /> Download
             </a>
+          ) : digitalBlockedNative ? (
+            <div className="w-full rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-center text-sm text-slate-500">
+              This item can be bought on the web at app.pupmanager.com.
+            </div>
+          ) : payable ? (
+            <button
+              onClick={onBuy}
+              disabled={buying}
+              className="w-full h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
+            >
+              {buying
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <><CreditCard className="h-4 w-4" /> Buy · {formatPrice(product.priceCents, currency)}</>
+              }
+            </button>
           ) : product.requested ? (
             <button
               onClick={onToggleRequest}
@@ -247,9 +327,16 @@ function ProductModal({
             </button>
           )}
 
-          {!canDownload && (
+          {buyError && <p className="text-[11px] text-rose-600 text-center">{buyError}</p>}
+
+          {!canDownload && !payable && (
             <p className="text-[11px] text-slate-400 text-center">
               Your trainer will bring this to your next session.
+            </p>
+          )}
+          {payable && !digitalBlockedNative && (
+            <p className="text-[11px] text-slate-400 text-center">
+              Secure checkout via Stripe. You’ll get a receipt by email.
             </p>
           )}
         </div>

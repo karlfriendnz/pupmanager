@@ -12,9 +12,24 @@ export default async function MyShopPage() {
 
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
-    select: { id: true, trainer: { select: { businessName: true } }, trainerId: true },
+    select: {
+      id: true,
+      trainerId: true,
+      trainer: {
+        select: {
+          businessName: true,
+          acceptPaymentsEnabled: true,
+          connectChargesEnabled: true,
+          payoutCurrency: true,
+        },
+      },
+    },
   })
   if (!profile) redirect('/login')
+
+  // Clients can buy (vs request) only when the trainer has switched payments on
+  // and their Connect account can actually take charges.
+  const acceptPayments = profile.trainer.acceptPaymentsEnabled && profile.trainer.connectChargesEnabled
 
   const [products, pendingRequests] = await Promise.all([
     prisma.product.findMany({
@@ -48,18 +63,22 @@ export default async function MyShopPage() {
       </p>
 
       <div className="mt-6">
-        <ShopGrid products={products.map(p => ({
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          kind: p.kind as 'PHYSICAL' | 'DIGITAL',
-          priceCents: p.priceCents,
-          imageUrl: p.imageUrl,
-          downloadUrl: p.downloadUrl,
-          category: p.category,
-          featured: p.featured,
-          requested: requestedIds.has(p.id),
-        }))} />
+        <ShopGrid
+          acceptPayments={acceptPayments}
+          currency={profile.trainer.payoutCurrency}
+          products={products.map(p => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            kind: p.kind as 'PHYSICAL' | 'DIGITAL',
+            priceCents: p.priceCents,
+            imageUrl: p.imageUrl,
+            downloadUrl: p.downloadUrl,
+            category: p.category,
+            featured: p.featured,
+            requested: requestedIds.has(p.id),
+          }))}
+        />
       </div>
     </div>
   )
