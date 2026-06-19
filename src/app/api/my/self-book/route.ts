@@ -6,6 +6,7 @@ import { safeEvaluate } from '@/lib/achievements'
 import { generateSessionDates, createBookingAssignment } from '@/lib/self-book'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
+import { enforceRateLimit } from '@/lib/rate-limit'
 import { env } from '@/lib/env'
 
 // GET  /api/my/self-book  — packages this client may self-book
@@ -51,6 +52,10 @@ export async function POST(req: Request) {
   if (ctx.isPreview) {
     return NextResponse.json({ error: 'Preview mode — booking disabled' }, { status: 403 })
   }
+
+  // Bounds the paid path (each creates a PENDING Payment + Stripe session).
+  const limited = await enforceRateLimit({ key: `selfbook:${ctx.clientId}`, limit: 12, windowMs: 10 * 60_000 })
+  if (limited) return limited
 
   const parsed = schema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })

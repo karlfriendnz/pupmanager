@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
+import { enforceRateLimit } from '@/lib/rate-limit'
 import { env } from '@/lib/env'
 
 // Buy a shop product (Flow B, Phase 2). The sibling /request route stays for
@@ -12,15 +13,23 @@ import { env } from '@/lib/env'
 async function resolveActingClient() {
   const active = await getActiveClient()
   if (!active) return null
-  return prisma.clientProfile.findUnique({
+  const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
     select: { id: true, trainerId: true },
   })
+  return profile ? { ...profile, isPreview: active.isPreview } : null
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ productId: string }> }) {
   const profile = await resolveActingClient()
   if (!profile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  // A trainer previewing the client app must never trigger a real charge.
+  if (profile.isPreview) return NextResponse.json({ error: 'Preview mode — payment disabled' }, { status: 403 })
+
+  // Cap abuse: each Buy creates a PENDING Payment + Stripe session before any
+  // money moves, so rate-limit per acting client.
+  const limited = await enforceRateLimit({ key: `buy:${profile.id}`, limit: 10, windowMs: 10 * 60_000 })
+  if (limited) return limited
 
   const { productId } = await params
 

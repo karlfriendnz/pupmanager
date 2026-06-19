@@ -75,6 +75,9 @@ export async function POST(req: Request) {
       }
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
+        // Only fulfil once the session's payment is actually captured — async
+        // payment methods can complete the session while still 'unpaid'.
+        if (session.payment_status !== 'paid') break
         const piId = typeof session.payment_intent === 'string'
           ? session.payment_intent
           : session.payment_intent?.id ?? null
@@ -110,10 +113,13 @@ export async function POST(req: Request) {
 
 // Mark a Payment paid and fulfil its items. Idempotent: the PENDING→PAID
 // transition is the guard, so duplicate webhooks (and the checkout +
-// payment_intent pair) never double-fulfil. Captures Stripe's processing
-// ("credit card") fee from the charge's balance transaction for the invoice.
-async function markPaidAndFulfil(paymentId: string | null, sandbox: boolean, piId: string | null) {
-  if (!paymentId) return // not one of ours (e.g. a subscription session on this endpoint)
+// payment_intent pair) never double-fulfil. Before doing anything it verifies
+// the event's real charge matches the stored Payment — amount, currency,
+// destination account and Stripe mode — so a forged/mismatched metadata.paymentId
+// (e.g. a cheap or test-mode charge pointed at an expensive pending payment)
+// can never trigger fulfilment. Also captures the card fee for the invoice.
+async function markPaidAndFulfil(paymentId: string | null, eventSandbox: boolean, piId: string | null) {
+  if (!paymentId || !piId) return // not one of ours / no charge to verify against
 
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
@@ -121,22 +127,36 @@ async function markPaidAndFulfil(paymentId: string | null, sandbox: boolean, piI
   })
   if (!payment || payment.status === 'PAID') return // unknown, or already fulfilled
 
-  // Pull the charge so we can record the real card fee + charge id.
-  let stripeFeeAmount: number | null = null
-  let stripeChargeId: string | null = null
-  if (piId) {
-    try {
-      const pi = await stripeFor(sandbox).paymentIntents.retrieve(piId, {
-        expand: ['latest_charge.balance_transaction'],
-      })
-      const charge = pi.latest_charge as Stripe.Charge | null
-      stripeChargeId = charge?.id ?? null
-      const bt = charge?.balance_transaction as Stripe.BalanceTransaction | null
-      stripeFeeAmount = bt?.fee ?? null
-    } catch (err) {
-      console.warn('[stripe connect webhook] could not load charge for fee', paymentId, err)
-    }
+  // Mode must match: a test-mode event must not confirm a live payment.
+  if (eventSandbox !== payment.sandbox) {
+    console.error('[stripe connect webhook] mode mismatch — refusing to fulfil', paymentId)
+    return
   }
+
+  // Retrieve the authoritative charge. A retrieval failure is treated as
+  // transient (throw → 500 → Stripe retries) rather than fulfilling blind.
+  const pi = await stripeFor(eventSandbox).paymentIntents.retrieve(piId, {
+    expand: ['latest_charge.balance_transaction'],
+  })
+  const charge = pi.latest_charge as Stripe.Charge | null
+
+  // Integrity gate — every check must hold or we ack without fulfilling.
+  const destination = typeof charge?.transfer_data?.destination === 'string'
+    ? charge.transfer_data.destination
+    : charge?.transfer_data?.destination?.id ?? null
+  const amountOk = (pi.amount_received ?? 0) >= payment.amountTotal
+  const currencyOk = pi.currency === payment.currency
+  const destinationOk = destination === payment.connectAccountId
+  if (!amountOk || !currencyOk || !destinationOk) {
+    console.error('[stripe connect webhook] payment integrity check failed — refusing to fulfil', {
+      paymentId, amountOk, currencyOk, destinationOk,
+    })
+    return
+  }
+
+  const stripeChargeId = charge?.id ?? null
+  const bt = charge?.balance_transaction as Stripe.BalanceTransaction | null
+  const stripeFeeAmount = bt?.fee ?? null
 
   await prisma.$transaction(async (tx) => {
     // Re-check inside the tx so concurrent deliveries can't both fulfil.
@@ -211,6 +231,22 @@ async function fulfilScheduledBooking(
       select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, sessionType: true },
     })
     if (p) pkg = p
+  }
+
+  // Slot may have been taken between checkout and payment. Re-check the first
+  // slot against the trainer's existing sessions (tx-aware). If it collides we
+  // do NOT double-book — the Payment stays PAID and is logged for the trainer
+  // to rebook or refund. Better a flagged paid-but-unbooked slot than two
+  // clients in one slot.
+  const clash = await tx.trainingSession.findFirst({
+    where: { trainerId: args.trainerId, scheduledAt: slotAt },
+    select: { id: true },
+  })
+  if (clash) {
+    console.error('[stripe connect webhook] slot taken before payment cleared — paid but NOT booked', {
+      itemId: args.itemId, trainerId: args.trainerId, slotIso: intent.slotIso,
+    })
+    return
   }
 
   const clientPackageId = await materializeBooking(tx, {

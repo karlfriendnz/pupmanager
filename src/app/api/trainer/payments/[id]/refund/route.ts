@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
+import { enforceRateLimit } from '@/lib/rate-limit'
 
 // Refund a client→trainer payment. Owner-only. Issues the Stripe refund
 // (reversing the transfer so it comes out of the trainer's balance, and
@@ -23,6 +24,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   const trainerId = session.user.trainerId
   const { id } = await params
+
+  const limited = await enforceRateLimit({ key: `refund:${trainerId}`, limit: 20, windowMs: 10 * 60_000 })
+  if (limited) return limited
 
   const payment = await prisma.payment.findUnique({
     where: { id },
@@ -55,14 +59,37 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: 'Amount exceeds the refundable balance.' }, { status: 400 })
   }
 
-  const refund = await stripeFor(payment.sandbox).refunds.create({
-    payment_intent: payment.stripePaymentIntentId,
-    amount,
-    // Pull the money back from the connected account and reclaim our fee so the
-    // refund is shared fairly rather than landing entirely on the platform.
-    reverse_transfer: true,
-    refund_application_fee: true,
+  // Atomically claim the refund headroom BEFORE calling Stripe so two concurrent
+  // requests can't both pass a stale "remaining" check and over-refund. Only one
+  // updateMany whose guard still holds will win; the loser gets a 409.
+  const claim = await prisma.payment.updateMany({
+    where: { id, amountRefunded: { lte: payment.amountTotal - amount } },
+    data: { amountRefunded: { increment: amount } },
   })
+  if (claim.count === 0) {
+    return NextResponse.json({ error: 'A refund is already in progress for this payment.' }, { status: 409 })
+  }
+
+  let refund
+  try {
+    refund = await stripeFor(payment.sandbox).refunds.create(
+      {
+        payment_intent: payment.stripePaymentIntentId,
+        amount,
+        // Pull the money back from the connected account and reclaim our fee so
+        // the refund is shared fairly rather than landing entirely on us.
+        reverse_transfer: true,
+        refund_application_fee: true,
+      },
+      // Dedupe a double-submit of the same refund state at Stripe too.
+      { idempotencyKey: `refund:${id}:${payment.amountRefunded}:${amount}` },
+    )
+  } catch (err) {
+    // Stripe rejected it — release the headroom we provisionally claimed.
+    await prisma.payment.update({ where: { id }, data: { amountRefunded: { decrement: amount } } })
+    console.error('[refund] stripe refund failed', id, err)
+    return NextResponse.json({ error: 'Refund failed — nothing was charged back.' }, { status: 502 })
+  }
 
   await prisma.refund.create({
     data: {
@@ -73,6 +100,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       status: refund.status ?? 'pending',
     },
   })
+  // The charge.refunded webhook reconciles amountRefunded + status to Stripe's
+  // authoritative total; our provisional increment just held the lock.
 
   return NextResponse.json({ ok: true, refundId: refund.id })
 }
