@@ -28,7 +28,6 @@ function MessageComposer({
   value,
   onChange,
   onCommit,
-  suggestion,
   sessionId,
   hideLabel = false,
 }: {
@@ -45,25 +44,8 @@ function MessageComposer({
 }) {
   return (
     <div>
-      {(!hideLabel || (suggestion && !value)) && (
-        <div className="flex items-center justify-between mb-1.5">
-          {hideLabel ? <span /> : <label className="text-sm font-medium text-slate-700">{label}</label>}
-          {suggestion && !value && (
-            <button
-              type="button"
-              onClick={() => { onChange(suggestion); onCommit(suggestion) }}
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-full px-2.5 py-1 transition-colors"
-              title="Use the form's suggestion as a starting point"
-            >
-              <Check className="h-3 w-3" /> Use form&rsquo;s {label.toLowerCase()}
-            </button>
-          )}
-        </div>
-      )}
-      {suggestion && !value && (
-        <p className="text-[11px] text-slate-400 mb-1.5 italic line-clamp-2">
-          Suggested: &ldquo;{suggestion}&rdquo;
-        </p>
+      {!hideLabel && (
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>
       )}
       <div className="relative rounded-2xl bg-slate-50 border border-transparent focus-within:border-blue-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-50 transition-all">
         <textarea
@@ -873,8 +855,9 @@ function FormFillerBody({
       eyebrow: 'Opening',
       title: 'Opening message',
       hint: 'How would you like to start the report? (optional)',
+      fill: true,
       control: (
-        <MessageComposer hideLabel label="Opening message" placeholder="Set the scene…" value={introMessage} onChange={setIntroMessage} onCommit={() => {}} suggestion={template.introText} sessionId={sessionId} />
+        <ImmersiveText value={introMessage} onChange={setIntroMessage} placeholder="Set the scene…" sessionId={sessionId} autoFocus={false} />
       ),
     },
     ...template.questions.map((q, i) => ({
@@ -891,8 +874,9 @@ function FormFillerBody({
       eyebrow: 'Wrap-up',
       title: 'Closing message',
       hint: 'How would you like to wrap up? (optional)',
+      fill: true,
       control: (
-        <MessageComposer hideLabel label="Closing message" placeholder="Leave them with a takeaway…" value={closingMessage} onChange={setClosingMessage} onCommit={() => {}} suggestion={template.closingText} sessionId={sessionId} />
+        <ImmersiveText value={closingMessage} onChange={setClosingMessage} placeholder="Leave them with a takeaway…" sessionId={sessionId} autoFocus={false} />
       ),
     },
   ]
@@ -952,32 +936,29 @@ function FormFillerBody({
           </div>
         </div>
 
-        {/* Sliding track — one panel per prompt; internal layout is identical
-            across panels so the box never jumps as you advance. */}
+        {/* Active panel only. We deliberately render a single panel rather than
+            a wide sliding track: the track approach mis-rendered because an
+            overflowing flex/wide track gets centred in the overflow:hidden
+            viewport, bleeding adjacent panels in. Panel values live in parent
+            state, so swapping panels never loses input. `key` remounts for a
+            light fade-in. */}
         <div className="flex-1 overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-          <div
-            className="flex h-full transition-transform duration-300 ease-out"
-            style={{ transform: `translateX(-${curStep * 100}%)` }}
-          >
-            {stepPanels.map(p => (
-              <div key={p.key} className="h-full w-full flex-shrink-0 overflow-y-auto">
-                <div className="mx-auto w-full px-6 py-8 sm:py-12 max-w-2xl">
-                  <div className="min-h-[3.5rem]">
-                    <h2 className="text-2xl sm:text-[28px] font-bold leading-tight text-slate-900 flex items-start gap-2 flex-wrap">
-                      <span>{p.title}</span>
-                      {p.required && <span className="text-red-500 text-xl leading-none">*</span>}
-                      {p.isPrivate && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 mt-1.5" title="Private — only you can see this, not the client">
-                          <Lock className="h-2.5 w-2.5" /> Private
-                        </span>
-                      )}
-                    </h2>
-                    {p.hint && <p className="text-sm text-slate-400 mt-1.5">{p.hint}</p>}
-                  </div>
-                  <div className="mt-6">{p.control}</div>
-                </div>
+          <div key={curStep} className="h-full w-full overflow-y-auto pm-step-fade">
+            <div className="mx-auto w-full px-6 py-8 sm:py-12 max-w-2xl">
+              <div className="min-h-[3.5rem]">
+                <h2 className="text-2xl sm:text-[28px] font-bold leading-tight text-slate-900 flex items-start gap-2 flex-wrap">
+                  <span>{panel.title}</span>
+                  {panel.required && <span className="text-red-500 text-xl leading-none">*</span>}
+                  {panel.isPrivate && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 mt-1.5" title="Private — only you can see this, not the client">
+                      <Lock className="h-2.5 w-2.5" /> Private
+                    </span>
+                  )}
+                </h2>
+                {panel.hint && <p className="text-sm text-slate-400 mt-1.5">{panel.hint}</p>}
               </div>
-            ))}
+              <div className="mt-6">{panel.control}</div>
+            </div>
           </div>
         </div>
 
@@ -1108,21 +1089,23 @@ function appendSpoken(prev: string, transcript: string): string {
 // flow. Page-filling and chrome-less so it reads as "writing", not a field.
 // The mic + image tools sit quietly underneath.
 function ImmersiveText({
-  value, onChange, imageUrls, onImagesChange, sessionId,
+  value, onChange, imageUrls, onImagesChange, sessionId, placeholder = 'Start writing…', autoFocus = true,
 }: {
   value: string
   onChange: (v: string) => void
   imageUrls?: string[]
   onImagesChange?: (urls: string[]) => void
   sessionId?: string
+  placeholder?: string
+  autoFocus?: boolean
 }) {
   return (
     <div>
       <textarea
         value={value}
         onChange={e => onChange(e.target.value)}
-        autoFocus
-        placeholder="Start writing…"
+        autoFocus={autoFocus}
+        placeholder={placeholder}
         className="min-h-[55vh] w-full resize-none border-0 bg-transparent p-0 text-lg leading-relaxed text-slate-900 placeholder:text-slate-300 focus:outline-none focus:ring-0"
       />
       <div className="mt-1 flex items-center gap-2">
