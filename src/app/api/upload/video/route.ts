@@ -14,6 +14,20 @@ const s3 = new S3Client({
 
 const MAX_SIZE_BYTES = 100 * 1024 * 1024 // 100 MB
 
+// Whitelist of video MIME types we accept, each mapped to the extension we
+// store under. Both the Content-Type AND the extension are derived from this
+// map, NEVER from the client's filename/type — otherwise a client could upload
+// an HTML/SVG/JS file labelled text/html and get a stored-XSS URL on the public
+// asset domain. (iOS reports .mov as video/quicktime.)
+const VIDEO_TYPES: Record<string, string> = {
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+  'video/ogg': 'ogv',
+  'video/3gpp': '3gp',
+  'video/x-m4v': 'm4v',
+}
+
 export async function POST(req: Request) {
   const session = await auth()
   if (!session || session.user.role !== 'CLIENT') {
@@ -32,14 +46,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'File too large (max 100 MB)' }, { status: 413 })
   }
 
+  // Enforce the video MIME whitelist; derive the stored content-type + extension
+  // from it, not from the untrusted upload.
+  const safeExt = VIDEO_TYPES[file.type]
+  if (!safeExt) {
+    return NextResponse.json({ error: `Unsupported video type: ${file.type || 'unknown'}` }, { status: 415 })
+  }
+
   const task = await prisma.trainingTask.findFirst({
     where: { id: taskId, client: { userId: session.user.id } },
     select: { id: true, clientId: true },
   })
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
 
-  const ext = file.name.split('.').pop() ?? 'mp4'
-  const key = `videos/${task.clientId}/${taskId}/${crypto.randomUUID()}.${ext}`
+  const key = `videos/${task.clientId}/${taskId}/${crypto.randomUUID()}.${safeExt}`
 
   const buffer = Buffer.from(await file.arrayBuffer())
 
