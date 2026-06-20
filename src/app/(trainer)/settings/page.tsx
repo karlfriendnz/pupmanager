@@ -8,6 +8,7 @@ import { NotificationsPanel } from './notifications-panel'
 import { TeamPanel } from './team-panel'
 import { BillingPanel } from './billing-panel'
 import { PaymentsPanel } from './payments-panel'
+import { ActivityPanel } from './activity-panel'
 import { FormsManager } from '../forms/forms-manager'
 import type { Question } from '../forms/session/session-forms-manager'
 import { PageHeader } from '@/components/shared/page-header'
@@ -77,6 +78,7 @@ export default async function TrainerSettingsPage() {
         team={<TeamPanel />}
         payments={ctx.role === 'OWNER' ? <PaymentsPanel companyId={ctx.companyId} /> : undefined}
         billing={ctx.role === 'OWNER' ? <BillingPanel companyId={ctx.companyId} /> : undefined}
+        activity={ctx.role === 'OWNER' ? <ActivityPanel companyId={ctx.companyId} /> : undefined}
         forms={!canManageForms ? undefined :
           <FormsManager
             initialSessionForms={sessionForms.map(f => ({

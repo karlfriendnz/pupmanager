@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell, Users, CreditCard, Wallet } from 'lucide-react'
+import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 
 const ALL_TABS = [
@@ -12,6 +12,7 @@ const ALL_TABS = [
   { id: 'team', label: 'Team', icon: Users },
   { id: 'payments', label: 'Payments', icon: Wallet },
   { id: 'billing', label: 'Billing', icon: CreditCard },
+  { id: 'activity', label: 'Activity', icon: ShieldCheck },
 ] as const
 
 type TabId = typeof ALL_TABS[number]['id']
@@ -23,6 +24,7 @@ export function SettingsTabs({
   team,
   payments,
   billing,
+  activity,
 }: {
   // Each tab renders only when its node is provided, so the page can hide tabs
   // a member lacks permission for (e.g. staff don't get Profile/Forms).
@@ -33,9 +35,10 @@ export function SettingsTabs({
   team?: React.ReactNode
   payments?: React.ReactNode
   billing?: React.ReactNode
+  activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, team, payments, billing }
+  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, team, payments, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -108,6 +111,7 @@ export function SettingsTabs({
         {team != null && <div className={tab === 'team' ? '' : 'hidden'}>{team}</div>}
         {payments != null && <div className={tab === 'payments' ? '' : 'hidden'}>{payments}</div>}
         {billing != null && !native && <div className={tab === 'billing' ? '' : 'hidden'}>{billing}</div>}
+        {activity != null && <div className={tab === 'activity' ? '' : 'hidden'}>{activity}</div>}
       </div>
     </div>
   )

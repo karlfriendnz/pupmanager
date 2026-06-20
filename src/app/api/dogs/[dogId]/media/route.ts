@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+
+const mediaSchema = z.object({
+  kind: z.enum(['IMAGE', 'VIDEO']),
+  url: z.string().url().max(2000),
+  thumbnailUrl: z.string().url().max(2000).nullable().optional(),
+  caption: z.string().max(500).nullable().optional(),
+})
 
 // Resolve the owning trainer (tenant) for a dog and confirm the caller is a
 // trainer who owns the client (directly or via a CO_MANAGE share). Returns the
@@ -57,20 +65,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ dogId: 
   const owningTrainerId = session.user.role === 'TRAINER' ? await authorizeTrainerForDog(dogId, session.user.trainerId) : null
   if (!owningTrainerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const body = await req.json().catch(() => null) as { kind?: string; url?: string; thumbnailUrl?: string | null; caption?: string | null } | null
-  if (!body?.url || (body.kind !== 'IMAGE' && body.kind !== 'VIDEO')) {
-    return NextResponse.json({ error: 'kind (IMAGE|VIDEO) and url are required' }, { status: 400 })
+  const parsed = mediaSchema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'kind (IMAGE|VIDEO) and a valid url are required' }, { status: 400 })
   }
+  const { kind, url, thumbnailUrl, caption } = parsed.data
 
   const last = await prisma.dogMedia.findFirst({ where: { dogId }, orderBy: { order: 'desc' }, select: { order: true } })
   const media = await prisma.dogMedia.create({
     data: {
       dogId,
       trainerId: owningTrainerId,
-      kind: body.kind,
-      url: body.url,
-      thumbnailUrl: body.thumbnailUrl ?? null,
-      caption: body.caption ?? null,
+      kind,
+      url,
+      thumbnailUrl: thumbnailUrl ?? null,
+      caption: caption ?? null,
       order: (last?.order ?? -1) + 1,
     },
     select: { id: true, kind: true, url: true, thumbnailUrl: true, caption: true, order: true },
