@@ -7,6 +7,7 @@ import { env } from '@/lib/env'
 import { readAccountFlags } from '@/lib/connect'
 import { materializeBooking } from '@/lib/booking-page'
 import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automations'
+import { enrollInRun } from '@/lib/class-runs'
 import { sendEmail } from '@/lib/email'
 
 // Shape of PaymentItem.intent for a scheduled booking (PACKAGE / SESSION),
@@ -19,6 +20,13 @@ interface ScheduledIntent {
   singleDurationMins?: number
   singleSessionType?: SessionType
   singleTitle?: string
+}
+
+// PaymentItem.intent for a paid class enrolment (CLASS_ENROLLMENT).
+interface ClassIntent {
+  classRunId?: string
+  type?: 'FULL' | 'DROP_IN'
+  dogId?: string | null
 }
 
 // Connect webhook — SEPARATE from the subscription webhook (/api/webhooks/stripe).
@@ -164,6 +172,7 @@ async function markPaidAndFulfil(paymentId: string | null, eventSandbox: boolean
   // commits so a flaky email can never roll back a paid booking.
   const booked: { bookingPageId: string; slotAt: Date }[] = []
   const collisions: Date[] = []
+  const classItems: { itemId: string; intent: ClassIntent }[] = []
   let didFulfil = false
 
   await prisma.$transaction(async (tx) => {
@@ -207,13 +216,62 @@ async function markPaidAndFulfil(paymentId: string | null, eventSandbox: boolean
         })
         if (r.booked && r.bookingPageId && r.slotAt) booked.push({ bookingPageId: r.bookingPageId, slotAt: r.slotAt })
         if (r.collided && r.slotAt) collisions.push(r.slotAt)
+      } else if (item.kind === 'CLASS_ENROLLMENT') {
+        // enrollInRun runs its own transaction (capacity/waitlist logic), so it
+        // can't nest here — defer to a post-commit step.
+        classItems.push({ itemId: item.id, intent: (item.intent ?? {}) as ClassIntent })
       }
-      // CLASS_ENROLLMENT fulfilment lands in a later phase.
     }
   })
 
   if (didFulfil && (booked.length || collisions.length)) {
     await runBookingSideEffects(payment.trainerId, payment.clientId, booked, collisions)
+  }
+  if (didFulfil && classItems.length && payment.clientId) {
+    await fulfilClassEnrolments(payment.trainerId, payment.clientId, classItems)
+  }
+}
+
+// Enrol the client into paid classes after the payment commits. enrollInRun owns
+// its own transaction + capacity logic; if the class filled between checkout and
+// payment it waitlists/rejects, and we email the trainer to seat or refund.
+async function fulfilClassEnrolments(
+  trainerId: string,
+  clientId: string,
+  items: { itemId: string; intent: ClassIntent }[],
+) {
+  const failures: string[] = []
+  for (const it of items) {
+    const { classRunId, type, dogId } = it.intent
+    if (!classRunId) continue
+    try {
+      const r = await enrollInRun({ classRunId, clientId, dogId: dogId ?? null, type: type ?? 'FULL', source: 'SELF_SERVE' })
+      if (r.status === 'ENROLLED') {
+        await prisma.paymentItem.update({ where: { id: it.itemId }, data: { classEnrollmentId: r.enrollmentId } })
+        await prisma.classEnrollment.update({ where: { id: r.enrollmentId }, data: { invoicedAt: new Date() } })
+      } else {
+        // Paid but only got a waitlist seat — trainer needs to decide.
+        failures.push(classRunId)
+      }
+    } catch (err) {
+      console.error('[stripe connect webhook] paid class enrol failed', classRunId, err)
+      failures.push(classRunId)
+    }
+  }
+
+  if (failures.length) {
+    const trainer = await prisma.trainerProfile.findUnique({
+      where: { id: trainerId },
+      select: { user: { select: { email: true } } },
+    })
+    if (trainer?.user?.email) {
+      await sendEmail({
+        to: trainer.user.email,
+        subject: 'Action needed: a paid class enrolment couldn’t be seated',
+        html: `<p>A client paid to join a class but it filled up before their payment cleared, so they weren’t enrolled.</p><p>Please seat them, offer another class, or refund from <strong>Settings → Payments</strong>.</p>`,
+        text: 'A client paid to join a class but it was full when payment cleared. Seat them or refund from Settings → Payments.',
+      }).catch(err => console.error('[connect webhook] class alert failed', err))
+    }
   }
 }
 

@@ -3,6 +3,7 @@ import { GraduationCap, CheckCircle2, XCircle, Clock, Star } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { PageHeader } from '@/components/shared/page-header'
+import { AvailableClasses } from './available-classes'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Classes' }
@@ -38,10 +39,73 @@ export default async function MyClassesPage() {
     },
   })
 
+  // Open classes the client can join themselves (excludes ones they're in).
+  const enrolledRunIds = enrollments.map(e => e.classRunId)
+  const profile = await prisma.clientProfile.findUnique({
+    where: { id: active.clientId },
+    select: {
+      trainerId: true,
+      dogId: true,
+      dog: { select: { id: true, name: true } },
+      dogs: { select: { id: true, name: true } },
+      trainer: { select: { acceptPaymentsEnabled: true, connectChargesEnabled: true, payoutCurrency: true } },
+    },
+  })
+  // All the client's dogs = primary + any additional, deduped, for the picker.
+  const allDogs = profile
+    ? [...(profile.dog ? [profile.dog] : []), ...profile.dogs].filter(
+        (d, i, arr) => arr.findIndex(x => x.id === d.id) === i,
+      )
+    : []
+  const now = new Date()
+  const openRuns = profile
+    ? await prisma.classRun.findMany({
+        where: {
+          trainerId: profile.trainerId,
+          status: { in: ['SCHEDULED', 'RUNNING'] },
+          id: { notIn: enrolledRunIds.length ? enrolledRunIds : ['__none__'] },
+          sessions: { some: { scheduledAt: { gte: now } } },
+        },
+        orderBy: { startDate: 'asc' },
+        include: {
+          package: { select: { name: true, priceCents: true, specialPriceCents: true, allowDropIn: true, dropInPriceCents: true, capacity: true, allowWaitlist: true } },
+          enrollments: { where: { status: 'ENROLLED' }, select: { id: true } },
+          sessions: { where: { scheduledAt: { gte: now } }, orderBy: { scheduledAt: 'asc' }, take: 1, select: { scheduledAt: true } },
+        },
+      })
+    : []
+
+  const acceptPayments = !!(profile?.trainer.acceptPaymentsEnabled && profile?.trainer.connectChargesEnabled)
+  const available = openRuns.map(r => {
+    const cap = r.capacity ?? r.package.capacity ?? null
+    return {
+      id: r.id,
+      name: r.name,
+      scheduleNote: r.scheduleNote,
+      packageName: r.package.name,
+      nextSessionAt: r.sessions[0]?.scheduledAt.toISOString() ?? null,
+      seatsLeft: cap === null ? null : Math.max(0, cap - r.enrollments.length),
+      fullPriceCents: r.package.specialPriceCents ?? r.package.priceCents,
+      allowDropIn: r.package.allowDropIn,
+      dropInPerSessionCents: r.package.dropInPriceCents,
+      allowWaitlist: r.package.allowWaitlist,
+    }
+  })
+
   return (
     <>
       <PageHeader title="Classes" subtitle="Group classes & how each session went" />
       <div className="px-4 pt-5 pb-10 max-w-3xl mx-auto w-full">
+
+      {available.length > 0 && (
+        <AvailableClasses
+          classes={available}
+          dogs={allDogs}
+          defaultDogId={profile?.dogId ?? null}
+          acceptPayments={acceptPayments}
+          currency={profile?.trainer.payoutCurrency ?? null}
+        />
+      )}
 
       {enrollments.length === 0 && (
         <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-8 text-center">
