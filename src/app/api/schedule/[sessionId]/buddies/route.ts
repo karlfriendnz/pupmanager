@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext } from '@/lib/membership'
+import { accessibleSessionWhere } from '@/lib/session-access'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -16,21 +17,18 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
 
   const { sessionId } = await params
   const parsed = schema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   const { clientId, scope } = parsed.data
 
-  // Trainer must own the session
+  // Caller must be able to access the session (company + assignment-scoped)
   const trainingSession = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, trainerId },
+    where: { id: sessionId, trainerId, ...accessibleSessionWhere(ctx) },
     select: { id: true, clientId: true, dogId: true, walkSeriesId: true, scheduledAt: true },
   })
   if (!trainingSession) return NextResponse.json({ error: 'Session not found' }, { status: 404 })

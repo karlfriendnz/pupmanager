@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext } from '@/lib/membership'
+import { accessibleSessionWhere } from '@/lib/session-access'
 import { safeEvaluate } from '@/lib/achievements'
 import { notifyClient } from '@/lib/client-notify'
 import { z } from 'zod'
@@ -46,18 +47,14 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
 
   const { sessionId } = await params
 
   const trainingSession = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, trainerId },
+    where: { id: sessionId, trainerId, ...accessibleSessionWhere(ctx) },
     include: {
       tasks: {
         orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
@@ -84,21 +81,18 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { sessionId } = await params
   const body = await req.json()
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
 
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
 
   const existing = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, trainerId },
+    where: { id: sessionId, trainerId, ...accessibleSessionWhere(ctx) },
   })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -264,21 +258,19 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { sessionId } = await params
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { id: session.user.trainerId ?? '' },
+    where: { id: ctx.companyId },
     select: { id: true, googleCalendarRefreshToken: true },
   })
   if (!trainerProfile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const trainingSession = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, trainerId: trainerProfile.id },
+    where: { id: sessionId, trainerId: trainerProfile.id, ...accessibleSessionWhere(ctx) },
   })
   if (!trainingSession) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 

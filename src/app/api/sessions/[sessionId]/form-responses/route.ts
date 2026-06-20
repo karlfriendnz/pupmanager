@@ -1,24 +1,22 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext } from '@/lib/membership'
+import { accessibleSessionWhere } from '@/lib/session-access'
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
 
   const { sessionId } = await params
 
   // Verify trainer owns the session and pull the package's default form id so
   // we can lazily auto-attach it when no responses exist yet.
   const owns = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, trainerId },
+    where: { id: sessionId, trainerId, ...accessibleSessionWhere(ctx) },
     select: {
       id: true,
       clientPackage: { select: { package: { select: { defaultSessionFormId: true } } } },

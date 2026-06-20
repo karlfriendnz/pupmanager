@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext } from '@/lib/membership'
+import { accessibleSessionWhere } from '@/lib/session-access'
 
 // POST creates the row immediately after the browser-side `upload()`
 // resolves with a Blob URL. We use this rather than relying solely on
@@ -24,17 +25,14 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
 
   const { sessionId } = await params
 
   const owns = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, trainerId },
+    where: { id: sessionId, trainerId, ...accessibleSessionWhere(ctx) },
     select: { id: true },
   })
   if (!owns) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -88,17 +86,14 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
 
   const { sessionId } = await params
 
   const owns = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, trainerId },
+    where: { id: sessionId, trainerId, ...accessibleSessionWhere(ctx) },
     select: { id: true },
   })
   if (!owns) return NextResponse.json({ error: 'Not found' }, { status: 404 })

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext } from '@/lib/membership'
+import { accessibleSessionWhere } from '@/lib/session-access'
 
 // Vercel Blob client-upload handshake. The browser hits this twice:
 //   1. before upload — to get a one-shot token (`onBeforeGenerateToken`)
@@ -20,18 +21,15 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
 
   const { sessionId } = await params
 
-  // Verify the trainer owns this session before issuing a token.
+  // Verify the caller can access this session before issuing a token.
   const owns = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, trainerId },
+    where: { id: sessionId, trainerId, ...accessibleSessionWhere(ctx) },
     select: { id: true },
   })
   if (!owns) return NextResponse.json({ error: 'Not found' }, { status: 404 })

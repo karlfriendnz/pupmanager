@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext, type TrainerContext } from '@/lib/membership'
+import { accessibleSessionWhere } from '@/lib/session-access'
 import { notifyClient } from '@/lib/client-notify'
 import { z } from 'zod'
 
@@ -29,13 +30,13 @@ interface BasicQuestion {
 
 type Question = CustomFieldQuestion | BasicQuestion
 
-async function ownership(sessionId: string, formId: string, trainerId: string) {
+async function ownership(sessionId: string, formId: string, ctx: TrainerContext) {
   const session = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, trainerId },
+    where: { id: sessionId, trainerId: ctx.companyId, ...accessibleSessionWhere(ctx) },
     select: { id: true, clientId: true, dogId: true, client: { select: { dogId: true } } },
   })
   const form = await prisma.sessionForm.findFirst({
-    where: { id: formId, trainerId },
+    where: { id: formId, trainerId: ctx.companyId },
     select: { id: true, questions: true },
   })
   if (!session || !form) return null
@@ -46,15 +47,12 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ sessionId: string; formId: string }> }
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
 
   const { sessionId, formId } = await params
-  const owned = await ownership(sessionId, formId, trainerId)
+  const owned = await ownership(sessionId, formId, ctx)
   if (!owned) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const parsed = upsertSchema.safeParse(await req.json())
@@ -181,16 +179,12 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ sessionId: string; formId: string }> }
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { sessionId, formId } = await params
   const owned = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, trainerId },
+    where: { id: sessionId, trainerId: ctx.companyId, ...accessibleSessionWhere(ctx) },
     select: { id: true },
   })
   if (!owned) return NextResponse.json({ error: 'Not found' }, { status: 404 })

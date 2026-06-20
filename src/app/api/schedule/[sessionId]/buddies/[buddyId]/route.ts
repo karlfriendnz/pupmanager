@@ -1,23 +1,21 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext } from '@/lib/membership'
+import { accessibleSessionWhere } from '@/lib/session-access'
 
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ sessionId: string; buddyId: string }> }
 ) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
-  const trainerId = session.user.trainerId
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.companyId
 
   const { sessionId, buddyId } = await params
 
-  // Walk through the session to confirm the trainer owns it
+  // Walk through the session to confirm the caller can access it
   const buddy = await prisma.sessionBuddy.findFirst({
-    where: { id: buddyId, sessionId, session: { trainerId } },
+    where: { id: buddyId, sessionId, session: { trainerId, ...accessibleSessionWhere(ctx) } },
     select: { id: true },
   })
   if (!buddy) return NextResponse.json({ error: 'Not found' }, { status: 404 })
