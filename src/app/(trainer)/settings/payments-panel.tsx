@@ -32,6 +32,22 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
   const active = !!(profile?.connectChargesEnabled && profile?.connectPayoutsEnabled)
   const feePct = (platformFeeBps() / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })
 
+  // Effective card-processing rate, pulled from the real Stripe fees we've
+  // captured across this trainer's payments (gross-weighted average).
+  const feeAgg = started
+    ? await prisma.payment.aggregate({
+        where: {
+          trainerId: companyId,
+          status: { in: ['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED'] },
+          stripeFeeAmount: { not: null },
+        },
+        _sum: { stripeFeeAmount: true, amountTotal: true },
+      })
+    : null
+  const feeSum = feeAgg?._sum.stripeFeeAmount ?? 0
+  const grossSum = feeAgg?._sum.amountTotal ?? 0
+  const cardFeePct = grossSum > 0 ? (feeSum / grossSum) * 100 : null
+
   // Recent client→trainer payments (the earnings list).
   const payments = started
     ? await prisma.payment.findMany({
@@ -115,12 +131,15 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
           </div>
           <div className="flex items-center justify-between">
             <dt className="text-slate-600">Card processing fee</dt>
-            <dd className="text-slate-500">Stripe’s standard rate</dd>
+            <dd className="font-medium text-slate-900 tabular-nums">
+              {cardFeePct != null ? `${cardFeePct.toFixed(1)}% avg` : 'Stripe’s standard rate'}
+            </dd>
           </div>
         </dl>
         <p className="mt-3 text-xs text-slate-400">
-          Each payment’s breakdown — amount, card fee and platform fee — is shown on the
-          invoice so you always see exactly what you’ll receive.
+          {cardFeePct != null
+            ? 'Card rate is the average Stripe took across your payments — it varies by card. Each payment’s exact amount, card fee and platform fee show below.'
+            : 'Each payment’s breakdown — amount, card fee and platform fee — is shown on the invoice so you always see exactly what you’ll receive.'}
         </p>
       </div>
 
