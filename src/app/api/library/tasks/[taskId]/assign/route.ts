@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { dogBelongsToClient } from '@/lib/dog-access'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -36,6 +37,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ taskId:
   const access = await getClientAccess(parsed.data.clientId, session.user.id)
   if (!access) return NextResponse.json({ error: 'Client not found' }, { status: 404 })
   if (!access.canEdit) return NextResponse.json({ error: 'Read-only access' }, { status: 403 })
+
+  if (parsed.data.dogId && !(await dogBelongsToClient(parsed.data.dogId, parsed.data.clientId))) {
+    return NextResponse.json({ error: 'That dog does not belong to this client.' }, { status: 400 })
+  }
 
   const created = await prisma.trainingTask.create({
     data: {

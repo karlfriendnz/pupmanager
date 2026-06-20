@@ -21,6 +21,9 @@ export async function POST(
   const { clientId } = await params
   const access = await getClientAccess(clientId, session.user.id)
   if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  // READ_ONLY shares are view-only — they must not send outbound emails as the
+  // business to the shared client.
+  if (!access.canEdit) return NextResponse.json({ error: 'Read-only access' }, { status: 403 })
 
   const body = await req.json()
   const parsed = schema.safeParse(body)

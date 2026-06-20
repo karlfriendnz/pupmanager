@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { dogBelongsToClient } from '@/lib/dog-access'
 import { z } from 'zod'
 
 const patchSchema = z.object({
@@ -39,6 +40,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ taskId
   const body = await req.json()
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+
+  // A dogId set on the task must belong to the task's client (not another's dog).
+  if (parsed.data.dogId && !(await dogBelongsToClient(parsed.data.dogId, task.clientId))) {
+    return NextResponse.json({ error: 'That dog does not belong to this client.' }, { status: 400 })
+  }
 
   const updated = await prisma.trainingTask.update({
     where: { id: taskId },

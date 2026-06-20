@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { enrollInRun, ClassError } from '@/lib/class-runs'
 import { notifyClient } from '@/lib/client-notify'
+import { dogBelongsToClient } from '@/lib/dog-access'
 
 // POST /api/class-runs/[runId]/enrollments
 // Trainer-assigned enrolment. Capacity / waitlist / drop-in are decided
@@ -41,6 +42,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     select: { id: true },
   })
   if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 })
+
+  // The dog (if any) must belong to the client being enrolled — otherwise a
+  // trainer could pair a client with another client's dog.
+  if (parsed.data.dogId && !(await dogBelongsToClient(parsed.data.dogId, parsed.data.clientId))) {
+    return NextResponse.json({ error: 'That dog does not belong to this client.' }, { status: 400 })
+  }
 
   try {
     const result = await enrollInRun({

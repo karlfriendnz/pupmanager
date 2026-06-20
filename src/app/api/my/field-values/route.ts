@@ -22,9 +22,14 @@ export async function POST(req: Request) {
   const active = await getActiveClient()
   const clientProfile = active ? await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
-    select: { id: true, trainerId: true },
+    select: { id: true, trainerId: true, dogId: true, dogs: { select: { id: true } } },
   }) : null
   if (!clientProfile) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // The dogs this client may attach values to — their primary + additional dogs.
+  // A dogId outside this set is dropped (would otherwise tag a value onto another
+  // client's dog).
+  const ownDogIds = new Set([clientProfile.dogId, ...clientProfile.dogs.map(d => d.id)].filter(Boolean) as string[])
 
   const body = await req.json()
   const parsed = schema.safeParse(body)
@@ -45,7 +50,8 @@ export async function POST(req: Request) {
   // value at a time means at most one open connection from this
   // request, plenty fast for the typical handful of fields.
   for (const { fieldId, value, dogId } of parsed.data.values.filter(v => validIds.has(v.fieldId))) {
-    const resolvedDogId = dogId ?? null
+    // Only honour a dogId the client actually owns; otherwise store unscoped.
+    const resolvedDogId = dogId && ownDogIds.has(dogId) ? dogId : null
     const existing = await prisma.customFieldValue.findFirst({
       where: { fieldId, clientId: clientProfile.id, dogId: resolvedDogId },
     })

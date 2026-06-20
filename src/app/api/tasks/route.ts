@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { dogBelongsToClient } from '@/lib/dog-access'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -30,6 +31,19 @@ export async function POST(req: Request) {
   const access = await getClientAccess(parsed.data.clientId, session.user.id)
   if (!access) return NextResponse.json({ error: 'Client not found' }, { status: 404 })
   if (!access.canEdit) return NextResponse.json({ error: 'Read-only access' }, { status: 403 })
+
+  // A dogId/sessionId on the body must belong to THIS client — otherwise a task
+  // could be linked to another client's dog or session.
+  if (parsed.data.dogId && !(await dogBelongsToClient(parsed.data.dogId, parsed.data.clientId))) {
+    return NextResponse.json({ error: 'That dog does not belong to this client.' }, { status: 400 })
+  }
+  if (parsed.data.sessionId) {
+    const ok = await prisma.trainingSession.findFirst({
+      where: { id: parsed.data.sessionId, trainerId: access.trainerId, clientId: parsed.data.clientId },
+      select: { id: true },
+    })
+    if (!ok) return NextResponse.json({ error: 'That session does not belong to this client.' }, { status: 400 })
+  }
 
   const baseData = {
     clientId: parsed.data.clientId,
