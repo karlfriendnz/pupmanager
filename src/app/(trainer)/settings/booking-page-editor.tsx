@@ -515,9 +515,11 @@ function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onCh
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-40 ${checked ? 'bg-blue-600' : 'bg-slate-300'}`}
+      // minHeight inline beats the unlayered global `button { min-height:44px }`.
+      style={{ minHeight: 0 }}
+      className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:opacity-40 ${checked ? 'justify-end bg-blue-600' : 'justify-start bg-slate-300'}`}
     >
-      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5 left-0.5' : 'left-0.5'}`} />
+      <span className="block h-5 w-5 rounded-full bg-white shadow" />
     </button>
   )
 }

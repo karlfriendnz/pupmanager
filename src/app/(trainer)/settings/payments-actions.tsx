@@ -111,9 +111,12 @@ export function AcceptPaymentsToggle({ initial }: { initial: boolean }) {
       aria-label="Accept payments"
       disabled={saving}
       onClick={toggle}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-40 ${on ? 'bg-emerald-500' : 'bg-slate-300'}`}
+      // minHeight inline: the app's global `button { min-height:44px }` is
+      // unlayered, so it beats Tailwind's layered min-h-* by cascade layer.
+      style={{ minHeight: 0 }}
+      className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:opacity-40 ${on ? 'justify-end bg-emerald-500' : 'justify-start bg-slate-300'}`}
     >
-      <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-5' : ''}`} />
+      <span className="block h-5 w-5 rounded-full bg-white shadow" />
     </button>
   )
 }
