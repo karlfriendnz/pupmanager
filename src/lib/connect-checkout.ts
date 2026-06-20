@@ -23,11 +23,13 @@ export interface CheckoutLine {
   unitAmount: number
   quantity?: number
   productId?: string
+  /** Link to an existing assignment being settled (invoice on a ClientPackage). */
+  clientPackageId?: string
   /** What to create on success, read by the webhook (e.g. { productId, quantity }). */
   intent?: Prisma.InputJsonValue
 }
 
-export interface CreateConnectCheckoutInput {
+export interface CreatePaymentRecordInput {
   sandbox: boolean
   trainerId: string
   connectAccountId: string
@@ -37,13 +39,20 @@ export interface CreateConnectCheckoutInput {
   lines: CheckoutLine[]
   /** Denormalised summary for the trainer's earnings list. */
   description?: string
+}
+
+export interface CreateConnectCheckoutInput extends CreatePaymentRecordInput {
   successUrl: string
   cancelUrl: string
 }
 
-export async function createConnectCheckout(
-  input: CreateConnectCheckoutInput,
-): Promise<{ url: string | null; paymentId: string }> {
+/**
+ * Write a PENDING Payment (+ PaymentItem rows) with no Stripe session yet.
+ * Used both by the immediate-checkout flows (which mint a session right away)
+ * and by trainer-issued invoices (which mint the session later, when the client
+ * opens the pay link). Returns the Payment id.
+ */
+export async function createPaymentRecord(input: CreatePaymentRecordInput): Promise<string> {
   const amountTotal = input.lines.reduce((sum, l) => sum + l.unitAmount * (l.quantity ?? 1), 0)
   const applicationFeeAmount = platformFeeAmount(amountTotal)
 
@@ -65,39 +74,65 @@ export async function createConnectCheckout(
           unitAmount: l.unitAmount,
           quantity: l.quantity ?? 1,
           productId: l.productId ?? null,
+          clientPackageId: l.clientPackageId ?? null,
           intent: l.intent,
         })),
       },
     },
   })
+  return payment.id
+}
 
-  const stripe = stripeFor(input.sandbox)
+/**
+ * Mint a hosted Checkout Session for an existing PENDING Payment (destination
+ * charge). Rebuilds the line items from the stored PaymentItems, so the caller
+ * only needs the Payment id. Safe to call again if a link is reused — it just
+ * supersedes the previous session. Returns the hosted URL (or null).
+ */
+export async function mintCheckoutSession(
+  paymentId: string,
+  urls: { successUrl: string; cancelUrl: string },
+): Promise<string | null> {
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: { items: true },
+  })
+  if (!payment || payment.status !== 'PENDING') return null
+
+  const stripe = stripeFor(payment.sandbox)
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',
-    line_items: input.lines.map(l => ({
-      quantity: l.quantity ?? 1,
+    line_items: payment.items.map(l => ({
+      quantity: l.quantity,
       price_data: {
-        currency: input.currency,
+        currency: payment.currency,
         unit_amount: l.unitAmount,
         product_data: { name: l.description },
       },
     })),
     payment_intent_data: {
-      application_fee_amount: applicationFeeAmount,
-      transfer_data: { destination: input.connectAccountId },
-      // Echo the Payment id so payment_intent.succeeded can resolve it too.
+      application_fee_amount: payment.applicationFeeAmount,
+      transfer_data: { destination: payment.connectAccountId },
       metadata: { paymentId: payment.id },
     },
     client_reference_id: payment.id,
-    metadata: { paymentId: payment.id, trainerId: input.trainerId },
-    success_url: input.successUrl,
-    cancel_url: input.cancelUrl,
+    metadata: { paymentId: payment.id, trainerId: payment.trainerId },
+    success_url: urls.successUrl,
+    cancel_url: urls.cancelUrl,
   })
 
   await prisma.payment.update({
     where: { id: payment.id },
     data: { stripeCheckoutSessionId: session.id },
   })
+  return session.url
+}
 
-  return { url: session.url, paymentId: payment.id }
+/** Create the Payment record AND immediately mint its checkout session. */
+export async function createConnectCheckout(
+  input: CreateConnectCheckoutInput,
+): Promise<{ url: string | null; paymentId: string }> {
+  const paymentId = await createPaymentRecord(input)
+  const url = await mintCheckoutSession(paymentId, { successUrl: input.successUrl, cancelUrl: input.cancelUrl })
+  return { url, paymentId }
 }

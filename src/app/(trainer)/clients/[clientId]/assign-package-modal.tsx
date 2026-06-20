@@ -116,6 +116,9 @@ function AssignModal({
   // Trainer ticks this when they've already sent the invoice for the package
   // outside PupManager (Xero/QBO/cash). Stamps invoicedAt on the assignment.
   const [markInvoiced, setMarkInvoiced] = useState(false)
+  // Send the client a Stripe pay link for this package instead of marking it
+  // invoiced externally. Mutually exclusive with markInvoiced.
+  const [sendPaymentLink, setSendPaymentLink] = useState(false)
   const [notify, setNotify] = useState(true)
 
   const pkg = packages.find(p => p.id === packageId)!
@@ -169,13 +172,30 @@ function AssignModal({
     const res = await fetch(`/api/clients/${clientId}/packages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ packageId, sessionDates, dogId, markInvoiced, notify }),
+      body: JSON.stringify({ packageId, sessionDates, dogId, markInvoiced: markInvoiced && !sendPaymentLink, notify }),
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
       setError(body?.error?.toString() ?? 'Failed to assign package')
       setSubmitting(false)
       return
+    }
+    // Send a pay link for the freshly-created assignment, if chosen.
+    if (sendPaymentLink) {
+      const body = await res.json().catch(() => ({}))
+      if (body?.assignmentId) {
+        const inv = await fetch(`/api/trainer/clients/${clientId}/invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientPackageId: body.assignmentId }),
+        })
+        if (!inv.ok) {
+          const b = await inv.json().catch(() => ({}))
+          setError(typeof b.error === 'string' ? b.error : 'Package assigned, but the payment link couldn’t be sent.')
+          setSubmitting(false)
+          return
+        }
+      }
     }
     onClose()
     router.replace(`/clients/${clientId}?tab=sessions`)
@@ -334,13 +354,28 @@ function AssignModal({
             <input
               type="checkbox"
               checked={markInvoiced}
-              onChange={e => setMarkInvoiced(e.target.checked)}
+              onChange={e => { setMarkInvoiced(e.target.checked); if (e.target.checked) setSendPaymentLink(false) }}
               className="h-4 w-4 mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0"
             />
             <span className="text-sm text-slate-700 leading-snug">
               Already invoiced
               <span className="block text-[11px] text-slate-400 mt-0.5">
                 Tick if you&apos;ve sent the invoice for this package outside PupManager (Xero, QuickBooks, etc).
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
+            <input
+              type="checkbox"
+              checked={sendPaymentLink}
+              onChange={e => { setSendPaymentLink(e.target.checked); if (e.target.checked) setMarkInvoiced(false) }}
+              className="h-4 w-4 mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0"
+            />
+            <span className="text-sm text-slate-700 leading-snug">
+              Send a payment link
+              <span className="block text-[11px] text-slate-400 mt-0.5">
+                Email + notify the client a secure Stripe link to pay for this package. Needs payments switched on.
               </span>
             </span>
           </label>

@@ -20,6 +20,9 @@ interface ScheduledIntent {
   singleDurationMins?: number
   singleSessionType?: SessionType
   singleTitle?: string
+  // True for a trainer-issued invoice settling an EXISTING assignment — no new
+  // calendar rows are created; the linked ClientPackage is just marked invoiced.
+  invoice?: boolean
 }
 
 // PaymentItem.intent for a paid class enrolment (CLASS_ENROLLMENT).
@@ -207,15 +210,23 @@ async function markPaidAndFulfil(paymentId: string | null, eventSandbox: boolean
           },
         })
       } else if (item.kind === 'PACKAGE' || item.kind === 'SESSION') {
-        const r = await fulfilScheduledBooking(tx, {
-          itemId: item.id,
-          trainerId: payment.trainerId,
-          clientId: payment.clientId,
-          intent: (item.intent ?? null) as ScheduledIntent | null,
-          paidAt: new Date(),
-        })
-        if (r.booked && r.bookingPageId && r.slotAt) booked.push({ bookingPageId: r.bookingPageId, slotAt: r.slotAt })
-        if (r.collided && r.slotAt) collisions.push(r.slotAt)
+        const intent = (item.intent ?? null) as ScheduledIntent | null
+        if (intent?.invoice) {
+          // Invoice settling an existing assignment — just mark it paid.
+          if (item.clientPackageId) {
+            await tx.clientPackage.update({ where: { id: item.clientPackageId }, data: { invoicedAt: new Date() } })
+          }
+        } else {
+          const r = await fulfilScheduledBooking(tx, {
+            itemId: item.id,
+            trainerId: payment.trainerId,
+            clientId: payment.clientId,
+            intent,
+            paidAt: new Date(),
+          })
+          if (r.booked && r.bookingPageId && r.slotAt) booked.push({ bookingPageId: r.bookingPageId, slotAt: r.slotAt })
+          if (r.collided && r.slotAt) collisions.push(r.slotAt)
+        }
       } else if (item.kind === 'CLASS_ENROLLMENT') {
         // enrollInRun runs its own transaction (capacity/waitlist logic), so it
         // can't nest here — defer to a post-commit step.
