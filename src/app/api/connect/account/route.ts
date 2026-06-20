@@ -8,21 +8,25 @@ import {
   currencyForCountry,
   isConnectConfigured,
 } from '@/lib/connect'
+import { requireSameOrigin } from '@/lib/csrf'
+import { recordAudit, auditRequestMeta } from '@/lib/audit'
 
 // Stripe Connect onboarding for the trainer's payout account (Flow B).
 // Owner-only (mirrors Billing) — onboarding a payout account is an account
 // owner action. POST creates-or-resumes the Express account and returns a
 // hosted onboarding link; PATCH flips the "accept payments" master switch.
 
-async function ownerTrainerId(): Promise<string | null> {
+async function ownerContext(): Promise<{ trainerId: string; userId: string } | null> {
   const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') return null
-  return session.user.trainerId ?? null
+  if (!session || session.user.role !== 'TRAINER' || !session.user.trainerId) return null
+  return { trainerId: session.user.trainerId, userId: session.user.id }
 }
 
-export async function POST() {
-  const trainerId = await ownerTrainerId()
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+export async function POST(req: Request) {
+  const csrf = requireSameOrigin(req); if (csrf) return csrf
+  const ctx = await ownerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.trainerId
 
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
@@ -73,8 +77,10 @@ export async function POST() {
 const patchSchema = z.object({ acceptPaymentsEnabled: z.boolean() })
 
 export async function PATCH(req: Request) {
-  const trainerId = await ownerTrainerId()
-  if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const csrf = requireSameOrigin(req); if (csrf) return csrf
+  const ctx = await ownerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerId = ctx.trainerId
 
   const parsed = patchSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
@@ -93,6 +99,13 @@ export async function PATCH(req: Request) {
   await prisma.trainerProfile.update({
     where: { id: trainerId },
     data: { acceptPaymentsEnabled: parsed.data.acceptPaymentsEnabled },
+  })
+  await recordAudit({
+    action: 'PAYMENTS_TOGGLED',
+    companyId: trainerId,
+    actorUserId: ctx.userId,
+    meta: { acceptPaymentsEnabled: parsed.data.acceptPaymentsEnabled },
+    ...auditRequestMeta(req),
   })
   return NextResponse.json({ acceptPaymentsEnabled: parsed.data.acceptPaymentsEnabled })
 }

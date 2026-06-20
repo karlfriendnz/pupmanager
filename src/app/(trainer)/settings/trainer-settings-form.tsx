@@ -66,6 +66,8 @@ export function TrainerSettingsForm({
   const [templateMsg, setTemplateMsg] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const businessForm = useForm<BusinessData>({
     resolver: zodResolver(businessSchema),
@@ -164,8 +166,26 @@ export function TrainerSettingsForm({
 
   async function deleteAccount() {
     setDeleting(true)
-    await fetch('/api/user/delete', { method: 'DELETE' })
-    router.push('/login')
+    setDeleteError(null)
+    try {
+      const res = await fetch('/api/user/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        // Password re-auth for credential accounts; the confirm word covers
+        // OAuth-only accounts that have no password to check.
+        body: JSON.stringify({ password: deletePassword, confirm: 'DELETE' }),
+      })
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}))
+        setDeleteError(typeof b.error === 'string' ? b.error : 'Could not delete your account.')
+        setDeleting(false)
+        return
+      }
+      router.push('/login')
+    } catch {
+      setDeleteError('Could not delete your account.')
+      setDeleting(false)
+    }
   }
 
   return (
@@ -401,13 +421,22 @@ export function TrainerSettingsForm({
           </Button>
         ) : (
           <div className="flex flex-col gap-3">
-            <Alert variant="error">Are you sure? This cannot be undone.</Alert>
+            <Alert variant="error">Your account will be deactivated immediately and permanently deleted after 30 days. Enter your password to confirm.</Alert>
+            <Input
+              type="password"
+              label="Your password"
+              placeholder="Enter your password"
+              value={deletePassword}
+              onChange={e => setDeletePassword(e.target.value)}
+            />
+            {deleteError && <Alert variant="error">{deleteError}</Alert>}
             <div className="flex gap-2">
               <Button variant="danger" size="sm" loading={deleting} onClick={deleteAccount}>
                 Yes, delete my account
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setDeleteConfirm(false)}>Cancel</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setDeleteConfirm(false); setDeleteError(null); setDeletePassword('') }}>Cancel</Button>
             </div>
+            <a href="/api/account/export" className="text-xs font-medium text-blue-600 hover:underline">Download a copy of your data first</a>
           </div>
         )}
       </AccordionItem>

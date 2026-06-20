@@ -6,6 +6,7 @@ import Google from 'next-auth/providers/google'
 import Apple from 'next-auth/providers/apple'
 import { prisma } from '@/lib/prisma'
 import { isRateLimited, getClientIp } from '@/lib/rate-limit'
+import { recordAudit } from '@/lib/audit'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { SignJWT, importPKCS8 } from 'jose'
@@ -83,6 +84,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // clients (isSample) do NOT count, per the onboarding brief's aha
     // definition. Fire-and-forget; failure must never block sign-in.
     async signIn({ user }) {
+      // Audit every successful sign-in (append-only; never blocks the login).
+      if (user?.id) {
+        await recordAudit({
+          action: 'USER_LOGIN',
+          actorUserId: user.id,
+          meta: { role: user.role ?? null },
+        })
+      }
       try {
         if (user.role !== 'CLIENT' || !user.id) return
         // One client can belong to multiple trainers (Scenario B), so mark aha

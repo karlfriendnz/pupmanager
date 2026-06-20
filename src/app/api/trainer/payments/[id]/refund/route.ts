@@ -4,6 +4,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { enforceRateLimit } from '@/lib/rate-limit'
+import { requireSameOrigin } from '@/lib/csrf'
+import { recordAudit, auditRequestMeta } from '@/lib/audit'
 
 // Refund a client→trainer payment. Owner-only. Issues the Stripe refund
 // (reversing the transfer so it comes out of the trainer's balance, and
@@ -18,6 +20,7 @@ const schema = z.object({
 }).optional()
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const csrf = requireSameOrigin(req); if (csrf) return csrf
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER' || !session.user.trainerId) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
@@ -103,5 +106,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // The charge.refunded webhook reconciles amountRefunded + status to Stripe's
   // authoritative total; our provisional increment just held the lock.
 
+  await recordAudit({
+    action: 'BILLING_CHANGED',
+    companyId: trainerId,
+    actorUserId: session.user.id,
+    targetType: 'payment',
+    targetId: id,
+    meta: { refundId: refund.id, amount },
+    ...auditRequestMeta(req),
+  })
   return NextResponse.json({ ok: true, refundId: refund.id })
 }

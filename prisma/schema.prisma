@@ -2231,3 +2231,51 @@ model RateLimit {
   @@index([resetAt])
   @@map("rate_limits")
 }
+
+// Append-only audit trail for sensitive actions. Written ONLY by the trusted
+// server helper recordAudit() (src/lib/audit.ts); the app never updates or
+// deletes rows, and reads are gated to the owning company's OWNER or a platform
+// ADMIN. Deliberately has NO foreign keys — ids are stored as plain strings so
+// the trail survives deletion of the user/company it describes (forensics).
+// meta must NEVER contain secrets, tokens, reset links, OTPs, or passwords.
+enum AuditAction {
+  USER_SIGNUP
+  USER_LOGIN
+  USER_LOGIN_FAILED
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET_COMPLETED
+  EMAIL_CHANGED
+  ROLE_CHANGED
+  PERMISSIONS_CHANGED
+  INVITE_CREATED
+  INVITE_ACCEPTED
+  MEMBER_REMOVED
+  BILLING_CHANGED
+  PAYMENTS_TOGGLED
+  DATA_EXPORTED
+  ACCOUNT_DELETION_REQUESTED
+  ACCOUNT_DELETED
+  ADMIN_ACTION
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  // The business this event belongs to, for scoping reads. Null for pre-tenant
+  // events (signup, failed login before a company is resolved).
+  companyId   String?
+  // Who performed it (User.id). Null for anonymous / failed-auth events.
+  actorUserId String?
+  action      AuditAction
+  // What it acted on — free-form ("membership", "user", "payment") + its id.
+  targetType  String?
+  targetId    String?
+  ip          String?
+  userAgent   String?
+  // Extra structured, non-sensitive context.
+  meta        Json?
+  createdAt   DateTime    @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("audit_logs")
+}

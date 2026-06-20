@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { requirePermission, PermissionError } from '@/lib/membership'
 import { asPermissionMap, can, type PermissionKey } from '@/lib/permissions'
+import { requireSameOrigin } from '@/lib/csrf'
+import { recordAudit, auditRequestMeta } from '@/lib/audit'
 
 // Resolve the membership and confirm it belongs to the caller's business.
 // Returns null if missing or cross-tenant (treated as 404 either way).
@@ -24,6 +26,7 @@ const patchSchema = z.object({
 // PATCH — update a member's role / title / permissions. Cannot target the
 // OWNER (their access is fixed) and cannot promote anyone to OWNER.
 export async function PATCH(req: Request, { params }: { params: Promise<{ membershipId: string }> }) {
+  const csrf = requireSameOrigin(req); if (csrf) return csrf
   let ctx
   try {
     ctx = await requirePermission('team.manage')
@@ -63,6 +66,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ member
   }
 
   await prisma.trainerMembership.update({ where: { id: membershipId }, data })
+  await recordAudit({
+    action: data.permissions ? 'PERMISSIONS_CHANGED' : 'ROLE_CHANGED',
+    companyId: ctx.companyId,
+    actorUserId: ctx.userId,
+    targetType: 'membership',
+    targetId: membershipId,
+    meta: { role: data.role, changedPermissions: !!data.permissions },
+    ...auditRequestMeta(req),
+  })
   return NextResponse.json({ ok: true })
 }
 
@@ -70,7 +82,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ member
 // fall back to unassigned (FK is SET NULL). The OWNER can't be removed. Also
 // deletes the member's user account if it was never accepted (pending invite),
 // so a re-invite to the same email works; accepted members keep their account.
-export async function DELETE(_req: Request, { params }: { params: Promise<{ membershipId: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ membershipId: string }> }) {
+  const csrf = requireSameOrigin(req); if (csrf) return csrf
   let ctx
   try {
     ctx = await requirePermission('team.manage')
@@ -95,5 +108,14 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ memb
     await prisma.trainerMembership.delete({ where: { id: membershipId } })
   }
 
+  await recordAudit({
+    action: 'MEMBER_REMOVED',
+    companyId: ctx.companyId,
+    actorUserId: ctx.userId,
+    targetType: 'membership',
+    targetId: membershipId,
+    meta: { removedUserId: m.userId, wasPending: !m.acceptedAt },
+    ...auditRequestMeta(req),
+  })
   return NextResponse.json({ ok: true })
 }
