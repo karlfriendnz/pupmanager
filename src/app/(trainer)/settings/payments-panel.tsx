@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { formatDate } from '@/lib/utils'
-import { isConnectConfigured, platformFeeBps } from '@/lib/connect'
+import { isConnectConfigured } from '@/lib/connect'
 import { ConnectButton, AcceptPaymentsToggle, RefundButton } from './payments-actions'
 
 function money(minor: number, currency: string | null): string {
@@ -30,23 +30,6 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
   const configured = isConnectConfigured(sandbox)
   const started = !!profile?.connectAccountId
   const active = !!(profile?.connectChargesEnabled && profile?.connectPayoutsEnabled)
-  const feePct = (platformFeeBps() / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })
-
-  // Effective card-processing rate, pulled from the real Stripe fees we've
-  // captured across this trainer's payments (gross-weighted average).
-  const feeAgg = started
-    ? await prisma.payment.aggregate({
-        where: {
-          trainerId: companyId,
-          status: { in: ['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED'] },
-          stripeFeeAmount: { not: null },
-        },
-        _sum: { stripeFeeAmount: true, amountTotal: true },
-      })
-    : null
-  const feeSum = feeAgg?._sum.stripeFeeAmount ?? 0
-  const grossSum = feeAgg?._sum.amountTotal ?? 0
-  const cardFeePct = grossSum > 0 ? (feeSum / grossSum) * 100 : null
 
   // Recent client→trainer payments (the earnings list).
   const payments = started
@@ -119,28 +102,6 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Fees */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">Fees</p>
-        <dl className="flex flex-col gap-2 text-sm">
-          <div className="flex items-center justify-between">
-            <dt className="text-slate-600">PupManager platform fee</dt>
-            <dd className="font-medium text-slate-900 tabular-nums">{feePct}% per payment</dd>
-          </div>
-          <div className="flex items-center justify-between">
-            <dt className="text-slate-600">Card processing fee</dt>
-            <dd className="font-medium text-slate-900 tabular-nums">
-              {cardFeePct != null ? `${cardFeePct.toFixed(1)}% avg` : 'Stripe’s standard rate'}
-            </dd>
-          </div>
-        </dl>
-        <p className="mt-3 text-xs text-slate-400">
-          {cardFeePct != null
-            ? 'Card rate is the average Stripe took across your payments — it varies by card. Each payment’s exact amount, card fee and platform fee show below.'
-            : 'Each payment’s breakdown — amount, card fee and platform fee — is shown on the invoice so you always see exactly what you’ll receive.'}
-        </p>
       </div>
 
       {/* Recent payments (earnings) */}
