@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { requirePermission, PermissionError } from '@/lib/membership'
-import { asPermissionMap } from '@/lib/permissions'
+import { asPermissionMap, can, type PermissionKey } from '@/lib/permissions'
 
 // Resolve the membership and confirm it belongs to the caller's business.
 // Returns null if missing or cross-tenant (treated as 404 either way).
@@ -45,7 +45,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ member
   const data: { role?: 'MANAGER' | 'STAFF'; title?: string | null; permissions?: object } = {}
   if (parsed.data.role) data.role = parsed.data.role
   if (parsed.data.title !== undefined) data.title = parsed.data.title?.trim() || null
-  if (parsed.data.permissions) data.permissions = asPermissionMap(parsed.data.permissions)
+  if (parsed.data.permissions) {
+    // asPermissionMap drops unknown keys. Privilege-escalation guard: a non-OWNER
+    // actor cannot GRANT a permission they don't themselves hold (an OWNER can
+    // grant anything). Without this a MANAGER could hand out billing.seats /
+    // team.manage they lack and escalate via a member they control.
+    const requested = asPermissionMap(parsed.data.permissions)
+    if (ctx.role !== 'OWNER') {
+      const overreach = (Object.keys(requested) as PermissionKey[]).filter(
+        k => requested[k] === true && !can(k, ctx.role, ctx.permissions),
+      )
+      if (overreach.length) {
+        return NextResponse.json({ error: 'You can only grant permissions you hold yourself.' }, { status: 403 })
+      }
+    }
+    data.permissions = requested
+  }
 
   await prisma.trainerMembership.update({ where: { id: membershipId }, data })
   return NextResponse.json({ ok: true })

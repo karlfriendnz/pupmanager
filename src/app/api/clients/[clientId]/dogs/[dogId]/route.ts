@@ -24,6 +24,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
+  // IDOR guard: the dog must actually belong to THIS client (as their primary
+  // dog or an additional dog). Authorizing the client isn't enough — without
+  // this a trainer could rewrite any dog in any tenant by passing a foreign id.
+  const owned = await prisma.dog.findFirst({
+    where: { id: dogId, OR: [{ clientProfileId: clientId }, { primaryFor: { some: { id: clientId } } }] },
+    select: { id: true },
+  })
+  if (!owned) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const dog = await prisma.dog.update({
     where: { id: dogId },
     data: {
@@ -44,6 +53,13 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ clie
   const access = await getClientAccess(clientId, session.user.id)
   if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!access.canEdit) return NextResponse.json({ error: 'Read-only access' }, { status: 403 })
+
+  // IDOR guard: only delete a dog that belongs to this client (see PATCH).
+  const owned = await prisma.dog.findFirst({
+    where: { id: dogId, OR: [{ clientProfileId: clientId }, { primaryFor: { some: { id: clientId } } }] },
+    select: { id: true },
+  })
+  if (!owned) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // If this is the primary dog, clear the reference first
   if (access.client.dogId === dogId) {

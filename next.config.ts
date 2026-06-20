@@ -39,13 +39,27 @@ const nextConfig: NextConfig = {
         // Security headers for the whole app EXCEPT the embeddable /form pages.
         // X-Frame-Options blocks clickjacking (the native shell loads the app as
         // the top-level document, so it's unaffected). nosniff stops MIME
-        // sniffing; Referrer-Policy trims referrer leakage. (A full CSP is a
-        // separate, carefully-tested follow-up — it needs Next.js nonces.)
+        // sniffing; Referrer-Policy trims referrer leakage.
+        //
+        // NOTE: a full Content-Security-Policy is still a deliberate follow-up —
+        // it must be nonce-based for Next.js inline scripts and allow-list
+        // Stripe (checkout/js), Google Maps, Vercel Blob, and Resend assets, so
+        // it needs its own tested rollout (report-only first) to avoid breaking
+        // the app. The headers below are the safe, non-CSP hardening.
         source: '/((?!form/).*)',
         headers: [
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          // Force HTTPS for 2 years incl. subdomains. (No `preload` — that's a
+          // one-way commitment to the HSTS preload list.)
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
+          // Drop powerful features the web app never uses. geolocation stays
+          // self-enabled for the route-manager / Places features.
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self), browsing-topics=()' },
+          // Isolate our browsing context group from popups we open (OAuth,
+          // Stripe) while still allowing them — `same-origin` would break them.
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
         ],
       },
     ]

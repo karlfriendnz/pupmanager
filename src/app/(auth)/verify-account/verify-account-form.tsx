@@ -7,6 +7,7 @@ import { Mail, CheckCircle2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
+import { safeInternalPath } from '@/lib/safe-redirect'
 
 export function VerifyAccountForm() {
   const params = useSearchParams()
@@ -14,7 +15,8 @@ export function VerifyAccountForm() {
   const initialCode = params.get('code') ?? ''
   // When present (the Apple-native flow), the user already has a session, so on
   // success we continue straight there instead of sending them to /login.
-  const next = params.get('next') ?? ''
+  // Guarded against open redirects — only same-origin relative paths survive.
+  const next = params.get('next') ? safeInternalPath(params.get('next'), '') : ''
   // relay=1 → the signed-in user is on a private Apple relay address and must
   // swap in a real, deliverable email before we'll send/verify a code.
   const relayParam = params.get('relay') === '1'

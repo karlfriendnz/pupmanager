@@ -1,5 +1,27 @@
 import { escapeHtml } from '@/lib/enquiries'
 
+// Strip dangerous markup from authored email HTML (TipTap output) before it is
+// rendered via dangerouslySetInnerHTML in the admin preview AND sent as live
+// email. Authoring is admin-only, but the save endpoint stores whatever HTML is
+// submitted, so an injected `<script>` / `onerror=` / `javascript:` href would
+// otherwise become stored XSS in the admin panel and outbound mail. We remove
+// script-like blocks, event-handler attributes, and unsafe URL schemes. (A
+// regex pass is acceptable here because the input is constrained rich-text, not
+// arbitrary attacker HTML rendered to end users.)
+export function sanitizeEmailHtml(html: string): string {
+  return html
+    // Drop whole dangerous elements + their contents.
+    .replace(/<\s*(script|style|iframe|object|embed|svg|math|link|meta|base)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    // Drop self-closing / unclosed variants of the same.
+    .replace(/<\s*(script|style|iframe|object|embed|svg|math|link|meta|base)\b[^>]*\/?>/gi, '')
+    // Strip inline event handlers: on*="..." / on*='...' / on*=value.
+    .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '')
+    .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, '')
+    // Neutralise javascript:/vbscript:/data: in href/src.
+    .replace(/(href|src)\s*=\s*("|')\s*(javascript|vbscript|data):[^"']*\2/gi, '$1=$2#$2')
+}
+
 // Turns an email body into email-client-ready HTML, used by BOTH the admin
 // preview and the actual send renderer so they always match.
 //
@@ -15,7 +37,7 @@ export function emailBodyToHtml(raw: string): string {
 
   const looksHtml = /<\/?(p|h[1-6]|ul|ol|li|strong|b|em|i|a|br|div|blockquote)\b/i.test(trimmed)
   let html = looksHtml
-    ? trimmed
+    ? sanitizeEmailHtml(trimmed)
     : trimmed
         .split(/\n{2,}/)
         .map(p => `<p>${escapeHtml(p).split('\n').join('<br/>')}</p>`)

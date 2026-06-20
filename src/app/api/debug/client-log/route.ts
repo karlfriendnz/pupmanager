@@ -10,12 +10,19 @@ export async function POST(req: Request) {
   const session = await auth().catch(() => null)
   let body: { event?: string; data?: unknown } = {}
   try { body = await req.json() } catch { /* ignore — log empty */ }
+  // Unauthenticated (beacons fire pre-auth), so cap what an anonymous caller can
+  // push into our function logs — truncate so it can't be used to flood/bloat.
+  const event = String(body.event ?? 'unknown').slice(0, 120)
+  let data: string | null = null
+  if (body.data != null) {
+    try { data = JSON.stringify(body.data).slice(0, 1000) } catch { data = null }
+  }
   console.log('[client-log]', JSON.stringify({
     user: session?.user?.id ?? 'anon',
     role: session?.user?.role ?? null,
-    event: body.event ?? 'unknown',
-    data: body.data ?? null,
-    ua: req.headers.get('user-agent') ?? null,
+    event,
+    data,
+    ua: (req.headers.get('user-agent') ?? '').slice(0, 200),
     at: new Date().toISOString(),
   }))
   return NextResponse.json({ ok: true })
