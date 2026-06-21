@@ -82,7 +82,7 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
                   Surcharging isn’t permitted everywhere — check your local card rules.
                 </p>
               </div>
-              <PassFeeToggle initial={profile?.passProcessingFeeToClient ?? false} />
+              <PassFeeToggle initial={profile?.passProcessingFeeToClient ?? true} />
             </div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-slate-600">
               {profile?.payoutCurrency && (

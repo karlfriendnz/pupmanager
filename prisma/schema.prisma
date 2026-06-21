@@ -417,8 +417,8 @@ model TrainerProfile {
   acceptPaymentsEnabled   Boolean   @default(false)
   // When true, the card processing fee is added on top of the price at checkout
   // (the client pays it) instead of being absorbed by the trainer, so the
-  // trainer nets the full amount. Off by default.
-  passProcessingFeeToClient Boolean @default(false)
+  // trainer nets the full amount. On by default — trainers can opt out.
+  passProcessingFeeToClient Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
