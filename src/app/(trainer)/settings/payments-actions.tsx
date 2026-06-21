@@ -79,8 +79,8 @@ export function RefundButton({ paymentId, onRefunded }: { paymentId: string; onR
   )
 }
 
-/** Master switch: only enabled once the account can take charges. */
-export function AcceptPaymentsToggle({ initial }: { initial: boolean }) {
+/** Toggle a single boolean field on the connect account via PATCH. */
+function ConnectToggle({ initial, field, label }: { initial: boolean; field: 'acceptPaymentsEnabled' | 'passProcessingFeeToClient'; label: string }) {
   const router = useRouter()
   const [on, setOn] = useState(initial)
   const [saving, setSaving] = useState(false)
@@ -93,7 +93,7 @@ export function AcceptPaymentsToggle({ initial }: { initial: boolean }) {
       const res = await fetch('/api/connect/account', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ acceptPaymentsEnabled: next }),
+        body: JSON.stringify({ [field]: next }),
       })
       if (!res.ok) setOn(!next) // revert
       else router.refresh()
@@ -109,7 +109,7 @@ export function AcceptPaymentsToggle({ initial }: { initial: boolean }) {
       type="button"
       role="switch"
       aria-checked={on}
-      aria-label="Accept payments"
+      aria-label={label}
       disabled={saving}
       onClick={toggle}
       // minHeight inline: the app's global `button { min-height:44px }` is
@@ -120,4 +120,14 @@ export function AcceptPaymentsToggle({ initial }: { initial: boolean }) {
       <span className="block h-5 w-5 rounded-full bg-white shadow" />
     </button>
   )
+}
+
+/** Master switch: only enabled once the account can take charges. */
+export function AcceptPaymentsToggle({ initial }: { initial: boolean }) {
+  return <ConnectToggle initial={initial} field="acceptPaymentsEnabled" label="Accept payments" />
+}
+
+/** When on, the card fee is added on top of the price for the client to pay. */
+export function PassFeeToggle({ initial }: { initial: boolean }) {
+  return <ConnectToggle initial={initial} field="passProcessingFeeToClient" label="Pass card fees to clients" />
 }

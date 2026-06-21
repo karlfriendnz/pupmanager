@@ -74,7 +74,12 @@ export async function POST(req: Request) {
   return NextResponse.json({ url })
 }
 
-const patchSchema = z.object({ acceptPaymentsEnabled: z.boolean() })
+const patchSchema = z.object({
+  acceptPaymentsEnabled: z.boolean().optional(),
+  passProcessingFeeToClient: z.boolean().optional(),
+}).refine(d => d.acceptPaymentsEnabled !== undefined || d.passProcessingFeeToClient !== undefined, {
+  message: 'No change supplied',
+})
 
 export async function PATCH(req: Request) {
   const csrf = requireSameOrigin(req); if (csrf) return csrf
@@ -96,16 +101,17 @@ export async function PATCH(req: Request) {
     }
   }
 
-  await prisma.trainerProfile.update({
-    where: { id: trainerId },
-    data: { acceptPaymentsEnabled: parsed.data.acceptPaymentsEnabled },
-  })
+  const data: { acceptPaymentsEnabled?: boolean; passProcessingFeeToClient?: boolean } = {}
+  if (parsed.data.acceptPaymentsEnabled !== undefined) data.acceptPaymentsEnabled = parsed.data.acceptPaymentsEnabled
+  if (parsed.data.passProcessingFeeToClient !== undefined) data.passProcessingFeeToClient = parsed.data.passProcessingFeeToClient
+
+  await prisma.trainerProfile.update({ where: { id: trainerId }, data })
   await recordAudit({
     action: 'PAYMENTS_TOGGLED',
     companyId: trainerId,
     actorUserId: ctx.userId,
-    meta: { acceptPaymentsEnabled: parsed.data.acceptPaymentsEnabled },
+    meta: data,
     ...auditRequestMeta(req),
   })
-  return NextResponse.json({ acceptPaymentsEnabled: parsed.data.acceptPaymentsEnabled })
+  return NextResponse.json({ ok: true, ...data })
 }

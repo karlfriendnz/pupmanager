@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { isConnectConfigured } from '@/lib/connect'
-import { ConnectButton, AcceptPaymentsToggle } from './payments-actions'
+import { ConnectButton, AcceptPaymentsToggle, PassFeeToggle } from './payments-actions'
 
 // Trainer-facing setup for taking payments from their clients (Stripe Connect
 // Express). Owner-only; rendered as a tab on Settings. Three states: not
@@ -16,6 +16,7 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
       connectDetailsSubmitted: true,
       payoutCurrency: true,
       acceptPaymentsEnabled: true,
+      passProcessingFeeToClient: true,
       sandboxBilling: true,
     },
   })
@@ -70,6 +71,18 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
                 </p>
               </div>
               <AcceptPaymentsToggle initial={profile?.acceptPaymentsEnabled ?? false} />
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+              <div className="max-w-md">
+                <p className="text-sm font-medium text-slate-800">Pass card fees to clients</p>
+                <p className="text-xs text-slate-500">
+                  {profile?.passProcessingFeeToClient
+                    ? 'A processing fee is added at checkout, so you receive the full amount.'
+                    : 'You currently absorb the card fee. Turn on to add it on top of the price for the client to pay.'}{' '}
+                  Surcharging isn’t permitted everywhere — check your local card rules.
+                </p>
+              </div>
+              <PassFeeToggle initial={profile?.passProcessingFeeToClient ?? false} />
             </div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-slate-600">
               {profile?.payoutCurrency && (

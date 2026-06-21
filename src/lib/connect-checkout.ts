@@ -1,7 +1,7 @@
 import type { Prisma } from '@/generated/prisma'
 import { prisma } from './prisma'
 import { stripeFor } from './stripe'
-import { platformFeeAmount } from './connect'
+import { platformFeeAmount, estimateProcessingSurcharge } from './connect'
 
 // Builds a hosted Stripe Checkout Session for a client→trainer payment as a
 // *direct charge* on the trainer's connected account (created with the
@@ -56,7 +56,27 @@ export interface CreateConnectCheckoutInput extends CreatePaymentRecordInput {
  * opens the pay link). Returns the Payment id.
  */
 export async function createPaymentRecord(input: CreatePaymentRecordInput): Promise<string> {
-  const amountTotal = input.lines.reduce((sum, l) => sum + l.unitAmount * (l.quantity ?? 1), 0)
+  const subtotal = input.lines.reduce((sum, l) => sum + l.unitAmount * (l.quantity ?? 1), 0)
+
+  // If the trainer opts to pass the card fee on, append a grossed-up surcharge
+  // line so the client pays it and the trainer nets the full subtotal. The line
+  // is inert at fulfilment (PRODUCT kind with no productId is skipped) — it only
+  // exists to add the amount + show on the Stripe page. One central place here
+  // means every checkout path (products, classes, self-book, booking pages,
+  // invoices, pay links) inherits the behaviour.
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: input.trainerId },
+    select: { passProcessingFeeToClient: true },
+  })
+  const lines: CheckoutLine[] = [...input.lines]
+  if (trainer?.passProcessingFeeToClient) {
+    const surcharge = estimateProcessingSurcharge(subtotal, input.currency)
+    if (surcharge > 0) {
+      lines.push({ kind: 'PRODUCT', description: 'Card processing fee', unitAmount: surcharge, quantity: 1, intent: { surcharge: true } })
+    }
+  }
+
+  const amountTotal = lines.reduce((sum, l) => sum + l.unitAmount * (l.quantity ?? 1), 0)
   const applicationFeeAmount = platformFeeAmount(amountTotal)
 
   const payment = await prisma.payment.create({
@@ -71,7 +91,7 @@ export async function createPaymentRecord(input: CreatePaymentRecordInput): Prom
       status: 'PENDING',
       description: input.description ?? null,
       items: {
-        create: input.lines.map(l => ({
+        create: lines.map(l => ({
           kind: l.kind,
           description: l.description,
           unitAmount: l.unitAmount,
