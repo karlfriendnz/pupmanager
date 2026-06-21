@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Plus, Loader2, FileText, Pencil, Trash2, Star, Link2, X, Sparkles, Check, Lock, List, Layers, ChevronLeft, ChevronRight } from 'lucide-react'
 import { VoiceInput } from '@/components/voice-input'
 import { ImageUploadButton, ImageGallery } from '@/components/image-uploader'
+import { SessionLibraryTasks } from '@/components/session-library-tasks'
 
 export type Question =
   | { id: string; type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'; label: string; required: boolean; isPrivate?: boolean }
@@ -664,6 +665,12 @@ function FormFillerBody({
   const [mode, setMode] = useState<'list' | 'step'>('step')
   const [step, setStep] = useState(0)
   const touchStartX = useRef<number | null>(null)
+  // After saving notes in the step flow we slide into an "Add homework" phase so
+  // the trainer can attach library tasks to the lesson before leaving. Holds the
+  // session's client + date (needed by the library picker) and the saved report
+  // to hand back to the host when they finish.
+  const [homeworkPhase, setHomeworkPhase] = useState<{ clientId: string | null; date: string } | null>(null)
+  const savedResponseRef = useRef<FormResponse | null>(null)
 
   // Auto-revert the "are you sure?" Remove state if the trainer doesn't follow
   // through within a few seconds — nudges them away from accidental deletes.
@@ -730,13 +737,39 @@ function FormFillerBody({
       return
     }
     const saved = await res.json()
-    onSaved({
+    const response: FormResponse = {
       id: saved.id,
       formId: saved.formId,
       answers: saved.answers as Record<string, string>,
       form: { id: template.id, name: template.name, questions: template.questions },
-    })
+    }
+
+    // In the focused step flow, follow the save with an "Add homework" phase
+    // (attach library tasks to this lesson) before handing back to the host.
+    // Other modes just close out as before.
+    if (mode === 'step') {
+      savedResponseRef.current = response
+      try {
+        const meta = await fetch(`/api/schedule/${sessionId}`).then(r => (r.ok ? r.json() : null))
+        const date = meta?.scheduledAt ? String(meta.scheduledAt).slice(0, 10) : new Date().toISOString().slice(0, 10)
+        setHomeworkPhase({ clientId: meta?.clientId ?? null, date })
+      } catch {
+        setHomeworkPhase({ clientId: null, date: new Date().toISOString().slice(0, 10) })
+      }
+      setSaving(false)
+      return
+    }
+
+    onSaved(response)
     setSaving(false)
+  }
+
+  // Finish the homework phase → hand the saved report back to the host (which
+  // closes the filler and shows the saved report).
+  function finishHomework() {
+    onSaved(savedResponseRef.current ?? {
+      id: '', formId: template.id, answers, form: { id: template.id, name: template.name, questions: template.questions },
+    })
   }
 
   const renderQuestion = (q: Question) => {
@@ -890,6 +923,56 @@ function FormFillerBody({
     if (dx < -50 && curStep < stepPanels.length - 1) setStep(curStep + 1)
     else if (dx > 50 && curStep > 0) setStep(curStep - 1)
     touchStartX.current = null
+  }
+
+  // ADD-HOMEWORK PHASE — shown after the notes are saved in the step flow.
+  // Lets the trainer attach library tasks to this lesson, then finish.
+  if (homeworkPhase) {
+    return (
+      <div className="fixed inset-0 z-[70] flex flex-col bg-white">
+        <div
+          className="flex items-center gap-2 px-3 sm:px-5 min-h-[3.5rem] border-b border-slate-100 flex-shrink-0"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 flex-shrink-0">
+            <Check className="h-4 w-4" />
+          </span>
+          <p className="flex-1 min-w-0 truncate text-sm font-semibold text-slate-900">Notes saved — add homework</p>
+          <button
+            type="button"
+            onClick={finishHomework}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 px-2.5 py-1.5 rounded-lg hover:bg-slate-100"
+          >
+            Skip
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-2xl px-5 sm:px-6 py-6">
+            <h2 className="text-xl font-bold text-slate-900">Set homework for this lesson</h2>
+            <p className="text-sm text-slate-500 mt-1">Attach tasks from your library so {homeworkPhase.clientId ? 'the client' : 'they'} can practise before next time.</p>
+            <div className="mt-5">
+              <SessionLibraryTasks sessionId={sessionId} clientId={homeworkPhase.clientId} sessionDate={homeworkPhase.date} />
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="border-t border-slate-100 flex-shrink-0 bg-white"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
+          <div className="mx-auto w-full max-w-2xl px-6 py-3.5 flex justify-end">
+            <button
+              type="button"
+              onClick={finishHomework}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-6 h-11"
+            >
+              <Check className="h-4 w-4" /> Done
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // FULLSCREEN ONE-AT-A-TIME FLOW — focused, fixed-layout, slides between
