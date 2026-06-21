@@ -7,11 +7,12 @@ import { enforceRateLimit } from '@/lib/rate-limit'
 import { requireSameOrigin } from '@/lib/csrf'
 import { recordAudit, auditRequestMeta } from '@/lib/audit'
 
-// Refund a client→trainer payment. Owner-only. Issues the Stripe refund
-// (reversing the transfer so it comes out of the trainer's balance, and
-// clawing back our platform fee so the trainer isn't out of pocket on it),
-// records a Refund row, and lets the charge.refunded webhook reconcile the
-// Payment's amountRefunded + status authoritatively.
+// Refund a client→trainer payment. Owner-only. The charge is a DIRECT charge on
+// the trainer's connected account, so the refund is issued in that account's
+// context (Stripe-Account header) and comes out of the trainer's balance.
+// There's no transfer or application_fee to reverse — our cut was the
+// platform processing-fee markup, which Stripe keeps. Records a Refund row, and
+// lets the charge.refunded webhook reconcile amountRefunded + status.
 
 const schema = z.object({
   // Minor units. Omit for a full refund of the remaining amount.
@@ -34,7 +35,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const payment = await prisma.payment.findUnique({
     where: { id },
     select: {
-      trainerId: true, status: true, sandbox: true,
+      trainerId: true, status: true, sandbox: true, connectAccountId: true,
       amountTotal: true, amountRefunded: true, stripePaymentIntentId: true,
     },
   })
@@ -79,13 +80,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       {
         payment_intent: payment.stripePaymentIntentId,
         amount,
-        // Pull the money back from the connected account and reclaim our fee so
-        // the refund is shared fairly rather than landing entirely on us.
-        reverse_transfer: true,
-        refund_application_fee: true,
       },
-      // Dedupe a double-submit of the same refund state at Stripe too.
-      { idempotencyKey: `refund:${id}:${payment.amountRefunded}:${amount}` },
+      {
+        // Direct charge — issue the refund on the trainer's connected account.
+        ...(payment.connectAccountId ? { stripeAccount: payment.connectAccountId } : {}),
+        // Dedupe a double-submit of the same refund state at Stripe too.
+        idempotencyKey: `refund:${id}:${payment.amountRefunded}:${amount}`,
+      },
     )
   } catch (err) {
     // Stripe rejected it — release the headroom we provisionally claimed.

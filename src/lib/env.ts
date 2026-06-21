@@ -76,10 +76,12 @@ const schema = z.object({
   // off and surfaces degrade via isStripeConfigured().
   STRIPE_CONNECT_WEBHOOK_SECRET: optionalString,
   STRIPE_CONNECT_WEBHOOK_SECRET_TEST: optionalString,
-  // Platform fee taken on each client→trainer payment, in basis points
-  // (500 = 5%). Passed straight to Stripe as application_fee_amount on the
-  // destination charge — Stripe does the actual split + payout. Defaults to 5%.
-  PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(10000).default(500),
+  // Legacy in-app application fee, in basis points. Client→trainer charges are
+  // now DIRECT charges where our cut comes from the platform processing-fee
+  // markup configured in the Stripe Dashboard (Connect → platform pricing), not
+  // an application_fee. So this defaults to 0 (no extra in-app fee). Leave at 0
+  // unless you deliberately want to stack an application_fee on top.
+  PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(10000).default(0),
   // Founders Circle coupon. Create in the Stripe dashboard as a coupon
   // with duration = "repeating", duration_in_months = 12, the founder
   // discount (percent_off or amount_off), and max_redemptions = 10 — the

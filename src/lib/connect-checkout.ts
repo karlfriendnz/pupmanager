@@ -4,10 +4,13 @@ import { stripeFor } from './stripe'
 import { platformFeeAmount } from './connect'
 
 // Builds a hosted Stripe Checkout Session for a client→trainer payment as a
-// *destination charge* (the charge sits on the platform account; net funds
-// transfer to the trainer's connected account, our application fee is taken
-// atomically). Reused by every purchasable (products now; packages, sessions,
-// class enrolments in later phases) — each just supplies its line(s) + intent.
+// *direct charge* on the trainer's connected account (created with the
+// Stripe-Account header). The trainer is the merchant of record and bears
+// Stripe's processing fee; PupManager's cut is the markup baked into the
+// platform processing-fee pricing set in the Stripe Dashboard (Connect →
+// platform pricing), so we take NO application_fee here. Reused by every
+// purchasable (products, packages, sessions, class enrolments) — each just
+// supplies its line(s) + intent.
 //
 // A PENDING Payment (+ PaymentItem rows) is written BEFORE the session so the
 // webhook can resolve it by metadata.paymentId on success; nothing is fulfilled
@@ -84,10 +87,11 @@ export async function createPaymentRecord(input: CreatePaymentRecordInput): Prom
 }
 
 /**
- * Mint a hosted Checkout Session for an existing PENDING Payment (destination
- * charge). Rebuilds the line items from the stored PaymentItems, so the caller
- * only needs the Payment id. Safe to call again if a link is reused — it just
- * supersedes the previous session. Returns the hosted URL (or null).
+ * Mint a hosted Checkout Session for an existing PENDING Payment (direct charge
+ * on the trainer's connected account). Rebuilds the line items from the stored
+ * PaymentItems, so the caller only needs the Payment id. Safe to call again if a
+ * link is reused — it just supersedes the previous session. Returns the hosted
+ * URL (or null).
  */
 export async function mintCheckoutSession(
   paymentId: string,
@@ -100,26 +104,31 @@ export async function mintCheckoutSession(
   if (!payment || payment.status !== 'PENDING') return null
 
   const stripe = stripeFor(payment.sandbox)
-  const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    line_items: payment.items.map(l => ({
-      quantity: l.quantity,
-      price_data: {
-        currency: payment.currency,
-        unit_amount: l.unitAmount,
-        product_data: { name: l.description },
+  // The Stripe-Account header makes this a DIRECT charge on the trainer's
+  // connected account: the trainer is merchant of record and pays Stripe's
+  // (platform-priced) processing fee; our markup is collected by Stripe, so we
+  // set no application_fee or transfer here.
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: 'payment',
+      line_items: payment.items.map(l => ({
+        quantity: l.quantity,
+        price_data: {
+          currency: payment.currency,
+          unit_amount: l.unitAmount,
+          product_data: { name: l.description },
+        },
+      })),
+      payment_intent_data: {
+        metadata: { paymentId: payment.id },
       },
-    })),
-    payment_intent_data: {
-      application_fee_amount: payment.applicationFeeAmount,
-      transfer_data: { destination: payment.connectAccountId },
-      metadata: { paymentId: payment.id },
+      client_reference_id: payment.id,
+      metadata: { paymentId: payment.id, trainerId: payment.trainerId },
+      success_url: urls.successUrl,
+      cancel_url: urls.cancelUrl,
     },
-    client_reference_id: payment.id,
-    metadata: { paymentId: payment.id, trainerId: payment.trainerId },
-    success_url: urls.successUrl,
-    cancel_url: urls.cancelUrl,
-  })
+    { stripeAccount: payment.connectAccountId },
+  )
 
   await prisma.payment.update({
     where: { id: payment.id },

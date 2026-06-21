@@ -39,11 +39,13 @@ interface ClassIntent {
 // here can never regress the live Flow A billing webhook.
 //
 // Handles account.updated (onboarding/enablement) plus payment fulfilment for
-// destination charges: checkout.session.completed + payment_intent.succeeded
-// mark the Payment paid, capture the card fee, and create what was bought.
-// (Configure this one endpoint in Stripe to receive BOTH the platform payment
-// events AND connected-account account.updated — same signing secret.)
-// charge.refunded / disputes land in a later phase.
+// DIRECT charges on connected accounts: checkout.session.completed +
+// payment_intent.succeeded mark the Payment paid, capture the card fee, and
+// create what was bought. Because the charges are direct, these events fire on
+// the connected account and carry event.account — we thread that id into every
+// Stripe retrieval (Stripe-Account header) and use it as the integrity anchor.
+// (Configure this one endpoint in Stripe to receive connected-account events —
+// same signing secret.)
 export async function POST(req: Request) {
   // Dual-mode, same pattern as the subscription webhook: a live Connect event
   // verifies against STRIPE_CONNECT_WEBHOOK_SECRET, a sandbox (demo) event
@@ -94,14 +96,14 @@ export async function POST(req: Request) {
         const piId = typeof session.payment_intent === 'string'
           ? session.payment_intent
           : session.payment_intent?.id ?? null
-        await markPaidAndFulfil(session.metadata?.paymentId ?? null, sandbox, piId)
+        await markPaidAndFulfil(session.metadata?.paymentId ?? null, sandbox, piId, event.account ?? null)
         break
       }
       case 'payment_intent.succeeded': {
         // Belt-and-braces — the primary trigger is checkout.session.completed,
         // but this guarantees fulfilment if that event is missed. Idempotent.
         const pi = event.data.object as Stripe.PaymentIntent
-        await markPaidAndFulfil(pi.metadata?.paymentId ?? null, sandbox, pi.id)
+        await markPaidAndFulfil(pi.metadata?.paymentId ?? null, sandbox, pi.id, event.account ?? null)
         break
       }
       case 'charge.updated':
@@ -110,7 +112,7 @@ export async function POST(req: Request) {
         // settled at the instant payment_intent.succeeded fires, so the card fee
         // can't be read during fulfilment. charge.updated arrives once it's
         // available — backfill the Payment's stripeFeeAmount from it then.
-        await backfillCardFee(event.data.object as Stripe.Charge, sandbox)
+        await backfillCardFee(event.data.object as Stripe.Charge, sandbox, event.account ?? null)
         break
       }
       case 'charge.refunded': {
@@ -136,11 +138,16 @@ export async function POST(req: Request) {
 // Mark a Payment paid and fulfil its items. Idempotent: the PENDING→PAID
 // transition is the guard, so duplicate webhooks (and the checkout +
 // payment_intent pair) never double-fulfil. Before doing anything it verifies
-// the event's real charge matches the stored Payment — amount, currency,
-// destination account and Stripe mode — so a forged/mismatched metadata.paymentId
-// (e.g. a cheap or test-mode charge pointed at an expensive pending payment)
-// can never trigger fulfilment. Also captures the card fee for the invoice.
-async function markPaidAndFulfil(paymentId: string | null, eventSandbox: boolean, piId: string | null) {
+// the event's real charge matches the stored Payment — amount, currency, the
+// connected account it was charged on, and Stripe mode — so a forged/mismatched
+// metadata.paymentId (e.g. a cheap or test-mode charge pointed at an expensive
+// pending payment) can never trigger fulfilment. Also captures the card fee.
+async function markPaidAndFulfil(
+  paymentId: string | null,
+  eventSandbox: boolean,
+  piId: string | null,
+  eventAccount: string | null,
+) {
   if (!paymentId || !piId) return // not one of ours / no charge to verify against
 
   const payment = await prisma.payment.findUnique({
@@ -155,23 +162,24 @@ async function markPaidAndFulfil(paymentId: string | null, eventSandbox: boolean
     return
   }
 
-  // Retrieve the authoritative charge. A retrieval failure is treated as
-  // transient (throw → 500 → Stripe retries) rather than fulfilling blind.
-  const pi = await stripeFor(eventSandbox).paymentIntents.retrieve(piId, {
-    expand: ['latest_charge.balance_transaction'],
-  })
+  // Retrieve the authoritative charge from the CONNECTED account (direct charge,
+  // so the PI lives there). A retrieval failure is treated as transient
+  // (throw → 500 → Stripe retries) rather than fulfilling blind.
+  const pi = await stripeFor(eventSandbox).paymentIntents.retrieve(
+    piId,
+    { expand: ['latest_charge.balance_transaction'] },
+    eventAccount ? { stripeAccount: eventAccount } : undefined,
+  )
   const charge = pi.latest_charge as Stripe.Charge | null
 
-  // Integrity gate — every check must hold or we ack without fulfilling.
-  const destination = typeof charge?.transfer_data?.destination === 'string'
-    ? charge.transfer_data.destination
-    : charge?.transfer_data?.destination?.id ?? null
+  // Integrity gate — every check must hold or we ack without fulfilling. The
+  // charge must have run on the trainer's connected account we recorded.
   const amountOk = (pi.amount_received ?? 0) >= payment.amountTotal
   const currencyOk = pi.currency === payment.currency
-  const destinationOk = destination === payment.connectAccountId
-  if (!amountOk || !currencyOk || !destinationOk) {
+  const accountOk = eventAccount === payment.connectAccountId
+  if (!amountOk || !currencyOk || !accountOk) {
     console.error('[stripe connect webhook] payment integrity check failed — refusing to fulfil', {
-      paymentId, amountOk, currencyOk, destinationOk,
+      paymentId, amountOk, currencyOk, accountOk,
     })
     return
   }
@@ -424,7 +432,7 @@ async function fulfilScheduledBooking(
 // balance transaction is settled (it usually isn't at fulfilment time). Reads
 // the fee from the balance_transaction; idempotent — only writes when our stored
 // fee is still null.
-async function backfillCardFee(charge: Stripe.Charge, sandbox: boolean) {
+async function backfillCardFee(charge: Stripe.Charge, sandbox: boolean, eventAccount: string | null) {
   const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id ?? null
   const payment = await prisma.payment.findFirst({
     where: { OR: [{ stripeChargeId: charge.id }, ...(piId ? [{ stripePaymentIntentId: piId }] : [])] },
@@ -432,14 +440,21 @@ async function backfillCardFee(charge: Stripe.Charge, sandbox: boolean) {
   })
   if (!payment || payment.stripeFeeAmount != null) return
 
-  // balance_transaction may be an id (unexpanded) — fetch it for the fee.
+  // balance_transaction may be an id (unexpanded) — fetch it for the fee. It
+  // lives on the connected account (direct charge), so read it with that header.
+  // This fee is the platform-priced rate the trainer paid (Stripe's cost + our
+  // markup) — i.e. their true cost of taking the payment.
   let fee: number | null = null
   const bt = charge.balance_transaction
   if (bt && typeof bt === 'object') {
     fee = bt.fee ?? null
   } else if (typeof bt === 'string') {
     try {
-      const tx = await stripeFor(sandbox).balanceTransactions.retrieve(bt)
+      const tx = await stripeFor(sandbox).balanceTransactions.retrieve(
+        bt,
+        undefined,
+        eventAccount ? { stripeAccount: eventAccount } : undefined,
+      )
       fee = tx.fee ?? null
     } catch { /* not yet available — a later charge.updated will retry */ }
   }

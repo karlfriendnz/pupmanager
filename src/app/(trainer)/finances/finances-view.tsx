@@ -90,12 +90,15 @@ const TX_BADGE: Record<string, string> = {
 }
 const TX_LABEL: Record<string, string> = { PAID: 'Paid', PARTIALLY_REFUNDED: 'Part refund', REFUNDED: 'Refunded', DISPUTED: 'Disputed' }
 
-// Derived figures shared by the mobile cards + desktop table.
+// Derived figures shared by the mobile cards + desktop table. The trainer is the
+// merchant of record on the direct charge, so the processing (card) fee is
+// theirs — their take-home is gross minus refunds minus that fee (minus any
+// legacy in-app application fee, which is 0 under the current pricing model).
 function txDerived(t: Tx) {
   const cardFee = t.stripeFeeAmount ?? 0
   const refundFraction = t.amountTotal > 0 ? t.amountRefunded / t.amountTotal : 0
   const platformRetained = Math.round(t.applicationFeeAmount * (1 - refundFraction))
-  const net = t.amountTotal - t.amountRefunded - platformRetained
+  const net = t.amountTotal - t.amountRefunded - cardFee - platformRetained
   const refundable = t.status === 'PAID' || t.status === 'PARTIALLY_REFUNDED'
   return { cardFee, net, refundable }
 }
@@ -131,7 +134,6 @@ function TransactionsTab() {
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
                       <span>Card fee {t.stripeFeeAmount == null ? '—' : money(cardFee, t.currency)}</span>
-                      <span>Platform {money(t.applicationFeeAmount, t.currency)}</span>
                       <span>Net <strong className="text-slate-700">{money(net, t.currency)}</strong></span>
                     </div>
                   </button>
@@ -147,7 +149,6 @@ function TransactionsTab() {
                     <th className="px-4 pt-4 pb-2 font-medium">For</th>
                     <th className="px-4 pt-4 pb-2 font-medium text-right">Amount</th>
                     <th className="px-4 pt-4 pb-2 font-medium text-right">Card fee</th>
-                    <th className="px-4 pt-4 pb-2 font-medium text-right">Platform fee</th>
                     <th className="px-4 pt-4 pb-2 font-medium text-right">Net</th>
                     <th className="px-4 pt-4 pb-2 font-medium">Status</th>
                     <th className="px-4 pt-4 pb-2 font-medium" />
@@ -165,7 +166,6 @@ function TransactionsTab() {
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 whitespace-nowrap">{money(t.amountTotal, t.currency)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums text-slate-500 whitespace-nowrap">{t.stripeFeeAmount == null ? '—' : money(cardFee, t.currency)}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-500 whitespace-nowrap">{money(t.applicationFeeAmount, t.currency)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums font-medium text-slate-900 whitespace-nowrap">{money(net, t.currency)}</td>
                         <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${TX_BADGE[t.status] ?? TX_BADGE.PAID}`}>{TX_LABEL[t.status] ?? t.status}</span></td>
                         <td className="px-4 py-2.5 text-right text-slate-300"><ChevronRight className="h-4 w-4 inline" /></td>
@@ -343,8 +343,7 @@ function TransactionDetail({ tx, onClose, onChanged }: { tx: Tx; onClose: () => 
       <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">Breakdown</p>
       <div className="mt-1">
         <DetailRow label="Gross" value={money(tx.amountTotal, tx.currency)} />
-        <DetailRow label="Card fee" value={tx.stripeFeeAmount == null ? '—' : money(cardFee, tx.currency)} />
-        <DetailRow label="Platform fee" value={money(tx.applicationFeeAmount, tx.currency)} />
+        <DetailRow label="Card fee" value={tx.stripeFeeAmount == null ? '—' : `− ${money(cardFee, tx.currency)}`} />
         {tx.amountRefunded > 0 && <DetailRow label="Refunded" value={`− ${money(tx.amountRefunded, tx.currency)}`} />}
         <DetailRow label="Net to you" value={money(net, tx.currency)} strong />
       </div>
