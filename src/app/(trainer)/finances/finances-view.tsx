@@ -91,6 +91,16 @@ const TX_BADGE: Record<string, string> = {
 }
 const TX_LABEL: Record<string, string> = { PAID: 'Paid', PARTIALLY_REFUNDED: 'Part refund', REFUNDED: 'Refunded', DISPUTED: 'Disputed' }
 
+// Derived figures shared by the mobile cards + desktop table.
+function txDerived(t: Tx) {
+  const cardFee = t.stripeFeeAmount ?? 0
+  const refundFraction = t.amountTotal > 0 ? t.amountRefunded / t.amountTotal : 0
+  const platformRetained = Math.round(t.applicationFeeAmount * (1 - refundFraction))
+  const net = t.amountTotal - t.amountRefunded - platformRetained
+  const refundable = t.status === 'PAID' || t.status === 'PARTIALLY_REFUNDED'
+  return { cardFee, net, refundable }
+}
+
 function TransactionsTab() {
   const { q, data, loading, onSearch, goTo, reload } = useFinanceList<Tx>('/api/trainer/finances/transactions')
   return (
@@ -102,46 +112,71 @@ function TransactionsTab() {
         ) : !data || data.items.length === 0 ? (
           <p className="text-sm text-slate-400 px-5 py-8">{q ? 'No transactions match your search.' : 'No transactions yet.'}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs uppercase text-slate-400">
-                  <th className="px-4 pt-4 pb-2 font-medium">Date</th>
-                  <th className="px-4 pt-4 pb-2 font-medium">For</th>
-                  <th className="px-4 pt-4 pb-2 font-medium text-right">Amount</th>
-                  <th className="px-4 pt-4 pb-2 font-medium text-right">Card fee</th>
-                  <th className="px-4 pt-4 pb-2 font-medium text-right">Platform fee</th>
-                  <th className="px-4 pt-4 pb-2 font-medium text-right">Net</th>
-                  <th className="px-4 pt-4 pb-2 font-medium">Status</th>
-                  <th className="px-4 pt-4 pb-2 font-medium" />
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map(t => {
-                  const cardFee = t.stripeFeeAmount ?? 0
-                  const refundFraction = t.amountTotal > 0 ? t.amountRefunded / t.amountTotal : 0
-                  const platformRetained = Math.round(t.applicationFeeAmount * (1 - refundFraction))
-                  const net = t.amountTotal - t.amountRefunded - platformRetained
-                  const refundable = t.status === 'PAID' || t.status === 'PARTIALLY_REFUNDED'
-                  return (
-                    <tr key={t.id} className="border-t border-slate-100 align-top">
-                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(t.paidAt)}</td>
-                      <td className="px-4 py-2.5 text-slate-700">
-                        <span className="block">{t.description ?? '—'}</span>
-                        {t.clientName && <span className="text-xs text-slate-400">{t.clientName}</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 whitespace-nowrap">{money(t.amountTotal, t.currency)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-500 whitespace-nowrap">{t.stripeFeeAmount == null ? '—' : money(cardFee, t.currency)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-500 whitespace-nowrap">{money(t.applicationFeeAmount, t.currency)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums font-medium text-slate-900 whitespace-nowrap">{money(net, t.currency)}</td>
-                      <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${TX_BADGE[t.status] ?? TX_BADGE.PAID}`}>{TX_LABEL[t.status] ?? t.status}</span></td>
-                      <td className="px-4 py-2.5 text-right">{refundable && <RefundButton paymentId={t.id} onRefunded={reload} />}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Mobile: stacked cards */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {data.items.map(t => {
+                const { cardFee, net, refundable } = txDerived(t)
+                return (
+                  <div key={t.id} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900 truncate">{t.description ?? '—'}</p>
+                        <p className="text-xs text-slate-400 truncate">{[t.clientName, fmtDate(t.paidAt)].filter(Boolean).join(' · ')}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-semibold text-slate-900 tabular-nums">{money(t.amountTotal, t.currency)}</p>
+                        <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${TX_BADGE[t.status] ?? TX_BADGE.PAID}`}>{TX_LABEL[t.status] ?? t.status}</span>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                      <span>Card fee {t.stripeFeeAmount == null ? '—' : money(cardFee, t.currency)}</span>
+                      <span>Platform {money(t.applicationFeeAmount, t.currency)}</span>
+                      <span>Net <strong className="text-slate-700">{money(net, t.currency)}</strong></span>
+                      {refundable && <span className="ml-auto"><RefundButton paymentId={t.id} onRefunded={reload} /></span>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {/* Desktop: table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase text-slate-400">
+                    <th className="px-4 pt-4 pb-2 font-medium">Date</th>
+                    <th className="px-4 pt-4 pb-2 font-medium">For</th>
+                    <th className="px-4 pt-4 pb-2 font-medium text-right">Amount</th>
+                    <th className="px-4 pt-4 pb-2 font-medium text-right">Card fee</th>
+                    <th className="px-4 pt-4 pb-2 font-medium text-right">Platform fee</th>
+                    <th className="px-4 pt-4 pb-2 font-medium text-right">Net</th>
+                    <th className="px-4 pt-4 pb-2 font-medium">Status</th>
+                    <th className="px-4 pt-4 pb-2 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map(t => {
+                    const { cardFee, net, refundable } = txDerived(t)
+                    return (
+                      <tr key={t.id} className="border-t border-slate-100 align-top">
+                        <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(t.paidAt)}</td>
+                        <td className="px-4 py-2.5 text-slate-700">
+                          <span className="block">{t.description ?? '—'}</span>
+                          {t.clientName && <span className="text-xs text-slate-400">{t.clientName}</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 whitespace-nowrap">{money(t.amountTotal, t.currency)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-500 whitespace-nowrap">{t.stripeFeeAmount == null ? '—' : money(cardFee, t.currency)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-500 whitespace-nowrap">{money(t.applicationFeeAmount, t.currency)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-medium text-slate-900 whitespace-nowrap">{money(net, t.currency)}</td>
+                        <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${TX_BADGE[t.status] ?? TX_BADGE.PAID}`}>{TX_LABEL[t.status] ?? t.status}</span></td>
+                        <td className="px-4 py-2.5 text-right">{refundable && <RefundButton paymentId={t.id} onRefunded={reload} />}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
       {data && <Pager page={data.page} totalPages={data.totalPages} total={data.total} onGo={goTo} loading={loading} />}
@@ -164,9 +199,9 @@ function InvoicesTab() {
   const { q, data, loading, onSearch, goTo } = useFinanceList<Inv>('/api/trainer/finances/invoices', `status=${filter}`)
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         <div className="flex-1"><SearchBar value={q} onChange={onSearch} placeholder="Search invoices by item or client…" /></div>
-        <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-semibold">
+        <div className="inline-flex self-start rounded-xl bg-slate-100 p-1 text-xs font-semibold">
           {(['all', 'unpaid', 'paid'] as const).map(f => (
             <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-lg capitalize transition-colors ${filter === f ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{f}</button>
           ))}
@@ -178,36 +213,60 @@ function InvoicesTab() {
         ) : !data || data.items.length === 0 ? (
           <p className="text-sm text-slate-400 px-5 py-8">{q ? 'No invoices match your search.' : 'No invoices yet. Send one from a client’s profile.'}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs uppercase text-slate-400">
-                  <th className="px-4 pt-4 pb-2 font-medium">Issued</th>
-                  <th className="px-4 pt-4 pb-2 font-medium">For</th>
-                  <th className="px-4 pt-4 pb-2 font-medium text-right">Amount</th>
-                  <th className="px-4 pt-4 pb-2 font-medium">Paid on</th>
-                  <th className="px-4 pt-4 pb-2 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map(i => {
-                  const b = invoiceBadge(i.status)
-                  return (
-                    <tr key={i.id} className="border-t border-slate-100">
-                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(i.createdAt)}</td>
-                      <td className="px-4 py-2.5 text-slate-700">
-                        <span className="block">{i.description ?? '—'}</span>
-                        {i.clientName && <span className="text-xs text-slate-400">{i.clientName}</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 whitespace-nowrap">{money(i.amountTotal, i.currency)}</td>
-                      <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{i.paidAt ? fmtDate(i.paidAt) : '—'}</td>
-                      <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span></td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Mobile: stacked cards */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {data.items.map(i => {
+                const b = invoiceBadge(i.status)
+                return (
+                  <div key={i.id} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900 truncate">{i.description ?? '—'}</p>
+                        <p className="text-xs text-slate-400 truncate">{[i.clientName, `issued ${fmtDate(i.createdAt)}`].filter(Boolean).join(' · ')}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-semibold text-slate-900 tabular-nums">{money(i.amountTotal, i.currency)}</p>
+                        <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${b.cls}`}>{b.label}</span>
+                      </div>
+                    </div>
+                    {i.paidAt && <p className="mt-1.5 text-xs text-slate-400">Paid {fmtDate(i.paidAt)}</p>}
+                  </div>
+                )
+              })}
+            </div>
+            {/* Desktop: table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase text-slate-400">
+                    <th className="px-4 pt-4 pb-2 font-medium">Issued</th>
+                    <th className="px-4 pt-4 pb-2 font-medium">For</th>
+                    <th className="px-4 pt-4 pb-2 font-medium text-right">Amount</th>
+                    <th className="px-4 pt-4 pb-2 font-medium">Paid on</th>
+                    <th className="px-4 pt-4 pb-2 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map(i => {
+                    const b = invoiceBadge(i.status)
+                    return (
+                      <tr key={i.id} className="border-t border-slate-100">
+                        <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(i.createdAt)}</td>
+                        <td className="px-4 py-2.5 text-slate-700">
+                          <span className="block">{i.description ?? '—'}</span>
+                          {i.clientName && <span className="text-xs text-slate-400">{i.clientName}</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 whitespace-nowrap">{money(i.amountTotal, i.currency)}</td>
+                        <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{i.paidAt ? fmtDate(i.paidAt) : '—'}</td>
+                        <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
       {data && <Pager page={data.page} totalPages={data.totalPages} total={data.total} onGo={goTo} loading={loading} />}
