@@ -178,18 +178,15 @@ export function HomeworkFlow({
 
         <div className="mt-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Note for the client</p>
-          <div className="relative rounded-2xl bg-slate-50 border border-transparent focus-within:border-blue-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-50 transition-all">
-            <textarea
-              value={task.trainerNote}
-              onChange={e => updateAdded(task.id, { trainerNote: e.target.value })}
-              onBlur={e => patchTask(task.id, { trainerNote: e.target.value })}
-              rows={3}
-              placeholder="Add a personal note or coaching cue…"
-              className="w-full bg-transparent px-4 pt-3 pb-10 text-sm leading-relaxed focus:outline-none resize-none placeholder:text-slate-400"
-            />
-            <div className="absolute bottom-1.5 right-1.5">
-              <VoiceInput onAppend={t => { const merged = task.trainerNote ? `${task.trainerNote.trimEnd()} ${t}` : t; updateAdded(task.id, { trainerNote: merged }); patchTask(task.id, { trainerNote: merged }) }} />
-            </div>
+          <textarea
+            value={task.trainerNote}
+            onChange={e => updateAdded(task.id, { trainerNote: e.target.value })}
+            onBlur={e => patchTask(task.id, { trainerNote: e.target.value })}
+            placeholder="Start writing…"
+            className="min-h-[24vh] w-full resize-none border-0 bg-transparent p-0 text-lg leading-relaxed text-slate-900 placeholder:text-slate-300 focus:outline-none focus:ring-0"
+          />
+          <div className="mt-1 flex items-center gap-2">
+            <VoiceInput onAppend={t => { const merged = task.trainerNote ? `${task.trainerNote.trimEnd()} ${t}` : t; updateAdded(task.id, { trainerNote: merged }); patchTask(task.id, { trainerNote: merged }) }} />
           </div>
         </div>
 
