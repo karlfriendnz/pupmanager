@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Receipt, ArrowLeftRight, Search, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
-import { RefundButton } from '../settings/payments-actions'
+import { Receipt, ArrowLeftRight, Search, Loader2, ChevronLeft, ChevronRight, X, Copy, Check, Send, RotateCcw } from 'lucide-react'
 
 const CURRENCY_SYMBOLS: Record<string, string> = { nzd: '$', aud: '$', cad: '$', usd: '$', gbp: '£', eur: '€', zar: 'R' }
 function money(minor: number, currency: string): string {
@@ -103,6 +102,7 @@ function txDerived(t: Tx) {
 
 function TransactionsTab() {
   const { q, data, loading, onSearch, goTo, reload } = useFinanceList<Tx>('/api/trainer/finances/transactions')
+  const [open, setOpen] = useState<Tx | null>(null)
   return (
     <div className="flex flex-col gap-3">
       <SearchBar value={q} onChange={onSearch} placeholder="Search by item or client…" />
@@ -116,9 +116,9 @@ function TransactionsTab() {
             {/* Mobile: stacked cards */}
             <div className="md:hidden divide-y divide-slate-100">
               {data.items.map(t => {
-                const { cardFee, net, refundable } = txDerived(t)
+                const { cardFee, net } = txDerived(t)
                 return (
-                  <div key={t.id} className="p-4">
+                  <button key={t.id} type="button" onClick={() => setOpen(t)} className="w-full text-left p-4 active:bg-slate-50">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-medium text-slate-900 truncate">{t.description ?? '—'}</p>
@@ -133,9 +133,8 @@ function TransactionsTab() {
                       <span>Card fee {t.stripeFeeAmount == null ? '—' : money(cardFee, t.currency)}</span>
                       <span>Platform {money(t.applicationFeeAmount, t.currency)}</span>
                       <span>Net <strong className="text-slate-700">{money(net, t.currency)}</strong></span>
-                      {refundable && <span className="ml-auto"><RefundButton paymentId={t.id} onRefunded={reload} /></span>}
                     </div>
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -156,9 +155,9 @@ function TransactionsTab() {
                 </thead>
                 <tbody>
                   {data.items.map(t => {
-                    const { cardFee, net, refundable } = txDerived(t)
+                    const { cardFee, net } = txDerived(t)
                     return (
-                      <tr key={t.id} className="border-t border-slate-100 align-top">
+                      <tr key={t.id} onClick={() => setOpen(t)} className="border-t border-slate-100 align-top cursor-pointer hover:bg-slate-50/70">
                         <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(t.paidAt)}</td>
                         <td className="px-4 py-2.5 text-slate-700">
                           <span className="block">{t.description ?? '—'}</span>
@@ -169,7 +168,7 @@ function TransactionsTab() {
                         <td className="px-4 py-2.5 text-right tabular-nums text-slate-500 whitespace-nowrap">{money(t.applicationFeeAmount, t.currency)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums font-medium text-slate-900 whitespace-nowrap">{money(net, t.currency)}</td>
                         <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${TX_BADGE[t.status] ?? TX_BADGE.PAID}`}>{TX_LABEL[t.status] ?? t.status}</span></td>
-                        <td className="px-4 py-2.5 text-right">{refundable && <RefundButton paymentId={t.id} onRefunded={reload} />}</td>
+                        <td className="px-4 py-2.5 text-right text-slate-300"><ChevronRight className="h-4 w-4 inline" /></td>
                       </tr>
                     )
                   })}
@@ -180,6 +179,7 @@ function TransactionsTab() {
         )}
       </div>
       {data && <Pager page={data.page} totalPages={data.totalPages} total={data.total} onGo={goTo} loading={loading} />}
+      {open && <TransactionDetail tx={open} onClose={() => setOpen(null)} onChanged={() => { setOpen(null); reload() }} />}
     </div>
   )
 }
@@ -197,6 +197,7 @@ function invoiceBadge(status: string): { label: string; cls: string } {
 function InvoicesTab() {
   const [filter, setFilter] = useState<'all' | 'unpaid' | 'paid'>('all')
   const { q, data, loading, onSearch, goTo } = useFinanceList<Inv>('/api/trainer/finances/invoices', `status=${filter}`)
+  const [open, setOpen] = useState<Inv | null>(null)
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -219,7 +220,7 @@ function InvoicesTab() {
               {data.items.map(i => {
                 const b = invoiceBadge(i.status)
                 return (
-                  <div key={i.id} className="p-4">
+                  <button key={i.id} type="button" onClick={() => setOpen(i)} className="w-full text-left p-4 active:bg-slate-50">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-medium text-slate-900 truncate">{i.description ?? '—'}</p>
@@ -231,7 +232,7 @@ function InvoicesTab() {
                       </div>
                     </div>
                     {i.paidAt && <p className="mt-1.5 text-xs text-slate-400">Paid {fmtDate(i.paidAt)}</p>}
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -251,7 +252,7 @@ function InvoicesTab() {
                   {data.items.map(i => {
                     const b = invoiceBadge(i.status)
                     return (
-                      <tr key={i.id} className="border-t border-slate-100">
+                      <tr key={i.id} onClick={() => setOpen(i)} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50/70">
                         <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(i.createdAt)}</td>
                         <td className="px-4 py-2.5 text-slate-700">
                           <span className="block">{i.description ?? '—'}</span>
@@ -259,7 +260,7 @@ function InvoicesTab() {
                         </td>
                         <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 whitespace-nowrap">{money(i.amountTotal, i.currency)}</td>
                         <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{i.paidAt ? fmtDate(i.paidAt) : '—'}</td>
-                        <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span></td>
+                        <td className="px-4 py-2.5"><div className="flex items-center justify-between gap-2"><span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span><ChevronRight className="h-4 w-4 text-slate-300" /></div></td>
                       </tr>
                     )
                   })}
@@ -270,7 +271,140 @@ function InvoicesTab() {
         )}
       </div>
       {data && <Pager page={data.page} totalPages={data.totalPages} total={data.total} onGo={goTo} loading={loading} />}
+      {open && <InvoiceDetail inv={open} onClose={() => setOpen(null)} />}
     </div>
+  )
+}
+
+// ── Full-screen detail views ───────────────────────────────────────────────
+
+function DetailShell({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex flex-col bg-white">
+      <div className="flex items-center gap-2 px-3 sm:px-5 min-h-[3.5rem] border-b border-slate-100 flex-shrink-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <button type="button" onClick={onClose} aria-label="Close" className="p-2 -ml-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        <p className="flex-1 min-w-0 truncate text-sm font-semibold text-slate-900">{title}</p>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-lg px-5 sm:px-6 py-6">{children}</div>
+      </div>
+      {footer && (
+        <div className="border-t border-slate-100 flex-shrink-0 bg-white" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="mx-auto w-full max-w-lg px-6 py-3.5">{footer}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DetailRow({ label, value, strong }: { label: string; value: React.ReactNode; strong?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-2.5 border-b border-slate-100 last:border-0">
+      <span className="text-sm text-slate-500">{label}</span>
+      <span className={`text-sm tabular-nums text-right ${strong ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>{value}</span>
+    </div>
+  )
+}
+
+function TransactionDetail({ tx, onClose, onChanged }: { tx: Tx; onClose: () => void; onChanged: () => void }) {
+  const { cardFee, net, refundable } = txDerived(tx)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function refund() {
+    if (!confirm('Refund this payment in full? The money is returned to the client.')) return
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch(`/api/trainer/payments/${tx.id}/refund`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      if (res.ok) { onChanged() }
+      else { const b = await res.json().catch(() => ({})); setError(typeof b.error === 'string' ? b.error : 'Could not refund.') }
+    } catch { setError('Could not refund.') } finally { setBusy(false) }
+  }
+
+  return (
+    <DetailShell
+      title="Transaction"
+      onClose={onClose}
+      footer={refundable ? (
+        <button type="button" onClick={refund} disabled={busy} className="w-full inline-flex items-center justify-center gap-1.5 h-11 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-sm font-semibold disabled:opacity-50">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Refund payment
+        </button>
+      ) : undefined}
+    >
+      <div className="text-center">
+        <p className="text-3xl font-bold text-slate-900 tabular-nums">{money(tx.amountTotal, tx.currency)}</p>
+        <span className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${TX_BADGE[tx.status] ?? TX_BADGE.PAID}`}>{TX_LABEL[tx.status] ?? tx.status}</span>
+      </div>
+      <div className="mt-6">
+        <DetailRow label="For" value={tx.description ?? '—'} />
+        {tx.clientName && <DetailRow label="Client" value={tx.clientName} />}
+        <DetailRow label="Date" value={fmtDate(tx.paidAt)} />
+      </div>
+      <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">Breakdown</p>
+      <div className="mt-1">
+        <DetailRow label="Gross" value={money(tx.amountTotal, tx.currency)} />
+        <DetailRow label="Card fee" value={tx.stripeFeeAmount == null ? '—' : money(cardFee, tx.currency)} />
+        <DetailRow label="Platform fee" value={money(tx.applicationFeeAmount, tx.currency)} />
+        {tx.amountRefunded > 0 && <DetailRow label="Refunded" value={`− ${money(tx.amountRefunded, tx.currency)}`} />}
+        <DetailRow label="Net to you" value={money(net, tx.currency)} strong />
+      </div>
+      {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+    </DetailShell>
+  )
+}
+
+function InvoiceDetail({ inv, onClose }: { inv: Inv; onClose: () => void }) {
+  const b = invoiceBadge(inv.status)
+  const unpaid = inv.status === 'PENDING'
+  const [copied, setCopied] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const payLink = typeof window !== 'undefined' ? `${window.location.origin}/my/pay/${inv.id}` : ''
+
+  async function copy() {
+    try { await navigator.clipboard.writeText(payLink); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ }
+  }
+  async function resend() {
+    setResending(true); setMsg(null)
+    try {
+      const res = await fetch(`/api/trainer/finances/invoices/${inv.id}/resend`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      setMsg(res.ok ? 'Reminder sent to the client.' : 'Could not resend — try again.')
+    } catch { setMsg('Could not resend — try again.') } finally { setResending(false) }
+  }
+
+  return (
+    <DetailShell
+      title="Invoice"
+      onClose={onClose}
+      footer={unpaid ? (
+        <div className="flex gap-2">
+          <button type="button" onClick={copy} className="flex-1 inline-flex items-center justify-center gap-1.5 h-11 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-semibold">
+            {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy pay link'}
+          </button>
+          <button type="button" onClick={resend} disabled={resending} className="flex-1 inline-flex items-center justify-center gap-1.5 h-11 rounded-xl bg-accent hover:bg-accent-strong text-white text-sm font-semibold disabled:opacity-60">
+            {resending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {resending ? 'Sending…' : 'Resend'}
+          </button>
+        </div>
+      ) : undefined}
+    >
+      <div className="text-center">
+        <p className="text-3xl font-bold text-slate-900 tabular-nums">{money(inv.amountTotal, inv.currency)}</p>
+        <span className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${b.cls}`}>{b.label}</span>
+      </div>
+      <div className="mt-6">
+        <DetailRow label="For" value={inv.description ?? '—'} />
+        {inv.clientName && <DetailRow label="Client" value={inv.clientName} />}
+        <DetailRow label="Issued" value={fmtDate(inv.createdAt)} />
+        <DetailRow label="Paid on" value={inv.paidAt ? fmtDate(inv.paidAt) : '—'} />
+      </div>
+      {unpaid && (
+        <div className="mt-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Payment link</p>
+          <p className="mt-1 text-xs text-slate-400 break-all">{payLink}</p>
+        </div>
+      )}
+      {msg && <p className="mt-3 text-sm text-slate-600">{msg}</p>}
+    </DetailShell>
   )
 }
 

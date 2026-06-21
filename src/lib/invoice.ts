@@ -50,28 +50,49 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<s
     lines: [line],
   })
 
-  const link = `${env.NEXT_PUBLIC_APP_URL}/my/pay/${paymentId}`
-  const amountStr = money(input.amount, input.currency)
+  await sendInvoiceNotification({
+    paymentId,
+    clientUserId: input.clientUserId,
+    clientEmail: input.clientEmail,
+    businessName: input.businessName,
+    description: input.description,
+    amount: input.amount,
+    currency: input.currency,
+  })
+
+  return paymentId
+}
+
+// Notify (or re-notify) the client about an invoice: in-app notification, push,
+// and a branded email with the pay link. Used at creation and by the "resend"
+// action. Payment requests aren't user-suppressible, so we send directly rather
+// than through the preference-gated notification types.
+export async function sendInvoiceNotification(args: {
+  paymentId: string
+  clientUserId: string | null
+  clientEmail: string | null
+  businessName: string
+  description: string
+  amount: number
+  currency: string
+}): Promise<void> {
+  const link = `${env.NEXT_PUBLIC_APP_URL}/my/pay/${args.paymentId}`
+  const amountStr = money(args.amount, args.currency)
   const title = `Payment requested: ${amountStr}`
-  const body = `${input.businessName} has requested ${amountStr} for ${input.description}.`
+  const body = `${args.businessName} has requested ${amountStr} for ${args.description}.`
 
-  // In-app + push — payment requests aren't user-suppressible, so we send
-  // directly rather than through the preference-gated notification types.
-  if (input.clientUserId) {
-    await prisma.notification.create({ data: { userId: input.clientUserId, title, body, link } }).catch(() => {})
-    await sendPush(input.clientUserId, { alert: { title, body }, customData: { path: link } }).catch(() => {})
+  if (args.clientUserId) {
+    await prisma.notification.create({ data: { userId: args.clientUserId, title, body, link } }).catch(() => {})
+    await sendPush(args.clientUserId, { alert: { title, body }, customData: { path: link } }).catch(() => {})
   }
-
-  if (input.clientEmail) {
+  if (args.clientEmail) {
     await sendEmail({
-      to: input.clientEmail,
-      subject: `${input.businessName}: payment requested`,
-      html: invoiceEmail(input.businessName, input.description, amountStr, link),
+      to: args.clientEmail,
+      subject: `${args.businessName}: payment requested`,
+      html: invoiceEmail(args.businessName, args.description, amountStr, link),
       text: `${body}\n\nPay securely: ${link}`,
     }).catch(() => {})
   }
-
-  return paymentId
 }
 
 function invoiceEmail(business: string, description: string, amount: string, link: string): string {
