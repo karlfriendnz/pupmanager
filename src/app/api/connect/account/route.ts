@@ -7,6 +7,7 @@ import {
   createOnboardingLink,
   currencyForCountry,
   isConnectConfigured,
+  isLivePaymentsAllowed,
 } from '@/lib/connect'
 import { requireSameOrigin } from '@/lib/csrf'
 import { recordAudit, auditRequestMeta } from '@/lib/audit'
@@ -45,6 +46,11 @@ export async function POST(req: Request) {
   const sandbox = trainer.sandboxBilling
   if (!isConnectConfigured(sandbox)) {
     return NextResponse.json({ error: 'Payments are not configured yet' }, { status: 503 })
+  }
+  // Rollout gate — during the soft launch only allowlisted (or sandbox) trainers
+  // may connect a payout account, so real trainers can't take payments yet.
+  if (!isLivePaymentsAllowed(trainerId, sandbox)) {
+    return NextResponse.json({ error: 'Payments aren’t available for your account yet.' }, { status: 403 })
   }
 
   let accountId = trainer.connectAccountId

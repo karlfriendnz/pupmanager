@@ -58,6 +58,18 @@ export function isConnectConfigured(sandbox = false): boolean {
   return isStripeConfigured(sandbox)
 }
 
+/**
+ * Rollout gate: may this trainer onboard a LIVE Connect account / take LIVE
+ * charges? Sandbox (test-mode) trainers like the demo are always allowed — they
+ * can't move real money. Live trainers must be on the CONNECT_LIVE_ALLOWLIST.
+ * Empty allowlist ⇒ only sandbox works, so production starts locked to the demo.
+ */
+export function isLivePaymentsAllowed(trainerId: string, sandbox: boolean): boolean {
+  if (sandbox) return true
+  const allow = (env.CONNECT_LIVE_ALLOWLIST ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  return allow.includes(trainerId)
+}
+
 // Estimated card processing fee, by payout currency, used to surcharge the
 // client when a trainer opts to pass the fee on rather than absorb it. These
 // mirror the platform processing-fee pricing set in the Stripe Dashboard

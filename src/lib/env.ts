@@ -76,6 +76,11 @@ const schema = z.object({
   // off and surfaces degrade via isStripeConfigured().
   STRIPE_CONNECT_WEBHOOK_SECRET: optionalString,
   STRIPE_CONNECT_WEBHOOK_SECRET_TEST: optionalString,
+  // Rollout gate for LIVE client→trainer payments. Comma-separated TrainerProfile
+  // ids that are allowed to onboard a live Connect account and take live charges.
+  // Empty (default) = NO live trainer can connect or charge — only sandbox
+  // (the demo) works. Widen this as we trust the flow, then remove the gate.
+  CONNECT_LIVE_ALLOWLIST: optionalString,
   // Legacy in-app application fee, in basis points. Client→trainer charges are
   // now DIRECT charges where our cut comes from the platform processing-fee
   // markup configured in the Stripe Dashboard (Connect → platform pricing), not
