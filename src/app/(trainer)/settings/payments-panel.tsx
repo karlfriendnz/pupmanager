@@ -1,12 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import { formatDate } from '@/lib/utils'
 import { isConnectConfigured } from '@/lib/connect'
-import { ConnectButton, AcceptPaymentsToggle, RefundButton } from './payments-actions'
-
-function money(minor: number, currency: string | null): string {
-  const value = (minor / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return `${(currency ?? '').toUpperCase()} ${value}`.trim()
-}
+import { ConnectButton, AcceptPaymentsToggle } from './payments-actions'
 
 // Trainer-facing setup for taking payments from their clients (Stripe Connect
 // Express). Owner-only; rendered as a tab on Settings. Three states: not
@@ -30,21 +24,6 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
   const configured = isConnectConfigured(sandbox)
   const started = !!profile?.connectAccountId
   const active = !!(profile?.connectChargesEnabled && profile?.connectPayoutsEnabled)
-
-  // Recent client→trainer payments (the earnings list).
-  const payments = started
-    ? await prisma.payment.findMany({
-        where: { trainerId: companyId, status: { in: ['PAID', 'PARTIALLY_REFUNDED', 'REFUNDED', 'DISPUTED'] } },
-        orderBy: { paidAt: 'desc' },
-        take: 25,
-        select: {
-          id: true, description: true, amountTotal: true, currency: true,
-          applicationFeeAmount: true, stripeFeeAmount: true, amountRefunded: true,
-          status: true, paidAt: true,
-          client: { select: { user: { select: { name: true } } } },
-        },
-      })
-    : []
 
   return (
     <div className="flex flex-col gap-6">
@@ -104,76 +83,17 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
         )}
       </div>
 
-      {/* Recent payments (earnings) */}
-      {payments.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-4">Recent payments</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs uppercase text-slate-400">
-                  <th className="pb-2 pr-4 font-medium">Date</th>
-                  <th className="pb-2 pr-4 font-medium">For</th>
-                  <th className="pb-2 pr-4 font-medium text-right">Amount</th>
-                  <th className="pb-2 pr-4 font-medium text-right">Card fee</th>
-                  <th className="pb-2 pr-4 font-medium text-right">Platform fee</th>
-                  <th className="pb-2 pr-4 font-medium text-right">Net</th>
-                  <th className="pb-2 pr-4 font-medium">Status</th>
-                  <th className="pb-2 font-medium" />
-                </tr>
-              </thead>
-              <tbody>
-                {payments.map(p => {
-                  const cardFee = p.stripeFeeAmount ?? 0
-                  // Net = the trainer's actual payout. On a destination charge
-                  // the transfer = gross − platform fee; a refund pulls back the
-                  // transfer AND (refund_application_fee) the platform fee
-                  // proportionally, so we only count the platform fee retained on
-                  // the un-refunded portion. The Stripe card fee is borne by the
-                  // platform, so it's info-only and never deducted here.
-                  const refundFraction = p.amountTotal > 0 ? p.amountRefunded / p.amountTotal : 0
-                  const platformFeeRetained = Math.round(p.applicationFeeAmount * (1 - refundFraction))
-                  const net = p.amountTotal - p.amountRefunded - platformFeeRetained
-                  const refundable = p.status === 'PAID' || p.status === 'PARTIALLY_REFUNDED'
-                  return (
-                    <tr key={p.id} className="border-t border-slate-100 align-top">
-                      <td className="py-2.5 pr-4 text-slate-700 whitespace-nowrap">{p.paidAt ? formatDate(p.paidAt) : '—'}</td>
-                      <td className="py-2.5 pr-4 text-slate-700">
-                        <span className="block">{p.description ?? '—'}</span>
-                        {p.client?.user?.name && <span className="text-xs text-slate-400">{p.client.user.name}</span>}
-                      </td>
-                      <td className="py-2.5 pr-4 text-right tabular-nums text-slate-900 whitespace-nowrap">{money(p.amountTotal, p.currency)}</td>
-                      <td className="py-2.5 pr-4 text-right tabular-nums text-slate-500 whitespace-nowrap">{p.stripeFeeAmount == null ? '—' : money(cardFee, p.currency)}</td>
-                      <td className="py-2.5 pr-4 text-right tabular-nums text-slate-500 whitespace-nowrap">{money(p.applicationFeeAmount, p.currency)}</td>
-                      <td className="py-2.5 pr-4 text-right tabular-nums font-medium text-slate-900 whitespace-nowrap">{money(net, p.currency)}</td>
-                      <td className="py-2.5 pr-4"><PaymentStatusBadge status={p.status} /></td>
-                      <td className="py-2.5 text-right">{refundable && <RefundButton paymentId={p.id} />}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+      {/* Transactions + invoices live under Finances. */}
+      {active && (
+        <a href="/finances" className="rounded-2xl border border-slate-200 bg-white p-5 flex items-center justify-between gap-3 hover:border-slate-300 transition-colors">
+          <div>
+            <p className="text-sm font-medium text-slate-800">Transactions & invoices</p>
+            <p className="text-xs text-slate-500 mt-0.5">View, search and refund your payments and invoices.</p>
           </div>
-        </div>
+          <span className="text-sm font-semibold text-accent">Open Finances →</span>
+        </a>
       )}
     </div>
-  )
-}
-
-function PaymentStatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    PAID: 'bg-emerald-100 text-emerald-700',
-    PARTIALLY_REFUNDED: 'bg-amber-100 text-amber-700',
-    REFUNDED: 'bg-slate-100 text-slate-500',
-    DISPUTED: 'bg-rose-100 text-rose-700',
-  }
-  const label: Record<string, string> = {
-    PAID: 'Paid', PARTIALLY_REFUNDED: 'Part refund', REFUNDED: 'Refunded', DISPUTED: 'Disputed',
-  }
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${map[status] ?? map.PAID}`}>
-      {label[status] ?? status}
-    </span>
   )
 }
 

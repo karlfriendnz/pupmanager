@@ -40,7 +40,7 @@ export function ConnectButton({ label }: { label: string }) {
 }
 
 /** Full refund of a single payment. */
-export function RefundButton({ paymentId }: { paymentId: string }) {
+export function RefundButton({ paymentId, onRefunded }: { paymentId: string; onRefunded?: () => void }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,7 +56,8 @@ export function RefundButton({ paymentId }: { paymentId: string }) {
         body: '{}',
       })
       if (res.ok) {
-        router.refresh()
+        if (onRefunded) onRefunded()
+        else router.refresh()
       } else {
         const b = await res.json().catch(() => ({}))
         setError(typeof b.error === 'string' ? b.error : 'Could not refund.')

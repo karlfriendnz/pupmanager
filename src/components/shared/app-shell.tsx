@@ -10,7 +10,7 @@ import {
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag,
   MoreHorizontal, X, Inbox, GraduationCap, Flame,
-  Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ArrowLeftRight,
+  Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ArrowLeftRight, Wallet,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
@@ -30,6 +30,7 @@ const TRAINER_NAV = [
   { href: '/enquiries',    label: 'Enquiries',    icon: Inbox },
   { href: '/messages',     label: 'Messages',     icon: MessageSquare },
   { href: '/website',      label: 'Website',      icon: Globe },
+  { href: '/finances',     label: 'Finances',     icon: Wallet },
   { href: '/settings',     label: 'Settings',     icon: Settings },
   { href: '/help',         label: 'Help',         icon: HelpCircle },
 ]
