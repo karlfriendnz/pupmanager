@@ -63,17 +63,21 @@ export function SessionLibraryTasks({
   sessionId,
   clientId,
   sessionDate,   // YYYY-MM-DD — used as the TrainingTask.date
+  defaultLibraryOpen = false,
 }: {
   sessionId: string
   clientId: string | null
   sessionDate: string
+  // Start with the library picker expanded (used by the post-save homework
+  // step, where attaching homework is the whole point).
+  defaultLibraryOpen?: boolean
 }) {
   const [library, setLibrary] = useState<LibraryType[] | null>(null)
   const [attached, setAttached] = useState<AttachedTask[] | null>(null)
   const [search, setSearch] = useState('')
   const [adding, setAdding] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [showLibrary, setShowLibrary] = useState(false)
+  const [showLibrary, setShowLibrary] = useState(defaultLibraryOpen)
 
   useEffect(() => {
     fetch('/api/library/types')
@@ -238,37 +242,9 @@ export function SessionLibraryTasks({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Attached list */}
-      {attached.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
-            Tasks for this session
-          </p>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={attached.map(t => t.id)} strategy={verticalListSortingStrategy}>
-              <div className="flex flex-col gap-2">
-                {attached.map(t => (
-                  <AttachedTaskRow
-                    key={t.id}
-                    task={t}
-                    sessionId={sessionId}
-                    onRemove={() => handleRemove(t.id)}
-                    onNoteChange={(note) => setTrainerNote(t.id, note)}
-                    onNoteCommit={(note) => persistTrainerNote(t.id, note)}
-                    onImagesChange={(urls) => setImages(t.id, urls)}
-                    onRepsChange={(reps) => setRepetitions(t.id, reps)}
-                    onRepsCommit={(reps) => persistRepetitions(t.id, reps)}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-        </div>
-      )}
-
-      {/* Add affordances — kept on a single row when collapsed; either grows
-          to full width when its form/panel opens. */}
-      <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch sm:items-start gap-2">
+      {/* Add affordances — full-width stacked actions; the list of attached
+          tasks sits below them. */}
+      <div className="flex flex-col gap-2">
         <CustomTaskForm
           clientId={clientId}
           onCreate={async (data) => {
@@ -297,10 +273,10 @@ export function SessionLibraryTasks({
           <button
             onClick={() => setShowLibrary(true)}
             disabled={!clientId}
-            className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-3 sm:py-2 rounded-lg hover:bg-blue-50 border border-blue-100 sm:border-transparent transition-colors"
+            className="flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 rounded-xl hover:bg-blue-50 border border-blue-200 transition-colors"
             title={!clientId ? 'No client linked to this session' : undefined}
           >
-            <Layers className="h-5 w-5 sm:h-4 sm:w-4" />
+            <Layers className="h-4 w-4" />
             <span>Add from library</span>
           </button>
         ) : null}
@@ -368,6 +344,34 @@ export function SessionLibraryTasks({
           </>
         )}
       </div>
+
+      {/* Tasks attached to this session — listed below the add actions. */}
+      {attached.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+            Tasks for this session
+          </p>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={attached.map(t => t.id)} strategy={verticalListSortingStrategy}>
+              <div className="flex flex-col gap-2">
+                {attached.map(t => (
+                  <AttachedTaskRow
+                    key={t.id}
+                    task={t}
+                    sessionId={sessionId}
+                    onRemove={() => handleRemove(t.id)}
+                    onNoteChange={(note) => setTrainerNote(t.id, note)}
+                    onNoteCommit={(note) => persistTrainerNote(t.id, note)}
+                    onImagesChange={(urls) => setImages(t.id, urls)}
+                    onRepsChange={(reps) => setRepetitions(t.id, reps)}
+                    onRepsCommit={(reps) => persistRepetitions(t.id, reps)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </div>
+      )}
     </div>
   )
 }
@@ -431,10 +435,10 @@ function CustomTaskForm({
       <button
         onClick={() => setOpen(true)}
         disabled={!clientId}
-        className="flex flex-col sm:flex-row items-center justify-center sm:self-start gap-1 sm:gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-3 sm:py-2 rounded-lg hover:bg-blue-50 border border-blue-100 sm:border-transparent transition-colors"
+        className="flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 rounded-xl hover:bg-blue-50 border border-blue-200 transition-colors"
         title={!clientId ? 'No client linked to this session' : undefined}
       >
-        <Plus className="h-5 w-5 sm:h-4 sm:w-4" />
+        <Plus className="h-4 w-4" />
         <span>Add custom task</span>
       </button>
     )

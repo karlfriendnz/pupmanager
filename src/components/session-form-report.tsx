@@ -952,7 +952,7 @@ function FormFillerBody({
             <h2 className="text-xl font-bold text-slate-900">Set homework for this lesson</h2>
             <p className="text-sm text-slate-500 mt-1">Attach tasks from your library so {homeworkPhase.clientId ? 'the client' : 'they'} can practise before next time.</p>
             <div className="mt-5">
-              <SessionLibraryTasks sessionId={sessionId} clientId={homeworkPhase.clientId} sessionDate={homeworkPhase.date} />
+              <SessionLibraryTasks sessionId={sessionId} clientId={homeworkPhase.clientId} sessionDate={homeworkPhase.date} defaultLibraryOpen />
             </div>
           </div>
         </div>
