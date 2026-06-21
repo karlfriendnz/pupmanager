@@ -125,7 +125,15 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
               <tbody>
                 {payments.map(p => {
                   const cardFee = p.stripeFeeAmount ?? 0
-                  const net = p.amountTotal - p.applicationFeeAmount - cardFee - p.amountRefunded
+                  // Net = the trainer's actual payout. On a destination charge
+                  // the transfer = gross − platform fee; a refund pulls back the
+                  // transfer AND (refund_application_fee) the platform fee
+                  // proportionally, so we only count the platform fee retained on
+                  // the un-refunded portion. The Stripe card fee is borne by the
+                  // platform, so it's info-only and never deducted here.
+                  const refundFraction = p.amountTotal > 0 ? p.amountRefunded / p.amountTotal : 0
+                  const platformFeeRetained = Math.round(p.applicationFeeAmount * (1 - refundFraction))
+                  const net = p.amountTotal - p.amountRefunded - platformFeeRetained
                   const refundable = p.status === 'PAID' || p.status === 'PARTIALLY_REFUNDED'
                   return (
                     <tr key={p.id} className="border-t border-slate-100 align-top">

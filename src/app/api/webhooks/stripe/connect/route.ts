@@ -104,6 +104,15 @@ export async function POST(req: Request) {
         await markPaidAndFulfil(pi.metadata?.paymentId ?? null, sandbox, pi.id)
         break
       }
+      case 'charge.updated':
+      case 'charge.succeeded': {
+        // The balance transaction (and its Stripe processing fee) is often not
+        // settled at the instant payment_intent.succeeded fires, so the card fee
+        // can't be read during fulfilment. charge.updated arrives once it's
+        // available — backfill the Payment's stripeFeeAmount from it then.
+        await backfillCardFee(event.data.object as Stripe.Charge, sandbox)
+        break
+      }
       case 'charge.refunded': {
         await reconcileRefund(event.data.object as Stripe.Charge)
         break
@@ -409,6 +418,37 @@ async function fulfilScheduledBooking(
   }
 
   return { booked: true, collided: false, bookingPageId: intent.bookingPageId ?? null, slotAt }
+}
+
+// Backfill the Stripe processing ("card") fee onto a Payment once the charge's
+// balance transaction is settled (it usually isn't at fulfilment time). Reads
+// the fee from the balance_transaction; idempotent — only writes when our stored
+// fee is still null.
+async function backfillCardFee(charge: Stripe.Charge, sandbox: boolean) {
+  const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id ?? null
+  const payment = await prisma.payment.findFirst({
+    where: { OR: [{ stripeChargeId: charge.id }, ...(piId ? [{ stripePaymentIntentId: piId }] : [])] },
+    select: { id: true, stripeFeeAmount: true },
+  })
+  if (!payment || payment.stripeFeeAmount != null) return
+
+  // balance_transaction may be an id (unexpanded) — fetch it for the fee.
+  let fee: number | null = null
+  const bt = charge.balance_transaction
+  if (bt && typeof bt === 'object') {
+    fee = bt.fee ?? null
+  } else if (typeof bt === 'string') {
+    try {
+      const tx = await stripeFor(sandbox).balanceTransactions.retrieve(bt)
+      fee = tx.fee ?? null
+    } catch { /* not yet available — a later charge.updated will retry */ }
+  }
+  if (fee == null) return
+
+  await prisma.payment.update({
+    where: { id: payment.id },
+    data: { stripeFeeAmount: fee, stripeChargeId: charge.id },
+  })
 }
 
 // Reconcile a Payment's refunded amount + status from the authoritative charge
