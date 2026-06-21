@@ -48,7 +48,7 @@ function MessageComposer({
       {!hideLabel && (
         <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>
       )}
-      <div className="relative rounded-2xl bg-slate-50 border border-transparent focus-within:border-blue-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-50 transition-all">
+      <div className="relative rounded-2xl bg-slate-50 border border-transparent focus-within:border-accent focus-within:bg-white focus-within:ring-4 focus-within:ring-accent-soft transition-all">
         <textarea
           value={value}
           onChange={e => onChange(e.target.value)}
@@ -199,7 +199,7 @@ export function SessionFormReport({
     if ((templates?.length ?? 0) === 0) {
       return (
         <p className="text-sm text-slate-400">
-          No session forms yet. Create one in <a href="/settings?tab=forms" className="text-blue-600 hover:underline">Settings → Forms</a>.
+          No session forms yet. Create one in <a href="/settings?tab=forms" className="text-accent hover:underline">Settings → Forms</a>.
         </p>
       )
     }
@@ -299,7 +299,7 @@ export function SessionFormReport({
         </div>
       ) : (templates?.length ?? 0) === 0 ? (
         <p className="text-sm text-slate-400">
-          No session forms yet. Create one in <a href="/settings?tab=forms" className="text-blue-600 hover:underline">Settings → Forms</a>.
+          No session forms yet. Create one in <a href="/settings?tab=forms" className="text-accent hover:underline">Settings → Forms</a>.
         </p>
       ) : (responses?.length ?? 0) === 0 ? (
         <p className="text-sm text-slate-400">
@@ -321,7 +321,7 @@ export function SessionFormReport({
                     <button
                       onClick={() => template && setEditing({ template, existing: r })}
                       disabled={!template}
-                      className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-40"
+                      className="p-1 text-slate-400 hover:text-accent hover:bg-accent-soft rounded disabled:opacity-40"
                       aria-label="Edit"
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -552,7 +552,7 @@ function FormDropdown({
         value=""
         onChange={e => handleSelect(e.target.value)}
         disabled={attaching}
-        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
       >
         <option value="" disabled>{attaching ? 'Attaching…' : 'Select a form…'}</option>
         {templates.map(t => (
@@ -977,7 +977,7 @@ function FormFillerBody({
               <span className="tabular-nums flex-shrink-0">{curStep + 1} / {stepPanels.length}</span>
             </div>
             <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-              <div className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out" style={{ width: `${((curStep + 1) / stepPanels.length) * 100}%` }} />
+              <div className="h-full bg-accent rounded-full transition-all duration-300 ease-out" style={{ width: `${((curStep + 1) / stepPanels.length) * 100}%` }} />
             </div>
           </div>
         </div>
@@ -1036,7 +1036,7 @@ function FormFillerBody({
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-6 h-11 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-accent hover:bg-accent-strong text-white text-sm font-semibold px-6 h-11 disabled:opacity-60"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save notes
               </button>
@@ -1195,7 +1195,7 @@ function BasicQuestionInput({
         type="number"
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
       />
     )
   }
@@ -1226,7 +1226,7 @@ function BasicQuestionInput({
         value={value}
         onChange={e => onChange(e.target.value)}
         rows={3}
-        className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
       />
     )
     : (
@@ -1234,7 +1234,7 @@ function BasicQuestionInput({
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
       />
     )
 
@@ -1286,7 +1286,7 @@ function CustomFieldInput({
         type="number"
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
       />
     )
   }
@@ -1295,7 +1295,7 @@ function CustomFieldInput({
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
       >
         <option value="">Select…</option>
         {field.options.map(opt => (
@@ -1316,7 +1316,7 @@ function CustomFieldInput({
           value={value}
           onChange={e => onChange(e.target.value)}
           rows={3}
-          className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <div className="flex flex-col gap-1.5 flex-shrink-0">
           <VoiceInput onAppend={t => onChange(appendSpoken(value, t))} />

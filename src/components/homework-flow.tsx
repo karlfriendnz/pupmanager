@@ -154,7 +154,7 @@ export function HomeworkFlow({
               <ChevronLeft className="h-4 w-4" /> Back
             </button>
             {isLast ? (
-              <button type="button" onClick={onDone} className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-6 h-11">
+              <button type="button" onClick={onDone} className="inline-flex items-center gap-1.5 rounded-xl bg-accent hover:bg-accent-strong text-white text-sm font-semibold px-6 h-11">
                 <Check className="h-4 w-4" /> Done
               </button>
             ) : (
@@ -209,7 +209,7 @@ export function HomeworkFlow({
       footer={
         <div className="flex items-center justify-end">
           {added.length > 0 ? (
-            <button type="button" onClick={() => { setReviewIndex(0); setScreen('review') }} className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-6 h-11">
+            <button type="button" onClick={() => { setReviewIndex(0); setScreen('review') }} className="inline-flex items-center gap-1.5 rounded-xl bg-accent hover:bg-accent-strong text-white text-sm font-semibold px-6 h-11">
               Review {added.length} {added.length === 1 ? 'task' : 'tasks'} <ChevronRight className="h-4 w-4" />
             </button>
           ) : (
@@ -225,7 +225,7 @@ export function HomeworkFlow({
         type="button"
         onClick={() => setScreen('custom')}
         disabled={!clientId}
-        className="mt-5 flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-40 px-3 py-2.5 rounded-xl hover:bg-blue-50 border border-blue-200 transition-colors"
+        className="mt-5 flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-accent hover:text-accent-strong disabled:opacity-40 px-3 py-2.5 rounded-xl hover:bg-accent-soft border border-accent transition-colors"
       >
         <Plus className="h-4 w-4" /> Add custom task
       </button>
@@ -235,12 +235,12 @@ export function HomeworkFlow({
       {library === null ? (
         <div className="mt-5 flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Loading library…</div>
       ) : allTasks.length === 0 ? (
-        <p className="mt-5 text-sm text-slate-400">No library tasks yet. Add some in <a href="/templates" className="text-blue-600 hover:underline">Library</a>.</p>
+        <p className="mt-5 text-sm text-slate-400">No library tasks yet. Add some in <a href="/templates" className="text-accent hover:underline">Library</a>.</p>
       ) : (
         <>
           <div className="relative mt-5">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-            <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search library tasks…" className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search library tasks…" className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
           </div>
           <div className="mt-3 border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
             {filtered.length === 0 ? (
@@ -256,7 +256,7 @@ export function HomeworkFlow({
                   <button
                     onClick={() => addLibrary(t)}
                     disabled={isAdded || addingId === t.id || !clientId}
-                    className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center transition-colors ${isAdded ? 'bg-emerald-500 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40'}`}
+                    className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center transition-colors ${isAdded ? 'bg-emerald-500 text-white' : 'bg-accent hover:bg-accent-strong text-white disabled:opacity-40'}`}
                     title={isAdded ? 'Added' : 'Add to lesson'}
                   >
                     {addingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : isAdded ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
@@ -351,7 +351,7 @@ function CustomTaskScreen({
       footer={
         <div className="flex items-center justify-between gap-3">
           <button type="button" onClick={onBack} className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800"><ChevronLeft className="h-4 w-4" /> Back</button>
-          <button type="button" onClick={submit} disabled={saving} className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-6 h-11 disabled:opacity-60">
+          <button type="button" onClick={submit} disabled={saving} className="inline-flex items-center gap-1.5 rounded-xl bg-accent hover:bg-accent-strong text-white text-sm font-semibold px-6 h-11 disabled:opacity-60">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add task
           </button>
         </div>
@@ -361,10 +361,10 @@ function CustomTaskScreen({
       <p className="text-sm text-slate-500 mt-1">A one-off homework task just for this client.</p>
 
       <label className="mt-6 block text-xs font-semibold uppercase tracking-wide text-slate-400">Title</label>
-      <input value={title} onChange={e => setTitle(e.target.value)} autoFocus placeholder="e.g. Loose-lead walking" className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <input value={title} onChange={e => setTitle(e.target.value)} autoFocus placeholder="e.g. Loose-lead walking" className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
 
       <label className="mt-5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Description</label>
-      <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} placeholder="What should they practise?" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+      <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} placeholder="What should they practise?" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent resize-none" />
 
       <label className="mt-5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Repetitions</label>
       <div className="mt-2"><RepsStepper value={reps} onChange={setReps} /></div>
@@ -373,14 +373,14 @@ function CustomTaskScreen({
       {themes.length > 0 && (
         <div className="mt-6 rounded-xl border border-slate-200 p-3.5">
           <label className="flex items-start gap-2.5 cursor-pointer">
-            <input type="checkbox" checked={saveToLibrary} onChange={e => setSaveToLibrary(e.target.checked)} className="h-4 w-4 mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+            <input type="checkbox" checked={saveToLibrary} onChange={e => setSaveToLibrary(e.target.checked)} className="h-4 w-4 mt-0.5 rounded border-slate-300 text-accent focus:ring-accent" />
             <span className="text-sm text-slate-700 leading-snug">
               Also save to my library
               <span className="block text-[11px] text-slate-400 mt-0.5">Reuse this task for other clients later.</span>
             </span>
           </label>
           {saveToLibrary && (
-            <select value={themeId} onChange={e => setThemeId(e.target.value)} className="mt-3 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <select value={themeId} onChange={e => setThemeId(e.target.value)} className="mt-3 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent">
               {themes.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
           )}

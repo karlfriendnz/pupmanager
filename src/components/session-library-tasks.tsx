@@ -235,7 +235,7 @@ export function SessionLibraryTasks({
   if (allLibraryTasks.length === 0) {
     return (
       <p className="text-sm text-slate-400">
-        No library tasks yet. Add some in <a href="/templates" className="text-blue-600 hover:underline">Library</a>.
+        No library tasks yet. Add some in <a href="/templates" className="text-accent hover:underline">Library</a>.
       </p>
     )
   }
@@ -273,7 +273,7 @@ export function SessionLibraryTasks({
           <button
             onClick={() => setShowLibrary(true)}
             disabled={!clientId}
-            className="flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 rounded-xl hover:bg-blue-50 border border-blue-200 transition-colors"
+            className="flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-accent hover:text-accent-strong disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 rounded-xl hover:bg-accent-soft border border-accent transition-colors"
             title={!clientId ? 'No client linked to this session' : undefined}
           >
             <Layers className="h-4 w-4" />
@@ -305,7 +305,7 @@ export function SessionLibraryTasks({
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search library tasks…"
-                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
 
@@ -329,7 +329,7 @@ export function SessionLibraryTasks({
                       <button
                         onClick={() => handleAdd(t)}
                         disabled={adding === t.id || already || !clientId}
-                        className="flex-shrink-0 h-7 w-7 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        className="flex-shrink-0 h-7 w-7 rounded-full bg-accent hover:bg-accent-strong text-white flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         title={already ? 'Already added' : !clientId ? 'No client linked' : 'Add to session'}
                       >
                         {adding === t.id
@@ -435,7 +435,7 @@ function CustomTaskForm({
       <button
         onClick={() => setOpen(true)}
         disabled={!clientId}
-        className="flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 rounded-xl hover:bg-blue-50 border border-blue-200 transition-colors"
+        className="flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-accent hover:text-accent-strong disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 rounded-xl hover:bg-accent-soft border border-accent transition-colors"
         title={!clientId ? 'No client linked to this session' : undefined}
       >
         <Plus className="h-4 w-4" />
@@ -463,7 +463,7 @@ function CustomTaskForm({
         onChange={e => setTitle(e.target.value)}
         placeholder="Task title (e.g. Practice loose-leash on driveway)"
         autoFocus
-        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
       />
       <div className="flex gap-2 items-start">
         <textarea
@@ -471,7 +471,7 @@ function CustomTaskForm({
           onChange={e => setDescription(e.target.value)}
           rows={2}
           placeholder="Description (optional)"
-          className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <VoiceInput
           onAppend={t => {
@@ -487,12 +487,12 @@ function CustomTaskForm({
           value={reps}
           onChange={e => setReps(e.target.value)}
           placeholder="Reps"
-          className="h-9 w-24 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="h-9 w-24 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <button
           type="submit"
           disabled={submitting || !title.trim()}
-          className="h-9 px-3 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-9 px-3 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-strong disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? 'Adding…' : 'Add task'}
         </button>
@@ -545,7 +545,7 @@ function AttachedTaskRow({
       style={style}
       className={`group/task relative bg-white border border-slate-100 rounded-2xl transition-all ${
         isDragging
-          ? 'shadow-xl ring-2 ring-blue-200'
+          ? 'shadow-xl ring-2 ring-accent-soft'
           : 'hover:border-slate-200 hover:shadow-sm'
       }`}
     >
@@ -588,7 +588,7 @@ function AttachedTaskRow({
               onBlur={() => onRepsCommit(task.repetitions ?? null)}
               placeholder="–"
               aria-label="Reps"
-              className="w-9 bg-transparent text-center text-slate-700 font-semibold rounded-md hover:bg-slate-100 focus:bg-white focus:ring-2 focus:ring-blue-300 focus:outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-9 bg-transparent text-center text-slate-700 font-semibold rounded-md hover:bg-slate-100 focus:bg-white focus:ring-2 focus:ring-accent focus:outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <span>reps</span>
           </div>
@@ -600,7 +600,7 @@ function AttachedTaskRow({
 
         {/* Composer — always visible. Action chips float in the bottom-right
             corner of the textarea container, like a chat composer. */}
-        <div className="relative mt-3 group/composer rounded-2xl bg-slate-50 border border-transparent focus-within:border-blue-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-50 transition-all">
+        <div className="relative mt-3 group/composer rounded-2xl bg-slate-50 border border-transparent focus-within:border-accent focus-within:bg-white focus-within:ring-4 focus-within:ring-accent-soft transition-all">
           <textarea
             value={task.trainerNote ?? ''}
             onChange={e => onNoteChange(e.target.value)}
