@@ -16,6 +16,10 @@ const schema = z.object({
   // Apply a fresh trial of N days from today: sets trialEndsAt = now + N and
   // flips the account to TRIALING. Admin quick-action from /admin/trainers.
   applyTrialDays: z.number().int().positive().max(3650).optional(),
+  // Number of trainer seats the business may fill (owner + invited members).
+  // Set directly here regardless of subscription — lets us grant extra seats
+  // to a trialing account without touching Stripe.
+  seatCount: z.number().int().min(1).max(100).optional(),
 })
 
 async function requireAdmin() {
@@ -35,7 +39,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ traine
   const user = await prisma.user.findUnique({ where: { id: trainerId, role: 'TRAINER' } })
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { name, email, businessName, gracePeriodUntil, isInternal, active, applyTrialDays } = parsed.data
+  const { name, email, businessName, gracePeriodUntil, isInternal, active, applyTrialDays, seatCount } = parsed.data
 
   if (email && email !== user.email) {
     const conflict = await prisma.user.findUnique({ where: { email } })
@@ -64,6 +68,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ traine
       trialEndsAt: new Date(Date.now() + applyTrialDays * 24 * 60 * 60 * 1000),
       subscriptionStatus: 'TRIALING' as const,
     }),
+    // Set the seat allowance directly (independent of any Stripe subscription).
+    ...(seatCount !== undefined && { seatCount }),
   }
   if (Object.keys(profileData).length > 0) {
     await prisma.trainerProfile.update({

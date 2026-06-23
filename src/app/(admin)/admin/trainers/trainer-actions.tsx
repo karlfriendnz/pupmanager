@@ -43,6 +43,9 @@ type Trainer = {
   onboardingTotal: number
   onboardingEmails: number
   gracePeriodUntil: Date | string | null
+  // Seat allowance — owner + invited members must fit within this. Set from the
+  // edit panel regardless of subscription (handy for trialing accounts).
+  seatCount: number
   deactivatedAt: Date | string | null
   createdAt: Date
 }
@@ -194,6 +197,21 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
     setSavingTrial(false)
   }
 
+  // Set the trainer's seat allowance directly (independent of Stripe).
+  const [savingSeats, setSavingSeats] = useState(false)
+  async function setSeats(seatCount: number) {
+    setSavingSeats(true)
+    setError(null)
+    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seatCount }),
+    })
+    if (res.ok) router.refresh()
+    else setError('Failed to update seats')
+    setSavingSeats(false)
+  }
+
   // Mark/unmark this as a PupManager-owned (internal/test) account.
   const [savingInternal, setSavingInternal] = useState(false)
   async function toggleInternal() {
@@ -282,6 +300,30 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
             </div>
           </div>
 
+          {/* Trainer seats — owner + invited members must fit within this */}
+          <div className="mt-4 pt-3 border-t border-slate-600/50">
+            <p className="text-xs text-slate-400 mb-2">
+              Trainer seats
+              <span className="text-slate-300"> · currently {trainer.seatCount} seat{trainer.seatCount === 1 ? '' : 's'}</span>
+            </p>
+            <div className="flex gap-2 flex-wrap items-center">
+              {[1, 2, 3, 5, 10].map(n => (
+                <button
+                  key={n}
+                  onClick={() => setSeats(n)}
+                  disabled={savingSeats || trainer.seatCount === n}
+                  className={`text-xs px-3 h-8 rounded-lg disabled:opacity-50 ${
+                    trainer.seatCount === n
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                  }`}
+                >
+                  {n} seat{n === 1 ? '' : 's'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Access grace period — overrides the paywall regardless of plan/trial */}
           <div className="mt-4 pt-3 border-t border-slate-600/50">
             <p className="text-xs text-slate-400 mb-2">
@@ -340,7 +382,7 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
       <td className="px-4 py-3 text-white">
         <span className="group relative inline-flex items-center gap-1.5">
           <span className="cursor-default border-b border-dotted border-slate-500/60">
-            {trainer.name ?? '—'}
+            {trainer.name?.trim() || '—'}
           </span>
           {trainer.isInternal && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-purple-900 text-purple-300">
@@ -358,7 +400,7 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           </span>
         </span>
       </td>
-      <td className="px-4 py-3 text-slate-300">{trainer.businessName ?? '—'}</td>
+      <td className="px-4 py-3 text-slate-300">{trainer.businessName?.trim() || '—'}</td>
       <td className="px-4 py-3">
         {trainer.signupCountry ? (
           <span

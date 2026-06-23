@@ -62,6 +62,7 @@ export async function TrainersTable({
           isInternal: true,
           signupCountry: true,
           gracePeriodUntil: true,
+          seatCount: true,
           subscriptionPlan: { select: { name: true } },
           _count: { select: { clients: true } },
           // Count of onboarding emails actually sent to this trainer.
@@ -139,6 +140,7 @@ export async function TrainersTable({
               onboardingTotal: onboarding[i].total,
               onboardingEmails: t.trainerProfile?.onboardingProgress?._count?.emails ?? 0,
               gracePeriodUntil: t.trainerProfile?.gracePeriodUntil ?? null,
+              seatCount: t.trainerProfile?.seatCount ?? 1,
               deactivatedAt: t.deactivatedAt ?? null,
               createdAt: t.createdAt,
             }} />
