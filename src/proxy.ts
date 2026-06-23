@@ -6,7 +6,7 @@ import { PREVIEW_COOKIE } from '@/lib/client-context'
 const { auth } = NextAuth(authConfig)
 
 const PUBLIC_PATHS = [
-  '/login', '/register', '/signup', '/forgot-password', '/verify-email', '/verify-account', '/invite',
+  '/login', '/register', '/signup', '/forgot-password', '/reset-password', '/verify-email', '/verify-account', '/invite',
   '/api/auth',
   '/api/cron',   // Bearer-token authed inside the route handler
   '/api/webhooks', // Stripe + future inbound webhooks (signature-gated inside)
@@ -113,5 +113,5 @@ export default auth((req) => {
 export const config = {
   // Skip auth/role checks for static assets and App Router metadata routes
   // (manifest.json, icon, apple-icon, sitemap, robots) — these are public by design.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|icon|apple-icon|logo.png|logo-wordmark.png|email-logo.png|hero-illustration.png|app-store-badge.png|google-play-badge.png|icons/|sitemap.xml|robots.txt|public/).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|icon|apple-icon|logo.png|logo-wordmark.png|email-logo.png|hero-illustration.png|app-store-badge.png|google-play-badge.png|founders-v2.png|icons/|sitemap.xml|robots.txt|public/).*)'],
 }
