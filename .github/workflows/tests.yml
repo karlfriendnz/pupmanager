@@ -1,0 +1,66 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+# Unit tests mock Prisma and the e2e suite runs against an isolated embedded
+# Postgres (tests/e2e/global-setup.ts) — neither touches a real database. The
+# SQLite URL below is only so `prisma generate` runs cleanly during install.
+env:
+  DATABASE_URL: file:./test.db
+  DIRECT_URL: file:./test.db
+  AUTH_SECRET: ci-only-not-real-secret-needs-16-chars
+  NEXT_PUBLIC_APP_URL: http://localhost:3100
+  CRON_SECRET: ci-only-not-real-secret-needs-16-chars
+  RESEND_API_KEY: ci-only-not-real
+  RESEND_FROM_EMAIL: ci@example.com
+  NODE_ENV: development
+
+jobs:
+  unit:
+    name: Unit + security (vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Run unit tests
+        run: npx vitest run
+
+  e2e:
+    name: E2E (playwright, embedded Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Install Playwright (chromium)
+        run: npx playwright install --with-deps chromium
+      - name: Run full e2e suite
+        run: npm run test:e2e:full
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
