@@ -8,7 +8,7 @@ import { PrismaClient } from '../src/generated/prisma'
 import bcrypt from 'bcryptjs'
 
 const ADMIN_EMAIL = 'admin@pupmanager.app'
-const ADMIN_PASSWORD = 'Com_01puter_01'
+const ADMIN_PASSWORD = 'Fr1end1y_01'
 
 const prisma = new PrismaClient()
 
