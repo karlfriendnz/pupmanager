@@ -69,9 +69,12 @@ test.describe('Client capture — quick-add (UAT)', () => {
     await page.getByLabel(/^Phone/).fill('021 555 0100')
     await page.getByRole('button', { name: 'Add contact' }).click()
 
-    // Modal closes and the new contact appears in the "New" follow-up bucket.
+    // Modal closes; a quick-add contact lands in the "New" follow-up bucket
+    // (status NEW), which is the New tab — not the default Active view.
     await expect(page.getByRole('heading', { name: 'Quick add contact' })).toHaveCount(0)
-    await expect(page.getByText(unique)).toBeVisible({ timeout: 15_000 })
+    await page.goto('/clients?tab=new')
+    // Name renders in both the card and table layouts, so match the first.
+    await expect(page.getByText(unique).first()).toBeVisible({ timeout: 15_000 })
   })
 
   test('quick-add blocks submit when a required field is empty', async ({ page }) => {

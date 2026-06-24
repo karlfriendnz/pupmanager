@@ -11,6 +11,9 @@ const E2E_DIST_DIR = '.next-e2e'
 
 export default defineConfig({
   testDir: './tests/e2e',
+  // Underscore-prefixed specs (e.g. _shot-nav) are dev screenshot utilities,
+  // not product assertions — keep them out of the suite.
+  testIgnore: '**/_*.spec.ts',
   fullyParallel: false, // shared seeded DB — keep specs serial
   workers: 1,
   forbidOnly: !!process.env.CI,

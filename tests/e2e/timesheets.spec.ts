@@ -77,7 +77,7 @@ test.describe('timesheets — owner UAT happy path', () => {
   test('the Timesheets page renders and creates a sheet via the UI', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/timesheets')
-    await expect(page.getByRole('heading', { name: 'Timesheets' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Timesheets', exact: true })).toBeVisible()
     await expect(page.getByText('Start a new timesheet')).toBeVisible()
 
     await page.getByRole('button', { name: /New timesheet/i }).click()

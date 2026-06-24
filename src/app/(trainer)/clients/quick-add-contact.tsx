@@ -101,18 +101,18 @@ export function QuickAddContact() {
                   {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
                   {builtinShown.map(f => (
                     <div key={f.key}>
-                      <label className="text-sm font-medium text-slate-700 block mb-1.5">{f.label}<span className="text-red-500 ml-1">*</span></label>
+                      <label htmlFor={f.key} className="text-sm font-medium text-slate-700 block mb-1.5">{f.label}<span className="text-red-500 ml-1">*</span></label>
                       {f.type === 'textarea'
-                        ? <textarea value={values[f.key] ?? ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} rows={2} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent" />
-                        : <input type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} value={values[f.key] ?? ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} className={inputCls} />}
+                        ? <textarea id={f.key} value={values[f.key] ?? ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} rows={2} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent" />
+                        : <input id={f.key} type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} value={values[f.key] ?? ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} className={inputCls} />}
                     </div>
                   ))}
                   {customShown.map(f => (
                     <div key={f.id}>
-                      <label className="text-sm font-medium text-slate-700 block mb-1.5">{f.label}<span className="text-red-500 ml-1">*</span></label>
+                      <label htmlFor={`cf_${f.id}`} className="text-sm font-medium text-slate-700 block mb-1.5">{f.label}<span className="text-red-500 ml-1">*</span></label>
                       {f.type === 'DROPDOWN'
-                        ? <select value={values[`cf_${f.id}`] ?? ''} onChange={e => setValues(v => ({ ...v, [`cf_${f.id}`]: e.target.value }))} className={inputCls}><option value="">Select…</option>{f.options.map(o => <option key={o} value={o}>{o}</option>)}</select>
-                        : <input type={f.type === 'NUMBER' ? 'number' : 'text'} value={values[`cf_${f.id}`] ?? ''} onChange={e => setValues(v => ({ ...v, [`cf_${f.id}`]: e.target.value }))} className={inputCls} />}
+                        ? <select id={`cf_${f.id}`} value={values[`cf_${f.id}`] ?? ''} onChange={e => setValues(v => ({ ...v, [`cf_${f.id}`]: e.target.value }))} className={inputCls}><option value="">Select…</option>{f.options.map(o => <option key={o} value={o}>{o}</option>)}</select>
+                        : <input id={`cf_${f.id}`} type={f.type === 'NUMBER' ? 'number' : 'text'} value={values[`cf_${f.id}`] ?? ''} onChange={e => setValues(v => ({ ...v, [`cf_${f.id}`]: e.target.value }))} className={inputCls} />}
                     </div>
                   ))}
                   {builtinShown.length === 0 && customShown.length === 0 && (
