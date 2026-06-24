@@ -7,8 +7,10 @@ import { SettingsTabs } from './settings-tabs'
 import { NotificationsPanel } from './notifications-panel'
 import { TeamPanel } from './team-panel'
 import { BillingPanel } from './billing-panel'
+import { DeleteAccountSection } from './delete-account-section'
 import { PaymentsPanel } from './payments-panel'
 import { ActivityPanel } from './activity-panel'
+import { EmailTemplatesPanel } from './email-templates-panel'
 import { FormsManager } from '../forms/forms-manager'
 import type { Question } from '../forms/session/session-forms-manager'
 import { PageHeader } from '@/components/shared/page-header'
@@ -27,7 +29,7 @@ export default async function TrainerSettingsPage() {
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
-    select: { id: true, businessName: true, phone: true, logoUrl: true, dashboardBgUrl: true, inviteTemplate: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true, intakeSectionOrder: true, intakeFormPublished: true },
+    select: { id: true, businessName: true, phone: true, showPhoneToClients: true, publicEmail: true, logoUrl: true, dashboardBgUrl: true, inviteTemplate: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true, intakeSectionOrder: true, intakeFormPublished: true },
   })
 
   const user = await prisma.user.findUnique({
@@ -68,16 +70,22 @@ export default async function TrainerSettingsPage() {
   return (
     <>
       <PageHeader title="Settings" />
-      <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-[872px] mx-auto">
+      <div className="p-4 md:p-8 w-full">
 
       <SettingsTabs
         profile={canEditSettings ? (
           <TrainerSettingsForm user={user} profile={trainerProfile} />
         ) : undefined}
         notifications={<NotificationsPanel />}
+        templates={canEditSettings ? <EmailTemplatesPanel /> : undefined}
         team={<TeamPanel />}
         payments={ctx.role === 'OWNER' ? <PaymentsPanel companyId={ctx.companyId} /> : undefined}
-        billing={ctx.role === 'OWNER' ? <BillingPanel companyId={ctx.companyId} /> : undefined}
+        billing={ctx.role === 'OWNER' ? (
+          <>
+            <BillingPanel companyId={ctx.companyId} />
+            <DeleteAccountSection />
+          </>
+        ) : undefined}
         activity={ctx.role === 'OWNER' ? <ActivityPanel companyId={ctx.companyId} /> : undefined}
         forms={!canManageForms ? undefined :
           <FormsManager

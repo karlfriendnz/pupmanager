@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import { prisma } from './prisma'
 import { env } from './env'
 import { sendEmail } from './email'
+import { emailBodyToHtml } from './email-html'
 import { materializeBooking } from './booking-page'
 
 // Convert an enquiry into a real client. Mirrors what the form submit
@@ -235,15 +236,17 @@ export function buildWelcomeEmail({
   const vars = { business: businessName, name }
   const subject = fillPlaceholders(form?.welcomeSubject?.trim() || DEFAULT_WELCOME_SUBJECT, vars, false)
   const introRaw = form?.welcomeIntro?.trim() || DEFAULT_WELCOME_INTRO
-  // Trainers type plain text — escape it, then honour line breaks.
-  const introHtml = fillPlaceholders(introRaw, vars, true).replace(/\n/g, '<br>')
+  // Intro is rich-text HTML from the editor (or a legacy plain-text default).
+  // Fill placeholders first, then emailBodyToHtml sanitizes HTML / converts
+  // plain text — escaping is handled there, so don't pre-escape the values.
+  const introHtml = emailBodyToHtml(fillPlaceholders(introRaw, vars, false))
   const showButton = form?.welcomeShowDiaryButton ?? true
   const buttonLabel = escapeHtml(form?.welcomeButtonLabel?.trim() || DEFAULT_WELCOME_BUTTON_LABEL)
 
   const html = `
           <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
             <h2 style="color:#0f172a;margin-bottom:8px;">Hi ${escapeHtml(name)}!</h2>
-            <p style="color:#475569;margin-bottom:24px;">${introHtml}</p>
+            <div style="color:#475569;margin-bottom:24px;">${introHtml}</div>
             ${message ? `<p style="color:#475569;background:#f8fafc;border-left:3px solid #e2e8f0;padding:12px 16px;margin-bottom:24px;"><em>"${escapeHtml(message)}"</em></p>` : ''}
             ${showButton ? `<a href="${magicLink}" style="display:inline-block;background:#2563eb;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;">
               ${buttonLabel}

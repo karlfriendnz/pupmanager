@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck } from 'lucide-react'
+import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Mail } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 
 const ALL_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'forms', label: 'Forms', icon: Pencil },
+  { id: 'templates', label: 'Email templates', icon: Mail },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'payments', label: 'Payments', icon: Wallet },
   { id: 'billing', label: 'Billing', icon: CreditCard },
@@ -21,6 +22,7 @@ export function SettingsTabs({
   profile,
   notifications,
   forms,
+  templates,
   team,
   payments,
   billing,
@@ -32,13 +34,14 @@ export function SettingsTabs({
   profile?: React.ReactNode
   notifications: React.ReactNode
   forms?: React.ReactNode
+  templates?: React.ReactNode
   team?: React.ReactNode
   payments?: React.ReactNode
   billing?: React.ReactNode
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, team, payments, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, templates, team, payments, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -80,37 +83,46 @@ export function SettingsTabs({
   }
 
   return (
-    <div>
-      <div className="flex gap-1 border-b border-slate-200 mb-6 overflow-x-auto overflow-y-hidden -mx-4 md:-mx-8 px-4 md:px-8">
-        {tabs.map(t => {
-          const Icon = t.icon
-          const active = tab === t.id
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => selectTab(t.id)}
-              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
-                active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {t.label}
-              {active && (
-                <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-blue-600 rounded-full" />
-              )}
-            </button>
-          )
-        })}
-      </div>
+    <div className="flex flex-col md:flex-row md:gap-8">
+      {/* Tab rail — vertical on md+, a horizontal scroll row on mobile. */}
+      <nav className="md:w-56 md:flex-shrink-0">
+        <div className="flex md:flex-col gap-1 overflow-x-auto overflow-y-hidden -mx-4 px-4 md:mx-0 md:px-0 border-b border-slate-200 md:border-b-0 mb-6 md:mb-0 md:sticky md:top-4">
+          {tabs.map(t => {
+            const Icon = t.icon
+            const active = tab === t.id
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => selectTab(t.id)}
+                className={`relative flex items-center gap-2 px-4 md:px-3 py-2.5 text-sm font-medium whitespace-nowrap rounded-xl transition-colors ${
+                  active
+                    ? 'text-blue-600 md:bg-blue-50'
+                    : 'text-slate-500 hover:text-slate-700 md:hover:bg-slate-50'
+                }`}
+              >
+                <Icon className="h-4 w-4 flex-shrink-0" />
+                {t.label}
+                {/* Underline on mobile, left bar on the desktop rail. */}
+                {active && (
+                  <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-blue-600 rounded-full md:hidden" />
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </nav>
 
-      <div>
-        {profile != null && <div className={tab === 'profile' ? '' : 'hidden'}>{profile}</div>}
-        <div className={tab === 'notifications' ? '' : 'hidden'}>{notifications}</div>
+      {/* Content. Single-column forms get a readable cap (max-w-2xl); wide
+          master-detail panels (Forms, Email templates) use the full width. */}
+      <div className="min-w-0 flex-1">
+        {profile != null && <div className={tab === 'profile' ? 'max-w-2xl' : 'hidden'}>{profile}</div>}
+        <div className={tab === 'notifications' ? 'max-w-2xl' : 'hidden'}>{notifications}</div>
         {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}
-        {team != null && <div className={tab === 'team' ? '' : 'hidden'}>{team}</div>}
-        {payments != null && <div className={tab === 'payments' ? '' : 'hidden'}>{payments}</div>}
-        {billing != null && !native && <div className={tab === 'billing' ? '' : 'hidden'}>{billing}</div>}
+        {templates != null && <div className={tab === 'templates' ? '' : 'hidden'}>{templates}</div>}
+        {team != null && <div className={tab === 'team' ? 'max-w-2xl' : 'hidden'}>{team}</div>}
+        {payments != null && <div className={tab === 'payments' ? 'max-w-2xl' : 'hidden'}>{payments}</div>}
+        {billing != null && !native && <div className={tab === 'billing' ? 'max-w-2xl' : 'hidden'}>{billing}</div>}
         {activity != null && <div className={tab === 'activity' ? '' : 'hidden'}>{activity}</div>}
       </div>
     </div>

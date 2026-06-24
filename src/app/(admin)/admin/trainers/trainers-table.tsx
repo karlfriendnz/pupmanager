@@ -118,6 +118,7 @@ export async function TrainersTable({
             <th className="text-left px-4 py-3">Onboarding</th>
             <th className="text-left px-4 py-3">Emails</th>
             <th className="text-left px-4 py-3">Joined</th>
+            <th className="text-left px-4 py-3">Last seen</th>
             <th className="text-left px-4 py-3">Trial ends</th>
             <th className="px-4 py-3" />
           </tr>
@@ -143,6 +144,7 @@ export async function TrainersTable({
               seatCount: t.trainerProfile?.seatCount ?? 1,
               deactivatedAt: t.deactivatedAt ?? null,
               createdAt: t.createdAt,
+              lastLoginAt: t.lastLoginAt ?? null,
             }} />
           ))}
         </tbody>

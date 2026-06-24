@@ -30,8 +30,12 @@ interface PageHeaderProps {
 export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) {
   return (
     <div
-      className="sticky top-0 z-20 bg-white border-b border-slate-100 px-4 md:px-8"
+      className="sticky z-20 bg-white border-b border-slate-100 px-4 md:px-8"
       style={{
+        // Stick below the desktop top bar when present (TrainerShell sets
+        // --app-top-offset to the bar height); falls back to 0 elsewhere
+        // (client app, mobile — no top bar).
+        top: 'var(--app-top-offset, 0px)',
         // The header's own top padding combines safe-area-inset-top (so
         // iOS chrome sits on the white surface) with a small breathing
         // gap below it. <main> caps its own safe-area pad at 1rem; we

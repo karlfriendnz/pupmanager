@@ -86,9 +86,12 @@ export default async function ClientDetailPage({
     // Products from the primary trainer's shop (for "Add to next session").
     canEdit
       ? prisma.product.findMany({
-          where: { trainerId: clientAccess.trainerId, active: true },
+          // No `active` filter — the trainer can add ANY of their products to a
+          // client, even hidden ones. `active`/`featured` only gate the client's
+          // own shop view; the picker badges hidden items so the trainer knows.
+          where: { trainerId: clientAccess.trainerId },
           orderBy: [{ category: 'asc' }, { order: 'asc' }, { createdAt: 'desc' }],
-          select: { id: true, name: true, kind: true, priceCents: true, imageUrl: true, category: true },
+          select: { id: true, name: true, kind: true, priceCents: true, imageUrl: true, category: true, active: true },
         })
       : Promise.resolve([]),
     prisma.productRequest.findMany({
@@ -210,6 +213,7 @@ export default async function ClientDetailPage({
           priceCents: p.priceCents,
           imageUrl: p.imageUrl,
           category: p.category,
+          active: p.active,
         }))}
         pendingProductRequests={pendingProductRequests.map(r => ({
           id: r.id,

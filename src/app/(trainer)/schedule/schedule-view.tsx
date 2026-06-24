@@ -14,7 +14,7 @@ import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, CalendarDays, Columns3, List,
-  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, BarChart2, Navigation,
+  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search,
 } from 'lucide-react'
 import {
   AssignPackageFromScheduleModal,
@@ -23,7 +23,6 @@ import { SlotTypeChooser, type SlotAddType } from './slot-type-chooser'
 import { NewWalkModal } from './new-walk-modal'
 import { ClassFormModal } from '../classes/class-form-modal'
 import { ScheduleSettings } from './schedule-settings'
-import { ScheduleReport } from './schedule-report'
 import { SessionFormReport } from '@/components/session-form-report'
 import { SessionRowCard } from '@/components/shared/session-row-card'
 
@@ -2682,7 +2681,6 @@ export function ScheduleView({
   const [availSlots, setAvailSlots]     = useState(initialAvailSlots)
   const [blackouts, setBlackouts]       = useState<Blackout[]>([])
   const [showAvail, setShowAvail]       = useState(false)
-  const [showReport, setShowReport]     = useState(false)
 
   // The onboarding wizard's "set your hours" step links to /schedule#availability
   // — open the availability modal automatically when that hash is present so
@@ -3069,15 +3067,6 @@ export function ScheduleView({
             </span>
           )}
 
-          <Link href={`/schedule/route?date=${selectedDate}`}>
-            <Button variant="secondary" size="sm" title="Plan the route for this day" aria-label="Route">
-              <Navigation className="h-4 w-4" /> <span className="hidden sm:inline">Route</span>
-            </Button>
-          </Link>
-
-          <Button variant="secondary" size="sm" onClick={() => setShowReport(true)} title="Weekly report" aria-label="Weekly report">
-            <BarChart2 className="h-4 w-4" /> <span className="hidden sm:inline">Reports</span>
-          </Button>
 
           <span className="relative inline-flex">
             <Button variant="secondary" size="sm" onClick={() => setShowAvail(true)} title="Availability hours" aria-label="Availability hours">
@@ -3267,13 +3256,6 @@ export function ScheduleView({
           initial={{ startDateIso: classModal.startDateIso, sessionCount: classModal.sessionCount }}
           onClose={() => setClassModal(null)}
           onSaved={() => { setClassModal(null); router.refresh() }}
-        />
-      )}
-
-      {showReport && (
-        <ScheduleReport
-          weekStart={toDateStr(weekStart)}
-          onClose={() => setShowReport(false)}
         />
       )}
 

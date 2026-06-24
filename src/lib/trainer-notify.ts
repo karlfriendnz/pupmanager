@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { emailBodyToHtml, emailHtmlToText } from '@/lib/email-html'
 import { sendPush } from '@/lib/push'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { resolvePref } from '@/lib/notification-prefs'
@@ -19,7 +20,7 @@ function shell(title: string, body: string, link?: string): string {
       <tr><td style="padding:22px 24px 24px">
         <p style="margin:0 0 14px;font-weight:700;color:${ACCENT};font-size:15px">PupManager</p>
         <h1 style="margin:0 0 8px;font-size:19px;line-height:1.3;color:#0f172a">${title}</h1>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#475569;white-space:pre-line">${body}</p>
+        <div style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#475569">${body}</div>
         <table role="presentation" cellpadding="0" cellspacing="0">${cta}</table>
       </td></tr>
     </table>
@@ -38,17 +39,20 @@ export async function sendTrainerEmail(
   type: NotificationType,
   subs: Record<string, string> = {},
   link: string = `${APP_URL}/dashboard`,
+  companyId: string | null = null,
 ): Promise<void> {
   try {
     const meta = NOTIFICATION_TYPES[type]
     if (!meta || meta.audience === 'client' || !meta.channels.includes('EMAIL')) return
-    const pref = await resolvePref(userId, type, 'EMAIL')
+    const pref = await resolvePref(userId, type, 'EMAIL', companyId)
     if (!pref.enabled) return
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
     if (!user?.email) return
     const title = renderTemplate(pref.title, subs)
-    const body = renderTemplate(pref.body, subs)
-    await sendEmail({ to: user.email, subject: title, html: shell(title, body, link), text: `${title}\n\n${body}\n\n${link}` })
+    // pref.body may be rich-text HTML (EMAIL channel) or legacy plain text;
+    // emailBodyToHtml handles both. emailHtmlToText derives the plain part.
+    const rawBody = renderTemplate(pref.body, subs)
+    await sendEmail({ to: user.email, subject: title, html: shell(title, emailBodyToHtml(rawBody), link), text: `${title}\n\n${emailHtmlToText(rawBody)}\n\n${link}` })
   } catch (err) {
     console.error('[trainer-email] failed:', err instanceof Error ? err.message : 'unknown')
   }
@@ -65,10 +69,11 @@ export async function notifyTrainer(
   type: NotificationType,
   subs: Record<string, string> = {},
   path: string = '/dashboard',
+  companyId: string | null = null,
 ): Promise<void> {
   // Push
   try {
-    const pushPref = await resolvePref(userId, type, 'PUSH')
+    const pushPref = await resolvePref(userId, type, 'PUSH', companyId)
     if (pushPref.enabled) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -85,5 +90,5 @@ export async function notifyTrainer(
     console.error('[notify-trainer push] failed:', err instanceof Error ? err.message : 'unknown')
   }
   // Email — gated by the EMAIL toggle inside the helper.
-  await sendTrainerEmail(userId, type, subs, `${APP_URL}${path}`)
+  await sendTrainerEmail(userId, type, subs, `${APP_URL}${path}`, companyId)
 }

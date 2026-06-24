@@ -338,7 +338,9 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     trigger: 'event',
     audience: 'client',
     channels: ['PUSH', 'EMAIL', 'IN_APP'],
-    defaultChannels: ['PUSH', 'IN_APP'],
+    // Recaps now go out on an explicit "send" from the trainer, so email is on
+    // by default (push + in-app + email). Clients can still opt out per-channel.
+    defaultChannels: ['PUSH', 'EMAIL', 'IN_APP'],
     defaults: {
       enabled: true,
       title: 'Your recap is ready — {{dogName}}',

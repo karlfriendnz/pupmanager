@@ -20,9 +20,12 @@ type SendArgs = {
   // looks like the trainer but stays on our verified sender domain.
   from?: string
   replyTo?: string | string[]
+  // File attachments (e.g. a generated PDF). `content` is the raw bytes
+  // (Buffer) or a base64 string — Resend accepts both.
+  attachments?: { filename: string; content: Buffer | string }[]
 }
 
-export async function sendEmail({ to, subject, html, text, from, replyTo }: SendArgs) {
+export async function sendEmail({ to, subject, html, text, from, replyTo, attachments }: SendArgs) {
   return client().emails.send({
     from: from ?? PLATFORM_FROM,
     to,
@@ -30,6 +33,7 @@ export async function sendEmail({ to, subject, html, text, from, replyTo }: Send
     html,
     text,
     ...(replyTo ? { replyTo } : {}),
+    ...(attachments?.length ? { attachments } : {}),
   })
 }
 

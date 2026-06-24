@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, Fragment } from 'react'
 import { usePathname } from 'next/navigation'
 import { signOutWithPush } from '@/lib/sign-out'
 import { cn } from '@/lib/utils'
@@ -9,31 +9,62 @@ import {
   LayoutDashboard, Users, Calendar, Layers, Package,
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag,
-  MoreHorizontal, X, Inbox, GraduationCap, Flame,
+  MoreHorizontal, X, Inbox, GraduationCap,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ArrowLeftRight, Wallet,
+  BarChart3, Clock, Navigation, FileText,
+  type LucideIcon,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
 import { VersionGuard } from './version-guard'
+import { TopBarControls } from './top-bar-controls'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
 
-const TRAINER_NAV = [
-  { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
-  { href: '/clients',      label: 'Clients',      icon: Users },
-  { href: '/schedule',     label: 'Schedule',     icon: Calendar },
-  { href: '/packages',     label: 'Packages',     icon: Package },
-  { href: '/classes',      label: 'Classes',      icon: GraduationCap },
-  { href: '/templates',    label: 'Library',      icon: Layers },
-  { href: '/products',     label: 'Products',     icon: ShoppingBag },
-  { href: '/achievements', label: 'Achievements', icon: Trophy },
-  { href: '/enquiries',    label: 'Enquiries',    icon: Inbox },
-  { href: '/messages',     label: 'Messages',     icon: MessageSquare },
-  { href: '/website',      label: 'Website',      icon: Globe },
-  { href: '/finances',     label: 'Finances',     icon: Wallet },
-  { href: '/settings',     label: 'Settings',     icon: Settings },
-  { href: '/help',         label: 'Help',         icon: HelpCircle },
+// Grouped into sections rendered with small headers in the sidebar. A few
+// destinations were trimmed from the top level to declutter:
+//   • Draft notes lives on the Schedule toolbar
+//   • Help + the profile/org switcher moved to the top-right control bar
+// `desktopHidden` keeps Help out of the desktop sidebar while still showing it
+// in the mobile "More" sheet (mobile has no top-right bar).
+type NavSection = 'overview' | 'clients' | 'programs' | 'business' | 'system'
+// `child` items render indented under the item above them (a sub-menu off
+// their parent, e.g. Route + Notes under Schedule).
+type NavItem = { href: string; label: string; icon: LucideIcon; section: NavSection; desktopHidden?: boolean; child?: boolean }
+
+const TRAINER_NAV: NavItem[] = [
+  { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, section: 'overview' },
+
+  { href: '/clients',      label: 'Clients',      icon: Users,           section: 'clients' },
+  { href: '/schedule',     label: 'Schedule',     icon: Calendar,        section: 'clients' },
+  { href: '/schedule/route',       label: 'Route', icon: Navigation,     section: 'clients', child: true },
+  { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
+  { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'clients' },
+  { href: '/enquiries',    label: 'Enquiries',    icon: Inbox,           section: 'clients' },
+
+  { href: '/packages',     label: 'Packages',     icon: Package,         section: 'programs' },
+  { href: '/classes',      label: 'Classes',      icon: GraduationCap,   section: 'programs' },
+  { href: '/templates',    label: 'Library',      icon: Layers,          section: 'programs' },
+  { href: '/products',     label: 'Products',     icon: ShoppingBag,     section: 'programs' },
+  { href: '/achievements', label: 'Achievements', icon: Trophy,          section: 'programs' },
+
+  { href: '/finances',     label: 'Finances',     icon: Wallet,          section: 'business' },
+  { href: '/timesheets',   label: 'Timesheets',   icon: Clock,           section: 'business' },
+  { href: '/reports',      label: 'Reports',      icon: BarChart3,       section: 'business' },
+  { href: '/website',      label: 'Website',      icon: Globe,           section: 'business' },
+
+  { href: '/settings',     label: 'Settings',     icon: Settings,        section: 'system' },
+  { href: '/help',         label: 'Help',         icon: HelpCircle,      section: 'system', desktopHidden: true },
 ]
+
+// Section headers shown in the expanded sidebar (null = no header).
+const NAV_SECTION_LABEL: Record<NavSection, string | null> = {
+  overview: null,
+  clients: 'Clients',
+  programs: 'Programs',
+  business: 'Business',
+  system: null,
+}
 
 // On phones the bottom tab bar is limited to four primary destinations plus
 // a "More" tab — anything not in this list lives in the More sheet.
@@ -124,6 +155,13 @@ interface AppShellProps {
   trainerContact?: { website?: string | null; phone?: string | null; email?: string | null }
   /** Client shell only: show a "Switch trainer" entry (client has 2+ trainers). */
   showTrainerSwitcher?: boolean
+  /**
+   * Trainer shell only: the organisations this user belongs to (their own +
+   * any they're a team member at). When 2+, the sidebar shows an org switcher.
+   */
+  orgs?: { id: string; name: string; role: string }[]
+  /** Trainer shell only: the currently active business id (session.user.trainerId). */
+  activeCompanyId?: string | null
   /**
    * Client shell only: when set (the trainer's demo/preview), "Sign out"
    * navigates here instead of actually signing out — so a previewing trainer
@@ -373,39 +411,29 @@ function TrainerShell({
   unreadCounts = {},
   streak,
   hiddenNavHrefs = [],
+  orgs = [],
+  activeCompanyId = null,
 }: AppShellProps) {
   const pathname = usePathname()
   // Nav filtered to what this user's role/permissions allow.
   const trainerNav = TRAINER_NAV.filter(i => !hiddenNavHrefs.includes(i.href))
+  // Desktop: child items (e.g. Route + Notes under Schedule) don't render as
+  // their own rows — they collapse into a hover flyout on their parent. Mobile
+  // keeps them as flat items in the "More" sheet.
+  const childrenOf: Record<string, NavItem[]> = {}
+  {
+    let parent: string | null = null
+    for (const it of trainerNav) {
+      if (it.child) { if (parent) (childrenOf[parent] ??= []).push(it) }
+      else parent = it.href
+    }
+  }
+  const desktopNav = trainerNav.filter(i => !i.desktopHidden && !i.child)
   const [collapsed, setCollapsed] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const userMenuRef = useRef<HTMLDivElement | null>(null)
-
-  // Close the popout menu when the trainer clicks elsewhere or hits Escape —
-  // standard dropdown ergonomics. The ref wraps both the trigger and the
-  // floating panel, so clicks inside either count as "in the menu".
-  useEffect(() => {
-    if (!userMenuOpen) return
-    function onPointer(ev: MouseEvent | TouchEvent) {
-      if (!userMenuRef.current) return
-      if (!userMenuRef.current.contains(ev.target as Node)) setUserMenuOpen(false)
-    }
-    function onKey(ev: KeyboardEvent) {
-      if (ev.key === 'Escape') setUserMenuOpen(false)
-    }
-    document.addEventListener('mousedown', onPointer)
-    document.addEventListener('touchstart', onPointer)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onPointer)
-      document.removeEventListener('touchstart', onPointer)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [userMenuOpen])
-
-  // Close on route change so the menu doesn't survive a navigation.
-  useEffect(() => { setUserMenuOpen(false) }, [pathname])
+  // Submenu flyouts render position:fixed so they escape the nav's
+  // overflow-y-auto clip; we capture the hovered row's top on mouseenter.
+  const [flyoutTop, setFlyoutTop] = useState(0)
 
   useEffect(() => {
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) : null
@@ -477,7 +505,12 @@ function TrainerShell({
         </div>
 
         <nav className={cn('flex-1 overflow-y-auto py-4 space-y-1', collapsed ? 'px-2' : 'px-3')}>
-          {trainerNav.map((item) => {
+          {desktopNav.map((item, idx, arr) => {
+            // Section grouping: emit a small header (expanded) or a divider
+            // (collapsed / system group) at each section boundary.
+            const sectionChanged = idx === 0 || arr[idx - 1].section !== item.section
+            const sectionHeader = !collapsed && sectionChanged ? NAV_SECTION_LABEL[item.section] : null
+            const showDivider = sectionChanged && idx > 0 && (item.section === 'system' || collapsed)
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             // The pulsing dot guides the trainer to their next step, but it
             // should NOT fire while they're mid-step on the page they're on.
@@ -497,19 +530,32 @@ function TrainerShell({
               item.href === highlightMenuHref
             const Icon = item.icon
             return (
+              <Fragment key={item.href}>
+                {sectionHeader && (
+                  <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{sectionHeader}</p>
+                )}
+                {showDivider && !sectionHeader && (
+                  <div className={cn('border-t border-slate-100', collapsed ? 'mx-2 my-2' : 'mx-3 my-2')} />
+                )}
+              <div
+                className={cn('relative', childrenOf[item.href] && 'group/sub')}
+                onMouseEnter={childrenOf[item.href] ? (e) => setFlyoutTop(e.currentTarget.getBoundingClientRect().top) : undefined}
+              >
               <Link
-                key={item.href}
                 href={item.href}
                 title={collapsed ? item.label : undefined}
                 className={cn(
                   'relative flex items-center rounded-xl text-sm font-medium transition-colors',
                   collapsed ? 'justify-center h-10 w-10 mx-auto' : 'gap-3 px-3 py-2.5',
+                  !collapsed && item.child && 'pl-9 py-2',
                   active
                     ? 'bg-blue-50 text-blue-700'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    : item.child
+                      ? 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 )}
               >
-                <Icon className="h-5 w-5 flex-shrink-0" />
+                <Icon className={cn('flex-shrink-0', item.child ? 'h-4 w-4' : 'h-5 w-5')} />
                 {!collapsed && item.label}
                 {!collapsed && <NavBadge count={unreadCounts[item.href] ?? 0} />}
                 {/* Collapsed-sidebar mode hides the pill — use the dot
@@ -526,119 +572,45 @@ function TrainerShell({
                     className="absolute right-2 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-indigo-500 animate-pm-menu-dot"
                   />
                 )}
+                {!collapsed && childrenOf[item.href] && (
+                  <ChevronRight className="h-4 w-4 text-slate-300 ml-auto" />
+                )}
               </Link>
+              {/* Desktop hover flyout: "View X" + the item's children. */}
+              {childrenOf[item.href] && (
+                <div
+                  className="invisible opacity-0 group-hover/sub:visible group-hover/sub:opacity-100 fixed z-50 transition-opacity duration-100"
+                  // Start the flyout at the trigger row's right edge (nav has
+                  // px-2/px-3 padding, so the row ends short of the sidebar
+                  // edge) and pad it back out, so the invisible padding bridges
+                  // the gap continuously — no dead strip to drop the hover on.
+                  style={{ top: flyoutTop, left: collapsed ? 56 : 244, paddingLeft: collapsed ? 14 : 18 }}
+                >
+                  <div className="min-w-[12rem] rounded-xl border border-slate-200 bg-white py-1 shadow-[0_18px_45px_-12px_rgba(15,23,42,0.25)]">
+                    <Link href={item.href} className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                      <Icon className="h-4 w-4 text-slate-400" /> View {item.label.toLowerCase()}
+                    </Link>
+                    <div className="my-1 border-t border-slate-100" />
+                    {childrenOf[item.href].map(c => {
+                      const cActive = pathname === c.href || pathname.startsWith(c.href + '/')
+                      const CIcon = c.icon
+                      return (
+                        <Link key={c.href} href={c.href} className={cn('flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-slate-50', cActive ? 'text-blue-700' : 'text-slate-600')}>
+                          <CIcon className="h-4 w-4 text-slate-400" /> {c.label}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              </div>
+              </Fragment>
             )
           })}
         </nav>
 
-        {/* Always-visible engagement streak. The flex-1 <nav> above
-            pushes this + the user block to the bottom of the sidebar.
-            Clicking opens the full awards page. */}
-        {streak && (
-          <Link
-            href="/awards"
-            title={
-              streak.current > 0
-                ? `${streak.current}-training-day streak`
-                : 'Start a streak — finish your notes on a training day'
-            }
-            className={cn(
-              'animate-pm-pop mx-3 mb-2 flex items-center rounded-xl text-white transition-colors',
-              streak.current > 0
-                ? 'bg-orange-500 hover:bg-orange-600'
-                : 'bg-slate-700 hover:bg-slate-800',
-              collapsed ? 'justify-center p-2' : 'gap-2 px-3 py-2',
-            )}
-          >
-            <Flame className="h-4 w-4 flex-shrink-0 text-white" />
-            {!collapsed && (
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold leading-tight">
-                  {streak.current > 0
-                    ? `${streak.current}-day streak`
-                    : 'Start a streak'}
-                </span>
-                <span className="block text-[11px] text-white/80 leading-tight">
-                  {streak.current > 0
-                    ? 'Training days with notes done'
-                    : 'Finish notes on a training day'}
-                </span>
-              </span>
-            )}
-            {collapsed && streak.current > 0 && (
-              <span className="sr-only">{streak.current}-day streak</span>
-            )}
-          </Link>
-        )}
+        {/* Streak moved to the top-right control bar. */}
 
-        <div className={cn('border-t border-slate-100 relative', collapsed ? 'p-2 flex flex-col items-center gap-2' : 'p-4')}>
-          {/* User menu trigger — clicking the avatar/name pops a small
-              floating panel out to the right of the sidebar with email
-              + sign-out. Same component for collapsed and expanded; the
-              trigger just shows more or less in each mode. */}
-          <div ref={userMenuRef} className={cn('relative', collapsed ? '' : 'w-full mb-2')}>
-            <button
-              type="button"
-              onClick={() => setUserMenuOpen(v => !v)}
-              className={cn(
-                'flex items-center rounded-lg transition-colors',
-                collapsed
-                  ? 'h-9 w-9 justify-center bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-600'
-                  : 'gap-3 w-full text-left px-1 py-1 -mx-1 hover:bg-slate-50'
-              )}
-              aria-haspopup="menu"
-              aria-expanded={userMenuOpen}
-              title={collapsed ? userName ?? undefined : undefined}
-            >
-              {collapsed ? (
-                userName?.[0]?.toUpperCase() ?? '?'
-              ) : (
-                <>
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600 flex-shrink-0">
-                    {userName?.[0]?.toUpperCase() ?? '?'}
-                  </div>
-                  <span className="text-sm font-medium text-slate-700 truncate">{userName}</span>
-                </>
-              )}
-            </button>
-
-            {userMenuOpen && (
-              <div
-                role="menu"
-                className={cn(
-                  'absolute z-50 w-64 rounded-2xl bg-white shadow-[0_18px_45px_-12px_rgba(15,23,42,0.25)] border border-slate-100 overflow-hidden',
-                  // Pop to the right of the sidebar, pinned to the bottom
-                  // of the trigger so the corners line up with the avatar.
-                  collapsed
-                    ? 'left-full ml-2 bottom-0'
-                    : 'left-full ml-3 bottom-0'
-                )}
-              >
-                <div className="px-4 py-3 bg-gradient-to-br from-slate-50 to-white border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-500 text-white text-sm font-semibold flex-shrink-0">
-                      {userName?.[0]?.toUpperCase() ?? '?'}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">{userName ?? 'You'}</p>
-                      {userEmail && <p className="text-xs text-slate-500 truncate">{userEmail}</p>}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => signOutWithPush()}
-                  className="flex items-center gap-2 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                  role="menuitem"
-                >
-                  <LogOut className="h-4 w-4 text-slate-400" />
-                  Sign out
-                </button>
-              </div>
-            )}
-          </div>
-
-        </div>
       </aside>
 
       {/* No mobile header on the trainer side. The bottom tab bar covers
@@ -766,13 +738,18 @@ function TrainerShell({
       )}
 
       <main
-        className={cn('flex-1 flex flex-col min-h-0 pb-20 md:pb-0 transition-all duration-200', mainOffset)}
+        // --app-top-offset reserves the desktop top-bar height so PageHeader
+        // (and any page that reads it) sticks BELOW the bar instead of under it.
+        // 0 on mobile (no top bar there).
+        className={cn('flex-1 flex flex-col min-h-0 pb-20 md:pb-0 transition-all duration-200 [--app-top-offset:0px] md:[--app-top-offset:3.5rem]', mainOffset)}
         // Capped safe-area pad on mobile: pages without their own sticky
         // top bar get a small clearance below iOS chrome. Pages that
         // own a sticky bar can break out via negative margin and handle
         // safe-area themselves.
         style={{ paddingTop: 'min(env(safe-area-inset-top, 0px), 1rem)' }}
       >
+        {/* Desktop global top bar: streak, search, help, profile. Sticky; reserves h-14. */}
+        <TopBarControls userName={userName} userEmail={userEmail} orgs={orgs} activeCompanyId={activeCompanyId} streak={streak} />
         {children}
       </main>
     </div>

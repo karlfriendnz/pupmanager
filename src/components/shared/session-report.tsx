@@ -9,9 +9,11 @@ export type { ReportAttachment }
 
 interface BasicQuestion {
   id: string
-  type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'
+  type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5' | 'DROPDOWN' | 'RADIO' | 'CHECKBOX'
   label: string
   required?: boolean
+  // Option list for the choice types (dropdown / multiple choice / checkboxes).
+  options?: string[]
   // When true: visible to the trainer only (filtered out of the client report).
   isPrivate?: boolean
 }
@@ -274,6 +276,26 @@ export function reportBackgroundStyle(
 }
 
 function ReportAnswer({ type, value }: { type: string; value: string }) {
+  if (type === 'CHECKBOX') {
+    let items: string[] = []
+    try {
+      const arr = JSON.parse(value)
+      items = Array.isArray(arr) ? arr.map(String) : [value]
+    } catch {
+      items = value ? [value] : []
+    }
+    if (items.length === 0) return null
+    return (
+      <ul className="flex flex-col gap-1.5">
+        {items.map(item => (
+          <li key={item} className="flex items-center gap-2 text-[15px] text-slate-700">
+            <Check className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+            {item}
+          </li>
+        ))}
+      </ul>
+    )
+  }
   if (type === 'RATING_1_5') {
     const n = Math.max(0, Math.min(5, parseInt(value, 10) || 0))
     return (

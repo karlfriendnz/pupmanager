@@ -18,7 +18,22 @@ const STATUS_META: Record<AttStatus, { label: string; row: string; badge: string
 }
 const ALL_STATUSES: AttStatus[] = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'MAKEUP']
 
-type FormQuestion = { id: string; type: string; label?: string }
+type FormQuestion = { id: string; type: string; label?: string; options?: string[] }
+
+// Checkbox answers store multiple values as a JSON array string; single choices
+// store the picked option verbatim. Mirrors the helpers in session-form-report.
+function parseChecks(value: string): string[] {
+  if (!value) return []
+  try {
+    const arr = JSON.parse(value)
+    return Array.isArray(arr) ? arr.map(String) : []
+  } catch {
+    return [value]
+  }
+}
+function serializeChecks(list: string[]): string {
+  return list.length ? JSON.stringify(list) : ''
+}
 type FormLite = { id: string; name: string; questions: FormQuestion[] }
 type RosterRow = {
   enrollmentId: string
@@ -225,10 +240,38 @@ export function SessionView({
               const val = draft[notesRow.enrollmentId].answers[q.id] ?? ''
               const isLong = q.type === 'LONG_TEXT'
               const isNum = q.type === 'NUMBER' || q.type === 'RATING_1_5'
+              const opts = q.options ?? []
               return (
                 <label key={q.id} className="block">
                   <span className="text-sm font-medium text-slate-700">{label}</span>
-                  {isLong
+                  {q.type === 'DROPDOWN'
+                    ? <select value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 w-full h-10 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Select…</option>
+                        {opts.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    : q.type === 'RADIO'
+                    ? <div className="mt-1 flex flex-col gap-1.5">
+                        {opts.map(o => (
+                          <label key={o} className="flex items-center gap-2 text-sm text-slate-700">
+                            <input type="radio" checked={val === o} onChange={() => setAnswer(notesRow.enrollmentId, q.id, o)} className="h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-500" />
+                            {o}
+                          </label>
+                        ))}
+                      </div>
+                    : q.type === 'CHECKBOX'
+                    ? <div className="mt-1 flex flex-col gap-1.5">
+                        {opts.map(o => {
+                          const sel = parseChecks(val)
+                          const checked = sel.includes(o)
+                          return (
+                            <label key={o} className="flex items-center gap-2 text-sm text-slate-700">
+                              <input type="checkbox" checked={checked} onChange={() => setAnswer(notesRow.enrollmentId, q.id, serializeChecks(checked ? sel.filter(x => x !== o) : [...sel, o]))} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                              {o}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    : isLong
                     ? <textarea rows={3} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     : <input type={isNum ? 'number' : 'text'} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 w-full h-10 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />}
                 </label>

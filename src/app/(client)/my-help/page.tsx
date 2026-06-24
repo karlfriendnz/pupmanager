@@ -28,7 +28,10 @@ export default async function ClientHelpPage() {
         select: {
           businessName: true,
           phone: true,
-          user: { select: { email: true } },
+          showPhoneToClients: true,
+          // Company contact email shown to clients — NOT the trainer's private
+          // sign-in email.
+          publicEmail: true,
         },
       },
     },
@@ -47,15 +50,15 @@ export default async function ClientHelpPage() {
           <Card>
             <CardBody className="pt-4 pb-4">
               <p className="font-medium text-slate-900">{trainer.businessName}</p>
-              {trainer.user.email && (
+              {trainer.publicEmail && (
                 <a
-                  href={`mailto:${trainer.user.email}`}
+                  href={`mailto:${trainer.publicEmail}`}
                   className="flex items-center gap-2 text-sm text-blue-600 hover:underline mt-2"
                 >
-                  ✉️ {trainer.user.email}
+                  ✉️ {trainer.publicEmail}
                 </a>
               )}
-              {trainer.phone && (
+              {trainer.showPhoneToClients && trainer.phone && (
                 <a
                   href={`tel:${trainer.phone}`}
                   className="flex items-center gap-2 text-sm text-blue-600 hover:underline mt-1"

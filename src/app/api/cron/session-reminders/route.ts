@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendPush } from '@/lib/push'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
-import { resolvePrefsForUsers } from '@/lib/notification-prefs'
+import { resolvePrefsForPairs } from '@/lib/notification-prefs'
 import { sendTrainerEmail } from '@/lib/trainer-notify'
 
 const APP_URL = 'https://app.pupmanager.com'
@@ -59,6 +59,13 @@ export async function GET(req: Request) {
           },
         },
       },
+      // The member running the session, if assigned — they're the recipient of
+      // the reminders (falling back to the owner below when unassigned).
+      assignedTrainer: {
+        select: {
+          user: { select: { id: true, notifyPush: true, timezone: true } },
+        },
+      },
     },
   })
 
@@ -66,10 +73,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ sessionsConsidered: 0, startPushes: 0, notesPushes: 0, tokensInvalidated: 0 })
   }
 
-  const trainerUserIds = Array.from(new Set(sessions.map(s => s.trainer.user.id)))
+  // Recipient = the member assigned to the session, else the org owner. Prefs
+  // are resolved per (recipient, org) so a member who works across orgs gets
+  // the settings they chose for THIS business.
+  const recipientOf = (s: typeof sessions[number]) => s.assignedTrainer?.user ?? s.trainer.user
+  const prefKey = (s: typeof sessions[number]) => `${recipientOf(s).id}:${s.trainerId}`
+  const pairs = sessions.map(s => ({ userId: recipientOf(s).id, companyId: s.trainerId }))
   const [startPrefs, notesPrefs] = await Promise.all([
-    resolvePrefsForUsers(trainerUserIds, 'SESSION_REMINDER', 'PUSH'),
-    resolvePrefsForUsers(trainerUserIds, 'SESSION_NOTES_REMINDER', 'PUSH'),
+    resolvePrefsForPairs(pairs, 'SESSION_REMINDER', 'PUSH'),
+    resolvePrefsForPairs(pairs, 'SESSION_NOTES_REMINDER', 'PUSH'),
   ])
 
   const startMeta = NOTIFICATION_TYPES.SESSION_REMINDER
@@ -78,13 +90,13 @@ export async function GET(req: Request) {
   let notesPushes = 0
 
   for (const s of sessions) {
-    const trainerUser = s.trainer.user
+    const trainerUser = recipientOf(s)
     const minutesUntilStart = (s.scheduledAt.getTime() - nowMs) / 60_000
     const minutesUntilEnd = minutesUntilStart + s.durationMins
 
     // ── Start reminder ──────────────────────────────────────────────────
     if (!s.reminderPushSentAt) {
-      const pref = startPrefs.get(trainerUser.id)!
+      const pref = startPrefs.get(prefKey(s))!
       const lead = pref.minutesBefore ?? startMeta.defaults.minutesBefore!
       const inWindow = minutesUntilStart > 0 && Math.abs(minutesUntilStart - lead) <= TICK_INTERVAL_MIN / 2
 
@@ -109,7 +121,7 @@ export async function GET(req: Request) {
           startPushes += sent
         }
         // Email channel — gated by its own per-type toggle inside the helper.
-        await sendTrainerEmail(trainerUser.id, 'SESSION_REMINDER', subs, `${APP_URL}/sessions/${s.id}`)
+        await sendTrainerEmail(trainerUser.id, 'SESSION_REMINDER', subs, `${APP_URL}/sessions/${s.id}`, s.trainerId)
         await prisma.trainingSession.update({ where: { id: s.id }, data: { reminderPushSentAt: now } })
       }
     }
@@ -121,7 +133,7 @@ export async function GET(req: Request) {
     if (!s.notesReminderPushSentAt && !packageRequiresNotes) {
       await prisma.trainingSession.update({ where: { id: s.id }, data: { notesReminderPushSentAt: now } })
     } else if (!s.notesReminderPushSentAt) {
-      const pref = notesPrefs.get(trainerUser.id)!
+      const pref = notesPrefs.get(prefKey(s))!
       const lead = pref.minutesBefore ?? notesMeta.defaults.minutesBefore!
       // Only fire while the session is in progress (or about to end). Skip
       // already-finished sessions — if the cron missed a tick we'd rather
@@ -149,7 +161,7 @@ export async function GET(req: Request) {
           })
           notesPushes += sent
         }
-        await sendTrainerEmail(trainerUser.id, 'SESSION_NOTES_REMINDER', subs, `${APP_URL}/sessions/${s.id}#notes`)
+        await sendTrainerEmail(trainerUser.id, 'SESSION_NOTES_REMINDER', subs, `${APP_URL}/sessions/${s.id}#notes`, s.trainerId)
         await prisma.trainingSession.update({ where: { id: s.id }, data: { notesReminderPushSentAt: now } })
       }
     }

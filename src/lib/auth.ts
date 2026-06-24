@@ -38,7 +38,7 @@ async function mintAppleClientSecret(): Promise<string | undefined> {
 
 const appleClientSecret = process.env.APPLE_CLIENT_ID ? await mintAppleClientSecret() : undefined
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
   ...authConfig,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: PrismaAdapter(prisma as any),
@@ -91,6 +91,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           actorUserId: user.id,
           meta: { role: user.role ?? null },
         })
+        // Stamp last-seen for the admin trainers table. Best-effort — a write
+        // hiccup must never block the sign-in.
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { lastLoginAt: new Date() },
+        }).catch(() => {})
       }
       try {
         if (user.role !== 'CLIENT' || !user.id) return
@@ -124,10 +130,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return true
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.role = (user as { role?: string }).role
         token.id = user.id
+      }
+      // Org switch — a multi-org trainer called update({ trainerId }) to change
+      // their active business. Never trust the client: only switch if the user
+      // actually holds a membership for the requested company. All the cached
+      // context (membershipId/role/business) re-points to the new org, so every
+      // session.user.trainerId reader follows along.
+      if (trigger === 'update' && token.id) {
+        const requested = (session as { trainerId?: string } | null)?.trainerId
+        if (requested) {
+          const m = await prisma.trainerMembership.findUnique({
+            where: { companyId_userId: { companyId: requested, userId: token.id as string } },
+            select: { id: true, role: true, companyId: true, company: { select: { businessName: true, logoUrl: true } } },
+          })
+          if (m) {
+            token.trainerId = m.companyId
+            token.membershipId = m.id
+            token.companyRole = m.role
+            token.businessName = m.company.businessName
+            token.logoUrl = m.company.logoUrl
+          }
+        }
       }
       // Resolve the business (companyId == legacy trainerId) and cache in the
       // JWT. Runs on sign-in and backfills old JWTs missing trainerId. Members
@@ -319,8 +346,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Brute-force guard: cap attempts per IP. Returning null blocks the
         // attempt (even a correct password) once over the limit — generous
         // enough that normal use, including a shared office IP, won't trip it.
+        // The cap is env-overridable (LOGIN_RATE_LIMIT_MAX) so the E2E suite,
+        // which logs in dozens of times from a single loopback IP, can raise it
+        // without weakening the prod default (30).
         const ip = request ? getClientIp(request as Request) : 'unknown'
-        if (await isRateLimited(`login:${ip}`, 30, 15 * 60_000)) return null
+        const loginMax = Number(process.env.LOGIN_RATE_LIMIT_MAX) || 30
+        if (await isRateLimited(`login:${ip}`, loginMax, 15 * 60_000)) return null
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },

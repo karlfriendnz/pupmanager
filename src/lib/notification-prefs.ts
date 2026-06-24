@@ -10,19 +10,15 @@ export interface ResolvedPref {
   body: string
 }
 
-// Resolves the full effective preference for (user, type, channel) by merging
-// any stored row over the type's defaults. The caller never has to handle the
-// "absent row" case — they always get a complete spec.
-export async function resolvePref(
-  userId: string,
-  type: NotificationType,
-  channel: NotificationChannel,
-): Promise<ResolvedPref> {
-  const meta = NOTIFICATION_TYPES[type]
-  const stored = await prisma.notificationPreference.findUnique({
-    where: { userId_type_channel: { userId, type, channel } },
-  })
+type PrefRowish = {
+  enabled: boolean
+  minutesBefore: number | null
+  dailyAtHour: number | null
+  customTitle: string | null
+  customBody: string | null
+} | null
 
+function merge(meta: typeof NOTIFICATION_TYPES[NotificationType], stored: PrefRowish): ResolvedPref {
   return {
     enabled: stored?.enabled ?? meta.defaults.enabled,
     minutesBefore: stored?.minutesBefore ?? meta.defaults.minutesBefore ?? null,
@@ -32,27 +28,48 @@ export async function resolvePref(
   }
 }
 
-// Same as resolvePref but for many users at once. Used by the cron paths
-// where we fan out to a batch of trainers and don't want N round-trips.
-export async function resolvePrefsForUsers(
-  userIds: string[],
+// Resolves the full effective preference for (user, type, channel), optionally
+// scoped to an organisation. Resolution order: the per-org override row →ﾠthe
+// user's global row (companyId null, which is also every pre-multi-org row) →
+// the type's defaults. So a trainer in two orgs can tune each independently
+// while their existing settings act as the shared baseline.
+export async function resolvePref(
+  userId: string,
+  type: NotificationType,
+  channel: NotificationChannel,
+  companyId: string | null = null,
+): Promise<ResolvedPref> {
+  const meta = NOTIFICATION_TYPES[type]
+  const rows = await prisma.notificationPreference.findMany({
+    where: companyId
+      ? { userId, type, channel, OR: [{ companyId }, { companyId: null }] }
+      : { userId, type, channel, companyId: null },
+  })
+  const stored = rows.find(r => r.companyId === companyId) ?? rows.find(r => r.companyId === null) ?? null
+  return merge(meta, stored)
+}
+
+// Same as resolvePref but for many (user, org) pairs at once — one round-trip
+// for a batch of trainers. Each pair carries its own companyId so a member is
+// resolved against the notifying org's prefs (org override → global → default).
+export async function resolvePrefsForPairs(
+  pairs: { userId: string; companyId: string | null }[],
   type: NotificationType,
   channel: NotificationChannel,
 ): Promise<Map<string, ResolvedPref>> {
   const meta = NOTIFICATION_TYPES[type]
+  const userIds = Array.from(new Set(pairs.map(p => p.userId)))
   const stored = await prisma.notificationPreference.findMany({
     where: { userId: { in: userIds }, type, channel },
   })
-  const byUser = new Map(stored.map(s => [s.userId, s]))
+  // key: `${userId}:${companyId ?? ''}`
+  const byKey = new Map(stored.map(s => [`${s.userId}:${s.companyId ?? ''}`, s]))
 
-  return new Map(userIds.map(uid => {
-    const s = byUser.get(uid)
-    return [uid, {
-      enabled: s?.enabled ?? meta.defaults.enabled,
-      minutesBefore: s?.minutesBefore ?? meta.defaults.minutesBefore ?? null,
-      dailyAtHour: s?.dailyAtHour ?? meta.defaults.dailyAtHour ?? null,
-      title: s?.customTitle ?? meta.defaults.title,
-      body: s?.customBody ?? meta.defaults.body,
-    }]
-  }))
+  const key = (uid: string, cid: string | null) =>
+    byKey.get(`${uid}:${cid ?? ''}`) ?? byKey.get(`${uid}:`) ?? null
+
+  return new Map(pairs.map(({ userId, companyId }) => [
+    `${userId}:${companyId ?? ''}`,
+    merge(meta, key(userId, companyId)),
+  ]))
 }

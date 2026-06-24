@@ -18,7 +18,10 @@ const schema = z
   .object({
     name: z.string().min(2, 'Name must be at least 2 characters'),
     businessName: z.string().min(2, 'Business name is required'),
+    phone: z.string().trim().min(6, 'Phone number is required'),
+    showPhoneToClients: z.boolean().optional(),
     email: z.string().email('Please enter a valid email address'),
+    publicEmail: z.union([z.string().email('Please enter a valid email address'), z.literal('')]).optional(),
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string(),
     promoCode: z.string().optional(),
@@ -57,7 +60,10 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
       body: JSON.stringify({
         name: data.name,
         businessName: data.businessName,
+        phone: data.phone,
+        showPhoneToClients: data.showPhoneToClients ?? false,
         email: data.email,
+        publicEmail: data.publicEmail,
         password: data.password,
         promoCode: data.promoCode,
       }),
@@ -103,13 +109,41 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
             error={errors.businessName?.message}
             {...register('businessName')}
           />
+          <div>
+            <Input
+              label="Phone number"
+              type="tel"
+              autoComplete="tel"
+              placeholder="021 234 5678"
+              error={errors.phone?.message}
+              {...register('phone')}
+            />
+            <label className="mt-2 flex items-start gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                {...register('showPhoneToClients')}
+              />
+              <span>Show my phone number to clients. Leave unticked to keep it private.</span>
+            </label>
+          </div>
           <Input
-            label="Email address"
+            label="Your email"
             type="email"
             autoComplete="email"
             placeholder="jane@pawsome.co.nz"
+            hint="You'll use this to sign in. Kept private — not shown to clients."
             error={errors.email?.message}
             {...register('email')}
+          />
+          <Input
+            label="Business email (optional)"
+            type="email"
+            autoComplete="email"
+            placeholder="hello@pawsome.co.nz"
+            hint="Shown to clients as your business contact. Leave blank to skip."
+            error={errors.publicEmail?.message}
+            {...register('publicEmail')}
           />
           <Input
             label="Password"

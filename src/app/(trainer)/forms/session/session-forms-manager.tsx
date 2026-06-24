@@ -7,10 +7,19 @@ import { Alert } from '@/components/ui/alert'
 import { Plus, Trash2, GripVertical, ChevronUp, ChevronDown, Link2 } from 'lucide-react'
 import { ImageUploadButton } from '@/components/image-uploader'
 
-export type QuestionType = 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5' | 'CUSTOM_FIELD'
+export type QuestionType = 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5' | 'DROPDOWN' | 'RADIO' | 'CHECKBOX' | 'CUSTOM_FIELD'
+
+// Choice questions (dropdown / multiple choice / checkboxes) carry their own
+// option list. The other built-in types take free-form input.
+export type ChoiceType = 'DROPDOWN' | 'RADIO' | 'CHECKBOX'
+const CHOICE_TYPES: ChoiceType[] = ['DROPDOWN', 'RADIO', 'CHECKBOX']
+export function isChoiceType(t: string): t is ChoiceType {
+  return (CHOICE_TYPES as string[]).includes(t)
+}
 
 export type Question =
   | { id: string; type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'; label: string; required: boolean; isPrivate?: boolean }
+  | { id: string; type: ChoiceType; label: string; required: boolean; isPrivate?: boolean; options: string[] }
   | { id: string; type: 'CUSTOM_FIELD'; customFieldId: string; required: boolean; isPrivate?: boolean }
 
 export interface CustomFieldOption {
@@ -39,6 +48,9 @@ const TYPE_LABELS: Record<Exclude<QuestionType, 'CUSTOM_FIELD'>, string> = {
   LONG_TEXT: 'Long text',
   NUMBER: 'Number',
   RATING_1_5: 'Rating 1–5',
+  DROPDOWN: 'Dropdown',
+  RADIO: 'Multiple choice',
+  CHECKBOX: 'Checkboxes',
 }
 
 // Note: the standalone SessionFormsManager has been removed — the unified
@@ -61,6 +73,54 @@ function PrivacyToggle({ isPrivate, onChange }: { isPrivate: boolean; onChange: 
     >
       {isPrivate ? '🔒 Private' : '👁 Public'}
     </button>
+  )
+}
+
+// Editor for a choice question's option list. Each option is a text input with a
+// remove button; an "Add option" link appends a blank. Mirrors the drag-free
+// minimal style of the rest of the question card.
+function OptionsEditor({
+  options,
+  onChange,
+}: {
+  options: string[]
+  onChange: (opts: string[]) => void
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 mt-0.5 pl-1">
+      {options.map((opt, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <span className="text-slate-300 text-xs flex-shrink-0 w-4 text-center">{i + 1}.</span>
+          <input
+            type="text"
+            value={opt}
+            onChange={e => {
+              const next = options.slice()
+              next[i] = e.target.value
+              onChange(next)
+            }}
+            placeholder={`Option ${i + 1}`}
+            className="h-8 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            type="button"
+            onClick={() => onChange(options.filter((_, idx) => idx !== i))}
+            disabled={options.length <= 1}
+            className="p-1 text-slate-300 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+            aria-label="Remove option"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...options, ''])}
+        className="self-start inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 pl-5"
+      >
+        <Plus className="h-3 w-3" /> Add option
+      </button>
+    </div>
   )
 }
 
@@ -138,6 +198,9 @@ export function SessionFormEditor({
       } else if (!q.label.trim()) {
         setError('All questions need a label')
         return
+      } else if (q.type === 'DROPDOWN' || q.type === 'RADIO' || q.type === 'CHECKBOX') {
+        const opts = q.options.map(o => o.trim()).filter(Boolean)
+        if (opts.length === 0) { setError(`"${q.label.trim()}" needs at least one option`); return }
       }
     }
 
@@ -154,11 +217,18 @@ export function SessionFormEditor({
         closingText: closingText.trim() || null,
         backgroundColor: backgroundColor.trim() || null,
         backgroundUrl: backgroundUrl.trim() || null,
-        questions: questions.map(q =>
-          q.type === 'CUSTOM_FIELD'
-            ? { id: q.id, type: q.type, customFieldId: q.customFieldId, required: q.required, isPrivate: !!q.isPrivate }
-            : { id: q.id, type: q.type, label: q.label.trim(), required: q.required, isPrivate: !!q.isPrivate }
-        ),
+        questions: questions.map(q => {
+          if (q.type === 'CUSTOM_FIELD') {
+            return { id: q.id, type: q.type, customFieldId: q.customFieldId, required: q.required, isPrivate: !!q.isPrivate }
+          }
+          if (q.type === 'DROPDOWN' || q.type === 'RADIO' || q.type === 'CHECKBOX') {
+            return {
+              id: q.id, type: q.type, label: q.label.trim(), required: q.required, isPrivate: !!q.isPrivate,
+              options: q.options.map(o => o.trim()).filter(Boolean),
+            }
+          }
+          return { id: q.id, type: q.type, label: q.label.trim(), required: q.required, isPrivate: !!q.isPrivate }
+        }),
         // Use live state so toggling Published then clicking Save preserves it.
         isActive,
       }),
@@ -393,7 +463,16 @@ export function SessionFormEditor({
                           <div className="flex items-center gap-2 flex-wrap">
                             <select
                               value={q.type}
-                              onChange={e => updateQuestion(q.id, { type: e.target.value as Exclude<QuestionType, 'CUSTOM_FIELD'> })}
+                              onChange={e => {
+                                const next = e.target.value as Exclude<QuestionType, 'CUSTOM_FIELD'>
+                                // Seed two blank options the first time a question
+                                // becomes a choice type so there's something to edit.
+                                const patch: Partial<Question> = { type: next }
+                                if (isChoiceType(next) && !('options' in q)) {
+                                  (patch as { options: string[] }).options = ['', '']
+                                }
+                                updateQuestion(q.id, patch)
+                              }}
                               className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
                             >
                               {(Object.keys(TYPE_LABELS) as (keyof typeof TYPE_LABELS)[]).map(t => (
@@ -414,6 +493,12 @@ export function SessionFormEditor({
                               onChange={v => updateQuestion(q.id, { isPrivate: v })}
                             />
                           </div>
+                          {q.type === 'DROPDOWN' || q.type === 'RADIO' || q.type === 'CHECKBOX' ? (
+                            <OptionsEditor
+                              options={q.options ?? []}
+                              onChange={opts => updateQuestion(q.id, { options: opts } as Partial<Question>)}
+                            />
+                          ) : null}
                         </>
                       )}
                     </div>

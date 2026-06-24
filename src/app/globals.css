@@ -222,3 +222,7 @@ button, a, [role="button"] {
 .tiptap-body a { color: #5eead4; text-decoration: underline; }
 .tiptap-body strong { font-weight: 700; }
 .tiptap-body em { font-style: italic; }
+/* Light surfaces (trainer-facing) — teal-300 link is unreadable on white. */
+.tiptap-light a { color: var(--accent, #0d9488); }
+.tiptap-light.is-editor-empty:first-child::before,
+.tiptap-light p.is-editor-empty:first-child::before { color: #94a3b8; }

@@ -8,6 +8,7 @@ import { can, type PermissionKey } from '@/lib/permissions'
 import { AppShell } from '@/components/shared/app-shell'
 import { OnboardingFab } from './onboarding-fab'
 import { PaywallFrame } from './paywall-frame'
+import { CompleteProfileFrame } from './complete-profile/frame'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { STEP_TO_MENU } from '@/lib/onboarding/path-step'
 import { getStreak } from '@/lib/trainer-streak'
@@ -41,6 +42,31 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     }
   }
 
+  // Profile-completion gate. Every business owner must have a real name,
+  // business name, and phone before using the app. The credentials signup
+  // forms (/register, /signup) collect all three, but social sign-ins
+  // (Google/Apple) can't — the provider supplies no business name or phone —
+  // so those accounts start with an empty businessName and are held here until
+  // they fill it in. This also backfills any legacy account created before the
+  // rule, on its next visit. Keyed on the profile the user OWNS, so invited
+  // staff (who own no business of their own) are unaffected. The complete-
+  // profile route itself is exempt so we don't loop; skipped under admin
+  // impersonation so admins can still inspect such an account.
+  if (!session.user.impersonatorId) {
+    const owned = await prisma.trainerProfile.findUnique({
+      where: { userId: session.user.id },
+      select: { businessName: true, phone: true, user: { select: { name: true } } },
+    })
+    if (owned) {
+      const incomplete = !owned.user.name?.trim() || !owned.businessName.trim() || !owned.phone?.trim()
+      if (incomplete) {
+        const pathname = (await headers()).get('x-pathname') ?? ''
+        if (!pathname.startsWith('/complete-profile')) redirect('/complete-profile')
+        return <CompleteProfileFrame>{children}</CompleteProfileFrame>
+      }
+    }
+  }
+
   // Hide nav items this trainer can't act on (role + permissions). Owners and
   // managers see everything; staff get a focused menu. Maps each gated nav
   // href to the permission that unlocks it.
@@ -55,12 +81,22 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     '/messages': 'messages.send',
     '/website': 'settings.edit',
     '/finances': 'billing.view',
+    '/timesheets': 'billing.view',
+    '/reports': 'billing.view',
   }
   const hiddenNavHrefs = ctx
     ? Object.entries(NAV_PERMISSION)
         .filter(([, perm]) => !can(perm, ctx.role, ctx.permissions))
         .map(([href]) => href)
     : []
+
+  // Organisations this user belongs to (their own + any they're a team member
+  // at). Powers the sidebar org switcher when there's more than one.
+  const orgs = (await prisma.trainerMembership.findMany({
+    where: { userId: session.user.id },
+    select: { companyId: true, role: true, company: { select: { businessName: true } } },
+    orderBy: { role: 'asc' },
+  })).map(m => ({ id: m.companyId, name: m.company.businessName, role: m.role }))
 
   // Read logo + business name fresh from DB on every render so settings updates
   // are reflected immediately. The JWT caches these only at sign-in. Also
@@ -157,6 +193,8 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       unreadCounts={{ '/messages': unreadMessageCount }}
       unreadTotal={unreadMessageCount}
       hiddenNavHrefs={hiddenNavHrefs}
+      orgs={orgs}
+      activeCompanyId={session.user.trainerId ?? null}
     >
       {/* Admin impersonation banner — only present when an admin used
           "Log in as trainer". Stays pinned so the way back to admin is

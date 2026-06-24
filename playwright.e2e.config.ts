@@ -46,6 +46,9 @@ export default defineConfig({
       RESEND_API_KEY: 're_e2e_fake_key',
       NEXT_PUBLIC_APP_URL: BASE_URL,
       AUTH_URL: BASE_URL,
+      // The suite logs in many times from a single loopback IP; lift the
+      // brute-force login cap (prod default 30/15min) so it doesn't trip.
+      LOGIN_RATE_LIMIT_MAX: '100000',
     },
   },
 })

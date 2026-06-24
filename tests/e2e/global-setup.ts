@@ -50,6 +50,10 @@ export default async function globalSetup() {
       data: {
         userId: user.id,
         businessName: SEED.owner.businessName,
+        // A fully-onboarded owner has a phone — the (trainer) layout's
+        // profile-completion gate redirects to /complete-profile without one,
+        // which would bounce every authenticated spec off the dashboard.
+        phone: '+6421000000',
         subscriptionStatus: 'ACTIVE',
         seatCount: 10, // room to invite the 5 trainers
       },
@@ -114,7 +118,7 @@ export default async function globalSetup() {
       },
     })
     const bProfile = await prisma.trainerProfile.create({
-      data: { userId: bUser.id, businessName: SEED.businessB.businessName, subscriptionStatus: 'ACTIVE' },
+      data: { userId: bUser.id, businessName: SEED.businessB.businessName, phone: '+6421000001', subscriptionStatus: 'ACTIVE' },
     })
     await prisma.trainerMembership.create({
       data: { companyId: bProfile.id, userId: bUser.id, role: 'OWNER', acceptedAt: new Date() },

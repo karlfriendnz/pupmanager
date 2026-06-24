@@ -6,7 +6,11 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { CheckCircle2, XCircle, Mail } from 'lucide-react'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { htmlHasText } from '@/lib/email-html'
+import { CheckCircle2, XCircle, Mail, BookmarkPlus, Loader2 } from 'lucide-react'
+
+type EmailTemplate = { id: string; name: string; category: string | null; subject: string; body: string }
 
 type Props = {
   enquiryId: string
@@ -23,10 +27,61 @@ export function EnquiryActions({ enquiryId, status, clientProfileId, defaultSubj
   const [composing, setComposing] = useState(false)
   const [subject, setSubject] = useState(defaultSubject)
   const [body, setBody] = useState(`${defaultGreeting}\n\n`)
+  // Reusable email templates: pick one to prefill, or save the current draft as
+  // a new one. RichTextEditor has no content-sync, so bump editorKey to remount
+  // it with the applied template body.
+  const [templates, setTemplates] = useState<EmailTemplate[] | null>(null)
+  const [editorKey, setEditorKey] = useState(0)
+  const [savingTpl, setSavingTpl] = useState(false)
+  const [tplMsg, setTplMsg] = useState<string | null>(null)
   // Accept modal — opt-in to the magic-link email so the trainer can decide
   // whether to onboard them silently or invite them to the diary right away.
   const [showAcceptModal, setShowAcceptModal] = useState(false)
   const [sendMagicLink, setSendMagicLink] = useState(false)
+
+  function openCompose() {
+    setError(null)
+    setTplMsg(null)
+    setComposing(true)
+    if (templates === null) {
+      fetch('/api/email-templates')
+        .then(r => r.json())
+        .then(d => setTemplates(d.templates ?? []))
+        .catch(() => setTemplates([]))
+    }
+  }
+
+  function applyTemplate(id: string) {
+    const t = templates?.find(x => x.id === id)
+    if (!t) return
+    setSubject(t.subject)
+    setBody(t.body)
+    setEditorKey(k => k + 1) // remount so the editor shows the template body
+  }
+
+  async function saveAsTemplate() {
+    if (!htmlHasText(body)) { setTplMsg('Nothing to save yet — write your message first.'); return }
+    const name = window.prompt('Template name', subject || 'New template')
+    if (name === null) return
+    if (!name.trim()) { setTplMsg('A template name is required.'); return }
+    setSavingTpl(true)
+    setTplMsg(null)
+    try {
+      const res = await fetch('/api/email-templates', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), subject, body }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(typeof data?.error === 'string' ? data.error : 'Failed to save template')
+      setTemplates(prev => [...(prev ?? []), data.template as EmailTemplate])
+      setTplMsg(`Saved "${name.trim()}" to your templates.`)
+    } catch (e) {
+      setTplMsg(e instanceof Error ? e.message : 'Failed to save template')
+    } finally {
+      setSavingTpl(false)
+    }
+  }
 
   if (status === 'ACCEPTED') {
     return (
@@ -98,7 +153,7 @@ export function EnquiryActions({ enquiryId, status, clientProfileId, defaultSubj
   }
 
   async function sendReply() {
-    if (!subject.trim() || !body.trim()) {
+    if (!subject.trim() || !htmlHasText(body)) {
       setError('Subject and message are required.')
       return
     }
@@ -145,7 +200,7 @@ export function EnquiryActions({ enquiryId, status, clientProfileId, defaultSubj
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setComposing(true)}
+              onClick={openCompose}
               disabled={busy != null}
             >
               <Mail className="h-4 w-4" />
@@ -244,29 +299,50 @@ export function EnquiryActions({ enquiryId, status, clientProfileId, defaultSubj
           </div>
           <div className="flex flex-col gap-3">
             <div>
+              <label className="text-xs font-medium text-slate-600 block mb-1">Start from a template</label>
+              <select
+                className="w-full h-10 rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                defaultValue=""
+                onChange={e => { if (e.target.value) { applyTemplate(e.target.value); e.target.value = '' } }}
+                disabled={busy != null}
+              >
+                <option value="">{templates === null ? 'Loading templates…' : templates.length ? 'Choose a template…' : 'No templates yet — save one below'}</option>
+                {templates?.map(t => (
+                  <option key={t.id} value={t.id}>{t.category ? `${t.category} — ${t.name}` : t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="text-xs font-medium text-slate-600 block mb-1">Subject</label>
               <Input value={subject} onChange={e => setSubject(e.target.value)} disabled={busy != null} />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600 block mb-1">Message</label>
-              <textarea
-                value={body}
-                onChange={e => setBody(e.target.value)}
-                rows={10}
-                disabled={busy != null}
-                className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
-              />
+              <RichTextEditor key={editorKey} theme="light" value={body} onChange={setBody} minHeight={200} disabled={busy != null} />
             </div>
-            <Button
-              type="button"
-              onClick={sendReply}
-              disabled={busy != null}
-              loading={busy === 'reply'}
-              className="bg-violet-600 hover:bg-violet-700 active:bg-violet-800 self-start"
-            >
-              {busy !== 'reply' && <Mail className="h-4 w-4" />}
-              Send
-            </Button>
+            {tplMsg && <p className="text-xs text-slate-500">{tplMsg}</p>}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                onClick={sendReply}
+                disabled={busy != null}
+                loading={busy === 'reply'}
+                className="bg-violet-600 hover:bg-violet-700 active:bg-violet-800"
+              >
+                {busy !== 'reply' && <Mail className="h-4 w-4" />}
+                Send
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={saveAsTemplate}
+                disabled={busy != null || savingTpl}
+              >
+                {savingTpl ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookmarkPlus className="h-4 w-4" />}
+                Save as template
+              </Button>
+              <a href="/settings#templates" className="ml-auto text-xs text-slate-500 hover:text-slate-700 underline">Manage templates</a>
+            </div>
           </div>
         </Card>
       )}

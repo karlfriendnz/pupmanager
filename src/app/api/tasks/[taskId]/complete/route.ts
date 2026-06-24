@@ -64,14 +64,24 @@ export async function POST(
     if (total > 0 && done >= total) {
       const client = await prisma.clientProfile.findUnique({
         where: { id: task.clientId },
-        select: { user: { select: { name: true } }, dog: { select: { name: true } }, trainer: { select: { user: { select: { id: true } } } } },
+        select: {
+          trainerId: true,
+          user: { select: { name: true } },
+          dog: { select: { name: true } },
+          trainer: { select: { user: { select: { id: true } } } },
+          assignedTrainer: { select: { user: { select: { id: true } } } },
+        },
       })
-      if (client?.trainer?.user?.id) {
+      // Notify the client's assigned member (owner fallback), with prefs scoped
+      // to this organisation.
+      const targetUserId = client?.assignedTrainer?.user?.id ?? client?.trainer?.user?.id
+      if (targetUserId && client) {
         await notifyTrainer(
-          client.trainer.user.id,
+          targetUserId,
           'CLIENT_COMPLETED_TASKS',
           { clientName: client.user?.name ?? 'A client', dogName: client.dog?.name ?? '', taskCount: String(total) },
           `/clients/${task.clientId}`,
+          client.trainerId,
         )
       }
     }

@@ -62,6 +62,9 @@ export default async function ClientSessionPage({
         select: { id: true, kind: true, url: true, thumbnailUrl: true, caption: true, durationMs: true },
       },
       formResponses: {
+        // Only sent recaps are visible to the client — drafts (sentAt null)
+        // stay private to the trainer until they send.
+        where: { sentAt: { not: null } },
         include: {
           form: { select: { id: true, name: true, introText: true, closingText: true, backgroundColor: true, backgroundUrl: true, questions: true } },
         },
@@ -97,14 +100,18 @@ export default async function ClientSessionPage({
       select: {
         title: true, scheduledAt: true, sessionFormId: true,
         classRun: { select: { name: true, package: { select: { defaultSessionFormId: true } } } },
-        attendance: { where: { enrollment: { clientId: profile.id } }, take: 1, select: { report: true } },
+        attendance: { where: { enrollment: { clientId: profile.id } }, take: 1, select: { report: true, reportSentAt: true } },
       },
     })
     if (!cls) notFound()
 
     sessionTitle = cls.classRun?.name ?? cls.title
     scheduledAt = cls.scheduledAt
-    const report = (cls.attendance[0]?.report ?? null) as { answers?: Record<string, string>; intro?: string | null; closing?: string | null } | null
+    // Only a SENT report is visible — a saved draft (reportSentAt null) stays
+    // private until the trainer sends it.
+    const report = (cls.attendance[0]?.reportSentAt
+      ? cls.attendance[0]?.report ?? null
+      : null) as { answers?: Record<string, string>; intro?: string | null; closing?: string | null } | null
     const formId = cls.sessionFormId ?? cls.classRun?.package?.defaultSessionFormId ?? null
     const form = formId
       ? await prisma.sessionForm.findFirst({

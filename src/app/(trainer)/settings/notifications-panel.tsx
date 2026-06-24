@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useState, useTransition, Fragment } from 'react'
+import { useEffect, useRef, useState, useTransition, Fragment } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { Loader2, Bell, Mail, Smartphone, Send } from 'lucide-react'
 import { NOTIFICATION_TYPES } from '@/lib/notification-types'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { htmlHasText } from '@/lib/email-html'
 
 type NotificationType = keyof typeof NOTIFICATION_TYPES
 type Channel = 'PUSH' | 'EMAIL'
@@ -160,6 +162,8 @@ function PrefRowEditor({
   const [saving, startSaving] = useTransition()
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Latest editor HTML (EMAIL channel) so we can save on blur without an event.
+  const bodyRef = useRef(row.customBody ?? '')
   const [testState, setTestState] = useState<
     | { kind: 'idle' } | { kind: 'sending' } | { kind: 'sent' } | { kind: 'sentEmail'; to: string }
     | { kind: 'noDevices' } | { kind: 'noEmail' } | { kind: 'unsupported' } | { kind: 'error'; message: string }
@@ -230,7 +234,18 @@ function PrefRowEditor({
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-slate-600">Body</label>
-            <textarea rows={2} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm resize-y" placeholder={meta.defaults.body} value={row.customBody ?? ''} onChange={(e) => onLocalChange({ customBody: e.target.value || null })} onBlur={(e) => save({ customBody: e.target.value.trim() || null })} />
+            {row.channel === 'EMAIL' ? (
+              // Rich-text for the email body; push stays plain text below.
+              <RichTextEditor
+                theme="light"
+                minHeight={90}
+                value={row.customBody ?? ''}
+                onChange={(html) => { bodyRef.current = html; onLocalChange({ customBody: html || null }) }}
+                onBlur={() => save({ customBody: htmlHasText(bodyRef.current) ? bodyRef.current : null })}
+              />
+            ) : (
+              <textarea rows={2} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm resize-y" placeholder={meta.defaults.body} value={row.customBody ?? ''} onChange={(e) => onLocalChange({ customBody: e.target.value || null })} onBlur={(e) => save({ customBody: e.target.value.trim() || null })} />
+            )}
           </div>
           <p className="text-[11px] text-slate-400">Placeholders: {meta.placeholders.map(p => <code key={p} className="ml-1 px-1 rounded bg-slate-200/60">{`{{${p}}}`}</code>)}</p>
         </>

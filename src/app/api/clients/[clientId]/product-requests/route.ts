@@ -36,10 +36,11 @@ export async function POST(
   // the client's "store" is that primary.
   const product = await prisma.product.findFirst({
     where: { id: parsed.data.productId, trainerId: access.client.trainerId },
-    select: { id: true, active: true },
+    select: { id: true },
   })
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
-  if (!product.active) return NextResponse.json({ error: 'Product is hidden' }, { status: 400 })
+  // No `active` gate here: a trainer can add any of their own products to a
+  // client, including hidden ones. `active` only controls the client's shop.
 
   // Idempotent — return any existing PENDING request for this pair.
   const existing = await prisma.productRequest.findFirst({

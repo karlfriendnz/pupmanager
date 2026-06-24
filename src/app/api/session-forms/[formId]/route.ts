@@ -11,11 +11,16 @@ const baseQuestion = {
   isPrivate: z.boolean().optional(),
 }
 
+const choiceOptions = z.array(z.string().trim().min(1)).min(1).max(50)
+
 const questionSchema = z.discriminatedUnion('type', [
   z.object({ ...baseQuestion, type: z.literal('SHORT_TEXT'), label: z.string().min(1) }),
   z.object({ ...baseQuestion, type: z.literal('LONG_TEXT'), label: z.string().min(1) }),
   z.object({ ...baseQuestion, type: z.literal('NUMBER'), label: z.string().min(1) }),
   z.object({ ...baseQuestion, type: z.literal('RATING_1_5'), label: z.string().min(1) }),
+  z.object({ ...baseQuestion, type: z.literal('DROPDOWN'), label: z.string().min(1), options: choiceOptions }),
+  z.object({ ...baseQuestion, type: z.literal('RADIO'), label: z.string().min(1), options: choiceOptions }),
+  z.object({ ...baseQuestion, type: z.literal('CHECKBOX'), label: z.string().min(1), options: choiceOptions }),
   z.object({ ...baseQuestion, type: z.literal('CUSTOM_FIELD'), customFieldId: z.string().min(1) }),
 ])
 

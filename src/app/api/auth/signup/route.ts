@@ -31,7 +31,14 @@ const TRIAL_DAYS = 10
 const schema = z.object({
   name: z.string().min(2),
   businessName: z.string().min(2),
+  // Required: every trainer must have a phone on file (admin + ops need it).
+  phone: z.string().trim().min(6).max(30),
+  // Opt-in to showing the phone to clients (default private).
+  showPhoneToClients: z.boolean().optional().default(false),
+  // The person's own login email (private).
   email: z.string().email(),
+  // Optional company/business email shown to clients (publicEmail).
+  publicEmail: z.union([z.string().email(), z.literal('')]).optional(),
   password: z.string().min(8),
   // Optional promo code — when valid it sets the total trial length.
   promoCode: z.string().max(40).optional(),
@@ -53,7 +60,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message, details: flat }, { status: 400 })
   }
 
-  const { name, businessName, email, password, promoCode } = parsed.data
+  const { name, businessName, phone, showPhoneToClients, email, publicEmail, password, promoCode } = parsed.data
 
   const existing = await prisma.user.findUnique({ where: { email } })
   if (existing) {
@@ -105,6 +112,10 @@ export async function POST(req: Request) {
       data: {
         userId: user.id,
         businessName,
+        phone,
+        showPhoneToClients,
+        // Optional company email shown to clients; null when left blank.
+        publicEmail: publicEmail || null,
         // subscriptionStatus defaults to TRIALING; trialEndsAt drives
         // the "X days left" banner. Address + seats + Stripe customer
         // get added on /billing/setup once they're past verification.

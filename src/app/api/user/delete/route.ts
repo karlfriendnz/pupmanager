@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { requireSameOrigin } from '@/lib/csrf'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { recordAudit, auditRequestMeta } from '@/lib/audit'
+import { notifyTrainerDeletion } from '@/lib/notify-new-trainer'
 
 // Self-serve account deletion. Previously this hard-deleted the user (cascading
 // away an entire trainer's business) on a single DELETE with no re-auth, CSRF
@@ -21,6 +22,10 @@ import { recordAudit, auditRequestMeta } from '@/lib/audit'
 const schema = z.object({
   password: z.string().min(1).max(200).optional(),
   confirm: z.string().max(40).optional(),
+  // Optional free-text reason for cancelling — emailed to the founders.
+  reason: z.string().max(2000).optional(),
+  // Trainer consents to a follow-up call from Brooke.
+  okToCall: z.boolean().optional(),
 })
 
 export async function DELETE(req: Request) {
@@ -38,7 +43,11 @@ export async function DELETE(req: Request) {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, deactivatedAt: true, accounts: { select: { provider: true, providerAccountId: true } } },
+    select: {
+      id: true, deactivatedAt: true, name: true, email: true, role: true,
+      trainerProfile: { select: { businessName: true, phone: true } },
+      accounts: { select: { provider: true, providerAccountId: true } },
+    },
   })
   if (!user) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   if (user.deactivatedAt) return NextResponse.json({ ok: true, alreadyScheduled: true })
@@ -60,8 +69,22 @@ export async function DELETE(req: Request) {
     companyId: session.user.trainerId ?? null,
     targetType: 'user',
     targetId: userId,
+    meta: { reason: parsed.data.reason?.trim() || null },
     ...auditRequestMeta(req),
   })
+
+  // Heads-up to the founders with the cancellation reason. Trainers only — a
+  // client self-deleting isn't a churn signal. Fire-and-forget; never block.
+  if (user.role === 'TRAINER') {
+    await notifyTrainerDeletion({
+      name: user.name ?? '(no name)',
+      businessName: user.trainerProfile?.businessName || '(no business name)',
+      email: user.email,
+      phone: user.trainerProfile?.phone ?? null,
+      reason: parsed.data.reason ?? null,
+      okToCall: parsed.data.okToCall ?? false,
+    }).catch(err => console.error('[delete] founder notify failed:', err))
+  }
 
   return NextResponse.json({
     ok: true,

@@ -43,6 +43,9 @@ async function doNotify({ messageId, clientId, senderId, body }: NotifyArgs) {
           user: { select: { id: true, name: true, email: true } },
         },
       },
+      // The member this client is assigned to — they're the one notified on the
+      // trainer side (falling back to the owner when unassigned).
+      assignedTrainer: { select: { user: { select: { id: true, name: true, email: true } } } },
     },
   })
   if (!profile?.trainer?.user) return
@@ -66,15 +69,18 @@ async function doNotify({ messageId, clientId, senderId, body }: NotifyArgs) {
   const isTrainerRecipient = recipientUser.id === trainerUser.id
 
   if (isTrainerRecipient) {
-    // Trainer side: NEW_MESSAGE push + email, each gated by its own toggle.
-    const pushPref = await resolvePref(trainerUser.id, 'NEW_MESSAGE', 'PUSH')
+    // Notify the member this client is assigned to (owner fallback), with prefs
+    // scoped to this organisation so a multi-org trainer's per-org choice wins.
+    const target = profile.assignedTrainer?.user ?? trainerUser
+    const companyId = profile.trainerId
+    const pushPref = await resolvePref(target.id, 'NEW_MESSAGE', 'PUSH', companyId)
     if (pushPref.enabled) {
-      await sendPush(trainerUser.id, {
+      await sendPush(target.id, {
         alert: { title: renderTemplate(pushPref.title, subs), body: renderTemplate(pushPref.body, subs) },
         customData: { type: 'new-message', messageId, path: `/messages/${clientId}` },
       })
     }
-    await sendTrainerEmail(trainerUser.id, 'NEW_MESSAGE', subs, `${APP_URL}/messages/${clientId}`)
+    await sendTrainerEmail(target.id, 'NEW_MESSAGE', subs, `${APP_URL}/messages/${clientId}`, companyId)
   } else {
     // Client side: route through the client engine so push/email/feed all
     // honour the client's CLIENT_NEW_MESSAGE settings.

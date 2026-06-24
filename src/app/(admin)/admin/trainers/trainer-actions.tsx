@@ -48,6 +48,9 @@ type Trainer = {
   seatCount: number
   deactivatedAt: Date | string | null
   createdAt: Date
+  // Most recent successful sign-in, or null if they've never logged in since we
+  // started tracking it. Rendered as a relative "Last seen" stamp.
+  lastLoginAt: Date | string | null
 }
 
 // ISO 3166-1 alpha-2 → flag emoji (regional indicator pair). Null for anything
@@ -67,6 +70,23 @@ function joinedLabel(d: Date | string): string {
   // Normalise the meridiem ("pm" / "p.m." → "PM") for a clean, consistent label.
   const ap = get('dayPeriod').replace(/\./g, '').toUpperCase()
   return `${get('day')} ${get('month')} - ${get('hour')}:${get('minute')} ${ap}`
+}
+
+// Relative "last seen" label, e.g. "5m ago", "3h ago", "2d ago", "Jun 14".
+// Older than a week falls back to an absolute short date.
+function lastSeenLabel(d: Date | string | null): string {
+  if (!d) return 'Never'
+  const then = new Date(d).getTime()
+  const mins = Math.floor((Date.now() - then) / 60000)
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 7) return `${days}d ago`
+  return new Intl.DateTimeFormat('en-NZ', {
+    timeZone: 'Pacific/Auckland', day: 'numeric', month: 'short',
+  }).format(new Date(d))
 }
 
 export function TrainerRow({ trainer }: { trainer: Trainer }) {
@@ -478,6 +498,20 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
             Joined {new Date(trainer.createdAt).toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
           </span>
         </span>
+      </td>
+      <td className="px-4 py-3 text-slate-400">
+        {trainer.lastLoginAt ? (
+          <span className="group relative inline-block">
+            <span className="cursor-default border-b border-dotted border-slate-500/60 tabular-nums">
+              {lastSeenLabel(trainer.lastLoginAt)}
+            </span>
+            <span className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs text-slate-200 shadow-lg ring-1 ring-slate-700 group-hover:block">
+              Last seen {new Date(trainer.lastLoginAt).toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            </span>
+          </span>
+        ) : (
+          <span className="text-slate-500" title="No sign-in recorded yet">Never</span>
+        )}
       </td>
       <td className="px-4 py-3">
         {(() => {

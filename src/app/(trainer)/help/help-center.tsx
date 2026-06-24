@@ -227,7 +227,7 @@ const MODAL_META: Record<SupportFormType, { title: string; blurb: string }> = {
   bug: { title: 'Report a bug', blurb: 'Tell us what went wrong so we can fix it.' },
 }
 
-function FormModal({ type, onClose }: { type: SupportFormType; onClose: () => void }) {
+export function FormModal({ type, onClose }: { type: SupportFormType; onClose: () => void }) {
   const meta = MODAL_META[type]
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-md" onClick={onClose}>

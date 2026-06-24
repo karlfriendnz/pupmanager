@@ -74,6 +74,9 @@ interface ShopProduct {
   priceCents: number | null
   imageUrl: string | null
   category: string | null
+  // Whether the product is visible in the client's own shop. The trainer can
+  // still add a hidden product to a client; the picker badges it so they know.
+  active: boolean
 }
 
 interface PendingProductRequest {
@@ -830,7 +833,14 @@ function ProductPickerModal({
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-900 truncate">{p.name}</p>
+                            <p className="text-sm font-medium text-slate-900 truncate flex items-center gap-1.5">
+                              <span className="truncate">{p.name}</span>
+                              {!p.active && (
+                                <span className="flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500" title="Hidden from the client's shop — you can still add it">
+                                  Hidden
+                                </span>
+                              )}
+                            </p>
                             <p className="text-xs text-slate-500">
                               {p.priceCents != null ? `$${(p.priceCents / 100).toFixed(2)}` : 'Contact'}
                               {' · '}

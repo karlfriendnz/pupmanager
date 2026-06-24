@@ -5,10 +5,11 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { escapeHtml } from '@/lib/enquiries'
+import { emailBodyToHtml, emailHtmlToText } from '@/lib/email-html'
 
 const schema = z.object({
   subject: z.string().min(1).max(200),
-  body: z.string().min(1).max(10_000),
+  body: z.string().min(1).max(50_000), // rich-text HTML is larger than plain text
 })
 
 // Send a reply to the enquirer. v1 is one-way: we send via Resend from the
@@ -59,11 +60,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ? enquiry.trainer.emailAccentColor
     : '#7c3aed'
 
-  // Convert plain-text body to HTML preserving paragraph + line breaks.
-  const htmlBody = parsed.data.body
-    .split(/\n{2,}/)
-    .map(para => `<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#0f172a;">${escapeHtml(para).replace(/\n/g, '<br />')}</p>`)
-    .join('')
+  // The composer emits sanitized rich-text HTML; emailBodyToHtml inlines styles
+  // and still gracefully handles any legacy plain-text body. emailHtmlToText
+  // derives the text/plain part and the stored plain fallback.
+  const htmlBody = emailBodyToHtml(parsed.data.body)
+  const textBody = emailHtmlToText(parsed.data.body)
 
   const safeBusiness = escapeHtml(businessName)
   const safeDisplay = escapeHtml(displayName)
@@ -129,7 +130,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       subject: parsed.data.subject,
       from: fromTrainer(displayName),
       replyTo: trainerEmail,
-      text: parsed.data.body,
+      text: textBody,
       html,
     })
   } catch (err) {
@@ -143,7 +144,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       enquiryId: id,
       direction: 'OUTBOUND',
       subject: parsed.data.subject,
-      bodyText: parsed.data.body,
+      bodyText: textBody,
+      bodyHtml: htmlBody,
       sentByUserId: session.user.id,
     },
   })

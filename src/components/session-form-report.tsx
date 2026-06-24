@@ -2,14 +2,30 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
-import { Plus, Loader2, FileText, Pencil, Trash2, Star, Link2, X, Sparkles, Check, Lock, List, Layers, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Loader2, FileText, Pencil, Trash2, Star, Link2, X, Sparkles, Check, Lock, List, Layers, ChevronLeft, ChevronRight, Send } from 'lucide-react'
 import { VoiceInput } from '@/components/voice-input'
 import { ImageUploadButton, ImageGallery } from '@/components/image-uploader'
 import { HomeworkFlow } from '@/components/homework-flow'
 
 export type Question =
   | { id: string; type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'; label: string; required: boolean; isPrivate?: boolean }
+  | { id: string; type: 'DROPDOWN' | 'RADIO' | 'CHECKBOX'; label: string; required: boolean; isPrivate?: boolean; options: string[] }
   | { id: string; type: 'CUSTOM_FIELD'; customFieldId: string; required: boolean; isPrivate?: boolean }
+
+// Checkbox answers hold multiple values, stored as a JSON array string. Single
+// choices (dropdown / multiple choice) store the chosen option verbatim.
+function parseChecks(value: string): string[] {
+  if (!value) return []
+  try {
+    const arr = JSON.parse(value)
+    return Array.isArray(arr) ? arr.map(String) : []
+  } catch {
+    return [value]
+  }
+}
+function serializeChecks(list: string[]): string {
+  return list.length ? JSON.stringify(list) : ''
+}
 
 interface FormTemplate {
   id: string
@@ -479,6 +495,19 @@ function InlineNotesPreview({
 }
 
 function AnswerDisplay({ type, value }: { type: string; value: string }) {
+  if (type === 'CHECKBOX') {
+    const items = parseChecks(value)
+    if (items.length === 0) return null
+    return (
+      <div className="flex flex-wrap gap-1.5 mt-0.5">
+        {items.map(item => (
+          <span key={item} className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+            <Check className="h-3 w-3 text-emerald-600" />{item}
+          </span>
+        ))}
+      </div>
+    )
+  }
   if (type === 'RATING_1_5') {
     const n = Math.max(0, Math.min(5, parseInt(value, 10) || 0))
     return (
@@ -657,6 +686,7 @@ function FormFillerBody({
   const [closingMessage, setClosingMessage] = useState(existing?.closingMessage ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [sendingNow, setSendingNow] = useState(false)
   const [polishing, setPolishing] = useState(false)
   const [confirmingRemove, setConfirmingRemove] = useState(false)
   // Entry mode: answer one at a time in a focused fullscreen flow ('step',
@@ -707,7 +737,9 @@ function FormFillerBody({
     }
   }
 
-  async function handleSave() {
+  // sendNow=false saves a DRAFT (client sees nothing yet). sendNow=true also
+  // fires the recap to the client straight away, skipping the Draft notes queue.
+  async function handleSave(sendNow = false) {
     setError(null)
     for (const q of template.questions) {
       if (!q.required) continue
@@ -721,6 +753,7 @@ function FormFillerBody({
       }
     }
     setSaving(true)
+    if (sendNow) setSendingNow(true)
     const res = await fetch(`/api/sessions/${sessionId}/form-responses/${template.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -734,6 +767,7 @@ function FormFillerBody({
     if (!res.ok) {
       setError('Failed to save')
       setSaving(false)
+      setSendingNow(false)
       return
     }
     const saved = await res.json()
@@ -742,6 +776,22 @@ function FormFillerBody({
       formId: saved.formId,
       answers: saved.answers as Record<string, string>,
       form: { id: template.id, name: template.name, questions: template.questions },
+    }
+
+    // Finalise & send straight away: stamp it sent + notify the client now. The
+    // note is already saved, so on failure we keep it as a draft and say so.
+    if (sendNow) {
+      const sres = await fetch('/api/sessions/bulk-send-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responseIds: [saved.id] }),
+      })
+      if (!sres.ok) {
+        setError('Saved as a draft, but sending failed — you can send it from Draft notes.')
+        setSaving(false)
+        setSendingNow(false)
+        return
+      }
     }
 
     // In the focused step flow, follow the save with an "Add homework" phase
@@ -757,11 +807,13 @@ function FormFillerBody({
         setHomeworkPhase({ clientId: null, date: new Date().toISOString().slice(0, 10) })
       }
       setSaving(false)
+      setSendingNow(false)
       return
     }
 
     onSaved(response)
     setSaving(false)
+    setSendingNow(false)
   }
 
   // Finish the homework phase → hand the saved report back to the host (which
@@ -811,6 +863,7 @@ function FormFillerBody({
           type={q.type}
           value={answers[q.id] ?? ''}
           onChange={v => setAnswer(q.id, v)}
+          options={'options' in q ? q.options : undefined}
           imageUrls={imagesByQuestion[q.id] ?? []}
           onImagesChange={(urls) => setImagesByQuestion(prev => ({ ...prev, [q.id]: urls }))}
           sessionId={sessionId}
@@ -853,6 +906,7 @@ function FormFillerBody({
         type={q.type}
         value={answers[q.id] ?? ''}
         onChange={v => setAnswer(q.id, v)}
+        options={'options' in q ? q.options : undefined}
         imageUrls={imagesByQuestion[q.id] ?? []}
         onImagesChange={(urls) => setImagesByQuestion(prev => ({ ...prev, [q.id]: urls }))}
         sessionId={sessionId}
@@ -1032,14 +1086,24 @@ function FormFillerBody({
               <ChevronLeft className="h-4 w-4" /> Back
             </button>
             {isLastStep ? (
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-accent hover:bg-accent-strong text-white text-sm font-semibold px-6 h-11 disabled:opacity-60"
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save notes
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSave(false)}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-semibold px-4 h-11 disabled:opacity-60"
+                >
+                  {saving && !sendingNow ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save draft
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSave(true)}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-accent hover:bg-accent-strong text-white text-sm font-semibold px-5 h-11 disabled:opacity-60"
+                >
+                  {sendingNow ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Save &amp; send
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
@@ -1115,8 +1179,11 @@ function FormFillerBody({
         </div>
         <div className="flex items-center gap-2">
           {onCancel && <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>}
-          <Button size="sm" loading={saving} onClick={handleSave}>
-            {existing ? 'Save changes' : 'Save report'}
+          <Button variant="secondary" size="sm" loading={saving && !sendingNow} disabled={saving} onClick={() => handleSave(false)}>
+            {existing ? 'Save changes' : 'Save draft'}
+          </Button>
+          <Button size="sm" loading={sendingNow} disabled={saving} onClick={() => handleSave(true)}>
+            <Send className="h-4 w-4" /> Save &amp; send
           </Button>
         </div>
       </div>
@@ -1169,14 +1236,17 @@ function BasicQuestionInput({
   type,
   value,
   onChange,
+  options,
   imageUrls,
   onImagesChange,
   sessionId,
   fill,
 }: {
-  type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'
+  type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5' | 'DROPDOWN' | 'RADIO' | 'CHECKBOX'
   value: string
   onChange: (v: string) => void
+  // Option list for the choice types (dropdown / multiple choice / checkboxes).
+  options?: string[]
   imageUrls?: string[]
   onImagesChange?: (urls: string[]) => void
   sessionId?: string
@@ -1184,6 +1254,60 @@ function BasicQuestionInput({
   // borderless, page-filling writing area rather than a boxed textarea.
   fill?: boolean
 }) {
+  if (type === 'DROPDOWN') {
+    return (
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+      >
+        <option value="">Select…</option>
+        {(options ?? []).map(opt => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    )
+  }
+  if (type === 'RADIO') {
+    return (
+      <div className="flex flex-col gap-2">
+        {(options ?? []).map(opt => (
+          <label key={opt} className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2.5 hover:border-accent has-[:checked]:border-accent has-[:checked]:bg-accent-soft">
+            <input
+              type="radio"
+              checked={value === opt}
+              onChange={() => onChange(opt)}
+              className="h-4 w-4 border-slate-300 text-accent focus:ring-accent"
+            />
+            {opt}
+          </label>
+        ))}
+      </div>
+    )
+  }
+  if (type === 'CHECKBOX') {
+    const selected = parseChecks(value)
+    return (
+      <div className="flex flex-col gap-2">
+        {(options ?? []).map(opt => {
+          const checked = selected.includes(opt)
+          return (
+            <label key={opt} className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2.5 hover:border-accent has-[:checked]:border-accent has-[:checked]:bg-accent-soft">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => onChange(serializeChecks(
+                  checked ? selected.filter(o => o !== opt) : [...selected, opt]
+                ))}
+                className="h-4 w-4 rounded border-slate-300 text-accent focus:ring-accent"
+              />
+              {opt}
+            </label>
+          )
+        })}
+      </div>
+    )
+  }
   if (type === 'LONG_TEXT' && fill) {
     return <ImmersiveText value={value} onChange={onChange} imageUrls={imageUrls} onImagesChange={onImagesChange} sessionId={sessionId} />
   }

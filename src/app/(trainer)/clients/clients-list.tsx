@@ -55,9 +55,13 @@ interface Props {
   customValues: Record<string, string>  // key: `${clientId}:${fieldId}`
   groupBy: string | null
   tz: string  // trainer's configured timezone — all dates render in this
+  initialQuery?: string  // seed the live search from a ?q= URL param (top-bar search)
+  // Which fields the live search matches against. 'all' = name/email/dog/breed;
+  // narrower scopes come from the top-bar search's scope selector.
+  searchScope?: 'all' | 'client' | 'breed' | 'dog'
 }
 
-export function ClientsList({ clients, tab, columns, customFields, customValues, groupBy, tz }: Props) {
+export function ClientsList({ clients, tab, columns, customFields, customValues, groupBy, tz, initialQuery, searchScope = 'all' }: Props) {
   const validCustomIds = new Set(customFields.map(f => f.id))
   const initial = columns.filter(c => isBuiltinId(c) || (c.startsWith('custom:') && validCustomIds.has(c.slice(7))))
   const [visible, setVisible] = useState<Set<string>>(new Set(initial))
@@ -108,22 +112,22 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
   // Live (uncontrolled-feel) wildcard filter — every keystroke filters in JS,
   // no network round-trip. Splits on whitespace so "fido smith" matches a row
   // where one token is in the dog name and the other in the owner name.
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery ?? '')
 
   const filtered = useMemo(() => {
     const tokens = query.trim().toLocaleLowerCase('en-NZ').split(/\s+/).filter(Boolean)
     if (tokens.length === 0) return clients
     return clients.filter(c => {
-      const haystack = [
-        c.name ?? '',
-        c.email,
-        c.dogName ?? '',
-        c.dogBreed ?? '',
-        ...c.extraDogNames,
-      ].join(' ').toLocaleLowerCase('en-NZ')
+      // Scope narrows which fields the query matches against.
+      const fields =
+        searchScope === 'client' ? [c.name ?? '', c.email]
+        : searchScope === 'breed' ? [c.dogBreed ?? '']
+        : searchScope === 'dog' ? [c.dogName ?? '', ...c.extraDogNames]
+        : [c.name ?? '', c.email, c.dogName ?? '', c.dogBreed ?? '', ...c.extraDogNames]
+      const haystack = fields.join(' ').toLocaleLowerCase('en-NZ')
       return tokens.every(t => haystack.includes(t))
     })
-  }, [clients, query])
+  }, [clients, query, searchScope])
 
   return (
     <>

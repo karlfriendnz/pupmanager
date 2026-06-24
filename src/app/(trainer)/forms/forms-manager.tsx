@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import {
   Plus, Copy, Check, Trash2, Pencil, ExternalLink,
   Globe, ToggleLeft, ToggleRight, Code2, FileText,
-  ClipboardList,
+  ClipboardList, UserCog, Table2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import type { FormRow as SessionFormRow } from './session/session-forms-manager'
 import { CustomFieldsManager } from '../settings/custom-fields-manager'
 
@@ -457,13 +458,8 @@ export function EmbedFormEditor({
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-slate-700">Intro text</label>
-              <textarea
-                value={welcomeIntro}
-                onChange={e => setWelcomeIntro(e.target.value)}
-                rows={3}
-                placeholder={WELCOME_INTRO_PLACEHOLDER}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
+              <RichTextEditor theme="light" value={welcomeIntro} onChange={setWelcomeIntro} minHeight={120} />
+              <p className="text-xs text-slate-400">{WELCOME_INTRO_PLACEHOLDER}</p>
             </div>
             {/* Diary-button toggle. Off = a plain welcome with no login
                 link — only do this if you're inviting them another way. */}
@@ -622,12 +618,14 @@ function CustomFieldToggleRow({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-type FormType = 'INTAKE' | 'EMBED' | 'SESSION'
+type FormType = 'INTAKE' | 'EMBED' | 'SESSION' | 'CLIENT_FIELDS' | 'CAPTURE_MAP'
 
 const TYPE_BADGE: Record<FormType, { label: string; cls: string; Icon: typeof Globe }> = {
   INTAKE: { label: 'Intake', cls: 'bg-amber-100 text-amber-700', Icon: ClipboardList },
   EMBED: { label: 'Embed', cls: 'bg-blue-100 text-blue-700', Icon: Globe },
   SESSION: { label: 'Session', cls: 'bg-violet-100 text-violet-700', Icon: FileText },
+  CLIENT_FIELDS: { label: 'Client fields', cls: 'bg-teal-100 text-teal-700', Icon: UserCog },
+  CAPTURE_MAP: { label: 'Overview', cls: 'bg-slate-100 text-slate-600', Icon: Table2 },
 }
 
 export function FormsManager({
@@ -668,6 +666,25 @@ export function FormsManager({
           meta={`${intakeFieldCount} field${intakeFieldCount === 1 ? '' : 's'} configured`}
           published={intakeFormPublished}
           onEdit={() => router.push('/forms/intake')}
+        />
+
+        {/* Per-company config for what's captured when CREATING a client
+            (full create form + quick-add contact) — its own page. */}
+        <FormRowCard
+          type="CLIENT_FIELDS"
+          title="Client capture fields"
+          description="Choose which fields are required when creating a client, and which appear on the quick-add contact form."
+          meta="Used by the New client + Quick add forms"
+          onEdit={() => router.push('/forms/client-fields')}
+        />
+
+        {/* Read-only matrix: every field × every client form. */}
+        <FormRowCard
+          type="CAPTURE_MAP"
+          title="What each form captures"
+          description="See every field down the side and every form across the top — at a glance, what's captured and required where."
+          meta="Overview of Intake · New client · Quick add"
+          onEdit={() => router.push('/forms/capture-overview')}
         />
 
         {/* Session forms */}

@@ -87,15 +87,23 @@ export async function acceptInvite(
     try {
       const profiles = await prisma.clientProfile.findMany({
         where: { userId: user.id },
-        select: { id: true, dog: { select: { name: true } }, trainer: { select: { user: { select: { id: true } } } } },
+        select: {
+          id: true,
+          trainerId: true,
+          dog: { select: { name: true } },
+          trainer: { select: { user: { select: { id: true } } } },
+          assignedTrainer: { select: { user: { select: { id: true } } } },
+        },
       })
       for (const p of profiles) {
-        if (!p.trainer?.user?.id) continue
+        const targetUserId = p.assignedTrainer?.user?.id ?? p.trainer?.user?.id
+        if (!targetUserId) continue
         await notifyTrainer(
-          p.trainer.user.id,
+          targetUserId,
           'NEW_CLIENT_INVITE_ACCEPTED',
           { clientName: user.name ?? 'A new client', dogName: p.dog?.name ?? 'their dog' },
           `/clients/${p.id}`,
+          p.trainerId,
         )
       }
     } catch (err) {

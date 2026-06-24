@@ -112,7 +112,7 @@ export async function GET(req: Request) {
     }
 
     // Email channel — gated by its own per-type toggle inside the helper.
-    await sendTrainerEmail(u.id, 'STREAK_UPDATE', subs, `${APP_URL}/dashboard`)
+    await sendTrainerEmail(u.id, 'STREAK_UPDATE', subs, `${APP_URL}/dashboard`, trainerId)
   }
 
 

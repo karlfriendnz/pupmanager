@@ -125,7 +125,9 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                 <p className="text-xs text-slate-500 mb-1">
                   {m.createdAt.toLocaleString()} · {m.subject}
                 </p>
-                <p className="text-sm text-slate-700 whitespace-pre-wrap">{m.bodyText}</p>
+                {m.bodyHtml
+                  ? <div className="tiptap-body tiptap-light text-sm text-slate-700" dangerouslySetInnerHTML={{ __html: m.bodyHtml }} />
+                  : <p className="text-sm text-slate-700 whitespace-pre-wrap">{m.bodyText}</p>}
               </div>
             ))}
           </div>

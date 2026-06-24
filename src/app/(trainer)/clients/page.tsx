@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { UserPlus } from 'lucide-react'
 import { ClientsList } from './clients-list'
 import { WaitlistView } from './waitlist-view'
+import { QuickAddContact } from './quick-add-contact'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
@@ -14,7 +15,7 @@ export const metadata: Metadata = { title: 'Clients' }
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ tab?: string; q?: string; scope?: string }>
 }) {
   const ctx = await getTrainerContext()
   if (!ctx) redirect('/login')
@@ -251,12 +252,15 @@ export default async function ClientsPage({
         title="Clients"
         subtitle={`${newCount > 0 ? `${newCount} new · ` : ''}${activeCount} active · ${inactiveCount} inactive`}
         actions={
-          <Link href="/clients/invite">
-            <Button size="sm">
-              <UserPlus className="h-4 w-4" />
-              <span className="hidden sm:inline">Create new client</span>
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <QuickAddContact />
+            <Link href="/clients/invite">
+              <Button size="sm">
+                <UserPlus className="h-4 w-4" />
+                <span className="hidden sm:inline">Create new client</span>
+              </Button>
+            </Link>
+          </div>
         }
       />
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
@@ -316,6 +320,7 @@ export default async function ClientsPage({
         />
       ) : (
         <ClientsList
+          key={`${sp.q ?? ''}|${sp.scope ?? ''}`}
           clients={flatClients}
           tab={tab as 'new' | 'active' | 'inactive'}
           columns={clientListColumns}
@@ -323,6 +328,8 @@ export default async function ClientsPage({
           customValues={customValueMap}
           groupBy={clientListGroupBy}
           tz={tz}
+          initialQuery={sp.q}
+          searchScope={(['client', 'breed', 'dog'].includes(sp.scope ?? '') ? sp.scope : 'all') as 'all' | 'client' | 'breed' | 'dog'}
         />
       )}
       </div>

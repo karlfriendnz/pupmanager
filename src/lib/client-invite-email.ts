@@ -4,6 +4,7 @@
 // the design in one place.
 
 import { escapeHtml } from './enquiries'
+import { emailBodyToHtml, emailHtmlToText } from './email-html'
 
 export interface ClientInviteEmailArgs {
   clientName: string
@@ -54,10 +55,9 @@ export function renderClientInviteEmail(args: ClientInviteEmailArgs): RenderedCl
     ? trainer.emailAccentColor
     : DEFAULT_ACCENT
 
-  const htmlBody = personalised
-    .split(/\n{2,}/)
-    .map(para => `<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#0f172a;">${escapeHtml(para).replace(/\n/g, '<br />')}</p>`)
-    .join('')
+  // Template is rich-text HTML from the editor (or a legacy plain-text default);
+  // emailBodyToHtml sanitizes/​inlines either form.
+  const htmlBody = emailBodyToHtml(personalised)
 
   const safeBusiness = escapeHtml(businessName)
   const safeDisplay = escapeHtml(displayName)
@@ -119,7 +119,7 @@ export function renderClientInviteEmail(args: ClientInviteEmailArgs): RenderedCl
   return {
     subject: `You've been invited to ${businessName} on PupManager`,
     html,
-    text: `${personalised}\n\nJoin ${businessName}: ${inviteUrl}`,
+    text: `${emailHtmlToText(personalised)}\n\nJoin ${businessName}: ${inviteUrl}`,
     displayName,
     trainerEmail,
   }

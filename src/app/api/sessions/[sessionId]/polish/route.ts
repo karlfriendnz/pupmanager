@@ -16,7 +16,7 @@ const schema = z.object({
 
 interface BasicQuestion {
   id: string
-  type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'
+  type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5' | 'DROPDOWN' | 'RADIO' | 'CHECKBOX'
   label: string
   required?: boolean
 }
@@ -77,8 +77,9 @@ export async function POST(
   // Build the polish targets — only fields the trainer has actually written
   // something into. No need to spend tokens polishing blanks, ratings, or
   // numbers (which polishing would mangle).
+  const NON_PROSE = new Set(['NUMBER', 'RATING_1_5', 'DROPDOWN', 'RADIO', 'CHECKBOX'])
   const targets = questions
-    .filter(q => q.type !== 'NUMBER' && q.type !== 'RATING_1_5')
+    .filter(q => !NON_PROSE.has(q.type))
     .map(q => {
       const id = q.id
       const value = parsed.data.answers[id] ?? ''

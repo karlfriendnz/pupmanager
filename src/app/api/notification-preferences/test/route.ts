@@ -7,6 +7,7 @@ import { sendEmail } from '@/lib/email'
 import { NOTIFICATION_TYPES, renderTemplate } from '@/lib/notification-types'
 import { resolvePref } from '@/lib/notification-prefs'
 import { escapeHtml } from '@/lib/enquiries'
+import { emailBodyToHtml, emailHtmlToText } from '@/lib/email-html'
 import { renderWeeklySummaryEmail, type SessionRow, type TaskRow } from '@/lib/weekly-summary-email'
 import type { NotificationType } from '@/generated/prisma'
 
@@ -21,7 +22,7 @@ const schema = z.object({
   type: z.string(),
   channel: z.enum(['PUSH', 'EMAIL']),
   customTitle: z.string().max(200).optional(),
-  customBody: z.string().max(500).optional(),
+  customBody: z.string().max(20_000).optional(), // EMAIL bodies may be rich-text HTML
 })
 
 export async function POST(req: Request) {
@@ -79,7 +80,7 @@ export async function POST(req: Request) {
         await sendEmail({
           to: user.email,
           subject,
-          text: `${title}\n\n${body}\n\nThis is a test of the "${meta.label}" notification email. Real notifications won't have the [Test] prefix.`,
+          text: `${title}\n\n${emailHtmlToText(body)}\n\nThis is a test of the "${meta.label}" notification email. Real notifications won't have the [Test] prefix.`,
           html,
         })
       } catch (err) {
@@ -166,7 +167,7 @@ function renderTestEmailHtml({ label, title, body, recipientName }: {
               </div>
               <div style="padding:0 32px 8px;">
                 <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#0f172a;line-height:1.2;">${escapeHtml(title)}</h1>
-                <p style="margin:0;font-size:16px;line-height:1.6;color:#0f172a;">${escapeHtml(body).replace(/\n/g, '<br />')}</p>
+                <div style="font-size:16px;line-height:1.6;color:#0f172a;">${emailBodyToHtml(body)}</div>
               </div>
               <div style="padding:24px 32px 32px;">
                 <a href="${APP_URL}/settings#notifications" style="display:inline-block;padding:10px 18px;border-radius:10px;background:#0f172a;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;">Notification settings</a>

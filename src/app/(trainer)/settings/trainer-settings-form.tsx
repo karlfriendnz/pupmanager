@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { Accordion, AccordionItem } from '@/components/ui/accordion'
 import { BrandPreview } from '@/components/brand-preview'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { TIMEZONES } from '@/lib/timezones'
 import { ImagePlus, Loader2 } from 'lucide-react'
 
@@ -21,6 +22,8 @@ const businessSchema = z.object({
     .min(2, 'Business name is required')
     .refine(s => s.trim().toLowerCase() !== 'my business', { message: 'Please enter your real business name' }),
   phone: z.string().min(5, 'Phone number is required'),
+  showPhoneToClients: z.boolean().optional(),
+  publicEmail: z.union([z.string().email('Enter a valid email'), z.literal('')]).optional(),
   timezone: z.string().min(1, 'Timezone is required'),
 })
 
@@ -58,16 +61,12 @@ export function TrainerSettingsForm({
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string }
-  profile: { businessName: string; phone: string | null; logoUrl: string | null; dashboardBgUrl: string | null; inviteTemplate: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; publicEmail: string | null; logoUrl: string | null; dashboardBgUrl: string | null; inviteTemplate: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null }
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
   const [designMsg, setDesignMsg] = useState<string | null>(null)
   const [templateMsg, setTemplateMsg] = useState<string | null>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [deletePassword, setDeletePassword] = useState('')
-  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const businessForm = useForm<BusinessData>({
     resolver: zodResolver(businessSchema),
@@ -76,6 +75,8 @@ export function TrainerSettingsForm({
       email: user.email,
       businessName: profile.businessName,
       phone: profile.phone ?? '',
+      showPhoneToClients: profile.showPhoneToClients,
+      publicEmail: profile.publicEmail ?? '',
       timezone: user.timezone,
     },
   })
@@ -131,7 +132,7 @@ export function TrainerSettingsForm({
     setBusinessMsg(null)
     const [r1, r2] = await Promise.all([
       fetch('/api/user', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: data.name, timezone: data.timezone }) }),
-      fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone }) }),
+      fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, showPhoneToClients: data.showPhoneToClients ?? false, publicEmail: data.publicEmail ?? '' }) }),
     ])
     setBusinessMsg(r1.ok && r2.ok ? 'Saved!' : 'Failed to save.')
     router.refresh()
@@ -164,30 +165,6 @@ export function TrainerSettingsForm({
     setTemplateMsg(res.ok ? 'Saved!' : 'Failed to save.')
   }
 
-  async function deleteAccount() {
-    setDeleting(true)
-    setDeleteError(null)
-    try {
-      const res = await fetch('/api/user/delete', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        // Password re-auth for credential accounts; the confirm word covers
-        // OAuth-only accounts that have no password to check.
-        body: JSON.stringify({ password: deletePassword, confirm: 'DELETE' }),
-      })
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}))
-        setDeleteError(typeof b.error === 'string' ? b.error : 'Could not delete your account.')
-        setDeleting(false)
-        return
-      }
-      router.push('/login')
-    } catch {
-      setDeleteError('Could not delete your account.')
-      setDeleting(false)
-    }
-  }
-
   return (
     <Accordion>
       {/* Business details */}
@@ -198,6 +175,23 @@ export function TrainerSettingsForm({
           <Input label="Email address *" type="email" disabled error={businessForm.formState.errors.email?.message} {...businessForm.register('email')} />
           <Input label="Business name *" error={businessForm.formState.errors.businessName?.message} {...businessForm.register('businessName')} />
           <Input label="Phone number *" type="tel" error={businessForm.formState.errors.phone?.message} {...businessForm.register('phone')} />
+
+          <label className="flex items-start gap-2 text-sm text-slate-600 -mt-1">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              {...businessForm.register('showPhoneToClients')}
+            />
+            <span>Show my phone number to clients (on the in-app Help page and &ldquo;Call&rdquo; button). Leave unticked to keep it private.</span>
+          </label>
+
+          <Input
+            label="Business email"
+            type="email"
+            hint="Shown to clients as your business contact. Separate from your sign-in email above. Leave blank to skip."
+            error={businessForm.formState.errors.publicEmail?.message}
+            {...businessForm.register('publicEmail')}
+          />
 
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">Timezone *</label>
@@ -398,47 +392,17 @@ export function TrainerSettingsForm({
         </p>
         {templateMsg && <Alert variant={templateMsg === 'Saved!' ? 'success' : 'error'} className="mb-3">{templateMsg}</Alert>}
         <form onSubmit={templateForm.handleSubmit(saveTemplate)} className="flex flex-col gap-4">
-          <textarea
-            rows={8}
-            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-            {...templateForm.register('inviteTemplate')}
+          <RichTextEditor
+            theme="light"
+            minHeight={200}
+            value={templateForm.watch('inviteTemplate') ?? ''}
+            onChange={html => templateForm.setValue('inviteTemplate', html, { shouldDirty: true, shouldValidate: true })}
           />
           {templateForm.formState.errors.inviteTemplate && (
             <p className="text-xs text-red-500">{templateForm.formState.errors.inviteTemplate.message}</p>
           )}
           <Button type="submit" size="sm" className="self-start" loading={templateForm.formState.isSubmitting}>Save template</Button>
         </form>
-      </AccordionItem>
-
-      {/* Account deletion */}
-      <AccordionItem title="Danger zone" subtitle="Permanently delete your account" danger>
-        <p className="text-sm text-slate-500 mb-4">
-          Deleting your account is permanent and will remove all your data including your client roster.
-        </p>
-        {!deleteConfirm ? (
-          <Button variant="danger" size="sm" onClick={() => setDeleteConfirm(true)}>
-            Delete my account
-          </Button>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <Alert variant="error">Your account will be deactivated immediately and permanently deleted after 30 days. Enter your password to confirm.</Alert>
-            <Input
-              type="password"
-              label="Your password"
-              placeholder="Enter your password"
-              value={deletePassword}
-              onChange={e => setDeletePassword(e.target.value)}
-            />
-            {deleteError && <Alert variant="error">{deleteError}</Alert>}
-            <div className="flex gap-2">
-              <Button variant="danger" size="sm" loading={deleting} onClick={deleteAccount}>
-                Yes, delete my account
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => { setDeleteConfirm(false); setDeleteError(null); setDeletePassword('') }}>Cancel</Button>
-            </div>
-            <a href="/api/account/export" className="text-xs font-medium text-blue-600 hover:underline">Download a copy of your data first</a>
-          </div>
-        )}
       </AccordionItem>
     </Accordion>
   )

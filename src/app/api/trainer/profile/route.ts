@@ -10,6 +10,7 @@ const patchSchema = z.object({
   // Public client-login slug. Normalised + uniqueness-checked below.
   slug: z.string().max(60).optional(),
   phone: z.string().optional(),
+  showPhoneToClients: z.boolean().optional(),
   logoUrl: z.string().url().optional().or(z.literal('')),
   website: z.string().max(200).optional().or(z.literal('')),
   publicEmail: z.string().max(200).optional().or(z.literal('')),
@@ -56,6 +57,12 @@ const patchSchema = z.object({
     email: z.string().nullable().optional(),
     phone: z.string().nullable().optional(),
   }).optional(),
+  // Per-company required/quick-add flags for the built-in client/dog fields
+  // (see src/lib/client-fields.ts). The config UI sends the whole object.
+  clientFieldConfig: z.record(
+    z.string(),
+    z.object({ required: z.boolean().optional(), quickAdd: z.boolean().optional() }),
+  ).optional(),
 })
 
 export async function GET() {

@@ -8,7 +8,10 @@ import { z } from 'zod'
 const schema = z.object({
   businessName: z.string().min(2, 'Business name is required'),
   name: z.string().min(2, 'Your name is required'),
+  phone: z.string().trim().min(6, 'Phone number is required'),
+  showPhoneToClients: z.boolean().optional(),
   email: z.string().email('Enter a valid email'),
+  publicEmail: z.union([z.string().email('Enter a valid email'), z.literal('')]).optional(),
   password: z.string().min(8, 'At least 8 characters'),
   promoCode: z.string().optional(),
 })
@@ -80,11 +83,39 @@ export function SignupForm({ planId: _planId, planName, perSeatPrice, purchasabl
         />
       </Field>
 
-      <Field label="Email" error={errors.email?.message}>
+      <Field label="Phone number" error={errors.phone?.message}>
+        <input
+          {...register('phone')}
+          type="tel"
+          placeholder="021 234 5678"
+          autoComplete="tel"
+          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <label className="mt-2 flex items-start gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            {...register('showPhoneToClients')}
+          />
+          <span>Show my phone number to clients. Leave unticked to keep it private.</span>
+        </label>
+      </Field>
+
+      <Field label="Your email" error={errors.email?.message} hint="You'll use this to sign in. Kept private — not shown to clients.">
         <input
           {...register('email')}
           type="email"
           placeholder="you@yourbusiness.com"
+          autoComplete="email"
+          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </Field>
+
+      <Field label="Business email (optional)" error={errors.publicEmail?.message} hint="Shown to clients as your business contact. Leave blank to skip.">
+        <input
+          {...register('publicEmail')}
+          type="email"
+          placeholder="hello@yourbusiness.com"
           autoComplete="email"
           className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />

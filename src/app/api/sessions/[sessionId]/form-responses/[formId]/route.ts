@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext, type TrainerContext } from '@/lib/membership'
 import { accessibleSessionWhere } from '@/lib/session-access'
-import { notifyClient } from '@/lib/client-notify'
 import { z } from 'zod'
 
 const upsertSchema = z.object({
@@ -91,10 +90,10 @@ export async function PUT(
   const introMessage = parsed.data.introMessage ?? null
   const closingMessage = parsed.data.closingMessage ?? null
 
-  // Notify the client only the first time a recap lands for this session+form,
-  // not on every edit.
-  const wasNew = !(await prisma.sessionFormResponse.findUnique({ where: { sessionId_formId: { sessionId, formId } }, select: { id: true } }))
-
+  // Saving only ever writes a DRAFT — it never notifies the client and never
+  // stamps sentAt. The client sees nothing until the trainer explicitly sends
+  // the recap (single or bulk) from the Draft notes screen. An edit to an
+  // already-sent note leaves sentAt untouched (still sent, no re-notify).
   await prisma.$transaction(async (tx) => {
     await tx.sessionFormResponse.upsert({
       where: { sessionId_formId: { sessionId, formId } },
@@ -149,28 +148,6 @@ export async function PUT(
   const response = await prisma.sessionFormResponse.findUnique({
     where: { sessionId_formId: { sessionId, formId } },
   })
-
-  // "Your recap is ready" — first save only, to the session's client.
-  if (wasNew && clientId) {
-    const [sess, trainer] = await Promise.all([
-      prisma.trainingSession.findUnique({ where: { id: sessionId }, select: { title: true, dog: { select: { name: true } }, client: { select: { userId: true } } } }),
-      prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { name: true } } } }),
-    ])
-    if (sess?.client?.userId) {
-      await notifyClient({
-        userId: sess.client.userId,
-        trainerId,
-        type: 'CLIENT_RECAP_READY',
-        vars: {
-          trainerName: trainer?.user?.name ?? trainer?.businessName ?? 'Your trainer',
-          dogName: sess.dog?.name ?? 'your dog',
-          planName: sess.title,
-        },
-        link: `/my-sessions/${sessionId}`,
-        ctaLabel: 'See your recap',
-      })
-    }
-  }
 
   return NextResponse.json(response)
 }

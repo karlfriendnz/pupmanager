@@ -2,10 +2,18 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTrainerContext } from '@/lib/membership'
 import { NOTIFICATION_TYPES } from '@/lib/notification-types'
 import type { NotificationType, NotificationChannel } from '@/generated/prisma'
 
 export const runtime = 'nodejs'
+
+// Trainer-audience prefs are scoped to the active organisation (a multi-org
+// trainer tunes each org independently); client-audience prefs stay global
+// (companyId null). Returns the company a given type's prefs live under.
+function prefCompanyId(type: NotificationType, activeCompanyId: string | null): string | null {
+  return NOTIFICATION_TYPES[type]?.audience === 'client' ? null : activeCompanyId
+}
 
 // GET — return one row per (type, channel) the user is allowed to see, with
 // stored values overlaid on defaults. Settings UI hydrates from this.
@@ -14,15 +22,20 @@ export async function GET() {
     const session = await auth()
     if (!session) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
+    const ctx = await getTrainerContext()
+    const activeCompanyId = ctx?.companyId ?? null
+
     const stored = await prisma.notificationPreference.findMany({
       where: { userId: session.user.id },
     })
-    const key = (t: string, c: string) => `${t}:${c}`
-    const byKey = new Map(stored.map(s => [key(s.type, s.channel), s]))
+    // Prefer the active-org row, fall back to the user's global (null) row.
+    const pick = (t: string, c: string, companyId: string | null) =>
+      stored.find(s => s.type === t && s.channel === c && s.companyId === companyId)
+      ?? stored.find(s => s.type === t && s.channel === c && s.companyId === null)
 
     const rows = Object.values(NOTIFICATION_TYPES).flatMap(meta =>
       meta.channels.map(channel => {
-        const s = byKey.get(key(meta.type, channel))
+        const s = pick(meta.type, channel, prefCompanyId(meta.type, activeCompanyId))
         return {
           type: meta.type,
           channel,
@@ -54,7 +67,9 @@ const updateSchema = z.object({
   leadMinutes: z.array(z.number().int().min(1).max(7 * 24 * 60)).optional(),
   dailyAtHour: z.number().int().min(0).max(23).nullable().optional(),
   customTitle: z.string().max(200).nullable().optional(),
-  customBody: z.string().max(500).nullable().optional(),
+  // EMAIL-channel bodies may hold rich-text HTML, which is larger than the
+  // old plain-text limit. PUSH bodies stay short but share this schema.
+  customBody: z.string().max(20_000).nullable().optional(),
 })
 
 // PUT — upsert a single (type, channel) preference. Sending null for a
@@ -75,7 +90,8 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Channel not supported for this type' }, { status: 400 })
     }
 
-    const where = { userId_type_channel: { userId: session.user.id, type: data.type as NotificationType, channel: data.channel as NotificationChannel } }
+    const ctx = await getTrainerContext()
+    const companyId = prefCompanyId(data.type as NotificationType, ctx?.companyId ?? null)
     const writable = {
       enabled: data.enabled ?? meta.defaults.enabled,
       minutesBefore: data.minutesBefore ?? null,
@@ -85,11 +101,17 @@ export async function PUT(req: Request) {
       customBody: data.customBody ?? null,
     }
 
-    const saved = await prisma.notificationPreference.upsert({
-      where,
-      create: { userId: session.user.id, type: data.type as NotificationType, channel: data.channel as NotificationChannel, ...writable },
-      update: writable,
+    // findFirst + update/create rather than upsert: the unique key includes a
+    // nullable companyId, which Prisma's compound-unique `where` can't target.
+    const existing = await prisma.notificationPreference.findFirst({
+      where: { userId: session.user.id, companyId, type: data.type as NotificationType, channel: data.channel as NotificationChannel },
+      select: { id: true },
     })
+    const saved = existing
+      ? await prisma.notificationPreference.update({ where: { id: existing.id }, data: writable })
+      : await prisma.notificationPreference.create({
+          data: { userId: session.user.id, companyId, type: data.type as NotificationType, channel: data.channel as NotificationChannel, ...writable },
+        })
 
     return NextResponse.json({ ok: true, preference: saved })
   } catch (err) {
