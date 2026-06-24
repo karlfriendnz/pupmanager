@@ -106,6 +106,11 @@ model User {
   // /admin/trainers; we never hard-delete trainer accounts.
   deactivatedAt DateTime?
 
+  // Timestamp of the most recent successful sign-in (any provider). Updated by
+  // the NextAuth signIn event. Null = never signed in since this was added.
+  // Surfaced in the admin trainers table as "Last seen".
+  lastLoginAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -174,6 +179,11 @@ enum NotificationChannel {
 model NotificationPreference {
   id            String              @id @default(cuid())
   userId        String
+  // The organisation this preference applies to, for trainers who belong to
+  // more than one. Null = the user's global/default row (also what every
+  // pre-multi-org row is): the fallback when no per-org override exists, and
+  // the only row client-audience prefs ever use.
+  companyId     String?
   type          NotificationType
   channel       NotificationChannel
   enabled       Boolean             @default(true)
@@ -188,7 +198,10 @@ model NotificationPreference {
   // sender substitutes (e.g. {{dogName}}, {{startTime}}, {{count}}). Null
   // values fall back to the type's default template.
   customTitle   String?
-  customBody    String?
+  // Body override. For EMAIL-channel rows this may hold sanitized rich-text
+  // HTML (authored in the editor); PUSH-channel rows stay plain text. Senders
+  // convert HTML→text for push. @db.Text to fit formatted markup.
+  customBody    String?             @db.Text
   // For DAILY_SUMMARY: when the trainer has zero sessions booked, swap
   // the morning digest for a warm "you can take the day off" message
   // instead of "0 sessions today" copy. Default true so existing
@@ -197,7 +210,7 @@ model NotificationPreference {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, type, channel])
+  @@unique([userId, companyId, type, channel])
   @@index([userId])
   @@map("notification_preferences")
 }
@@ -270,7 +283,15 @@ model TrainerProfile {
   // (app.pupmanager.com/c/<slug>). Generated from businessName on demand,
   // editable in settings. Nullable until first generated.
   slug              String? @unique
+  // The trainer's phone number — always on file (required at signup, enforced by
+  // the (trainer) layout gate). Shown to clients (my-help page + in-app "Call"
+  // button) ONLY when showPhoneToClients is true.
   phone             String?
+  // Opt-in: whether `phone` is shown to clients. Default false = private (kept
+  // for PupManager/ops only); the trainer ticks a box to publish it. Backfilled
+  // true for accounts that had a phone before this flag existed, to preserve
+  // their prior always-shown behaviour.
+  showPhoneToClients Boolean @default(false)
   logoUrl           String?
   website           String? // public website URL, shown to clients as a link in the app header
   publicEmail       String? // public contact email shown to clients (may differ from login email)
@@ -322,6 +343,14 @@ model TrainerProfile {
   // because the system fields aren't custom fields — they back real
   // columns on User/ClientProfile.
   intakeSystemFieldSections Json    @default("{}")
+  // Per-company config for the built-in client/dog fields when CREATING a
+  // client (the full create form + the quick-add contact form). Shape:
+  // { "<fieldKey>": { required?: boolean, quickAdd?: boolean } } where fieldKey
+  // is one of name|email|phone|address|dogName|dogBreed|dogWeight|dogDob|dogNotes.
+  // `required` = required in the full create form; `quickAdd` = shown in (and
+  // required for) the quick-add form. Missing keys fall back to the defaults in
+  // src/lib/client-fields.ts. Custom fields carry their own required/inQuickAdd.
+  clientFieldConfig         Json    @default("{}")
   // Trainer-chosen visible columns on /clients. Allowed ids:
   // "email" | "dog" | "breed" | "extraDogs" | "nextSession" | "compliance" | "shared" | "custom:<id>"
   clientListColumns         Json    @default("[\"email\",\"dog\",\"nextSession\",\"compliance\"]")
@@ -403,22 +432,22 @@ model TrainerProfile {
   // Checkout (destination charge), Stripe takes our application fee and pays
   // the trainer out. None of the stripeCustomerId/stripeSubscriptionId fields
   // above are involved — those are the trainer's subscription TO PupManager.
-  connectAccountId        String?   @unique // acct_… (Express). Null = not started.
-  connectChargesEnabled   Boolean   @default(false) // mirrors account.charges_enabled
-  connectPayoutsEnabled   Boolean   @default(false) // mirrors account.payouts_enabled
-  connectDetailsSubmitted Boolean   @default(false) // account.details_submitted (KYC done)
-  connectOnboardedAt      DateTime? // first time charges + payouts both true
+  connectAccountId          String?   @unique // acct_… (Express). Null = not started.
+  connectChargesEnabled     Boolean   @default(false) // mirrors account.charges_enabled
+  connectPayoutsEnabled     Boolean   @default(false) // mirrors account.payouts_enabled
+  connectDetailsSubmitted   Boolean   @default(false) // account.details_submitted (KYC done)
+  connectOnboardedAt        DateTime? // first time charges + payouts both true
   // Trainer's payout / pricing currency for client payments — ISO 4217
   // lower-case (Stripe convention). Seeded from signupCountry on first onboard.
   // SEPARATE from the per-checkout currency used by the subscription flow.
-  payoutCurrency          String?
+  payoutCurrency            String?
   // Master switch the trainer flips once onboarded — lets them connect but keep
   // prices display-only until they're ready to actually take payments.
-  acceptPaymentsEnabled   Boolean   @default(false)
+  acceptPaymentsEnabled     Boolean   @default(false)
   // When true, the card processing fee is added on top of the price at checkout
   // (the client pays it) instead of being absorbed by the trainer, so the
   // trainer nets the full amount. On by default — trainers can opt out.
-  passProcessingFeeToClient Boolean @default(true)
+  passProcessingFeeToClient Boolean   @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -435,6 +464,9 @@ model TrainerProfile {
   libraryTypes       LibraryType[]
   embedForms         EmbedForm[]
   enquiries          Enquiry[]
+  emailTemplates     EmailTemplate[]
+  timeRates          TimeRate[]
+  timesheets         Timesheet[]
   sentNotifications  ClientNotification[]
   availabilitySlots  AvailabilitySlot[]
   blackoutPeriods    BlackoutPeriod[]
@@ -518,10 +550,116 @@ model TrainerMembership {
   assignedSessions TrainingSession[] @relation("AssignedTrainer")
   assignedClients  ClientProfile[]   @relation("AssignedTrainer")
 
+  // Time this member has logged against sessions (billable hours).
+  timeEntries SessionTimeEntry[] @relation("TimeEntryMember")
+
   @@unique([companyId, userId])
   @@index([companyId])
   @@index([userId])
   @@map("trainer_memberships")
+}
+
+// Per-member time logged against a single session — billable hours. Several
+// members can each log time on the same session ("Sam logged 1.5h, Sally 0.5h").
+// minutes is the duration; rateCents is the hourly rate used to bill it (null =
+// not billable / rate not set). loggedById records who entered it (audit only).
+model SessionTimeEntry {
+  id           String  @id @default(cuid())
+  sessionId    String
+  membershipId String // whose time this is → TrainerMembership.id
+  minutes      Int // duration in minutes
+  rateCents    Int? // hourly rate in cents; null = non-billable
+  note         String? @db.Text
+  loggedById   String? // membership that recorded the entry (audit, no FK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session    TrainingSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  membership TrainerMembership @relation("TimeEntryMember", fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([membershipId])
+  @@map("session_time_entries")
+}
+
+// ─── Timesheets ──────────────────────────────────────────────────────────────
+
+// A named, reusable hourly rate the business defines (e.g. "Training" $80/hr,
+// "Travel" $40/hr). Time entries pick one; the entry snapshots the rate so
+// editing/archiving a rate later doesn't rewrite finalised timesheets.
+model TimeRate {
+  id         String    @id @default(cuid())
+  companyId  String // → TrainerProfile.id
+  name       String
+  rateCents  Int // hourly rate in cents (company currency)
+  archivedAt DateTime? // hidden from new pickers but kept for history
+  sortOrder  Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company TrainerProfile @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entries TimeEntry[]
+
+  @@index([companyId])
+  @@map("time_rates")
+}
+
+// A weekly timesheet owned by one staff member. DRAFT while editable; FINALISED
+// locks the entries and stamps finalisedAt. recipientEmail/sentAt track the
+// emailed PDF (defaults to the company owner on send).
+model Timesheet {
+  id             String    @id @default(cuid())
+  companyId      String // → TrainerProfile.id (tenant)
+  userId         String // → User.id (whose timesheet — owner or staff member)
+  weekStart      DateTime  @db.Date // Monday of the week (date only)
+  title          String?
+  status         String    @default("DRAFT") // "DRAFT" | "FINALISED"
+  notes          String?   @db.Text
+  recipientEmail String?
+  finalisedAt    DateTime?
+  sentAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company TrainerProfile @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entries TimeEntry[]
+
+  @@index([companyId, userId, weekStart])
+  @@map("timesheets")
+}
+
+// One line on a timesheet: a dated task with a duration and (optional) rate.
+// minutes is the duration source of truth; rateCents/rateName snapshot the
+// chosen TimeRate; amountCents = round(minutes/60 * rateCents) (or a manual
+// amount). Optionally tied to a client.
+model TimeEntry {
+  id          String  @id @default(cuid())
+  timesheetId String
+  date        DateTime @db.Date
+  task        String
+  minutes     Int      @default(0)
+  rateId      String? // → TimeRate.id (null = manual/no rate)
+  rateName    String? // snapshot of the rate name at entry time
+  rateCents   Int? // snapshot of the hourly rate in cents
+  amountCents Int      @default(0) // computed (or manually overridden) line total
+  clientId    String? // → ClientProfile.id (optional association)
+  category    String?
+  notes       String? @db.Text
+  sortOrder   Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  timesheet Timesheet      @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
+  rate      TimeRate?      @relation(fields: [rateId], references: [id], onDelete: SetNull)
+  client    ClientProfile? @relation("ClientTimeEntries", fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([timesheetId])
+  @@index([clientId])
+  @@map("time_entries")
 }
 
 // ─── Client & Dog ────────────────────────────────────────────────────────────
@@ -578,6 +716,7 @@ model ClientProfile {
   messages          Message[]            @relation("ClientMessages")
   customFieldValues CustomFieldValue[]
   dogs              Dog[]                @relation("AdditionalDogs")
+  timeEntries       TimeEntry[]          @relation("ClientTimeEntries")
   notifications     ClientNotification[]
   clientPackages    ClientPackage[]
   productRequests   ProductRequest[]
@@ -778,6 +917,7 @@ model TrainingSession {
   bookingPage              BookingPage?            @relation(fields: [bookingPageId], references: [id], onDelete: SetNull)
   automationSends          BookingAutomationSend[]
   paymentItem              PaymentItem?
+  timeEntries              SessionTimeEntry[]
 
   @@index([trainerId])
   @@index([assignedMembershipId])
@@ -1101,6 +1241,9 @@ model SessionAttendance {
   // own form"): { formId, answers: {qid:val}, images: {qid:[url]}, intro,
   // closing }. Null = not written yet.
   report       Json?
+  // Draft vs sent for the report above. Null = saved draft, not yet visible to
+  // the client; set = recap sent (client notified + visible).
+  reportSentAt DateTime?
   markedAt     DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -1297,6 +1440,11 @@ model SessionFormResponse {
   introMessage     String? @db.Text
   closingMessage   String? @db.Text
 
+  // Draft vs sent. Null = the trainer has saved a draft the client cannot see
+  // yet. Set = the recap has been sent (client notified + visible). Saving a
+  // note leaves this null; the explicit "send" action stamps it.
+  sentAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1349,6 +1497,9 @@ model Message {
   clientId            String // the client this message thread relates to
   senderId            String
   body                String         @db.Text
+  // Sanitized HTML body for messages composed in the rich-text editor (e.g. an
+  // emailed announcement logged to the thread). Null = plain `body` only.
+  bodyHtml            String?        @db.Text
   readAt              DateTime?
   // Set once the deferred-email fallback has been sent (or deliberately skipped)
   // for this message, so the message-email-fallback cron never double-emails.
@@ -1407,6 +1558,9 @@ model CustomField {
   label     String
   type      CustomFieldType
   required  Boolean         @default(false)
+  // Whether this field appears in (and is required for) the quick-add contact
+  // form. `required` above governs the full create form / intake.
+  inQuickAdd Boolean        @default(false)
   options   Json? // string[] for DROPDOWN
   order     Int             @default(0)
   category  String? // optional grouping label
@@ -2075,6 +2229,9 @@ model EnquiryMessage {
   direction    String   @default("OUTBOUND") // "OUTBOUND" | "INBOUND"
   subject      String
   bodyText     String   @db.Text
+  // Rich-text (sanitized HTML) version of the body composed in the editor.
+  // Null for legacy/plain or inbound messages; bodyText stays the plain fallback.
+  bodyHtml     String?  @db.Text
   // Trainer (User) who composed and sent this. Null if system-generated.
   sentByUserId String?
   createdAt    DateTime @default(now())
@@ -2149,6 +2306,29 @@ model OnboardingEmail {
   updatedAt DateTime @updatedAt
 
   @@map("onboarding_emails")
+}
+
+// Trainer-owned, reusable email templates the trainer composes from when
+// emailing clients (e.g. from the Messages composer). The body is sanitized
+// rich-text HTML authored in the editor; subject/body support {{placeholders}}
+// the composer resolves per recipient (e.g. {{clientName}}, {{trainerName}},
+// {{businessName}}, {{dogName}}). `category` is an optional grouping label.
+model EmailTemplate {
+  id        String  @id @default(cuid())
+  trainerId String
+  name      String
+  category  String?
+  subject   String  @db.Text
+  body      String  @db.Text
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId, sortOrder])
+  @@map("email_templates")
 }
 
 // One row per trainer, created on first dashboard load. ahaReachedAt fires
