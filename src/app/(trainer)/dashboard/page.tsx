@@ -14,6 +14,7 @@ import { StreakChip } from '@/components/shared/streak-chip'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { OnboardingPanel } from './onboarding-panel'
 import { SampleDataBanner } from './sample-data-banner'
+import { CountryPrompt } from './country-prompt'
 import { TrialBanner } from '../trial-banner'
 import { initTrainerOnboarding } from '@/lib/onboarding/init'
 import { getOnboardingState } from '@/lib/onboarding/state'
@@ -58,7 +59,7 @@ export default async function DashboardPage({
     where: { id: trainerId },
     select: {
       businessName: true, logoUrl: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true,
-      clientWelcomeNote: true, website: true, phone: true, publicEmail: true,
+      clientWelcomeNote: true, website: true, phone: true, publicEmail: true, signupCountry: true,
       subscriptionStatus: true, trialEndsAt: true, stripeSubscriptionId: true,
       user: { select: { email: true } },
     },
@@ -257,6 +258,9 @@ export default async function DashboardPage({
         }
       />
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
+        {/* iOS/Android only: prompt for a country when we couldn't capture it
+            from the IP at signup. Hidden on web and once one is set. */}
+        <CountryPrompt hasCountry={!!brandingProfile?.signupCountry} />
         {/* While sample data is loaded the account looks set up, so show the
             "remove sample data" strip at the top and hide the get-set-up
             onboarding. Removing the sample data brings the onboarding back. */}

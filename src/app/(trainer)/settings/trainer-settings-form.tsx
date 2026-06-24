@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
+import { COUNTRIES } from '@/lib/countries'
 import { Accordion, AccordionItem } from '@/components/ui/accordion'
 import { BrandPreview } from '@/components/brand-preview'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
@@ -24,6 +25,7 @@ const businessSchema = z.object({
   phone: z.string().min(5, 'Phone number is required'),
   showPhoneToClients: z.boolean().optional(),
   publicEmail: z.union([z.string().email('Enter a valid email'), z.literal('')]).optional(),
+  signupCountry: z.string().optional(),
   timezone: z.string().min(1, 'Timezone is required'),
 })
 
@@ -61,7 +63,7 @@ export function TrainerSettingsForm({
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; publicEmail: string | null; logoUrl: string | null; dashboardBgUrl: string | null; inviteTemplate: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; dashboardBgUrl: string | null; inviteTemplate: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null }
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
@@ -77,6 +79,7 @@ export function TrainerSettingsForm({
       phone: profile.phone ?? '',
       showPhoneToClients: profile.showPhoneToClients,
       publicEmail: profile.publicEmail ?? '',
+      signupCountry: profile.signupCountry ?? '',
       timezone: user.timezone,
     },
   })
@@ -132,7 +135,7 @@ export function TrainerSettingsForm({
     setBusinessMsg(null)
     const [r1, r2] = await Promise.all([
       fetch('/api/user', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: data.name, timezone: data.timezone }) }),
-      fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, showPhoneToClients: data.showPhoneToClients ?? false, publicEmail: data.publicEmail ?? '' }) }),
+      fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, showPhoneToClients: data.showPhoneToClients ?? false, publicEmail: data.publicEmail ?? '', signupCountry: data.signupCountry ?? '' }) }),
     ])
     setBusinessMsg(r1.ok && r2.ok ? 'Saved!' : 'Failed to save.')
     router.refresh()
@@ -192,6 +195,15 @@ export function TrainerSettingsForm({
             error={businessForm.formState.errors.publicEmail?.message}
             {...businessForm.register('publicEmail')}
           />
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">Country</label>
+            <select className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" {...businessForm.register('signupCountry')}>
+              <option value="">Select your country…</option>
+              {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+            </select>
+            <p className="text-xs text-slate-500">Helps us tailor PupManager to your region. Usually set automatically — choose it here if it&apos;s missing.</p>
+          </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">Timezone *</label>

@@ -11,6 +11,9 @@ const patchSchema = z.object({
   slug: z.string().max(60).optional(),
   phone: z.string().optional(),
   showPhoneToClients: z.boolean().optional(),
+  // ISO 3166-1 alpha-2 country (e.g. "NZ"), or empty string to clear. Normally
+  // auto-set from the IP at signup, but settable here when that wasn't captured.
+  signupCountry: z.string().regex(/^[A-Za-z]{2}$/).optional().or(z.literal('')),
   logoUrl: z.string().url().optional().or(z.literal('')),
   website: z.string().max(200).optional().or(z.literal('')),
   publicEmail: z.string().max(200).optional().or(z.literal('')),
@@ -101,6 +104,8 @@ export async function PATCH(req: Request) {
   if (data.clientWelcomeNote === '') data.clientWelcomeNote = null as unknown as string
   if (data.website === '') data.website = null as unknown as string
   if (data.publicEmail === '') data.publicEmail = null as unknown as string
+  if (data.signupCountry === '') data.signupCountry = null as unknown as string
+  else if (data.signupCountry) data.signupCountry = data.signupCountry.toUpperCase()
 
   // Normalise + uniqueness-check the public client-login slug.
   if (data.slug !== undefined) {
