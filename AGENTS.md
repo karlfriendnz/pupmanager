@@ -23,6 +23,15 @@ cloned locally at `/Users/karl/pupmanager-marketing/`.
 - **Marketing site** (`pupmanager.com`): separate repo + Vercel project — see `/Users/karl/pupmanager-marketing/AGENTS.md`.
 - Both auto-deploy on push to `main`. **Never `git push` without the literal phrase "Deploy Live"** from Karl (rule tightened 2026-05-12).
 
+## Testing — ship tests WITH every feature
+
+Every new feature ships with automated tests in the same change. This is not optional.
+
+- **Unit/route logic** → `tests/unit/**/*.test.ts` (vitest). Mock Prisma with `vi.hoisted` + `vi.mock('@/lib/prisma', …)` — unit tests never touch a real DB. Security/ownership routes get a `tests/unit/security/*.test.ts` asserting tenant + permission guards. Run: `npx vitest run`.
+- **User-facing flows** → `tests/e2e/*.spec.ts` (Playwright) against the isolated embedded Postgres (`tests/e2e/global-setup.ts`, creds in `tests/e2e/test-db.ts` `SEED`). Cover the owner happy path AND a cross-tenant/permission guard. Run: `npm run test:e2e:full`. Underscore-prefixed specs (`_*.spec.ts`) are dev utilities, excluded from the suite.
+- New data a spec needs → extend `global-setup.ts` carefully (specs share one seeded DB; don't break existing counts).
+- **CI gates both** — the `Tests` workflow (`.github/workflows/tests.yml`) runs unit + full e2e on every push to `main` and on PRs. Don't merge red. The e2e job runs `next build`, so never force `NODE_ENV=development` in CI (it breaks the `/_global-error` prerender).
+
 ## Ruflo coordination
 
 Use ruflo selectively, not by default:
