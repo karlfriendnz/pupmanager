@@ -28,22 +28,25 @@ export default async function AdminTrainersPage({
 
   // Lifecycle counts cover real, active accounts: not deactivated and not
   // internal ("Ours"). Those two get their own tabs/counts.
+  // Counts are per-company (one account owner each) — a User with a
+  // TrainerProfile. Invited team members (TRAINER users with no profile) are
+  // not separate accounts and must not be counted.
   const real = { deactivatedAt: null, NOT: { trainerProfile: { isInternal: true } } }
   const [all, trial, paying, churned, ours, inactive] = await Promise.all([
-    prisma.user.count({ where: { role: 'TRAINER', ...real } }),
+    prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { isNot: null } } }),
     prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { subscriptionStatus: 'TRIALING' } } }),
     prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { subscriptionStatus: { in: ['ACTIVE', 'PAST_DUE'] } } } }),
     prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { subscriptionStatus: 'CANCELLED' } } }),
     prisma.user.count({ where: { role: 'TRAINER', deactivatedAt: null, trainerProfile: { isInternal: true } } }),
-    prisma.user.count({ where: { role: 'TRAINER', deactivatedAt: { not: null } } }),
+    prisma.user.count({ where: { role: 'TRAINER', deactivatedAt: { not: null }, trainerProfile: { isNot: null } } }),
   ])
   const counts: Record<string, number> = { all, trial, paying, churned, ours, inactive }
 
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Trainer Accounts</h1>
-        <p className="text-slate-400 text-sm mt-1">{all} trainer{all !== 1 ? 's' : ''} registered</p>
+        <h1 className="text-2xl font-bold">Businesses</h1>
+        <p className="text-slate-400 text-sm mt-1">{all} business{all !== 1 ? 'es' : ''} registered</p>
       </div>
 
       {/* Lifecycle tabs */}

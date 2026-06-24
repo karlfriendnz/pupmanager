@@ -48,6 +48,10 @@ export async function TrainersTable({
   const trainers = await prisma.user.findMany({
     where: {
       role: 'TRAINER',
+      // One row per company: only account owners (a User who owns a
+      // TrainerProfile). Invited team members are TRAINER users with no profile
+      // of their own and must not show as separate rows.
+      trainerProfile: { isNot: null },
       ...(and.length ? { AND: and } : {}),
     },
     orderBy: { createdAt: 'desc' },
@@ -64,7 +68,7 @@ export async function TrainersTable({
           gracePeriodUntil: true,
           seatCount: true,
           subscriptionPlan: { select: { name: true } },
-          _count: { select: { clients: true } },
+          _count: { select: { clients: true, members: true } },
           // Count of onboarding emails actually sent to this trainer.
           onboardingProgress: { select: { _count: { select: { emails: true } } } },
         },
@@ -142,6 +146,7 @@ export async function TrainersTable({
               onboardingEmails: t.trainerProfile?.onboardingProgress?._count?.emails ?? 0,
               gracePeriodUntil: t.trainerProfile?.gracePeriodUntil ?? null,
               seatCount: t.trainerProfile?.seatCount ?? 1,
+              seatsUsed: t.trainerProfile?._count?.members ?? 0,
               deactivatedAt: t.deactivatedAt ?? null,
               createdAt: t.createdAt,
               lastLoginAt: t.lastLoginAt ?? null,

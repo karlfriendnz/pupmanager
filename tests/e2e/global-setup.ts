@@ -85,6 +85,16 @@ export default async function globalSetup() {
       data: { companyId: profile.id, userId: staffUser.id, role: 'STAFF', acceptedAt: new Date() },
     })
 
+    // A platform ADMIN so admin-area specs (e.g. /admin/trainers) can sign in.
+    // Role ADMIN — ignored by every trainer/company-scoped query.
+    const adminHash = await bcrypt.hash(SEED.admin.password, 12)
+    await prisma.user.create({
+      data: {
+        email: SEED.admin.email, name: SEED.admin.name, role: 'ADMIN', emailVerified: new Date(),
+        accounts: { create: { type: 'credentials', provider: 'credentials', providerAccountId: adminHash } },
+      },
+    })
+
     // A sample client + dog + a package, so assigned-trainer flows have targets.
     // The client is assigned to the staff member so they can see it.
     const clientUser = await prisma.user.create({

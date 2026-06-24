@@ -46,6 +46,8 @@ type Trainer = {
   // Seat allowance — owner + invited members must fit within this. Set from the
   // edit panel regardless of subscription (handy for trialing accounts).
   seatCount: number
+  // How many seats are filled (owner + invited members) — the company's team size.
+  seatsUsed: number
   deactivatedAt: Date | string | null
   createdAt: Date
   // Most recent successful sign-in, or null if they've never logged in since we
@@ -420,7 +422,12 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           </span>
         </span>
       </td>
-      <td className="px-4 py-3 text-slate-300">{trainer.businessName?.trim() || '—'}</td>
+      <td className="px-4 py-3 text-slate-300">
+        <div>{trainer.businessName?.trim() || '—'}</div>
+        <div className="text-xs text-slate-500 mt-0.5 tabular-nums">
+          {trainer.seatsUsed} of {trainer.seatCount} seat{trainer.seatCount === 1 ? '' : 's'}
+        </div>
+      </td>
       <td className="px-4 py-3">
         {trainer.signupCountry ? (
           <span

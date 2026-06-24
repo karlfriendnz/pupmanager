@@ -20,6 +20,8 @@ export const SEED = {
   // Accepted members with passwords, so permission specs can log in as them.
   manager: { email: 'manager@e2e.test', password: 'Password123!', name: 'Morgan Manager' },
   staff: { email: 'staffer@e2e.test', password: 'Password123!', name: 'Sam Staff' },
+  // Platform admin for /admin/* specs.
+  admin: { email: 'admin@e2e.test', password: 'Password123!', name: 'Ada Admin' },
   // A published public embed form, used to test the public-form rate limiter.
   embedFormId: 'e2eembedform0000000000000',
   // Business A clients with fixed ids: one assigned to staff (mass-assignment
