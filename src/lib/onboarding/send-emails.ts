@@ -52,12 +52,9 @@ export const DRIP_ACTIVATION = new Date('2026-06-07T00:00:00+12:00')
 // Addresses that should never receive onboarding/trial emails (test/junk accounts).
 export const SUPPRESSED_RECIPIENTS = new Set(['t9rc8rb5j8@privaterelay.appleid.com'])
 
-// Where replies to each founder voice land. Mirrors the addresses used by
-// notify-new-trainer.ts.
-const FOUNDER_REPLY_TO: Record<string, string> = {
-  karl: 'karlfriend.nz@gmail.com',
-  brooke: 'brookeallise@gmail.com',
-}
+// Replies to onboarding/trial emails go to the shared support inbox (the From
+// still carries the founder's voice for warmth — see FOUNDER_NAME below).
+const SUPPORT_REPLY_TO = 'info@pupmanager.com'
 const FOUNDER_NAME: Record<string, string> = { karl: 'Karl', brooke: 'Brooke' }
 
 type Trigger = {
@@ -223,7 +220,7 @@ export function renderOnboardingEmail(
     html,
     text,
     from: fromTrainer(senderName),
-    replyTo: FOUNDER_REPLY_TO[tmpl.senderKey] ?? FOUNDER_REPLY_TO.karl,
+    replyTo: SUPPORT_REPLY_TO,
   }
 }
 
