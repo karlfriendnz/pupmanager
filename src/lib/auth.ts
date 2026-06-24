@@ -7,6 +7,7 @@ import Apple from 'next-auth/providers/apple'
 import { prisma } from '@/lib/prisma'
 import { isRateLimited, getClientIp } from '@/lib/rate-limit'
 import { recordAudit } from '@/lib/audit'
+import { reactivateOnSignIn } from '@/lib/reactivate-account'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { SignJWT, importPKCS8 } from 'jose'
@@ -117,16 +118,13 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
     },
   },
   callbacks: {
-    // Soft delete gate: a deactivated account is blocked from signing in (its
-    // data is retained for possible reinstatement). Returning false denies the
-    // sign-in. Runs for every provider (credentials, OAuth, magic link).
+    // Reactivate-on-return: a previously deactivated ("inactive") account that
+    // signs back in is reinstated rather than blocked — identity is already
+    // proven by the provider (credentials/OAuth/magic link) at this point.
+    // Best-effort; a hiccup must never block the sign-in.
     async signIn({ user }) {
       if (user?.id) {
-        const u = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { deactivatedAt: true },
-        })
-        if (u?.deactivatedAt) return false
+        await reactivateOnSignIn(user.id).catch(() => {})
       }
       return true
     },
