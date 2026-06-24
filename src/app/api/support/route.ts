@@ -29,10 +29,12 @@ export async function POST(req: Request) {
 
   const resend = new Resend(process.env.RESEND_API_KEY)
 
-  // Send to support inbox
+  // Send to the support inbox. `from` must stay on the verified Resend domain;
+  // replyTo points at the sender so the team can reply straight to them.
   await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL!,
-    to: process.env.RESEND_FROM_EMAIL!, // send to self / support inbox
+    to: 'info@pupmanager.com',
+    replyTo: session.user.email ?? undefined,
     subject: `[PupManager ${parsed.data.type}] ${escapeHtml(parsed.data.category)}: ${escapeHtml(parsed.data.subject)}`,
     // Escape every interpolated value — the sender's display name + free-text
     // body are user-controlled and must not inject HTML into the staff email.
