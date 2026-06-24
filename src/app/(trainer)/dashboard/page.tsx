@@ -263,7 +263,7 @@ export default async function DashboardPage({
         {sampleClientCount > 0 && <SampleDataBanner realClientCount={realClientCount} />}
         <BookingRequestsPanel trainerId={trainerId} />
         <WaitlistNudge trainerId={trainerId} />
-        {sampleClientCount === 0 && <OnboardingPanel state={onboardingState} branding={branding} />}
+        {sampleClientCount === 0 && <OnboardingPanel state={onboardingState} branding={branding} impersonating={!!session.user.impersonatorId} />}
 
       {/* Vital stats strip — four tiles in one row: Notes, Invoice, Clients,
           Dogs. The first two link to /sessions/needs-notes; Clients/Dogs are

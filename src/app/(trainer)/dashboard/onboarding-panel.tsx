@@ -38,8 +38,9 @@ const STEP_ICON: Record<string, LucideIcon> = {
 import { cn } from '@/lib/utils'
 import type { OnboardingState, OnboardingStepView } from '@/lib/onboarding/types'
 import { PersonalizationWizard, type WizardInitial } from './personalization-wizard'
+import { shouldShowWelcome } from '@/lib/onboarding/welcome'
 
-export function OnboardingPanel({ state, branding }: { state: OnboardingState; branding: WizardInitial }) {
+export function OnboardingPanel({ state, branding, impersonating = false }: { state: OnboardingState; branding: WizardInitial; impersonating?: boolean }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const resumeRequested = searchParams.get('wizard') === '1'
@@ -53,8 +54,11 @@ export function OnboardingPanel({ state, branding }: { state: OnboardingState; b
   const dismissed = !!state.checklistDismissedAt
   const ahaReached = !!state.ahaReachedAt
   const isBackfill = !!state.backfilledAt
-  const welcomeShown = !!state.welcomeShownAt || welcomeDismissedLocal
-  const showWelcome = !welcomeShown && !isBackfill && !dismissed && !ahaReached
+  // Never pop the welcome/personalization modal during admin impersonation —
+  // the admin just wants the trainer's dashboard, not their first-run wizard.
+  // (welcomeDismissedLocal layers this session's dismissal on top of the
+  // persisted state the helper reads.)
+  const showWelcome = !welcomeDismissedLocal && shouldShowWelcome(state, impersonating)
   const completedCount = state.steps.filter(s => s.status === 'completed').length
   const totalCount = state.steps.length
   const allComplete = completedCount === totalCount
