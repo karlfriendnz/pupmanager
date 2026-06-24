@@ -43,6 +43,24 @@ function localHourIn(tz: string): number | null {
     return null
   }
 }
+
+// Calendar date (YYYY-MM-DD) in the given timezone — used to enforce "at most
+// one onboarding email per trainer per day".
+function localDateIn(tz: string, date: Date): string {
+  const opts: Intl.DateTimeFormatOptions = { year: 'numeric', month: '2-digit', day: '2-digit' }
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz, ...opts }).format(date)
+  } catch {
+    return new Intl.DateTimeFormat('en-CA', opts).format(date)
+  }
+}
+
+// True if any onboarding email was already sent to this trainer on the same
+// local calendar day as `now` — the one-per-day guard.
+export function alreadySentOnboardingToday(sentAt: Date[], tz: string, now: Date): boolean {
+  const today = localDateIn(tz, now)
+  return sentAt.some(d => localDateIn(tz, d) === today)
+}
 // Drip activation cutoff. Trainers who signed up BEFORE this never enter the
 // sequence — the system went live 2026-06-07 and we don't retro-blast the
 // pre-launch cohort. Signups from this moment on (incl. that day's) get the
@@ -246,7 +264,7 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
       startedAt: true,
       ahaReachedAt: true,
       firstInviteSentAt: true,
-      emails: { select: { emailKey: true } },
+      emails: { select: { emailKey: true, sentAt: true } },
       trainer: {
         select: {
           businessName: true,
@@ -277,7 +295,15 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
     // only during their local 9am hour. The welcome (on_signup) is EXEMPT so it
     // lands right after signup, going out on the next hourly tick instead of
     // waiting until the next morning. Gate is applied per-template below.
-    const isSendHour = localHourIn(t!.user.timezone || 'Pacific/Auckland') === SEND_HOUR
+    const tz = t!.user.timezone || 'Pacific/Auckland'
+    const isSendHour = localHourIn(tz) === SEND_HOUR
+
+    // At most one onboarding email per trainer per day: if we've already sent
+    // one today (their local date), skip this trainer entirely for this run.
+    if (alreadySentOnboardingToday(p.emails.map(e => e.sentAt), tz, new Date(now))) {
+      base.skipped++
+      continue
+    }
 
     const alreadySent = new Set(p.emails.map(e => e.emailKey))
     const firstName = t!.user.name?.split(' ')[0]?.trim() || 'there'
@@ -308,6 +334,8 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
         // Log only after a successful send; unique (progressId, emailKey) guards races.
         await prisma.trainerOnboardingEmailLog.create({ data: { progressId: p.id, emailKey: tmpl.key } }).catch(() => {})
         base.sent++
+        // One email per trainer per run — the rest wait for a later day's tick.
+        break
       } catch (err) {
         console.error(`[onboarding-emails] send failed (${tmpl.key} → ${email}):`, err)
         base.errors++
