@@ -21,7 +21,9 @@ env:
   CRON_SECRET: ci-only-not-real-secret-needs-16-chars
   RESEND_API_KEY: ci-only-not-real
   RESEND_FROM_EMAIL: ci@example.com
-  NODE_ENV: development
+  # NOTE: do NOT set NODE_ENV=development here — the e2e job runs `next build`,
+  # which must build in production mode (a dev build breaks the /_global-error
+  # prerender with a useContext error). vitest sets its own NODE_ENV=test.
 
 jobs:
   unit:
