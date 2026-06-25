@@ -12,6 +12,7 @@ import { WaitlistNudge } from '@/components/shared/waitlist-nudge'
 import { BookingRequestsPanel } from '@/components/shared/booking-requests-panel'
 import { StreakChip } from '@/components/shared/streak-chip'
 import { PendingRequestsPanel } from './pending-requests-panel'
+import { TodoBrainDumpPanel } from './todo-braindump-panel'
 import { OnboardingPanel } from './onboarding-panel'
 import { SampleDataBanner } from './sample-data-banner'
 import { CountryPrompt } from './country-prompt'
@@ -113,6 +114,23 @@ export default async function DashboardPage({
       client: { select: { id: true, user: { select: { name: true, email: true } } } },
       product: { select: { id: true, name: true, kind: true, imageUrl: true } },
     },
+  })
+
+  // Right-rail scratchpad data: the company's to-dos, this user's brain dump,
+  // and the team roster (for the to-do assignee picker; only relevant >1 member).
+  const todosP = prisma.trainerTodo.findMany({
+    where: { companyId: trainerId },
+    include: { assignedTo: { select: { id: true, user: { select: { name: true, email: true } } } } },
+    orderBy: [{ done: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
+  })
+  const brainDumpP = prisma.trainerBrainDump.findUnique({
+    where: { companyId_userId: { companyId: trainerId, userId: session.user.id } },
+    select: { body: true },
+  })
+  const membersP = prisma.trainerMembership.findMany({
+    where: { companyId: trainerId },
+    select: { id: true, user: { select: { name: true, email: true } } },
+    orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
   })
 
   const onboardingState = await onboardingP
@@ -241,6 +259,25 @@ export default async function DashboardPage({
     requestsByClient.set(r.client.id, arr)
   }
 
+  // Right-rail scratchpad — serialize for the client panel. Members list is
+  // only passed to drive the assignee picker; the panel hides it for solo orgs.
+  const [todos, brainDump, members] = await Promise.all([todosP, brainDumpP, membersP])
+  const todoItems = todos.map((t) => ({
+    id: t.id,
+    title: t.title,
+    done: t.done,
+    dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+    completedAt: t.completedAt ? t.completedAt.toISOString() : null,
+    createdAt: t.createdAt.toISOString(),
+    assignee: t.assignedTo
+      ? { id: t.assignedTo.id, name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Trainer' }
+      : null,
+  }))
+  const memberOptions = members.map((m) => ({
+    id: m.id,
+    name: m.user.name?.trim() || m.user.email || 'Trainer',
+  }))
+
   return (
     <>
       <PageHeader
@@ -261,6 +298,11 @@ export default async function DashboardPage({
         {/* iOS/Android only: prompt for a country when we couldn't capture it
             from the IP at signup. Hidden on web and once one is set. */}
         <CountryPrompt hasCountry={!!brandingProfile?.signupCountry} />
+        {/* Two-column layout on lg+: the existing dashboard widgets fill the
+            main column (8/12) while the scratchpad panel (To-do / Brain dump)
+            sits in a 4/12 right rail. Stacks full-width below lg. */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 lg:gap-8">
+          <div className="lg:col-span-8 min-w-0">
         {/* While sample data is loaded the account looks set up, so show the
             "remove sample data" strip at the top and hide the get-set-up
             onboarding. Removing the sample data brings the onboarding back. */}
@@ -510,7 +552,20 @@ export default async function DashboardPage({
           },
         }))}
       />
+          </div>
 
+          {/* Right rail — To-do / Brain dump scratchpad. On lg+ it sticks below
+              the page header so it stays visible while the main column scrolls. */}
+          <div className="lg:col-span-4 min-w-0 mt-2 lg:mt-0">
+            <div className="lg:sticky lg:top-4">
+              <TodoBrainDumpPanel
+                initialTodos={todoItems}
+                initialBrainDump={brainDump?.body ?? ''}
+                members={memberOptions}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </>
   )

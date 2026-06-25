@@ -91,6 +91,32 @@ export function dropInPriceCents(args: {
 
 type Tx = PrismaClient | Prisma.TransactionClient
 
+/**
+ * Replace the set of team members assigned to a run. Only memberships that
+ * belong to this company (companyId === trainerId) are honoured — anything
+ * else is silently dropped, so a caller can't assign someone else's staff.
+ * Passing `undefined` leaves the assignments untouched; passing `[]` clears them.
+ */
+export async function setRunTrainers(
+  classRunId: string,
+  companyId: string,
+  membershipIds: string[] | undefined,
+  tx: Tx = prisma,
+): Promise<void> {
+  if (membershipIds === undefined) return
+  const valid = await tx.trainerMembership.findMany({
+    where: { id: { in: membershipIds }, companyId },
+    select: { id: true },
+  })
+  const ids = valid.map((m) => m.id)
+  await tx.classRunTrainer.deleteMany({ where: { classRunId } })
+  if (ids.length > 0) {
+    await tx.classRunTrainer.createMany({
+      data: ids.map((membershipId) => ({ classRunId, membershipId })),
+    })
+  }
+}
+
 /** Count of seats that consume capacity (ENROLLED only). */
 export async function enrolledCount(classRunId: string, tx: Tx = prisma): Promise<number> {
   return tx.classEnrollment.count({
@@ -167,6 +193,9 @@ export async function createClassWithPackage(args: {
   color?: string | null
   scheduleNote?: string | null
   defaultSessionFormId?: string | null
+  imageUrl?: string | null
+  // TrainerMembership ids (of this company) to assign as the class's trainers.
+  assignedMembershipIds?: string[]
 }): Promise<{ id: string; sessionCount: number }> {
   const count = args.sessionCount > 0 ? args.sessionCount : 1
   const dates = generateSessionDates(args.startDate, count, args.weeksBetween)
@@ -196,6 +225,7 @@ export async function createClassWithPackage(args: {
         scheduleNote: args.scheduleNote ?? null,
         startDate: args.startDate,
         capacity: args.capacity ?? null,
+        imageUrl: args.imageUrl ?? null,
       },
     })
     await tx.trainingSession.createMany({
@@ -209,6 +239,7 @@ export async function createClassWithPackage(args: {
         sessionType: args.sessionType,
       })),
     })
+    await setRunTrainers(run.id, args.trainerId, args.assignedMembershipIds, tx)
     return { id: run.id, sessionCount: dates.length }
   })
 }
@@ -233,6 +264,9 @@ export async function updateClass(args: {
   sessionCount: number
   weeksBetween: number
   defaultSessionFormId?: string | null
+  imageUrl?: string | null
+  // TrainerMembership ids to assign; undefined leaves assignments untouched.
+  assignedMembershipIds?: string[]
 }): Promise<{ scheduleChanged: boolean }> {
   const run = await prisma.classRun.findFirst({
     where: { id: args.runId, trainerId: args.trainerId },
@@ -281,8 +315,11 @@ export async function updateClass(args: {
         scheduleNote: args.scheduleNote,
         capacity: args.capacity,
         startDate: args.startDate,
+        ...(args.imageUrl !== undefined && { imageUrl: args.imageUrl }),
       },
     })
+
+    await setRunTrainers(run.id, args.trainerId, args.assignedMembershipIds, tx)
 
     if (scheduleChanged) {
       await tx.trainingSession.deleteMany({ where: { classRunId: run.id } })

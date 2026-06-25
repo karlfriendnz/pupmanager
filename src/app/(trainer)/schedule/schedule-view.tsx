@@ -14,7 +14,7 @@ import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, CalendarDays, Columns3, List,
-  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search,
+  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, BarChart2,
 } from 'lucide-react'
 import {
   AssignPackageFromScheduleModal,
@@ -23,6 +23,7 @@ import { SlotTypeChooser, type SlotAddType } from './slot-type-chooser'
 import { NewWalkModal } from './new-walk-modal'
 import { ClassFormModal } from '../classes/class-form-modal'
 import { ScheduleSettings } from './schedule-settings'
+import { ScheduleReport } from './schedule-report'
 import { SessionFormReport } from '@/components/session-form-report'
 import { SessionRowCard } from '@/components/shared/session-row-card'
 
@@ -31,6 +32,10 @@ import { SessionRowCard } from '@/components/shared/session-row-card'
 // Default visible hour range — overridden per-trainer by props on ScheduleView,
 // flowed down through WeekGrid. Keep these as defaults so the helper functions
 // below can stay pure and reusable from other call sites.
+// Hide the Google Calendar sync button until OAuth creds are configured and the
+// create/update/delete sync is verified end-to-end. Flip to true to re-enable.
+const SHOW_GCAL_SYNC = false
+
 const DEFAULT_START_HOUR = 7    // 7am
 const DEFAULT_END_HOUR   = 21   // 9pm
 const PX_PER_HOUR   = 72   // pixels per hour
@@ -2681,6 +2686,7 @@ export function ScheduleView({
   const [availSlots, setAvailSlots]     = useState(initialAvailSlots)
   const [blackouts, setBlackouts]       = useState<Blackout[]>([])
   const [showAvail, setShowAvail]       = useState(false)
+  const [showReport, setShowReport]     = useState(false)
 
   // The onboarding wizard's "set your hours" step links to /schedule#availability
   // — open the availability modal automatically when that hash is present so
@@ -2967,14 +2973,19 @@ export function ScheduleView({
     <div className="flex flex-col h-full">
       {/* ── Header (title + date nav on the left, controls on the right) ────── */}
       <div
-        className="sticky top-0 z-30 flex items-center px-4 md:px-6 gap-3 flex-wrap border-b border-slate-100 bg-white"
+        className="sticky z-30 flex items-center px-4 md:px-6 gap-3 flex-wrap border-b border-slate-100 bg-white"
         style={{
+          // Stick below the desktop top bar (which now shows the "Schedule"
+          // title); 0 on mobile where there's no top bar.
+          top: 'var(--app-top-offset, 0px)',
           paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)',
           paddingBottom: '0.625rem',
           marginTop: 'calc(min(env(safe-area-inset-top, 0px), 1rem) * -1)',
         }}
       >
-        <h1 className="hidden sm:block text-xl font-bold text-slate-900">Schedule</h1>
+        {/* Hidden on desktop — the top bar shows "Schedule" there. Shown on
+            small tablets (sm) where the top bar isn't present. */}
+        <h1 className="hidden sm:block md:hidden text-xl font-bold text-slate-900">Schedule</h1>
 
         {/* Date nav — fills the row on phones, sits next to the title on
             tablet+. `flex-1` claims the whole width on mobile so the
@@ -3052,7 +3063,10 @@ export function ScheduleView({
             <Search className="h-4 w-4" />
           </button>
 
-          {!googleCalendarConnected ? (
+          {/* Google Calendar sync is hidden for now — needs live
+              GOOGLE_CLIENT_ID/SECRET + an end-to-end OAuth test before we
+              expose it. Flip SHOW_GCAL_SYNC to true to bring it back. */}
+          {SHOW_GCAL_SYNC && (!googleCalendarConnected ? (
             <a href="/api/google-calendar/connect" title="Connect Google Calendar" className="hidden sm:inline-flex">
               <Button variant="secondary" size="sm" aria-label="Connect Google Calendar">
                 <Calendar className="h-4 w-4" />
@@ -3065,8 +3079,11 @@ export function ScheduleView({
             >
               <Calendar className="h-3.5 w-3.5" />
             </span>
-          )}
+          ))}
 
+          <Button variant="secondary" size="sm" onClick={() => setShowReport(true)} title="Weekly report" aria-label="Weekly report">
+            <BarChart2 className="h-4 w-4" /> <span className="hidden sm:inline">Reports</span>
+          </Button>
 
           <span className="relative inline-flex">
             <Button variant="secondary" size="sm" onClick={() => setShowAvail(true)} title="Availability hours" aria-label="Availability hours">
@@ -3256,6 +3273,13 @@ export function ScheduleView({
           initial={{ startDateIso: classModal.startDateIso, sessionCount: classModal.sessionCount }}
           onClose={() => setClassModal(null)}
           onSaved={() => { setClassModal(null); router.refresh() }}
+        />
+      )}
+
+      {showReport && (
+        <ScheduleReport
+          weekStart={toDateStr(weekStart)}
+          onClose={() => setShowReport(false)}
         />
       )}
 

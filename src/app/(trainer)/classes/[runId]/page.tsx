@@ -18,8 +18,8 @@ export default async function ClassRunPage({
 
   const { runId } = await params
   // attendanceCount filters by classRunId === runId (the param), so it doesn't
-  // depend on the run lookup — fan all three out in parallel.
-  const [run, attendanceCount, clients] = await Promise.all([
+  // depend on the run lookup — fan all of these out in parallel.
+  const [run, attendanceCount, clients, teamMembers] = await Promise.all([
     prisma.classRun.findFirst({
       where: { id: runId, trainerId },
       include: {
@@ -35,6 +35,9 @@ export default async function ClassRunPage({
             dog: { select: { id: true, name: true } },
           },
         },
+        assignedTrainers: {
+          include: { membership: { select: { id: true, title: true, user: { select: { name: true } } } } },
+        },
       },
     }),
     prisma.sessionAttendance.count({ where: { session: { classRunId: runId } } }),
@@ -46,6 +49,12 @@ export default async function ClassRunPage({
         dog: { select: { id: true, name: true } },
       },
       orderBy: { user: { name: 'asc' } },
+    }),
+    // Team members of this company (trainerId === companyId) for the assign UI.
+    prisma.trainerMembership.findMany({
+      where: { companyId: trainerId },
+      select: { id: true, title: true, role: true, user: { select: { name: true } } },
+      orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
     }),
   ])
   if (!run) notFound()
@@ -69,6 +78,13 @@ export default async function ClassRunPage({
         sessionCount: run.package.sessionCount,
         defaultSessionFormId: run.package.defaultSessionFormId,
         hasAttendance: attendanceCount > 0,
+        imageUrl: run.imageUrl,
+        assignedMembershipIds: run.assignedTrainers.map(a => a.membershipId),
+        assignedTrainers: run.assignedTrainers.map(a => ({
+          membershipId: a.membershipId,
+          name: a.membership.user.name ?? 'Team member',
+          title: a.membership.title,
+        })),
       }}
       sessions={run.sessions.map(s => ({
         id: s.id,
@@ -91,6 +107,12 @@ export default async function ClassRunPage({
         name: c.user.name ?? 'Unnamed client',
         dogId: c.dog?.id ?? null,
         dogName: c.dog?.name ?? null,
+      }))}
+      teamMembers={teamMembers.map(m => ({
+        id: m.id,
+        name: m.user.name ?? 'Team member',
+        title: m.title,
+        isOwner: m.role === 'OWNER',
       }))}
     />
   )

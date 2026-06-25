@@ -94,6 +94,8 @@ const patchSchema = z.object({
   sessionCount: z.number().int().min(1).max(52).optional(),
   weeksBetween: z.number().int().min(1).max(8).optional(),
   defaultSessionFormId: z.string().nullable().optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  assignedMembershipIds: z.array(z.string()).optional(),
 })
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ runId: string }> }) {
@@ -133,6 +135,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
         sessionCount: d.sessionCount,
         weeksBetween: d.weeksBetween ?? 1,
         defaultSessionFormId: d.defaultSessionFormId,
+        imageUrl: d.imageUrl,
+        assignedMembershipIds: d.assignedMembershipIds,
       })
       // Only a genuine time change regenerates sessions — notify clients then.
       if (result.scheduleChanged) {

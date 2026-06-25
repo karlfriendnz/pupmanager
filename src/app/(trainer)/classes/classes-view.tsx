@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { PageHeader } from '@/components/shared/page-header'
 import { Plus, GraduationCap, Users, ChevronRight } from 'lucide-react'
-import { ClassFormModal } from './class-form-modal'
+import { ClassFormModal, type TeamMemberOption } from './class-form-modal'
 
 type RunRow = {
   id: string
@@ -18,6 +18,8 @@ type RunRow = {
   sessionCount: number
   enrolledCount: number
   capacity: number | null
+  imageUrl: string | null
+  trainerNames: string[]
 }
 
 const STATUS_STYLE: Record<RunRow['status'], string> = {
@@ -27,7 +29,7 @@ const STATUS_STYLE: Record<RunRow['status'], string> = {
   CANCELLED: 'bg-red-50 text-red-600',
 }
 
-export function ClassesView({ runs }: { runs: RunRow[] }) {
+export function ClassesView({ runs, teamMembers = [] }: { runs: RunRow[]; teamMembers?: TeamMemberOption[] }) {
   const router = useRouter()
   const [showCreate, setShowCreate] = useState(false)
 
@@ -66,9 +68,18 @@ export function ClassesView({ runs }: { runs: RunRow[] }) {
               <Card className="hover:border-blue-200 transition-colors">
                 <CardBody className="py-4">
                   <div className="flex items-center gap-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 flex-shrink-0">
-                      <GraduationCap className="h-5 w-5" />
-                    </div>
+                    {r.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={r.imageUrl}
+                        alt=""
+                        className="h-11 w-11 rounded-xl object-cover flex-shrink-0 border border-slate-200"
+                      />
+                    ) : (
+                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 flex-shrink-0">
+                        <GraduationCap className="h-5 w-5" />
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="font-medium text-slate-900 truncate">{r.name}</p>
@@ -79,6 +90,7 @@ export function ClassesView({ runs }: { runs: RunRow[] }) {
                       <p className="text-xs text-slate-500 mt-0.5">
                         {new Date(r.startDate).toLocaleDateString()} ·{' '}
                         {r.scheduleNote || `${r.sessionCount} session${r.sessionCount === 1 ? '' : 's'}`}
+                        {r.trainerNames.length > 0 && <span className="text-slate-400"> · {r.trainerNames.join(', ')}</span>}
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 text-sm text-slate-600 flex-shrink-0">
@@ -98,6 +110,7 @@ export function ClassesView({ runs }: { runs: RunRow[] }) {
       {showCreate && (
         <ClassFormModal
           mode="create"
+          teamMembers={teamMembers}
           onClose={() => setShowCreate(false)}
           onSaved={() => {
             setShowCreate(false)

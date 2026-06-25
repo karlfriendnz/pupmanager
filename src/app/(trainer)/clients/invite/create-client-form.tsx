@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BreedSelect } from '@/components/shared/breed-select'
 import { Alert } from '@/components/ui/alert'
 import { Plus, Trash2 } from 'lucide-react'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
@@ -182,7 +183,7 @@ export function CreateClientForm({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Breed<Req on={config.dogBreed.required} /></label>
-                <Input value={dog.breed} onChange={e => updateDog(i, { breed: e.target.value })} />
+                <BreedSelect value={dog.breed} onChange={v => updateDog(i, { breed: v })} />
               </div>
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Weight (kg)<Req on={config.dogWeight.required} /></label>

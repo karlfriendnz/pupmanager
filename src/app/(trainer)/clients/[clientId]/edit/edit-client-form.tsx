@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BreedSelect } from '@/components/shared/breed-select'
 import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { DogPhotoUpload } from '@/components/shared/dog-photo-upload'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
@@ -300,7 +301,7 @@ export function EditClientForm({ clientId, initialName, initialEmail, initialPho
                     placeholder="e.g. Buddy"
                   />
                   <div className="grid grid-cols-2 gap-4">
-                    <Input label="Breed" value={dog.breed} onChange={e => updateDog(i, 'breed', e.target.value)} />
+                    <BreedSelect label="Breed" value={dog.breed} onChange={v => updateDog(i, 'breed', v)} />
                     <Input label="Weight (kg)" type="number" value={dog.weight} onChange={e => updateDog(i, 'weight', e.target.value)} />
                   </div>
                   <div>

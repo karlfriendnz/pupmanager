@@ -78,10 +78,9 @@ export function TopBarControls({
   const initial = userName?.[0]?.toUpperCase() ?? '?'
 
   return (
-    // A real sticky bar (not a floating overlay) so page headers/toolbars stack
-    // BELOW it instead of being covered. Reserves h-14 at the top of <main>;
-    // PageHeader sticks just beneath it via the --app-top-offset var.
-    <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-end gap-1 px-4 lg:px-6 border-b border-slate-100 bg-white/85 backdrop-blur">
+    // The right-hand control cluster of the global top bar (TrainerShell owns
+    // the bar chrome). Streak, search, settings cog, account, help.
+    <div className="flex items-center gap-1">
       {/* Streak — a plain ghost circle until there's a streak, then an orange
           pill with the count. Matches the search/help circles when idle. */}
       {streak && (
@@ -143,6 +142,17 @@ export function TopBarControls({
         )}
       </form>
 
+      {/* Settings cog — moved out of the sidebar into the top-bar action row,
+          sitting between search and the account control. */}
+      <Link
+        href="/settings"
+        title="Settings"
+        aria-label="Settings"
+        className="h-9 w-9 grid place-items-center rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+      >
+        <Settings className="h-[18px] w-[18px]" />
+      </Link>
+
       {/* Divider keeps the account control visually distinct from the actions. */}
       <span className="mx-1.5 h-5 w-px bg-slate-200" aria-hidden />
 
@@ -197,6 +207,6 @@ export function TopBarControls({
       >
         <HelpCircle className="h-[18px] w-[18px]" />
       </Link>
-    </header>
+    </div>
   )
 }

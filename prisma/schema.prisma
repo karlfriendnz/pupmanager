@@ -137,6 +137,11 @@ model User {
   // Per-(type, channel) preferences. Absence of a row means "use the default".
   notificationPreferences NotificationPreference[]
 
+  // Dashboard scratchpad: one freeform brain-dump per (company, user), and the
+  // to-do items this user created.
+  brainDumps   TrainerBrainDump[]
+  createdTodos TrainerTodo[]      @relation("TodoCreatedBy")
+
   @@map("users")
 }
 
@@ -484,6 +489,8 @@ model TrainerProfile {
   members            TrainerMembership[]        @relation("CompanyMembers")
   addons             TrainerAddon[]
   payments           Payment[]
+  brainDumps         TrainerBrainDump[]
+  todos              TrainerTodo[]
 
   @@map("trainer_profiles")
 }
@@ -552,6 +559,12 @@ model TrainerMembership {
 
   // Time this member has logged against sessions (billable hours).
   timeEntries SessionTimeEntry[] @relation("TimeEntryMember")
+
+  // Group classes (ClassRun) this member is assigned to run.
+  assignedClassRuns ClassRunTrainer[]
+
+  // Dashboard to-do items assigned to this member.
+  assignedTodos TrainerTodo[] @relation("TodoAssignee")
 
   @@unique([companyId, userId])
   @@index([companyId])
@@ -1181,19 +1194,39 @@ model ClassRun {
   scheduleNote String? // human cadence, e.g. "Tuesdays 6:00pm"
   startDate    DateTime
   capacity     Int? // per-run override of Package.capacity
+  imageUrl     String? // optional cover image (Vercel Blob URL)
   status       ClassRunStatus @default(SCHEDULED)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trainer     TrainerProfile    @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  package     Package           @relation(fields: [packageId], references: [id], onDelete: Restrict)
-  sessions    TrainingSession[]
-  enrollments ClassEnrollment[]
+  trainer          TrainerProfile     @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  package          Package            @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  sessions         TrainingSession[]
+  enrollments      ClassEnrollment[]
+  assignedTrainers ClassRunTrainer[]
 
   @@index([trainerId])
   @@index([packageId])
   @@map("class_runs")
+}
+
+// Join model: which team members (TrainerMembership rows) are assigned to run
+// a ClassRun. A ClassRun belongs to one company (trainerId); this lets one or
+// more of that company's members be tagged as the trainer(s) on it.
+model ClassRunTrainer {
+  id           String   @id @default(cuid())
+  classRunId   String
+  membershipId String
+  createdAt    DateTime @default(now())
+
+  classRun   ClassRun          @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  membership TrainerMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([classRunId, membershipId])
+  @@index([classRunId])
+  @@index([membershipId])
+  @@map("class_run_trainers")
 }
 
 // A client+dog's membership in a ClassRun. Replaces ClientPackage for the
@@ -2462,4 +2495,50 @@ model AuditLog {
   @@index([companyId, createdAt])
   @@index([actorUserId, createdAt])
   @@map("audit_logs")
+}
+
+// ─── Dashboard scratchpad: Brain dump + To-dos ────────────────────────────────
+// Per-trainer dashboard right-rail. The brain dump is a single freeform note per
+// (company, user) that autosaves. To-dos are shared across the company and can
+// be assigned to a team member when the org has more than one trainer.
+
+// One freeform note per (company, user). Autosaves (debounced) from the
+// dashboard panel; scoped to the logged-in user so each trainer has their own.
+model TrainerBrainDump {
+  id        String   @id @default(cuid())
+  companyId String // → TrainerProfile.id (the business / tenant)
+  userId    String // → User.id (whose brain dump this is)
+  body      String   @default("") @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company TrainerProfile @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+  @@map("trainer_brain_dumps")
+}
+
+// A shared company to-do. Created by a trainer; optionally assigned to a team
+// member (TrainerMembership) when the org has more than one trainer. assignedTo
+// is SetNull so removing a member leaves their to-dos intact but unassigned.
+model TrainerTodo {
+  id           String    @id @default(cuid())
+  companyId    String // → TrainerProfile.id (the business / tenant)
+  title        String
+  done         Boolean   @default(false)
+  createdById  String // → User.id (who created it)
+  assignedToId String? // → TrainerMembership.id (who it's assigned to)
+  dueDate      DateTime?
+  sortOrder    Int       @default(0)
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company    TrainerProfile     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy  User               @relation("TodoCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  assignedTo TrainerMembership? @relation("TodoAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@map("trainer_todos")
 }

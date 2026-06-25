@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
 import { entrySchema, resolveLine, resolveClientId } from '@/lib/timesheet-line'
+import { sheetScope } from '../../../_access'
 
 export const runtime = 'nodejs'
 
@@ -9,7 +10,7 @@ export const runtime = 'nodejs'
 async function ownDraftEntry(timesheetId: string, entryId: string) {
   const ctx = await getTrainerContext()
   if (!ctx) return { error: NextResponse.json({ error: 'Unauthorised' }, { status: 401 }) }
-  const sheet = await prisma.timesheet.findFirst({ where: { id: timesheetId, companyId: ctx.companyId, userId: ctx.userId }, select: { status: true } })
+  const sheet = await prisma.timesheet.findFirst({ where: { id: timesheetId, ...sheetScope(ctx) }, select: { status: true } })
   if (!sheet) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
   if (sheet.status !== 'DRAFT') return { error: NextResponse.json({ error: 'This timesheet is finalised and can no longer be edited' }, { status: 409 }) }
   const entry = await prisma.timeEntry.findFirst({ where: { id: entryId, timesheetId }, select: { id: true } })

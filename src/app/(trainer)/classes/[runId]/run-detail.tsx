@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
-import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil } from 'lucide-react'
-import { ClassFormModal } from '../class-form-modal'
+import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { ClassFormModal, type TeamMemberOption } from '../class-form-modal'
 
 type RunStatus = 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
+type AssignedTrainer = { membershipId: string; name: string; title: string | null }
 type Run = {
   id: string
   name: string
@@ -28,6 +29,9 @@ type Run = {
   sessionCount: number
   defaultSessionFormId: string | null
   hasAttendance: boolean
+  imageUrl: string | null
+  assignedMembershipIds: string[]
+  assignedTrainers: AssignedTrainer[]
 }
 type SessionRow = { id: string; title: string; scheduledAt: string; sessionIndex: number | null; status: string }
 type Enrollment = {
@@ -47,16 +51,34 @@ export function RunDetail({
   sessions,
   enrollments,
   clients,
+  teamMembers,
 }: {
   run: Run
   sessions: SessionRow[]
   enrollments: Enrollment[]
   clients: ClientOpt[]
+  teamMembers: TeamMemberOption[]
 }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete() {
+    setError(null)
+    setDeleting(true)
+    const res = await fetch(`/api/class-runs/${run.id}`, { method: 'DELETE' })
+    if (res.ok) {
+      router.push('/classes')
+      router.refresh()
+      return
+    }
+    setError('Could not delete this class — try again.')
+    setDeleting(false)
+    setConfirmingDelete(false)
+  }
 
   const enrolled = enrollments.filter(e => e.status === 'ENROLLED')
   const waitlisted = enrollments.filter(e => e.status === 'WAITLISTED')
@@ -105,10 +127,51 @@ export function RunDetail({
             <option key={s} value={s}>{s.toLowerCase()}</option>
           ))}
         </select>
-        <Button variant="secondary" onClick={() => setEditing(true)}>
-          <Pencil className="h-4 w-4" /> Edit
-        </Button>
+        <div className="flex items-center gap-2">
+          {!confirmingDelete ? (
+            <button
+              onClick={() => setConfirmingDelete(true)}
+              title="Delete class"
+              className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+            >
+              <Trash2 className="h-4 w-4 text-rose-500" />
+              <span>Delete</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-600 hidden sm:inline">Delete this class?</span>
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+                aria-label="Cancel"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Yes, delete
+              </button>
+            </div>
+          )}
+          <Button variant="secondary" onClick={() => setEditing(true)}>
+            <Pencil className="h-4 w-4" /> Edit
+          </Button>
+        </div>
       </div>
+
+      {run.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={run.imageUrl}
+          alt={run.name}
+          className="w-full h-40 sm:h-52 object-cover rounded-2xl border border-slate-200 mb-5"
+        />
+      )}
 
       {/* Class details */}
       <Card className="mb-5">
@@ -121,6 +184,21 @@ export function RunDetail({
             <Detail label="Format" value={run.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'} />
             <Detail label="Price" value={run.priceCents != null ? `$${(run.priceCents / 100).toFixed(run.priceCents % 100 === 0 ? 0 : 2)}` : '—'} />
           </div>
+          {run.assignedTrainers.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Trainers</p>
+              <div className="flex flex-wrap gap-1.5">
+                {run.assignedTrainers.map(t => (
+                  <span
+                    key={t.membershipId}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium px-2.5 py-1"
+                  >
+                    {t.name}{t.title ? <span className="text-blue-400 font-normal">· {t.title}</span> : null}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {(run.allowDropIn || run.allowWaitlist) && (
             <p className="text-xs text-slate-400 mt-3">
               {run.allowDropIn && 'Drop-ins allowed'}
@@ -229,6 +307,7 @@ export function RunDetail({
           mode="edit"
           runId={run.id}
           canReschedule={!run.hasAttendance}
+          teamMembers={teamMembers}
           initial={{
             name: run.name,
             startDateIso: run.startDate,
@@ -240,6 +319,8 @@ export function RunDetail({
             capacity: run.capacity,
             scheduleNote: run.scheduleNote,
             defaultSessionFormId: run.defaultSessionFormId,
+            imageUrl: run.imageUrl,
+            assignedMembershipIds: run.assignedMembershipIds,
           }}
           onClose={() => setEditing(false)}
           onSaved={() => {

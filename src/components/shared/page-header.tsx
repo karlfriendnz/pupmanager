@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { SetPageTitle } from './page-title'
+import { PageHeaderTopBarPortal } from './page-header-portal'
 
 // Either a Link (href) or a click handler (onClick — e.g. router.back() so
 // "back" returns to wherever the user actually came from).
@@ -13,73 +14,69 @@ interface PageHeaderProps {
   actions?: React.ReactNode
 }
 
-// Shared sticky page header used across the trainer app. Pins to the top
-// of the viewport while the user scrolls and reserves
-// env(safe-area-inset-top) so iOS chrome (time/battery) renders against
-// the header's solid white surface — Style.Dark glyphs need a light
-// background to stay legible.
+// Shared page header used across the trainer app.
 //
-// Layout contract:
-// - Render as a SIBLING of the page's max-w content wrapper, not a child.
-//   The header is full-width (spans the entire <main> content area) and
-//   provides its own horizontal padding. Each page is:
-//     <>
-//       <PageHeader … />
-//       <div className="p-4 md:p-8 w-full max-w-… mx-auto">…</div>
-//     </>
+// DESKTOP: the global top bar (TrainerShell) owns the title — this component
+// feeds it the title (SetPageTitle) and portals any back arrow + actions INTO
+// the bar (PageHeaderTopBarPortal). It renders NO in-page bar on desktop, so
+// there's never a redundant/empty second row.
+//
+// MOBILE: there is no top bar, so the full in-page sticky header renders here
+// (title + back + subtitle + actions), reserving env(safe-area-inset-top) so
+// iOS chrome sits on the header's white surface.
+//
+// Layout contract: render as a SIBLING of the page's max-w content wrapper:
+//   <>
+//     <PageHeader … />
+//     <div className="p-4 md:p-8 w-full max-w-… mx-auto">…</div>
+//   </>
 export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) {
   return (
-    <div
-      className="sticky z-20 bg-white border-b border-slate-100 px-4 md:px-8"
-      style={{
-        // Stick below the desktop top bar when present (TrainerShell sets
-        // --app-top-offset to the bar height); falls back to 0 elsewhere
-        // (client app, mobile — no top bar).
-        top: 'var(--app-top-offset, 0px)',
-        // The header's own top padding combines safe-area-inset-top (so
-        // iOS chrome sits on the white surface) with a small breathing
-        // gap below it. <main> caps its own safe-area pad at 1rem; we
-        // negate that with a transform so the bar's surface still extends
-        // up under the chrome.
-        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)',
-        paddingBottom: '0.625rem',
-        // Pull the header up through <main>'s safe-area pad (capped 1rem)
-        // so the bar's surface is flush with the very top of the viewport
-        // on iOS. On desktop env() = 0 so this is a no-op.
-        marginTop: 'calc(min(env(safe-area-inset-top, 0px), 1rem) * -1)',
-      }}
-    >
-      <div className="flex items-center gap-2 min-w-0 min-h-12">
-        {back && (
-          back.onClick ? (
-            <button
-              type="button"
-              onClick={back.onClick}
-              aria-label={back.label ?? 'Back'}
-              className="-ml-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 flex-shrink-0"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-          ) : (
-            <Link
-              href={back.href ?? '#'}
-              aria-label={back.label ?? 'Back'}
-              className="-ml-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 flex-shrink-0"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          )
-        )}
-        <div className="min-w-0 flex-1">
-          <h1 className="text-base font-semibold text-slate-900 truncate leading-tight">{title}</h1>
-          {subtitle && (
-            <div className="text-xs text-slate-500 truncate leading-tight mt-0.5">{subtitle}</div>
+    <>
+      <SetPageTitle title={title} />
+      <PageHeaderTopBarPortal back={back} actions={actions} />
+      {/* Mobile-only in-page header (no top bar on mobile). */}
+      <div
+        className="md:hidden sticky z-20 bg-white border-b border-slate-100 px-4"
+        style={{
+          top: 'var(--app-top-offset, 0px)',
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)',
+          paddingBottom: '0.625rem',
+          marginTop: 'calc(min(env(safe-area-inset-top, 0px), 1rem) * -1)',
+        }}
+      >
+        <div className="flex items-center gap-2 min-w-0 min-h-12">
+          {back && (
+            back.onClick ? (
+              <button
+                type="button"
+                onClick={back.onClick}
+                aria-label={back.label ?? 'Back'}
+                className="-ml-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 flex-shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            ) : (
+              <Link
+                href={back.href ?? '#'}
+                aria-label={back.label ?? 'Back'}
+                className="-ml-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 flex-shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            )
+          )}
+          <div className="min-w-0 flex-1">
+            <h1 className="text-base font-semibold text-slate-900 truncate leading-tight">{title}</h1>
+            {subtitle && (
+              <div className="text-xs text-slate-500 truncate leading-tight mt-0.5">{subtitle}</div>
+            )}
+          </div>
+          {actions && (
+            <div className="flex items-center gap-1.5 flex-shrink-0">{actions}</div>
           )}
         </div>
-        {actions && (
-          <div className="flex items-center gap-1.5 flex-shrink-0">{actions}</div>
-        )}
       </div>
-    </div>
+    </>
   )
 }

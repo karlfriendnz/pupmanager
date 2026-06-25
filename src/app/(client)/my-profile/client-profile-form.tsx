@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BreedSelect } from '@/components/shared/breed-select'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { Plus, Trash2 } from 'lucide-react'
@@ -184,7 +185,7 @@ export function ClientProfileForm({
                 onChange={e => updateDog(i, 'name', e.target.value)}
               />
               <div className="grid grid-cols-2 gap-3">
-                <Input label="Breed" value={dog.breed} onChange={e => updateDog(i, 'breed', e.target.value)} />
+                <BreedSelect label="Breed" value={dog.breed} onChange={v => updateDog(i, 'breed', v)} />
                 <Input label="Weight (kg)" type="number" value={dog.weight} onChange={e => updateDog(i, 'weight', e.target.value)} />
               </div>
               <DogPhotoUpload

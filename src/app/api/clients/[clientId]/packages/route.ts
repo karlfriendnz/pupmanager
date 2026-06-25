@@ -212,6 +212,22 @@ export async function POST(
     return assignment
   })
 
+  // Best-effort: mirror the newly generated series onto the trainer's Google
+  // Calendar. createMany returns no ids, so re-query the rows by the assignment
+  // we just created. Wrapped so a calendar failure never breaks the booking.
+  try {
+    const createdRows = await prisma.trainingSession.findMany({
+      where: { clientPackageId: created.id },
+      select: { id: true },
+    })
+    if (createdRows.length) {
+      const { syncSessionsToGoogle } = await import('@/lib/google-calendar')
+      await syncSessionsToGoogle(createdRows.map(r => r.id))
+    }
+  } catch {
+    // Non-critical
+  }
+
   // FIRST_PACKAGE_ASSIGNED trigger fires here.
   await safeEvaluate(clientId)
 

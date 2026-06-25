@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
+import { sheetScope } from '../../_access'
 
 export const runtime = 'nodejs'
 
@@ -11,7 +12,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const sheet = await prisma.timesheet.findFirst({
-    where: { id, companyId: ctx.companyId, userId: ctx.userId },
+    where: { id, ...sheetScope(ctx) },
     select: { status: true, _count: { select: { entries: true } } },
   })
   if (!sheet) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -29,7 +30,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const result = await prisma.timesheet.updateMany({
-    where: { id, companyId: ctx.companyId, userId: ctx.userId, status: 'FINALISED' },
+    where: { id, ...sheetScope(ctx), status: 'FINALISED' },
     data: { status: 'DRAFT', finalisedAt: null },
   })
   if (result.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })

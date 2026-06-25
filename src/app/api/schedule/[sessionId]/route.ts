@@ -251,6 +251,17 @@ export async function PATCH(
     })
   }
 
+  // Best-effort: push the edit to the trainer's Google Calendar (no-ops if not
+  // connected). Awaited inside try/catch so it completes before the response —
+  // fire-and-forget is unsafe on serverless. Never breaks the update.
+  try {
+    const { syncSessionToGoogle, syncSessionsToGoogle } = await import('@/lib/google-calendar')
+    await syncSessionToGoogle(sessionId)
+    if (followerIds.length) await syncSessionsToGoogle(followerIds)
+  } catch {
+    // Non-critical
+  }
+
   return NextResponse.json(updated)
 }
 

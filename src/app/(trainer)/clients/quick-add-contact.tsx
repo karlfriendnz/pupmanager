@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { UserPlus, X, Loader2 } from 'lucide-react'
+import { BreedSelect } from '@/components/shared/breed-select'
 import type { ResolvedFieldConfig, ClientFieldKey } from '@/lib/client-fields'
 
 type QuickCustomField = {
@@ -102,7 +103,11 @@ export function QuickAddContact() {
                   {builtinShown.map(f => (
                     <div key={f.key}>
                       <label htmlFor={f.key} className="text-sm font-medium text-slate-700 block mb-1.5">{f.label}<span className="text-red-500 ml-1">*</span></label>
-                      {f.type === 'textarea'
+                      {f.key === 'dogBreed'
+                        // Breed gets the canonical type-ahead combobox; value
+                        // wiring (values.dogBreed → payload dog.breed) is unchanged.
+                        ? <BreedSelect id={f.key} value={values[f.key] ?? ''} onChange={val => setValues(v => ({ ...v, [f.key]: val }))} />
+                        : f.type === 'textarea'
                         ? <textarea id={f.key} value={values[f.key] ?? ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} rows={2} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent" />
                         : <input id={f.key} type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} value={values[f.key] ?? ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} className={inputCls} />}
                     </div>

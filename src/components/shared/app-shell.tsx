@@ -10,16 +10,18 @@ import {
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag,
   MoreHorizontal, X, Inbox, GraduationCap,
-  Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ArrowLeftRight, Wallet,
-  BarChart3, Clock, Navigation, FileText,
+  Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
+  BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone, Puzzle,
   type LucideIcon,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
 import { VersionGuard } from './version-guard'
 import { TopBarControls } from './top-bar-controls'
+import { PageTitleProvider, usePageTitle } from './page-title'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
+const NAV_GROUPS_KEY = 'k9.trainerNavGroups'
 
 // Grouped into sections rendered with small headers in the sidebar. A few
 // destinations were trimmed from the top level to declutter:
@@ -30,17 +32,21 @@ const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
 type NavSection = 'overview' | 'clients' | 'programs' | 'business' | 'system'
 // `child` items render indented under the item above them (a sub-menu off
 // their parent, e.g. Route + Notes under Schedule).
-type NavItem = { href: string; label: string; icon: LucideIcon; section: NavSection; desktopHidden?: boolean; child?: boolean }
+// `group: true` marks a non-navigating parent that only toggles its children
+// (it has no page of its own). `comingSoon: true` renders a disabled child.
+type NavItem = { href: string; label: string; icon: LucideIcon; section: NavSection; desktopHidden?: boolean; child?: boolean; group?: boolean; comingSoon?: boolean }
 
 const TRAINER_NAV: NavItem[] = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, section: 'overview' },
 
   { href: '/clients',      label: 'Clients',      icon: Users,           section: 'clients' },
+  { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
   { href: '/schedule',     label: 'Schedule',     icon: Calendar,        section: 'clients' },
   { href: '/schedule/route',       label: 'Route', icon: Navigation,     section: 'clients', child: true },
-  { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
-  { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'clients' },
-  { href: '/enquiries',    label: 'Enquiries',    icon: Inbox,           section: 'clients' },
+  { href: '/communication', label: 'Communication', icon: MessagesSquare, section: 'clients', group: true },
+  { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'clients', child: true },
+  { href: '/enquiries',    label: 'Enquiries',    icon: Inbox,           section: 'clients', child: true },
+  { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'clients', child: true, comingSoon: true },
 
   { href: '/packages',     label: 'Packages',     icon: Package,         section: 'programs' },
   { href: '/classes',      label: 'Classes',      icon: GraduationCap,   section: 'programs' },
@@ -51,9 +57,12 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/finances',     label: 'Finances',     icon: Wallet,          section: 'business' },
   { href: '/timesheets',   label: 'Timesheets',   icon: Clock,           section: 'business' },
   { href: '/reports',      label: 'Reports',      icon: BarChart3,       section: 'business' },
-  { href: '/website',      label: 'Website',      icon: Globe,           section: 'business' },
+  { href: '/website',      label: 'Integration',  icon: Globe,           section: 'business' },
+  { href: '/add-ons',      label: 'Add-ons',      icon: Puzzle,          section: 'business' },
 
-  { href: '/settings',     label: 'Settings',     icon: Settings,        section: 'system' },
+  // Settings is desktop-hidden — reachable via the top-bar cog on desktop and
+  // the mobile "More" sheet. Help is likewise desktop-hidden (top-bar icon).
+  { href: '/settings',     label: 'Settings',     icon: Settings,        section: 'system', desktopHidden: true },
   { href: '/help',         label: 'Help',         icon: HelpCircle,      section: 'system', desktopHidden: true },
 ]
 
@@ -400,6 +409,73 @@ function NavBadge({ count, variant = 'pill' }: { count: number; variant?: 'pill'
   )
 }
 
+// Full-width desktop top bar: [logo + business name | collapse] [page title] …
+// [streak · search · settings · account · help]. Consumes the page-title
+// context so each page's title shows here. Mobile keeps its own bottom bar.
+function TrainerTopBar({
+  collapsed,
+  onToggle,
+  trainerLogo,
+  businessName,
+  fallbackTitle,
+  userName,
+  userEmail,
+  orgs,
+  activeCompanyId,
+  streak,
+}: {
+  collapsed: boolean
+  onToggle: () => void
+  trainerLogo?: string | null
+  businessName?: string | null
+  fallbackTitle: string
+  userName?: string | null
+  userEmail?: string | null
+  orgs?: { id: string; name: string; role: string }[]
+  activeCompanyId?: string | null
+  streak?: { current: number } | null
+}) {
+  const title = usePageTitle() ?? fallbackTitle
+  return (
+    <header className="hidden md:flex fixed top-0 inset-x-0 z-40 h-14 items-center border-b border-slate-100 bg-white/85 backdrop-blur">
+      {/* Logo zone — aligned to the sidebar width so it sits above it. */}
+      <div className={cn('flex items-center h-full shrink-0 border-r border-slate-100 transition-all duration-200', collapsed ? 'w-16 justify-center px-2' : 'w-64 gap-3 px-5')}>
+        {trainerLogo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-8 rounded-lg object-cover shrink-0" />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg shrink-0" />
+        )}
+        {!collapsed && (
+          <span className="font-semibold text-slate-900 truncate">{businessName ?? 'PupManager'}</span>
+        )}
+      </div>
+      {/* Collapse toggle — just past the sidebar border. */}
+      <button
+        type="button"
+        onClick={onToggle}
+        title={collapsed ? 'Expand menu' : 'Collapse menu'}
+        aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+        className="ml-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+      >
+        {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+      </button>
+      {/* Back-arrow slot — pages portal a back button here (detail pages). */}
+      <div id="pm-topbar-back" className="ml-2 flex items-center empty:hidden" />
+      {/* Page title. */}
+      <h1 className="ml-2 min-w-0 flex-1 truncate text-base font-semibold text-slate-900">{title}</h1>
+      {/* Page-actions slot — pages portal their action buttons here instead of
+          a redundant second header row. */}
+      <div id="pm-topbar-actions" className="mr-2 flex items-center gap-1.5 empty:hidden" />
+      {/* Right-hand controls. */}
+      <div className="pr-3 lg:pr-5">
+        <TopBarControls userName={userName} userEmail={userEmail} orgs={orgs} activeCompanyId={activeCompanyId} streak={streak} />
+      </div>
+    </header>
+  )
+}
+
 function TrainerShell({
   children,
   userName,
@@ -434,15 +510,42 @@ function TrainerShell({
   // Submenu flyouts render position:fixed so they escape the nav's
   // overflow-y-auto clip; we capture the hovered row's top on mouseenter.
   const [flyoutTop, setFlyoutTop] = useState(0)
+  // Expanded-sidebar groups (Clients, Schedule, Communication) are COLLAPSED by
+  // default. A group auto-opens when you're on one of its pages, and an explicit
+  // chevron toggle (persisted) overrides either way. `true`/`false` = explicit;
+  // absent = default (collapsed unless the current route lives inside it).
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
+  const isGroupActive = (href: string) =>
+    (childrenOf[href] ?? []).some(c => pathname === c.href || pathname.startsWith(c.href + '/'))
+  const isGroupOpen = (href: string) => {
+    const explicit = openGroups[href]
+    return explicit !== undefined ? explicit : isGroupActive(href)
+  }
+  function toggleGroup(href: string) {
+    const next = !isGroupOpen(href)
+    setOpenGroups(prev => {
+      const merged = { ...prev, [href]: next }
+      if (typeof window !== 'undefined') window.localStorage.setItem(NAV_GROUPS_KEY, JSON.stringify(merged))
+      return merged
+    })
+  }
 
   useEffect(() => {
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) : null
     let next = false
     if (stored === '1') next = true
     else if (stored === '0') next = false
-    else if (typeof window !== 'undefined' && window.innerWidth < 1024) next = true
+    // Auto-collapse the narrow-desktop window, but NOT touch tablets: their
+    // only way to reach child nav items is the inline rows the expanded
+    // sidebar renders (they can't trigger the collapsed hover flyout).
+    else if (typeof window !== 'undefined' && window.innerWidth < 1024 && !window.matchMedia('(hover: none)').matches) next = true
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCollapsed(next)
+    try {
+      const groups = window.localStorage.getItem(NAV_GROUPS_KEY)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (groups) setOpenGroups(JSON.parse(groups))
+    } catch { /* ignore malformed storage */ }
   }, [])
 
   // Lock background scroll while the More sheet is open.
@@ -467,43 +570,36 @@ function TrainerShell({
     })
   }
 
-  const mobilePrimary = trainerNav.filter(i => TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
-  const mobileSecondary = trainerNav.filter(i => !TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
+  // Group parents (e.g. Communication) don't navigate, so they never appear on
+  // mobile — their children surface directly in the bottom bar / More sheet.
+  const mobilePrimary = trainerNav.filter(i => !i.group && TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
+  const mobileSecondary = trainerNav.filter(i => !i.group && !TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
   const isOnSecondary = mobileSecondary.some(i => pathname === i.href || pathname.startsWith(i.href + '/'))
 
+  // Top-bar title fallback for pages that don't set one (e.g. /schedule): the
+  // longest-matching nav label for the current route.
+  const navFallbackTitle = trainerNav
+    .filter(i => !i.group && (pathname === i.href || pathname.startsWith(i.href + '/')))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.label ?? ''
+
   return (
+    <PageTitleProvider>
     <div className="flex min-h-screen flex-col md:flex-row">
-      {/* Collapse/expand tab — fixed on the sidebar's right border so it isn't
-          clipped by the aside. Tracks the sidebar width. */}
-      <button
-        type="button"
-        onClick={toggleCollapse}
-        title={collapsed ? 'Expand menu' : 'Collapse menu'}
-        aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
-        className={cn(
-          'hidden md:flex fixed top-3 z-30 h-7 w-7 -translate-x-1/2 items-center justify-center text-slate-400 hover:text-slate-600 transition-all duration-200',
-          collapsed ? 'left-16' : 'left-64',
-        )}
-      >
-        {collapsed ? <ChevronRight className="h-6 w-6" /> : <ChevronLeft className="h-6 w-6" />}
-      </button>
+      <TrainerTopBar
+        collapsed={collapsed}
+        onToggle={toggleCollapse}
+        trainerLogo={trainerLogo}
+        businessName={businessName}
+        fallbackTitle={navFallbackTitle}
+        userName={userName}
+        userEmail={userEmail}
+        orgs={orgs}
+        activeCompanyId={activeCompanyId}
+        streak={streak}
+      />
 
-      <aside className={cn('hidden md:flex md:flex-col md:fixed md:inset-y-0 bg-white border-r border-slate-100 transition-all duration-200', sidebarWidth)}>
-        <div className={cn('flex h-16 items-center border-b border-slate-100', collapsed ? 'justify-center px-2' : 'gap-3 px-5')}>
-          {trainerLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={trainerLogo} alt={businessName} className="h-8 w-8 rounded-lg object-cover" />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg" />
-          )}
-          {!collapsed && (
-            <span className="font-semibold text-slate-900 truncate">
-              {businessName ?? 'PupManager'}
-            </span>
-          )}
-        </div>
-
+      {/* Sidebar — sits below the full-width top bar (which owns the logo). */}
+      <aside className={cn('hidden md:flex md:flex-col md:fixed md:top-14 md:bottom-0 md:left-0 bg-white border-r border-slate-100 transition-all duration-200', sidebarWidth)}>
         <nav className={cn('flex-1 overflow-y-auto py-4 space-y-1', collapsed ? 'px-2' : 'px-3')}>
           {desktopNav.map((item, idx, arr) => {
             // Section grouping: emit a small header (expanded) or a divider
@@ -529,6 +625,43 @@ function TrainerShell({
               !onHighlightedMenu &&
               item.href === highlightMenuHref
             const Icon = item.icon
+            const kids = childrenOf[item.href]
+            const isGroup = !!item.group
+            // Group parents don't navigate, so their "active" state mirrors
+            // whichever child route you're on. Non-group rows use plain `active`.
+            const rowActive = isGroup ? isGroupActive(item.href) : active
+            // When a group is collapsed its children's unread is rolled up onto
+            // the parent so the count stays visible; expanded, the kids show it.
+            const groupRollup = isGroup && kids && !isGroupOpen(item.href)
+              ? kids.reduce((s, c) => s + (unreadCounts[c.href] ?? 0), 0)
+              : 0
+            const rowBadge = isGroup ? groupRollup : (unreadCounts[item.href] ?? 0)
+            const rowCls = cn(
+              'relative flex items-center rounded-xl text-sm font-medium transition-colors',
+              collapsed ? 'justify-center h-10 w-10 mx-auto' : 'gap-3 px-3 py-2.5',
+              !collapsed && item.child && 'pl-9 py-2',
+              !collapsed && kids && 'pr-9', // leave room for the chevron toggle
+              rowActive
+                ? 'bg-blue-50 text-blue-700'
+                : item.child
+                  ? 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+              isGroup && 'w-full text-left cursor-pointer',
+            )
+            const rowInner = (
+              <>
+                <Icon className={cn('flex-shrink-0', item.child ? 'h-4 w-4' : 'h-5 w-5')} />
+                {!collapsed && item.label}
+                {!collapsed && <NavBadge count={rowBadge} />}
+                {/* Collapsed rail hides the pill — overlay a dot on the icon. */}
+                {collapsed && rowBadge > 0 && (
+                  <span aria-hidden className="absolute top-0.5 right-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white" />
+                )}
+                {highlighted && (
+                  <span aria-hidden className="absolute right-2 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-indigo-500 animate-pm-menu-dot" />
+                )}
+              </>
+            )
             return (
               <Fragment key={item.href}>
                 {sectionHeader && (
@@ -541,62 +674,74 @@ function TrainerShell({
                 className={cn('relative', childrenOf[item.href] && 'group/sub')}
                 onMouseEnter={childrenOf[item.href] ? (e) => setFlyoutTop(e.currentTarget.getBoundingClientRect().top) : undefined}
               >
-              <Link
-                href={item.href}
-                title={collapsed ? item.label : undefined}
-                className={cn(
-                  'relative flex items-center rounded-xl text-sm font-medium transition-colors',
-                  collapsed ? 'justify-center h-10 w-10 mx-auto' : 'gap-3 px-3 py-2.5',
-                  !collapsed && item.child && 'pl-9 py-2',
-                  active
-                    ? 'bg-blue-50 text-blue-700'
-                    : item.child
-                      ? 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                )}
-              >
-                <Icon className={cn('flex-shrink-0', item.child ? 'h-4 w-4' : 'h-5 w-5')} />
-                {!collapsed && item.label}
-                {!collapsed && <NavBadge count={unreadCounts[item.href] ?? 0} />}
-                {/* Collapsed-sidebar mode hides the pill — use the dot
-                    variant overlaid on the icon corner instead. */}
-                {collapsed && (unreadCounts[item.href] ?? 0) > 0 && (
-                  <span
-                    aria-hidden
-                    className="absolute top-0.5 right-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white"
-                  />
-                )}
-                {highlighted && (
-                  <span
-                    aria-hidden
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-indigo-500 animate-pm-menu-dot"
-                  />
-                )}
-                {!collapsed && childrenOf[item.href] && (
-                  <ChevronRight className="h-4 w-4 text-slate-300 ml-auto" />
-                )}
-              </Link>
-              {/* Desktop hover flyout: "View X" + the item's children. */}
-              {childrenOf[item.href] && (
+              {isGroup ? (
+                // Group parent: a non-navigating toggle (no page of its own).
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(item.href)}
+                  title={collapsed ? item.label : undefined}
+                  aria-expanded={isGroupOpen(item.href)}
+                  className={rowCls}
+                >
+                  {rowInner}
+                </button>
+              ) : (
+                <Link href={item.href} title={collapsed ? item.label : undefined} className={rowCls}>
+                  {rowInner}
+                </Link>
+              )}
+              {/* Chevron toggles the inline child group. It's a sibling of the
+                  row Link (can't nest interactive elements) overlaid on the
+                  right edge. */}
+              {!collapsed && childrenOf[item.href] && (
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(item.href)}
+                  aria-label={`${isGroupOpen(item.href) ? 'Collapse' : 'Expand'} ${item.label}`}
+                  aria-expanded={isGroupOpen(item.href)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <ChevronDown className={cn('h-4 w-4 transition-transform', !isGroupOpen(item.href) && '-rotate-90')} />
+                </button>
+              )}
+              {/* Collapsed icon rail: children have no inline labels, so expose
+                  them via a hover flyout ("View X" + the children). Expanded
+                  mode lists them inline instead (below), which keeps them
+                  tappable on touch devices that can't trigger a hover. */}
+              {collapsed && childrenOf[item.href] && (
                 <div
                   className="invisible opacity-0 group-hover/sub:visible group-hover/sub:opacity-100 fixed z-50 transition-opacity duration-100"
                   // Start the flyout at the trigger row's right edge (nav has
-                  // px-2/px-3 padding, so the row ends short of the sidebar
-                  // edge) and pad it back out, so the invisible padding bridges
-                  // the gap continuously — no dead strip to drop the hover on.
-                  style={{ top: flyoutTop, left: collapsed ? 56 : 244, paddingLeft: collapsed ? 14 : 18 }}
+                  // px-2 padding, so the row ends short of the sidebar edge) and
+                  // pad it back out, so the invisible padding bridges the gap
+                  // continuously — no dead strip to drop the hover on.
+                  style={{ top: flyoutTop, left: 56, paddingLeft: 14 }}
                 >
                   <div className="min-w-[12rem] rounded-xl border border-slate-200 bg-white py-1 shadow-[0_18px_45px_-12px_rgba(15,23,42,0.25)]">
-                    <Link href={item.href} className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                      <Icon className="h-4 w-4 text-slate-400" /> View {item.label.toLowerCase()}
-                    </Link>
-                    <div className="my-1 border-t border-slate-100" />
+                    {/* Group parents have no page of their own — skip "View X". */}
+                    {!isGroup && (
+                      <>
+                        <Link href={item.href} className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                          <Icon className="h-4 w-4 text-slate-400" /> View {item.label.toLowerCase()}
+                        </Link>
+                        <div className="my-1 border-t border-slate-100" />
+                      </>
+                    )}
                     {childrenOf[item.href].map(c => {
                       const cActive = pathname === c.href || pathname.startsWith(c.href + '/')
                       const CIcon = c.icon
+                      if (c.comingSoon) {
+                        return (
+                          <span key={c.href} className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-400 cursor-default">
+                            <CIcon className="h-4 w-4 text-slate-300" /> {c.label}
+                            <span className="ml-auto rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Soon</span>
+                          </span>
+                        )
+                      }
                       return (
                         <Link key={c.href} href={c.href} className={cn('flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-slate-50', cActive ? 'text-blue-700' : 'text-slate-600')}>
                           <CIcon className="h-4 w-4 text-slate-400" /> {c.label}
+                          <NavBadge count={unreadCounts[c.href] ?? 0} />
                         </Link>
                       )
                     })}
@@ -604,6 +749,40 @@ function TrainerShell({
                 </div>
               )}
               </div>
+              {/* Expanded sidebar: render children as indented rows so they're
+                  reachable by tap — touch tablets can't trigger the collapsed
+                  hover flyout. The chevron collapses the group. */}
+              {!collapsed && isGroupOpen(item.href) && childrenOf[item.href]?.map(c => {
+                const cActive = pathname === c.href || pathname.startsWith(c.href + '/')
+                const CIcon = c.icon
+                if (c.comingSoon) {
+                  return (
+                    <div
+                      key={c.href}
+                      title="Coming soon"
+                      className="relative flex items-center gap-3 rounded-xl pl-9 py-2 text-sm font-medium text-slate-400 cursor-default"
+                    >
+                      <CIcon className="h-4 w-4 flex-shrink-0" />
+                      {c.label}
+                      <span className="ml-auto rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Soon</span>
+                    </div>
+                  )
+                }
+                return (
+                  <Link
+                    key={c.href}
+                    href={c.href}
+                    className={cn(
+                      'relative flex items-center gap-3 rounded-xl pl-9 py-2 text-sm font-medium transition-colors',
+                      cActive ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                    )}
+                  >
+                    <CIcon className="h-4 w-4 flex-shrink-0" />
+                    {c.label}
+                    <NavBadge count={unreadCounts[c.href] ?? 0} />
+                  </Link>
+                )
+              })}
               </Fragment>
             )
           })}
@@ -705,6 +884,18 @@ function TrainerShell({
               {mobileSecondary.map(item => {
                 const active = pathname === item.href || pathname.startsWith(item.href + '/')
                 const Icon = item.icon
+                if (item.comingSoon) {
+                  return (
+                    <div
+                      key={item.href}
+                      className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium bg-slate-50 text-slate-400 cursor-default"
+                    >
+                      <Icon className="h-5 w-5 flex-shrink-0" />
+                      {item.label}
+                      <span className="ml-auto rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">Soon</span>
+                    </div>
+                  )
+                }
                 return (
                   <Link
                     key={item.href}
@@ -738,20 +929,18 @@ function TrainerShell({
       )}
 
       <main
-        // --app-top-offset reserves the desktop top-bar height so PageHeader
-        // (and any page that reads it) sticks BELOW the bar instead of under it.
-        // 0 on mobile (no top bar there).
+        // --app-top-offset reserves the desktop top-bar height (the fixed bar is
+        // out of flow) so content clears it and PageHeader toolbar rows stick
+        // just beneath it. 0 on mobile (no top bar there).
         className={cn('flex-1 flex flex-col min-h-0 pb-20 md:pb-0 transition-all duration-200 [--app-top-offset:0px] md:[--app-top-offset:3.5rem]', mainOffset)}
-        // Capped safe-area pad on mobile: pages without their own sticky
-        // top bar get a small clearance below iOS chrome. Pages that
-        // own a sticky bar can break out via negative margin and handle
-        // safe-area themselves.
-        style={{ paddingTop: 'min(env(safe-area-inset-top, 0px), 1rem)' }}
+        // Clear the fixed top bar on desktop; on mobile fall back to a capped
+        // safe-area pad below iOS chrome. Pages that own a sticky bar can break
+        // out via negative margin and handle safe-area themselves.
+        style={{ paddingTop: 'calc(var(--app-top-offset, 0px) + min(env(safe-area-inset-top, 0px), 1rem))' }}
       >
-        {/* Desktop global top bar: streak, search, help, profile. Sticky; reserves h-14. */}
-        <TopBarControls userName={userName} userEmail={userEmail} orgs={orgs} activeCompanyId={activeCompanyId} streak={streak} />
         {children}
       </main>
     </div>
+    </PageTitleProvider>
   )
 }

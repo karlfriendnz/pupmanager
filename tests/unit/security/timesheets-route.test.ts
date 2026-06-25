@@ -98,7 +98,7 @@ beforeEach(() => {
 describe('timesheets list/create — auth', () => {
   it('GET rejects a non-trainer session with 401 and queries nothing', async () => {
     h.ctx.mockResolvedValue(null)
-    const res = await listGET()
+    const res = await listGET(plain('GET'))
     expect(res.status).toBe(401)
     expect(h.tsFindMany).not.toHaveBeenCalled()
   })
@@ -106,7 +106,7 @@ describe('timesheets list/create — auth', () => {
   it('GET scopes findMany to the caller (companyId + userId)', async () => {
     h.ctx.mockResolvedValue(OWNER)
     h.tsFindMany.mockResolvedValue([])
-    await listGET()
+    await listGET(plain('GET'))
     expect(h.tsFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { companyId: 'co1', userId: 'u1' } }),
     )
@@ -135,9 +135,11 @@ describe('timesheet detail — cross-tenant ownership', () => {
     h.tsFindFirst.mockResolvedValue(null) // ownership-scoped lookup finds nothing
     const res = await detailGET(plain('GET'), p('FOREIGN'))
     expect(res!.status).toBe(404)
-    // The where clause must carry both tenant keys.
+    // Owners/managers can reach any sheet in their company, so the lookup is
+    // tenant-scoped by companyId (not pinned to their own userId). Cross-tenant
+    // isolation is still enforced by companyId.
     expect(h.tsFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'FOREIGN', companyId: 'co1', userId: 'u1' } }),
+      expect.objectContaining({ where: { id: 'FOREIGN', companyId: 'co1' } }),
     )
   })
 
@@ -267,8 +269,24 @@ describe('finalise / reopen', () => {
     expect(res.status).toBe(404)
     expect(h.tsUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'FOREIGN', companyId: 'co1', userId: 'u1', status: 'FINALISED' },
+        where: { id: 'FOREIGN', companyId: 'co1', status: 'FINALISED' },
       }),
+    )
+  })
+})
+
+// The owner/manager relaxation above must NOT leak to STAFF: a plain staff
+// member's lookups stay pinned to their own userId, so they can't reach a
+// teammate's sheet even within the same company.
+describe('timesheet detail — staff stay self-scoped', () => {
+  const STAFF = { userId: 'u2', companyId: 'co1', membershipId: 'm2', role: 'STAFF', permissions: {} }
+  it('GET scopes a staff lookup to their own userId', async () => {
+    h.ctx.mockResolvedValue(STAFF)
+    h.tsFindFirst.mockResolvedValue(null)
+    const res = await detailGET(plain('GET'), p('TEAMMATE_SHEET'))
+    expect(res!.status).toBe(404)
+    expect(h.tsFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'TEAMMATE_SHEET', companyId: 'co1', userId: 'u2' } }),
     )
   })
 })

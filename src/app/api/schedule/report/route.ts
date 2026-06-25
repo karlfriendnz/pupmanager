@@ -57,7 +57,7 @@ export async function GET(req: Request) {
   const startUtc = startOfDayInTz(weekStart, tz)
   const endUtc = endOfDayInTz(weekEnd, tz)
 
-  const [sessions, customFields] = await Promise.all([
+  const [sessions, customFields, productItems] = await Promise.all([
     prisma.trainingSession.findMany({
       where: {
         trainerId: trainerProfile.id,
@@ -88,6 +88,14 @@ export async function GET(req: Request) {
             },
           },
         },
+        classRun: {
+          select: {
+            id: true,
+            name: true,
+            package: { select: { priceCents: true, specialPriceCents: true, sessionCount: true } },
+            enrollments: { where: { status: { in: ['ENROLLED', 'COMPLETED'] } }, select: { id: true } },
+          },
+        },
         buddies: { select: { id: true, clientId: true } },
       },
       orderBy: { scheduledAt: 'asc' },
@@ -98,6 +106,20 @@ export async function GET(req: Request) {
           orderBy: [{ category: 'asc' }, { order: 'asc' }, { label: 'asc' }],
         })
       : Promise.resolve([] as Awaited<ReturnType<typeof prisma.customField.findMany>>),
+    // Sales by Product: real money from paid PRODUCT line items in the period.
+    // PaymentItem (kind PRODUCT) is the only priced product signal — ProductRequest
+    // carries no price — so we group succeeded/paid product line items by name.
+    prisma.paymentItem.findMany({
+      where: {
+        kind: 'PRODUCT',
+        payment: {
+          trainerId: trainerProfile.id,
+          status: { in: ['PAID', 'PARTIALLY_REFUNDED'] },
+          paidAt: { gte: startUtc, lte: endUtc },
+        },
+      },
+      select: { productId: true, description: true, unitAmount: true, quantity: true },
+    }),
   ])
 
   // Resolve clientId per session (direct link or via the dog's primary owner).
@@ -110,14 +132,24 @@ export async function GET(req: Request) {
   }
 
   // Per-session revenue from the package allocation: prefer the special price,
-  // fall back to list price, divide across sessionCount. Sessions without a
-  // package contribute nothing to revenue.
+  // fall back to list price, divide across sessionCount. For a 1:1 session that's
+  // one share of the package; for a shared class session it's one share of the
+  // class package price PER enrolled head (a single shared session earns from
+  // every enrollee). Sessions with neither contribute nothing to revenue.
   const sessionRevenue = new Map<string, number>()
+  const classRevenue = new Map<string, number>() // per shared session, class portion only
   for (const s of sessions) {
     const pkg = s.clientPackage?.package
     if (pkg) {
       const price = pkg.specialPriceCents ?? pkg.priceCents ?? 0
       sessionRevenue.set(s.id, Math.round(price / Math.max(1, pkg.sessionCount)))
+    } else if (s.classRun?.package) {
+      const cp = s.classRun.package
+      const perHead = Math.round((cp.specialPriceCents ?? cp.priceCents ?? 0) / Math.max(1, cp.sessionCount))
+      const heads = s.classRun.enrollments.length
+      const rev = perHead * heads
+      sessionRevenue.set(s.id, rev)
+      classRevenue.set(s.id, rev)
     } else {
       sessionRevenue.set(s.id, 0)
     }
@@ -134,6 +166,7 @@ export async function GET(req: Request) {
   const uniqueClients = new Set<string>()
   const uniqueDogs = new Set<string>()
   const byPackage = new Map<string, { name: string; sessions: number; revenueCents: number }>()
+  const byClass = new Map<string, { name: string; sessions: number; revenueCents: number }>()
   const byClient = new Map<string, { name: string; sessions: number; revenueCents: number }>()
   const byStatus = { UPCOMING: 0, COMPLETED: 0, COMMENTED: 0, INVOICED: 0 }
 
@@ -157,6 +190,13 @@ export async function GET(req: Request) {
       e.sessions++
       e.revenueCents += rev
       byPackage.set(key, e)
+    } else if (s.classRun) {
+      // Group/class session — counts toward Sales by Class, not packages.
+      const key = s.classRun.id
+      const e = byClass.get(key) ?? { name: s.classRun.name, sessions: 0, revenueCents: 0 }
+      e.sessions++
+      e.revenueCents += classRevenue.get(s.id) ?? 0
+      byClass.set(key, e)
     } else {
       const e = byPackage.get('__none__') ?? { name: 'Unassigned', sessions: 0, revenueCents: 0 }
       e.sessions++
@@ -173,6 +213,17 @@ export async function GET(req: Request) {
     }
 
     buddyCount += s.buddies.length
+  }
+
+  // Sales by Product: group paid PRODUCT line items by their snapshot name
+  // (falls back to productId when descriptions collide on a renamed product).
+  const byProduct = new Map<string, { name: string; count: number; totalCents: number }>()
+  for (const it of productItems) {
+    const key = it.productId ?? it.description
+    const e = byProduct.get(key) ?? { name: it.description, count: 0, totalCents: 0 }
+    e.count += it.quantity
+    e.totalCents += it.unitAmount * it.quantity
+    byProduct.set(key, e)
   }
 
   // Custom-field breakdowns. We attribute each session to its client's value
@@ -254,6 +305,10 @@ export async function GET(req: Request) {
     },
     byPackage: Array.from(byPackage.values())
       .sort((a, b) => b.revenueCents - a.revenueCents || b.sessions - a.sessions),
+    byClass: Array.from(byClass.values())
+      .sort((a, b) => b.revenueCents - a.revenueCents || b.sessions - a.sessions),
+    byProduct: Array.from(byProduct.values())
+      .sort((a, b) => b.totalCents - a.totalCents || b.count - a.count),
     topClients: Array.from(byClient.entries())
       .map(([id, v]) => ({ id, ...v }))
       .sort((a, b) => b.sessions - a.sessions || b.revenueCents - a.revenueCents)

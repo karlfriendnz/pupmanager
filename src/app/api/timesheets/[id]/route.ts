@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
+import { sheetScope } from '../_access'
 
 export const runtime = 'nodejs'
 
@@ -11,11 +12,12 @@ const updateSchema = z.object({
   recipientEmail: z.string().email().nullable().optional().or(z.literal('')),
 })
 
-// Ownership: a user may only touch their own timesheets within the active company.
+// Ownership: a user may touch their own timesheets; owners/managers may touch
+// any member's within the active company (sheetScope handles the role gate).
 async function own(id: string) {
   const ctx = await getTrainerContext()
   if (!ctx) return { error: NextResponse.json({ error: 'Unauthorised' }, { status: 401 }) }
-  const sheet = await prisma.timesheet.findFirst({ where: { id, companyId: ctx.companyId, userId: ctx.userId } })
+  const sheet = await prisma.timesheet.findFirst({ where: { id, ...sheetScope(ctx) } })
   if (!sheet) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
   return { ctx, sheet }
 }

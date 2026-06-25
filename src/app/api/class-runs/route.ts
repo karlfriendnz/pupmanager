@@ -52,6 +52,9 @@ const createSchema = z.object({
   priceCents: z.number().int().min(0).max(10_000_00).nullable().optional(),
   color: z.string().max(20).nullable().optional(),
   defaultSessionFormId: z.string().nullable().optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  // TrainerMembership ids (of this company) to assign as the class's trainers.
+  assignedMembershipIds: z.array(z.string()).optional(),
   // Legacy: run off an existing group package.
   packageId: z.string().min(1).optional(),
 })
@@ -102,6 +105,8 @@ export async function POST(req: Request) {
       color: d.color ?? null,
       scheduleNote: d.scheduleNote ?? null,
       defaultSessionFormId: d.defaultSessionFormId ?? null,
+      imageUrl: d.imageUrl ?? null,
+      assignedMembershipIds: d.assignedMembershipIds,
     })
     return NextResponse.json({ ok: true, ...run }, { status: 201 })
   } catch (err) {

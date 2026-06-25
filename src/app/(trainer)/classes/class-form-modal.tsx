@@ -5,6 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { X } from 'lucide-react'
+import { ImageUploadButton } from '@/components/image-uploader'
+
+export type TeamMemberOption = {
+  id: string
+  name: string
+  title: string | null
+  isOwner: boolean
+}
 
 export type ClassInitial = {
   name?: string
@@ -17,6 +25,8 @@ export type ClassInitial = {
   capacity?: number | null
   scheduleNote?: string | null
   defaultSessionFormId?: string | null
+  imageUrl?: string | null
+  assignedMembershipIds?: string[]
 }
 
 // ISO → the `YYYY-MM-DDTHH:mm` a datetime-local input expects, in local time.
@@ -35,6 +45,7 @@ export function ClassFormModal({
   runId,
   initial,
   canReschedule = true,
+  teamMembers = [],
   onClose,
   onSaved,
 }: {
@@ -42,6 +53,7 @@ export function ClassFormModal({
   runId?: string
   initial?: ClassInitial
   canReschedule?: boolean
+  teamMembers?: TeamMemberOption[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -55,9 +67,18 @@ export function ClassFormModal({
   const [capacity, setCapacity] = useState(initial?.capacity != null ? String(initial.capacity) : '')
   const [scheduleNote, setScheduleNote] = useState(initial?.scheduleNote ?? '')
   const [defaultFormId, setDefaultFormId] = useState(initial?.defaultSessionFormId ?? '')
+  const [imageUrl, setImageUrl] = useState<string | null>(initial?.imageUrl ?? null)
+  const [assignedIds, setAssignedIds] = useState<string[]>(initial?.assignedMembershipIds ?? [])
   const [forms, setForms] = useState<{ id: string; name: string }[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Only worth showing the multi-select when the company has 2+ team members.
+  const showTrainerPicker = teamMembers.length > 1
+
+  function toggleTrainer(id: string) {
+    setAssignedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]))
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -94,6 +115,10 @@ export function ClassFormModal({
         capacity: capacity.trim() ? Math.max(1, Math.floor(Number(capacity))) : null,
         scheduleNote: scheduleNote.trim() || null,
         defaultSessionFormId: defaultFormId || null,
+        imageUrl: imageUrl || null,
+        // Only send assignments when the picker is in play, so we don't clobber
+        // existing rows for a solo company that never sees the selector.
+        ...(showTrainerPicker && { assignedMembershipIds: assignedIds }),
       }
       const res = await fetch(mode === 'edit' ? `/api/class-runs/${runId}` : '/api/class-runs', {
         method: mode === 'edit' ? 'PATCH' : 'POST',
@@ -186,6 +211,55 @@ export function ClassFormModal({
           </div>
 
           <Input label="Schedule note (optional)" placeholder="Thursdays 4:00pm" value={scheduleNote} onChange={e => setScheduleNote(e.target.value)} />
+
+          {/* Cover image */}
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Class image <span className="text-slate-400">(optional)</span></label>
+            {imageUrl ? (
+              <div className="relative inline-block">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imageUrl} alt="" className="h-24 w-full max-w-[16rem] rounded-xl object-cover border border-slate-200" />
+                <button
+                  type="button"
+                  onClick={() => setImageUrl(null)}
+                  className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 flex items-center justify-center shadow-sm"
+                  aria-label="Remove image"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5">
+                <ImageUploadButton onUploaded={urls => { if (urls[0]) setImageUrl(urls[0]) }} />
+                <span className="text-xs text-slate-400">Add a cover photo for this class.</span>
+              </div>
+            )}
+          </div>
+
+          {/* Assigned trainers — only when there's a team to choose from */}
+          {showTrainerPicker && (
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Trainers <span className="text-slate-400">(optional)</span></label>
+              <div className="flex flex-wrap gap-1.5">
+                {teamMembers.map(m => {
+                  const on = assignedIds.includes(m.id)
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => toggleTrainer(m.id)}
+                      className={`text-sm px-3 py-1.5 rounded-full border transition-colors ${
+                        on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {m.name}{m.title ? <span className="opacity-60"> · {m.title}</span> : null}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">Tap to assign one or more team members to this class.</p>
+            </div>
+          )}
 
           <div className="flex gap-2 pt-2">
             <Button type="submit" loading={saving}>{mode === 'edit' ? 'Save changes' : 'Create class'}</Button>

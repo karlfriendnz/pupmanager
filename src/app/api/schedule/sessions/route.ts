@@ -67,8 +67,8 @@ export async function POST(req: Request) {
   const base = new Date(scheduledAt)
   const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
-  const firstId = await prisma.$transaction(async tx => {
-    let firstSessionId = ''
+  const createdIds = await prisma.$transaction(async tx => {
+    const ids: string[] = []
     for (let i = 0; i < occurrences; i++) {
       const s = await tx.trainingSession.create({
         data: {
@@ -84,15 +84,25 @@ export async function POST(req: Request) {
           walkSeriesId,
         },
       })
-      if (i === 0) firstSessionId = s.id
+      ids.push(s.id)
       if (buddyList.length) {
         await tx.sessionBuddy.createMany({
           data: buddyList.map(b => ({ sessionId: s.id, clientId: b.clientId, dogId: b.dogId })),
         })
       }
     }
-    return firstSessionId
+    return ids
   })
+  const firstId = createdIds[0] ?? ''
+
+  // Best-effort: mirror the new walk(s) onto the trainer's Google Calendar.
+  // Awaited (not fire-and-forget) but wrapped so it never breaks creation.
+  try {
+    const { syncSessionsToGoogle } = await import('@/lib/google-calendar')
+    await syncSessionsToGoogle(createdIds)
+  } catch {
+    // Non-critical
+  }
 
   return NextResponse.json({ id: firstId, walkSeriesId, occurrences })
 }

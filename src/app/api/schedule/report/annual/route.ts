@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     .filter(s => s.startsWith('custom:'))
     .map(s => s.slice('custom:'.length))
 
-  const [sessions, customFields] = await Promise.all([
+  const [sessions, customFields, productItems] = await Promise.all([
     prisma.trainingSession.findMany({
       where: {
         trainerId: trainerProfile.id,
@@ -69,6 +69,14 @@ export async function GET(req: Request) {
             },
           },
         },
+        classRun: {
+          select: {
+            id: true,
+            name: true,
+            package: { select: { priceCents: true, specialPriceCents: true, sessionCount: true } },
+            enrollments: { where: { status: { in: ['ENROLLED', 'COMPLETED'] } }, select: { id: true } },
+          },
+        },
         buddies: { select: { id: true, clientId: true } },
       },
       orderBy: { scheduledAt: 'asc' },
@@ -79,21 +87,43 @@ export async function GET(req: Request) {
           orderBy: [{ category: 'asc' }, { order: 'asc' }, { label: 'asc' }],
         })
       : Promise.resolve([] as Awaited<ReturnType<typeof prisma.customField.findMany>>),
+    // Sales by Product: real money from paid PRODUCT line items in the year.
+    // PaymentItem (kind PRODUCT) is the only priced product signal.
+    prisma.paymentItem.findMany({
+      where: {
+        kind: 'PRODUCT',
+        payment: {
+          trainerId: trainerProfile.id,
+          status: { in: ['PAID', 'PARTIALLY_REFUNDED'] },
+          paidAt: { gte: startUtc, lte: endUtc },
+        },
+      },
+      select: { productId: true, description: true, unitAmount: true, quantity: true },
+    }),
   ])
 
-  // Resolve clientId per session and per-session revenue.
+  // Resolve clientId per session and per-session revenue. Shared class sessions
+  // earn one share of the class package price PER enrolled head.
   const sessionClientId = new Map<string, string | null>()
   const clientIds = new Set<string>()
   const sessionRevenue = new Map<string, number>()
+  const classRevenue = new Map<string, number>()
   for (const s of sessions) {
     const cid = s.clientId ?? s.dog?.primaryFor[0]?.id ?? null
     sessionClientId.set(s.id, cid)
     if (cid) clientIds.add(cid)
     const pkg = s.clientPackage?.package
-    sessionRevenue.set(
-      s.id,
-      pkg ? Math.round((pkg.specialPriceCents ?? pkg.priceCents ?? 0) / Math.max(1, pkg.sessionCount)) : 0,
-    )
+    if (pkg) {
+      sessionRevenue.set(s.id, Math.round((pkg.specialPriceCents ?? pkg.priceCents ?? 0) / Math.max(1, pkg.sessionCount)))
+    } else if (s.classRun?.package) {
+      const cp = s.classRun.package
+      const perHead = Math.round((cp.specialPriceCents ?? cp.priceCents ?? 0) / Math.max(1, cp.sessionCount))
+      const rev = perHead * s.classRun.enrollments.length
+      sessionRevenue.set(s.id, rev)
+      classRevenue.set(s.id, rev)
+    } else {
+      sessionRevenue.set(s.id, 0)
+    }
   }
 
   // Top-line totals.
@@ -107,6 +137,7 @@ export async function GET(req: Request) {
   const uniqueClients = new Set<string>()
   const uniqueDogs = new Set<string>()
   const byPackage = new Map<string, { name: string; sessions: number; revenueCents: number }>()
+  const byClass = new Map<string, { name: string; sessions: number; revenueCents: number }>()
   const byClient = new Map<string, { name: string; sessions: number; revenueCents: number }>()
   const byStatus = { UPCOMING: 0, COMPLETED: 0, COMMENTED: 0, INVOICED: 0 }
 
@@ -138,6 +169,12 @@ export async function GET(req: Request) {
       e.sessions++
       e.revenueCents += rev
       byPackage.set(key, e)
+    } else if (s.classRun) {
+      const key = s.classRun.id
+      const e = byClass.get(key) ?? { name: s.classRun.name, sessions: 0, revenueCents: 0 }
+      e.sessions++
+      e.revenueCents += classRevenue.get(s.id) ?? 0
+      byClass.set(key, e)
     } else {
       const e = byPackage.get('__none__') ?? { name: 'Unassigned', sessions: 0, revenueCents: 0 }
       e.sessions++
@@ -165,6 +202,16 @@ export async function GET(req: Request) {
     }
   }
   for (let i = 0; i < 12; i++) byMonth[i].uniqueClients = monthClientSets[i].size
+
+  // Sales by Product: paid PRODUCT line items grouped by snapshot name.
+  const byProduct = new Map<string, { name: string; count: number; totalCents: number }>()
+  for (const it of productItems) {
+    const key = it.productId ?? it.description
+    const e = byProduct.get(key) ?? { name: it.description, count: 0, totalCents: 0 }
+    e.count += it.quantity
+    e.totalCents += it.unitAmount * it.quantity
+    byProduct.set(key, e)
+  }
 
   // Custom-field breakdowns. DOG fields use the value tied to each client's primary dog.
   const valuesByClientField = new Map<string, string>()
@@ -245,6 +292,8 @@ export async function GET(req: Request) {
     },
     byMonth,
     byPackage: Array.from(byPackage.values()).sort((a, b) => b.revenueCents - a.revenueCents || b.sessions - a.sessions),
+    byClass: Array.from(byClass.values()).sort((a, b) => b.revenueCents - a.revenueCents || b.sessions - a.sessions),
+    byProduct: Array.from(byProduct.values()).sort((a, b) => b.totalCents - a.totalCents || b.count - a.count),
     topClients: Array.from(byClient.entries())
       .map(([id, v]) => ({ id, ...v }))
       .sort((a, b) => b.revenueCents - a.revenueCents || b.sessions - a.sessions)

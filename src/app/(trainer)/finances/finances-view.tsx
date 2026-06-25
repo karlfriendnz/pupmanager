@@ -425,7 +425,7 @@ export function FinancesView() {
 
   return (
     <div>
-      <div className="flex gap-1 border-b border-slate-200 mb-6 -mx-4 md:-mx-8 px-4 md:px-8 overflow-x-auto">
+      <div className="flex gap-1 border-b border-slate-200 mb-6 -mx-4 md:-mx-8 px-4 md:px-8 overflow-x-auto overflow-y-hidden">
         {TABS.map(t => {
           const Icon = t.icon
           const active = tab === t.id

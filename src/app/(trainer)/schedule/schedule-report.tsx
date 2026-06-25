@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   X, Loader2, Users, Calendar, Clock, Video, MapPin, ChevronLeft, ChevronRight,
   UserPlus, TrendingUp, Sparkles, Package as PackageIcon, ListChecks, CalendarRange, BarChart2, Trophy,
+  UsersRound, ShoppingBag,
 } from 'lucide-react'
 
 // Trainer's effective take-home after platform / processing share. Tweak this
@@ -41,6 +42,8 @@ interface WeeklyData {
   timezone: string
   totals: CommonTotals
   byPackage: { name: string; sessions: number; revenueCents: number }[]
+  byClass: { name: string; sessions: number; revenueCents: number }[]
+  byProduct: { name: string; count: number; totalCents: number }[]
   topClients: { id: string; name: string; sessions: number; revenueCents: number }[]
   customBreakdowns: {
     id: string
@@ -61,6 +64,8 @@ interface AnnualData {
   }
   byMonth: { month: number; label: string; sessions: number; revenueCents: number; uniqueClients: number }[]
   byPackage: { name: string; sessions: number; revenueCents: number }[]
+  byClass: { name: string; sessions: number; revenueCents: number }[]
+  byProduct: { name: string; count: number; totalCents: number }[]
   topClients: { id: string; name: string; sessions: number; revenueCents: number }[]
   customBreakdowns: {
     id: string
@@ -272,6 +277,8 @@ function WeeklyView({ weekStart }: { weekStart: string }) {
           <DeliveryAndExtras total={t} />
           <BreakdownsSection
             byPackage={data.byPackage}
+            byClass={data.byClass}
+            byProduct={data.byProduct}
             topClients={data.topClients}
             customBreakdowns={data.customBreakdowns}
           />
@@ -347,6 +354,8 @@ function AnnualView() {
             <DeliveryAndExtras total={data.totals} />
             <BreakdownsSection
               byPackage={data.byPackage}
+              byClass={data.byClass}
+              byProduct={data.byProduct}
               topClients={data.topClients}
               customBreakdowns={data.customBreakdowns}
             />
@@ -511,23 +520,47 @@ function DeliveryAndExtras({ total }: { total: CommonTotals }) {
 
 function BreakdownsSection({
   byPackage,
+  byClass,
+  byProduct,
   topClients,
   customBreakdowns,
 }: {
   byPackage: { name: string; sessions: number; revenueCents: number }[]
+  byClass: { name: string; sessions: number; revenueCents: number }[]
+  byProduct: { name: string; count: number; totalCents: number }[]
   topClients: { id: string; name: string; sessions: number; revenueCents: number }[]
   customBreakdowns: { id: string; label: string; appliesTo: string; buckets: Bucket[] }[]
 }) {
   return (
     <>
-      {byPackage.length > 0 && (
-        <BreakdownCard
-          title="By package"
-          icon={<PackageIcon className="h-4 w-4" />}
-          accent="indigo"
-          rows={byPackage.map(p => ({ label: p.name, sessions: p.sessions, revenueCents: p.revenueCents }))}
-        />
-      )}
+      {/* What's selling — sales breakdowns. Always shown so a trainer can see
+          which channels are (or aren't) earning, with a per-section empty state. */}
+      <BreakdownCard
+        title="Sales by package"
+        icon={<PackageIcon className="h-4 w-4" />}
+        accent="indigo"
+        emptyHint="No 1:1 package sessions in this period."
+        rows={byPackage.map(p => ({ label: p.name, sessions: p.sessions, revenueCents: p.revenueCents }))}
+      />
+
+      <BreakdownCard
+        title="Sales by class"
+        subtitle="Group classes"
+        icon={<UsersRound className="h-4 w-4" />}
+        accent="teal"
+        emptyHint="No group-class sessions in this period."
+        rows={byClass.map(c => ({ label: c.name, sessions: c.sessions, revenueCents: c.revenueCents }))}
+      />
+
+      <BreakdownCard
+        title="Sales by product"
+        subtitle="Paid product purchases"
+        icon={<ShoppingBag className="h-4 w-4" />}
+        accent="rose"
+        countNoun="sold"
+        emptyHint="No product sales recorded in this period."
+        rows={byProduct.map(p => ({ label: p.name, sessions: p.count, revenueCents: p.totalCents }))}
+      />
 
       {topClients.length > 0 && (
         <BreakdownCard
@@ -619,35 +652,59 @@ function Pulse({
 }
 
 function BreakdownCard({
-  title, subtitle, icon, accent, rows,
+  title, subtitle, icon, accent, rows, emptyHint, countNoun = 'session',
 }: {
   title: string
   subtitle?: string
   icon: React.ReactNode
   accent: Accent
   rows: { label: string; sessions: number; revenueCents: number }[]
+  // When provided, an empty `rows` renders this hint instead of hiding the card —
+  // used for the sales sections so trainers always see the channel.
+  emptyHint?: string
+  // Noun for the per-row count ("session" → "3 sessions"; "sold" → "3 sold").
+  countNoun?: string
 }) {
-  if (rows.length === 0) return null
-  const totalRev = rows.reduce((acc, r) => acc + r.revenueCents, 0)
-  const totalSessions = rows.reduce((acc, r) => acc + r.sessions, 0)
-  const showRevenue = totalRev > 0
-  const denominator = showRevenue ? totalRev : totalSessions
   const t = TONE[accent]
+  const totalRev = rows.reduce((acc, r) => acc + r.revenueCents, 0)
+  const totalCount = rows.reduce((acc, r) => acc + r.sessions, 0)
+  const showRevenue = totalRev > 0
+  const denominator = showRevenue ? totalRev : totalCount
+  const fmtCount = (n: number) =>
+    countNoun === 'sold' ? `${n} sold` : `${n} ${countNoun}${n === 1 ? '' : 's'}`
+
+  const Header = (
+    <div className="flex items-center gap-2 mb-2.5">
+      <div className={`inline-flex items-center justify-center h-7 w-7 rounded-lg ${t.bgChip}`}>
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <h3 className="text-sm font-semibold text-slate-900 leading-none">{title}</h3>
+        {subtitle && <p className="text-[11px] text-slate-400 mt-0.5">{subtitle}</p>}
+      </div>
+      {rows.length > 0 && (
+        <span className="text-[11px] text-slate-400">
+          {showRevenue ? fmtMoney(totalRev, { compact: true }) : fmtCount(totalCount)}
+        </span>
+      )}
+    </div>
+  )
+
+  if (rows.length === 0) {
+    if (!emptyHint) return null
+    return (
+      <section>
+        {Header}
+        <div className="rounded-2xl bg-white border border-slate-100 shadow-sm px-4 py-5">
+          <p className="text-xs text-slate-400">{emptyHint}</p>
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section>
-      <div className="flex items-center gap-2 mb-2.5">
-        <div className={`inline-flex items-center justify-center h-7 w-7 rounded-lg ${t.bgChip}`}>
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-slate-900 leading-none">{title}</h3>
-          {subtitle && <p className="text-[11px] text-slate-400 mt-0.5">{subtitle}</p>}
-        </div>
-        <span className="text-[11px] text-slate-400">
-          {showRevenue ? fmtMoney(totalRev, { compact: true }) : `${totalSessions} session${totalSessions === 1 ? '' : 's'}`}
-        </span>
-      </div>
+      {Header}
       <div className="rounded-2xl bg-white border border-slate-100 shadow-sm overflow-hidden">
         <ul className="divide-y divide-slate-50">
           {rows.map((r, i) => {
@@ -664,7 +721,7 @@ function BreakdownCard({
                       </span>
                     )}
                     <span className={`text-xs font-medium ${showRevenue ? 'text-slate-400' : t.text} tabular-nums`}>
-                      {r.sessions} session{r.sessions === 1 ? '' : 's'}
+                      {fmtCount(r.sessions)}
                     </span>
                   </div>
                 </div>

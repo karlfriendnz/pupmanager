@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Loader2, Clock, Trash2, ChevronRight, Mail, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ type Row = {
   totalCents: number
 }
 type Rate = { id: string; name: string; rateCents: number; sortOrder: number }
+type Member = { id: string; name: string; isSelf: boolean }
 
 function weekRange(weekStart: string): string {
   const a = new Date(weekStart)
@@ -26,29 +27,64 @@ function weekRange(weekStart: string): string {
   const f = (d: Date) => d.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', timeZone: 'UTC' })
   return `${f(a)} – ${f(b)} ${b.toLocaleDateString('en-NZ', { year: 'numeric', timeZone: 'UTC' })}`
 }
+// Snap a YYYY-MM-DD date string to the Monday of its week, returning YYYY-MM-DD.
+// Mirrors mondayOf() server-side (Monday = day 1; Sunday wraps back 6 days).
+function mondayISO(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const x = new Date(Date.UTC(y, m - 1, d))
+  const diff = (x.getUTCDay() + 6) % 7 // days since Monday (0 Sun … 6 Sat)
+  x.setUTCDate(x.getUTCDate() - diff)
+  return x.toISOString().slice(0, 10)
+}
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10)
+  return mondayISO(new Date().toISOString().slice(0, 10))
 }
 
-export function TimesheetsView({ currency, isOwner }: { currency: string; isOwner: boolean }) {
+export function TimesheetsView({ currency, isOwner, members }: { currency: string; isOwner: boolean; members: Member[] }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Which member's timesheets are we viewing? Tabs only show when there's more
+  // than one member; otherwise it's always the logged-in user (no member param).
+  const selfMember = members.find(m => m.isSelf) ?? members[0] ?? null
+  const paramMember = searchParams.get('member')
+  const activeMemberId = members.length
+    ? (members.some(m => m.id === paramMember) ? paramMember! : selfMember?.id ?? null)
+    : null
+  const viewingSelf = !activeMemberId || activeMemberId === selfMember?.id
+  const activeMemberName = members.find(m => m.id === activeMemberId)?.name ?? ''
+
   const [rows, setRows] = useState<Row[] | null>(null)
   const [rates, setRates] = useState<Rate[] | null>(null)
   const [week, setWeek] = useState(todayISO())
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  function reload() {
-    fetch('/api/timesheets').then(r => r.json()).then(d => setRows(d.timesheets ?? [])).catch(() => setError('Failed to load timesheets.'))
+  useEffect(() => {
+    setRows(null)
+    const q = activeMemberId ? `?member=${encodeURIComponent(activeMemberId)}` : ''
+    fetch(`/api/timesheets${q}`).then(r => r.json()).then(d => setRows(d.timesheets ?? [])).catch(() => setError('Failed to load timesheets.'))
+  }, [activeMemberId])
+
+  useEffect(() => {
     fetch('/api/time-rates').then(r => r.json()).then(d => setRates(d.rates ?? [])).catch(() => {})
+  }, [])
+
+  function selectMember(id: string) {
+    const params = new URLSearchParams(searchParams.toString())
+    if (selfMember && id === selfMember.id) params.delete('member')
+    else params.set('member', id)
+    const qs = params.toString()
+    router.replace(qs ? `/timesheets?${qs}` : '/timesheets', { scroll: false })
   }
-  useEffect(reload, [])
 
   async function create() {
     setCreating(true)
     setError(null)
     try {
-      const res = await fetch('/api/timesheets', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ weekStart: week }) })
+      const body: Record<string, unknown> = { weekStart: week }
+      if (activeMemberId && !viewingSelf) body.member = activeMemberId
+      const res = await fetch('/api/timesheets', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error ?? 'Failed to create')
       router.push(`/timesheets/${data.timesheet.id}`)
@@ -60,13 +96,36 @@ export function TimesheetsView({ currency, isOwner }: { currency: string; isOwne
 
   return (
     <div className="flex flex-col gap-6">
+      {members.length > 1 && (
+        <div className="flex gap-1 overflow-x-auto overflow-y-hidden -mx-4 px-4 md:mx-0 md:px-0 border-b border-slate-200">
+          {members.map(m => {
+            const active = m.id === activeMemberId
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => selectMember(m.id)}
+                className={`relative px-4 py-2.5 text-sm font-medium whitespace-nowrap rounded-t-lg transition-colors ${
+                  active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {m.name}{m.isSelf ? ' (You)' : ''}
+                {active && <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-blue-600 rounded-full" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
       {/* New timesheet */}
       <div className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-5">
-        <h2 className="text-sm font-semibold text-slate-900 mb-3">Start a new timesheet</h2>
+        <h2 className="text-sm font-semibold text-slate-900 mb-3">
+          {viewingSelf ? 'Start a new timesheet' : `Start a new timesheet for ${activeMemberName}`}
+        </h2>
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Any day in the week</label>
-            <input type="date" value={week} onChange={e => setWeek(e.target.value)} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+            <input type="date" value={week} onChange={e => setWeek(e.target.value ? mondayISO(e.target.value) : todayISO())} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+            <p className="mt-1 text-xs text-slate-400">Week: {weekRange(week)} (Mon – Sun)</p>
           </div>
           <Button type="button" onClick={create} loading={creating}>
             {!creating && <Plus className="h-4 w-4" />} New timesheet
@@ -80,7 +139,7 @@ export function TimesheetsView({ currency, isOwner }: { currency: string; isOwne
 
       {/* List */}
       <div>
-        <h2 className="text-sm font-semibold text-slate-900 mb-3">Your timesheets</h2>
+        <h2 className="text-sm font-semibold text-slate-900 mb-3">{viewingSelf ? 'Your timesheets' : `${activeMemberName}’s timesheets`}</h2>
         {rows === null && <div className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}
         {rows?.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-200 grid place-items-center py-12 text-center text-sm text-slate-400">
