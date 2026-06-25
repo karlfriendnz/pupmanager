@@ -11,6 +11,8 @@ import { DeleteAccountSection } from './delete-account-section'
 import { PaymentsPanel } from './payments-panel'
 import { ActivityPanel } from './activity-panel'
 import { EmailTemplatesPanel } from './email-templates-panel'
+import { AddonsTab } from './addons-tab'
+import { IntegrationTab } from './integration-tab'
 import { FormsManager } from '../forms/forms-manager'
 import type { Question } from '../forms/session/session-forms-manager'
 import { PageHeader } from '@/components/shared/page-header'
@@ -78,6 +80,8 @@ export default async function TrainerSettingsPage() {
         ) : undefined}
         notifications={<NotificationsPanel />}
         templates={canEditSettings ? <EmailTemplatesPanel /> : undefined}
+        integration={can('settings.edit', ctx.role, ctx.permissions) ? <IntegrationTab companyId={ctx.companyId} /> : undefined}
+        addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
         team={<TeamPanel />}
         payments={ctx.role === 'OWNER' ? <PaymentsPanel companyId={ctx.companyId} /> : undefined}
         billing={ctx.role === 'OWNER' ? (

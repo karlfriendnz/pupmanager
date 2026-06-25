@@ -11,7 +11,7 @@ import {
   Home, LogOut, ShoppingBag,
   MoreHorizontal, X, Inbox, GraduationCap,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
-  BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone, Puzzle,
+  BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone,
   type LucideIcon,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
@@ -57,8 +57,7 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/finances',     label: 'Finances',     icon: Wallet,          section: 'business' },
   { href: '/timesheets',   label: 'Timesheets',   icon: Clock,           section: 'business' },
   { href: '/reports',      label: 'Reports',      icon: BarChart3,       section: 'business' },
-  { href: '/website',      label: 'Integration',  icon: Globe,           section: 'business' },
-  { href: '/add-ons',      label: 'Add-ons',      icon: Puzzle,          section: 'business' },
+  // Add-ons + Integration now live as tabs inside Settings (top-right cog).
 
   // Settings is desktop-hidden — reachable via the top-bar cog on desktop and
   // the mobile "More" sheet. Help is likewise desktop-hidden (top-bar icon).

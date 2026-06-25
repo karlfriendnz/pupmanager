@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Mail } from 'lucide-react'
+import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Mail, Globe, Puzzle } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 
 const ALL_TABS = [
@@ -10,6 +10,8 @@ const ALL_TABS = [
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'forms', label: 'Forms', icon: Pencil },
   { id: 'templates', label: 'Email templates', icon: Mail },
+  { id: 'integration', label: 'Integrations', icon: Globe },
+  { id: 'addons', label: 'Add-ons', icon: Puzzle },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'payments', label: 'Payments', icon: Wallet },
   { id: 'billing', label: 'Billing', icon: CreditCard },
@@ -23,6 +25,8 @@ export function SettingsTabs({
   notifications,
   forms,
   templates,
+  integration,
+  addons,
   team,
   payments,
   billing,
@@ -35,13 +39,15 @@ export function SettingsTabs({
   notifications: React.ReactNode
   forms?: React.ReactNode
   templates?: React.ReactNode
+  integration?: React.ReactNode
+  addons?: React.ReactNode
   team?: React.ReactNode
   payments?: React.ReactNode
   billing?: React.ReactNode
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, templates, team, payments, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, templates, integration, addons, team, payments, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -120,6 +126,8 @@ export function SettingsTabs({
         <div className={tab === 'notifications' ? 'max-w-2xl' : 'hidden'}>{notifications}</div>
         {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}
         {templates != null && <div className={tab === 'templates' ? '' : 'hidden'}>{templates}</div>}
+        {integration != null && <div className={tab === 'integration' ? '' : 'hidden'}>{integration}</div>}
+        {addons != null && <div className={tab === 'addons' ? '' : 'hidden'}>{addons}</div>}
         {team != null && <div className={tab === 'team' ? 'max-w-2xl' : 'hidden'}>{team}</div>}
         {payments != null && <div className={tab === 'payments' ? 'max-w-2xl' : 'hidden'}>{payments}</div>}
         {billing != null && !native && <div className={tab === 'billing' ? 'max-w-2xl' : 'hidden'}>{billing}</div>}
