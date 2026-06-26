@@ -21,7 +21,7 @@ import { TopBarControls } from './top-bar-controls'
 import { PageTitleProvider, usePageTitle } from './page-title'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
-const NAV_GROUPS_KEY = 'k9.trainerNavGroups'
+const NAV_GROUPS_KEY = 'k10.trainerNavGroups'
 
 // Grouped into sections rendered with small headers in the sidebar. A few
 // destinations were trimmed from the top level to declutter:
@@ -543,21 +543,17 @@ function TrainerTopBar({
     <header className="hidden md:flex fixed top-0 inset-x-0 z-40 h-14 items-center border-b border-slate-100 bg-white/85 backdrop-blur">
       {/* Logo zone — aligned to the sidebar width so it sits above it. */}
       <div className={cn('flex items-center h-full shrink-0 border-r border-slate-100 transition-all duration-200 overflow-hidden', collapsed ? 'w-16 justify-center px-2' : 'w-64 gap-3 px-5')}>
-        {!collapsed && trainerLogo ? (
-          // Expanded + own logo: show it at its natural aspect (object-contain,
-          // never crop) so a wide wordmark isn't sliced into a square.
+        {/* Logo fits inside a fixed square box (object-contain, never cropped),
+            with the org name beside it when expanded. */}
+        {trainerLogo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-auto max-w-[200px] object-contain shrink-0" />
+          <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100 shrink-0" />
         ) : (
-          <>
-            {/* Collapsed rail (a wide logo can't fit) + the no-logo case use the
-                square app icon, which sits cleanly in the narrow rail. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg shrink-0" />
-            {!collapsed && (
-              <span className="font-semibold text-slate-900 truncate">{businessName ?? 'PupManager'}</span>
-            )}
-          </>
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg shrink-0" />
+        )}
+        {!collapsed && (
+          <span className="font-semibold text-slate-900 truncate">{businessName ?? 'PupManager'}</span>
         )}
       </div>
       {/* Collapse toggle — just past the sidebar border. */}
@@ -622,17 +618,13 @@ function TrainerShell({
   // Submenu flyouts render position:fixed so they escape the nav's
   // overflow-y-auto clip; we capture the hovered row's top on mouseenter.
   const [flyoutTop, setFlyoutTop] = useState(0)
-  // Expanded-sidebar groups (Clients, Schedule, Communication) are COLLAPSED by
-  // default. A group auto-opens when you're on one of its pages, and an explicit
-  // chevron toggle (persisted) overrides either way. `true`/`false` = explicit;
-  // absent = default (collapsed unless the current route lives inside it).
+  // Expanded-sidebar groups (Clients, Schedule, Communication) are CLOSED by
+  // default — they only open when the trainer clicks the chevron, and that
+  // choice is remembered (persisted). No auto-open based on the current route.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   const isGroupActive = (href: string) =>
     (childrenOf[href] ?? []).some(c => pathname === c.href || pathname.startsWith(c.href + '/'))
-  const isGroupOpen = (href: string) => {
-    const explicit = openGroups[href]
-    return explicit !== undefined ? explicit : isGroupActive(href)
-  }
+  const isGroupOpen = (href: string) => openGroups[href] ?? false
   function toggleGroup(href: string) {
     const next = !isGroupOpen(href)
     setOpenGroups(prev => {
