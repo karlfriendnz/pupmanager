@@ -597,10 +597,15 @@ function TrainerShell({
   activeCompanyId = null,
 }: AppShellProps) {
   const pathname = usePathname()
-  // Nav filtered to what this user's role/permissions allow.
-  const trainerNav = TRAINER_NAV.filter(i => !hiddenNavHrefs.includes(i.href))
-  // Hrefs whose add-on is OFF — render disabled-with-upsell, NOT hidden.
-  const lockedAddons = new Set(addonLockedHrefs)
+  // Nav filtered to what this user's role/permissions allow. Add-on items
+  // whose add-on is OFF are hidden entirely (same as permission-hidden items),
+  // so the left menu only ever lists features the trainer actually has on.
+  const trainerNav = TRAINER_NAV.filter(
+    i => !hiddenNavHrefs.includes(i.href) && !addonLockedHrefs.includes(i.href),
+  )
+  // Retained for the (now unused) locked-row branches below — left in place so
+  // switching back to "show disabled with upsell" is a one-line revert.
+  const lockedAddons = new Set<string>()
   // Desktop: child items (e.g. Route + Notes under Schedule) don't render as
   // their own rows — they collapse into a hover flyout on their parent. Mobile
   // keeps them as flat items in the "More" sheet.
