@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Loader2, Upload, ImageIcon, ArrowRight, ArrowLeft, Sparkles, PawPrint, Wand2, ChevronLeft, ChevronRight, FlaskConical } from 'lucide-react'
 import { BrandPreview } from '@/components/brand-preview'
 import { extractLogoColors, type LogoPalette } from '@/lib/logo-colors'
+import { ADDONS, currencyMeta, type CurrencyCode } from '@/lib/pricing'
 
 // Drop in the real welcome video here (an MP4 URL or an embed). Until then the
 // step shows a branded "coming soon" placeholder.
@@ -32,11 +33,14 @@ export type WizardInitial = {
   phone: string | null
   publicEmail: string | null
   signupEmail: string
+  // Currency to quote add-on prices in, and which add-ons are already on.
+  currency: CurrencyCode
+  enabledAddonIds: string[]
 }
 
 // Index 0 ('Welcome') is the unnumbered intro; the numbered count starts at
-// index 1, so "Make it yours" shows as Step 1 of 5.
-const STEPS = ['Welcome', 'Make it yours', 'Your colours', 'Say hello', 'Take a look', 'Sample data'] as const
+// index 1, so "Make it yours" shows as Step 1 of 6.
+const STEPS = ['Welcome', 'Make it yours', 'Your colours', 'Say hello', 'Add-ons', 'Take a look', 'Sample data'] as const
 
 // Ready-to-go welcome notes (shown on the client's home screen). The wizard
 // pre-fills the first so trainers tweak rather than face a blank box; "Try
@@ -104,6 +108,14 @@ export function PersonalizationWizard({
     el.style.height = `${el.scrollHeight}px`
   }, [note, step])
 
+  // Add-ons step — local on/off state seeded from what's already enabled, so a
+  // toggle reflects instantly. Persists to the same /api/addons endpoint the
+  // Add-ons page uses.
+  const [addonOn, setAddonOn] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(initial.enabledAddonIds.map((id) => [id, true])),
+  )
+  const [addonBusy, setAddonBusy] = useState<string | null>(null)
+
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -127,6 +139,28 @@ export function PersonalizationWizard({
     const i = (starterIdx + dir + STARTER_NOTES.length) % STARTER_NOTES.length
     setStarterIdx(i)
     setNote(STARTER_NOTES[i])
+  }
+
+  // Flip an add-on on/off from the wizard's Add-ons step (optimistic; reverts
+  // on failure). Free add-ons toggle without Stripe; paid ones are added to the
+  // subscription server-side.
+  async function toggleAddon(id: string) {
+    if (addonBusy) return
+    const next = !addonOn[id]
+    setAddonOn((p) => ({ ...p, [id]: next }))
+    setAddonBusy(id)
+    try {
+      const res = await fetch('/api/addons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: id, active: next }),
+      })
+      if (!res.ok) throw new Error('toggle failed')
+    } catch {
+      setAddonOn((p) => ({ ...p, [id]: !next }))
+    } finally {
+      setAddonBusy(null)
+    }
   }
 
   async function saveProfile() {
@@ -391,7 +425,47 @@ export function PersonalizationWizard({
             )}
 
             {step === 4 && (
-              <div className="text-center max-w-md mx-auto py-4" key="s4">
+              <div key="s4">
+                <StepHead title="Switch on your extras" sub="These optional add-ons bolt extra power onto your account. Flip on anything that fits — you can change your mind any time in Settings → Add-ons." />
+                <div className="mt-6 flex flex-col gap-3">
+                  {ADDONS.map((a) => {
+                    const meta = currencyMeta(initial.currency)
+                    const isOn = !!addonOn[a.id]
+                    const priceLabel = a.comingSoon
+                      ? 'Coming soon'
+                      : a.free
+                        ? 'Free'
+                        : `${meta.symbol}${a.price[initial.currency]}/mo`
+                    return (
+                      <div
+                        key={a.id}
+                        className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-[15px] font-semibold text-slate-900">{a.name}</h3>
+                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${a.comingSoon ? 'bg-slate-100 text-slate-500' : a.free ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-600'}`}>
+                              {priceLabel}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[13px] leading-snug text-slate-500">{a.description}</p>
+                        </div>
+                        <WizardSwitch
+                          checked={isOn}
+                          disabled={a.comingSoon || addonBusy === a.id}
+                          busy={addonBusy === a.id}
+                          label={`Enable ${a.name}`}
+                          onChange={() => toggleAddon(a.id)}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {step === 5 && (
+              <div className="text-center max-w-md mx-auto py-4" key="s5">
                 <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ backgroundImage: brandGradient }}>
                   <Sparkles className="h-8 w-8 text-white" />
                 </div>
@@ -403,8 +477,8 @@ export function PersonalizationWizard({
               </div>
             )}
 
-            {step === 5 && (
-              <div className="max-w-md mx-auto py-2" key="s5">
+            {step === 6 && (
+              <div className="max-w-md mx-auto py-2" key="s6">
                 <div className="text-center">
                   <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ backgroundImage: brandGradient }}>
                     <FlaskConical className="h-8 w-8 text-white" />
@@ -489,6 +563,25 @@ function MobilePreview(props: { show: boolean; businessName: string; logoUrl: st
     <div className="md:hidden mt-7 flex justify-center">
       <BrandPreview businessName={props.businessName} logoUrl={props.logoUrl} gradStart={props.gradStart} gradEnd={props.gradEnd} note={props.note} />
     </div>
+  )
+}
+
+// Toggle in the wizard's house style (teal when on). Mirrors the Add-ons page
+// Switch but scoped here so the wizard stays self-contained.
+function WizardSwitch({ checked, disabled, busy, label, onChange }: { checked: boolean; disabled?: boolean; busy?: boolean; label: string; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative inline-flex w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'bg-teal-600' : 'bg-slate-300'}`}
+      style={{ height: 24, minHeight: 0 }}
+    >
+      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-[22px]' : 'translate-x-0.5'} ${busy ? 'animate-pulse' : ''}`} />
+    </button>
   )
 }
 

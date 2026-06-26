@@ -13,7 +13,8 @@ import { BookingRequestsPanel } from '@/components/shared/booking-requests-panel
 import { StreakChip } from '@/components/shared/streak-chip'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { TodoBrainDumpPanel } from './todo-braindump-panel'
-import { hasAddon } from '@/lib/billing'
+import { hasAddon, getEnabledAddons } from '@/lib/billing'
+import { isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 import { OnboardingPanel } from './onboarding-panel'
 import { SampleDataBanner } from './sample-data-banner'
 import { CountryPrompt } from './country-prompt'
@@ -62,6 +63,7 @@ export default async function DashboardPage({
     select: {
       businessName: true, logoUrl: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true,
       clientWelcomeNote: true, website: true, phone: true, publicEmail: true, signupCountry: true,
+      payoutCurrency: true,
       subscriptionStatus: true, trialEndsAt: true, stripeSubscriptionId: true,
       user: { select: { email: true } },
     },
@@ -136,6 +138,12 @@ export default async function DashboardPage({
 
   const onboardingState = await onboardingP
   const brandingProfile = await brandingP
+  // Add-on state for the onboarding wizard's "Add-ons" step — which are already
+  // on, and the currency to quote prices in (payout currency when we price in
+  // it, else NZD).
+  const enabledAddonSet = await getEnabledAddons(trainerId)
+  const payout = (brandingProfile?.payoutCurrency ?? '').toUpperCase()
+  const wizardCurrency: CurrencyCode = isCurrencyCode(payout) ? payout : DEFAULT_CURRENCY
   const branding = {
     businessName: brandingProfile?.businessName ?? '',
     logoUrl: brandingProfile?.logoUrl ?? null,
@@ -147,6 +155,8 @@ export default async function DashboardPage({
     phone: brandingProfile?.phone ?? null,
     publicEmail: brandingProfile?.publicEmail ?? null,
     signupEmail: brandingProfile?.user?.email ?? '',
+    currency: wizardCurrency,
+    enabledAddonIds: [...enabledAddonSet],
   }
 
   // Whether the trainer currently has loaded sample data — drives the "remove
