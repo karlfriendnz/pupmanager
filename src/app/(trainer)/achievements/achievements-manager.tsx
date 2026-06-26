@@ -243,14 +243,14 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => startEdit(a)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                      className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50"
                       title="Edit"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => remove(a.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
+                      className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
                       title="Delete"
                     >
                       <Trash2 className="h-4 w-4" />

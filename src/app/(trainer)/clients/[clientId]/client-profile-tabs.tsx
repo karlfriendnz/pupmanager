@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate, cn, formatSessionTitle } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info } from 'lucide-react'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SessionFormReport } from '@/components/session-form-report'
 import { ClientAchievementsPanel } from './client-achievements-panel'
@@ -12,7 +12,16 @@ import { StatusToggle } from './status-toggle'
 import { DogGalleryManager } from './dog-gallery-manager'
 import Link from 'next/link'
 
-type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements'
+type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements' | 'communication'
+
+export interface CommItem {
+  id: string
+  kind: 'email' | 'message'
+  direction: 'inbound' | 'outbound'
+  subject: string
+  status: string | null // email delivery status (SENT/DELIVERED/OPENED/CLICKED/BOUNCED) or null
+  date: string // ISO
+}
 
 interface Dog {
   id: string
@@ -105,6 +114,8 @@ interface Props {
   // the Contact card on the Details tab (used to live in the page
   // header but cluttered the top of the page).
   status: string
+  // Communication history (emails received + message thread) for the Comms tab.
+  communications: CommItem[]
 }
 
 function groupByCategory<T extends { category: string | null }>(items: T[]) {
@@ -134,6 +145,7 @@ export function ClientProfileTabs({
   pendingProductRequests: initialPendingRequests,
   contact,
   status,
+  communications,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [pendingRequests, setPendingRequests] = useState(initialPendingRequests)
@@ -263,6 +275,7 @@ export function ClientProfileTabs({
     { id: 'overview',     label: 'Overview',     icon: Home },
     { id: 'sessions',     label: 'Sessions',     icon: Calendar, badge: sessions.length > 0 ? sessions.length : undefined },
     { id: 'dogs',         label: dogs.length > 1 ? 'Dogs' : 'Dog', icon: PawPrint, badge: dogs.length > 1 ? dogs.length : undefined },
+    { id: 'communication', label: 'Comms', icon: MessageSquare, badge: communications.length > 0 ? communications.length : undefined },
     { id: 'achievements', label: 'Achievements', icon: Trophy },
     { id: 'details',      label: 'Details',      icon: Info },
   ]
@@ -654,6 +667,28 @@ export function ClientProfileTabs({
       {/* ── Achievements ─────────────────────────────────────────────────── */}
       {tab === 'achievements' && (
         <ClientAchievementsPanel clientId={clientId} canEdit={canEdit} />
+      )}
+
+      {/* ── Communication ────────────────────────────────────────────────── */}
+      {tab === 'communication' && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Emails &amp; messages</p>
+            <Link href={`/messages?client=${clientId}`} className="text-xs font-medium text-blue-600 hover:underline">
+              Open message thread →
+            </Link>
+          </div>
+          {communications.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">No emails or messages yet.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {communications.map(c => <CommunicationRow key={c.id} item={c} />)}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Details ──────────────────────────────────────────────────────── */}
@@ -1105,7 +1140,7 @@ function SessionsTabPanel({
                             <button
                               onClick={() => onConfirmDelete(s.id)}
                               aria-label="Delete session"
-                              className="h-6 w-6 self-center rounded-full flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                              className="h-6 w-6 min-h-0 min-w-0 self-center rounded-full flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -1179,4 +1214,38 @@ function groupByWeek(list: TrainingSession[]): { weekStartMs: number; items: Tra
     out.push({ weekStartMs: key, items: map.get(key)! })
   }
   return out
+}
+
+// One row in the client's Communication tab — a bulk email (with open/click
+// status), a one-off email, or a chat message, in/outbound.
+function CommunicationRow({ item }: { item: CommItem }) {
+  const date = new Date(item.date)
+  const when = date.toLocaleString('en-NZ', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+
+  const statusBadge = (() => {
+    switch (item.status) {
+      case 'CLICKED': return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700"><MousePointerClick className="h-3 w-3" />Clicked</span>
+      case 'OPENED': return <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700"><MailOpen className="h-3 w-3" />Opened</span>
+      case 'DELIVERED': return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">Delivered</span>
+      case 'BOUNCED': case 'FAILED': case 'COMPLAINED': return <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700"><AlertTriangle className="h-3 w-3" />Bounced</span>
+      case 'SENT': return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">Sent</span>
+      default: return null
+    }
+  })()
+
+  const Icon = item.kind === 'email' ? Mail : MessageSquare
+  return (
+    <Card className="px-4 py-3 flex items-center gap-3">
+      <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${item.direction === 'outbound' ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
+        {item.direction === 'outbound' ? <Send className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-slate-900">{item.subject || (item.kind === 'email' ? 'Email' : 'Message')}</p>
+        <p className="text-xs text-slate-400">
+          {item.direction === 'outbound' ? 'You' : 'Client'} · {item.kind === 'email' ? 'Email' : 'Message'} · {when}
+        </p>
+      </div>
+      {statusBadge}
+    </Card>
+  )
 }

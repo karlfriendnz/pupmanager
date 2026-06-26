@@ -183,8 +183,8 @@ export function TimesheetDetail({ id }: { id: string }) {
               <div className="text-sm font-medium text-slate-900 w-20 text-right shrink-0">{money(e.amountCents, currency)}</div>
               {!locked && (
                 <div className="flex items-center gap-1 shrink-0">
-                  <button type="button" onClick={() => setDraft(editDraft(e))} className="text-slate-400 hover:text-slate-700 p-1" aria-label="Edit"><Pencil className="h-3.5 w-3.5" /></button>
-                  <button type="button" onClick={() => deleteEntry(e.id)} className="text-slate-400 hover:text-rose-600 p-1" aria-label="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => setDraft(editDraft(e))} className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Edit"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => deleteEntry(e.id)} className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )}
             </div>

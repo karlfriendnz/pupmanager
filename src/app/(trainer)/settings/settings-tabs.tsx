@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Mail, Globe, Puzzle } from 'lucide-react'
+import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 
 const ALL_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'forms', label: 'Forms', icon: Pencil },
-  { id: 'templates', label: 'Email templates', icon: Mail },
   { id: 'integration', label: 'Integrations', icon: Globe },
   { id: 'addons', label: 'Add-ons', icon: Puzzle },
   { id: 'team', label: 'Team', icon: Users },
@@ -24,7 +23,6 @@ export function SettingsTabs({
   profile,
   notifications,
   forms,
-  templates,
   integration,
   addons,
   team,
@@ -38,7 +36,6 @@ export function SettingsTabs({
   profile?: React.ReactNode
   notifications: React.ReactNode
   forms?: React.ReactNode
-  templates?: React.ReactNode
   integration?: React.ReactNode
   addons?: React.ReactNode
   team?: React.ReactNode
@@ -47,7 +44,7 @@ export function SettingsTabs({
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, templates, integration, addons, team, payments, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, integration, addons, team, payments, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -101,7 +98,7 @@ export function SettingsTabs({
                 key={t.id}
                 type="button"
                 onClick={() => selectTab(t.id)}
-                className={`relative flex items-center gap-2 px-4 md:px-3 py-2.5 text-sm font-medium whitespace-nowrap rounded-xl transition-colors ${
+                className={`relative shrink-0 md:shrink flex items-center gap-2 px-4 md:px-3 py-2.5 text-sm font-medium whitespace-nowrap rounded-xl transition-colors ${
                   active
                     ? 'text-blue-600 md:bg-blue-50'
                     : 'text-slate-500 hover:text-slate-700 md:hover:bg-slate-50'
@@ -125,7 +122,6 @@ export function SettingsTabs({
         {profile != null && <div className={tab === 'profile' ? 'max-w-2xl' : 'hidden'}>{profile}</div>}
         <div className={tab === 'notifications' ? 'max-w-2xl' : 'hidden'}>{notifications}</div>
         {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}
-        {templates != null && <div className={tab === 'templates' ? '' : 'hidden'}>{templates}</div>}
         {integration != null && <div className={tab === 'integration' ? '' : 'hidden'}>{integration}</div>}
         {addons != null && <div className={tab === 'addons' ? '' : 'hidden'}>{addons}</div>}
         {team != null && <div className={tab === 'team' ? 'max-w-2xl' : 'hidden'}>{team}</div>}

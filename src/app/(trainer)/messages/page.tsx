@@ -33,7 +33,8 @@ export default async function MessagesPage({
     where: { trainerId },
     include: {
       user: { select: { name: true, email: true } },
-      dog: { select: { name: true } },
+      dog: { select: { name: true, photoUrl: true } },
+      dogs: { select: { photoUrl: true } },
       messages: {
         where: { channel: 'TRAINER_CLIENT' },
         orderBy: { createdAt: 'desc' },
@@ -75,6 +76,7 @@ export default async function MessagesPage({
       status: c.status,
       displayName: c.user.name ?? c.user.email ?? 'Client',
       dogName: c.dog?.name ?? null,
+      dogPhotoUrl: c.dog?.photoUrl ?? c.dogs[0]?.photoUrl ?? null,
       unread: c._count.messages,
       lastMessage: last
         ? {
@@ -95,7 +97,7 @@ export default async function MessagesPage({
   // navigating between threads re-renders with fresh data, and so the
   // unread-clearing update below runs server-side without an extra
   // round-trip.
-  let selectedClient: { id: string; displayName: string; dogName: string | null } | null = null
+  let selectedClient: { id: string; displayName: string; dogName: string | null; dogPhotoUrl: string | null } | null = null
   let threadMessages: Awaited<ReturnType<typeof loadMessages>> = []
   if (selectedClientId) {
     const found = sorted.find(c => c.id === selectedClientId)
@@ -104,6 +106,7 @@ export default async function MessagesPage({
         id: found.id,
         displayName: found.user.name ?? found.user.email ?? 'Client',
         dogName: found.dog?.name ?? null,
+        dogPhotoUrl: found.dog?.photoUrl ?? found.dogs[0]?.photoUrl ?? null,
       }
       threadMessages = loadedThread
 

@@ -16,6 +16,7 @@
 // idempotent (clears its own prior rows for the demo trainer, then rebuilds).
 
 import { PrismaClient } from '../src/generated/prisma'
+import { ADDONS } from '../src/lib/pricing'
 import {
   DEMO_EMAIL,
   DEMO_PASSWORD,
@@ -457,6 +458,75 @@ async function seedTeamAndOps(trainerId: string) {
   }
 }
 
+// ─── Add-ons ─────────────────────────────────────────────────────────────────
+// Turn EVERY add-on on for the demo account so all gated features (Marketing,
+// Route planner, Achievements, Shop, Timesheets) are visible and exercisable in
+// the demo. Each add-on needs a BillingItem row (the FK target for TrainerAddon);
+// we upsert those without touching any Stripe price columns already wired.
+async function seedDemoAddons(trainerId: string) {
+  let enabled = 0
+  for (let i = 0; i < ADDONS.length; i++) {
+    const a = ADDONS[i]
+    await prisma.billingItem.upsert({
+      where: { id: a.id },
+      create: { id: a.id, kind: 'ADDON', name: a.name, description: a.description, priceMonthly: a.price.NZD, sortOrder: 10 + i, isActive: true },
+      update: {}, // never overwrite live/test Stripe price columns
+    })
+    // Enable every real (non-coming-soon) add-on. AI stays coming-soon.
+    if (!a.comingSoon) {
+      await prisma.trainerAddon.upsert({
+        where: { trainerId_itemId: { trainerId, itemId: a.id } },
+        create: { trainerId, itemId: a.id, active: true },
+        update: { active: true },
+      })
+      enabled++
+    }
+  }
+  return enabled
+}
+
+// ─── Waitlist + client notifications ─────────────────────────────────────────
+// Two features that had no demo data — a waitlist (the Clients → Waitlist tab)
+// and a log of notifications sent to clients.
+async function seedEngagement(trainerId: string) {
+  const [clients, packages] = await Promise.all([
+    prisma.clientProfile.findMany({ where: { trainerId }, select: { id: true }, take: 20 }),
+    prisma.package.findMany({ where: { trainerId }, select: { id: true }, take: 4 }),
+  ])
+
+  await prisma.waitlistEntry.deleteMany({ where: { trainerId } })
+  const waiting = [
+    ['Harriet Cole', 'harriet.cole@example.com'],
+    ['Devon Pike', 'devon.pike@example.com'],
+    ['Mara Quinn', 'mara.quinn@example.com'],
+    ['Ollie Birch', 'ollie.birch@example.com'],
+    ['Sienna Frost', 'sienna.frost@example.com'],
+  ]
+  for (let i = 0; i < waiting.length; i++) {
+    await prisma.waitlistEntry.create({
+      data: {
+        trainerId, name: waiting[i][0], email: waiting[i][1],
+        packageId: packages.length ? packages[i % packages.length].id : null,
+        status: 'WAITING', priority: i, request: 'Keen for the next intake — flexible on days.',
+      },
+    })
+  }
+
+  await prisma.clientNotification.deleteMany({ where: { trainerId } })
+  const subjects = ['Session reminder', 'New training plan ready', 'Your session recap is up', 'Class spot confirmed', 'Payment receipt']
+  const notifyClients = clients.slice(0, Math.min(12, clients.length))
+  for (let i = 0; i < notifyClients.length; i++) {
+    await prisma.clientNotification.create({
+      data: {
+        clientId: notifyClients[i].id, trainerId,
+        subject: subjects[i % subjects.length], notes: 'Open the app to see the details.',
+        sentAt: new Date(Date.now() - i * 86_400_000),
+      },
+    })
+  }
+  return { waitlist: waiting.length, notifications: notifyClients.length }
+}
+
 // ─── Entrypoint ────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -464,6 +534,11 @@ async function main() {
   const trainerId = await ensureDemoTrainer(prisma)
   const result = await seedDemoData(prisma, trainerId)
   const ops = await seedTeamAndOps(trainerId)
+  const addonsEnabled = await seedDemoAddons(trainerId)
+  console.log(`  Add-ons enabled:   ${addonsEnabled}`)
+  const engagement = await seedEngagement(trainerId)
+  console.log(`  Waitlist:          ${engagement.waitlist}`)
+  console.log(`  Notifications:     ${engagement.notifications}`)
 
   console.log(`✓ Demo trainer ready`)
   console.log(`  Email:    ${DEMO_EMAIL}`)

@@ -454,6 +454,25 @@ model TrainerProfile {
   // trainer nets the full amount. On by default — trainers can opt out.
   passProcessingFeeToClient Boolean   @default(true)
 
+  // ─── Bulk-email sending domain (Resend) ─────────────────────────────────────
+  // To send bulk emails to their clients the trainer must verify a *sending
+  // subdomain* of their own domain (e.g. mail.theirbusiness.com) — sending off a
+  // subdomain keeps the broadcast reputation off the root domain and is Resend's
+  // recommended setup. `sendingDomain` is what they entered (mail.theirbiz.com);
+  // `resendDomainId` is the Resend domain record id we poll for verification;
+  // `sendingFromEmail` is the resolved verified From (hello@mail.theirbiz.com);
+  // `domainVerifiedAt` is stamped once Resend reports the domain verified — the
+  // bulk-send route hard-blocks until it is non-null.
+  sendingDomain     String?
+  resendDomainId    String?   @unique
+  sendingFromEmail  String?
+  domainVerifiedAt  DateTime?
+  // Lets the trainer try bulk email immediately on PupManager's shared verified
+  // sender ("<Name> via PupManager") WITHOUT verifying their own domain — a
+  // test/trial escape hatch. The trial daily cap still applies. Verifying their
+  // own domain is the production path; this just unblocks a first send.
+  useTrialSendingDomain Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -470,6 +489,7 @@ model TrainerProfile {
   embedForms         EmbedForm[]
   enquiries          Enquiry[]
   emailTemplates     EmailTemplate[]
+  broadcasts         EmailBroadcast[]
   timeRates          TimeRate[]
   timesheets         Timesheet[]
   sentNotifications  ClientNotification[]
@@ -711,6 +731,16 @@ model ClientProfile {
   // record was created/added but never invited. Powers the "Invite your
   // first client" onboarding step, kept distinct from "Create a client".
   invitedAt DateTime?
+
+  // Bulk/marketing email opt-out, scoped to THIS trainer relationship (matching
+  // the composite (userId, trainerId) model — a person can be opted out for one
+  // trainer but not another). Set either by the client clicking Unsubscribe in a
+  // broadcast footer, or automatically when Resend reports a hard bounce /
+  // spam complaint (suppression). Transactional 1:1 messages ignore this; only
+  // bulk broadcasts respect it. `marketingOptOutReason` records why.
+  marketingEmailOptOut  Boolean   @default(false)
+  marketingOptOutAt     DateTime?
+  marketingOptOutReason String?   // "UNSUBSCRIBED" | "BOUNCED" | "COMPLAINED"
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2362,6 +2392,54 @@ model EmailTemplate {
 
   @@index([trainerId, sortOrder])
   @@map("email_templates")
+}
+
+// One row per bulk email a trainer sends to a selection of their clients from
+// the Clients-list composer. `subject`/`body` are the authored template (before
+// per-recipient {{placeholder}} substitution). Recipients (one row each) hang
+// off it for delivery tracking and to power the per-trainer daily send cap.
+model EmailBroadcast {
+  id             String @id @default(cuid())
+  trainerId      String
+  // The User (owner/staff) who composed and sent it.
+  senderId       String
+  subject        String @db.Text
+  body           String @db.Text
+  recipientCount Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  trainer    TrainerProfile            @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  recipients EmailBroadcastRecipient[]
+
+  @@index([trainerId, createdAt])
+  @@map("email_broadcasts")
+}
+
+// One row per recipient of a broadcast. `resendEmailId` is the id Resend returns
+// for the sent message, used to map inbound delivery/open/click/bounce webhook
+// events back to the row. `clientProfileId` is nullable so a later client delete
+// doesn't orphan the send record.
+model EmailBroadcastRecipient {
+  id              String @id @default(cuid())
+  broadcastId     String
+  clientProfileId String?
+  email           String
+  // Resend message id (from batch.send), unique so the webhook can upsert by it.
+  resendEmailId String? @unique
+  // SENT | DELIVERED | OPENED | CLICKED | BOUNCED | COMPLAINED | FAILED
+  status        String  @default("SENT")
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  bouncedAt     DateTime?
+  complainedAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  broadcast EmailBroadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+
+  @@index([broadcastId])
+  @@map("email_broadcast_recipients")
 }
 
 // One row per trainer, created on first dashboard load. ahaReachedAt fires

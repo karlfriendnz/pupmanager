@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { BaseLocationSetting } from './base-location-setting'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -11,7 +12,6 @@ import { Alert } from '@/components/ui/alert'
 import { COUNTRIES } from '@/lib/countries'
 import { Accordion, AccordionItem } from '@/components/ui/accordion'
 import { BrandPreview } from '@/components/brand-preview'
-import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { TIMEZONES } from '@/lib/timezones'
 import { ImagePlus, Loader2 } from 'lucide-react'
 
@@ -42,33 +42,19 @@ const DEFAULT_EMAIL_ACCENT = '#7c3aed'
 const DEFAULT_GRADIENT_START = '#2a9da9'
 const DEFAULT_GRADIENT_END = '#1f818c'
 
-const templateSchema = z.object({
-  inviteTemplate: z.string().min(20),
-})
-
 type BusinessData = z.infer<typeof businessSchema>
 type DesignData = z.infer<typeof designSchema>
-type TemplateData = z.infer<typeof templateSchema>
-
-const DEFAULT_TEMPLATE = `Hi {{clientName}},
-
-I'd like to invite you to PupManager to help us track {{dogName}}'s training progress.
-
-Click below to get started!
-
-Your Trainer`
 
 export function TrainerSettingsForm({
   user,
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; dashboardBgUrl: string | null; inviteTemplate: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; dashboardBgUrl: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null }
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
   const [designMsg, setDesignMsg] = useState<string | null>(null)
-  const [templateMsg, setTemplateMsg] = useState<string | null>(null)
 
   const businessForm = useForm<BusinessData>({
     resolver: zodResolver(businessSchema),
@@ -126,11 +112,6 @@ export function TrainerSettingsForm({
     }
   }
 
-  const templateForm = useForm<TemplateData>({
-    resolver: zodResolver(templateSchema),
-    defaultValues: { inviteTemplate: profile.inviteTemplate ?? DEFAULT_TEMPLATE },
-  })
-
   async function saveBusiness(data: BusinessData) {
     setBusinessMsg(null)
     const [r1, r2] = await Promise.all([
@@ -156,16 +137,6 @@ export function TrainerSettingsForm({
     })
     setDesignMsg(res.ok ? 'Saved!' : 'Failed to save.')
     router.refresh()
-  }
-
-  async function saveTemplate(data: TemplateData) {
-    setTemplateMsg(null)
-    const res = await fetch('/api/trainer/profile', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inviteTemplate: data.inviteTemplate }),
-    })
-    setTemplateMsg(res.ok ? 'Saved!' : 'Failed to save.')
   }
 
   return (
@@ -195,6 +166,8 @@ export function TrainerSettingsForm({
             error={businessForm.formState.errors.publicEmail?.message}
             {...businessForm.register('publicEmail')}
           />
+
+          <BaseLocationSetting initialBase={{ address: profile.baseAddress, lat: profile.baseLat, lng: profile.baseLng }} />
 
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">Country</label>
@@ -394,27 +367,6 @@ export function TrainerSettingsForm({
           </div>
         </div>
         </div>
-      </AccordionItem>
-
-      {/* Invite email template */}
-      <AccordionItem title="Default invite email template" subtitle="The default copy sent when you invite a client">
-        <p className="text-xs text-slate-400 mb-4">
-          Use <code className="bg-slate-100 px-1 rounded">{'{{clientName}}'}</code> and{' '}
-          <code className="bg-slate-100 px-1 rounded">{'{{dogName}}'}</code> as placeholders.
-        </p>
-        {templateMsg && <Alert variant={templateMsg === 'Saved!' ? 'success' : 'error'} className="mb-3">{templateMsg}</Alert>}
-        <form onSubmit={templateForm.handleSubmit(saveTemplate)} className="flex flex-col gap-4">
-          <RichTextEditor
-            theme="light"
-            minHeight={200}
-            value={templateForm.watch('inviteTemplate') ?? ''}
-            onChange={html => templateForm.setValue('inviteTemplate', html, { shouldDirty: true, shouldValidate: true })}
-          />
-          {templateForm.formState.errors.inviteTemplate && (
-            <p className="text-xs text-red-500">{templateForm.formState.errors.inviteTemplate.message}</p>
-          )}
-          <Button type="submit" size="sm" className="self-start" loading={templateForm.formState.isSubmitting}>Save template</Button>
-        </form>
       </AccordionItem>
     </Accordion>
   )

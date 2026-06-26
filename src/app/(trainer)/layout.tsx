@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma'
 import { trainerHasAccess } from '@/lib/access'
 import { getTrainerContext } from '@/lib/membership'
 import { can, type PermissionKey } from '@/lib/permissions'
+import { getEnabledAddons } from '@/lib/billing'
+import type { AddonId } from '@/lib/pricing'
 import { AppShell } from '@/components/shared/app-shell'
 import { OnboardingFab } from './onboarding-fab'
 import { PaywallFrame } from './paywall-frame'
@@ -79,6 +81,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     '/achievements': 'achievements.manage',
     '/enquiries': 'enquiries.manage',
     '/messages': 'messages.send',
+    '/email-templates': 'settings.edit',
     '/website': 'settings.edit',
     '/finances': 'billing.view',
     '/timesheets': 'billing.view',
@@ -89,6 +92,20 @@ export default async function TrainerLayout({ children }: { children: React.Reac
         .filter(([, perm]) => !can(perm, ctx.role, ctx.permissions))
         .map(([href]) => href)
     : []
+
+  // Add-on-gated nav: rather than HIDE a feature whose add-on is off, we show it
+  // DISABLED with a "turn it on in Add-ons" prompt (computed below as
+  // addonLockedHrefs). Free add-ons (timesheets) are on by default, so they're
+  // only locked if the trainer explicitly turned them off.
+  const ADDON_NAV: Record<string, AddonId> = {
+    '/marketing': 'marketing',
+    '/schedule/route': 'routeplanner',
+    '/timesheets': 'timesheets',
+  }
+  const enabledAddons = ctx ? await getEnabledAddons(ctx.companyId) : new Set<string>()
+  const addonLockedHrefs = Object.entries(ADDON_NAV)
+    .filter(([, addon]) => !enabledAddons.has(addon))
+    .map(([href]) => href)
 
   // Organisations this user belongs to (their own + any they're a team member
   // at). Powers the sidebar org switcher when there's more than one.
@@ -193,6 +210,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       unreadCounts={{ '/messages': unreadMessageCount }}
       unreadTotal={unreadMessageCount}
       hiddenNavHrefs={hiddenNavHrefs}
+      addonLockedHrefs={addonLockedHrefs}
       orgs={orgs}
       activeCompanyId={session.user.trainerId ?? null}
     >

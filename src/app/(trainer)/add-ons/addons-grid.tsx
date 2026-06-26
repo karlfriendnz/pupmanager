@@ -222,8 +222,10 @@ function Switch({
       aria-label={label}
       disabled={disabled}
       onClick={onChange}
-      className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pm-brand-500)] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-      style={{ backgroundColor: checked ? 'var(--pm-brand-600)' : 'var(--pm-ink-200, #cbd5e1)' }}
+      className="relative inline-flex w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pm-brand-500)] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+      // height/minHeight inline: a global button-sizing rule (44px touch target)
+      // out-specifies Tailwind's h-6, which would otherwise make this a circle.
+      style={{ height: 24, minHeight: 0, backgroundColor: checked ? 'var(--pm-brand-600)' : 'var(--pm-ink-200, #cbd5e1)' }}
     >
       <span
         className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${

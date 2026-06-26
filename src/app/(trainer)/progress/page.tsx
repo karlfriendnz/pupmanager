@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
-import { getInitials } from '@/lib/utils'
+import { ClientAvatar } from '@/components/shared/client-avatar'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
@@ -22,7 +22,8 @@ export default async function ProgressPage() {
     where: { trainerId },
     include: {
       user: { select: { name: true, email: true } },
-      dog: { select: { name: true } },
+      dog: { select: { name: true, photoUrl: true } },
+      dogs: { select: { photoUrl: true } },
       diaryEntries: {
         where: { date: { gte: sevenDaysAgo } },
         include: { completion: true },
@@ -62,9 +63,11 @@ export default async function ProgressPage() {
             <Link key={c.id} href={`/clients/${c.id}`}>
               <Card className="p-4 hover:border-blue-200 transition-all cursor-pointer">
                 <div className="flex items-center gap-4">
-                  <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold flex-shrink-0">
-                    {getInitials(c.user.name ?? c.user.email)}
-                  </div>
+                  <ClientAvatar
+                    size="lg"
+                    name={c.user.name ?? c.user.email}
+                    dogPhotoUrl={c.dog?.photoUrl ?? c.dogs[0]?.photoUrl ?? null}
+                  />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900 truncate">
                       {c.user.name ?? c.user.email}

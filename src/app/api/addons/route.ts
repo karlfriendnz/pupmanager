@@ -1,19 +1,24 @@
 import { NextResponse } from 'next/server'
+import type Stripe from 'stripe'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
-import { loadBillingConfig } from '@/lib/billing'
+import { resolvePriceId, loadPriceIndex } from '@/lib/billing'
+import { stripeFor, isStripeConfigured } from '@/lib/stripe'
+import { addonById, isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 
 // POST /api/addons — enable/disable an add-on for the current trainer's
-// business by upserting its TrainerAddon row (the active set drives feature
-// gating; the Stripe webhook reconciles billing against the live subscription).
+// business by adding/removing the matching line item on their Stripe
+// subscription. The Stripe webhook then reconciles the TrainerAddon rows
+// (active + stripeSubscriptionItemId); we also write `active` here so the UI
+// updates instantly even before the webhook lands.
 //
-// itemId is a BillingItem.id where kind = ADDON. Those ids are the same short
-// AddonId strings used in pricing.ts ('achievements' | 'shop' | 'ai'), so the
-// page can pass the add-on id straight through. We still validate the id
-// against the live BillingConfig so a trainer can't switch on an item that
-// isn't actually a sellable add-on.
+// New charges start at the NEXT billing cycle (proration_behavior: 'none') —
+// no immediate pro-rata charge when switching an add-on on.
+//
+// itemId is a BillingItem.id == the pricing AddonId ('achievements' | 'shop' |
+// 'marketing' | …). Coming-soon previews (e.g. 'ai') are refused.
 const schema = z.object({
   itemId: z.string().min(1),
   active: z.boolean(),
@@ -22,24 +27,80 @@ const schema = z.object({
 export async function POST(req: Request) {
   const ctx = await getTrainerContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  // Gate on the same permission used by the rest of billing.
-  if (!can('billing.view', ctx.role, ctx.permissions)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Enabling an add-on commits to a recurring charge — gate on the spend perm.
+  if (!can('billing.seats', ctx.role, ctx.permissions)) {
+    return NextResponse.json({ error: 'You don\'t have permission to change add-ons.' }, { status: 403 })
   }
 
-  const body = await req.json().catch(() => null)
-  const parsed = schema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
-  }
+  const parsed = schema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   const { itemId, active } = parsed.data
 
-  // Only allow toggling items that are real, active add-ons right now.
-  const { addons } = await loadBillingConfig()
-  if (!addons.some((a) => a.id === itemId)) {
-    return NextResponse.json({ error: 'Unknown add-on' }, { status: 404 })
+  // Must be a real add-on that isn't a coming-soon preview (e.g. AI).
+  const def = addonById(itemId)
+  if (!def || def.comingSoon) {
+    return NextResponse.json({ error: 'This add-on isn\'t available yet.' }, { status: 404 })
   }
 
+  // FREE add-ons (e.g. Timesheets) toggle with no Stripe involvement.
+  if (def.free) {
+    await prisma.trainerAddon.upsert({
+      where: { trainerId_itemId: { trainerId: ctx.companyId, itemId } },
+      create: { trainerId: ctx.companyId, itemId, active },
+      update: { active },
+    })
+    return NextResponse.json({ ok: true, itemId, active })
+  }
+
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: ctx.companyId },
+    select: { stripeSubscriptionId: true, sandboxBilling: true },
+  })
+  const sandbox = trainer?.sandboxBilling ?? false
+  if (!isStripeConfigured(sandbox)) {
+    return NextResponse.json({ error: 'Billing not configured yet' }, { status: 503 })
+  }
+  if (!trainer?.stripeSubscriptionId) {
+    return NextResponse.json(
+      { error: 'Subscribe to your plan to add extras.', needsSubscription: true },
+      { status: 409 },
+    )
+  }
+
+  const stripeClient = stripeFor(sandbox)
+  const sub = await stripeClient.subscriptions.retrieve(trainer.stripeSubscriptionId)
+  const currency = (sub.currency ?? DEFAULT_CURRENCY).toUpperCase()
+  const cur: CurrencyCode = isCurrencyCode(currency) ? currency : DEFAULT_CURRENCY
+
+  const item = await prisma.billingItem.findUnique({
+    where: { id: itemId },
+    select: { stripePriceId: true, stripePriceIdsByCurrency: true, stripePriceIdTest: true, stripePriceIdsByCurrencyTest: true },
+  })
+  const priceId = item ? resolvePriceId(item, cur, sandbox) : null
+  if (!priceId) {
+    return NextResponse.json({ error: 'This add-on isn\'t available for purchase yet.' }, { status: 409 })
+  }
+
+  // Find any existing line item for THIS add-on on the subscription.
+  const index = await loadPriceIndex(sandbox)
+  const line = sub.items.data.find(li => {
+    const c = index.get(li.price.id)
+    return c?.type === 'addon' && c.id === itemId
+  })
+
+  const items: Stripe.SubscriptionUpdateParams.Item[] = []
+  if (active && !line) items.push({ price: priceId, quantity: 1 })
+  else if (!active && line) items.push({ id: line.id, deleted: true })
+
+  if (items.length > 0) {
+    await stripeClient.subscriptions.update(sub.id, {
+      items,
+      // New add-on starts billing at the next cycle — no immediate pro-rata charge.
+      proration_behavior: 'none',
+    })
+  }
+
+  // Reflect immediately (the webhook will also reconcile + set the sub-item id).
   await prisma.trainerAddon.upsert({
     where: { trainerId_itemId: { trainerId: ctx.companyId, itemId } },
     create: { trainerId: ctx.companyId, itemId, active },

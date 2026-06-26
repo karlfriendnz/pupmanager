@@ -10,7 +10,6 @@ import { BillingPanel } from './billing-panel'
 import { DeleteAccountSection } from './delete-account-section'
 import { PaymentsPanel } from './payments-panel'
 import { ActivityPanel } from './activity-panel'
-import { EmailTemplatesPanel } from './email-templates-panel'
 import { AddonsTab } from './addons-tab'
 import { IntegrationTab } from './integration-tab'
 import { FormsManager } from '../forms/forms-manager'
@@ -31,7 +30,7 @@ export default async function TrainerSettingsPage() {
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
-    select: { id: true, businessName: true, phone: true, showPhoneToClients: true, signupCountry: true, publicEmail: true, logoUrl: true, dashboardBgUrl: true, inviteTemplate: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true, intakeSectionOrder: true, intakeFormPublished: true },
+    select: { id: true, businessName: true, phone: true, showPhoneToClients: true, signupCountry: true, publicEmail: true, logoUrl: true, dashboardBgUrl: true, inviteTemplate: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true, intakeSectionOrder: true, intakeFormPublished: true, baseAddress: true, baseLat: true, baseLng: true },
   })
 
   const user = await prisma.user.findUnique({
@@ -79,7 +78,6 @@ export default async function TrainerSettingsPage() {
           <TrainerSettingsForm user={user} profile={trainerProfile} />
         ) : undefined}
         notifications={<NotificationsPanel />}
-        templates={canEditSettings ? <EmailTemplatesPanel /> : undefined}
         integration={can('settings.edit', ctx.role, ctx.permissions) ? <IntegrationTab companyId={ctx.companyId} /> : undefined}
         addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
         team={<TeamPanel />}

@@ -28,6 +28,10 @@ const schema = z.object({
   // Email (Resend)
   RESEND_API_KEY: z.string().startsWith('re_', 'RESEND_API_KEY must start with re_'),
   RESEND_FROM_EMAIL: z.string().email(),
+  // Svix signing secret for the Resend webhook (whsec_…). Optional: when unset,
+  // the /api/webhooks/resend endpoint rejects events (delivery tracking is off)
+  // rather than trusting unsigned payloads.
+  RESEND_WEBHOOK_SECRET: optionalString,
 
   // S3 — only needed for the legacy video upload route. The main upload path
   // is Vercel Blob (BLOB_READ_WRITE_TOKEN). Marked optional so a project that

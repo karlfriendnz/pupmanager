@@ -7,6 +7,7 @@ import crypto from 'crypto'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { renderClientInviteEmail } from '@/lib/client-invite-email'
 import { ensureTrainerSlug, clientInviteUrl } from '@/lib/slug'
+import { findOrJoinClient } from '@/lib/client-upsert'
 
 const schema = z.object({
   clientName: z.string().min(2),
@@ -56,52 +57,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Trainer profile not found' }, { status: 404 })
   }
 
-  // Prevent duplicate invites
-  const existingUser = await prisma.user.findUnique({ where: { email: clientEmail } })
-  if (existingUser) {
-    return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 409 })
-  }
-
-  // Create a pending client user and profile
+  // A returning person (email already on file) is REUSED, and if they're
+  // already this trainer's client we JOIN their existing profile — adding the
+  // named dogs — rather than erroring. clientEmail is always a real address
+  // here (required field), so it's always safe to dedupe on.
   const inviteToken = crypto.randomBytes(32).toString('hex')
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
   await prisma.$transaction(async (tx) => {
-    const clientUser = await tx.user.create({
-      data: {
-        name: clientName,
-        email: clientEmail,
-        role: 'CLIENT',
-      },
+    await findOrJoinClient(tx, {
+      email: clientEmail,
+      trainerId: trainerProfile.id,
+      name: clientName,
+      dogs: dogNames.map(name => ({ name })),
+      // Stamp invitedAt only when the trainer is actually sending the invite
+      // email (new profiles only). "Add client" (sendInvite off) leaves it null
+      // so the "Invite your first client" onboarding step stays pending.
+      invitedAt: sendInvite ? new Date() : null,
     })
 
-    // Create the primary dog
-    const primaryDog = await tx.dog.create({
-      data: { name: dogNames[0] },
-    })
-
-    // Create additional dogs
-    const additionalDogs = await Promise.all(
-      dogNames.slice(1).map(name => tx.dog.create({ data: { name } }))
-    )
-
-    await tx.clientProfile.create({
-      data: {
-        userId: clientUser.id,
-        trainerId: trainerProfile.id,
-        dogId: primaryDog.id,
-        // Stamp invitedAt only when the trainer is actually sending the
-        // invite email. "Add client" (sendInvite off) leaves it null so the
-        // "Invite your first client" onboarding step stays pending until a
-        // real invite goes out.
-        invitedAt: sendInvite ? new Date() : null,
-        dogs: additionalDogs.length > 0
-          ? { connect: additionalDogs.map(d => ({ id: d.id })) }
-          : undefined,
-      },
-    })
-
-    // Store invite token for magic-link style onboarding
+    // Store invite token for magic-link style onboarding.
     await tx.verificationToken.create({
       data: {
         identifier: clientEmail,

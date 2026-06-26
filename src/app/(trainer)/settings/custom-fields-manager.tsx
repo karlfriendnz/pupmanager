@@ -668,7 +668,7 @@ function SectionDroppable({
               <button
                 type="button"
                 onClick={onStartEditMeta}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                 title="Edit section"
               >
                 <Pencil className="h-4 w-4" />
@@ -678,7 +678,7 @@ function SectionDroppable({
               <button
                 type="button"
                 onClick={onDelete}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                 title="Delete section"
               >
                 <Trash2 className="h-4 w-4" />
@@ -786,7 +786,7 @@ function SortableFieldRow({
         <button
           type="button"
           onClick={onEdit}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+          className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
           aria-label="Edit field"
         >
           <Pencil className="h-4 w-4" />

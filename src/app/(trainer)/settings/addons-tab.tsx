@@ -9,9 +9,7 @@ import {
 import { AddonsGrid, type AddonCard } from '../add-ons/addons-grid'
 
 // Longer, page-specific blurbs shown in the "Learn more" modal. Keyed by the
-// pricing.ts AddonId / BillingItem.id so they line up with the cards. The
-// "coming soon" entries (timesheets, marketing) match the recent nav additions
-// and render as disabled cards with no toggle.
+// pricing.ts AddonId / BillingItem.id so they line up with the cards.
 const DETAILS: Record<string, string> = {
   achievements:
     'Give your clients branded badges to earn and show off — first session, ten-session streak, a graduation. Every time an owner shares a win to their socials your business gets in front of a new audience, for free. You choose which milestones unlock a badge and they appear automatically in the client app.',
@@ -23,22 +21,13 @@ const DETAILS: Record<string, string> = {
     'Track the hours your team works across sessions, classes and admin, then turn them into payroll-ready totals. Staff clock their own time, owners approve, and everyone sees where the week went.',
   marketing:
     'Reach the right owners at the right moment — win-back nudges for lapsed clients, review requests after a graduation, and seasonal campaigns, all sent from your brand inside PupManager.',
+  routeplanner:
+    'Plan the most efficient run between your home visits. See drive-time and distance from your base to each client — and from one visit to the next — and order your day to cut the kilometres. Distance-from-base appears on every client profile.',
 }
 
-// "Coming soon" cards. These aren't sellable BillingItems yet, so they render
-// disabled (no toggle) — they exist to preview what's landing next.
-const COMING_SOON: { id: string; name: string; blurb: string }[] = [
-  {
-    id: 'timesheets',
-    name: 'Timesheets',
-    blurb: 'Staff hours, approvals and payroll-ready totals for your whole team.',
-  },
-  {
-    id: 'marketing',
-    name: 'Marketing',
-    blurb: 'Win-back nudges, review requests and seasonal campaigns from your brand.',
-  },
-]
+// "Coming soon" cards not modelled in pricing.ts at all. (Add-ons that ARE in
+// pricing.ts but flagged comingSoon — e.g. AI — are handled below.)
+const COMING_SOON: { id: string; name: string; blurb: string }[] = []
 
 // Add-ons settings tab — the standalone /add-ons page's data loading, rendered
 // without the page chrome (PageHeader / full-page wrapper live on the settings
@@ -51,8 +40,8 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
     }),
     loadBillingConfig(),
     prisma.trainerAddon.findMany({
-      where: { trainerId: companyId, active: true },
-      select: { itemId: true },
+      where: { trainerId: companyId },
+      select: { itemId: true, active: true },
     }),
   ])
 
@@ -65,24 +54,39 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
   // Which BillingItem ids are actually sellable add-ons right now (DB-active).
   // BillingItem.id == pricing AddonId, so we match the two by id.
   const sellableIds = new Set(addonItems.map((a) => a.id))
-  const activeIds = new Set(activeRows.map((r) => r.itemId))
+  const activeIds = new Set(activeRows.filter((r) => r.active).map((r) => r.itemId))
+  const disabledIds = new Set(activeRows.filter((r) => !r.active).map((r) => r.itemId))
 
   // Real add-ons from pricing.ts (source of truth for name/blurb/price), each
-  // carrying its current on/off state and longer modal copy.
-  const cards: AddonCard[] = ADDONS.map((a) => ({
+  // carrying its current on/off state and longer modal copy. Free add-ons (e.g.
+  // Timesheets) are always toggleable, shown as "Free", and ON by default.
+  const cards: AddonCard[] = ADDONS.filter((a) => !a.comingSoon).map((a) => ({
     id: a.id,
     name: a.name,
     blurb: a.description,
-    badge: a.badge ?? null,
-    price: a.price[currency],
-    active: activeIds.has(a.id),
-    // Toggleable only if the DB still lists it as a sellable add-on.
-    available: sellableIds.has(a.id),
+    badge: a.free ? 'Free' : (a.badge ?? null),
+    price: a.free ? null : a.price[currency],
+    active: a.free ? !disabledIds.has(a.id) : activeIds.has(a.id),
+    // Free add-ons toggle without Stripe; paid ones need a sellable BillingItem.
+    available: a.free ? true : sellableIds.has(a.id),
     details: DETAILS[a.id] ?? a.description,
     comingSoon: false,
   }))
 
-  // Plus the preview-only "coming soon" cards.
+  // Add-ons in pricing.ts but flagged comingSoon (e.g. AI) — preview cards.
+  const soonAddons: AddonCard[] = ADDONS.filter((a) => a.comingSoon).map((a) => ({
+    id: a.id,
+    name: a.name,
+    blurb: a.description,
+    badge: 'Coming soon',
+    price: null,
+    active: false,
+    available: false,
+    details: DETAILS[a.id] ?? a.description,
+    comingSoon: true,
+  }))
+
+  // Plus the preview-only "coming soon" cards not modelled in pricing.ts.
   const soon: AddonCard[] = COMING_SOON.map((c) => ({
     id: c.id,
     name: c.name,
@@ -97,7 +101,7 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
 
   return (
     <div className="max-w-5xl">
-      <AddonsGrid cards={[...cards, ...soon]} currency={currency} />
+      <AddonsGrid cards={[...cards, ...soonAddons, ...soon]} currency={currency} />
     </div>
   )
 }

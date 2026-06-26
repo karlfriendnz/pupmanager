@@ -266,10 +266,10 @@ function Row({
                     <CalendarCheck className="h-3.5 w-3.5" /> Book
                   </Link>
                 )}
-                <button onClick={onEdit} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50" aria-label="Edit">
+                <button onClick={onEdit} className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50" aria-label="Edit">
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
-                <button onClick={onRemove} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50" aria-label="Remove">
+                <button onClick={onRemove} className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50" aria-label="Remove">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>

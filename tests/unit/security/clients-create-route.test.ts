@@ -11,8 +11,11 @@ const h = vi.hoisted(() => ({
   customFieldFindMany: vi.fn(),
   userFindUnique: vi.fn(),
   userCreate: vi.fn(),
+  userUpsert: vi.fn(),
   dogCreate: vi.fn(),
   clientProfileCreate: vi.fn(),
+  clientProfileFindUnique: vi.fn(),
+  clientProfileUpdate: vi.fn(),
   customFieldValueCreate: vi.fn(),
   verificationTokenCreate: vi.fn(),
   onboardingUpdateMany: vi.fn(),
@@ -30,9 +33,9 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     trainerProfile: { findUnique: h.trainerProfileFindUnique },
     customField: { findMany: h.customFieldFindMany },
-    user: { findUnique: h.userFindUnique, create: h.userCreate },
+    user: { findUnique: h.userFindUnique, create: h.userCreate, upsert: h.userUpsert },
     dog: { create: h.dogCreate },
-    clientProfile: { create: h.clientProfileCreate },
+    clientProfile: { create: h.clientProfileCreate, findUnique: h.clientProfileFindUnique, update: h.clientProfileUpdate },
     customFieldValue: { create: h.customFieldValueCreate },
     verificationToken: { create: h.verificationTokenCreate },
     trainerOnboardingProgress: { updateMany: h.onboardingUpdateMany },
@@ -78,15 +81,18 @@ beforeEach(() => {
   h.onboardingUpdateMany.mockResolvedValue({})
   // Run the transaction callback against tx fakes.
   h.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => cb({
-    user: { create: h.userCreate },
+    user: { findUnique: h.userFindUnique, create: h.userCreate, upsert: h.userUpsert },
     dog: { create: h.dogCreate },
-    clientProfile: { create: h.clientProfileCreate },
+    clientProfile: { create: h.clientProfileCreate, findUnique: h.clientProfileFindUnique, update: h.clientProfileUpdate },
     customFieldValue: { create: h.customFieldValueCreate },
     verificationToken: { create: h.verificationTokenCreate },
   }))
   h.userCreate.mockResolvedValue({ id: 'client-user-1' })
+  h.userUpsert.mockResolvedValue({ id: 'client-user-1' })
   h.dogCreate.mockResolvedValue({ id: 'dog-1' })
   h.clientProfileCreate.mockResolvedValue({ id: 'profile-1' })
+  h.clientProfileFindUnique.mockResolvedValue(null) // no existing profile → create
+  h.clientProfileUpdate.mockResolvedValue({})
 })
 
 describe('POST /api/clients — authorisation', () => {
@@ -173,11 +179,20 @@ describe('POST /api/clients — mass-assignment guard', () => {
     )
   })
 
-  it('rejects a duplicate real email with 409 and does not create', async () => {
+  it('does NOT 409 a duplicate real email — it joins/reuses instead (no second User)', async () => {
     grant()
-    h.userFindUnique.mockResolvedValue({ id: 'existing' })
+    // The person already exists; upsert resolves to them, and they already have
+    // a profile for this trainer → JOIN, no new User, no new ClientProfile.
+    h.userFindUnique.mockResolvedValue({ id: 'existing-user' })
+    h.userUpsert.mockResolvedValue({ id: 'existing-user' })
+    h.clientProfileFindUnique.mockResolvedValue({ id: 'existing-profile', dogId: 'd0', phone: '021', addressLine: 'x' })
     const res = await POST(req({ mode: 'full', name: 'Jess', email: 'taken@x.test' }))
-    expect(res.status).toBe(409)
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.clientId).toBe('existing-profile')
+    // No duplicate person, no duplicate profile.
+    expect(h.userCreate).not.toHaveBeenCalled()
     expect(h.clientProfileCreate).not.toHaveBeenCalled()
   })
 })

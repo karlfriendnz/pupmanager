@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { hasAddon } from '@/lib/billing'
 import { getClientAccess } from '@/lib/trainer-access'
 import { routeDistance } from '@/lib/routing'
 import { formatDate } from '@/lib/utils'
@@ -107,13 +108,50 @@ export default async function ClientDetailPage({
 
   if (!client) notFound()
 
+  // Communication records for this client — bulk emails received (with
+  // open/click status) + the message/email thread — for the Communication tab.
+  const [broadcastEmails, threadMessages] = await Promise.all([
+    prisma.emailBroadcastRecipient.findMany({
+      where: { clientProfileId: clientId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true, status: true, openedAt: true, createdAt: true, broadcast: { select: { subject: true } } },
+    }),
+    prisma.message.findMany({
+      where: { clientId, channel: 'TRAINER_CLIENT' },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true, body: true, senderId: true, createdAt: true, readAt: true },
+    }),
+  ])
+  const communications = [
+    ...broadcastEmails.map(e => ({
+      id: `b-${e.id}`,
+      kind: 'email' as const,
+      direction: 'outbound' as const,
+      subject: e.broadcast.subject,
+      status: e.status as string | null,
+      date: e.createdAt.toISOString(),
+    })),
+    ...threadMessages.map(m => ({
+      id: `m-${m.id}`,
+      kind: m.body.startsWith('📧') ? ('email' as const) : ('message' as const),
+      direction: m.senderId === client.userId ? ('inbound' as const) : ('outbound' as const),
+      subject: m.body.replace(/^📧\s*/, '').split('\n')[0].slice(0, 140),
+      status: null as string | null,
+      date: m.createdAt.toISOString(),
+    })),
+  ].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 60)
+
   // Driving distance from the trainer's base to this client (guarded — null if
-  // either has no location set, or Google is unreachable). One external call
-  // after the batch, since it needs both the client's and base's coordinates.
+  // either has no location set, or Google is unreachable). Gated on the Route
+  // planner add-on, which covers all address/distance calculations. One external
+  // call after the batch, since it needs both the client's and base's coordinates.
   let distanceFromBase: string | null = null
   if (
     client.addressLat != null && client.addressLng != null &&
-    baseProfile?.baseLat != null && baseProfile?.baseLng != null
+    baseProfile?.baseLat != null && baseProfile?.baseLng != null &&
+    await hasAddon(access.trainerId, 'routeplanner')
   ) {
     const d = await routeDistance(
       { lat: baseProfile.baseLat, lng: baseProfile.baseLng },
@@ -193,6 +231,7 @@ export default async function ClientDetailPage({
       <ClientProfileTabs
         clientId={client.id}
         canEdit={canEdit}
+        communications={communications}
         stats={{
           complianceRate,
           completedTasks,

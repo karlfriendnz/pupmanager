@@ -51,16 +51,18 @@ const prisma = new PrismaClient()
 const stripe = new Stripe(SECRET, { apiVersion: '2026-04-22.dahlia' })
 
 interface ProductDef {
-  key: 'core' | 'seat' | 'achievements' | 'shop' | 'ai'
+  key: 'core' | 'seat' | 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner'
   name: string
   description: string
   prices: Record<CurrencyCode, number>
 }
 
+// Free add-ons (e.g. Timesheets) never go through Stripe — they're excluded
+// from product/price creation and just get a BillingItem row below (FK anchor).
 const PRODUCTS: ProductDef[] = [
   { key: 'core', name: PLAN_NAME, description: 'Every core feature · unlimited clients and dogs', prices: CORE_PRICE },
   { key: 'seat', name: 'Extra trainer', description: 'An additional trainer seat on your account.', prices: SEAT_PRICE },
-  ...ADDONS.map(a => ({
+  ...ADDONS.filter(a => !a.free).map(a => ({
     key: a.id as ProductDef['key'],
     name: a.name,
     description: a.description,
@@ -143,11 +145,12 @@ async function main() {
     ...ADDONS.map((a, i) => ({ id: a.id, kind: 'ADDON' as const, name: a.name, description: a.description, priceMonthly: a.price.NZD, sortOrder: i + 1 })),
   ]
   for (const item of items) {
-    const w = wired[item.id]
+    const w = wired[item.id] // undefined for free add-ons (no Stripe prices)
+    const cols = w ? priceCols(w.nzd, w.byCurrency) : {}
     await prisma.billingItem.upsert({
       where: { id: item.id },
-      create: { ...item, ...priceCols(w.nzd, w.byCurrency) },
-      update: { isActive: true, ...priceCols(w.nzd, w.byCurrency) },
+      create: { ...item, ...cols },
+      update: { isActive: true, ...cols },
     })
   }
 

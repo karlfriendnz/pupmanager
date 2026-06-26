@@ -32,7 +32,8 @@ export default async function ClassRunPage({
           orderBy: [{ status: 'asc' }, { waitlistPosition: 'asc' }, { enrolledAt: 'asc' }],
           include: {
             client: { select: { id: true, user: { select: { name: true } } } },
-            dog: { select: { id: true, name: true } },
+            dog: { select: { id: true, name: true, photoUrl: true } },
+            attendance: { select: { status: true } },
           },
         },
         assignedTrainers: {
@@ -93,15 +94,22 @@ export default async function ClassRunPage({
         sessionIndex: s.sessionIndex,
         status: s.status,
       }))}
-      enrollments={run.enrollments.map(e => ({
-        id: e.id,
-        status: e.status,
-        type: e.type,
-        waitlistPosition: e.waitlistPosition,
-        source: e.source,
-        clientName: e.client.user.name ?? 'Unnamed client',
-        dogName: e.dog?.name ?? null,
-      }))}
+      enrollments={run.enrollments.map(e => {
+        const attended = e.attendance.filter(a => a.status === 'PRESENT' || a.status === 'LATE' || a.status === 'MAKEUP').length
+        return {
+          id: e.id,
+          status: e.status,
+          type: e.type,
+          waitlistPosition: e.waitlistPosition,
+          source: e.source,
+          clientId: e.client.id,
+          clientName: e.client.user.name ?? 'Unnamed client',
+          dogName: e.dog?.name ?? null,
+          dogPhotoUrl: e.dog?.photoUrl ?? null,
+          attendedCount: attended,
+          markedCount: e.attendance.length,
+        }
+      })}
       clients={clients.map(c => ({
         id: c.id,
         name: c.user.name ?? 'Unnamed client',

@@ -9,6 +9,7 @@ import { renderClientInviteEmail } from '@/lib/client-invite-email'
 import { ensureTrainerSlug, clientInviteUrl } from '@/lib/slug'
 import { safeEvaluate } from '@/lib/achievements'
 import { CLIENT_FIELDS, resolveClientFieldConfig, QUICK_ADD_FOLLOW_UP_STATUS, type ClientFieldKey } from '@/lib/client-fields'
+import { findOrJoinClient, type DogInput } from '@/lib/client-upsert'
 
 export const runtime = 'nodejs'
 
@@ -109,30 +110,74 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── Email: real address (dedupe + maybe invite) or a placeholder ─────────
+  // ── Email: real address (find-or-join + maybe invite) or a placeholder ───
+  // A real email is a person identity: if it already belongs to someone, we
+  // REUSE them and (if they're already this trainer's client) JOIN onto their
+  // existing profile rather than erroring or duplicating. Placeholder no-email
+  // addresses are random per-create and must never be deduped, so they take the
+  // raw-create path below.
   const realEmail = data.email?.trim() || null
-  if (realEmail) {
-    const existing = await prisma.user.findUnique({ where: { email: realEmail }, select: { id: true } })
-    if (existing) return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 409 })
-  }
   const email = realEmail ?? placeholderEmail()
   const sendInvite = !isQuick && data.sendInvite && !!realEmail
   const inviteToken = crypto.randomBytes(32).toString('hex')
 
   // Only the named dogs get created (quick-add usually has none).
   const dogInputs = (data.dogs ?? []).filter(d => d.name?.trim())
+  const dogPayload: DogInput[] = dogInputs.map(d => ({
+    name: d.name!.trim(),
+    breed: d.breed,
+    weight: d.weight,
+    dob: d.dob ? new Date(d.dob) : null,
+    notes: d.notes,
+  }))
+  const profileStatus = isQuick ? QUICK_ADD_FOLLOW_UP_STATUS : 'ACTIVE'
 
   const { clientProfileId, dogIds } = await prisma.$transaction(async (tx) => {
+    // Custom DOG-scoped values map to the dog(s) created by THIS request, by
+    // index — true on both a fresh create and a join (createdDogIds is in the
+    // same order as dogInputs).
+    const writeCustomValues = async (profileId: string, createdDogIds: string[]) => {
+      for (const v of data.customValues ?? []) {
+        const cf = customById.get(v.fieldId)
+        if (!cf || !v.value.trim()) continue
+        const dogId = cf.appliesTo === 'DOG'
+          ? (v.dogIndex != null ? createdDogIds[v.dogIndex] ?? null : createdDogIds[0] ?? null)
+          : null
+        await tx.customFieldValue.create({ data: { fieldId: v.fieldId, clientId: profileId, dogId, value: v.value.trim() } })
+      }
+    }
+
+    if (realEmail) {
+      const result = await findOrJoinClient(tx, {
+        email: realEmail,
+        trainerId: trainerProfile.id,
+        name: data.name?.trim() || 'New contact',
+        phone: data.phone,
+        address: data.address ?? null,
+        dogs: dogPayload,
+        status: profileStatus,
+        invitedAt: sendInvite ? new Date() : null,
+      })
+      await writeCustomValues(result.clientProfileId, result.createdDogIds)
+      if (sendInvite) {
+        await tx.verificationToken.create({
+          data: { identifier: email, token: inviteToken, expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+        })
+      }
+      return { clientProfileId: result.clientProfileId, dogIds: result.createdDogIds }
+    }
+
+    // ── No real email: a fresh placeholder User, no dedupe. ──
     const clientUser = await tx.user.create({
       data: { name: data.name?.trim() || 'New contact', email, role: 'CLIENT' },
     })
 
-    const createdDogs = await Promise.all(dogInputs.map(d => tx.dog.create({
+    const createdDogs = await Promise.all(dogPayload.map(d => tx.dog.create({
       data: {
-        name: d.name!.trim(),
+        name: d.name,
         breed: d.breed?.trim() || null,
         weight: d.weight ?? null,
-        dob: d.dob ? new Date(d.dob) : null,
+        dob: d.dob ?? null,
         notes: d.notes?.trim() || null,
       },
     })))
@@ -141,7 +186,7 @@ export async function POST(req: Request) {
       data: {
         userId: clientUser.id,
         trainerId: trainerProfile.id,
-        status: isQuick ? QUICK_ADD_FOLLOW_UP_STATUS : 'ACTIVE',
+        status: profileStatus,
         phone: data.phone?.trim() || null,
         addressLine: data.address?.line?.trim() || null,
         addressLat: data.address?.lat ?? null,
@@ -153,21 +198,7 @@ export async function POST(req: Request) {
       },
     })
 
-    // Custom field values — DOG-scoped values map to the created dog by index.
-    for (const v of data.customValues ?? []) {
-      const cf = customById.get(v.fieldId)
-      if (!cf || !v.value.trim()) continue
-      const dogId = cf.appliesTo === 'DOG'
-        ? (v.dogIndex != null ? createdDogs[v.dogIndex]?.id ?? null : createdDogs[0]?.id ?? null)
-        : null
-      await tx.customFieldValue.create({ data: { fieldId: v.fieldId, clientId: profile.id, dogId, value: v.value.trim() } })
-    }
-
-    if (sendInvite) {
-      await tx.verificationToken.create({
-        data: { identifier: email, token: inviteToken, expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
-      })
-    }
+    await writeCustomValues(profile.id, createdDogs.map(d => d.id))
 
     return { clientProfileId: profile.id, dogIds: createdDogs.map(d => d.id) }
   })

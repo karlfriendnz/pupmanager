@@ -91,6 +91,8 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
               <a href="/api/connect/login-link" className="font-medium hover:underline" style={{ color: 'var(--pm-brand-700)' }}>
                 Open Stripe dashboard →
               </a>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/stripe.svg" alt="Stripe" className="ml-auto h-6 w-auto opacity-80" />
             </div>
           </div>
         )}

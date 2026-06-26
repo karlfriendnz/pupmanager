@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { UserPlus } from 'lucide-react'
 import { ClientsList } from './clients-list'
-import { WaitlistView } from './waitlist-view'
 import { QuickAddContact } from './quick-add-contact'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
@@ -39,7 +38,6 @@ export default async function ClientsPage({
   const tab =
     sp.tab === 'inactive' ? 'inactive'
     : sp.tab === 'new' ? 'new'
-    : sp.tab === 'waitlist' ? 'waitlist'
     : 'active'
   const status = tab === 'inactive' ? 'INACTIVE' : tab === 'new' ? 'NEW' : 'ACTIVE'
 
@@ -49,8 +47,8 @@ export default async function ClientsPage({
     where: { trainerId, status, ...memberScope },
     include: {
       user: { select: { name: true, email: true } },
-      dog: { select: { name: true, breed: true } },
-      dogs: { select: { name: true } },
+      dog: { select: { name: true, breed: true, photoUrl: true } },
+      dogs: { select: { name: true, photoUrl: true } },
       diaryEntries: {
         where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
         select: { id: true, completion: { select: { id: true } } },
@@ -64,8 +62,8 @@ export default async function ClientsPage({
       client: {
         include: {
           user: { select: { name: true, email: true } },
-          dog: { select: { name: true, breed: true } },
-          dogs: { select: { name: true } },
+          dog: { select: { name: true, breed: true, photoUrl: true } },
+          dogs: { select: { name: true, photoUrl: true } },
           diaryEntries: {
             where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
             select: { id: true, completion: { select: { id: true } } },
@@ -80,64 +78,11 @@ export default async function ClientsPage({
     orderBy: [{ category: 'asc' }, { order: 'asc' }, { label: 'asc' }],
   })
 
-  const [newCount, activeCount, inactiveCount, waitlistCount] = await Promise.all([
+  const [newCount, activeCount, inactiveCount] = await Promise.all([
     prisma.clientProfile.count({ where: { trainerId, status: 'NEW', ...memberScope } }),
     prisma.clientProfile.count({ where: { trainerId, status: 'ACTIVE', ...memberScope } }),
     prisma.clientProfile.count({ where: { trainerId, status: 'INACTIVE', ...memberScope } }),
-    prisma.waitlistEntry.count({ where: { trainerId, status: 'WAITING' } }),
   ])
-
-  // Waitlist is a tab on this page (not a separate route). Only its data
-  // is fetched when that tab is active; the heavy client-list queries
-  // below still run but their results simply aren't rendered.
-  const waitlistData =
-    tab === 'waitlist'
-      ? await (async () => {
-          const [entries, activeClients, packages] = await Promise.all([
-            prisma.waitlistEntry.findMany({
-              where: { trainerId },
-              orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
-              include: {
-                client: { select: { id: true, user: { select: { name: true, email: true } } } },
-                package: { select: { id: true, name: true } },
-              },
-            }),
-            prisma.clientProfile.findMany({
-              where: { trainerId, status: 'ACTIVE' },
-              select: { id: true, user: { select: { name: true } } },
-              orderBy: { user: { name: 'asc' } },
-            }),
-            prisma.package.findMany({
-              where: { trainerId },
-              orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-              select: { id: true, name: true },
-            }),
-          ])
-          return {
-            entries: entries.map(e => ({
-              id: e.id,
-              clientId: e.clientId,
-              name: e.client?.user.name ?? e.name,
-              email: e.client?.user.email ?? e.email,
-              phone: e.phone,
-              packageId: e.packageId,
-              packageName: e.package?.name ?? null,
-              request: e.request,
-              sessionType: e.sessionType,
-              preferredDays: e.preferredDays,
-              preferredTimeStart: e.preferredTimeStart,
-              preferredTimeEnd: e.preferredTimeEnd,
-              earliestStart: e.earliestStart ? e.earliestStart.toISOString().slice(0, 10) : null,
-              notes: e.notes,
-              status: e.status,
-              contactedAt: e.contactedAt?.toISOString() ?? null,
-              createdAt: e.createdAt.toISOString(),
-            })),
-            clients: activeClients.map(c => ({ id: c.id, name: c.user.name ?? 'Unnamed client' })),
-            packages,
-          }
-        })()
-      : null
 
   // Fetch the full tab unfiltered — search now happens client-side as the user
   // types so there's no per-keystroke round-trip. For trainer client lists
@@ -177,6 +122,7 @@ export default async function ClientsPage({
       email: c.user.email,
       dogName: c.dog?.name ?? null,
       dogBreed: c.dog?.breed ?? null,
+      dogPhotoUrl: c.dog?.photoUrl ?? c.dogs[0]?.photoUrl ?? null,
       extraDogNames: c.dogs.map(d => d.name),
       taskCount: c.diaryEntries.length,
       completedCount: c.diaryEntries.filter(t => t.completion).length,
@@ -189,6 +135,7 @@ export default async function ClientsPage({
       email: s.client.user.email,
       dogName: s.client.dog?.name ?? null,
       dogBreed: s.client.dog?.breed ?? null,
+      dogPhotoUrl: s.client.dog?.photoUrl ?? s.client.dogs[0]?.photoUrl ?? null,
       extraDogNames: s.client.dogs.map(d => d.name),
       taskCount: s.client.diaryEntries.length,
       completedCount: s.client.diaryEntries.filter(t => t.completion).length,
@@ -300,38 +247,20 @@ export default async function ClientsPage({
         >
           Inactive{inactiveCount > 0 && <span className="ml-1.5 text-xs opacity-60">{inactiveCount}</span>}
         </Link>
-        <Link
-          href={tabHref('waitlist')}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-medium text-center transition-all duration-150 ${
-            tab === 'waitlist'
-              ? 'bg-white text-slate-900 shadow-sm'
-              : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          Waitlist{waitlistCount > 0 && <span className="ml-1.5 text-xs opacity-60">{waitlistCount}</span>}
-        </Link>
       </div>
 
-      {tab === 'waitlist' && waitlistData ? (
-        <WaitlistView
-          initialEntries={waitlistData.entries}
-          clients={waitlistData.clients}
-          packages={waitlistData.packages}
-        />
-      ) : (
-        <ClientsList
-          key={`${sp.q ?? ''}|${sp.scope ?? ''}`}
-          clients={flatClients}
-          tab={tab as 'new' | 'active' | 'inactive'}
-          columns={clientListColumns}
-          customFields={customFields}
-          customValues={customValueMap}
-          groupBy={clientListGroupBy}
-          tz={tz}
-          initialQuery={sp.q}
-          searchScope={(['client', 'breed', 'dog'].includes(sp.scope ?? '') ? sp.scope : 'all') as 'all' | 'client' | 'breed' | 'dog'}
-        />
-      )}
+      <ClientsList
+        key={`${sp.q ?? ''}|${sp.scope ?? ''}`}
+        clients={flatClients}
+        tab={tab as 'new' | 'active' | 'inactive'}
+        columns={clientListColumns}
+        customFields={customFields}
+        customValues={customValueMap}
+        groupBy={clientListGroupBy}
+        tz={tz}
+        initialQuery={sp.q}
+        searchScope={(['client', 'breed', 'dog'].includes(sp.scope ?? '') ? sp.scope : 'all') as 'all' | 'client' | 'breed' | 'dog'}
+      />
       </div>
     </>
   )

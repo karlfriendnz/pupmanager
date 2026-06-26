@@ -38,11 +38,14 @@ const blank = (): PriceMap => ({ NZD: TODO, AUD: TODO, GBP: TODO, CAD: TODO, USD
 // ── PASTE STRIPE PRICE IDS HERE ───────────────────────────────────────────
 // Each must be a recurring/month Price in the matching currency. Amounts
 // for reference live in src/lib/pricing.ts.
-const PRICE_IDS: Record<'core' | 'seat' | 'achievements' | 'shop' | 'ai', PriceMap> = {
+const PRICE_IDS: Record<'core' | 'seat' | 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets', PriceMap> = {
   core:         blank(), // 45 AUD / 49 NZD / 25 GBP / 39 CAD / 35 USD / 649 ZAR
   seat:         blank(), // 36 AUD / 39 NZD / 19 GBP / 31 CAD / 28 USD / 519 ZAR
   achievements: blank(), // 18 AUD / 19 NZD /  9 GBP / 15 CAD / 13 USD / 249 ZAR
   shop:         blank(), // 27 AUD / 29 NZD / 15 GBP / 23 CAD / 21 USD / 389 ZAR
+  marketing:    blank(), //  9 AUD / 10 NZD /  5 GBP /  8 CAD /  7 USD / 129 ZAR
+  routeplanner: blank(), //  9 AUD / 10 NZD /  5 GBP /  8 CAD /  7 USD / 129 ZAR
+  timesheets:   blank(), // free — no Stripe price (use create-stripe-products.ts)
   ai:           blank(), // 27 AUD / 29 NZD / 15 GBP / 23 CAD / 21 USD / 389 ZAR
 }
 // ──────────────────────────────────────────────────────────────────────────

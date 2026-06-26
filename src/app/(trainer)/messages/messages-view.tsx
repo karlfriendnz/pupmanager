@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { MessageCircle, ArrowLeft } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { ClientAvatar } from '@/components/shared/client-avatar'
 import { MessageThread } from './[clientId]/message-thread'
 
 export interface ClientRow {
@@ -12,6 +13,7 @@ export interface ClientRow {
   status: string
   displayName: string
   dogName: string | null
+  dogPhotoUrl: string | null
   unread: number
   lastMessage: {
     body: string
@@ -32,6 +34,7 @@ export interface SelectedClient {
   id: string
   displayName: string
   dogName: string | null
+  dogPhotoUrl: string | null
 }
 
 interface Props {
@@ -164,8 +167,8 @@ export function MessagesView({
                     >
                       <CardBody className="pt-3 pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="relative h-10 w-10 rounded-full bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center flex-shrink-0">
-                            {client.displayName[0].toUpperCase()}
+                          <div className="relative flex-shrink-0">
+                            <ClientAvatar size="lg" name={client.displayName} dogPhotoUrl={client.dogPhotoUrl} />
                             {client.unread > 0 && (
                               <span
                                 aria-label={`${client.unread} unread`}
@@ -238,9 +241,7 @@ export function MessagesView({
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
-              <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center flex-shrink-0">
-                {selectedClient.displayName[0].toUpperCase()}
-              </div>
+              <ClientAvatar size="md" name={selectedClient.displayName} dogPhotoUrl={selectedClient.dogPhotoUrl} />
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-slate-900 text-sm truncate">{selectedClient.displayName}</p>
                 {selectedClient.dogName && (

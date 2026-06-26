@@ -11,7 +11,7 @@ import {
   Home, LogOut, ShoppingBag,
   MoreHorizontal, X, Inbox, GraduationCap,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
-  BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone,
+  BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone, Lock, ClipboardList,
   type LucideIcon,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
@@ -41,12 +41,14 @@ const TRAINER_NAV: NavItem[] = [
 
   { href: '/clients',      label: 'Clients',      icon: Users,           section: 'clients' },
   { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
+  { href: '/clients/waitlist', label: 'Waitlist', icon: ClipboardList,   section: 'clients', child: true },
   { href: '/schedule',     label: 'Schedule',     icon: Calendar,        section: 'clients' },
   { href: '/schedule/route',       label: 'Route', icon: Navigation,     section: 'clients', child: true },
   { href: '/communication', label: 'Communication', icon: MessagesSquare, section: 'clients', group: true },
   { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'clients', child: true },
   { href: '/enquiries',    label: 'Enquiries',    icon: Inbox,           section: 'clients', child: true },
-  { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'clients', child: true, comingSoon: true },
+  { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'clients', child: true },
+  { href: '/email-templates', label: 'Email templates', icon: Mail,       section: 'clients', child: true },
 
   { href: '/packages',     label: 'Packages',     icon: Package,         section: 'programs' },
   { href: '/classes',      label: 'Classes',      icon: GraduationCap,   section: 'programs' },
@@ -155,6 +157,12 @@ interface AppShellProps {
    * everything; staff only see what they can act on. Empty = show all.
    */
   hiddenNavHrefs?: string[]
+  /**
+   * Trainer nav hrefs whose add-on is currently OFF. These items are NOT
+   * hidden — they render disabled with an "Add-on" badge and link to the
+   * Add-ons settings tab so the trainer can turn the feature on. Empty = none.
+   */
+  addonLockedHrefs?: string[]
   /**
    * Client shell only: the trainer's public contact details, surfaced as
    * icon links in the full-screen menu header. Any null/missing value is
@@ -408,6 +416,102 @@ function NavBadge({ count, variant = 'pill' }: { count: number; variant?: 'pill'
   )
 }
 
+// Add-on-locked nav row. Renders a DISABLED-looking entry (greyed text/icon +
+// an "Add-on" pill) that still navigates to the Add-ons settings tab so the
+// trainer can turn the feature on. Never shows the active/blue state. One
+// component covers every render site via the `variant` prop so the locked
+// treatment stays consistent (and DRY) across collapsed rail, expanded
+// sidebar, hover flyout, and the mobile nav.
+const ADDON_SETTINGS_HREF = '/settings?tab=addons'
+const ADDON_LOCK_TITLE = 'This is an add-on — turn it on in Add-ons'
+function LockedNavRow({
+  item,
+  variant,
+}: {
+  item: NavItem
+  variant: 'top-collapsed' | 'top-expanded' | 'child-flyout' | 'child-expanded' | 'mobile-grid' | 'mobile-tab'
+}) {
+  const Icon = item.icon
+  // Reuses the rounded-pill styling of the "Soon" badge, reading "Add-on".
+  const pill = (cls: string) => (
+    <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide', cls)}>Add-on</span>
+  )
+  switch (variant) {
+    case 'top-collapsed':
+      // Collapsed rail: single centred icon + a small lock overlay, no label.
+      return (
+        <Link
+          href={ADDON_SETTINGS_HREF}
+          title={ADDON_LOCK_TITLE}
+          className="relative flex items-center justify-center h-10 w-10 mx-auto rounded-xl text-slate-400 hover:bg-slate-50 transition-colors"
+        >
+          <Icon className="h-5 w-5 flex-shrink-0" />
+          <Lock aria-hidden className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-slate-400" />
+        </Link>
+      )
+    case 'top-expanded':
+      return (
+        <Link
+          href={ADDON_SETTINGS_HREF}
+          title={ADDON_LOCK_TITLE}
+          className="relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 hover:bg-slate-50 transition-colors"
+        >
+          <Icon className="h-5 w-5 flex-shrink-0 text-slate-300" />
+          {item.label}
+          {pill('ml-auto bg-slate-100 text-slate-400')}
+        </Link>
+      )
+    case 'child-flyout':
+      return (
+        <Link
+          href={ADDON_SETTINGS_HREF}
+          title={ADDON_LOCK_TITLE}
+          className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-400 hover:bg-slate-50"
+        >
+          <Icon className="h-4 w-4 text-slate-300" /> {item.label}
+          {pill('ml-auto bg-slate-100 text-slate-400')}
+        </Link>
+      )
+    case 'child-expanded':
+      return (
+        <Link
+          href={ADDON_SETTINGS_HREF}
+          title={ADDON_LOCK_TITLE}
+          className="relative flex items-center gap-3 rounded-xl pl-9 py-2 text-sm font-medium text-slate-400 hover:bg-slate-50 transition-colors"
+        >
+          <Icon className="h-4 w-4 flex-shrink-0 text-slate-300" />
+          {item.label}
+          {pill('ml-auto bg-slate-100 text-slate-400')}
+        </Link>
+      )
+    case 'mobile-grid':
+      return (
+        <Link
+          href={ADDON_SETTINGS_HREF}
+          title={ADDON_LOCK_TITLE}
+          className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium bg-slate-50 text-slate-400"
+        >
+          <Icon className="h-5 w-5 flex-shrink-0 text-slate-300" />
+          {item.label}
+          {pill('ml-auto bg-slate-200 text-slate-500')}
+        </Link>
+      )
+    case 'mobile-tab':
+      // Bottom-bar primary tab: vertical icon + label, lock overlay on the icon.
+      return (
+        <Link
+          href={ADDON_SETTINGS_HREF}
+          title={ADDON_LOCK_TITLE}
+          className="relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-slate-300"
+        >
+          <Icon className="h-5 w-5" />
+          <span className="text-[10px] font-medium text-slate-400">{item.label}</span>
+          <Lock aria-hidden className="absolute top-1.5 right-[22%] h-3 w-3 text-slate-400 ring-2 ring-white rounded-full bg-white" />
+        </Link>
+      )
+  }
+}
+
 // Full-width desktop top bar: [logo + business name | collapse] [page title] …
 // [streak · search · settings · account · help]. Consumes the page-title
 // context so each page's title shows here. Mobile keeps its own bottom bar.
@@ -486,12 +590,15 @@ function TrainerShell({
   unreadCounts = {},
   streak,
   hiddenNavHrefs = [],
+  addonLockedHrefs = [],
   orgs = [],
   activeCompanyId = null,
 }: AppShellProps) {
   const pathname = usePathname()
   // Nav filtered to what this user's role/permissions allow.
   const trainerNav = TRAINER_NAV.filter(i => !hiddenNavHrefs.includes(i.href))
+  // Hrefs whose add-on is OFF — render disabled-with-upsell, NOT hidden.
+  const lockedAddons = new Set(addonLockedHrefs)
   // Desktop: child items (e.g. Route + Notes under Schedule) don't render as
   // their own rows — they collapse into a hover flyout on their parent. Mobile
   // keeps them as flat items in the "More" sheet.
@@ -598,7 +705,7 @@ function TrainerShell({
       />
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo). */}
-      <aside className={cn('hidden md:flex md:flex-col md:fixed md:top-14 md:bottom-0 md:left-0 bg-white border-r border-slate-100 transition-all duration-200', sidebarWidth)}>
+      <aside className={cn('hidden md:flex md:flex-col md:fixed md:top-14 md:bottom-0 md:left-0 md:z-40 bg-white border-r border-slate-100 transition-all duration-200', sidebarWidth)}>
         <nav className={cn('flex-1 overflow-y-auto py-4 space-y-1', collapsed ? 'px-2' : 'px-3')}>
           {desktopNav.map((item, idx, arr) => {
             // Section grouping: emit a small header (expanded) or a divider
@@ -606,6 +713,21 @@ function TrainerShell({
             const sectionChanged = idx === 0 || arr[idx - 1].section !== item.section
             const sectionHeader = !collapsed && sectionChanged ? NAV_SECTION_LABEL[item.section] : null
             const showDivider = sectionChanged && idx > 0 && (item.section === 'system' || collapsed)
+            // Add-on OFF: render disabled-with-upsell (never active/blue), still
+            // keeping the section header/divider so the layout stays intact.
+            if (lockedAddons.has(item.href)) {
+              return (
+                <Fragment key={item.href}>
+                  {sectionHeader && (
+                    <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{sectionHeader}</p>
+                  )}
+                  {showDivider && !sectionHeader && (
+                    <div className={cn('border-t border-slate-100', collapsed ? 'mx-2 my-2' : 'mx-3 my-2')} />
+                  )}
+                  <LockedNavRow item={item} variant={collapsed ? 'top-collapsed' : 'top-expanded'} />
+                </Fragment>
+              )
+            }
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             // The pulsing dot guides the trainer to their next step, but it
             // should NOT fire while they're mid-step on the page they're on.
@@ -729,6 +851,9 @@ function TrainerShell({
                     {childrenOf[item.href].map(c => {
                       const cActive = pathname === c.href || pathname.startsWith(c.href + '/')
                       const CIcon = c.icon
+                      if (lockedAddons.has(c.href)) {
+                        return <LockedNavRow key={c.href} item={c} variant="child-flyout" />
+                      }
                       if (c.comingSoon) {
                         return (
                           <span key={c.href} className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-400 cursor-default">
@@ -754,6 +879,9 @@ function TrainerShell({
               {!collapsed && isGroupOpen(item.href) && childrenOf[item.href]?.map(c => {
                 const cActive = pathname === c.href || pathname.startsWith(c.href + '/')
                 const CIcon = c.icon
+                if (lockedAddons.has(c.href)) {
+                  return <LockedNavRow key={c.href} item={c} variant="child-expanded" />
+                }
                 if (c.comingSoon) {
                   return (
                     <div
@@ -803,6 +931,9 @@ function TrainerShell({
       >
         <div className="flex">
           {mobilePrimary.map((item) => {
+            if (lockedAddons.has(item.href)) {
+              return <LockedNavRow key={item.href} item={item} variant="mobile-tab" />
+            }
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             const Icon = item.icon
             const unread = unreadCounts[item.href] ?? 0
@@ -883,6 +1014,9 @@ function TrainerShell({
               {mobileSecondary.map(item => {
                 const active = pathname === item.href || pathname.startsWith(item.href + '/')
                 const Icon = item.icon
+                if (lockedAddons.has(item.href)) {
+                  return <LockedNavRow key={item.href} item={item} variant="mobile-grid" />
+                }
                 if (item.comingSoon) {
                   return (
                     <div

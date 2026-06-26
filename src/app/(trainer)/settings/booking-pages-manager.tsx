@@ -163,18 +163,18 @@ function BookingPageRowItem({
       </Link>
       {fullUrl && (
         <>
-          <button onClick={copy} title="Copy link" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700">
+          <button onClick={copy} title="Copy link" className="inline-flex h-8 w-8 min-h-0 min-w-0 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700">
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </button>
-          <a href={fullUrl} target="_blank" rel="noopener noreferrer" title="Open" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700">
+          <a href={fullUrl} target="_blank" rel="noopener noreferrer" title="Open" className="inline-flex h-8 w-8 min-h-0 min-w-0 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700">
             <ExternalLink className="h-4 w-4" />
           </a>
         </>
       )}
-      <button onClick={onDelete} title="Delete" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-red-600">
+      <button onClick={onDelete} title="Delete" className="inline-flex h-8 w-8 min-h-0 min-w-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600">
         <Trash2 className="h-4 w-4" />
       </button>
-      <Link href={`/website/booking/${page.id}`} title="Edit" className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700">
+      <Link href={`/website/booking/${page.id}`} title="Edit" className="inline-flex h-8 w-8 min-h-0 min-w-0 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700">
         <ChevronRight className="h-4 w-4" />
       </Link>
     </div>

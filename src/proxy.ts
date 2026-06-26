@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   '/api/webhooks', // Stripe + future inbound webhooks (signature-gated inside)
   '/form',       // public embed forms
   '/api/form',   // public form submission API
+  '/unsubscribe', // public bulk-email unsubscribe (HMAC-token gated inside)
   '/c/',         // public per-trainer branded client login (/c/<slug>) — trailing slash so it can't match /clients
 
   '/concepts',   // TEMP: client-home redesign concept previews (mock data, no auth) — remove before ship

@@ -3,6 +3,7 @@ import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
+import { hasAddon } from '@/lib/billing'
 import { todayInTz } from '@/lib/timezone'
 import { RouteManager } from './route-manager'
 
@@ -11,6 +12,8 @@ export const metadata: Metadata = { title: 'Route' }
 export default async function RoutePage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const ctx = await getTrainerContext()
   if (!ctx) redirect('/login')
+  // Route planner is a paid add-on.
+  if (!(await hasAddon(ctx.companyId, 'routeplanner'))) redirect('/settings?tab=addons')
 
   const profile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },

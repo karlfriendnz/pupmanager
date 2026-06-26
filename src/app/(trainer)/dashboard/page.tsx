@@ -180,6 +180,7 @@ export default async function DashboardPage({
       dog: {
         select: {
           name: true,
+          photoUrl: true,
           primaryFor: { select: { user: { select: { name: true, email: true } } } },
         },
       },

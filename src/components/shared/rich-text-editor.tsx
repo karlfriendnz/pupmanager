@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -29,7 +30,7 @@ const THEME: Record<Theme, { body: string; toolbar: string; skeleton: string }> 
   },
 }
 
-export function RichTextEditor({ value, onChange, onBlur, minHeight = 260, theme = 'dark', disabled = false }: { value: string; onChange: (html: string) => void; onBlur?: () => void; minHeight?: number; theme?: Theme; disabled?: boolean }) {
+export function RichTextEditor({ value, onChange, onBlur, minHeight = 260, theme = 'dark', disabled = false, onEditorReady }: { value: string; onChange: (html: string) => void; onBlur?: () => void; minHeight?: number; theme?: Theme; disabled?: boolean; onEditorReady?: (editor: Editor) => void }) {
   const t = THEME[theme]
   const editor = useEditor({
     immediatelyRender: false, // required under Next SSR to avoid hydration mismatch
@@ -48,6 +49,13 @@ export function RichTextEditor({ value, onChange, onBlur, minHeight = 260, theme
       },
     },
   })
+
+  // Hand the editor instance up to the parent (e.g. for inserting
+  // `{{placeholder}}` chips at the cursor). Optional — existing callers that
+  // don't pass it are unaffected.
+  useEffect(() => {
+    if (editor && onEditorReady) onEditorReady(editor)
+  }, [editor, onEditorReady])
 
   if (!editor) return <div className={t.skeleton} />
 

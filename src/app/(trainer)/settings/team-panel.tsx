@@ -424,10 +424,10 @@ function MemberRow({ member, canManage, onChanged }: { member: Member; canManage
           <RoleBadge role={member.role} status={member.status} />
           {editable && !editing && (
             <div className="flex items-center gap-1">
-              <button onClick={() => setEditing(true)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="Edit">
+              <button onClick={() => setEditing(true)} className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="Edit">
                 <Pencil className="h-4 w-4" />
               </button>
-              <button onClick={remove} disabled={removing} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" title="Remove">
+              <button onClick={remove} disabled={removing} className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" title="Remove">
                 {removing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               </button>
             </div>

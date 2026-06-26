@@ -173,7 +173,7 @@ function DeleteButton({ onDelete, label }: { onDelete: () => Promise<void>; labe
   }
 
   return (
-    <button onClick={() => setConfirm(true)} className="text-slate-300 hover:text-red-400 p-1 transition-colors">
+    <button onClick={() => setConfirm(true)} className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-300 hover:text-red-400 hover:bg-red-50 transition-colors">
       <Trash2 className="h-4 w-4" />
     </button>
   )
@@ -707,7 +707,7 @@ export function LibraryBrowser({ initialTypes, clients }: Props) {
                         </button>
                         <button
                           onClick={() => { setEditingTaskId(task.id); setAddingTask(false) }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-blue-500 p-1"
+                          className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:bg-blue-50 hover:text-blue-500"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>

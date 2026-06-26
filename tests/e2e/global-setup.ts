@@ -61,6 +61,14 @@ export default async function globalSetup() {
     await prisma.trainerMembership.create({
       data: { companyId: profile.id, userId: user.id, role: 'OWNER', acceptedAt: new Date() },
     })
+    // Marketing is an add-on — seed its BillingItem (FK target) then enable it
+    // so the Marketing specs can reach the gated page.
+    await prisma.billingItem.create({
+      data: { id: 'marketing', kind: 'ADDON', name: 'Marketing', description: 'Bulk client email', priceMonthly: 10, sortOrder: 3, isActive: true },
+    })
+    await prisma.trainerAddon.create({
+      data: { trainerId: profile.id, itemId: 'marketing', active: true },
+    })
 
     // An accepted MANAGER + STAFF member (with passwords) so permission specs
     // can sign in as them. Members have a membership, no TrainerProfile.

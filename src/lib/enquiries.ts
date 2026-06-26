@@ -4,6 +4,7 @@ import { env } from './env'
 import { sendEmail } from './email'
 import { emailBodyToHtml } from './email-html'
 import { materializeBooking } from './booking-page'
+import { findOrJoinClient } from './client-upsert'
 
 // Convert an enquiry into a real client. Mirrors what the form submit
 // endpoint used to do inline:
@@ -17,8 +18,12 @@ import { materializeBooking } from './booking-page'
 //   6. Mark the enquiry ACCEPTED with a back-link to the ClientProfile
 //
 // `sendMagicLink` is opt-in — most trainers want to onboard manually first
-// and send the diary invite later. Returns the new ClientProfile id. Throws
-// if a User already exists with the enquirer's email.
+// and send the diary invite later. Returns the ClientProfile id.
+//
+// Find-or-join: a returning person (an email that already belongs to a User)
+// is REUSED, never duplicated. If they're already this trainer's client, the
+// enquiry's dog is ADDED to their existing profile and the booked session lands
+// on it — accepting never errors on "account already exists".
 export async function acceptEnquiry(enquiryId: string, options: { appUrl: string; sendMagicLink: boolean }) {
   const enquiry = await prisma.enquiry.findUnique({
     where: { id: enquiryId },
@@ -38,9 +43,6 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
   })
   if (!enquiry) throw new EnquiryError('NOT_FOUND', 'Enquiry not found')
   if (enquiry.status !== 'NEW') throw new EnquiryError('INVALID_STATUS', `Enquiry is already ${enquiry.status.toLowerCase()}`)
-
-  const existingUser = await prisma.user.findUnique({ where: { email: enquiry.email }, select: { id: true } })
-  if (existingUser) throw new EnquiryError('USER_EXISTS', `An account already exists for ${enquiry.email}.`)
 
   const customFieldSnapshot = (enquiry.customFieldValues ?? {}) as Record<string, string>
 
@@ -90,40 +92,43 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
   }
 
   const clientProfileId = await prisma.$transaction(async tx => {
-    const clientUser = await tx.user.create({
-      data: { name: enquiry.name, email: enquiry.email, role: 'CLIENT' },
+    // Find-or-join: reuse the person, join their existing profile for this
+    // trainer (adding the enquiry's dog), or create a fresh profile. Never
+    // duplicates a User/ClientProfile and never errors on a returning email.
+    const joinResult = await findOrJoinClient(tx, {
+      email: enquiry.email,
+      trainerId: enquiry.trainerId,
+      name: enquiry.name,
+      phone: enquiry.phone,
+      dogs: enquiry.dogName?.trim()
+        ? [{
+            name: enquiry.dogName.trim(),
+            breed: enquiry.dogBreed,
+            weight: enquiry.dogWeight,
+            dob: enquiry.dogDob,
+          }]
+        : [],
+      status: 'ACTIVE',
     })
+    const clientProfileId = joinResult.clientProfileId
 
-    let dogId: string | null = null
-    if (enquiry.dogName?.trim()) {
-      const dog = await tx.dog.create({
-        data: {
-          name: enquiry.dogName.trim(),
-          breed: enquiry.dogBreed?.trim() || null,
-          weight: enquiry.dogWeight ?? null,
-          dob: enquiry.dogDob,
-        },
-      })
-      dogId = dog.id
+    // The session books against the dog from this enquiry when one was created;
+    // otherwise fall back to the profile's existing primary dog (a join with no
+    // new dog still needs a dogId for the booked session).
+    let bookDogId: string | null = joinResult.createdDogIds[0] ?? null
+    if (!bookDogId) {
+      const profile = await tx.clientProfile.findUnique({ where: { id: clientProfileId }, select: { dogId: true } })
+      bookDogId = profile?.dogId ?? null
     }
 
-    const clientProfile = await tx.clientProfile.create({
-      data: {
-        userId: clientUser.id,
-        trainerId: enquiry.trainerId,
-        dogId,
-        status: 'ACTIVE',
-      },
-    })
-
     // Place the booked session(s) onto the calendar as part of the conversion,
-    // so accepting a booking-page prospect both creates the client and books
-    // their chosen slot.
+    // so accepting a booking-page prospect both creates/joins the client and
+    // books their chosen slot.
     if (booked) {
       await materializeBooking(tx, {
         trainerId: enquiry.trainerId,
-        clientId: clientProfile.id,
-        dogId,
+        clientId: clientProfileId,
+        dogId: bookDogId,
         slotAt: booked.slotAt,
         pkg: booked.pkg,
         singleDurationMins: booked.duration,
@@ -138,7 +143,7 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
       await tx.customFieldValue.createMany({
         data: entries.map(([fieldId, value]) => ({
           fieldId,
-          clientId: clientProfile.id,
+          clientId: clientProfileId,
           value,
         })),
       })
@@ -153,10 +158,10 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
 
     await tx.enquiry.update({
       where: { id: enquiry.id },
-      data: { status: 'ACCEPTED', clientProfileId: clientProfile.id, viewedAt: enquiry.viewedAt ?? new Date() },
+      data: { status: 'ACCEPTED', clientProfileId, viewedAt: enquiry.viewedAt ?? new Date() },
     })
 
-    return clientProfile.id
+    return clientProfileId
   })
 
   if (magicLinkToken) {

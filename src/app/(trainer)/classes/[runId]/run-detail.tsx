@@ -7,10 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
-import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { ClientAvatar } from '@/components/shared/client-avatar'
+import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info } from 'lucide-react'
 import { ClassFormModal, type TeamMemberOption } from '../class-form-modal'
 
+type Tab = 'details' | 'clients'
 type RunStatus = 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
+type EnrollStatus = 'ENROLLED' | 'WAITLISTED' | 'WITHDRAWN' | 'COMPLETED'
 type AssignedTrainer = { membershipId: string; name: string; title: string | null }
 type Run = {
   id: string
@@ -36,15 +39,30 @@ type Run = {
 type SessionRow = { id: string; title: string; scheduledAt: string; sessionIndex: number | null; status: string }
 type Enrollment = {
   id: string
-  status: 'ENROLLED' | 'WAITLISTED' | 'WITHDRAWN' | 'COMPLETED'
+  status: EnrollStatus
   type: 'FULL' | 'DROP_IN'
   waitlistPosition: number | null
   source: string
+  clientId: string
   clientName: string
   dogName: string | null
+  dogPhotoUrl: string | null
+  attendedCount: number
+  markedCount: number
 }
 type ClientOpt = { id: string; name: string; dogId: string | null; dogName: string | null }
 
+const ENROLL_BADGE: Record<EnrollStatus, string> = {
+  ENROLLED: 'bg-emerald-50 text-emerald-700',
+  WAITLISTED: 'bg-amber-50 text-amber-700',
+  COMPLETED: 'bg-blue-50 text-blue-700',
+  WITHDRAWN: 'bg-slate-100 text-slate-500',
+}
+
+function formatPrice(cents: number | null): string {
+  if (cents === null || cents === undefined) return '—'
+  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`
+}
 
 export function RunDetail({
   run,
@@ -60,6 +78,7 @@ export function RunDetail({
   teamMembers: TeamMemberOption[]
 }) {
   const router = useRouter()
+  const [tab, setTab] = useState<Tab>('details')
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -82,8 +101,21 @@ export function RunDetail({
 
   const enrolled = enrollments.filter(e => e.status === 'ENROLLED')
   const waitlisted = enrollments.filter(e => e.status === 'WAITLISTED')
+  const present = enrollments.filter(e => e.status === 'ENROLLED' || e.status === 'WAITLISTED')
+  const past = enrollments.filter(e => e.status === 'WITHDRAWN' || e.status === 'COMPLETED')
   const seatsLabel =
     run.capacity == null ? `${enrolled.length} enrolled` : `${enrolled.length} / ${run.capacity}`
+  const spotsLeft = run.capacity == null ? null : Math.max(0, run.capacity - enrolled.length)
+
+  // Attendance rate across every marked roster cell for the run.
+  const totalMarked = enrollments.reduce((s, e) => s + e.markedCount, 0)
+  const totalAttended = enrollments.reduce((s, e) => s + e.attendedCount, 0)
+  const attendanceRate = totalMarked > 0 ? Math.round((totalAttended / totalMarked) * 100) : null
+
+  // Revenue estimate: full price per non-withdrawn enrolment (drop-ins excluded
+  // from the headline — their per-session pricing is computed elsewhere).
+  const billable = enrollments.filter(e => e.status !== 'WITHDRAWN' && e.type === 'FULL').length
+  const revenue = run.priceCents != null ? run.priceCents * billable : null
 
   async function setStatus(status: RunStatus) {
     setError(null)
@@ -105,6 +137,11 @@ export function RunDetail({
     else router.refresh()
   }
 
+  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
+    { id: 'details', label: 'Details', icon: Info },
+    { id: 'clients', label: 'Clients', icon: Users, badge: enrollments.length > 0 ? enrollments.length : undefined },
+  ]
+
   return (
     <>
       <PageHeader
@@ -116,191 +153,199 @@ export function RunDetail({
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Class controls — full width below the header so the title has room */}
-      <div className="flex items-center justify-between gap-2 mb-4">
-        <select
-          value={run.status}
-          onChange={e => setStatus(e.target.value as RunStatus)}
-          className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(s => (
-            <option key={s} value={s}>{s.toLowerCase()}</option>
-          ))}
-        </select>
-        <div className="flex items-center gap-2">
-          {!confirmingDelete ? (
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-6 max-w-xs">
+        {tabs.map(t => {
+          const Icon = t.icon
+          return (
             <button
-              onClick={() => setConfirmingDelete(true)}
-              title="Delete class"
-              className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`relative flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
+                tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
             >
-              <Trash2 className="h-4 w-4 text-rose-500" />
-              <span>Delete</span>
+              <Icon className="h-4 w-4" />
+              {t.label}
+              {t.badge != null && (
+                <span className={`min-w-4 h-4 px-1 text-[10px] font-semibold tabular-nums rounded-full flex items-center justify-center ${
+                  tab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {t.badge}
+                </span>
+              )}
             </button>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-slate-600 hidden sm:inline">Delete this class?</span>
-              <button
-                onClick={() => setConfirmingDelete(false)}
-                disabled={deleting}
-                aria-label="Cancel"
-                className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60"
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
-              >
-                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Yes, delete
-              </button>
-            </div>
-          )}
-          <Button variant="secondary" onClick={() => setEditing(true)}>
-            <Pencil className="h-4 w-4" /> Edit
-          </Button>
-        </div>
+          )
+        })}
       </div>
 
-      {run.imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={run.imageUrl}
-          alt={run.name}
-          className="w-full h-40 sm:h-52 object-cover rounded-2xl border border-slate-200 mb-5"
-        />
-      )}
-
-      {/* Class details */}
-      <Card className="mb-5">
-        <CardBody className="py-5">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <Detail label="Schedule" value={run.scheduleNote || 'Weekly'} />
-            <Detail label="Starts" value={new Date(run.startDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} />
-            <Detail label="Sessions" value={String(sessions.length)} />
-            <Detail label="Length" value={`${run.durationMins} min`} />
-            <Detail label="Format" value={run.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'} />
-            <Detail label="Price" value={run.priceCents != null ? `$${(run.priceCents / 100).toFixed(run.priceCents % 100 === 0 ? 0 : 2)}` : '—'} />
-          </div>
-          {run.assignedTrainers.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-slate-100">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Trainers</p>
-              <div className="flex flex-wrap gap-1.5">
-                {run.assignedTrainers.map(t => (
-                  <span
-                    key={t.membershipId}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium px-2.5 py-1"
-                  >
-                    {t.name}{t.title ? <span className="text-blue-400 font-normal">· {t.title}</span> : null}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {(run.allowDropIn || run.allowWaitlist) && (
-            <p className="text-xs text-slate-400 mt-3">
-              {run.allowDropIn && 'Drop-ins allowed'}
-              {run.allowDropIn && run.allowWaitlist && ' · '}
-              {run.allowWaitlist && 'Waitlist enabled'}
-            </p>
-          )}
-        </CardBody>
-      </Card>
-
-      {/* Sessions (left) · Clients (right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        {/* Sessions */}
-        <Card>
-          <CardBody className="py-5">
-            <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
-              <CalendarDays className="h-4 w-4 text-slate-400" /> Sessions
-              <span className="text-sm font-normal text-slate-500">({sessions.length})</span>
-            </h2>
-            <ul className="divide-y divide-slate-100">
-              {sessions.map(s => (
-                <li key={s.id} className="flex items-center gap-3 py-2.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-900">Session {s.sessionIndex ?? '—'}</p>
-                    <p className="text-xs text-slate-500" suppressHydrationWarning>{new Date(s.scheduledAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
-                  </div>
-                  <Link
-                    href={`/classes/${run.id}/sessions/${s.id}`}
-                    className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-medium text-slate-600 hover:bg-slate-100"
-                  >
-                    <ClipboardCheck className="h-4 w-4" /> Open
-                  </Link>
-                </li>
+      {tab === 'details' ? (
+        <>
+          {/* Class controls */}
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <select
+              value={run.status}
+              onChange={e => setStatus(e.target.value as RunStatus)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(s => (
+                <option key={s} value={s}>{s.toLowerCase()}</option>
               ))}
-            </ul>
-          </CardBody>
-        </Card>
-
-        {/* Roster / clients */}
-        <Card>
-          <CardBody className="py-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-                <Users className="h-4 w-4 text-slate-400" /> Clients
-                <span className="text-sm font-normal text-slate-500">({seatsLabel})</span>
-              </h2>
-              <Button variant="secondary" onClick={() => setAdding(true)}>
-                <UserPlus className="h-4 w-4" /> Enrol client
+            </select>
+            <div className="flex items-center gap-2">
+              {!confirmingDelete ? (
+                <button
+                  onClick={() => setConfirmingDelete(true)}
+                  title="Delete class"
+                  className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4 text-rose-500" />
+                  <span>Delete</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-slate-600 hidden sm:inline">Delete this class?</span>
+                  <button
+                    onClick={() => setConfirmingDelete(false)}
+                    disabled={deleting}
+                    aria-label="Cancel"
+                    className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
+                  >
+                    {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Yes, delete
+                  </button>
+                </div>
+              )}
+              <Button variant="secondary" onClick={() => setEditing(true)}>
+                <Pencil className="h-4 w-4" /> Edit
               </Button>
             </div>
+          </div>
 
-            {enrolled.length === 0 ? (
-              <p className="text-sm text-slate-500 py-4 text-center">No one enrolled yet.</p>
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {enrolled.map(e => (
-                  <li key={e.id} className="flex items-center gap-3 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-slate-900 truncate">{e.clientName}</p>
-                      <p className="text-xs text-slate-500">
-                        {e.dogName ?? 'No dog'}
-                        {e.type === 'DROP_IN' && <span className="ml-1.5 text-amber-600">· drop-in</span>}
-                        {e.source === 'SELF_SERVE' && <span className="ml-1.5 text-slate-400">· self-enrolled</span>}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => withdraw(e.id)}
-                      className="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"
-                    >
-                      Withdraw
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+          {run.imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={run.imageUrl}
+              alt={run.name}
+              className="w-full h-40 sm:h-52 object-cover rounded-2xl border border-slate-200 mb-5"
+            />
+          )}
 
-            {waitlisted.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-slate-100">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
-                  Waitlist ({waitlisted.length})
-                </p>
-                <ul className="divide-y divide-slate-100">
-                  {waitlisted.map(e => (
-                    <li key={e.id} className="flex items-center gap-3 py-2">
-                      <span className="text-xs text-slate-400 w-5">{e.waitlistPosition}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-slate-700 truncate">{e.clientName}</p>
-                      </div>
-                      <button
-                        onClick={() => withdraw(e.id)}
-                        className="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"
+          {/* Class details */}
+          <Card className="mb-5">
+            <CardBody className="py-5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                <Detail label="Schedule" value={run.scheduleNote || 'Weekly'} />
+                <Detail label="Starts" value={new Date(run.startDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} />
+                <Detail label="Sessions" value={String(sessions.length)} />
+                <Detail label="Length" value={`${run.durationMins} min`} />
+                <Detail label="Format" value={run.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'} />
+                <Detail label="Price" value={formatPrice(run.priceCents)} />
+              </div>
+              {run.assignedTrainers.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Trainers</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {run.assignedTrainers.map(t => (
+                      <span
+                        key={t.membershipId}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium px-2.5 py-1"
                       >
-                        Remove
-                      </button>
+                        {t.name}{t.title ? <span className="text-blue-400 font-normal">· {t.title}</span> : null}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(run.allowDropIn || run.allowWaitlist) && (
+                <p className="text-xs text-slate-400 mt-3">
+                  {run.allowDropIn && 'Drop-ins allowed'}
+                  {run.allowDropIn && run.allowWaitlist && ' · '}
+                  {run.allowWaitlist && 'Waitlist enabled'}
+                </p>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* Sessions */}
+          <Card>
+            <CardBody className="py-5">
+              <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
+                <CalendarDays className="h-4 w-4 text-slate-400" /> Sessions
+                <span className="text-sm font-normal text-slate-500">({sessions.length})</span>
+              </h2>
+              {sessions.length === 0 ? (
+                <p className="text-sm text-slate-500 py-2">No sessions scheduled.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {sessions.map(s => (
+                    <li key={s.id} className="flex items-center gap-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900">Session {s.sessionIndex ?? '—'}</p>
+                        <p className="text-xs text-slate-500" suppressHydrationWarning>{new Date(s.scheduledAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                      </div>
+                      <Link
+                        href={`/classes/${run.id}/sessions/${s.id}`}
+                        className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                      >
+                        <ClipboardCheck className="h-4 w-4" /> Open
+                      </Link>
                     </li>
                   ))}
                 </ul>
+              )}
+            </CardBody>
+          </Card>
+        </>
+      ) : (
+        <>
+          {/* Stats strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+            <Stat label="Capacity" value={run.capacity != null ? String(run.capacity) : '∞'} />
+            <Stat label="Enrolled" value={String(enrolled.length)} />
+            <Stat label="Waitlisted" value={String(waitlisted.length)} />
+            <Stat label="Spots left" value={spotsLeft != null ? String(spotsLeft) : '∞'} />
+            <Stat label="Attendance" value={attendanceRate != null ? `${attendanceRate}%` : '—'} />
+            <Stat label="Revenue" value={revenue != null ? formatPrice(revenue) : '—'} />
+          </div>
+
+          <Card>
+            <CardBody className="py-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-slate-400" /> Clients
+                  <span className="text-sm font-normal text-slate-500">({seatsLabel})</span>
+                </h2>
+                <Button variant="secondary" onClick={() => setAdding(true)}>
+                  <UserPlus className="h-4 w-4" /> Enrol client
+                </Button>
               </div>
-            )}
-          </CardBody>
-        </Card>
-      </div>
+
+              {enrollments.length === 0 ? (
+                <p className="text-sm text-slate-500 py-4 text-center">No one enrolled yet.</p>
+              ) : (
+                <>
+                  {present.length > 0 && (
+                    <EnrollTable title="Current roster" rows={present} onWithdraw={withdraw} withdrawable />
+                  )}
+                  {past.length > 0 && (
+                    <div className="mt-5">
+                      <EnrollTable title="Past clients" rows={past} onWithdraw={withdraw} withdrawable={false} />
+                    </div>
+                  )}
+                </>
+              )}
+            </CardBody>
+          </Card>
+        </>
+      )}
 
       {editing && (
         <ClassFormModal
@@ -349,6 +394,77 @@ export function RunDetail({
   )
 }
 
+function EnrollTable({
+  title,
+  rows,
+  onWithdraw,
+  withdrawable,
+}: {
+  title: string
+  rows: Enrollment[]
+  onWithdraw: (id: string) => void
+  withdrawable: boolean
+}) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1 px-1">{title} ({rows.length})</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
+              <th className="font-medium py-2 px-1">Client</th>
+              <th className="font-medium py-2 px-1">Dog</th>
+              <th className="font-medium py-2 px-1">Status</th>
+              <th className="font-medium py-2 px-1">Attendance</th>
+              {withdrawable && <th className="font-medium py-2 px-1"></th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {rows.map(e => (
+              <tr key={e.id} className="hover:bg-slate-50">
+                <td className="py-2.5 px-1">
+                  <Link href={`/clients/${e.clientId}`} className="flex items-center gap-2.5 group">
+                    <ClientAvatar name={e.clientName} dogPhotoUrl={e.dogPhotoUrl} size="sm" />
+                    <span className="min-w-0">
+                      <span className="block font-medium text-slate-900 group-hover:text-blue-600 truncate">{e.clientName}</span>
+                      {(e.type === 'DROP_IN' || e.source === 'SELF_SERVE' || e.waitlistPosition != null) && (
+                        <span className="block text-[11px] text-slate-400">
+                          {e.waitlistPosition != null && `#${e.waitlistPosition} waitlist`}
+                          {e.type === 'DROP_IN' && <span className="text-amber-600"> · drop-in</span>}
+                          {e.source === 'SELF_SERVE' && ' · self-enrolled'}
+                        </span>
+                      )}
+                    </span>
+                  </Link>
+                </td>
+                <td className="py-2.5 px-1 text-slate-600">{e.dogName ?? '—'}</td>
+                <td className="py-2.5 px-1">
+                  <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${ENROLL_BADGE[e.status]}`}>
+                    {e.status.toLowerCase()}
+                  </span>
+                </td>
+                <td className="py-2.5 px-1 text-slate-600 tabular-nums">
+                  {e.markedCount > 0 ? `${e.attendedCount} / ${e.markedCount}` : '—'}
+                </td>
+                {withdrawable && (
+                  <td className="py-2.5 px-1 text-right">
+                    <button
+                      onClick={() => onWithdraw(e.id)}
+                      className="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"
+                    >
+                      {e.status === 'WAITLISTED' ? 'Remove' : 'Withdraw'}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
@@ -357,6 +473,17 @@ function Detail({ label, value }: { label: string; value: string }) {
           server's UTC SSR — suppress the expected hydration text mismatch. */}
       <p className="text-sm font-medium text-slate-800 mt-0.5 truncate" suppressHydrationWarning>{value}</p>
     </div>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <Card>
+      <CardBody className="py-3 px-4">
+        <p className="text-xl font-semibold text-slate-900 tabular-nums">{value}</p>
+        <p className="text-xs text-slate-500 mt-0.5">{label}</p>
+      </CardBody>
+    </Card>
   )
 }
 
@@ -483,4 +610,3 @@ function EnrolModal({
     </div>
   )
 }
-

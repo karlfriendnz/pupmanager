@@ -125,13 +125,11 @@ export function DraftNotesList({ rows }: { rows: DraftRow[] }) {
                       <div className="w-12 flex-shrink-0 text-xs font-semibold text-slate-500 tabular-nums">
                         {start.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
                       </div>
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 flex items-center gap-1.5 text-xs text-slate-500">
                         <p className="text-sm font-semibold text-slate-900 truncate">{r.title}</p>
-                        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
-                          {r.isClass && <span className="inline-flex items-center gap-1 text-teal-600"><GraduationCap className="h-3 w-3" /> Class</span>}
-                          {r.dogName && <>{r.isClass && <span className="text-slate-300">·</span>}<span className="inline-flex items-center gap-1"><Dog className="h-3 w-3" /> {r.dogName}</span></>}
-                          {r.clientName && <><span className="text-slate-300">·</span><span className="truncate">{r.clientName}</span></>}
-                        </div>
+                        {r.isClass && <span className="inline-flex items-center gap-1 text-teal-600 flex-shrink-0"><GraduationCap className="h-3 w-3" /> Class</span>}
+                        {r.dogName && <><span className="text-slate-300 flex-shrink-0">·</span><span className="inline-flex items-center gap-1 flex-shrink-0"><Dog className="h-3 w-3" /> {r.dogName}</span></>}
+                        {r.clientName && <><span className="text-slate-300 flex-shrink-0">·</span><span className="truncate">{r.clientName}</span></>}
                       </div>
                     </Link>
 

@@ -213,7 +213,7 @@ function RatesCard({ currency, isOwner, rates, onChange }: { currency: string; i
               <span className="flex-1 text-sm text-slate-800">{r.name}</span>
               <span className="text-sm font-medium text-slate-900">{money(r.rateCents, currency)}/hr</span>
               {isOwner && (
-                <button type="button" onClick={() => remove(r.id)} className="text-slate-400 hover:text-rose-600" aria-label="Remove rate">
+                <button type="button" onClick={() => remove(r.id)} className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label="Remove rate">
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}

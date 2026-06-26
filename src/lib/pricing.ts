@@ -45,7 +45,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai'
+export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets'
 
 export interface AddonDef {
   id: AddonId
@@ -53,6 +53,15 @@ export interface AddonDef {
   description: string
   // Optional short status note (e.g. "In beta — graduates Q3").
   badge?: string
+  // When true the add-on is previewed but NOT sellable yet — it renders as a
+  // disabled "coming soon" card, is excluded from checkout, and the toggle
+  // endpoint refuses to enable it. Kept in this list (vs removed) so its price
+  // still feeds totals for any trainer who already has it.
+  comingSoon?: boolean
+  // When true the add-on is included at no cost: it toggles on/off WITHOUT
+  // touching Stripe, is ON by default (existing trainers keep it), and never
+  // appears at checkout. Price is 0 in every currency.
+  free?: boolean
   price: Record<CurrencyCode, number>
 }
 
@@ -71,10 +80,30 @@ export const ADDONS: AddonDef[] = [
     price: { AUD: 27, NZD: 29, GBP: 15, CAD: 23, USD: 21, ZAR: 389 },
   },
   {
+    id: 'marketing',
+    name: 'Marketing',
+    description: 'Email your clients in bulk — campaigns, win-backs and seasonal nudges — from your own brand, with open and click tracking.',
+    price: { AUD: 9, NZD: 10, GBP: 5, CAD: 8, USD: 7, ZAR: 129 },
+  },
+  {
+    id: 'routeplanner',
+    name: 'Route planner',
+    description: 'Plan the most efficient route between your visits, with drive-time and distance from your base — and from one client to the next.',
+    price: { AUD: 9, NZD: 10, GBP: 5, CAD: 8, USD: 7, ZAR: 129 },
+  },
+  {
+    id: 'timesheets',
+    name: 'Timesheets',
+    description: 'Track the hours your team works across sessions, classes and admin, then turn them into payroll-ready totals.',
+    free: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
     id: 'ai',
     name: 'AI helper',
     description: 'Draft training plans from a few notes. Turn a month of sessions into a client-friendly update.',
-    badge: 'In beta — graduates Q3',
+    badge: 'Coming soon',
+    comingSoon: true,
     price: { AUD: 27, NZD: 29, GBP: 15, CAD: 23, USD: 21, ZAR: 389 },
   },
 ]
@@ -85,6 +114,18 @@ export function addonById(id: string): AddonDef | undefined {
 
 export function isAddonId(value: string): value is AddonId {
   return ADDONS.some(a => a.id === value)
+}
+
+// Sellable through Stripe right now — excludes coming-soon previews (AI) AND
+// free add-ons (timesheets), which never go through checkout.
+export function isSellableAddon(id: string): boolean {
+  const a = addonById(id)
+  return !!a && !a.comingSoon && !a.free
+}
+
+// Included at no cost (toggles without Stripe, on by default).
+export function isFreeAddon(id: string): boolean {
+  return !!addonById(id)?.free
 }
 
 export const PLAN_NAME = 'Core software'

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isStripeConfigured } from '@/lib/stripe'
-import { PLAN_NAME } from '@/lib/pricing'
+import { PLAN_NAME, isSellableAddon } from '@/lib/pricing'
 import { loadBillingConfig, configuredCurrencies as currenciesFor } from '@/lib/billing'
 import { trainerHasAccess } from '@/lib/access'
 import { WebOnly } from './web-only'
@@ -79,8 +79,9 @@ export default async function BillingSetupPage() {
   const configuredCurrencies = core ? currenciesFor(core, sandbox) : new Set<string>()
 
   // Active add-ons (id-only — name/desc/price come from pricing.ts), and
-  // whether the per-seat charge is sellable yet.
-  const availableAddonIds = addons.map(a => a.id)
+  // whether the per-seat charge is sellable yet. Exclude any flagged
+  // comingSoon in pricing.ts (e.g. AI) even if a BillingItem row still exists.
+  const availableAddonIds = addons.map(a => a.id).filter(isSellableAddon)
   const seatAvailable = !!seat
 
   return (

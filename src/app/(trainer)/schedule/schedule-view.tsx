@@ -97,6 +97,7 @@ interface Session {
   client: { id: string; user: { name: string | null; email: string } } | null
   dog: {
     name: string
+    photoUrl?: string | null
     primaryFor: { id: string; user: { name: string | null; email: string } }[]
   } | null
   buddies: Buddy[]

@@ -1,6 +1,7 @@
 import Link from 'next/link'
-import { Dog, ShoppingBag, ArrowRight, DollarSign, Users } from 'lucide-react'
+import { ShoppingBag, ArrowRight, DollarSign, Users } from 'lucide-react'
 import { cn, formatSessionTitle } from '@/lib/utils'
+import { ClientAvatar } from '@/components/shared/client-avatar'
 
 export type SessionRowStatus = 'UPCOMING' | 'COMPLETED' | 'COMMENTED' | 'INVOICED'
 
@@ -25,6 +26,7 @@ export interface SessionRowSession {
   client?: { user: { name: string | null; email: string } } | null
   dog?: {
     name: string
+    photoUrl?: string | null
     primaryFor?: { user: { name: string | null; email: string } }[]
   } | null
 }
@@ -137,7 +139,7 @@ export function SessionRowCard({
               </>
             ) : s.dog ? (
               <>
-                <Dog className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" aria-hidden />
+                <ClientAvatar size="sm" name={clientName ?? s.dog.name} dogPhotoUrl={s.dog.photoUrl ?? null} />
                 <p className="text-sm font-semibold text-slate-900 truncate">{s.dog.name}</p>
               </>
             ) : (

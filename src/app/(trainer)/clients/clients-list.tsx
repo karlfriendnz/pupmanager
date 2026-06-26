@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers } from 'lucide-react'
-import { getInitials, dateParts } from '@/lib/utils'
+import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers, CheckSquare, Mail, CheckCircle2 } from 'lucide-react'
+import { dateParts } from '@/lib/utils'
+import { ClientAvatar } from '@/components/shared/client-avatar'
+import { BulkEmailModal } from './bulk-email-modal'
 
 type BuiltinColumnId = 'email' | 'dog' | 'breed' | 'extraDogs' | 'nextSession' | 'compliance' | 'shared'
 
@@ -40,6 +42,7 @@ interface ClientRow {
   email: string
   dogName: string | null
   dogBreed: string | null
+  dogPhotoUrl: string | null   // primary dog photo, else first additional dog's
   extraDogNames: string[]   // for searching multi-dog households
   taskCount: number
   completedCount: number
@@ -129,8 +132,56 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
     })
   }, [clients, query, searchScope])
 
+  // ── Multi-select + bulk email ──────────────────────────────────────────────
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [sentSummary, setSentSummary] = useState<string | null>(null)
+
+  function exitSelectMode() {
+    setSelectMode(false)
+    setSelected(new Set())     // selection must reset when leaving selection mode
+    setComposeOpen(false)
+  }
+
+  function toggleSelected(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  // "Select all" operates on the currently filtered list. If every filtered row
+  // is already selected, the control clears them instead.
+  const filteredIds = filtered.map(c => c.id)
+  const allFilteredSelected = filteredIds.length > 0 && filteredIds.every(id => selected.has(id))
+  function toggleSelectAll() {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (allFilteredSelected) {
+        for (const id of filteredIds) next.delete(id)
+      } else {
+        for (const id of filteredIds) next.add(id)
+      }
+      return next
+    })
+  }
+
+  const selectedCount = selected.size
+
   return (
     <>
+      {sentSummary && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5 text-green-600" />
+          <p className="flex-1">{sentSummary}</p>
+          <button onClick={() => setSentSummary(null)} className="text-green-500 hover:text-green-700" aria-label="Dismiss">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Live search + group + column picker */}
       <div className="flex items-center gap-2 mb-6">
         <div className="relative flex-1">
@@ -217,6 +268,20 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
             </>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+          aria-pressed={selectMode}
+          aria-label={selectMode ? 'Done selecting clients' : 'Select clients to email'}
+          className={`h-11 px-3 inline-flex items-center gap-1.5 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            selectMode
+              ? 'border-[var(--pm-brand-500)] bg-[var(--pm-brand-50)] text-[var(--pm-brand-700)]'
+              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+          }`}
+        >
+          <CheckSquare className="h-4 w-4" />
+          <span className="hidden sm:inline">{selectMode ? 'Done' : 'Select'}</span>
+        </button>
         <div className="relative">
           <button
             type="button"
@@ -282,6 +347,21 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
         </div>
       </div>
 
+      {selectMode && filtered.length > 0 && (
+        <div className="flex items-center justify-between mb-3 px-1">
+          <button
+            type="button"
+            onClick={toggleSelectAll}
+            className="text-sm font-medium text-[var(--pm-brand-700)] hover:underline"
+          >
+            {allFilteredSelected ? 'Clear' : `Select all (${filtered.length})`}
+          </button>
+          {selectedCount > 0 && (
+            <span className="text-xs text-slate-400">{selectedCount} selected</span>
+          )}
+        </div>
+      )}
+
       {clients.length === 0 ? (
         <EmptyState tab={tab} />
       ) : filtered.length === 0 ? (
@@ -297,6 +377,55 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
           customValues={customValues}
           groupBy={groupKey || null}
           tz={tz}
+          selectMode={selectMode}
+          selected={selected}
+          onToggleSelect={toggleSelected}
+        />
+      )}
+
+      {/* Pinned, floating action bar (app-style) — sits above the mobile bottom
+          nav (z-40) and clears it + the iOS home indicator via safe-area pad. */}
+      {selectMode && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-50 px-4 pointer-events-none"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
+        >
+          <div className="md:hidden h-16" aria-hidden /> {/* spacer so the bar clears the mobile tab bar */}
+          <div className="pointer-events-auto mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-slate-900 text-white shadow-xl px-4 py-3">
+            <span className="text-sm font-medium flex-1">
+              {selectedCount} selected
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setComposeOpen(true)}
+              disabled={selectedCount === 0}
+            >
+              <Mail className="h-4 w-4" />
+              Email
+            </Button>
+            <button
+              type="button"
+              onClick={exitSelectMode}
+              className="text-sm font-medium text-slate-300 hover:text-white px-1"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {composeOpen && (
+        <BulkEmailModal
+          candidates={clients
+            .filter(c => selected.has(c.id))
+            .map(c => ({ id: c.id, name: c.name, email: c.email, dogName: c.dogName }))}
+          onClose={() => setComposeOpen(false)}
+          onSent={(summary) => {
+            setSentSummary(summary)
+            exitSelectMode()
+            router.refresh()
+          }}
         />
       )}
     </>
@@ -337,7 +466,7 @@ function buildDataColumns(
       width: 'minmax(100px, 1fr)',
       render: c => (
         <span className="truncate text-slate-700">
-          {c.dogName ? <>🐕 {c.dogName}</> : <span className="text-slate-400 italic">No dog</span>}
+          {c.dogName ? c.dogName : <span className="text-slate-400 italic">No dog</span>}
         </span>
       ),
     })
@@ -427,7 +556,7 @@ function groupKeyFor(client: ClientRow, groupBy: string | null, customValues: Re
   return { key: '', label: '', sort: 0 }
 }
 
-function ClientTable({ clients, tab, visible, customFields, customValues, groupBy, tz }: {
+function ClientTable({ clients, tab, visible, customFields, customValues, groupBy, tz, selectMode, selected, onToggleSelect }: {
   clients: ClientRow[]
   tab: Props['tab']
   visible: Set<string>
@@ -435,6 +564,9 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
   customValues: Record<string, string>
   groupBy: string | null
   tz: string
+  selectMode: boolean
+  selected: Set<string>
+  onToggleSelect: (id: string) => void
 }) {
   const dataColumns = buildDataColumns(visible, customFields, customValues, tz)
   // Identity column (avatar+name) is always present and gets generous space.
@@ -487,6 +619,9 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
                 visible={visible}
                 dataColumns={dataColumns}
                 gridTemplate={gridTemplate}
+                selectMode={selectMode}
+                isSelected={selected.has(c.id)}
+                onToggleSelect={onToggleSelect}
               />
             ))}
           </div>
@@ -496,19 +631,31 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
   )
 }
 
-function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate }: {
+function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, selectMode, isSelected, onToggleSelect }: {
   client: ClientRow
   tab: Props['tab']
   visible: Set<string>
   dataColumns: DataColumn[]
   gridTemplate: string
+  selectMode: boolean
+  isSelected: boolean
+  onToggleSelect: (id: string) => void
 }) {
   const showShared = visible.has('shared') && client.shared
+  const checkbox = selectMode ? (
+    <span
+      aria-hidden
+      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border ${
+        isSelected ? 'bg-[var(--pm-brand-600)] border-[var(--pm-brand-600)] text-white' : 'border-slate-300 bg-white'
+      }`}
+    >
+      {isSelected && <Check className="h-3.5 w-3.5" />}
+    </span>
+  ) : null
   const identity = (
     <div className="flex items-center gap-3 min-w-0">
-      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold text-xs flex-shrink-0">
-        {getInitials(client.name ?? client.email)}
-      </div>
+      {checkbox}
+      <ClientAvatar size="md" name={client.name ?? client.email} dogPhotoUrl={client.dogPhotoUrl} />
       <div className="min-w-0 flex items-center gap-1.5">
         <p className="font-semibold text-slate-900 truncate text-sm">
           {client.name ?? client.email}
@@ -522,40 +669,63 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate }: {
     </div>
   )
 
+  const inner = (
+    <Card className={`px-4 py-3 transition-all ${
+      selectMode
+        ? `cursor-pointer ${isSelected ? 'border-[var(--pm-brand-500)] bg-[var(--pm-brand-50)]/40 ring-1 ring-[var(--pm-brand-500)]' : 'hover:border-slate-300'}`
+        : 'hover:border-blue-200 hover:shadow-md cursor-pointer'
+    } ${tab === 'inactive' ? 'opacity-70' : ''} ${tab === 'new' && !isSelected ? 'border-amber-200 bg-amber-50/30' : ''}`}>
+      {/* md+: single-row grid that lines up with the header. */}
+      <div
+        className="hidden md:grid items-center gap-4"
+        style={{ gridTemplateColumns: gridTemplate }}
+      >
+        {identity}
+        {dataColumns.map(c => (
+          <div
+            key={c.key}
+            className={`min-w-0 text-sm flex items-center ${c.align === 'right' ? 'justify-end' : ''}`}
+          >
+            {c.render(client)}
+          </div>
+        ))}
+      </div>
+
+      {/* <md: stacked label/value rows under the identity row. */}
+      <div className="md:hidden">
+        {identity}
+        {dataColumns.length > 0 && (
+          <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
+            {dataColumns.map(c => (
+              <div key={c.key} className="contents">
+                <dt className="text-slate-400 uppercase tracking-wide text-[10px] self-center">{c.label}</dt>
+                <dd className="text-slate-700 min-w-0 truncate flex items-center">{c.render(client)}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+    </Card>
+  )
+
+  // In selection mode, tapping the card toggles selection instead of
+  // navigating; otherwise it's a normal link to the client profile.
+  if (selectMode) {
+    return (
+      <button
+        type="button"
+        onClick={() => onToggleSelect(client.id)}
+        aria-pressed={isSelected}
+        className="block w-full text-left"
+      >
+        {inner}
+      </button>
+    )
+  }
+
   return (
     <Link href={`/clients/${client.id}`}>
-      <Card className={`px-4 py-3 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer ${tab === 'inactive' ? 'opacity-70' : ''} ${tab === 'new' ? 'border-amber-200 bg-amber-50/30' : ''}`}>
-        {/* md+: single-row grid that lines up with the header. */}
-        <div
-          className="hidden md:grid items-center gap-4"
-          style={{ gridTemplateColumns: gridTemplate }}
-        >
-          {identity}
-          {dataColumns.map(c => (
-            <div
-              key={c.key}
-              className={`min-w-0 text-sm flex items-center ${c.align === 'right' ? 'justify-end' : ''}`}
-            >
-              {c.render(client)}
-            </div>
-          ))}
-        </div>
-
-        {/* <md: stacked label/value rows under the identity row. */}
-        <div className="md:hidden">
-          {identity}
-          {dataColumns.length > 0 && (
-            <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
-              {dataColumns.map(c => (
-                <div key={c.key} className="contents">
-                  <dt className="text-slate-400 uppercase tracking-wide text-[10px] self-center">{c.label}</dt>
-                  <dd className="text-slate-700 min-w-0 truncate flex items-center">{c.render(client)}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </div>
-      </Card>
+      {inner}
     </Link>
   )
 }

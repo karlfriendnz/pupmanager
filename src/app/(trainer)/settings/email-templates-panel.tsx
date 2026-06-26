@@ -24,16 +24,32 @@ const SAMPLE: Record<string, string> = {
 }
 const fillTokens = (s: string) => Object.entries(SAMPLE).reduce((out, [k, v]) => out.split(k).join(v), s)
 
+// Sentinel id for the pinned, non-deletable "Client invitation" entry. It is
+// backed by TrainerProfile.inviteTemplate (saved via PATCH /api/trainer/profile),
+// not the /api/email-templates CRUD, and has a body only (no subject).
+const INVITE_ID = '__invite__'
+
+const DEFAULT_INVITE_TEMPLATE = `Hi {{clientName}},
+
+I'd like to invite you to PupManager to help us track {{dogName}}'s training progress.
+
+Click below to get started!
+
+Your Trainer`
+
 type Draft = { id: string | null; name: string; category: string; subject: string; body: string; sortOrder: number }
 const blankDraft = (): Draft => ({ id: null, name: '', category: '', subject: '', body: '', sortOrder: 0 })
 
-export function EmailTemplatesPanel() {
+export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string | null }) {
   const [templates, setTemplates] = useState<Template[] | null>(null)
+  const [invite, setInvite] = useState<string>(inviteTemplate ?? DEFAULT_INVITE_TEMPLATE)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editorKey, setEditorKey] = useState(0)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const isInvite = draft?.id === INVITE_ID
 
   useEffect(() => {
     fetch('/api/email-templates')
@@ -51,10 +67,43 @@ export function EmailTemplatesPanel() {
     setEditorKey(k => k + 1)
   }
 
+  function openInvite() {
+    setError(null)
+    setSavedAt(null)
+    setDraft({ id: INVITE_ID, name: 'Client invitation', category: '', subject: '', body: invite, sortOrder: -1 })
+    setEditorKey(k => k + 1)
+  }
+
   const patch = (p: Partial<Draft>) => setDraft(d => (d ? { ...d, ...p } : d))
 
   async function save() {
     if (!draft) return
+
+    // Pinned invite entry: body only, min-20 chars, saved to TrainerProfile.
+    if (draft.id === INVITE_ID) {
+      if ((draft.body ?? '').trim().length < 20) {
+        setError('The invite message must be at least 20 characters.')
+        return
+      }
+      setSaving(true)
+      setError(null)
+      try {
+        const res = await fetch('/api/trainer/profile', {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ inviteTemplate: draft.body }),
+        })
+        if (!res.ok) throw new Error('Save failed')
+        setInvite(draft.body)
+        setSavedAt(Date.now())
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Save failed')
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+
     if (!draft.name.trim() || !draft.subject.trim() || !htmlHasText(draft.body)) {
       setError('Name, subject and message are required.')
       return
@@ -123,8 +172,22 @@ export function EmailTemplatesPanel() {
           >
             <Plus className="h-4 w-4" /> New template
           </button>
+          {/* Pinned, non-deletable invite entry — backed by inviteTemplate. */}
+          <button
+            type="button"
+            onClick={openInvite}
+            title="The default copy sent when you invite a client"
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors ${
+              isInvite
+                ? 'border-accent bg-accent-soft text-accent'
+                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <Mail className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />
+            <span className="truncate max-w-[180px]">Client invitation</span>
+            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Default</span>
+          </button>
           {templates === null && <span className="inline-flex items-center gap-2 text-sm text-slate-400 px-1"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</span>}
-          {templates?.length === 0 && <span className="text-sm text-slate-400 px-1">No templates yet.</span>}
           {templates?.map(t => (
             <button
               key={t.id}
@@ -146,17 +209,30 @@ export function EmailTemplatesPanel() {
         {/* Editor — full width below the picker. */}
         {draft ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Name">
-                <input value={draft.name} onChange={e => patch({ name: e.target.value })} className={inputCls} placeholder="Welcome to the pack" />
-              </Field>
-              <Field label="Category" hint="optional">
-                <input value={draft.category} onChange={e => patch({ category: e.target.value })} className={inputCls} placeholder="Onboarding" />
-              </Field>
-            </div>
-            <Field label="Subject">
-              <input value={draft.subject} onChange={e => patch({ subject: e.target.value })} className={inputCls} placeholder="A warm welcome from {{businessName}}" />
-            </Field>
+            {isInvite ? (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Client invitation</h3>
+                <p className="mt-0.5 text-xs text-slate-500">The default copy sent when you invite a client.</p>
+                <p className="mt-2 text-xs text-slate-400">
+                  Use <code className="bg-slate-100 px-1 rounded">{'{{clientName}}'}</code> and{' '}
+                  <code className="bg-slate-100 px-1 rounded">{'{{dogName}}'}</code> as placeholders.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Name">
+                    <input value={draft.name} onChange={e => patch({ name: e.target.value })} className={inputCls} placeholder="Welcome to the pack" />
+                  </Field>
+                  <Field label="Category" hint="optional">
+                    <input value={draft.category} onChange={e => patch({ category: e.target.value })} className={inputCls} placeholder="Onboarding" />
+                  </Field>
+                </div>
+                <Field label="Subject">
+                  <input value={draft.subject} onChange={e => patch({ subject: e.target.value })} className={inputCls} placeholder="A warm welcome from {{businessName}}" />
+                </Field>
+              </>
+            )}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Message</label>
               <RichTextEditor key={editorKey} theme="light" value={draft.body} onChange={html => patch({ body: html })} minHeight={200} />
@@ -165,9 +241,11 @@ export function EmailTemplatesPanel() {
             <div>
               <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5"><Eye className="h-3.5 w-3.5" /> Preview (sample data)</p>
               <div className="rounded-xl border border-slate-200 overflow-hidden">
-                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-                  <p className="text-sm font-semibold text-slate-900 truncate">{fillTokens(draft.subject) || '(no subject)'}</p>
-                </div>
+                {!isInvite && (
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{fillTokens(draft.subject) || '(no subject)'}</p>
+                  </div>
+                )}
                 <div className="bg-white p-5">
                   <div className="tiptap-body tiptap-light text-sm text-slate-800" dangerouslySetInnerHTML={{ __html: emailBodyToHtml(fillTokens(draft.body || '<p>(empty)</p>')) }} />
                 </div>
@@ -179,11 +257,13 @@ export function EmailTemplatesPanel() {
             <div className="flex items-center gap-3 pt-1">
               <Button type="button" onClick={save} loading={saving}>
                 {!saving && <Check className="h-4 w-4" />}
-                {draft.id ? 'Save changes' : 'Create template'}
+                {isInvite ? 'Save template' : draft.id ? 'Save changes' : 'Create template'}
               </Button>
-              <button type="button" onClick={remove} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50">
-                <Trash2 className="h-4 w-4" /> {draft.id ? 'Delete' : 'Discard'}
-              </button>
+              {!isInvite && (
+                <button type="button" onClick={remove} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50">
+                  <Trash2 className="h-4 w-4" /> {draft.id ? 'Delete' : 'Discard'}
+                </button>
+              )}
               {savedAt && <span className="text-xs text-emerald-600">Saved</span>}
             </div>
           </div>

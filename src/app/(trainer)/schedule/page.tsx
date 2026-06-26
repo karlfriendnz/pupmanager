@@ -170,6 +170,7 @@ export default async function SchedulePage({
         dog: {
           select: {
             name: true,
+            photoUrl: true,
             primaryFor: {
               take: 1,
               select: { id: true, user: { select: { name: true, email: true } } },
