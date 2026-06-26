@@ -55,7 +55,6 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
   // BillingItem.id == pricing AddonId, so we match the two by id.
   const sellableIds = new Set(addonItems.map((a) => a.id))
   const activeIds = new Set(activeRows.filter((r) => r.active).map((r) => r.itemId))
-  const disabledIds = new Set(activeRows.filter((r) => !r.active).map((r) => r.itemId))
 
   // Real add-ons from pricing.ts (source of truth for name/blurb/price), each
   // carrying its current on/off state and longer modal copy. Free add-ons (e.g.
@@ -66,7 +65,7 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
     blurb: a.description,
     badge: a.free ? 'Free' : (a.badge ?? null),
     price: a.free ? null : a.price[currency],
-    active: a.free ? !disabledIds.has(a.id) : activeIds.has(a.id),
+    active: activeIds.has(a.id), // every add-on is off until explicitly enabled
     // Free add-ons toggle without Stripe; paid ones need a sellable BillingItem.
     available: a.free ? true : sellableIds.has(a.id),
     details: DETAILS[a.id] ?? a.description,

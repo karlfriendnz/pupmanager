@@ -8,7 +8,7 @@
 // which set to resolve against, so the demo account runs entirely on Stripe
 // test mode while everyone else is on live.
 import { prisma } from './prisma'
-import { ADDONS, isFreeAddon, DEFAULT_CURRENCY, type CurrencyCode } from './pricing'
+import { DEFAULT_CURRENCY, type CurrencyCode } from './pricing'
 
 export interface PricedItem {
   stripePriceId: string | null
@@ -125,30 +125,25 @@ export async function loadBillingConfig(): Promise<BillingConfig> {
 
 /**
  * The set of add-on ids currently active for a trainer (drives feature gating).
- * Paid add-ons are off until an explicit active row exists; FREE add-ons are on
- * by default and only off when an explicit `active: false` row is present.
+ * EVERY add-on — free or paid — is OFF until the trainer explicitly enables it
+ * (free = one-tap, paid = via Stripe). So a fresh account shows all add-on
+ * features locked until turned on in Add-ons / onboarding.
  */
 export async function getEnabledAddons(trainerId: string): Promise<Set<string>> {
   const rows = await prisma.trainerAddon.findMany({
-    where: { trainerId },
-    select: { itemId: true, active: true },
+    where: { trainerId, active: true },
+    select: { itemId: true },
   })
-  const explicit = new Map(rows.map((r) => [r.itemId, r.active]))
-  const set = new Set<string>()
-  for (const [id, active] of explicit) if (active) set.add(id)
-  // Free add-ons default ON unless explicitly disabled.
-  for (const a of ADDONS) if (a.free && explicit.get(a.id) !== false) set.add(a.id)
-  return set
+  return new Set(rows.map((r) => r.itemId))
 }
 
-/** Is a specific add-on active for this trainer? (Free add-ons default on.) */
+/** Is a specific add-on active for this trainer? Off until explicitly enabled. */
 export async function hasAddon(trainerId: string, addonId: string): Promise<boolean> {
   const row = await prisma.trainerAddon.findUnique({
     where: { trainerId_itemId: { trainerId, itemId: addonId } },
     select: { active: true },
   })
-  if (row) return row.active
-  return isFreeAddon(addonId)
+  return !!row?.active
 }
 
 export type PriceClassification =

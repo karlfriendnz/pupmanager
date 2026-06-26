@@ -95,12 +95,13 @@ export default async function TrainerLayout({ children }: { children: React.Reac
 
   // Add-on-gated nav: rather than HIDE a feature whose add-on is off, we show it
   // DISABLED with a "turn it on in Add-ons" prompt (computed below as
-  // addonLockedHrefs). Free add-ons (timesheets) are on by default, so they're
-  // only locked if the trainer explicitly turned them off.
+  // addonLockedHrefs). Every add-on is off until the trainer enables it.
   const ADDON_NAV: Record<string, AddonId> = {
     '/marketing': 'marketing',
     '/schedule/route': 'routeplanner',
     '/timesheets': 'timesheets',
+    '/products': 'shop',
+    '/achievements': 'achievements',
   }
   const enabledAddons = ctx ? await getEnabledAddons(ctx.companyId) : new Set<string>()
   const addonLockedHrefs = Object.entries(ADDON_NAV)
