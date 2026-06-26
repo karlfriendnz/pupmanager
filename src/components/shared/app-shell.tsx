@@ -542,16 +542,22 @@ function TrainerTopBar({
   return (
     <header className="hidden md:flex fixed top-0 inset-x-0 z-40 h-14 items-center border-b border-slate-100 bg-white/85 backdrop-blur">
       {/* Logo zone — aligned to the sidebar width so it sits above it. */}
-      <div className={cn('flex items-center h-full shrink-0 border-r border-slate-100 transition-all duration-200', collapsed ? 'w-16 justify-center px-2' : 'w-64 gap-3 px-5')}>
-        {trainerLogo ? (
+      <div className={cn('flex items-center h-full shrink-0 border-r border-slate-100 transition-all duration-200 overflow-hidden', collapsed ? 'w-16 justify-center px-2' : 'w-64 gap-3 px-5')}>
+        {!collapsed && trainerLogo ? (
+          // Expanded + own logo: show it at its natural aspect (object-contain,
+          // never crop) so a wide wordmark isn't sliced into a square.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-8 rounded-lg object-cover shrink-0" />
+          <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-auto max-w-[200px] object-contain shrink-0" />
         ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg shrink-0" />
-        )}
-        {!collapsed && (
-          <span className="font-semibold text-slate-900 truncate">{businessName ?? 'PupManager'}</span>
+          <>
+            {/* Collapsed rail (a wide logo can't fit) + the no-logo case use the
+                square app icon, which sits cleanly in the narrow rail. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt={businessName ?? 'PupManager'} className="h-8 w-8 rounded-lg shrink-0" />
+            {!collapsed && (
+              <span className="font-semibold text-slate-900 truncate">{businessName ?? 'PupManager'}</span>
+            )}
+          </>
         )}
       </div>
       {/* Collapse toggle — just past the sidebar border. */}
