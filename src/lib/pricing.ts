@@ -45,7 +45,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets'
+export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos'
 
 export interface AddonDef {
   id: AddonId
@@ -59,8 +59,8 @@ export interface AddonDef {
   // still feeds totals for any trainer who already has it.
   comingSoon?: boolean
   // When true the add-on is included at no cost: it toggles on/off WITHOUT
-  // touching Stripe, is ON by default (existing trainers keep it), and never
-  // appears at checkout. Price is 0 in every currency.
+  // touching Stripe and never appears at checkout (off until enabled, like every
+  // add-on). Price is 0 in every currency.
   free?: boolean
   price: Record<CurrencyCode, number>
 }
@@ -95,6 +95,13 @@ export const ADDONS: AddonDef[] = [
     id: 'timesheets',
     name: 'Timesheets',
     description: 'Track the hours your team works across sessions, classes and admin, then turn them into payroll-ready totals.',
+    free: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
+    id: 'todos',
+    name: 'To-do & brain dump',
+    description: 'A quick scratchpad on your dashboard — jot to-dos and brain-dump notes so nothing slips between sessions.',
     free: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },

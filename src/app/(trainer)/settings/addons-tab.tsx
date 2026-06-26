@@ -21,6 +21,8 @@ const DETAILS: Record<string, string> = {
     'Track the hours your team works across sessions, classes and admin, then turn them into payroll-ready totals. Staff clock their own time, owners approve, and everyone sees where the week went.',
   marketing:
     'Reach the right owners at the right moment — win-back nudges for lapsed clients, review requests after a graduation, and seasonal campaigns, all sent from your brand inside PupManager.',
+  todos:
+    'A quick scratchpad pinned to your dashboard — jot the day’s to-dos and brain-dump loose notes between sessions so nothing slips. Assign items to team members and tick them off as you go.',
   routeplanner:
     'Plan the most efficient run between your home visits. See drive-time and distance from your base to each client — and from one visit to the next — and order your day to cut the kilometres. Distance-from-base appears on every client profile.',
 }

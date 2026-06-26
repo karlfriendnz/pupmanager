@@ -1,0 +1,161 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - button "Collapse menu" [ref=e3]:
+      - img [ref=e4]
+    - complementary [ref=e6]:
+      - generic [ref=e7]:
+        - img "Pawsome Dog Training" [ref=e8]
+        - generic [ref=e9]: Pawsome Dog Training
+      - navigation [ref=e10]:
+        - link "Dashboard" [ref=e12] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e13]
+          - text: Dashboard
+        - paragraph [ref=e18]: Clients
+        - link "Clients" [ref=e20] [cursor=pointer]:
+          - /url: /clients
+          - img [ref=e21]
+          - text: Clients
+        - link "Schedule" [ref=e27] [cursor=pointer]:
+          - /url: /schedule
+          - img [ref=e28]
+          - text: Schedule
+          - img [ref=e30]
+        - link "Messages" [ref=e33] [cursor=pointer]:
+          - /url: /messages
+          - img [ref=e34]
+          - text: Messages
+        - link "Enquiries" [ref=e37] [cursor=pointer]:
+          - /url: /enquiries
+          - img [ref=e38]
+          - text: Enquiries
+        - paragraph [ref=e41]: Programs
+        - link "Packages" [ref=e43] [cursor=pointer]:
+          - /url: /packages
+          - img [ref=e44]
+          - text: Packages
+        - link "Classes" [ref=e49] [cursor=pointer]:
+          - /url: /classes
+          - img [ref=e50]
+          - text: Classes
+        - link "Library" [ref=e54] [cursor=pointer]:
+          - /url: /templates
+          - img [ref=e55]
+          - text: Library
+        - link "Products" [ref=e60] [cursor=pointer]:
+          - /url: /products
+          - img [ref=e61]
+          - text: Products
+        - link "Achievements" [ref=e65] [cursor=pointer]:
+          - /url: /achievements
+          - img [ref=e66]
+          - text: Achievements
+        - paragraph [ref=e72]: Business
+        - link "Finances" [ref=e74] [cursor=pointer]:
+          - /url: /finances
+          - img [ref=e75]
+          - text: Finances
+        - link "Timesheets" [ref=e79] [cursor=pointer]:
+          - /url: /timesheets
+          - img [ref=e80]
+          - text: Timesheets
+        - link "Reports" [ref=e84] [cursor=pointer]:
+          - /url: /reports
+          - img [ref=e85]
+          - text: Reports
+        - link "Website" [ref=e88] [cursor=pointer]:
+          - /url: /website
+          - img [ref=e89]
+          - text: Website
+        - link "Settings" [ref=e94] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e95]
+          - text: Settings
+    - main [ref=e98]:
+      - generic [ref=e99]:
+        - link "Start a streak — finish notes on a training day" [ref=e100] [cursor=pointer]:
+          - /url: /awards
+          - img [ref=e101]
+        - button "Search" [ref=e104]:
+          - img [ref=e105]
+        - button "S" [ref=e110]:
+          - generic [ref=e111]: S
+          - img [ref=e112]
+        - link "Help" [ref=e114] [cursor=pointer]:
+          - /url: /help
+          - img [ref=e115]
+      - generic [ref=e119]:
+        - heading "Good morning, Sam 👋" [level=1] [ref=e121]
+        - 'link "78 days left: Free trial — pick a plan to keep going" [ref=e123] [cursor=pointer]':
+          - /url: /signup
+          - generic [ref=e124]: "78"
+          - generic [ref=e125]:
+            - paragraph [ref=e126]: 78 days left
+            - paragraph [ref=e127]: Free trial — pick a plan to keep going
+          - generic [ref=e128]:
+            - text: Start plan
+            - img [ref=e129]
+      - generic [ref=e131]:
+        - generic [ref=e133]:
+          - complementary [ref=e134]:
+            - generic [ref=e137]:
+              - img [ref=e138]
+              - img [ref=e143]
+              - img [ref=e148]
+            - generic [ref=e154]:
+              - img "PupManager" [ref=e155]
+              - paragraph [ref=e156]:
+                - text: You handle the pups,
+                - text: we’ll handle the admin.
+            - paragraph [ref=e158]: Welcome
+          - generic [ref=e165]:
+            - generic [ref=e167]:
+              - heading "Welcome to PupManager" [level=2] [ref=e168]
+              - img "PupManager" [ref=e170]
+              - paragraph [ref=e171]: So glad you’re here. We built PupManager to give you back the evenings you’ve been losing to admin. Let’s make the app yours, then take a look at exactly what your clients will see — two minutes, tops.
+            - generic [ref=e172]:
+              - button "Back" [disabled] [ref=e173]:
+                - img [ref=e174]
+                - text: Back
+              - button "Continue" [ref=e176]:
+                - text: Continue
+                - img [ref=e177]
+        - generic [ref=e179]:
+          - link "0 notes to write" [ref=e180] [cursor=pointer]:
+            - /url: /sessions/needs-notes
+            - generic [ref=e181]:
+              - img [ref=e183]
+              - generic [ref=e186]:
+                - paragraph [ref=e187]: "0"
+                - paragraph [ref=e188]: notes to write
+          - link "0 0 sessions to invoice" [ref=e189] [cursor=pointer]:
+            - /url: /sessions/needs-notes
+            - generic [ref=e190]:
+              - img [ref=e192]
+              - generic [ref=e194]:
+                - paragraph [ref=e195]: "0"
+                - paragraph [ref=e196]: 0 sessions to invoice
+          - generic [ref=e198]:
+            - img [ref=e200]
+            - generic [ref=e205]:
+              - paragraph [ref=e206]: 0/0
+              - paragraph [ref=e207]: active clients
+          - generic [ref=e209]:
+            - img [ref=e211]
+            - generic [ref=e216]:
+              - paragraph [ref=e217]: 0/0
+              - paragraph [ref=e218]: active dogs
+        - generic [ref=e219]:
+          - generic [ref=e220]:
+            - heading "Today's sessions" [level=2] [ref=e221]
+            - generic [ref=e222]:
+              - link "Previous day" [ref=e223] [cursor=pointer]:
+                - /url: /dashboard?date=2026-06-22
+                - img [ref=e224]
+              - link "Next day" [ref=e226] [cursor=pointer]:
+                - /url: /dashboard?date=2026-06-24
+                - img [ref=e227]
+          - generic [ref=e229]:
+            - img [ref=e230]
+            - paragraph [ref=e232]: No sessions scheduled for today.
+  - alert [ref=e233]

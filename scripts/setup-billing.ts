@@ -38,7 +38,7 @@ const blank = (): PriceMap => ({ NZD: TODO, AUD: TODO, GBP: TODO, CAD: TODO, USD
 // ── PASTE STRIPE PRICE IDS HERE ───────────────────────────────────────────
 // Each must be a recurring/month Price in the matching currency. Amounts
 // for reference live in src/lib/pricing.ts.
-const PRICE_IDS: Record<'core' | 'seat' | 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets', PriceMap> = {
+const PRICE_IDS: Record<string, PriceMap> = {
   core:         blank(), // 45 AUD / 49 NZD / 25 GBP / 39 CAD / 35 USD / 649 ZAR
   seat:         blank(), // 36 AUD / 39 NZD / 19 GBP / 31 CAD / 28 USD / 519 ZAR
   achievements: blank(), // 18 AUD / 19 NZD /  9 GBP / 15 CAD / 13 USD / 249 ZAR
@@ -95,7 +95,9 @@ async function main() {
   // ── Seat + add-ons (billing_items) ──
   const items: { id: string; kind: 'SEAT' | 'ADDON'; name: string; description: string; priceMonthly: number; sortOrder: number; map: PriceMap }[] = [
     { id: 'seat', kind: 'SEAT', name: 'Extra trainer', description: 'An additional trainer seat on your account.', priceMonthly: SEAT_PRICE.NZD, sortOrder: 0, map: PRICE_IDS.seat },
-    ...ADDONS.map((a, i) => ({
+    // Free add-ons (Timesheets, To-do) have no Stripe price — they toggle
+    // without checkout — so they're skipped here entirely.
+    ...ADDONS.filter((a) => !a.free).map((a, i) => ({
       id: a.id, kind: 'ADDON' as const, name: a.name, description: a.description,
       priceMonthly: a.price.NZD, sortOrder: i + 1, map: PRICE_IDS[a.id],
     })),

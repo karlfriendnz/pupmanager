@@ -13,6 +13,7 @@ import { BookingRequestsPanel } from '@/components/shared/booking-requests-panel
 import { StreakChip } from '@/components/shared/streak-chip'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { TodoBrainDumpPanel } from './todo-braindump-panel'
+import { hasAddon } from '@/lib/billing'
 import { OnboardingPanel } from './onboarding-panel'
 import { SampleDataBanner } from './sample-data-banner'
 import { CountryPrompt } from './country-prompt'
@@ -207,6 +208,8 @@ export default async function DashboardPage({
   const todayHref = `/dashboard`
 
   const clients = await clientsP
+  // The To-do / Brain dump scratchpad is a (free) add-on — only show it when on.
+  const hasTodos = await hasAddon(trainerId, 'todos')
 
   const totalClients = clients.length
   const activeClients = clients.filter(c => c.status === 'ACTIVE').length
@@ -303,7 +306,7 @@ export default async function DashboardPage({
             main column (8/12) while the scratchpad panel (To-do / Brain dump)
             sits in a 4/12 right rail. Stacks full-width below lg. */}
         <div className="grid grid-cols-1 lg:grid-cols-12 lg:gap-8">
-          <div className="lg:col-span-8 min-w-0">
+          <div className={cn('min-w-0', hasTodos ? 'lg:col-span-8' : 'lg:col-span-12')}>
         {/* While sample data is loaded the account looks set up, so show the
             "remove sample data" strip at the top and hide the get-set-up
             onboarding. Removing the sample data brings the onboarding back. */}
@@ -555,17 +558,20 @@ export default async function DashboardPage({
       />
           </div>
 
-          {/* Right rail — To-do / Brain dump scratchpad. On lg+ it sticks below
-              the page header so it stays visible while the main column scrolls. */}
-          <div className="lg:col-span-4 min-w-0 mt-2 lg:mt-0">
-            <div className="lg:sticky lg:top-4">
-              <TodoBrainDumpPanel
-                initialTodos={todoItems}
-                initialBrainDump={brainDump?.body ?? ''}
-                members={memberOptions}
-              />
+          {/* Right rail — To-do / Brain dump scratchpad (a free add-on). On lg+
+              it sticks below the page header so it stays visible while the main
+              column scrolls. */}
+          {hasTodos && (
+            <div className="lg:col-span-4 min-w-0 mt-2 lg:mt-0">
+              <div className="lg:sticky lg:top-4">
+                <TodoBrainDumpPanel
+                  initialTodos={todoItems}
+                  initialBrainDump={brainDump?.body ?? ''}
+                  members={memberOptions}
+                />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </>
