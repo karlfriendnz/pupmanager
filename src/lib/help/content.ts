@@ -25,8 +25,10 @@ export const HELP_CATEGORIES = [
   'Clients',
   'Scheduling',
   'Website & bookings',
+  'Marketing & emails',
   'Sessions & notes',
   'Programmes & products',
+  'Getting paid',
   'Your team',
   'Account & app',
 ] as const
@@ -617,6 +619,273 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'The app reloads into that business\'s dashboard. (This only appears if you belong to more than one.)',
     ],
   },
+
+  // ── Marketing & emails ─────────────────────────────────────────────────────
+  {
+    slug: 'turn-on-marketing',
+    title: 'Turn on Marketing',
+    category: 'Marketing & emails',
+    keywords: ['marketing', 'bulk email', 'add-on', 'addon', 'enable', 'campaigns', 'switch on'],
+    summary: 'Marketing is an add-on — switch it on to email your clients in bulk.',
+    steps: [
+      'Click "Settings" on the left.',
+      'Click the "Add-ons" tab.',
+      'Find the "Marketing" card and click its switch to turn it on.',
+      '"Marketing" now appears in the left menu under Communication.',
+      'It\'s a paid add-on — the price shows on the card and starts from your next billing cycle.',
+    ],
+  },
+  {
+    slug: 'send-bulk-email',
+    title: 'Email all your clients',
+    category: 'Marketing & emails',
+    keywords: ['bulk email', 'campaign', 'newsletter', 'send email', 'marketing', 'blast', 'everyone'],
+    summary: 'Write one email and send it to your clients, with open and click tracking.',
+    steps: [
+      'Click "Marketing" on the left.',
+      'Click "New email".',
+      'On "Create email", add a "Subject" and build your message with "Add text" and "Add image" blocks.',
+      'Click "Choose recipients", then tick the clients to email (use "Select all shown" for everyone).',
+      'Click "Review & send", check the preview, then click the "Send to …" button.',
+    ],
+  },
+  {
+    slug: 'email-some-clients',
+    title: 'Email just a few clients',
+    category: 'Marketing & emails',
+    keywords: ['bulk email', 'selected', 'some clients', 'segment', 'marketing', 'pick'],
+    summary: 'Pick a handful of clients first, then email only them.',
+    steps: [
+      'Click "Clients" on the left.',
+      'Select the clients you want to email.',
+      'Choose the email option that appears to open the composer with just those people.',
+      'Build your email the same way as a campaign, then send it.',
+    ],
+  },
+  {
+    slug: 'personalise-email',
+    title: 'Add a client\'s name to an email',
+    category: 'Marketing & emails',
+    keywords: ['placeholder', 'personalise', 'merge', 'client name', 'dog name', 'mail merge'],
+    summary: 'Drop in each client\'s name, their dog or your business name automatically.',
+    steps: [
+      'In the email composer, click into the "Subject" or a text block.',
+      'Under "Insert a placeholder", click "Client name", "Dog name", "Your name" or "Business name".',
+      'The placeholder fills in with each recipient\'s own details when the email sends.',
+      'Every email also includes an unsubscribe link automatically.',
+    ],
+  },
+  {
+    slug: 'filter-email-recipients',
+    title: 'Choose who gets an email',
+    category: 'Marketing & emails',
+    keywords: ['recipients', 'filter', 'class', 'breed', 'custom field', 'search', 'segment'],
+    summary: 'Narrow your recipient list by class, breed, a custom field or a search.',
+    steps: [
+      'In the composer, click "Choose recipients".',
+      'Type in "Search clients by name, email or dog" to find people.',
+      'Use the "Class", "Breed" or custom-field dropdowns to filter the list.',
+      'Click "Select all shown" to pick everyone in the filtered list, or tick people one by one.',
+      'Click "Clear filters" to start the list over.',
+    ],
+  },
+  {
+    slug: 'set-up-sending-domain',
+    title: 'Set up your own email sending address',
+    category: 'Marketing & emails',
+    keywords: ['domain', 'dns', 'sending', 'verify', 'from address', 'deliverability', 'subdomain'],
+    summary: 'Send marketing emails from your own domain so they land in inboxes.',
+    steps: [
+      'Click "Marketing" on the left.',
+      'In "Set up email sending", type "Your domain" and click "Set up".',
+      'Add the DNS records shown (Type, Name, Value) to your domain.',
+      'Click "Check verification". Once it passes you\'ll see "Your domain is verified ✓".',
+    ],
+  },
+  {
+    slug: 'email-dns-to-developer',
+    title: 'Get your developer to add your email records',
+    category: 'Marketing & emails',
+    keywords: ['dns', 'developer', 'web host', 'records', 'domain', 'help'],
+    summary: 'Send your DNS records to whoever manages your domain.',
+    steps: [
+      'Click "Marketing", then open "Set up email sending".',
+      'Find the "Don\'t manage your own DNS?" box.',
+      'Type your developer\'s email address.',
+      'Click "Email records". They\'ll get the records to add for you.',
+    ],
+  },
+  {
+    slug: 'try-test-sending',
+    title: 'Try sending without setting up a domain',
+    category: 'Marketing & emails',
+    keywords: ['test', 'try', 'pupmanager address', 'trial', 'no dns', 'sending', 'limit'],
+    summary: 'Send a test email from the PupManager address before setting up your domain.',
+    steps: [
+      'Click "Marketing" on the left.',
+      'In "Set up email sending", click "Use the PupManager test domain".',
+      'You can now send straight away — emails show as "your name via PupManager".',
+      'On a trial you can email up to 5 clients a day; set up your own domain to send more.',
+    ],
+  },
+  {
+    slug: 'view-email-stats',
+    title: 'See who opened your emails',
+    category: 'Marketing & emails',
+    keywords: ['stats', 'opens', 'clicks', 'tracking', 'sent emails', 'results', 'report'],
+    summary: 'Track opens and clicks for every email you\'ve sent.',
+    steps: [
+      'Click "Marketing" on the left.',
+      'Scroll to the "Sent emails" table.',
+      'Read the "Opened" and "Clicked" columns for each campaign.',
+      'Click a row to open that campaign and see the recipients.',
+    ],
+  },
+
+  // ── Getting paid ───────────────────────────────────────────────────────────
+  {
+    slug: 'set-up-payments',
+    title: 'Set up payments (get paid by clients)',
+    category: 'Getting paid',
+    keywords: ['payments', 'stripe', 'connect', 'get paid', 'payouts', 'bank', 'card', 'money'],
+    summary: 'Connect Stripe so clients can pay you for packages, sessions and shop items.',
+    steps: [
+      'Click "Settings" on the left.',
+      'Click the "Payments" tab.',
+      'Click "Set up payments".',
+      'Follow the Stripe steps: your business details, then a bank account for payouts.',
+      'When you\'re done the status shows "Active" and you can start taking payments.',
+    ],
+  },
+  {
+    slug: 'request-payment',
+    title: 'Ask a client to pay',
+    category: 'Getting paid',
+    keywords: ['request payment', 'invoice', 'charge', 'collect', 'pay', 'package', 'session'],
+    summary: 'Send a client a request to pay for a package, session or product.',
+    steps: [
+      'Make sure payments are set up first (Settings → Payments).',
+      'Click "Clients" on the left and open the client.',
+      'Choose the request-payment option on their profile.',
+      'Pick what they\'re paying for and the amount.',
+      'Send it — the client can pay by card inside PupManager.',
+    ],
+  },
+  {
+    slug: 'accept-payments-toggle',
+    title: 'Turn payments on or off',
+    category: 'Getting paid',
+    keywords: ['accept payments', 'display only', 'prices', 'card fees', 'toggle', 'payouts'],
+    summary: 'Switch whether prices are payable, and whether clients cover card fees.',
+    steps: [
+      'Click "Settings" on the left, then the "Payments" tab.',
+      'Turn "Accept payments" on so clients can pay (off makes prices display-only).',
+      'Turn "Pass card fees to clients" on if you\'d like clients to cover the card fee.',
+      'Use "Open Stripe dashboard →" to see payouts, or "Open Finances →" for invoices.',
+    ],
+  },
+
+  // ── Clients (waitlist & comms) ─────────────────────────────────────────────
+  {
+    slug: 'add-to-waitlist',
+    title: 'Add someone to your waitlist',
+    category: 'Clients',
+    keywords: ['waitlist', 'waiting', 'spot', 'full', 'queue', 'prospect', 'list'],
+    summary: 'Keep a list of people waiting for a spot, and book them when one opens.',
+    steps: [
+      'Click "Waitlist" under Clients on the left.',
+      'Click "Add to waitlist".',
+      'Choose an existing client, or switch to "Prospect" for someone new.',
+      'Add what they want — package, preferred days and times — then click "Add".',
+      'When a spot opens, click "Book" on their row to schedule them.',
+    ],
+  },
+  {
+    slug: 'work-the-waitlist',
+    title: 'Track who you\'ve contacted on the waitlist',
+    category: 'Clients',
+    keywords: ['waitlist', 'contacted', 'scheduled', 'waiting', 'status', 'follow up', 'reorder'],
+    summary: 'Move people through Waiting, Contacted and Scheduled as you work the list.',
+    steps: [
+      'Click "Waitlist" under Clients on the left.',
+      'Use the pills at the top — "Waiting", "Contacted", "Scheduled", "All" — to filter.',
+      'Click "Mark contacted" once you\'ve reached out to someone.',
+      'Click "Book" to schedule them — they move to "Scheduled".',
+      'Drag a row by its handle to reorder who\'s next.',
+    ],
+  },
+  {
+    slug: 'client-comms-tab',
+    title: 'See a client\'s emails and messages',
+    category: 'Clients',
+    keywords: ['comms', 'communication', 'history', 'emails', 'messages', 'client', 'thread'],
+    summary: 'Look back over everything you\'ve sent a client in one place.',
+    steps: [
+      'Click "Clients" on the left and open the client.',
+      'Click the "Comms" tab.',
+      'Read their email and message history under "Emails & messages".',
+      'Click "Open message thread →" to carry on the conversation.',
+    ],
+  },
+
+  // ── Programmes & products (detail views) ───────────────────────────────────
+  {
+    slug: 'see-package-clients',
+    title: 'See who\'s on a package',
+    category: 'Programmes & products',
+    keywords: ['package', 'programme', 'clients', 'who', 'revenue', 'completed', 'stats'],
+    summary: 'Open a package to see its clients, revenue and how it\'s going.',
+    steps: [
+      'Click "Packages" on the left.',
+      'Click a package to open it.',
+      'Stay on "Details" for its sessions, price and settings.',
+      'Click the "Clients" tab to see current and past clients, plus "Total clients", "Revenue" and "Active now".',
+    ],
+  },
+  {
+    slug: 'manage-class-roster',
+    title: 'Manage a class roster',
+    category: 'Scheduling',
+    keywords: ['class', 'roster', 'enrol', 'waitlist', 'attendance', 'spots', 'clients'],
+    summary: 'Open a class to enrol clients and track attendance and spots.',
+    steps: [
+      'Click "Classes" on the left.',
+      'Click a class to open it.',
+      'Click the "Clients" tab to see "Enrolled", "Spots left" and "Attendance".',
+      'Click "Enrol client", pick the client, and click "Enrol".',
+      'Use "Withdraw" or "Remove" on a row to take someone off.',
+    ],
+  },
+
+  // ── Account & app (add-ons & dashboard scratchpad) ─────────────────────────
+  {
+    slug: 'turn-on-addon',
+    title: 'Turn an add-on on or off',
+    category: 'Account & app',
+    keywords: ['add-on', 'addon', 'extras', 'enable', 'marketing', 'timesheets', 'route planner', 'switch on'],
+    summary: 'Switch optional extras like Marketing, Timesheets and Route planner on or off.',
+    steps: [
+      'Click "Settings" on the left.',
+      'Click the "Add-ons" tab.',
+      'Read each card and click "Learn more" for the full details.',
+      'Flip the switch on a card to turn that add-on on (or off).',
+      'Free add-ons turn on straight away; paid ones start from your next billing cycle.',
+    ],
+  },
+  {
+    slug: 'dashboard-todos',
+    title: 'Use the dashboard to-do list and brain dump',
+    category: 'Account & app',
+    keywords: ['to do', 'todo', 'brain dump', 'notes', 'scratchpad', 'tasks', 'dashboard'],
+    summary: 'Jot quick tasks and loose notes right on your dashboard.',
+    steps: [
+      'Make sure the "To-do & brain dump" add-on is on (Settings → Add-ons).',
+      'On your Dashboard, find the "To-do" / "Brain dump" panel on the right.',
+      'On "To-do", type in "Add a to-do…" and press the plus to add it (assign a team member if you like).',
+      'Tick an item off when it\'s done — it moves to "Done".',
+      'Switch to "Brain dump" to type free notes; they save automatically.',
+    ],
+  },
 ]
 
 export const HELP_FAQS: Faq[] = [
@@ -655,5 +924,17 @@ export const HELP_FAQS: Faq[] = [
   {
     q: 'Is my clients\' data private?',
     a: 'Yes. Each client only sees their own information, and only you (and team members you invite) can see your business\'s data.',
+  },
+  {
+    q: 'Why can\'t I send marketing emails?',
+    a: 'You need the Marketing add-on switched on (Settings → Add-ons) and a sending address set up — either your own domain or the PupManager test domain to try it. On a trial you can email up to 5 clients a day.',
+  },
+  {
+    q: 'When do add-on charges start?',
+    a: 'Paid add-ons start from your next billing cycle, so there\'s no surprise mid-cycle charge. Free add-ons like Timesheets and the dashboard to-do list cost nothing.',
+  },
+  {
+    q: 'How do clients pay me?',
+    a: 'Set up payments in Settings → Payments (powered by Stripe). Once the status shows "Active" and "Accept payments" is on, clients can pay you by card for packages, sessions and shop items inside PupManager.',
   },
 ]
