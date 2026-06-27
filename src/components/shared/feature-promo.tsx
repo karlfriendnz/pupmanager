@@ -118,7 +118,7 @@ export function FeaturePromoCard({
           style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, #1F818C 38%, rgba(31,129,140,0) 100%)' }}
         />
         {badge}
-        <div className="relative z-10 w-[62%] py-[60px] pl-8 pr-4">
+        <div className="relative z-10 w-[52%] py-[60px] pl-8 pr-3">
           <h2 className="text-[32px] font-bold leading-[1.1] tracking-tight">{title}</h2>
           <p className="mt-2.5 text-[15px] leading-relaxed text-white/90">{description}</p>
         </div>
@@ -135,7 +135,11 @@ export function FeaturePromoCard({
         </div>
 
         {priceNote && (
-          <p className="mt-4 text-center text-[13px] text-slate-500">{priceNote}</p>
+          <div className="mt-4 flex justify-center">
+            <span className="rounded-full bg-slate-50 px-4 py-1.5 text-center text-[13px] font-medium text-slate-600 ring-1 ring-slate-200/70">
+              {priceNote}
+            </span>
+          </div>
         )}
 
         <div className="mt-6 flex flex-col items-center gap-3">
