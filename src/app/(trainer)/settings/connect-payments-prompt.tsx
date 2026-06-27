@@ -98,7 +98,7 @@ export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
           src="/get-paid-hero-v1.jpg"
           alt=""
           aria-hidden
-          className="absolute inset-0 h-full w-full object-cover object-[center_30%]"
+          className="absolute inset-0 h-full w-full translate-x-[30%] object-cover object-[center_30%]"
         />
         <div
           aria-hidden
