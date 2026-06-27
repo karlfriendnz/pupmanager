@@ -63,6 +63,14 @@ const TIER_META: Record<1 | 2, { title: string; sub: string }> = {
   1: { title: 'Get set up', sub: 'The essentials — get to your first client using the app.' },
   2: { title: 'Level up', sub: 'Get paid, take bookings, and grow once you’re rolling.' },
 }
+
+// md grid-rows class per row count, so a tier's 2-column grid flows DOWN the
+// left column then down the right (column-flow). Literal class names so
+// Tailwind's scanner keeps them. rows = ceil(stepCount / 2).
+const MD_GRID_ROWS: Record<number, string> = {
+  1: 'md:grid-rows-1', 2: 'md:grid-rows-2', 3: 'md:grid-rows-3',
+  4: 'md:grid-rows-4', 5: 'md:grid-rows-5', 6: 'md:grid-rows-6', 7: 'md:grid-rows-7',
+}
 import { cn } from '@/lib/utils'
 import type { OnboardingState, OnboardingStepView } from '@/lib/onboarding/types'
 import { PersonalizationWizard, type WizardInitial } from './personalization-wizard'
@@ -455,6 +463,9 @@ function TierSection({ meta, tierSteps, onOpenStep }: {
   onOpenStep: (key: string) => void
 }) {
   const done = tierSteps.filter(s => s.status === 'completed').length
+  // Column-flow on md+ so the list reads DOWN the left column then down the
+  // right (1–5 left, 6–10 right) rather than zig-zagging left-to-right.
+  const rowsClass = MD_GRID_ROWS[Math.ceil(tierSteps.length / 2)] ?? 'md:grid-rows-6'
   return (
     <div>
       <div className="flex items-baseline justify-between px-2.5">
@@ -462,7 +473,7 @@ function TierSection({ meta, tierSteps, onOpenStep }: {
         <span className="text-[11px] font-medium text-slate-400 tabular-nums">{done}/{tierSteps.length}</span>
       </div>
       <p className="px-2.5 mb-1.5 text-xs text-slate-400">{meta.sub}</p>
-      <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-0.5">
+      <ul className={cn('grid grid-cols-1 md:grid-cols-2 md:grid-flow-col gap-x-4 gap-y-0.5', rowsClass)}>
         {tierSteps.map(s => <StepRow key={s.key} s={s} onOpenStep={onOpenStep} />)}
       </ul>
     </div>
