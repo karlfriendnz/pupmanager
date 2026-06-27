@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isConnectConfigured, isLivePaymentsAllowed } from '@/lib/connect'
 import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
 
@@ -12,7 +13,7 @@ export default async function ClassesPage() {
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
 
-  const [runs, teamMembers] = await Promise.all([
+  const [runs, teamMembers, trainer] = await Promise.all([
     prisma.classRun.findMany({
       where: { trainerId },
       orderBy: { startDate: 'desc' },
@@ -30,7 +31,20 @@ export default async function ClassesPage() {
       select: { id: true, title: true, role: true, user: { select: { name: true } } },
       orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
     }),
+    prisma.trainerProfile.findUnique({
+      where: { id: trainerId },
+      select: { connectChargesEnabled: true, sandboxBilling: true },
+    }),
   ])
+
+  // Nudge Stripe Connect after a priced class is created — only when payments
+  // aren't already live AND the trainer can actually onboard now (Connect
+  // configured + allowed for their account), so it's never a dead end.
+  const sandbox = trainer?.sandboxBilling ?? false
+  const promptConnect =
+    !trainer?.connectChargesEnabled &&
+    isConnectConfigured(sandbox) &&
+    isLivePaymentsAllowed(trainerId, sandbox)
 
   return (
     <ClassesView
@@ -52,6 +66,7 @@ export default async function ClassesPage() {
         title: m.title,
         isOwner: m.role === 'OWNER',
       }))}
+      promptConnect={promptConnect}
     />
   )
 }

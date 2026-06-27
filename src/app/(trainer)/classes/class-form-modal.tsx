@@ -46,16 +46,23 @@ export function ClassFormModal({
   initial,
   canReschedule = true,
   teamMembers = [],
+  promptConnect = false,
   onClose,
   onSaved,
+  onConnectPrompt,
 }: {
   mode: 'create' | 'edit'
   runId?: string
   initial?: ClassInitial
   canReschedule?: boolean
   teamMembers?: TeamMemberOption[]
+  // When a priced class is created and Stripe isn't connected yet, signal the
+  // parent (with the class name) to pop the connect-Stripe modal instead of
+  // just closing.
+  promptConnect?: boolean
   onClose: () => void
   onSaved: () => void
+  onConnectPrompt?: (name: string) => void
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [startDate, setStartDate] = useState(toLocalInput(initial?.startDateIso) || '')
@@ -128,6 +135,12 @@ export function ClassFormModal({
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(typeof body.error === 'string' ? body.error : `Could not ${mode === 'edit' ? 'save' : 'create'} the class.`)
+        return
+      }
+      // Just created a priced class and Stripe isn't connected → hand off to the
+      // parent to pop the connect-Stripe modal over the list.
+      if (mode === 'create' && promptConnect && payload.priceCents != null && onConnectPrompt) {
+        onConnectPrompt(payload.name)
         return
       }
       onSaved()

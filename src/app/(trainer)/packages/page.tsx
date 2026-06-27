@@ -6,12 +6,18 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Packages' }
 
-export default async function PackagesPage() {
+export default async function PackagesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ connect?: string }>
+}) {
   const session = await auth()
   if (!session) redirect('/login')
 
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
+
+  const { connect } = await searchParams
 
   const packages = await prisma.package.findMany({
     where: { trainerId },
@@ -44,6 +50,7 @@ export default async function PackagesPage() {
         selfBookRequiresApproval: p.selfBookRequiresApproval,
         assignments: p._count.assignments,
       }))}
+      connectName={connect ?? null}
     />
   )
 }

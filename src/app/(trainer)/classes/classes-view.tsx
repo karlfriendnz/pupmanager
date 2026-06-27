@@ -8,6 +8,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { PageHeader } from '@/components/shared/page-header'
 import { Plus, GraduationCap, Users, ChevronRight } from 'lucide-react'
 import { ClassFormModal, type TeamMemberOption } from './class-form-modal'
+import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 
 type RunRow = {
   id: string
@@ -29,9 +30,12 @@ const STATUS_STYLE: Record<RunRow['status'], string> = {
   CANCELLED: 'bg-red-50 text-red-600',
 }
 
-export function ClassesView({ runs, teamMembers = [] }: { runs: RunRow[]; teamMembers?: TeamMemberOption[] }) {
+export function ClassesView({ runs, teamMembers = [], promptConnect = false }: { runs: RunRow[]; teamMembers?: TeamMemberOption[]; promptConnect?: boolean }) {
   const router = useRouter()
   const [showCreate, setShowCreate] = useState(false)
+  // Set (to the new class's name) when a priced class was just created and we
+  // want to pop the connect-Stripe modal over the (refreshed) list.
+  const [connectName, setConnectName] = useState<string | null>(null)
 
   return (
     <>
@@ -111,11 +115,27 @@ export function ClassesView({ runs, teamMembers = [] }: { runs: RunRow[]; teamMe
         <ClassFormModal
           mode="create"
           teamMembers={teamMembers}
+          promptConnect={promptConnect}
           onClose={() => setShowCreate(false)}
           onSaved={() => {
             setShowCreate(false)
             router.refresh()
           }}
+          onConnectPrompt={(name) => {
+            // Close the create modal, refresh so the new class shows in the
+            // list, then pop the connect-Stripe modal over it.
+            setShowCreate(false)
+            router.refresh()
+            setConnectName(name)
+          }}
+        />
+      )}
+
+      {connectName && (
+        <ConnectPaymentsModal
+          title="Class created 🎉"
+          description={`“${connectName}” has a price. Connect your Stripe account so clients can pay for it right inside PupManager — secure card payments, paid straight to your bank.`}
+          onClose={() => setConnectName(null)}
         />
       )}
       </div>

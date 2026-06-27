@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Plus, Package as PackageIcon, Pencil, Trash2, GripVertical } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
+import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 import { type PackageColor, type PkgRow } from './package-form'
 import {
   DndContext,
@@ -52,8 +53,12 @@ function packageIconClasses(color: PackageColor | null): string {
 
 export function PackagesView({
   initialPackages,
+  connectName = null,
 }: {
   initialPackages: PkgRow[]
+  // Set (to the new package's name) when we've just created a priced package
+  // and want to pop the connect-Stripe modal over the list.
+  connectName?: string | null
 }) {
   const router = useRouter()
   const [packages, setPackages] = useState(initialPackages)
@@ -129,6 +134,14 @@ export function PackagesView({
       {/* Sortable row defined inline — closes over edit/delete handlers via props. */}
 
       </div>
+
+      {connectName && (
+        <ConnectPaymentsModal
+          title="Package created 🎉"
+          description={`“${connectName}” has a price. Connect your Stripe account so clients can pay for it right inside PupManager — secure card payments, paid straight to your bank.`}
+          onClose={() => router.replace('/packages')}
+        />
+      )}
     </>
   )
 }
