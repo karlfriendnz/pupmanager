@@ -516,7 +516,10 @@ async function handleAccountUpdated(account: Stripe.Account) {
     where: { id: trainer.id },
     data: {
       ...flags,
-      ...(justOnboarded ? { connectOnboardedAt: new Date() } : {}),
+      // First time fully onboarded: stamp it and turn accept-payments ON so the
+      // trainer can take payments straight away (it's their switch to flip off
+      // later if they want prices display-only).
+      ...(justOnboarded ? { connectOnboardedAt: new Date(), acceptPaymentsEnabled: true } : {}),
     },
   })
 }
