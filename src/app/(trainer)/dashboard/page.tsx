@@ -308,7 +308,7 @@ export default async function DashboardPage({
           </>
         }
       />
-      <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
+      <div className="p-4 md:p-8 w-full">
         {/* iOS/Android only: prompt for a country when we couldn't capture it
             from the IP at signup. Hidden on web and once one is set. */}
         <CountryPrompt hasCountry={!!brandingProfile?.signupCountry} />
