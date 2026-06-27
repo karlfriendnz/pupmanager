@@ -71,7 +71,7 @@ function feeRate(currency: string): string {
 // Everything except the CTA (which differs between page + modal use).
 function paymentsConfig(currency: string): Omit<FeaturePromoProps, 'cta' | 'onSkip'> {
   return {
-    title: 'Start getting paid 💸',
+    title: 'Start getting paid',
     description: 'Let clients pay you in-app — money straight to your bank.',
     image: { src: '/get-paid-hero-v1.jpg', objectPosition: 'center 45%', translateX: '30%' },
     badge: COIN,
