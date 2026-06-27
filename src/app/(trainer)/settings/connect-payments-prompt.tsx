@@ -98,25 +98,19 @@ export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
           src="/get-paid-hero-v1.jpg"
           alt=""
           aria-hidden
-          className="absolute inset-0 h-full w-full translate-x-[30%] object-cover object-[center_30%]"
+          className="absolute inset-0 h-full w-full translate-x-[30%] object-cover object-[center_45%]"
         />
+        {/* horizontal fade — teal left (behind copy) → clear right */}
         <div
           aria-hidden
           className="absolute inset-0"
           style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, #1F818C 38%, rgba(31,129,140,0) 100%)' }}
         />
-        {/* Floating "payment received" card over the photo — like the
-            marketing pricing hero. */}
-        <div className="animate-pm-pop pointer-events-none absolute bottom-5 right-5 z-20 flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-2.5 shadow-xl shadow-slate-900/25">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#16a34a]">
-            <Check className="h-5 w-5 text-white" strokeWidth={3} />
-          </span>
-          <span>
-            <span className="block text-[14px] font-semibold leading-tight text-slate-900">Payment received</span>
-            <span className="block text-[11px] leading-tight text-slate-500">$120.00 · straight to your bank</span>
-          </span>
+        {/* Floating "paid" coin over the photo. */}
+        <div className="animate-pm-pop pointer-events-none absolute bottom-5 right-5 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-[#16a34a] text-white shadow-xl shadow-slate-900/30 ring-4 ring-white/70">
+          <span className="text-[22px] font-bold leading-none">$</span>
         </div>
-        <div className="relative z-10 w-[62%] py-9 pl-8 pr-4">
+        <div className="relative z-10 w-[62%] py-[60px] pl-8 pr-4">
           <h2 className="text-[26px] font-bold leading-tight tracking-tight">Start getting paid 💸</h2>
           <p className="mt-2.5 text-[15px] leading-relaxed text-white/90">
             Switch on payments and your clients can pay you for packages, sessions
