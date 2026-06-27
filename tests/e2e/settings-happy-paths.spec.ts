@@ -17,8 +17,8 @@ async function login(page: Page, email: string, password: string) {
 test.describe('email templates — owner happy path', () => {
   test('owner creates a reusable template and it appears in the list', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto('/settings')
-    await page.getByRole('button', { name: 'Email templates' }).click()
+    // Email templates moved out of Settings to their own page under Communication.
+    await page.goto('/email-templates')
     await page.getByRole('button', { name: 'New template' }).click()
 
     const name = `Welcome ${Date.now()}`
