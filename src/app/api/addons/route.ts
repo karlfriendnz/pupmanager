@@ -14,8 +14,10 @@ import { addonById, isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '
 // (active + stripeSubscriptionItemId); we also write `active` here so the UI
 // updates instantly even before the webhook lands.
 //
-// New charges start at the NEXT billing cycle (proration_behavior: 'none') —
-// no immediate pro-rata charge when switching an add-on on.
+// Enabling an add-on is pro-rated to the trainer's next billing date
+// (proration_behavior: 'create_prorations') — the prorated amount for the rest
+// of the current period lands on their upcoming invoice rather than charging
+// immediately; disabling credits the unused remainder.
 //
 // itemId is a BillingItem.id == the pricing AddonId ('achievements' | 'shop' |
 // 'marketing' | …). Coming-soon previews (e.g. 'ai') are refused.
@@ -95,8 +97,9 @@ export async function POST(req: Request) {
   if (items.length > 0) {
     await stripeClient.subscriptions.update(sub.id, {
       items,
-      // New add-on starts billing at the next cycle — no immediate pro-rata charge.
-      proration_behavior: 'none',
+      // Pro-rate to the next billing date: the prorated amount goes on the
+      // upcoming invoice (no immediate charge); removing credits the remainder.
+      proration_behavior: 'create_prorations',
     })
   }
 
