@@ -85,26 +85,35 @@ function Benefit({ children }: { children: React.ReactNode }) {
 export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
   return (
     <div className="overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5">
-      {/* Branded gradient header */}
+      {/* Branded gradient header — text left, photo bleeding to fill the full
+          height of the teal box on the right (matches the marketing pricing
+          hero). */}
       <div
-        className="relative overflow-hidden px-8 pt-9 pb-8 text-center text-white"
+        className="relative flex overflow-hidden text-white"
         style={{ backgroundImage: 'linear-gradient(135deg, #2A9DA9, #1F818C)' }}
       >
-        <div aria-hidden className="pointer-events-none absolute -bottom-16 -left-12 h-44 w-44 rounded-full bg-black/10 blur-2xl" />
-        {/* Warm corner accent — a trainer relaxing with the app (from the
-            marketing pricing hero), cropped to the person, top-right. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/get-paid-hero-v1.jpg"
-          alt=""
-          aria-hidden
-          className="absolute right-4 top-4 h-[84px] w-[84px] rotate-3 rounded-2xl object-cover object-[78%_26%] shadow-lg ring-4 ring-white/25"
-        />
-        <h2 className="relative text-left text-[26px] font-bold leading-tight tracking-tight">Start getting paid 💸</h2>
-        <p className="relative mt-2.5 max-w-[20rem] text-left text-[15px] leading-relaxed text-white/90">
-          Switch on payments and your clients can pay you for packages, sessions and
-          shop items right inside PupManager — straight to your bank.
-        </p>
+        <div className="relative z-10 flex-1 py-9 pl-8 pr-5">
+          <h2 className="text-[26px] font-bold leading-tight tracking-tight">Start getting paid 💸</h2>
+          <p className="mt-2.5 text-[15px] leading-relaxed text-white/90">
+            Switch on payments and your clients can pay you for packages, sessions
+            and shop items right inside PupManager — straight to your bank.
+          </p>
+        </div>
+        <div className="relative w-[38%] shrink-0 self-stretch">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/get-paid-hero-v1.jpg"
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full object-cover object-[72%_center]"
+          />
+          {/* soft seam — fade the photo's left edge into the teal box */}
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, rgba(31,129,140,0) 42%)' }}
+          />
+        </div>
       </div>
 
       {/* Body */}
