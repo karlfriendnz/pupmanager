@@ -91,7 +91,7 @@ export function FeaturePromoCard({
         type="button"
         onClick={onSkip}
         aria-label="Close"
-        className="absolute right-1 top-1 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-black/15 text-white transition hover:bg-black/30"
+        className="absolute right-0 top-0 z-30 flex h-9 w-9 items-center justify-center rounded-bl-2xl rounded-tr-3xl bg-black/15 text-white transition hover:bg-black/30"
       >
         <X className="h-5 w-5" />
       </button>
