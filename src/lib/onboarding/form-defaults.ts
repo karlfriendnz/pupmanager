@@ -33,10 +33,11 @@ interface DefaultIntakeFieldSpec {
   appliesTo: 'OWNER' | 'DOG'
 }
 
+// NB: breed and date-of-birth are built-in dog fields, so we don't seed custom
+// fields for them (that caused duplicate "Breed"/"Dog's breed" and "Date of
+// birth"/"Dog's age" inputs). Vaccinations are out of scope. Only genuine
+// owner-intake questions are seeded.
 export const DEFAULT_INTAKE_FIELDS: DefaultIntakeFieldSpec[] = [
-  { label: "Dog's breed", type: 'TEXT', required: true, appliesTo: 'DOG' },
-  { label: "Dog's age (months/years)", type: 'TEXT', required: true, appliesTo: 'DOG' },
-  { label: 'Vaccinations up to date?', type: 'DROPDOWN', required: true, options: ['Yes', 'No', 'Not sure'], appliesTo: 'DOG' },
   { label: 'Training goals', type: 'TEXT', required: true, appliesTo: 'OWNER' },
   { label: 'Behavioural concerns', type: 'TEXT', required: false, appliesTo: 'OWNER' },
 ]
