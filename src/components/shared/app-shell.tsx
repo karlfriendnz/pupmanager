@@ -12,6 +12,7 @@ import {
   MoreHorizontal, X, Inbox, GraduationCap,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone, Lock, ClipboardList,
+  Download,
   type LucideIcon,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
@@ -48,6 +49,7 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'clients', child: true },
   { href: '/enquiries',    label: 'Enquiries',    icon: Inbox,           section: 'clients', child: true },
   { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'clients', child: true },
+  { href: '/lead-magnets', label: 'Lead magnets', icon: Download,        section: 'clients', child: true },
   { href: '/email-templates', label: 'Email templates', icon: Mail,       section: 'clients', child: true },
 
   { href: '/packages',     label: 'Packages',     icon: Package,         section: 'programs' },

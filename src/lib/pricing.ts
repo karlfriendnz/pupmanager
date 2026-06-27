@@ -45,7 +45,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos'
+export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets'
 
 export interface AddonDef {
   id: AddonId
@@ -89,6 +89,12 @@ export const ADDONS: AddonDef[] = [
     id: 'routeplanner',
     name: 'Route planner',
     description: 'Plan the most efficient route between your visits, with drive-time and distance from your base — and from one client to the next.',
+    price: { AUD: 9, NZD: 10, GBP: 5, CAD: 8, USD: 7, ZAR: 129 },
+  },
+  {
+    id: 'leadmagnets',
+    name: 'Lead magnets',
+    description: 'Offer a free download behind a branded sign-up form. Prospects get the file by email and join your mailing list — embed it on your own site to grow your audience.',
     price: { AUD: 9, NZD: 10, GBP: 5, CAD: 8, USD: 7, ZAR: 129 },
   },
   {

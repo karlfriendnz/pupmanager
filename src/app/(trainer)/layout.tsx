@@ -98,6 +98,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // addonLockedHrefs). Every add-on is off until the trainer enables it.
   const ADDON_NAV: Record<string, AddonId> = {
     '/marketing': 'marketing',
+    '/lead-magnets': 'leadmagnets',
     '/schedule/route': 'routeplanner',
     '/timesheets': 'timesheets',
     '/products': 'shop',

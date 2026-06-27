@@ -4,6 +4,7 @@ import { type ReactNode } from 'react'
 import {
   Users, PenLine, Send, LineChart, Trophy, Share2, Sparkles, Tag, ShoppingBag,
   Wallet, MapPin, Route, Clock, FileText, ListChecks, NotebookPen, Check,
+  Download, Mail,
 } from 'lucide-react'
 import { FeaturePromoCard, FeaturePromoModal, PROMO_ICON, type PromoStep } from '@/components/shared/feature-promo'
 import { EnableAddonButton } from '@/components/shared/enable-addon-button'
@@ -105,6 +106,19 @@ const PROMOS: Record<string, Cfg> = {
       { icon: <Check className={I} />, label: 'Tick off' },
     ],
     benefits: ['On your dashboard', 'Assign your team', 'Nothing slips'],
+  },
+  leadmagnets: {
+    title: 'Grow your audience',
+    description: 'A free download that captures emails to your mailing list.',
+    image: { src: '/promo-leadmagnets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
+    badge: chip('New subscriber'),
+    steps: [
+      { icon: <Download className={I} />, label: 'Free download' },
+      { icon: <PenLine className={I} />, label: 'They sign up' },
+      { icon: <Mail className={I} />, label: 'Emailed the file' },
+      { icon: <Users className={I} />, label: 'Joins your list' },
+    ],
+    benefits: ['Branded sign-up page', 'Emailed automatically', 'Grows your mailing list'],
   },
   ai: {
     title: 'Your admin co-pilot',
