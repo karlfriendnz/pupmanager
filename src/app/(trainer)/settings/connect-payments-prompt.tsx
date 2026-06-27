@@ -107,11 +107,12 @@ export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
             aria-hidden
             className="absolute inset-0 h-full w-full object-cover object-[72%_center]"
           />
-          {/* soft seam — fade the photo's left edge into the teal box */}
+          {/* teal overlay fading across the whole image — full on the left
+              edge (blends into the box) → clear on the right */}
           <div
             aria-hidden
             className="absolute inset-0"
-            style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, rgba(31,129,140,0) 42%)' }}
+            style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, rgba(31,129,140,0) 100%)' }}
           />
         </div>
       </div>
