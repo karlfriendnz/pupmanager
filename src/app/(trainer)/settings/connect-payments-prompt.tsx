@@ -106,7 +106,7 @@ export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
         <div className="mt-7 flex flex-wrap items-center justify-center gap-x-6 gap-y-1.5 text-[13px] font-medium text-slate-500">
           <Benefit>Secure card payments</Benefit>
           <Benefit>Money to your bank</Benefit>
-          <Benefit>~2 minutes to set up</Benefit>
+          <Benefit>No monthly fees</Benefit>
         </div>
 
         <div className="mt-7 flex flex-col items-center gap-3">
