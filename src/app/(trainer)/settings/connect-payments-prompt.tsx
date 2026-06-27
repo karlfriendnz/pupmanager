@@ -90,10 +90,18 @@ export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
         className="relative overflow-hidden px-8 pt-9 pb-8 text-center text-white"
         style={{ backgroundImage: 'linear-gradient(135deg, #2A9DA9, #1F818C)' }}
       >
-        <div aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
         <div aria-hidden className="pointer-events-none absolute -bottom-16 -left-12 h-44 w-44 rounded-full bg-black/10 blur-2xl" />
-        <h2 className="relative text-[26px] font-bold leading-tight tracking-tight">Start getting paid 💸</h2>
-        <p className="relative mx-auto mt-2.5 max-w-md text-[15px] leading-relaxed text-white/90">
+        {/* Warm corner accent — a trainer relaxing with the app (from the
+            marketing pricing hero), cropped to the person, top-right. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/get-paid-hero-v1.jpg"
+          alt=""
+          aria-hidden
+          className="absolute right-4 top-4 h-[84px] w-[84px] rotate-3 rounded-2xl object-cover object-[78%_26%] shadow-lg ring-4 ring-white/25"
+        />
+        <h2 className="relative text-left text-[26px] font-bold leading-tight tracking-tight">Start getting paid 💸</h2>
+        <p className="relative mt-2.5 max-w-[20rem] text-left text-[15px] leading-relaxed text-white/90">
           Switch on payments and your clients can pay you for packages, sessions and
           shop items right inside PupManager — straight to your bank.
         </p>
