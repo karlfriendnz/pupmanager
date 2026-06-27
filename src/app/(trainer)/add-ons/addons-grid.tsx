@@ -104,11 +104,6 @@ export function AddonsGrid({
                 />
                 <div className="relative z-10 flex h-full w-[60%] flex-col justify-center px-4">
                   <h3 className="text-[15px] font-bold leading-tight">{card.name}</h3>
-                  {card.badge && (
-                    <span className="mt-1.5 inline-block w-fit rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold">
-                      {card.badge}
-                    </span>
-                  )}
                 </div>
               </div>
 
