@@ -105,6 +105,17 @@ export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
           className="absolute inset-0"
           style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, #1F818C 38%, rgba(31,129,140,0) 100%)' }}
         />
+        {/* Floating "payment received" card over the photo — like the
+            marketing pricing hero. */}
+        <div className="animate-pm-pop pointer-events-none absolute bottom-5 right-5 z-20 flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-2.5 shadow-xl shadow-slate-900/25">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#16a34a]">
+            <Check className="h-5 w-5 text-white" strokeWidth={3} />
+          </span>
+          <span>
+            <span className="block text-[14px] font-semibold leading-tight text-slate-900">Payment received</span>
+            <span className="block text-[11px] leading-tight text-slate-500">$120.00 · straight to your bank</span>
+          </span>
+        </div>
         <div className="relative z-10 w-[62%] py-9 pl-8 pr-4">
           <h2 className="text-[26px] font-bold leading-tight tracking-tight">Start getting paid 💸</h2>
           <p className="mt-2.5 text-[15px] leading-relaxed text-white/90">
