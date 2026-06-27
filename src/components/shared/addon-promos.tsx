@@ -52,8 +52,7 @@ const PROMOS: Record<string, Cfg> = {
   achievements: {
     title: 'Celebrate every win',
     description: 'Branded badges your clients earn and show off.',
-    image: { src: '/promo-achievements-v5.jpg', objectPosition: 'center 45%' },
-    badge: chip('Badge earned'),
+    image: { src: '/promo-achievements-v6.jpg', objectPosition: 'center 42%' },
     steps: [
       { icon: <Trophy className={I} />, label: 'Earn badges' },
       { icon: <Share2 className={I} />, label: 'Clients share' },
@@ -75,7 +74,7 @@ const PROMOS: Record<string, Cfg> = {
   },
   routeplanner: {
     title: 'Plan your day',
-    description: 'The most efficient route between your home visits.',
+    description: 'The most efficient route between visits — and record the distance.',
     image: { src: '/promo-routeplanner-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
     badge: chip('18 min saved'),
     steps: [
@@ -83,7 +82,7 @@ const PROMOS: Record<string, Cfg> = {
       { icon: <Route className={I} />, label: 'Best route' },
       { icon: <Clock className={I} />, label: 'Save time' },
     ],
-    benefits: ['Drive-time from base', 'Order your day', 'Cut the kilometres'],
+    benefits: ['Record the distance', 'Drive-time from base', 'Cut the kilometres'],
   },
   timesheets: {
     title: 'Track your team’s hours',
