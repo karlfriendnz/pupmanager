@@ -85,35 +85,32 @@ function Benefit({ children }: { children: React.ReactNode }) {
 export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
   return (
     <div className="overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5">
-      {/* Branded gradient header — text left, photo bleeding to fill the full
-          height of the teal box on the right (matches the marketing pricing
-          hero). */}
+      {/* Branded gradient header — photo full-bleeds across the whole box
+          (no column seam), with a teal overlay that's solid on the left
+          (behind the copy) and fades to clear on the right to reveal the
+          trainer. Matches the marketing pricing hero. */}
       <div
-        className="relative flex overflow-hidden text-white"
+        className="relative overflow-hidden text-white"
         style={{ backgroundImage: 'linear-gradient(135deg, #2A9DA9, #1F818C)' }}
       >
-        <div className="relative z-10 flex-1 py-9 pl-8 pr-5">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/get-paid-hero-v1.jpg"
+          alt=""
+          aria-hidden
+          className="absolute inset-0 h-full w-full object-cover object-[center_30%]"
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, #1F818C 38%, rgba(31,129,140,0) 100%)' }}
+        />
+        <div className="relative z-10 w-[62%] py-9 pl-8 pr-4">
           <h2 className="text-[26px] font-bold leading-tight tracking-tight">Start getting paid 💸</h2>
           <p className="mt-2.5 text-[15px] leading-relaxed text-white/90">
             Switch on payments and your clients can pay you for packages, sessions
             and shop items right inside PupManager — straight to your bank.
           </p>
-        </div>
-        <div className="relative w-[38%] shrink-0 self-stretch">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/get-paid-hero-v1.jpg"
-            alt=""
-            aria-hidden
-            className="absolute inset-0 h-full w-full object-cover object-[72%_center]"
-          />
-          {/* teal overlay fading across the whole image — full on the left
-              edge (blends into the box) → clear on the right */}
-          <div
-            aria-hidden
-            className="absolute inset-0"
-            style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, rgba(31,129,140,0) 100%)' }}
-          />
         </div>
       </div>
 
@@ -157,7 +154,7 @@ export function ConnectPaymentsModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-50 w-full max-w-xl">
+      <div className="relative z-50 w-full max-w-2xl">
         <ConnectPaymentsPrompt onSkip={onClose} />
       </div>
     </div>

@@ -10,7 +10,7 @@ export default function ConnectPreviewPage() {
   const [showModal, setShowModal] = useState(false)
 
   return (
-    <div className="mx-auto max-w-xl p-8">
+    <div className="mx-auto max-w-2xl p-8">
       <p className="mb-4 text-xs text-slate-400">
         Preview — the connect-Stripe prompt (not wired to your real account state).
       </p>
