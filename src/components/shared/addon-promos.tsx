@@ -89,7 +89,6 @@ const PROMOS: Record<string, Cfg> = {
     title: 'Track your team’s hours',
     description: 'Turn worked time into payroll-ready totals.',
     image: { src: '/promo-timesheets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
-    badge: chip('8h logged'),
     steps: [
       { icon: <Clock className={I} />, label: 'Log hours' },
       { icon: <Users className={I} />, label: 'Team time' },
@@ -101,7 +100,6 @@ const PROMOS: Record<string, Cfg> = {
     title: 'Nothing slips',
     description: 'A quick to-do list and brain-dump on your dashboard.',
     image: { src: '/promo-todos-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
-    badge: chip('Done'),
     steps: [
       { icon: <ListChecks className={I} />, label: 'Jot to-dos' },
       { icon: <NotebookPen className={I} />, label: 'Brain-dump' },
