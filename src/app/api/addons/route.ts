@@ -59,6 +59,21 @@ export async function POST(req: Request) {
     select: { stripeSubscriptionId: true, sandboxBilling: true },
   })
   const sandbox = trainer?.sandboxBilling ?? false
+
+  // Sandbox/demo accounts (sandboxBilling) with no real subscription comp paid
+  // add-ons: toggle directly in the DB with no Stripe, so a demo works fully
+  // without billing set up. Real trainers (sandboxBilling=false) still require a
+  // subscription; sandbox accounts that DID set up a test subscription fall
+  // through to the normal Stripe path below.
+  if (sandbox && !trainer?.stripeSubscriptionId) {
+    await prisma.trainerAddon.upsert({
+      where: { trainerId_itemId: { trainerId: ctx.companyId, itemId } },
+      create: { trainerId: ctx.companyId, itemId, active },
+      update: { active },
+    })
+    return NextResponse.json({ ok: true, itemId, active, comped: true })
+  }
+
   if (!isStripeConfigured(sandbox)) {
     return NextResponse.json({ error: 'Billing not configured yet' }, { status: 503 })
   }
