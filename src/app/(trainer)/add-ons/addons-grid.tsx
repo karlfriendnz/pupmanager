@@ -37,6 +37,7 @@ export function AddonsGrid({
   )
   const [busy, setBusy] = useState<string | null>(null)
   const [learnMore, setLearnMore] = useState<AddonCard | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   async function toggle(card: AddonCard) {
     if (!card.available || busy) return
@@ -44,15 +45,25 @@ export function AddonsGrid({
     // Optimistic flip; revert on failure.
     setActive((prev) => ({ ...prev, [card.id]: next }))
     setBusy(card.id)
+    setError(null)
     try {
       const res = await fetch('/api/addons', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId: card.id, active: next }),
       })
-      if (!res.ok) throw new Error('toggle failed')
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setActive((prev) => ({ ...prev, [card.id]: !next })) // revert
+        // Paid add-on with no subscription yet → send them to subscribe.
+        if (body.needsSubscription) { window.location.href = '/billing/setup'; return }
+        setError(typeof body.error === 'string' ? body.error : 'Could not change this add-on. Please try again.')
+        return
+      }
+      setLearnMore(null) // success → close the popup
     } catch {
       setActive((prev) => ({ ...prev, [card.id]: !next }))
+      setError('Could not change this add-on. Please try again.')
     } finally {
       setBusy(null)
     }
@@ -72,7 +83,7 @@ export function AddonsGrid({
       <button
         key={card.id}
         type="button"
-        onClick={() => setLearnMore(card)}
+        onClick={() => { setError(null); setLearnMore(card) }}
         className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-shadow hover:shadow-md"
       >
         {/* Mini-promo header: name left, hero image bleeding in on the right
@@ -129,11 +140,13 @@ export function AddonsGrid({
           <Button
             size="lg"
             className="w-full"
+            loading={busy === learnMore.id}
             disabled={!learnMore.available}
-            onClick={() => { toggle(learnMore); setLearnMore(null) }}
+            onClick={() => toggle(learnMore)}
           >
             {active[learnMore.id] ? `Turn off ${learnMore.name}` : `Turn on ${learnMore.name}`}
           </Button>
+          {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
         </div>
       )
     : null

@@ -298,42 +298,6 @@ function DetailShell({ title, onClose, children, footer }: { title: string; onCl
   )
 }
 
-// Large modal that hosts a full list (search + filters + table + pagination).
-// Centered dialog with a dimmed backdrop; closes on backdrop click, the X, and
-// Escape. Sits at z-[70] so a TransactionDetail/InvoiceDetail (z-[80]) opened
-// from a row stacks above it. Body scroll is locked while open.
-function ListModal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
-    }
-  }, [onClose])
-
-  return (
-    <div
-      className="fixed inset-0 z-[70] flex items-stretch justify-center sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-      <div className="relative flex w-full max-w-4xl flex-col bg-white shadow-xl sm:max-h-[88vh] sm:rounded-2xl overflow-hidden">
-        <div className="flex items-center gap-2 px-3 sm:px-5 min-h-[3.5rem] border-b border-slate-100 flex-shrink-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-          <p className="flex-1 min-w-0 truncate text-sm font-semibold text-slate-900">{title}</p>
-          <button type="button" onClick={onClose} aria-label="Close" className="p-2 -mr-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><X className="h-5 w-5" /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5" style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>{children}</div>
-      </div>
-    </div>
-  )
-}
-
 function DetailRow({ label, value, strong }: { label: string; value: React.ReactNode; strong?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2.5 border-b border-slate-100 last:border-0">
@@ -444,65 +408,38 @@ function InvoiceDetail({ inv, onClose }: { inv: Inv; onClose: () => void }) {
   )
 }
 
-const SECTIONS = [
-  { id: 'transactions', label: 'Transactions', icon: ArrowLeftRight, blurb: 'Payments you’ve taken, fees and net take-home.' },
-  { id: 'invoices', label: 'Invoices', icon: Receipt, blurb: 'Invoices you’ve sent — paid, unpaid and refunded.' },
+const TABS = [
+  { id: 'invoices', label: 'Invoices', icon: Receipt },
+  { id: 'transactions', label: 'Transactions', icon: ArrowLeftRight },
 ] as const
-type SectionId = typeof SECTIONS[number]['id']
+type TabId = typeof TABS[number]['id']
 
 export function FinancesView() {
   const params = useSearchParams()
-  // ?tab=invoices|transactions auto-opens that modal on load; anything else
-  // (incl. no param) leaves both closed.
-  const initial: SectionId | null = params.get('tab') === 'invoices'
-    ? 'invoices'
-    : params.get('tab') === 'transactions'
-      ? 'transactions'
-      : null
-  const [openSection, setOpenSection] = useState<SectionId | null>(initial)
+  const initial = (params.get('tab') === 'transactions' ? 'transactions' : 'invoices') as TabId
+  const [tab, setTab] = useState<TabId>(initial)
 
-  function open(id: SectionId) {
-    setOpenSection(id)
+  function select(id: TabId) {
+    setTab(id)
     if (typeof window !== 'undefined') history.replaceState(null, '', `?tab=${id}`)
-  }
-  function close() {
-    setOpenSection(null)
-    if (typeof window !== 'undefined') history.replaceState(null, '', window.location.pathname)
   }
 
   return (
     <div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {SECTIONS.map(s => {
-          const Icon = s.icon
+      <div className="flex gap-1 border-b border-slate-200 mb-6">
+        {TABS.map(t => {
+          const Icon = t.icon
+          const active = tab === t.id
           return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => open(s.id)}
-              className="group flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left transition-colors hover:border-accent/40 hover:bg-slate-50/70"
-            >
-              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
-                <Icon className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center justify-between gap-2">
-                  <span className="text-base font-semibold text-slate-900">{s.label}</span>
-                  <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300 transition-colors group-hover:text-accent" />
-                </span>
-                <span className="mt-0.5 block text-sm text-slate-500">{s.blurb}</span>
-              </span>
+            <button key={t.id} type="button" onClick={() => select(t.id)} className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${active ? 'text-accent' : 'text-slate-500 hover:text-slate-700'}`}>
+              <Icon className="h-4 w-4" /> {t.label}
+              {active && <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-accent rounded-full" />}
             </button>
           )
         })}
       </div>
-
-      {openSection === 'transactions' && (
-        <ListModal title="Transactions" onClose={close}><TransactionsTab /></ListModal>
-      )}
-      {openSection === 'invoices' && (
-        <ListModal title="Invoices" onClose={close}><InvoicesTab /></ListModal>
-      )}
+      <div className={tab === 'transactions' ? '' : 'hidden'}><TransactionsTab /></div>
+      <div className={tab === 'invoices' ? '' : 'hidden'}><InvoicesTab /></div>
     </div>
   )
 }
