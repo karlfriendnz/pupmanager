@@ -99,7 +99,7 @@ const PROMOS: Record<string, Cfg> = {
   todos: {
     title: 'Nothing slips',
     description: 'A quick to-do list and brain-dump on your dashboard.',
-    image: { src: '/promo-todos-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
+    image: { src: '/promo-todos-v2.jpg', objectPosition: 'center 38%' },
     steps: [
       { icon: <ListChecks className={I} />, label: 'Jot to-dos' },
       { icon: <NotebookPen className={I} />, label: 'Brain-dump' },
