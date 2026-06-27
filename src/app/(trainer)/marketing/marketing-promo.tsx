@@ -23,7 +23,7 @@ function priceLabel(currency: string): string {
 function marketingConfig(currency: string): Omit<FeaturePromoProps, 'cta' | 'onSkip'> {
   return {
     title: 'Reach more clients 📣',
-    description: 'Email your clients from your own brand — with open & click tracking.',
+    description: 'Email all your clients in one go.',
     image: { src: '/marketing-promo-v1.jpg', objectPosition: 'center 40%', translateX: '30%' },
     badge: CHIP,
     steps: [
