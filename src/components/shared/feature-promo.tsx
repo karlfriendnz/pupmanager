@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, type ReactNode } from 'react'
-import { Check } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 
 // Reusable "feature promo" modal — the polished add-on upsell shell first built
 // for the connect-Stripe nudge, generalised so every add-on can reuse it:
@@ -69,7 +69,7 @@ export type FeaturePromoProps = {
   cta: ReactNode
   /** Optional small trust line under the CTA. */
   trust?: ReactNode
-  skipLabel?: string
+  /** Called when the close (X) is clicked. */
   onSkip: () => void
 }
 
@@ -83,11 +83,18 @@ export function FeaturePromoCard({
   priceNote,
   cta,
   trust,
-  skipLabel = 'Maybe later',
   onSkip,
 }: FeaturePromoProps) {
   return (
-    <div className="overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5">
+    <div className="relative overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5">
+      <button
+        type="button"
+        onClick={onSkip}
+        aria-label="Close"
+        className="absolute right-3.5 top-3.5 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-black/15 text-white transition hover:bg-black/30"
+      >
+        <X className="h-5 w-5" />
+      </button>
       {/* Branded header — photo full-bleeds across the box, teal overlay solid
           on the left (behind the copy) → clear on the right. */}
       <div
@@ -134,13 +141,6 @@ export function FeaturePromoCard({
         <div className="mt-6 flex flex-col items-center gap-3">
           {cta}
           {trust && <div className="flex items-center gap-1.5 text-[11px] text-slate-400">{trust}</div>}
-          <button
-            type="button"
-            onClick={onSkip}
-            className="mt-1 text-sm font-medium text-slate-400 hover:text-slate-600"
-          >
-            {skipLabel}
-          </button>
         </div>
       </div>
     </div>
