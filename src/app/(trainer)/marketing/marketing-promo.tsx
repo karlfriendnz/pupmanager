@@ -3,6 +3,7 @@
 import { Users, PenLine, Send, LineChart } from 'lucide-react'
 import { FeaturePromoCard, FeaturePromoModal, PROMO_ICON, type FeaturePromoProps } from '@/components/shared/feature-promo'
 import { EnableAddonButton } from '@/components/shared/enable-addon-button'
+import { addonById, currencyMeta, isCurrencyCode } from '@/lib/pricing'
 
 // Floating "email opened" chip over the photo (echoes the tracking benefit).
 const CHIP = (
@@ -12,27 +13,38 @@ const CHIP = (
   </div>
 )
 
-const MARKETING: Omit<FeaturePromoProps, 'cta' | 'onSkip'> = {
-  title: 'Reach more clients 📣',
-  description: 'Email your clients from your own brand — with open & click tracking.',
-  image: { src: '/marketing-promo-v1.jpg', objectPosition: 'center 40%', translateX: '30%' },
-  badge: CHIP,
-  steps: [
-    { icon: <Users className={PROMO_ICON} />, label: 'Pick clients' },
-    { icon: <PenLine className={PROMO_ICON} />, label: 'Compose' },
-    { icon: <Send className={PROMO_ICON} />, label: 'Send' },
-    { icon: <LineChart className={PROMO_ICON} />, label: 'Track opens' },
-  ],
-  benefits: ['Your brand', 'Open & click tracking', 'From your domain'],
-  trust: <span>Billed monthly · cancel anytime</span>,
+function priceLabel(currency: string): string {
+  const cur = isCurrencyCode(currency) ? currency : 'NZD'
+  const a = addonById('marketing')
+  const sym = currencyMeta(cur).symbol
+  return a ? `${sym}${a.price[cur]}/mo` : ''
+}
+
+function marketingConfig(currency: string): Omit<FeaturePromoProps, 'cta' | 'onSkip'> {
+  return {
+    title: 'Reach more clients 📣',
+    description: 'Email your clients from your own brand — with open & click tracking.',
+    image: { src: '/marketing-promo-v1.jpg', objectPosition: 'center 40%', translateX: '30%' },
+    badge: CHIP,
+    steps: [
+      { icon: <Users className={PROMO_ICON} />, label: 'Pick clients' },
+      { icon: <PenLine className={PROMO_ICON} />, label: 'Compose' },
+      { icon: <Send className={PROMO_ICON} />, label: 'Send' },
+      { icon: <LineChart className={PROMO_ICON} />, label: 'Track opens' },
+    ],
+    benefits: ['Your brand', 'Open & click tracking', 'From your domain'],
+    priceNote: (
+      <>Just <span className="font-semibold text-slate-700">{priceLabel(currency)}</span> · cancel anytime.</>
+    ),
+  }
 }
 
 const cta = <EnableAddonButton itemId="marketing" label="Turn on Marketing" />
 
-export function MarketingPromoCard({ onSkip }: { onSkip: () => void }) {
-  return <FeaturePromoCard {...MARKETING} cta={cta} onSkip={onSkip} />
+export function MarketingPromoCard({ onSkip, currency = 'NZD' }: { onSkip: () => void; currency?: string }) {
+  return <FeaturePromoCard {...marketingConfig(currency)} cta={cta} onSkip={onSkip} />
 }
 
-export function MarketingPromoModal({ onClose }: { onClose: () => void }) {
-  return <FeaturePromoModal {...MARKETING} cta={cta} onSkip={onClose} onClose={onClose} />
+export function MarketingPromoModal({ onClose, currency = 'NZD' }: { onClose: () => void; currency?: string }) {
+  return <FeaturePromoModal {...marketingConfig(currency)} cta={cta} onSkip={onClose} onClose={onClose} />
 }
