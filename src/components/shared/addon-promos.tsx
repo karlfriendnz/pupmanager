@@ -52,7 +52,7 @@ const PROMOS: Record<string, Cfg> = {
   achievements: {
     title: 'Celebrate every win',
     description: 'Branded badges your clients earn and show off.',
-    image: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%' },
+    image: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%', translateX: '28%' },
     steps: [
       { icon: <Trophy className={I} />, label: 'Earn badges' },
       { icon: <Share2 className={I} />, label: 'Clients share' },
