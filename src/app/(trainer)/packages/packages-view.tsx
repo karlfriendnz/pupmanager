@@ -54,11 +54,13 @@ function packageIconClasses(color: PackageColor | null): string {
 export function PackagesView({
   initialPackages,
   connectName = null,
+  currency = 'NZD',
 }: {
   initialPackages: PkgRow[]
   // Set (to the new package's name) when we've just created a priced package
   // and want to pop the connect-Stripe modal over the list.
   connectName?: string | null
+  currency?: string
 }) {
   const router = useRouter()
   const [packages, setPackages] = useState(initialPackages)
@@ -136,7 +138,7 @@ export function PackagesView({
       </div>
 
       {connectName && (
-        <ConnectPaymentsModal onClose={() => router.replace('/packages')} />
+        <ConnectPaymentsModal onClose={() => router.replace('/packages')} currency={currency} />
       )}
     </>
   )

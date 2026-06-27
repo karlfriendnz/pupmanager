@@ -2,6 +2,7 @@
 
 import { ShieldCheck } from 'lucide-react'
 import { FeaturePromoCard, FeaturePromoModal, PROMO_ICON, type FeaturePromoProps } from '@/components/shared/feature-promo'
+import { currencyMeta, isCurrencyCode } from '@/lib/pricing'
 import { ConnectButton } from './payments-actions'
 
 // Payment-flow step icons.
@@ -50,28 +51,50 @@ const TRUST = (
   </>
 )
 
+// Per-payment processing fee by payout currency. Mirrors the marketing pricing
+// page (and lib/connect SURCHARGE_RATES) so the modal quotes the real cost.
+const FEES: Record<string, { pct: string; fixed: number }> = {
+  NZD: { pct: '3.5%', fixed: 30 },
+  AUD: { pct: '2.7%', fixed: 30 },
+  GBP: { pct: '2.5%', fixed: 20 },
+  CAD: { pct: '3.9%', fixed: 30 },
+  USD: { pct: '3.9%', fixed: 30 },
+  ZAR: { pct: '3.9%', fixed: 50 },
+}
+function feeRate(currency: string): string {
+  const cur = isCurrencyCode(currency) ? currency : 'NZD'
+  const f = FEES[cur] ?? FEES.NZD
+  const sym = currencyMeta(cur).symbol
+  return `${f.pct} + ${sym}${(f.fixed / 100).toFixed(2)}`
+}
+
 // Everything except the CTA (which differs between page + modal use).
-const PAYMENTS: Omit<FeaturePromoProps, 'cta' | 'onSkip'> = {
-  title: 'Start getting paid 💸',
-  description: 'Let clients pay you in-app — money straight to your bank.',
-  image: { src: '/get-paid-hero-v1.jpg', objectPosition: 'center 45%', translateX: '30%' },
-  badge: COIN,
-  steps: [
-    { icon: <IconPerson />, label: 'Client signs up' },
-    { icon: <IconDoc />, label: 'Invoice sent' },
-    { icon: <IconCard />, label: 'Client pays' },
-    { icon: <IconDollar />, label: 'You get paid' },
-  ],
-  benefits: ['Secure card payments', 'Money to your bank', 'No monthly fees'],
-  trust: TRUST,
+function paymentsConfig(currency: string): Omit<FeaturePromoProps, 'cta' | 'onSkip'> {
+  return {
+    title: 'Start getting paid 💸',
+    description: 'Let clients pay you in-app — money straight to your bank.',
+    image: { src: '/get-paid-hero-v1.jpg', objectPosition: 'center 45%', translateX: '30%' },
+    badge: COIN,
+    steps: [
+      { icon: <IconPerson />, label: 'Client signs up' },
+      { icon: <IconDoc />, label: 'Invoice sent' },
+      { icon: <IconCard />, label: 'Client pays' },
+      { icon: <IconDollar />, label: 'You get paid' },
+    ],
+    benefits: ['Secure card payments', 'Money straight to your bank'],
+    priceNote: (
+      <>A <span className="font-semibold text-slate-700">{feeRate(currency)}</span> card fee is added on top of each invoice — your client pays it, so you keep the full amount. No monthly or setup fees.</>
+    ),
+    trust: TRUST,
+  }
 }
 
 const cta = <ConnectButton label="Connect Stripe & get paid" size="lg" fullWidth />
 
-export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
-  return <FeaturePromoCard {...PAYMENTS} cta={cta} onSkip={onSkip} />
+export function ConnectPaymentsPrompt({ onSkip, currency = 'NZD' }: { onSkip: () => void; currency?: string }) {
+  return <FeaturePromoCard {...paymentsConfig(currency)} cta={cta} onSkip={onSkip} />
 }
 
-export function ConnectPaymentsModal({ onClose }: { onClose: () => void }) {
-  return <FeaturePromoModal {...PAYMENTS} cta={cta} onSkip={onClose} onClose={onClose} />
+export function ConnectPaymentsModal({ onClose, currency = 'NZD' }: { onClose: () => void; currency?: string }) {
+  return <FeaturePromoModal {...paymentsConfig(currency)} cta={cta} onSkip={onClose} onClose={onClose} />
 }

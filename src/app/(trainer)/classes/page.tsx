@@ -33,9 +33,10 @@ export default async function ClassesPage() {
     }),
     prisma.trainerProfile.findUnique({
       where: { id: trainerId },
-      select: { connectChargesEnabled: true, sandboxBilling: true },
+      select: { connectChargesEnabled: true, sandboxBilling: true, payoutCurrency: true },
     }),
   ])
+  const currency = (trainer?.payoutCurrency ?? 'NZD').toUpperCase()
 
   // Nudge Stripe Connect after a priced class is created — only when payments
   // aren't already live AND the trainer can actually onboard now (Connect
@@ -67,6 +68,7 @@ export default async function ClassesPage() {
         isOwner: m.role === 'OWNER',
       }))}
       promptConnect={promptConnect}
+      currency={currency}
     />
   )
 }

@@ -30,7 +30,7 @@ const STATUS_STYLE: Record<RunRow['status'], string> = {
   CANCELLED: 'bg-red-50 text-red-600',
 }
 
-export function ClassesView({ runs, teamMembers = [], promptConnect = false }: { runs: RunRow[]; teamMembers?: TeamMemberOption[]; promptConnect?: boolean }) {
+export function ClassesView({ runs, teamMembers = [], promptConnect = false, currency = 'NZD' }: { runs: RunRow[]; teamMembers?: TeamMemberOption[]; promptConnect?: boolean; currency?: string }) {
   const router = useRouter()
   const [showCreate, setShowCreate] = useState(false)
   // Set (to the new class's name) when a priced class was just created and we
@@ -132,7 +132,7 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false }: {
       )}
 
       {connectName && (
-        <ConnectPaymentsModal onClose={() => setConnectName(null)} />
+        <ConnectPaymentsModal onClose={() => setConnectName(null)} currency={currency} />
       )}
       </div>
     </>

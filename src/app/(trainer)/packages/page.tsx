@@ -19,11 +19,15 @@ export default async function PackagesPage({
 
   const { connect } = await searchParams
 
-  const packages = await prisma.package.findMany({
-    where: { trainerId },
-    orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-    include: { _count: { select: { assignments: true } } },
-  })
+  const [packages, trainer] = await Promise.all([
+    prisma.package.findMany({
+      where: { trainerId },
+      orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+      include: { _count: { select: { assignments: true } } },
+    }),
+    prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { payoutCurrency: true } }),
+  ])
+  const currency = (trainer?.payoutCurrency ?? 'NZD').toUpperCase()
 
   return (
     <PackagesView
@@ -51,6 +55,7 @@ export default async function PackagesPage({
         assignments: p._count.assignments,
       }))}
       connectName={connect ?? null}
+      currency={currency}
     />
   )
 }

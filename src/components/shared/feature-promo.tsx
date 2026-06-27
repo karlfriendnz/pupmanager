@@ -63,6 +63,8 @@ export type FeaturePromoProps = {
   /** Optional "how it works" flow strip. */
   steps?: PromoStep[]
   benefits: string[]
+  /** Optional cost/price line shown under the benefits (e.g. per-payment fee). */
+  priceNote?: ReactNode
   /** The action button — e.g. <ConnectButton/> or <EnableAddonButton/>. */
   cta: ReactNode
   /** Optional small trust line under the CTA. */
@@ -78,6 +80,7 @@ export function FeaturePromoCard({
   badge,
   steps,
   benefits,
+  priceNote,
   cta,
   trust,
   skipLabel = 'Maybe later',
@@ -124,7 +127,11 @@ export function FeaturePromoCard({
           ))}
         </div>
 
-        <div className="mt-7 flex flex-col items-center gap-3">
+        {priceNote && (
+          <p className="mt-4 text-center text-[13px] text-slate-500">{priceNote}</p>
+        )}
+
+        <div className="mt-6 flex flex-col items-center gap-3">
           {cta}
           {trust && <div className="flex items-center gap-1.5 text-[11px] text-slate-400">{trust}</div>}
           <button
