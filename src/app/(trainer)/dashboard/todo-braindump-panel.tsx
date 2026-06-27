@@ -247,7 +247,7 @@ function TodoRow({
         onClick={onToggle}
         aria-label={todo.done ? 'Mark as not done' : 'Mark as done'}
         className={cn(
-          'mt-0.5 grid h-5 w-5 flex-shrink-0 place-items-center rounded-md border-2 transition-all duration-150 active:scale-90',
+          'mt-0.5 grid h-4 w-4 flex-shrink-0 place-items-center rounded-[5px] border transition-all duration-150 active:scale-90',
           todo.done
             ? 'border-transparent bg-gradient-to-br from-[var(--pm-brand-500)] to-[var(--pm-brand-700)] text-white shadow-sm shadow-[var(--pm-brand-600)]/30'
             : 'border-slate-300 bg-white text-[var(--pm-brand-600)] hover:border-[var(--pm-brand-500)] hover:bg-[var(--pm-brand-50)]',
@@ -256,7 +256,7 @@ function TodoRow({
         {/* Ghost check fades in on row hover; solid white once done. */}
         <Check
           className={cn(
-            'h-3.5 w-3.5 transition-all duration-150',
+            'h-3 w-3 transition-all duration-150',
             todo.done ? 'scale-100 opacity-100' : 'scale-75 opacity-0 group-hover:opacity-40',
           )}
           strokeWidth={3.5}
