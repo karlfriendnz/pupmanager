@@ -6,6 +6,7 @@ import { getClientAccess } from '@/lib/trainer-access'
 import { routeDistance } from '@/lib/routing'
 import { formatDate } from '@/lib/utils'
 import { ClientProfileTabs } from './client-profile-tabs'
+import { ClientSummaryCard } from './client-summary-card'
 import { ClientActionsMenu } from './client-actions-menu'
 import { AssignedTrainerControl } from './assigned-trainer-control'
 import { PageHeader } from '@/components/shared/page-header'
@@ -242,7 +243,25 @@ export default async function ClientDetailPage({
         />
       )}
 
-      {/* Tabbed content */}
+      {/* Summary sidebar + tabbed content. On desktop the summary sticks to
+          the left while the trainer scrolls the tabs; on mobile it stacks on
+          top so the dog photo + key facts are the first thing they see. */}
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <aside className="lg:w-72 lg:flex-shrink-0 xl:w-80 lg:sticky lg:top-8">
+        <ClientSummaryCard
+          name={client.user.name ?? client.user.email ?? 'Client'}
+          status={client.status}
+          dog={allDogs[0] ? { name: allDogs[0].name, breed: allDogs[0].breed, photoUrl: allDogs[0].photoUrl } : null}
+          dogCount={allDogs.length}
+          phone={client.phone}
+          email={client.user.email}
+          clientSince={formatDate(client.user.createdAt)}
+          address={client.addressLine}
+          distanceFromBase={distanceFromBase}
+          sessionCount={trainingSessions.length}
+        />
+      </aside>
+      <div className="min-w-0 flex-1">
       <ClientProfileTabs
         clientId={client.id}
         canEdit={canEdit}
@@ -323,6 +342,8 @@ export default async function ClientDetailPage({
         }}
         status={client.status}
       />
+      </div>
+      </div>
       </div>
     </>
   )
