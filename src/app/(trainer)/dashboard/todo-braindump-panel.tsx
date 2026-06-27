@@ -247,13 +247,20 @@ function TodoRow({
         onClick={onToggle}
         aria-label={todo.done ? 'Mark as not done' : 'Mark as done'}
         className={cn(
-          'mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border transition-colors',
+          'mt-0.5 grid h-6 w-6 flex-shrink-0 place-items-center rounded-lg border-2 transition-all duration-150 active:scale-90',
           todo.done
-            ? 'bg-[var(--pm-brand-600)] border-[var(--pm-brand-600)] text-white'
-            : 'border-slate-300 hover:border-[var(--pm-brand-500)]',
+            ? 'border-transparent bg-gradient-to-br from-[var(--pm-brand-500)] to-[var(--pm-brand-700)] text-white shadow-sm shadow-[var(--pm-brand-600)]/30'
+            : 'border-slate-300 bg-white text-[var(--pm-brand-600)] hover:border-[var(--pm-brand-500)] hover:bg-[var(--pm-brand-50)]',
         )}
       >
-        {todo.done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+        {/* Ghost check fades in on row hover; solid white once done. */}
+        <Check
+          className={cn(
+            'h-3.5 w-3.5 transition-all duration-150',
+            todo.done ? 'scale-100 opacity-100' : 'scale-75 opacity-0 group-hover:opacity-40',
+          )}
+          strokeWidth={3.5}
+        />
       </button>
 
       <div className="min-w-0 flex-1">
