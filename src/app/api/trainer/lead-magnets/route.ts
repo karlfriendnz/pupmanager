@@ -52,26 +52,32 @@ export async function POST(req: Request) {
   const d = parsed.data
 
   const slug = await uniqueLeadMagnetSlug(ctx.companyId, d.title)
-  const magnet = await prisma.leadMagnet.create({
-    data: {
-      trainerId: ctx.companyId,
-      slug,
-      title: d.title,
-      description: d.description ?? null,
-      headline: d.headline ?? null,
-      intro: d.intro ?? null,
-      layout: d.layout,
-      imageUrl: d.imageUrl ?? null,
-      fileUrl: d.fileUrl,
-      fileName: d.fileName,
-      fileSizeBytes: d.fileSizeBytes ?? null,
-      consentText: DEFAULT_CONSENT_TEXT,
-      emailSubject: d.emailSubject ?? null,
-      emailIntro: d.emailIntro ?? null,
-      thankYouTitle: d.thankYouTitle ?? null,
-      thankYouMessage: d.thankYouMessage ?? null,
-      isActive: d.isActive,
-    },
-  })
-  return NextResponse.json({ leadMagnet: magnet }, { status: 201 })
+  try {
+    const magnet = await prisma.leadMagnet.create({
+      data: {
+        trainerId: ctx.companyId,
+        slug,
+        title: d.title,
+        description: d.description ?? null,
+        headline: d.headline ?? null,
+        intro: d.intro ?? null,
+        layout: d.layout,
+        imageUrl: d.imageUrl ?? null,
+        fileUrl: d.fileUrl,
+        fileName: d.fileName,
+        fileSizeBytes: d.fileSizeBytes ?? null,
+        consentText: DEFAULT_CONSENT_TEXT,
+        emailSubject: d.emailSubject ?? null,
+        emailIntro: d.emailIntro ?? null,
+        thankYouTitle: d.thankYouTitle ?? null,
+        thankYouMessage: d.thankYouMessage ?? null,
+        isActive: d.isActive,
+      },
+    })
+    return NextResponse.json({ leadMagnet: magnet }, { status: 201 })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not save'
+    console.error('[lead-magnets create]', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }

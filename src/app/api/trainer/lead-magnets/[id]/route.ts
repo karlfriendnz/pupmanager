@@ -41,11 +41,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const parsed = patchSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const updated = await prisma.leadMagnet.update({
-    where: { id: res.magnetId },
-    data: parsed.data,
-  })
-  return NextResponse.json({ leadMagnet: updated })
+  try {
+    const updated = await prisma.leadMagnet.update({
+      where: { id: res.magnetId },
+      data: parsed.data,
+    })
+    return NextResponse.json({ leadMagnet: updated })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not save'
+    console.error('[lead-magnets update]', message)
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
