@@ -148,14 +148,14 @@ function ctaFor(addonId: string): ReactNode {
   return <EnableAddonButton itemId={addonId} label={`Turn on ${def?.name ?? 'this add-on'}`} />
 }
 
-export function AddonPromoCard({ addonId, currency = 'NZD', onClose }: { addonId: string; currency?: string; onClose: () => void }) {
+export function AddonPromoCard({ addonId, currency = 'NZD', onClose, cta }: { addonId: string; currency?: string; onClose: () => void; cta?: ReactNode }) {
   const cfg = PROMOS[addonId]
   if (!cfg) return null
-  return <FeaturePromoCard {...cfg} priceNote={priceNote(addonId, currency)} cta={ctaFor(addonId)} onSkip={onClose} />
+  return <FeaturePromoCard {...cfg} priceNote={priceNote(addonId, currency)} cta={cta ?? ctaFor(addonId)} onSkip={onClose} />
 }
 
-export function AddonPromoModal({ addonId, currency = 'NZD', onClose }: { addonId: string; currency?: string; onClose: () => void }) {
+export function AddonPromoModal({ addonId, currency = 'NZD', onClose, cta }: { addonId: string; currency?: string; onClose: () => void; cta?: ReactNode }) {
   const cfg = PROMOS[addonId]
   if (!cfg) return null
-  return <FeaturePromoModal {...cfg} priceNote={priceNote(addonId, currency)} cta={ctaFor(addonId)} onSkip={onClose} onClose={onClose} />
+  return <FeaturePromoModal {...cfg} priceNote={priceNote(addonId, currency)} cta={cta ?? ctaFor(addonId)} onSkip={onClose} onClose={onClose} />
 }
