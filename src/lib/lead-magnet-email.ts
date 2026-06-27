@@ -18,6 +18,9 @@ export interface BuildLeadMagnetEmailInput {
   magnetTitle: string
   downloadUrl: string
   unsubscribeUrl: string
+  // Trainer-customisable overrides; null/empty falls back to the default copy.
+  emailSubject?: string | null
+  emailIntro?: string | null
 }
 
 const DEFAULT_ACCENT = '#0d9488'
@@ -29,6 +32,8 @@ export function buildLeadMagnetEmail({
   magnetTitle,
   downloadUrl,
   unsubscribeUrl,
+  emailSubject,
+  emailIntro,
 }: BuildLeadMagnetEmailInput): { subject: string; html: string; text: string } {
   const accent = trainer.emailAccentColor && VALID_HEX.test(trainer.emailAccentColor) ? trainer.emailAccentColor : DEFAULT_ACCENT
   const business = escapeHtml(trainer.businessName)
@@ -36,7 +41,12 @@ export function buildLeadMagnetEmail({
   const initial = escapeHtml(trainer.businessName.charAt(0).toUpperCase())
   const name = subscriberName?.trim() || 'there'
   const title = escapeHtml(magnetTitle)
-  const subject = `Your free download: ${magnetTitle}`
+  const subject = emailSubject?.trim() || `Your free download: ${magnetTitle}`
+  // Custom intro (plain text → escaped, newlines become <br>), or the default.
+  const introHtml = emailIntro?.trim()
+    ? escapeHtml(emailIntro.trim()).replace(/\n/g, '<br />')
+    : `Thanks for signing up — here's your copy of <strong>${title}</strong>. Tap the button below to download it.`
+  const introText = emailIntro?.trim() || `Thanks for signing up — here's your copy of ${magnetTitle}.`
 
   const html = `<!doctype html>
 <html lang="en">
@@ -55,7 +65,7 @@ export function buildLeadMagnetEmail({
           </div>
           <div style="padding:8px 32px 8px;">
             <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#0f172a;">Hi ${escapeHtml(name)},</p>
-            <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#334155;">Thanks for signing up — here's your copy of <strong>${title}</strong>. Tap the button below to download it.</p>
+            <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#334155;">${introHtml}</p>
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr><td align="center" style="padding:4px 0 8px;">
               <a href="${escapeHtml(downloadUrl)}" style="display:inline-block;background:${accent};color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 28px;border-radius:12px;">Download ${title}</a>
             </td></tr></table>
@@ -78,7 +88,7 @@ export function buildLeadMagnetEmail({
 
   const text = `Hi ${name},
 
-Thanks for signing up — here's your copy of ${magnetTitle}.
+${introText}
 
 Download it here: ${downloadUrl}
 

@@ -30,7 +30,7 @@ export async function POST(
     select: {
       id: true, businessName: true, logoUrl: true, emailAccentColor: true,
       user: { select: { name: true, email: true } },
-      leadMagnets: { where: { slug: magnetSlug, isActive: true }, select: { id: true, title: true, fileUrl: true, consentText: true } },
+      leadMagnets: { where: { slug: magnetSlug, isActive: true }, select: { id: true, title: true, fileUrl: true, consentText: true, emailSubject: true, emailIntro: true } },
     },
   })
   const magnet = trainer?.leadMagnets[0]
@@ -81,6 +81,8 @@ export async function POST(
     magnetTitle: magnet.title,
     downloadUrl: magnet.fileUrl,
     unsubscribeUrl: subscriberUnsubscribeUrl(subscriber.id),
+    emailSubject: magnet.emailSubject,
+    emailIntro: magnet.emailIntro,
   })
   try {
     await sendEmail({

@@ -15,15 +15,24 @@ interface Magnet {
   description: string | null
   headline: string | null
   intro: string | null
+  layout: string
   fileUrl: string
   fileName: string
   fileSizeBytes: number | null
-  consentText: string
+  emailSubject: string | null
+  emailIntro: string | null
   thankYouTitle: string | null
   thankYouMessage: string | null
   isActive: boolean
   subscriberCount: number
 }
+
+const LAYOUTS: { id: string; name: string; hint: string }[] = [
+  { id: 'classic', name: 'Classic', hint: 'Logo + centred form' },
+  { id: 'split', name: 'Split', hint: 'Headline panel beside form' },
+  { id: 'spotlight', name: 'Spotlight', hint: 'Bold colour background' },
+  { id: 'minimal', name: 'Minimal', hint: 'Big headline, no frills' },
+]
 
 interface Subscriber {
   id: string
@@ -185,7 +194,9 @@ function MagnetCard({ magnet: m, path, onEdit, onDelete }: { magnet: Magnet; pat
 function MagnetEditor({ magnet, onClose, onSaved }: { magnet: Magnet | null; onClose: () => void; onSaved: (m: Magnet) => void }) {
   const [title, setTitle] = useState(magnet?.title ?? '')
   const [description, setDescription] = useState(magnet?.description ?? '')
-  const [consentText, setConsentText] = useState(magnet?.consentText ?? 'I agree to receive emails and accept the privacy policy.')
+  const [layout, setLayout] = useState(magnet?.layout ?? 'classic')
+  const [emailSubject, setEmailSubject] = useState(magnet?.emailSubject ?? '')
+  const [emailIntro, setEmailIntro] = useState(magnet?.emailIntro ?? '')
   const [isActive, setIsActive] = useState(magnet?.isActive ?? true)
   const [fileUrl, setFileUrl] = useState(magnet?.fileUrl ?? '')
   const [fileName, setFileName] = useState(magnet?.fileName ?? '')
@@ -217,7 +228,9 @@ function MagnetEditor({ magnet, onClose, onSaved }: { magnet: Magnet | null; onC
       const payload = {
         title: title.trim(),
         description: description.trim() || null,
-        consentText: consentText.trim() || undefined,
+        layout,
+        emailSubject: emailSubject.trim() || null,
+        emailIntro: emailIntro.trim() || null,
         fileUrl, fileName, fileSizeBytes,
         isActive,
       }
@@ -264,8 +277,24 @@ function MagnetEditor({ magnet, onClose, onSaved }: { magnet: Magnet | null; onC
                 </label>
               )}
             </Field>
-            <Field label="Consent text" hint="Shown beside the required tick box.">
-              <textarea value={consentText} onChange={(e) => setConsentText(e.target.value)} rows={2} maxLength={500} className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
+            <Field label="Page layout" hint="How your sign-up page looks.">
+              <div className="grid grid-cols-2 gap-2">
+                {LAYOUTS.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setLayout(l.id)}
+                    className={`rounded-xl border p-3 text-left transition-colors ${layout === l.id ? 'border-[var(--pm-brand-500)] bg-[var(--pm-brand-50)] ring-1 ring-[var(--pm-brand-500)]' : 'border-slate-200 hover:bg-slate-50'}`}
+                  >
+                    <span className="block text-sm font-semibold text-slate-800">{l.name}</span>
+                    <span className="block text-xs text-slate-400">{l.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="Delivery email" hint="Customise the email that sends the download. Leave blank for the default.">
+              <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} placeholder="Subject — e.g. Your free puppy guide 🐾" maxLength={200} className="mb-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
+              <textarea value={emailIntro} onChange={(e) => setEmailIntro(e.target.value)} rows={3} maxLength={4000} placeholder="Message above the download button…" className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
             </Field>
             <label className="flex items-center gap-2.5">
               <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded border-slate-300" />

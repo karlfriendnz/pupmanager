@@ -2234,14 +2234,20 @@ model LeadMagnet {
   // Landing-page copy (fall back to title/description when null).
   headline        String?  @db.Text
   intro           String?  @db.Text
+  // Which landing-page layout the trainer picked: classic | split | spotlight | minimal.
+  layout          String   @default("classic")
   // The download itself — a public Vercel Blob URL (same model as digital
   // products). fileName/size are shown in the UI and the delivery email.
   fileUrl         String
   fileName        String
   fileSizeBytes   Int?
-  // Consent copy shown beside the required checkbox; snapshotted onto each
-  // Subscriber at sign-up time for an audit trail.
+  // Consent copy shown beside the required checkbox. Platform-standard (not
+  // trainer-editable); snapshotted onto each Subscriber for an audit trail.
   consentText     String   @default("I agree to receive emails and accept the privacy policy.") @db.Text
+  // Trainer-customisable delivery email. Null falls back to the default copy
+  // in lead-magnet-email.ts.
+  emailSubject    String?  @db.Text
+  emailIntro      String?  @db.Text
   thankYouTitle   String?  @db.Text
   thankYouMessage String?  @db.Text
   isActive        Boolean  @default(true)
