@@ -3,9 +3,8 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { Sparkles } from 'lucide-react'
-import { Modal } from '@/components/ui/modal'
-import { Button } from '@/components/ui/button'
 import { currencyMeta, type CurrencyCode } from '@/lib/pricing'
+import { AddonPromoModal } from '@/components/shared/addon-promos'
 
 export interface AddonCard {
   id: string
@@ -132,36 +131,7 @@ export function AddonsGrid({
       </div>
 
       {learnMore && (
-        <Modal open onClose={() => setLearnMore(null)} title={learnMore.name}>
-          <div className="space-y-4">
-            <p className="text-sm leading-relaxed" style={{ color: 'var(--pm-ink-700)' }}>
-              {learnMore.details}
-            </p>
-            <div
-              className="flex items-center justify-between rounded-xl px-4 py-3"
-              style={{ backgroundColor: 'var(--pm-ink-50, #f8fafc)' }}
-            >
-              <span className="text-sm" style={{ color: 'var(--pm-ink-600, #475569)' }}>
-                Cost
-              </span>
-              <span className="text-sm font-semibold" style={{ color: 'var(--pm-ink-900)' }}>
-                {learnMore.price != null
-                  ? formatPrice(meta.symbol, learnMore.price, meta.label)
-                  : 'Coming soon'}
-              </span>
-            </div>
-            {learnMore.available && (
-              <Button
-                variant={active[learnMore.id] ? 'secondary' : 'primary'}
-                className="w-full"
-                loading={busy === learnMore.id}
-                onClick={() => toggle(learnMore)}
-              >
-                {active[learnMore.id] ? 'Turn off' : 'Turn on'}
-              </Button>
-            )}
-          </div>
-        </Modal>
+        <AddonPromoModal addonId={learnMore.id} currency={currency} onClose={() => setLearnMore(null)} />
       )}
     </>
   )
