@@ -123,6 +123,7 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
         phone: true,
         logoUrl: true,
         intakeFormPublished: true,
+        connectChargesEnabled: true,
         _count: {
           select: {
             embedForms: { where: { isActive: true } },
@@ -132,6 +133,7 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
             customFields: true,
             trainingSessions: true,
             availabilitySlots: true,
+            bookingPages: true,
           },
         },
       },
@@ -162,7 +164,7 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
     prisma.trainingSession.count({ where: { trainerId, NOT: { client: { isSample: true } } } }),
   ])
 
-  const counts = profileWithCounts?._count ?? { embedForms: 0, sessionForms: 0, packages: 0, clients: 0, customFields: 0, trainingSessions: 0, availabilitySlots: 0 }
+  const counts = profileWithCounts?._count ?? { embedForms: 0, sessionForms: 0, packages: 0, clients: 0, customFields: 0, trainingSessions: 0, availabilitySlots: 0, bookingPages: 0 }
 
   // A step is "demo-only" when it's satisfied purely by sample data: the total
   // (which includes sample rows) is > 0 but the real count is 0. Keyed by step.
@@ -198,6 +200,10 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
     schedule_session: counts.trainingSessions > 0,
     // invite_staff: any non-owner team member has been invited.
     invite_staff: staffCount > 0,
+    // payments: Stripe Connect charges are enabled (onboarding finished).
+    payments: !!profileWithCounts?.connectChargesEnabled,
+    // booking_page: at least one booking page exists.
+    booking_page: counts.bookingPages > 0,
     // show_notes, homework, client_view + download_app have no live signal —
     // they complete on CTA click (see COMPLETE_ON_CTA_CLICK in
     // onboarding-panel.tsx; client_view also via the preview-as exit action).

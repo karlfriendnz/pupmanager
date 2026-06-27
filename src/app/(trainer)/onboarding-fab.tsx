@@ -28,6 +28,8 @@ export const STEP_HINT: Record<string, string> = {
   show_notes: "Take a peek at where you write session notes — click 'Schedule' on the left and open a session.",
   homework: "Set the dog some homework — open a session from 'Schedule' on the left and add a task.",
   invite_client: "Send your first real client a sign-up link. Click 'Clients' on the left.",
+  payments: "Get set up to take payments. Click 'Settings' on the left, then the 'Payments' tab.",
+  booking_page: "Let clients book you online. Click 'Website' on the left to make a booking page.",
   invite_staff: "Got a team? Click 'Settings' on the left, then the 'Team' tab, to invite them.",
   download_app: "Grab PupManager on your phone — open the setup card to scan the QR code.",
   schedule_session: "Drop your first session onto the calendar. Click 'Schedule' on the left.",
@@ -56,6 +58,8 @@ const STEP_ON_PAGE_HINT: Record<string, string> = {
   intake_form: "Have a look through the questions, tweak them, then hit 'Publish' to make the form live.",
   availability: "Pick a day, drag across the hours you can train, then save. Even one day is enough to start.",
   invite_client: "Click 'Create new client' (top right) to add your first client and send their sign-up link.",
+  payments: "Click 'Set up payments' and follow the Stripe steps — your details, then a bank account for payouts.",
+  booking_page: "Click 'New page' to create a booking page, set its name and link, then turn it live.",
   download_app: "Scan the QR code with your phone's camera to install the app.",
   invite_staff: "Click 'Invite' to send a teammate access — pick their role, then send.",
 }
@@ -79,10 +83,10 @@ function subPathHint(pathname: string): string | null {
 }
 
 // Each message is shown when its step *completes*, pointing at the next step
-// in the wizard order:
+// in the wizard order. Tier 1 (Get set up) → tier 2 (Level up):
 //   business_profile → program_package → create_client → schedule_session →
 //   show_notes → homework → client_view → intake_form → availability →
-//   invite_client → download_app → invite_staff → done
+//   invite_client → payments → booking_page → download_app → invite_staff → done
 // Keep this chain in lockstep with the step order in prisma/seed.ts.
 const STEP_TRANSITION: Record<string, string> = {
   business_profile: "Nice work — your business is all set up! Now let's add your first programme — click 'Packages' on the left.",
@@ -94,7 +98,9 @@ const STEP_TRANSITION: Record<string, string> = {
   client_view: "Cool — you've seen the client side! Now customise your intake form. Click 'Settings' on the left, then 'Forms'.",
   intake_form: "Your intake form's ready! Now let's block out when you train. Click 'Schedule' on the left, then 'Hours'.",
   availability: "Nice — your hours are blocked out! Now for the big one: invite your first real client. Click 'Clients' on the left.",
-  invite_client: "Done — your first invite is on its way! Now grab PupManager on your phone — open the setup card to scan the QR code.",
+  invite_client: "Done — your first invite is on its way! Now let's get you paid — set up payments so clients can pay you. Click 'Settings' on the left, then 'Payments'.",
+  payments: "Payments are live — clients can pay you now! Next, make a booking page so they can book you online. Click 'Website' on the left.",
+  booking_page: "Your booking page is ready to share! Now grab PupManager on your phone — open the setup card to scan the QR code.",
   download_app: "App installed! Last thing — got a team? Click 'Settings' on the left, then 'Team', to invite them.",
   invite_staff: "That's everything — you're all set up 🎉",
 }

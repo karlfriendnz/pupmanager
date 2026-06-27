@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Check, MinusCircle, X, ArrowRight, ChevronRight, Clock, MessageSquare, Send, Sparkles, Building2, ClipboardList, Notebook, Package, Eye, Mail, PawPrint, Play, Calendar, UserPlus, NotebookPen, Users, Smartphone, Apple, type LucideIcon } from 'lucide-react'
+import { Check, MinusCircle, X, ArrowRight, ChevronRight, Clock, MessageSquare, Send, Sparkles, Building2, ClipboardList, Notebook, Package, Eye, Mail, PawPrint, Play, Calendar, UserPlus, NotebookPen, Users, Smartphone, Apple, Wallet, Globe, type LucideIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 
 // App-store destinations the download QR codes point at. The Apple URL is
@@ -31,8 +31,37 @@ const STEP_ICON: Record<string, LucideIcon> = {
   client_view: Eye,
   intake_form: ClipboardList,
   invite_client: Mail,
+  payments: Wallet,
+  booking_page: Globe,
   download_app: Smartphone,
   invite_staff: Users,
+}
+
+// The checklist is split into two tiers. Tier 1 ("Get set up") is the core
+// path to a real client using the app; tier 2 ("Level up") is the value /
+// revenue features trainers reach for once they're rolling. Tier is keyed by
+// step key (like STEP_ICON) — presentation only, so admin reordering in the
+// DB never moves a step between tiers. Unlisted keys default to tier 1.
+const STEP_TIER: Record<string, 1 | 2> = {
+  business_profile: 1,
+  program_package: 1,
+  create_client: 1,
+  schedule_session: 1,
+  show_notes: 1,
+  homework: 1,
+  client_view: 1,
+  intake_form: 1,
+  availability: 1,
+  invite_client: 1,
+  payments: 2,
+  booking_page: 2,
+  download_app: 2,
+  invite_staff: 2,
+}
+
+const TIER_META: Record<1 | 2, { title: string; sub: string }> = {
+  1: { title: 'Get set up', sub: 'The essentials — get to your first client using the app.' },
+  2: { title: 'Level up', sub: 'Get paid, take bookings, and grow once you’re rolling.' },
 }
 import { cn } from '@/lib/utils'
 import type { OnboardingState, OnboardingStepView } from '@/lib/onboarding/types'
@@ -392,57 +421,96 @@ function ChecklistWidget({
         </div>
       </div>
 
-      {/* White list holder. On desktop, fill the first column top-to-bottom
-          (steps 1–6) then the second (7–12) via column flow + fixed rows. */}
-      <ul className="grid grid-cols-1 md:grid-cols-2 md:grid-flow-col md:grid-rows-6 gap-x-4 gap-y-0.5 px-3 sm:px-4 py-3">
-        {steps.map(s => (
-          <li key={s.key}>
-            <button
-              type="button"
-              onClick={() => onOpenStep(s.key)}
-              className={cn(
-                'group w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left text-sm transition-colors',
-                'hover:bg-[var(--pm-brand-50)]',
-              )}
-            >
-              <StepIcon status={s.status} n={s.order} />
-              {(() => {
-                const StepLucide = STEP_ICON[s.key] ?? PawPrint
-                return (
-                  <StepLucide
-                    className={cn(
-                      'h-4 w-4 shrink-0 transition-colors',
-                      s.status === 'completed' ? 'text-slate-300' : 'text-slate-400 group-hover:text-[var(--pm-brand-600)]',
-                    )}
-                    strokeWidth={1.75}
-                  />
+      {/* Steps grouped into two tiers. Tier 1 ("Get set up") always shows;
+          tier 2 ("Level up") stays hidden until tier 1 is done (every step
+          completed or skipped), so first-run stays focused and the value /
+          revenue steps land as a fresh goal. The FAB only routes to a tier-2
+          step once tier 1 is finished, so the two stay in sync. */}
+      {(() => {
+        const tier1 = steps.filter(s => (STEP_TIER[s.key] ?? 1) === 1)
+        const tier2 = steps.filter(s => (STEP_TIER[s.key] ?? 1) === 2)
+        const tier1Done = tier1.every(s => s.status === 'completed' || s.status === 'skipped')
+        return (
+          <div className="px-3 sm:px-4 py-3 space-y-4">
+            <TierSection meta={TIER_META[1]} tierSteps={tier1} onOpenStep={onOpenStep} />
+            {tier2.length > 0 && (
+              tier1Done
+                ? <TierSection meta={TIER_META[2]} tierSteps={tier2} onOpenStep={onOpenStep} />
+                : (
+                  <p className="px-2.5 pt-1 text-xs text-slate-400">
+                    ✨ Finish setup to unlock {tier2.length} more ways to level up.
+                  </p>
                 )
-              })()}
-              <span className={cn(
-                'flex-1 truncate font-medium',
-                s.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-700',
-              )}>
-                {s.title}
-              </span>
-              {s.demo && (
-                <span
-                  className="text-[10px] font-medium uppercase tracking-wide text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full shrink-0"
-                  title="Completed with demo data — add your own to make it real"
-                >
-                  Demo data
-                </span>
-              )}
-              {s.status === 'skipped' && (
-                <span className="text-[10px] font-medium uppercase tracking-wide text-amber-600 shrink-0">Skipped</span>
-              )}
-              <ChevronRight
-                className="h-4 w-4 shrink-0 text-[var(--pm-brand-600)] opacity-0 -translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0"
-              />
-            </button>
-          </li>
-        ))}
+            )}
+          </div>
+        )
+      })()}
+    </div>
+  )
+}
+
+function TierSection({ meta, tierSteps, onOpenStep }: {
+  meta: { title: string; sub: string }
+  tierSteps: OnboardingStepView[]
+  onOpenStep: (key: string) => void
+}) {
+  const done = tierSteps.filter(s => s.status === 'completed').length
+  return (
+    <div>
+      <div className="flex items-baseline justify-between px-2.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-brand-700)]">{meta.title}</p>
+        <span className="text-[11px] font-medium text-slate-400 tabular-nums">{done}/{tierSteps.length}</span>
+      </div>
+      <p className="px-2.5 mb-1.5 text-xs text-slate-400">{meta.sub}</p>
+      <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-0.5">
+        {tierSteps.map(s => <StepRow key={s.key} s={s} onOpenStep={onOpenStep} />)}
       </ul>
     </div>
+  )
+}
+
+function StepRow({ s, onOpenStep }: { s: OnboardingStepView; onOpenStep: (key: string) => void }) {
+  const StepLucide = STEP_ICON[s.key] ?? PawPrint
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpenStep(s.key)}
+        className={cn(
+          'group w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left text-sm transition-colors',
+          'hover:bg-[var(--pm-brand-50)]',
+        )}
+      >
+        <StepIcon status={s.status} n={s.order} />
+        <StepLucide
+          className={cn(
+            'h-4 w-4 shrink-0 transition-colors',
+            s.status === 'completed' ? 'text-slate-300' : 'text-slate-400 group-hover:text-[var(--pm-brand-600)]',
+          )}
+          strokeWidth={1.75}
+        />
+        <span className={cn(
+          'flex-1 truncate font-medium',
+          s.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-700',
+        )}>
+          {s.title}
+        </span>
+        {s.demo && (
+          <span
+            className="text-[10px] font-medium uppercase tracking-wide text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full shrink-0"
+            title="Completed with demo data — add your own to make it real"
+          >
+            Demo data
+          </span>
+        )}
+        {s.status === 'skipped' && (
+          <span className="text-[10px] font-medium uppercase tracking-wide text-amber-600 shrink-0">Skipped</span>
+        )}
+        <ChevronRight
+          className="h-4 w-4 shrink-0 text-[var(--pm-brand-600)] opacity-0 -translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0"
+        />
+      </button>
+    </li>
   )
 }
 

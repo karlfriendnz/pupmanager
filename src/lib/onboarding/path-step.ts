@@ -7,7 +7,9 @@
 const STEP_PATH_MATCH: Array<{ pattern: RegExp; key: string }> = [
   { pattern: /^\/settings(\?tab=forms|#forms)/, key: 'intake_form' },
   { pattern: /^\/settings(\?tab=team|#team)/, key: 'invite_staff' },
+  { pattern: /^\/settings(\?tab=payments|#payments)/, key: 'payments' },
   { pattern: /^\/settings(\?tab=notifications|#notifications)/, key: 'business_profile' },
+  { pattern: /^\/website/, key: 'booking_page' },
   { pattern: /^\/forms\/intake/, key: 'intake_form' },
   { pattern: /^\/forms\/embed/, key: 'intake_form' },
   { pattern: /^\/forms\/session/, key: 'intake_form' },
@@ -56,6 +58,8 @@ export const STEP_TO_MENU: Record<string, string> = {
   show_notes: '/schedule',
   homework: '/schedule',
   invite_client: '/clients',
+  payments: '/settings',
+  booking_page: '/website',
   invite_staff: '/settings',
   // download_app opens a QR popup rather than a page; no sidebar item to pulse.
   download_app: '/dashboard',
