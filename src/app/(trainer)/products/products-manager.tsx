@@ -11,6 +11,7 @@ import {
   Package as PackageIcon, FileDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { compressImageFile } from '@/lib/compress-image'
 
 type Kind = 'PHYSICAL' | 'DIGITAL'
 
@@ -215,8 +216,9 @@ function ProductEditor({
     setError(null)
     setUploadingImg(true)
     try {
+      const toSend = await compressImageFile(file)
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', toSend)
       fd.append('kind', 'product')
       const res = await fetch('/api/trainer/branding-image', { method: 'POST', body: fd })
       const body = await res.json().catch(() => ({}))

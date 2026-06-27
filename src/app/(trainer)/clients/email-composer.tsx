@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Mail, X, Send, ArrowLeft, ArrowRight, ShieldAlert, Users, Search, Check, ImagePlus, Trash2, Loader2, Plus, ArrowUp, ArrowDown, Type } from 'lucide-react'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { htmlHasText, emailBodyToHtml } from '@/lib/email-html'
+import { compressImageFile } from '@/lib/compress-image'
 
 type EmailTemplate = { id: string; name: string; category: string | null; subject: string; body: string }
 
@@ -342,8 +343,9 @@ export function EmailComposer({
     setError(null)
     setUploadingId(id)
     try {
+      const toSend = await compressImageFile(file)
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', toSend)
       fd.append('sessionId', 'email')
       const res = await fetch('/api/upload/image', { method: 'POST', body: fd })
       const data = await res.json().catch(() => null)

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { Image as ImageIcon, X, Loader2 } from 'lucide-react'
-import { resizeImageFile } from '@/lib/resize-image'
+import { compressImageFile } from '@/lib/compress-image'
 
 interface UploadContext {
   sessionId?: string
@@ -38,7 +38,7 @@ export function ImageUploadButton({
     for (const file of Array.from(files)) {
       // Downscale large images first — /api/upload/image reads the file via a
       // serverless function whose request body caps at ~4.5 MB.
-      const toSend = await resizeImageFile(file)
+      const toSend = await compressImageFile(file)
       const fd = new FormData()
       fd.append('file', toSend)
       if (context?.sessionId) fd.append('sessionId', context.sessionId)

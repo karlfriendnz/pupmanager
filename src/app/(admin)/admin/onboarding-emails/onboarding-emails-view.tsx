@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { Upload, Trash2, Loader2, Check, Eye, Send } from 'lucide-react'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { emailBodyToHtml } from '@/lib/email-html'
+import { compressImageFile } from '@/lib/compress-image'
 
 export type OnboardingEmailItem = {
   id: string
@@ -189,7 +190,8 @@ export function OnboardingEmailsView({ emails }: { emails: OnboardingEmailItem[]
     setUploading(true)
     const qs = slot === 2 ? '?slot=2' : ''
     try {
-      const fd = new FormData(); fd.append('file', file)
+      const toSend = await compressImageFile(file)
+      const fd = new FormData(); fd.append('file', toSend)
       const res = await fetch(`/api/admin/onboarding-emails/${selected!.id}/image${qs}`, { method: 'POST', body: fd })
       if (!res.ok) throw new Error()
       const { url } = await res.json()

@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BaseLocationSetting } from './base-location-setting'
+import { compressImageFile } from '@/lib/compress-image'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -97,8 +98,9 @@ export function TrainerSettingsForm({
     const setUploading = kind === 'logo' ? setUploadingLogo : setUploadingBg
     setUploading(true)
     try {
+      const toSend = await compressImageFile(file)
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', toSend)
       fd.append('kind', kind)
       const res = await fetch('/api/trainer/branding-image', { method: 'POST', body: fd })
       const body = await res.json().catch(() => ({}))

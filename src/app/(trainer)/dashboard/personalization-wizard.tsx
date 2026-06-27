@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Loader2, Upload, ImageIcon, ArrowRight, ArrowLeft, Sparkles, PawPrint, Wand2, ChevronLeft, ChevronRight, FlaskConical } from 'lucide-react'
 import { BrandPreview } from '@/components/brand-preview'
 import { extractLogoColors, type LogoPalette } from '@/lib/logo-colors'
+import { compressImageFile } from '@/lib/compress-image'
 import { ADDONS, currencyMeta, type CurrencyCode } from '@/lib/pricing'
 
 // Drop in the real welcome video here (an MP4 URL or an embed). Until then the
@@ -187,8 +188,9 @@ export function PersonalizationWizard({
     setUploadError(null)
     setUploading(true)
     try {
+      const toSend = await compressImageFile(file)
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', toSend)
       fd.append('kind', 'logo')
       const res = await fetch('/api/trainer/branding-image', { method: 'POST', body: fd })
       const body = await res.json().catch(() => ({}))

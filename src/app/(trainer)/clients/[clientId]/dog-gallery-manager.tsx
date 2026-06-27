@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Trash2, Plus, Play, Loader2 } from 'lucide-react'
+import { compressImageFile } from '@/lib/compress-image'
 
 interface Media { id: string; kind: 'IMAGE' | 'VIDEO'; url: string; thumbnailUrl: string | null; caption: string | null; order: number }
 
@@ -27,8 +28,9 @@ export function DogGalleryManager({ dogId }: { dogId: string }) {
     if (!file) return
     setUploading(true)
     try {
+      const toSend = await compressImageFile(file)
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', toSend)
       const up = await fetch('/api/upload/image', { method: 'POST', body: fd })
       if (!up.ok) throw new Error('upload failed')
       const { url } = await up.json()

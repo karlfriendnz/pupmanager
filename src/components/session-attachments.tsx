@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { upload } from '@vercel/blob/client'
-import imageCompression from 'browser-image-compression'
+import { compressImageFile } from '@/lib/compress-image'
 import { Camera, Video, Trash2, Loader2, ImageIcon, Play, AlertCircle } from 'lucide-react'
 import { clientLog } from '@/lib/client-log'
 
@@ -181,12 +181,8 @@ export function SessionAttachments({ sessionId, initialAttachments }: Props) {
     }
     // Compress in JS before upload — invisible to the trainer, brings
     // 12 MP iPhone photos (~5 MB) down to ~1 MB and resizes to 2048px.
-    const compressed = await imageCompression(file, {
-      maxSizeMB: 2,
-      maxWidthOrHeight: 2048,
-      useWebWorker: true,
-      fileType: 'image/jpeg',
-    })
+    // Shared helper: same settings everywhere images are uploaded.
+    const compressed = await compressImageFile(file)
     const blob = await upload(safeName(file.name, 'jpg'), compressed, {
       access: 'public',
       handleUploadUrl: `/api/sessions/${sessionId}/attachments/upload`,

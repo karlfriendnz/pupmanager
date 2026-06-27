@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import { ImagePlus, Loader2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { resizeImageFile } from '@/lib/resize-image'
+import { compressImageFile } from '@/lib/compress-image'
 
 interface Props {
   dogId: string | null      // null = unsaved dog; UI is disabled
@@ -28,7 +28,7 @@ export function DogPhotoUpload({ dogId, dogName, initialPhotoUrl, onChange }: Pr
     try {
       // Downscale large phone photos client-side — the server route reads the
       // file through a serverless function whose request body caps at ~4.5 MB.
-      const toSend = await resizeImageFile(file)
+      const toSend = await compressImageFile(file)
       const fd = new FormData()
       fd.append('file', toSend)
       const res = await fetch(`/api/dogs/${dogId}/photo`, { method: 'POST', body: fd })
