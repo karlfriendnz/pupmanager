@@ -90,7 +90,10 @@ test.describe('timesheets — owner UAT happy path', () => {
 test.describe('timesheets — empty-sheet finalise guard', () => {
   test('cannot finalise a timesheet with no entries', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    const tsRes = await page.request.post('/api/timesheets', { data: { title: 'Empty' } })
+    // Pin to its own past week. Timesheets are one-per-(user, week): POSTing the
+    // current week would reuse the happy-path's "UAT week" sheet (which has an
+    // entry), so this must use a distinct, untouched week to stay empty.
+    const tsRes = await page.request.post('/api/timesheets', { data: { title: 'Empty', weekStart: '2026-01-05' } })
     const { timesheet } = await tsRes.json()
     const res = await page.request.post(`/api/timesheets/${timesheet.id}/finalise`)
     expect(res.status()).toBe(400)
@@ -115,9 +118,11 @@ test.describe('time-rates — owner-only management', () => {
 
 test.describe('timesheets — cross-tenant (Owner B attacks Business A)', () => {
   test('Owner B cannot read, edit, finalise or fetch the PDF of A’s timesheet', async ({ page, browser }) => {
-    // Owner A creates a private timesheet.
+    // Owner A creates a private timesheet. Pin to its own past week so this
+    // doesn't reuse the happy-path's current-week sheet (one sheet per week);
+    // otherwise the title assertion below would see "UAT week", not "A private".
     await login(page, SEED.owner.email, SEED.owner.password)
-    const { timesheet } = await (await page.request.post('/api/timesheets', { data: { title: 'A private' } })).json()
+    const { timesheet } = await (await page.request.post('/api/timesheets', { data: { title: 'A private', weekStart: '2026-01-12' } })).json()
     const aId = timesheet.id
     expect(aId).toBeTruthy()
 
