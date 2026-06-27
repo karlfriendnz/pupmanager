@@ -256,7 +256,7 @@ function TodoRow({
         {/* Ghost check fades in on row hover; solid white once done. */}
         <Check
           className={cn(
-            'h-2.5 w-2.5 transition-all duration-150',
+            'h-3 w-3 transition-all duration-150',
             todo.done ? 'scale-100 opacity-100' : 'scale-75 opacity-0 group-hover:opacity-40',
           )}
           strokeWidth={3.5}
