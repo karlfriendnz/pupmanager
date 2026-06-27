@@ -132,11 +132,7 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false }: {
       )}
 
       {connectName && (
-        <ConnectPaymentsModal
-          title="Class created 🎉"
-          description={`“${connectName}” has a price. Connect your Stripe account so clients can pay for it right inside PupManager — secure card payments, paid straight to your bank.`}
-          onClose={() => setConnectName(null)}
-        />
+        <ConnectPaymentsModal onClose={() => setConnectName(null)} />
       )}
       </div>
     </>

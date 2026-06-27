@@ -136,11 +136,7 @@ export function PackagesView({
       </div>
 
       {connectName && (
-        <ConnectPaymentsModal
-          title="Package created 🎉"
-          description={`“${connectName}” has a price. Connect your Stripe account so clients can pay for it right inside PupManager — secure card payments, paid straight to your bank.`}
-          onClose={() => router.replace('/packages')}
-        />
+        <ConnectPaymentsModal onClose={() => router.replace('/packages')} />
       )}
     </>
   )

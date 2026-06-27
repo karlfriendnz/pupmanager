@@ -1,12 +1,13 @@
 'use client'
 
 import { Fragment } from 'react'
+import { Check, ShieldCheck } from 'lucide-react'
 import { ConnectButton } from './payments-actions'
 
 // "How you get paid" flow strip — the soft tinted-circle concept, inline so it
 // stays crisp + themeable (no asset file). Client signs up → Invoice sent →
 // Client pays → You get paid.
-const FLOW_ICON = 'h-[22px] w-[22px]'
+const FLOW_ICON = 'h-9 w-9'
 function IconPerson() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={FLOW_ICON}>
@@ -37,8 +38,8 @@ function IconDollar() {
 }
 function FlowArrow() {
   return (
-    <svg viewBox="0 0 40 24" fill="none" stroke="#2A9DA9" strokeLinecap="round" strokeLinejoin="round" className="mt-[16px] h-4 w-7 shrink-0">
-      <path d="M3 12h27" strokeWidth={2.2} strokeDasharray="0.1 6" /><path d="M27 7l8 5-8 5" strokeWidth={2} />
+    <svg viewBox="0 0 40 24" fill="none" stroke="#2A9DA9" strokeLinecap="round" strokeLinejoin="round" className="mt-[26px] h-5 w-8 shrink-0">
+      <path d="M3 12h28" strokeWidth={2.4} strokeDasharray="0.1 6.5" /><path d="M28 6l9 6-9 6" strokeWidth={2.2} />
     </svg>
   )
 }
@@ -53,11 +54,11 @@ function GetPaidFlow() {
     <div className="flex items-start justify-center gap-1">
       {steps.map(([label, icon], i) => (
         <Fragment key={label}>
-          <div className="flex w-[70px] flex-col items-center gap-2">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EAF6F5] text-[#1F818C] ring-1 ring-[#2A9DA9]/20">
+          <div className="flex w-24 flex-col items-center gap-3">
+            <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-[#EAF6F5] text-[#1F818C] ring-1 ring-[#2A9DA9]/15">
               {icon}
             </div>
-            <span className="text-center text-[10px] font-medium leading-tight text-slate-600">{label}</span>
+            <span className="text-center text-[13px] font-semibold leading-tight text-slate-800">{label}</span>
           </div>
           {i < 3 && <FlowArrow />}
         </Fragment>
@@ -66,45 +67,65 @@ function GetPaidFlow() {
   )
 }
 
-/**
- * Post-create nudge to connect Stripe so a just-priced item (a package or a
- * class) can be paid for in-app. Shows the Stripe wordmark, a "how you get
- * paid" flow strip, the real Connect onboarding button, and a skip. Shared by
- * the New-package page and the class form modal so the two stay identical.
- */
-export function ConnectPaymentsPrompt({
-  title,
-  description,
-  onSkip,
-}: {
-  title: string
-  description: string
-  onSkip: () => void
-}) {
+function Benefit({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-      <div className="mx-auto mb-4 w-fit rounded-xl bg-white px-4 py-2.5 ring-1 ring-slate-200 shadow-sm">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/stripe.svg" alt="Stripe" className="h-7 w-auto" />
+    <span className="inline-flex items-center gap-1.5">
+      <Check className="h-4 w-4 text-[#1F818C]" strokeWidth={2.5} />
+      {children}
+    </span>
+  )
+}
+
+/**
+ * Conversion-focused nudge to turn on Stripe payments — shown after a trainer
+ * prices a package/class while not yet connected. Leads with the benefit (get
+ * paid), shows the how-it-works flow, and a bold Connect CTA. Shared by the
+ * packages/classes list (as a modal) and the preview page.
+ */
+export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
+  return (
+    <div className="overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5">
+      {/* Branded gradient header */}
+      <div
+        className="relative overflow-hidden px-8 pt-9 pb-8 text-center text-white"
+        style={{ backgroundImage: 'linear-gradient(135deg, #2A9DA9, #1F818C)' }}
+      >
+        <div aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-16 -left-12 h-44 w-44 rounded-full bg-black/10 blur-2xl" />
+        <h2 className="relative text-[26px] font-bold leading-tight tracking-tight">Start getting paid 💸</h2>
+        <p className="relative mx-auto mt-2.5 max-w-md text-[15px] leading-relaxed text-white/90">
+          Switch on payments and your clients can pay you for packages, sessions and
+          shop items right inside PupManager — straight to your bank.
+        </p>
       </div>
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-      <p className="mx-auto mt-1.5 max-w-sm text-sm text-slate-500">{description}</p>
-      <div className="mt-5 border-t border-slate-100 pt-5">
+
+      {/* Body */}
+      <div className="px-8 py-8">
         <GetPaidFlow />
+
+        <div className="mt-7 flex flex-wrap items-center justify-center gap-x-6 gap-y-1.5 text-[13px] font-medium text-slate-500">
+          <Benefit>Secure card payments</Benefit>
+          <Benefit>Money to your bank</Benefit>
+          <Benefit>~2 minutes to set up</Benefit>
+        </div>
+
+        <div className="mt-7 flex flex-col items-center gap-3">
+          <ConnectButton label="Connect Stripe & get paid" size="lg" fullWidth />
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>Bank-level secure · powered by</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/stripe.svg" alt="Stripe" className="h-3.5 w-auto translate-y-[0.5px]" />
+          </div>
+          <button
+            type="button"
+            onClick={onSkip}
+            className="mt-1 text-sm font-medium text-slate-400 hover:text-slate-600"
+          >
+            Maybe later
+          </button>
+        </div>
       </div>
-      <div className="mt-5 flex flex-col items-center gap-3">
-        <ConnectButton label="Connect Stripe" />
-        <button
-          type="button"
-          onClick={onSkip}
-          className="text-sm font-medium text-slate-500 hover:text-slate-700"
-        >
-          Skip for now
-        </button>
-      </div>
-      <p className="mt-3 text-[11px] text-slate-400">
-        You can always set this up later in Settings → Payments.
-      </p>
     </div>
   )
 }
@@ -114,20 +135,12 @@ export function ConnectPaymentsPrompt({
  * list pages after a priced item is created, so the trainer sees the new item
  * behind the popup.
  */
-export function ConnectPaymentsModal({
-  title,
-  description,
-  onClose,
-}: {
-  title: string
-  description: string
-  onClose: () => void
-}) {
+export function ConnectPaymentsModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-50 w-full max-w-md">
-        <ConnectPaymentsPrompt title={title} description={description} onSkip={onClose} />
+      <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-50 w-full max-w-xl">
+        <ConnectPaymentsPrompt onSkip={onClose} />
       </div>
     </div>
   )

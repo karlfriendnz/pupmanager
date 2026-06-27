@@ -8,17 +8,14 @@ import { ConnectPaymentsPrompt, ConnectPaymentsModal } from '../settings/connect
 // real flow or resetting account state. Visit /connect-preview.
 export default function ConnectPreviewPage() {
   const [showModal, setShowModal] = useState(false)
-  const desc =
-    '“Puppy Foundations” has a price. Connect your Stripe account so clients can pay for it right inside PupManager — secure card payments, paid straight to your bank.'
 
   return (
-    <div className="mx-auto max-w-md p-8">
+    <div className="mx-auto max-w-xl p-8">
       <p className="mb-4 text-xs text-slate-400">
         Preview — the connect-Stripe prompt (not wired to your real account state).
       </p>
 
-      {/* Inline (page-mode) prompt */}
-      <ConnectPaymentsPrompt title="Package created 🎉" description={desc} onSkip={() => {}} />
+      <ConnectPaymentsPrompt onSkip={() => {}} />
 
       <button
         type="button"
@@ -28,9 +25,7 @@ export default function ConnectPreviewPage() {
         Show as a popup modal →
       </button>
 
-      {showModal && (
-        <ConnectPaymentsModal title="Package created 🎉" description={desc} onClose={() => setShowModal(false)} />
-      )}
+      {showModal && <ConnectPaymentsModal onClose={() => setShowModal(false)} />}
     </div>
   )
 }

@@ -3,13 +3,14 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 // Client actions for the Payments panel. The heavy lifting (account create,
 // link minting) is server-side; these just call the route and hand off to the
 // Stripe-hosted URL it returns.
 
 /** Starts or resumes Stripe Connect onboarding, then redirects to Stripe. */
-export function ConnectButton({ label }: { label: string }) {
+export function ConnectButton({ label, size = 'md', fullWidth = false }: { label: string; size?: 'sm' | 'md' | 'lg'; fullWidth?: boolean }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -32,8 +33,8 @@ export function ConnectButton({ label }: { label: string }) {
   }
 
   return (
-    <div>
-      <Button type="button" onClick={start} loading={loading}>{label}</Button>
+    <div className={fullWidth ? 'w-full' : undefined}>
+      <Button type="button" onClick={start} loading={loading} size={size} className={cn(fullWidth && 'w-full')}>{label}</Button>
       {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
     </div>
   )
