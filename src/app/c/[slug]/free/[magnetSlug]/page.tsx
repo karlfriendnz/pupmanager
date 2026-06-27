@@ -64,6 +64,7 @@ export default async function PublicLeadMagnetPage({
   const business = trainer.businessName || 'Your trainer'
   const headline = magnet.headline || magnet.title
   const intro = magnet.intro || magnet.description
+  const hero = magnet.imageUrl
 
   const form = (
     <PublicLeadMagnetForm
@@ -88,7 +89,12 @@ export default async function PublicLeadMagnetPage({
     return (
       <main className={wrapClass}>
         <div className="mx-auto w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm md:grid md:grid-cols-2">
-          <div className="flex flex-col justify-center gap-3 p-8 text-white" style={{ background: `linear-gradient(150deg, ${accent}, ${shade(accent)})` }}>
+          <div
+            className="relative flex flex-col justify-center gap-3 p-8 text-white"
+            style={hero
+              ? { backgroundImage: `linear-gradient(150deg, ${accent}dd, ${shade(accent)}b3), url(${hero})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+              : { background: `linear-gradient(150deg, ${accent}, ${shade(accent)})` }}
+          >
             <span className="text-xs font-bold uppercase tracking-widest text-white/80">Free download</span>
             <h1 className="text-2xl font-bold leading-tight">{headline}</h1>
             {intro && <p className="text-sm leading-relaxed text-white/90">{intro}</p>}
@@ -107,7 +113,12 @@ export default async function PublicLeadMagnetPage({
   // ── Spotlight: full accent background, floating form card ──────────────────
   if (magnet.layout === 'spotlight') {
     return (
-      <main className={isEmbed ? 'p-3' : 'flex min-h-screen items-center justify-center px-4 py-10'} style={isEmbed ? undefined : { background: `linear-gradient(160deg, ${accent}, ${shade(accent)})` }}>
+      <main
+        className={isEmbed ? 'p-3' : 'flex min-h-screen items-center justify-center px-4 py-10'}
+        style={isEmbed ? undefined : (hero
+          ? { backgroundImage: `linear-gradient(160deg, ${accent}d9, ${shade(accent)}cc), url(${hero})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+          : { background: `linear-gradient(160deg, ${accent}, ${shade(accent)})` })}
+      >
         <div className="w-full max-w-md">
           {!isEmbed && (
             <div className="mb-5 text-center text-white">
@@ -148,9 +159,15 @@ export default async function PublicLeadMagnetPage({
     <main className={wrapClass}>
       <div className="mx-auto w-full max-w-md">
         <div className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
-          <div style={{ height: 4, background: accent }} />
-          <div className="px-6 pt-6 text-center">
-            <div className="flex justify-center">{logo}</div>
+          {hero ? (
+            <div className="h-36 bg-cover bg-center" style={{ backgroundImage: `url(${hero})` }} />
+          ) : (
+            <div style={{ height: 4, background: accent }} />
+          )}
+          <div className={`px-6 text-center ${hero ? 'pt-0' : 'pt-6'}`}>
+            <div className={`flex justify-center ${hero ? '-mt-8' : ''}`}>
+              <span className={hero ? 'rounded-2xl bg-white p-1 shadow-sm' : ''}>{logo}</span>
+            </div>
             <p className="mt-2 text-sm font-semibold text-slate-900">{business}</p>
           </div>
           <div className="px-6 pb-6 pt-4">

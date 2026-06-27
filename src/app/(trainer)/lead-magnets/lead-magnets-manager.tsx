@@ -4,9 +4,14 @@ import { useMemo, useState } from 'react'
 import { upload } from '@vercel/blob/client'
 import {
   Plus, Download, Loader2, Trash2, Pencil, ExternalLink, Copy, Check, Code2, Users, X, Upload, Mail,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
+import { compressImageFile } from '@/lib/compress-image'
+import { LeadMagnetPreview } from './lead-magnet-preview'
+
+interface Branding { businessName: string; logoUrl: string | null; accent: string }
 
 interface Magnet {
   id: string
@@ -16,6 +21,7 @@ interface Magnet {
   headline: string | null
   intro: string | null
   layout: string
+  imageUrl: string | null
   fileUrl: string
   fileName: string
   fileSizeBytes: number | null
@@ -48,11 +54,13 @@ type Tab = 'downloads' | 'list'
 export function LeadMagnetsManager({
   slug,
   subscribedCount,
+  branding,
   initialMagnets,
   initialSubscribers,
 }: {
   slug: string
   subscribedCount: number
+  branding: Branding
   initialMagnets: Magnet[]
   initialSubscribers: Subscriber[]
 }) {
@@ -110,7 +118,7 @@ export function LeadMagnetsManager({
       )}
 
       {(creating || editing) && (
-        <MagnetEditor magnet={editing} onClose={() => { setEditing(null); setCreating(false) }} onSaved={onSaved} />
+        <MagnetEditor magnet={editing} branding={branding} onClose={() => { setEditing(null); setCreating(false) }} onSaved={onSaved} />
       )}
     </>
   )
@@ -191,10 +199,11 @@ function MagnetCard({ magnet: m, path, onEdit, onDelete }: { magnet: Magnet; pat
   )
 }
 
-function MagnetEditor({ magnet, onClose, onSaved }: { magnet: Magnet | null; onClose: () => void; onSaved: (m: Magnet) => void }) {
+function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet | null; branding: Branding; onClose: () => void; onSaved: (m: Magnet) => void }) {
   const [title, setTitle] = useState(magnet?.title ?? '')
   const [description, setDescription] = useState(magnet?.description ?? '')
   const [layout, setLayout] = useState(magnet?.layout ?? 'classic')
+  const [imageUrl, setImageUrl] = useState<string | null>(magnet?.imageUrl ?? null)
   const [emailSubject, setEmailSubject] = useState(magnet?.emailSubject ?? '')
   const [emailIntro, setEmailIntro] = useState(magnet?.emailIntro ?? '')
   const [isActive, setIsActive] = useState(magnet?.isActive ?? true)
@@ -202,8 +211,10 @@ function MagnetEditor({ magnet, onClose, onSaved }: { magnet: Magnet | null; onC
   const [fileName, setFileName] = useState(magnet?.fileName ?? '')
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(magnet?.fileSizeBytes ?? null)
   const [uploading, setUploading] = useState(false)
+  const [imgUploading, setImgUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [previewMode, setPreviewMode] = useState<'page' | 'email'>('page')
 
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -220,6 +231,22 @@ function MagnetEditor({ magnet, onClose, onSaved }: { magnet: Magnet | null; onC
     }
   }
 
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setError(null); setImgUploading(true)
+    try {
+      const compressed = await compressImageFile(file)
+      const blob = await upload(compressed.name, compressed, { access: 'public', handleUploadUrl: '/api/trainer/lead-magnets/upload' })
+      setImageUrl(blob.url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Image upload failed.')
+    } finally {
+      setImgUploading(false)
+    }
+  }
+
   async function save() {
     if (!title.trim()) { setError('Give your download a title.'); return }
     if (!fileUrl) { setError('Upload the file people will receive.'); return }
@@ -229,6 +256,7 @@ function MagnetEditor({ magnet, onClose, onSaved }: { magnet: Magnet | null; onC
         title: title.trim(),
         description: description.trim() || null,
         layout,
+        imageUrl,
         emailSubject: emailSubject.trim() || null,
         emailIntro: emailIntro.trim() || null,
         fileUrl, fileName, fileSizeBytes,
@@ -249,63 +277,105 @@ function MagnetEditor({ magnet, onClose, onSaved }: { magnet: Magnet | null; onC
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative z-10 w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-semibold text-slate-900">{magnet ? 'Edit lead magnet' : 'New lead magnet'}</h2>
           <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><X className="h-5 w-5" /></button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto p-5">
-          <div className="flex flex-col gap-4">
-            <Field label="Title">
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. 5 tips for a calm puppy" maxLength={140} className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
-            </Field>
-            <Field label="Short description" hint="Shown on the sign-up page.">
-              <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={2000} className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
-            </Field>
-            <Field label="The download" hint="PDF, doc or image — up to 50 MB.">
-              {fileUrl ? (
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
-                  <span className="flex min-w-0 items-center gap-2 text-sm text-slate-700"><Download className="h-4 w-4 flex-shrink-0 text-slate-400" /><span className="truncate">{fileName}</span></span>
-                  <label className="flex-shrink-0 cursor-pointer text-xs font-medium text-blue-600 hover:underline">
-                    Replace<input type="file" className="hidden" onChange={onPickFile} />
+
+        <div className="grid min-h-0 flex-1 md:grid-cols-2">
+          {/* form */}
+          <div className="overflow-y-auto border-slate-100 p-5 md:border-r">
+            <div className="flex flex-col gap-4">
+              <Field label="Title">
+                <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. 5 tips for a calm puppy" maxLength={140} className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
+              </Field>
+              <Field label="Short description" hint="Shown on the sign-up page.">
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} maxLength={2000} className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
+              </Field>
+              <Field label="The download" hint="PDF, doc or image — up to 50 MB.">
+                {fileUrl ? (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
+                    <span className="flex min-w-0 items-center gap-2 text-sm text-slate-700"><Download className="h-4 w-4 flex-shrink-0 text-slate-400" /><span className="truncate">{fileName}</span></span>
+                    <label className="flex-shrink-0 cursor-pointer text-xs font-medium text-blue-600 hover:underline">Replace<input type="file" className="hidden" onChange={onPickFile} /></label>
+                  </div>
+                ) : (
+                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-6 text-sm text-slate-500 hover:bg-slate-50">
+                    {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><Upload className="h-4 w-4" /> Upload file</>}
+                    <input type="file" className="hidden" onChange={onPickFile} disabled={uploading} />
                   </label>
+                )}
+              </Field>
+              <Field label="Hero image" hint="Optional — shown on the Classic, Split & Spotlight layouts.">
+                {imageUrl ? (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imageUrl} alt="" className="h-9 w-14 flex-shrink-0 rounded-md object-cover" />
+                    <div className="flex flex-shrink-0 gap-3">
+                      <label className="cursor-pointer text-xs font-medium text-blue-600 hover:underline">Replace<input type="file" accept="image/*" className="hidden" onChange={onPickImage} /></label>
+                      <button type="button" onClick={() => setImageUrl(null)} className="text-xs font-medium text-slate-400 hover:text-rose-600">Remove</button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500 hover:bg-slate-50">
+                    {imgUploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><ImageIcon className="h-4 w-4" /> Add a photo</>}
+                    <input type="file" accept="image/*" className="hidden" onChange={onPickImage} disabled={imgUploading} />
+                  </label>
+                )}
+              </Field>
+              <Field label="Page layout" hint="How your sign-up page looks.">
+                <div className="grid grid-cols-2 gap-2">
+                  {LAYOUTS.map((l) => (
+                    <button key={l.id} type="button" onClick={() => { setLayout(l.id); setPreviewMode('page') }}
+                      className={`rounded-xl border p-3 text-left transition-colors ${layout === l.id ? 'border-[var(--pm-brand-500)] bg-[var(--pm-brand-50)] ring-1 ring-[var(--pm-brand-500)]' : 'border-slate-200 hover:bg-slate-50'}`}>
+                      <span className="block text-sm font-semibold text-slate-800">{l.name}</span>
+                      <span className="block text-xs text-slate-400">{l.hint}</span>
+                    </button>
+                  ))}
                 </div>
-              ) : (
-                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-6 text-sm text-slate-500 hover:bg-slate-50">
-                  {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><Upload className="h-4 w-4" /> Upload file</>}
-                  <input type="file" className="hidden" onChange={onPickFile} disabled={uploading} />
-                </label>
-              )}
-            </Field>
-            <Field label="Page layout" hint="How your sign-up page looks.">
-              <div className="grid grid-cols-2 gap-2">
-                {LAYOUTS.map((l) => (
-                  <button
-                    key={l.id}
-                    type="button"
-                    onClick={() => setLayout(l.id)}
-                    className={`rounded-xl border p-3 text-left transition-colors ${layout === l.id ? 'border-[var(--pm-brand-500)] bg-[var(--pm-brand-50)] ring-1 ring-[var(--pm-brand-500)]' : 'border-slate-200 hover:bg-slate-50'}`}
-                  >
-                    <span className="block text-sm font-semibold text-slate-800">{l.name}</span>
-                    <span className="block text-xs text-slate-400">{l.hint}</span>
-                  </button>
-                ))}
+              </Field>
+              <Field label="Delivery email" hint="Customise the email that sends the download. Leave blank for the default.">
+                <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} onFocus={() => setPreviewMode('email')} placeholder="Subject — e.g. Your free puppy guide 🐾" maxLength={200} className="mb-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
+                <textarea value={emailIntro} onChange={(e) => setEmailIntro(e.target.value)} onFocus={() => setPreviewMode('email')} rows={3} maxLength={4000} placeholder="Message above the download button…" className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
+              </Field>
+              <label className="flex items-center gap-2.5">
+                <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
+                <span className="text-sm text-slate-700">Live — accepting sign-ups</span>
+              </label>
+              {error && <p className="text-sm text-rose-600">{error}</p>}
+            </div>
+          </div>
+
+          {/* live preview */}
+          <div className="hidden min-h-0 flex-col bg-slate-50 p-5 md:flex">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Live preview</span>
+              <div className="inline-flex rounded-lg bg-slate-200/70 p-0.5 text-xs font-medium">
+                <button onClick={() => setPreviewMode('page')} className={`rounded-md px-2.5 py-1 ${previewMode === 'page' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Page</button>
+                <button onClick={() => setPreviewMode('email')} className={`rounded-md px-2.5 py-1 ${previewMode === 'email' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Email</button>
               </div>
-            </Field>
-            <Field label="Delivery email" hint="Customise the email that sends the download. Leave blank for the default.">
-              <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} placeholder="Subject — e.g. Your free puppy guide 🐾" maxLength={200} className="mb-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
-              <textarea value={emailIntro} onChange={(e) => setEmailIntro(e.target.value)} rows={3} maxLength={4000} placeholder="Message above the download button…" className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
-            </Field>
-            <label className="flex items-center gap-2.5">
-              <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
-              <span className="text-sm text-slate-700">Live — accepting sign-ups</span>
-            </label>
-            {error && <p className="text-sm text-rose-600">{error}</p>}
+            </div>
+            <div className="flex-1 overflow-hidden rounded-2xl">
+              <LeadMagnetPreview
+                mode={previewMode}
+                layout={layout}
+                title={title}
+                intro={description}
+                imageUrl={imageUrl}
+                emailSubject={emailSubject}
+                emailIntro={emailIntro}
+                accent={branding.accent}
+                businessName={branding.businessName}
+                logoUrl={branding.logoUrl}
+                consentText="I agree to receive emails and accept the privacy policy."
+              />
+            </div>
           </div>
         </div>
+
         <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} loading={saving} disabled={uploading}>{magnet ? 'Save' : 'Create'}</Button>
+          <Button onClick={save} loading={saving} disabled={uploading || imgUploading}>{magnet ? 'Save' : 'Create'}</Button>
         </div>
       </div>
     </div>

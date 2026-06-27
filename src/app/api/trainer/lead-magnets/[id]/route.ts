@@ -10,6 +10,7 @@ const patchSchema = z.object({
   headline: z.string().max(200).nullable().optional(),
   intro: z.string().max(2000).nullable().optional(),
   layout: z.enum(['classic', 'split', 'spotlight', 'minimal']).optional(),
+  imageUrl: z.string().url().max(2000).nullable().optional(),
   fileUrl: z.string().url().max(2000).optional(),
   fileName: z.string().min(1).max(255).optional(),
   fileSizeBytes: z.number().int().nonnegative().nullable().optional(),

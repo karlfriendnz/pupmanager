@@ -2236,6 +2236,8 @@ model LeadMagnet {
   intro           String?  @db.Text
   // Which landing-page layout the trainer picked: classic | split | spotlight | minimal.
   layout          String   @default("classic")
+  // Optional hero image (public Blob URL) shown on the photo-based layouts.
+  imageUrl        String?
   // The download itself — a public Vercel Blob URL (same model as digital
   // products). fileName/size are shown in the UI and the delivery email.
   fileUrl         String

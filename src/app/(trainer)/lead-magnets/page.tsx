@@ -16,7 +16,11 @@ export default async function LeadMagnetsPage() {
 
   const slug = (await ensureTrainerSlug(ctx.companyId)) ?? ''
 
-  const [magnets, subscribers, subscriberCount] = await Promise.all([
+  const [branding, magnets, subscribers, subscriberCount] = await Promise.all([
+    prisma.trainerProfile.findUnique({
+      where: { id: ctx.companyId },
+      select: { businessName: true, logoUrl: true, emailAccentColor: true },
+    }),
     prisma.leadMagnet.findMany({
       where: { trainerId: ctx.companyId },
       orderBy: { createdAt: 'desc' },
@@ -41,6 +45,11 @@ export default async function LeadMagnetsPage() {
         <LeadMagnetsManager
           slug={slug}
           subscribedCount={subscriberCount}
+          branding={{
+            businessName: branding?.businessName || 'Your business',
+            logoUrl: branding?.logoUrl ?? null,
+            accent: branding?.emailAccentColor && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(branding.emailAccentColor) ? branding.emailAccentColor : '#0d9488',
+          }}
           initialMagnets={magnets.map((m) => ({
             id: m.id,
             slug: m.slug,
@@ -49,6 +58,7 @@ export default async function LeadMagnetsPage() {
             headline: m.headline,
             intro: m.intro,
             layout: m.layout,
+            imageUrl: m.imageUrl,
             fileUrl: m.fileUrl,
             fileName: m.fileName,
             fileSizeBytes: m.fileSizeBytes,

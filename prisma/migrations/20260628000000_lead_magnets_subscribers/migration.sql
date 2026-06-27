@@ -14,6 +14,7 @@ CREATE TABLE "lead_magnets" (
     "headline" TEXT,
     "intro" TEXT,
     "layout" TEXT NOT NULL DEFAULT 'classic',
+    "imageUrl" TEXT,
     "fileUrl" TEXT NOT NULL,
     "fileName" TEXT NOT NULL,
     "fileSizeBytes" INTEGER,
