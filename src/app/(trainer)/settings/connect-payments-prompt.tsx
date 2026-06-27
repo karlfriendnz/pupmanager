@@ -106,9 +106,9 @@ export function ConnectPaymentsPrompt({ onSkip }: { onSkip: () => void }) {
           className="absolute inset-0"
           style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, #1F818C 38%, rgba(31,129,140,0) 100%)' }}
         />
-        {/* Floating "paid" coin over the photo. */}
-        <div className="animate-pm-pop pointer-events-none absolute bottom-5 right-5 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-[#16a34a] text-white shadow-xl shadow-slate-900/30 ring-4 ring-white/70">
-          <span className="text-[22px] font-bold leading-none">$</span>
+        {/* Small "$" coin that floats up off the phone and fades, on a loop. */}
+        <div className="animate-pm-coin pointer-events-none absolute bottom-[34%] right-[18%] z-20 flex h-9 w-9 items-center justify-center rounded-full bg-[#16a34a] text-white shadow-lg shadow-emerald-900/40 ring-2 ring-white/70">
+          <span className="text-[15px] font-bold leading-none">$</span>
         </div>
         <div className="relative z-10 w-[62%] py-[60px] pl-8 pr-4">
           <h2 className="text-[26px] font-bold leading-tight tracking-tight">Start getting paid 💸</h2>
