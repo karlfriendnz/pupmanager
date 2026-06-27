@@ -99,7 +99,7 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
   // exists" signal so we drop the separate clientCount query.
   const [
     steps, progress, profileWithCounts, limbo, invitedClientCount, staffCount,
-    realClients, realPackages, realAchievements, realAvailability, realSessions,
+    realClients, realPackages, realAvailability, realSessions,
   ] = await Promise.all([
     prisma.onboardingStep.findMany({
       where: { publishedAt: { not: null } },
@@ -130,7 +130,6 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
             packages: true,
             clients: true,
             customFields: true,
-            achievements: { where: { published: true } },
             trainingSessions: true,
             availabilitySlots: true,
           },
@@ -157,21 +156,19 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
     // labels it "Demo data" so the trainer knows it isn't done for real yet.
     prisma.clientProfile.count({ where: { trainerId, isSample: false } }),
     prisma.package.count({ where: { trainerId, isSample: false } }),
-    prisma.achievement.count({ where: { trainerId, isSample: false, published: true } }),
     prisma.availabilitySlot.count({ where: { trainerId, isSample: false } }),
     // A session is "real" unless it belongs to a sample client — demo sessions
     // are always attached to sample clients.
     prisma.trainingSession.count({ where: { trainerId, NOT: { client: { isSample: true } } } }),
   ])
 
-  const counts = profileWithCounts?._count ?? { embedForms: 0, sessionForms: 0, packages: 0, clients: 0, customFields: 0, achievements: 0, trainingSessions: 0, availabilitySlots: 0 }
+  const counts = profileWithCounts?._count ?? { embedForms: 0, sessionForms: 0, packages: 0, clients: 0, customFields: 0, trainingSessions: 0, availabilitySlots: 0 }
 
   // A step is "demo-only" when it's satisfied purely by sample data: the total
   // (which includes sample rows) is > 0 but the real count is 0. Keyed by step.
   const demoOnly: Record<string, boolean> = {
     create_client: counts.clients > 0 && realClients === 0,
     program_package: counts.packages > 0 && realPackages === 0,
-    achievements: counts.achievements > 0 && realAchievements === 0,
     availability: counts.availabilitySlots > 0 && realAvailability === 0,
     schedule_session: counts.trainingSessions > 0 && realSessions === 0,
   }
@@ -192,7 +189,6 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
     business_profile: !!profileWithCounts?.businessName?.trim(),
     intake_form: !!profileWithCounts?.intakeFormPublished,
     program_package: counts.packages > 0,
-    achievements: counts.achievements > 0,
     // create_client: any client record exists (added or invited).
     create_client: counts.clients > 0,
     // invite_client: a client has actually been sent an invite. A client
@@ -202,8 +198,9 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
     schedule_session: counts.trainingSessions > 0,
     // invite_staff: any non-owner team member has been invited.
     invite_staff: staffCount > 0,
-    // show_notes + download_app have no live signal — they complete on CTA
-    // click (see COMPLETE_ON_CTA_CLICK in onboarding-panel.tsx).
+    // show_notes, homework, client_view + download_app have no live signal —
+    // they complete on CTA click (see COMPLETE_ON_CTA_CLICK in
+    // onboarding-panel.tsx; client_view also via the preview-as exit action).
   }
 
   const explicit = new Map<string, { completed: boolean; skipped: boolean; started: boolean }>()

@@ -21,13 +21,12 @@ import { stepKeyForLocation, STEP_TO_MENU } from '@/lib/onboarding/path-step'
 export const STEP_HINT: Record<string, string> = {
   availability: "Let PupManager know when you train. Click 'Schedule' on the left, then 'Hours'.",
   business_profile: "Let's set up your business — click 'Settings' on the left to add your name and logo.",
-  intake_form: "Click 'Settings' on the left, then the 'Forms' tab, to set up the form new clients fill in.",
-  session_form: "Click 'Settings' on the left, then 'Forms', to set up the form for after each session.",
+  intake_form: "Click 'Settings' on the left, then the 'Forms' tab, to customise the form new clients fill in.",
   program_package: "Time to add a programme. Click 'Packages' on the left to create your first one.",
-  create_client: "Add your first client. Click 'Clients' on the left, then 'Add a client'.",
-  achievements: "Pick the badges your clients can earn. Click 'Achievements' on the left.",
+  create_client: "Add a test client to play with. Click 'Clients' on the left, then 'Add a client'.",
   client_view: "See what your clients see — click 'Clients' on the left, then 'View as client'.",
   show_notes: "Take a peek at where you write session notes — click 'Schedule' on the left and open a session.",
+  homework: "Set the dog some homework — open a session from 'Schedule' on the left and add a task.",
   invite_client: "Send your first real client a sign-up link. Click 'Clients' on the left.",
   invite_staff: "Got a team? Click 'Settings' on the left, then the 'Team' tab, to invite them.",
   download_app: "Grab PupManager on your phone — open the setup card to scan the QR code.",
@@ -47,19 +46,18 @@ const STEP_ON_MENU_HINT: Record<string, string> = {
 // to navigate somewhere they already are. Falls back to STEP_HINT if a
 // step has no specific in-page version.
 const STEP_ON_PAGE_HINT: Record<string, string> = {
-  availability: "Pick a day, drag across the hours you can train, then save. Even one day is enough to start.",
   business_profile: "Fill in your business name, phone and logo here. Hit 'Save' when you're happy.",
-  intake_form: "Have a look through the questions, then hit 'Publish' to make the form live.",
-  session_form: "Have a look through the questions, then hit 'Publish' to make the form live.",
   program_package: "Click 'New package' to add your first programme.",
-  create_client: "Fill in your client's name, email and their dog's name, then hit 'Add client' — no email goes out yet.",
-  achievements: "Pick the achievements you'd like your clients to earn — tap any to publish.",
-  client_view: "Click around to see what your clients see. Hit 'Exit preview' when you're done.",
-  show_notes: "This is your notes screen — where you write up each session for your client. Have a look around.",
-  invite_client: "Click 'Create new client' (top right) to add your first client and send their sign-up link.",
-  invite_staff: "Click 'Invite' to send a teammate access — pick their role, then send.",
-  download_app: "Scan the QR code with your phone's camera to install the app.",
+  create_client: "Fill in the name, email and their dog's name, then hit 'Add client' — no email goes out, it's just a test client.",
   schedule_session: "Click any open time slot in the calendar to drop your first session in.",
+  show_notes: "This is your notes screen — where you write up each session for your client. Have a go at writing one up.",
+  homework: "Open a session and add a homework task or two — your client gets them in their app.",
+  client_view: "Click around to see what your clients see. Hit 'Exit preview' when you're done.",
+  intake_form: "Have a look through the questions, tweak them, then hit 'Publish' to make the form live.",
+  availability: "Pick a day, drag across the hours you can train, then save. Even one day is enough to start.",
+  invite_client: "Click 'Create new client' (top right) to add your first client and send their sign-up link.",
+  download_app: "Scan the QR code with your phone's camera to install the app.",
+  invite_staff: "Click 'Invite' to send a teammate access — pick their role, then send.",
 }
 
 // Sub-path-specific overrides for pages where the trainer is one step
@@ -82,24 +80,23 @@ function subPathHint(pathname: string): string | null {
 
 // Each message is shown when its step *completes*, pointing at the next step
 // in the wizard order:
-//   business_profile → intake_form → program_package → create_client →
-//   availability → schedule_session → achievements → client_view →
-//   show_notes → invite_client → invite_staff → download_app → done
+//   business_profile → program_package → create_client → schedule_session →
+//   show_notes → homework → client_view → intake_form → availability →
+//   invite_client → download_app → invite_staff → done
 // Keep this chain in lockstep with the step order in prisma/seed.ts.
 const STEP_TRANSITION: Record<string, string> = {
-  business_profile: "Nice work — your business is all set up! Now let's get your intake form ready. Click 'Settings' on the left, then 'Forms'.",
-  intake_form: "Awesome — your intake form is ready! Now let's add your first programme — click 'Packages' on the left.",
-  session_form: "Sweet — your session form is set! Now let's add your first programme. Click 'Packages' on the left.",
-  program_package: "Boom — your first programme is in! Now add your first client — click 'Clients' on the left, then 'Add a client'.",
-  create_client: "Great — your first client's in the system! Now let's block out when you train. Click 'Schedule' on the left, then 'Hours'.",
-  availability: "Nice — your hours are blocked out! Now let's drop a first session onto the calendar. Click any open slot in the schedule.",
-  schedule_session: "Booked — your first session is on the calendar! Now let's pick some fun achievements. Click 'Achievements' on the left.",
-  achievements: "Nice — your achievements are live! Now take a peek at what your clients see. Click 'Clients' on the left, then 'View as client'.",
-  client_view: "Cool — you've seen the client side! Now have a quick look at the session notes screen, where you'll write up each session.",
-  show_notes: "Got it — that's where the notes live! Now invite your first real client. Click 'Clients' on the left.",
-  invite_client: "Done — your first invite is on its way! Got a team? Click 'Settings' on the left, then 'Team', to invite them.",
-  invite_staff: "Team sorted! Last thing — grab PupManager on your phone. Open the setup card to scan the QR code.",
-  download_app: "That's everything — you're all set up 🎉",
+  business_profile: "Nice work — your business is all set up! Now let's add your first programme — click 'Packages' on the left.",
+  program_package: "Boom — your first programme is in! Now add a test client to build around — click 'Clients' on the left, then 'Add a client'.",
+  create_client: "Great — your test client's in! Now drop a first session onto the calendar. Click 'Schedule' on the left and pick an open slot.",
+  schedule_session: "Booked — your first session is on the calendar! Now have a go at writing it up — open the session and add your notes.",
+  show_notes: "Nice — that's how you write up a session! Now set the dog some homework to practise. Add a task or two to the session.",
+  homework: "Homework sent! Now take a peek at what your clients see. Click 'Clients' on the left, then 'View as client'.",
+  client_view: "Cool — you've seen the client side! Now customise your intake form. Click 'Settings' on the left, then 'Forms'.",
+  intake_form: "Your intake form's ready! Now let's block out when you train. Click 'Schedule' on the left, then 'Hours'.",
+  availability: "Nice — your hours are blocked out! Now for the big one: invite your first real client. Click 'Clients' on the left.",
+  invite_client: "Done — your first invite is on its way! Now grab PupManager on your phone — open the setup card to scan the QR code.",
+  download_app: "App installed! Last thing — got a team? Click 'Settings' on the left, then 'Team', to invite them.",
+  invite_staff: "That's everything — you're all set up 🎉",
 }
 
 

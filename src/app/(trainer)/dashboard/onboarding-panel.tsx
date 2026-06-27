@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Check, MinusCircle, X, ArrowRight, ChevronRight, Clock, MessageSquare, Send, Sparkles, Building2, ClipboardList, Notebook, Package, Trophy, Eye, Mail, PawPrint, Play, Calendar, UserPlus, NotebookPen, Users, Smartphone, Apple, type LucideIcon } from 'lucide-react'
+import { Check, MinusCircle, X, ArrowRight, ChevronRight, Clock, MessageSquare, Send, Sparkles, Building2, ClipboardList, Notebook, Package, Eye, Mail, PawPrint, Play, Calendar, UserPlus, NotebookPen, Users, Smartphone, Apple, type LucideIcon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 
 // App-store destinations the download QR codes point at. The Apple URL is
@@ -17,23 +17,22 @@ const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.pupman
 // Steps where clicking the CTA is the trainer's confirmation that they've
 // done the step (no separate "Confirm" button needed). client_view sends the
 // trainer to /preview-as — opening it counts as "I've seen what my clients
-// see." show_notes opens the notes screen, download_app opens the QR popup —
-// in each case opening it is the whole point.
-const COMPLETE_ON_CTA_CLICK = new Set(['client_view', 'show_notes', 'download_app'])
+// see." show_notes + homework open the notes screen, download_app opens the
+// QR popup — in each case opening it is the whole point.
+const COMPLETE_ON_CTA_CLICK = new Set(['client_view', 'show_notes', 'homework', 'download_app'])
 
 const STEP_ICON: Record<string, LucideIcon> = {
   business_profile: Building2,
-  intake_form: ClipboardList,
-  session_form: Notebook,
   program_package: Package,
   create_client: UserPlus,
-  achievements: Trophy,
-  client_view: Eye,
-  show_notes: NotebookPen,
-  invite_client: Mail,
-  invite_staff: Users,
-  download_app: Smartphone,
   schedule_session: Calendar,
+  show_notes: NotebookPen,
+  homework: Notebook,
+  client_view: Eye,
+  intake_form: ClipboardList,
+  invite_client: Mail,
+  download_app: Smartphone,
+  invite_staff: Users,
 }
 import { cn } from '@/lib/utils'
 import type { OnboardingState, OnboardingStepView } from '@/lib/onboarding/types'

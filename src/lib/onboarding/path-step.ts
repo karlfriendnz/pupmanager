@@ -13,9 +13,10 @@ const STEP_PATH_MATCH: Array<{ pattern: RegExp; key: string }> = [
   { pattern: /^\/forms\/session/, key: 'intake_form' },
   { pattern: /^\/forms/, key: 'intake_form' },
   { pattern: /^\/packages/, key: 'program_package' },
-  { pattern: /^\/achievements/, key: 'achievements' },
   { pattern: /^\/preview-as/, key: 'client_view' },
-  // Session notes screen ("show_notes" step) — any /sessions page counts.
+  // Session notes screen — serves both the "show_notes" and "homework" steps
+  // (homework is added inside the session write-up). Attribute the page to
+  // show_notes; both complete on CTA click so the distinction is cosmetic.
   { pattern: /^\/sessions/, key: 'show_notes' },
   // The invite form itself is where "Create a client" happens (add a record,
   // optionally without an email). The "Invite your first client" step's CTA
@@ -47,13 +48,13 @@ export const STEP_TO_MENU: Record<string, string> = {
   availability: '/schedule',
   business_profile: '/settings',
   intake_form: '/settings',
-  session_form: '/settings',
   program_package: '/packages',
   create_client: '/clients',
-  achievements: '/achievements',
   client_view: '/clients',
   // No top-level nav item for the notes screen; sessions live under Schedule.
+  // Homework is added on the same session write-up screen.
   show_notes: '/schedule',
+  homework: '/schedule',
   invite_client: '/clients',
   invite_staff: '/settings',
   // download_app opens a QR popup rather than a page; no sidebar item to pulse.
