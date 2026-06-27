@@ -99,9 +99,11 @@ export async function POST(
     })
     return NextResponse.json(updated)
   } catch (err) {
+    // Log the real cause server-side; don't blame the Blob store in the UI
+    // (it's connected — past messaging here was misleading during a report).
     console.error('Dog photo upload failed:', err)
     return NextResponse.json(
-      { error: 'Upload failed. Make sure a Vercel Blob store is connected to this project.' },
+      { error: 'Upload failed — please try again, or use a smaller image.' },
       { status: 502 },
     )
   }

@@ -49,9 +49,11 @@ export async function POST(req: Request) {
     })
     return NextResponse.json({ url: blob.url })
   } catch (err) {
+    // Real cause goes to the server logs; keep the client message honest (the
+    // Blob store is connected — the old "not connected" copy misled triage).
     console.error('Blob upload failed:', err)
     return NextResponse.json(
-      { error: 'Upload failed. Make sure a Vercel Blob store is connected to this project.' },
+      { error: 'Upload failed — please try again, or use a smaller image.' },
       { status: 502 },
     )
   }

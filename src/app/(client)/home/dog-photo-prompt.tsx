@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Camera, Loader2, X } from 'lucide-react'
+import { resizeImageFile } from '@/lib/resize-image'
 
 // Shown on the client home when their dog has no photo yet — a gentle nudge to
 // add one. Data-driven: once a photo is uploaded, router.refresh() re-renders
@@ -22,8 +23,9 @@ export function DogPhotoPrompt({ dogId, dogName }: { dogId: string; dogName: str
     setUploading(true)
     setError(null)
     try {
+      const toSend = await resizeImageFile(file)
       const fd = new FormData()
-      fd.append('file', file)
+      fd.append('file', toSend)
       const res = await fetch(`/api/dogs/${dogId}/photo`, { method: 'POST', body: fd })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
