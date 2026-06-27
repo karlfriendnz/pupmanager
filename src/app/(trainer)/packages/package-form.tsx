@@ -86,10 +86,11 @@ export function centsToDollars(cents: number | null): string {
 type FormValues = z.infer<typeof formSchema>
 
 /**
- * The shared package create/edit form. Used inline on the edit page and
- * inside the create modal in packages-view.tsx. Renders the fields and the
- * submit/cancel actions; the surrounding chrome (modal vs page) is the
- * caller's concern.
+ * The shared package create/edit form. Used on the create page (/packages/new)
+ * and the edit page (/packages/[packageId]/edit). Lays its fields out in a
+ * responsive two-column grid (short inputs pair up; description, toggles and
+ * the colour picker span both). Renders the fields + submit/cancel actions;
+ * the surrounding page chrome is the caller's concern.
  */
 export function PackageForm({
   existing,
@@ -193,12 +194,14 @@ export function PackageForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
-      {error && <Alert variant="error">{error}</Alert>}
+    <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+      {error && <div className="md:col-span-2"><Alert variant="error">{error}</Alert></div>}
 
-      <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
+      <div className="md:col-span-2">
+        <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
+      </div>
 
-      <div>
+      <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
         <textarea
           {...register('description')}
@@ -207,23 +210,21 @@ export function PackageForm({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Input
-            label="Number of sessions"
-            type="number"
-            error={errors.sessionCount?.message}
-            {...register('sessionCount', { valueAsNumber: true })}
-          />
-          <p className="text-[11px] text-slate-400 mt-1">0 = ongoing (you set an end date when assigning)</p>
-        </div>
+      <div>
         <Input
-          label="Weeks between"
+          label="Number of sessions"
           type="number"
-          error={errors.weeksBetween?.message}
-          {...register('weeksBetween', { valueAsNumber: true })}
+          error={errors.sessionCount?.message}
+          {...register('sessionCount', { valueAsNumber: true })}
         />
+        <p className="text-[11px] text-slate-400 mt-1">0 = ongoing (you set an end date when assigning)</p>
       </div>
+      <Input
+        label="Weeks between"
+        type="number"
+        error={errors.weeksBetween?.message}
+        {...register('weeksBetween', { valueAsNumber: true })}
+      />
 
       <Input
         label="Default duration (mins)"
@@ -248,24 +249,22 @@ export function PackageForm({
 
       {/* Pricing — leave price blank for "no price set". The special price
           is independent and only shown when populated. */}
-      <div className="grid grid-cols-2 gap-3">
-        <Input
-          label="Price"
-          type="text"
-          inputMode="decimal"
-          placeholder="120"
-          {...register('price')}
-        />
-        <Input
-          label="Special price (optional)"
-          type="text"
-          inputMode="decimal"
-          placeholder="—"
-          {...register('specialPrice')}
-        />
-      </div>
+      <Input
+        label="Price"
+        type="text"
+        inputMode="decimal"
+        placeholder="120"
+        {...register('price')}
+      />
+      <Input
+        label="Special price (optional)"
+        type="text"
+        inputMode="decimal"
+        placeholder="—"
+        {...register('specialPrice')}
+      />
 
-      <div>
+      <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form</label>
         <p className="text-[11px] text-slate-400 mb-1.5">
           Auto-attached to each new session in this package. Trainer can still swap it on the session.
@@ -280,7 +279,7 @@ export function PackageForm({
         </select>
       </div>
 
-      <label className="flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+      <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
         <input
           type="checkbox"
           checked={requireSessionNotes}
@@ -296,7 +295,7 @@ export function PackageForm({
       </label>
 
       {/* ─── Group class ─────────────────────────────────────────── */}
-      <label className="flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+      <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
         <input
           type="checkbox"
           checked={isGroup}
@@ -312,7 +311,7 @@ export function PackageForm({
       </label>
 
       {isGroup && (
-        <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 flex flex-col gap-3">
+        <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3 flex flex-col gap-3">
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Capacity (optional)</label>
             <input
@@ -369,7 +368,7 @@ export function PackageForm({
       )}
 
       {/* ─── Client self-booking ─────────────────────────────────── */}
-      <label className="flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+      <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
         <input
           type="checkbox"
           checked={clientSelfBook}
@@ -385,7 +384,7 @@ export function PackageForm({
       </label>
 
       {clientSelfBook && (
-        <label className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2.5 cursor-pointer">
+        <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2.5 cursor-pointer">
           <input
             type="checkbox"
             checked={selfBookRequiresApproval}
@@ -401,7 +400,7 @@ export function PackageForm({
         </label>
       )}
 
-      <div>
+      <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Schedule colour</label>
         <p className="text-[11px] text-slate-400 mb-1.5">Sessions assigned to this package will use this colour on the calendar. Leave blank to keep the default status colour.</p>
         <div className="flex flex-wrap gap-1.5">
@@ -428,7 +427,7 @@ export function PackageForm({
         </div>
       </div>
 
-      <div className="flex gap-2 pt-2">
+      <div className="md:col-span-2 flex gap-2 pt-2">
         <Button type="submit" loading={isSubmitting}>{existing ? 'Save changes' : 'Create package'}</Button>
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
       </div>

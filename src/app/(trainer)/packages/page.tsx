@@ -13,18 +13,11 @@ export default async function PackagesPage() {
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
 
-  const [packages, sessionForms] = await Promise.all([
-    prisma.package.findMany({
-      where: { trainerId },
-      orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-      include: { _count: { select: { assignments: true } } },
-    }),
-    prisma.sessionForm.findMany({
-      where: { trainerId },
-      orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-      select: { id: true, name: true },
-    }),
-  ])
+  const packages = await prisma.package.findMany({
+    where: { trainerId },
+    orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+    include: { _count: { select: { assignments: true } } },
+  })
 
   return (
     <PackagesView
@@ -51,7 +44,6 @@ export default async function PackagesPage() {
         selfBookRequiresApproval: p.selfBookRequiresApproval,
         assignments: p._count.assignments,
       }))}
-      sessionForms={sessionForms}
     />
   )
 }

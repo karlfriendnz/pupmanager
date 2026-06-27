@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
-import { Plus, Package as PackageIcon, Pencil, Trash2, X, GripVertical } from 'lucide-react'
+import { Plus, Package as PackageIcon, Pencil, Trash2, GripVertical } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
-import { PackageForm, type PackageColor, type PkgRow, type SessionFormOption } from './package-form'
+import { type PackageColor, type PkgRow } from './package-form'
 import {
   DndContext,
   PointerSensor,
@@ -52,21 +52,11 @@ function packageIconClasses(color: PackageColor | null): string {
 
 export function PackagesView({
   initialPackages,
-  sessionForms,
 }: {
   initialPackages: PkgRow[]
-  sessionForms: SessionFormOption[]
 }) {
   const router = useRouter()
   const [packages, setPackages] = useState(initialPackages)
-  const [showCreate, setShowCreate] = useState(false)
-
-  function upsert(p: PkgRow, isNew: boolean) {
-    setPackages(prev => isNew ? [p, ...prev] : prev.map(x => x.id === p.id ? p : x))
-    // Refresh server state so the trainer layout (FAB / onboarding state)
-    // sees the new package count and advances the wizard.
-    router.refresh()
-  }
 
   async function handleDelete(id: string) {
     if (!confirm('Delete this package? Existing client assignments stay (but their sessions remain on the schedule).')) return
@@ -100,7 +90,7 @@ export function PackagesView({
       <PageHeader
         title="Packages"
         actions={
-          <Button size="sm" onClick={() => setShowCreate(true)}>
+          <Button size="sm" onClick={() => router.push('/packages/new')}>
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">New package</span>
           </Button>
@@ -138,13 +128,6 @@ export function PackagesView({
 
       {/* Sortable row defined inline — closes over edit/delete handlers via props. */}
 
-      {showCreate && (
-        <CreatePackageModal
-          sessionForms={sessionForms}
-          onClose={() => setShowCreate(false)}
-          onSaved={(p, isNew) => { upsert(p, isNew); setShowCreate(false) }}
-        />
-      )}
       </div>
     </>
   )
@@ -248,41 +231,6 @@ function SortablePackageRow({
           </div>
         </CardBody>
       </Card>
-    </div>
-  )
-}
-
-// Create-only modal. Editing an existing package happens on its own page
-// (/packages/[packageId]/edit); this modal keeps the lightweight "new
-// package" flow inline. Both share the underlying <PackageForm/>.
-function CreatePackageModal({
-  sessionForms,
-  onClose,
-  onSaved,
-}: {
-  sessionForms: SessionFormOption[]
-  onClose: () => void
-  onSaved: (p: PkgRow, isNew: boolean) => void
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900">New package</h2>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="p-5">
-          <PackageForm
-            existing={null}
-            sessionForms={sessionForms}
-            onCancel={onClose}
-            onSaved={onSaved}
-          />
-        </div>
-      </div>
     </div>
   )
 }

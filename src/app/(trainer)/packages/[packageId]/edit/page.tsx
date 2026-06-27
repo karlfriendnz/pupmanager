@@ -41,7 +41,7 @@ export default async function EditPackagePage({
         title="Edit package"
         back={{ href: '/packages', label: 'Back to packages' }}
       />
-      <div className="p-4 md:p-8 w-full max-w-md mx-auto">
+      <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
         <EditPackageForm
           existing={{
             id: pkg.id,
