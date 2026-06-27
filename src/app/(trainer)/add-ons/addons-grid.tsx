@@ -1,10 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import Image from 'next/image'
-import { Sparkles } from 'lucide-react'
 import { currencyMeta, type CurrencyCode } from '@/lib/pricing'
-import { AddonPromoModal } from '@/components/shared/addon-promos'
+import { AddonPromoModal, addonPromoImage } from '@/components/shared/addon-promos'
 
 export interface AddonCard {
   id: string
@@ -69,60 +67,78 @@ export function AddonsGrid({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => {
           const isOn = !!active[card.id]
+          const img = addonPromoImage(card.id)
+          const cost = card.comingSoon
+            ? 'Coming soon'
+            : card.price != null
+              ? formatPrice(meta.symbol, card.price, meta.label)
+              : 'Free'
           return (
             <div
               key={card.id}
               className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
             >
-              <AddonImage id={card.id} name={card.name} />
-
-              <div className="flex flex-1 flex-col p-4">
-                <div className="mb-1 flex items-start justify-between gap-2">
-                  <h3 className="text-base font-semibold" style={{ color: 'var(--pm-ink-900)' }}>
-                    {card.name}
-                  </h3>
+              {/* Mini-promo header: name left, hero image bleeding in on the right
+                  with a teal fade — mirrors the add-on promo modal. */}
+              <div
+                className="relative h-24 overflow-hidden text-white"
+                style={{ backgroundImage: 'linear-gradient(135deg, #2A9DA9, #1F818C)' }}
+              >
+                {img && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={img.src}
+                    alt=""
+                    aria-hidden
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{
+                      objectPosition: img.objectPosition ?? 'center 45%',
+                      transform: img.translateX ? `translateX(${img.translateX})` : undefined,
+                    }}
+                  />
+                )}
+                <div
+                  aria-hidden
+                  className="absolute inset-0"
+                  style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, #1F818C 42%, rgba(31,129,140,0) 100%)' }}
+                />
+                <div className="relative z-10 flex h-full w-[60%] flex-col justify-center px-4">
+                  <h3 className="text-[15px] font-bold leading-tight">{card.name}</h3>
                   {card.badge && (
-                    <span
-                      className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium"
-                      style={{
-                        backgroundColor: card.comingSoon ? 'var(--pm-ink-100, #f1f5f9)' : 'var(--pm-accent-50, #ecfeff)',
-                        color: card.comingSoon ? 'var(--pm-ink-500)' : 'var(--pm-accent-600, #0891b2)',
-                      }}
-                    >
+                    <span className="mt-1.5 inline-block w-fit rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold">
                       {card.badge}
                     </span>
                   )}
                 </div>
+              </div>
 
+              <div className="flex flex-1 flex-col p-4">
                 <p className="mb-3 text-sm leading-snug" style={{ color: 'var(--pm-ink-600, #475569)' }}>
                   {card.blurb}
                 </p>
 
-                <div className="mt-auto">
-                  <p className="mb-3 text-sm font-semibold" style={{ color: 'var(--pm-ink-900)' }}>
-                    {card.price != null
-                      ? formatPrice(meta.symbol, card.price, meta.label)
-                      : 'Coming soon'}
-                  </p>
-
-                  <div className="flex items-center justify-between gap-2">
+                <div className="mt-auto flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--pm-ink-900)' }}>
+                      {cost}
+                    </p>
                     <button
                       type="button"
                       onClick={() => setLearnMore(card)}
-                      className="text-sm font-medium hover:underline"
+                      className="text-[13px] font-medium hover:underline"
                       style={{ color: 'var(--pm-brand-700)' }}
                     >
                       Learn more
                     </button>
-
-                    <Switch
-                      checked={isOn}
-                      disabled={!card.available || busy === card.id}
-                      busy={busy === card.id}
-                      label={`Enable ${card.name}`}
-                      onChange={() => toggle(card)}
-                    />
                   </div>
+
+                  <Switch
+                    checked={isOn}
+                    disabled={!card.available || busy === card.id}
+                    busy={busy === card.id}
+                    label={`Enable ${card.name}`}
+                    onChange={() => toggle(card)}
+                  />
                 </div>
               </div>
             </div>
@@ -134,38 +150,6 @@ export function AddonsGrid({
         <AddonPromoModal addonId={learnMore.id} currency={currency} onClose={() => setLearnMore(null)} />
       )}
     </>
-  )
-}
-
-// Card image. Convention: /public/add-ons/<id>.png. Karl drops the real art
-// there; until then we fall back to a tasteful branded placeholder so the grid
-// never shows a broken image.
-function AddonImage({ id, name }: { id: string; name: string }) {
-  const [failed, setFailed] = useState(false)
-
-  if (failed) {
-    return (
-      <div
-        className="flex aspect-[16/9] w-full items-center justify-center"
-        style={{ background: 'linear-gradient(135deg, var(--pm-brand-50, #eef6f6), var(--pm-accent-50, #ecfeff))' }}
-        aria-hidden
-      >
-        <Sparkles className="h-8 w-8" style={{ color: 'var(--pm-brand-400, #5e9c9c)' }} />
-      </div>
-    )
-  }
-
-  return (
-    <div className="relative aspect-[16/9] w-full bg-slate-50">
-      <Image
-        src={`/add-ons/${id}.png`}
-        alt={name}
-        fill
-        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-        className="object-cover"
-        onError={() => setFailed(true)}
-      />
-    </div>
   )
 }
 

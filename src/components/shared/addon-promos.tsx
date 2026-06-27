@@ -122,6 +122,11 @@ const PROMOS: Record<string, Cfg> = {
 
 export const ADDON_PROMO_IDS = Object.keys(PROMOS)
 
+/** The hero image config for an add-on (so the grid cards can reuse it). */
+export function addonPromoImage(addonId: string): { src: string; objectPosition?: string; translateX?: string } | null {
+  return PROMOS[addonId]?.image ?? null
+}
+
 function priceNote(addonId: string, currency: string): ReactNode {
   const def = addonById(addonId)
   if (def?.comingSoon) return <>Coming soon.</>
