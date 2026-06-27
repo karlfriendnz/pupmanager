@@ -83,7 +83,7 @@ function paymentsConfig(currency: string): Omit<FeaturePromoProps, 'cta' | 'onSk
     ],
     benefits: ['Secure card payments', 'Money straight to your bank'],
     priceNote: (
-      <>Clients pay the <span className="font-semibold text-slate-700">{feeRate(currency)}</span> fee — you keep 100%, no monthly fees.</>
+      <>Clients pay the <span className="font-semibold text-slate-700">{feeRate(currency)}</span> fee on top of the invoice — you keep 100%.</>
     ),
     trust: TRUST,
   }
