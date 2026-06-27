@@ -52,7 +52,7 @@ const PROMOS: Record<string, Cfg> = {
   achievements: {
     title: 'Celebrate every win',
     description: 'Branded badges your clients earn and show off.',
-    image: { src: '/promo-achievements-v6.jpg', objectPosition: 'center 42%' },
+    image: { src: '/promo-achievements-v7.jpg', objectPosition: 'center 45%' },
     steps: [
       { icon: <Trophy className={I} />, label: 'Earn badges' },
       { icon: <Share2 className={I} />, label: 'Clients share' },
@@ -98,7 +98,7 @@ const PROMOS: Record<string, Cfg> = {
   todos: {
     title: 'Nothing slips',
     description: 'A quick to-do list and brain-dump on your dashboard.',
-    image: { src: '/promo-todos-v2.jpg', objectPosition: 'center 38%' },
+    image: { src: '/promo-todos-v3.jpg', objectPosition: 'center 52%' },
     steps: [
       { icon: <ListChecks className={I} />, label: 'Jot to-dos' },
       { icon: <NotebookPen className={I} />, label: 'Brain-dump' },
