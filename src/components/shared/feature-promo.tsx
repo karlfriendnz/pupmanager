@@ -136,7 +136,7 @@ export function FeaturePromoCard({
 
         {priceNote && (
           <div className="mt-4 flex justify-center">
-            <span className="rounded-full bg-slate-50 px-4 py-1.5 text-center text-[13px] font-medium text-slate-600 ring-1 ring-slate-200/70">
+            <span className="rounded-full bg-slate-50 px-4 py-2 text-center text-[15px] font-medium text-slate-700 ring-1 ring-slate-200/70">
               {priceNote}
             </span>
           </div>
