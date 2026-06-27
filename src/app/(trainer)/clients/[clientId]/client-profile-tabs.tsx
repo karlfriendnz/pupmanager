@@ -94,6 +94,14 @@ interface PendingProductRequest {
   product: { id: string; name: string; kind: 'PHYSICAL' | 'DIGITAL'; imageUrl: string | null }
 }
 
+interface UnpaidInvoice {
+  id: string
+  description: string | null
+  amountTotal: number   // minor units
+  currency: string      // ISO 4217, lower-case
+  createdAt: string     // ISO string
+}
+
 interface Props {
   clientId: string
   canEdit: boolean
@@ -116,6 +124,8 @@ interface Props {
   status: string
   // Communication history (emails received + message thread) for the Comms tab.
   communications: CommItem[]
+  // Unpaid invoices (PENDING request-payment invoices) for the Overview tab.
+  unpaidInvoices: UnpaidInvoice[]
 }
 
 function groupByCategory<T extends { category: string | null }>(items: T[]) {
@@ -134,18 +144,16 @@ function groupByCategory<T extends { category: string | null }>(items: T[]) {
 export function ClientProfileTabs({
   clientId,
   canEdit,
-  stats,
   dogs,
-  tasks,
   sessions: initialSessions,
   customFields,
   fieldValueMap,
-  dogNames,
   products,
   pendingProductRequests: initialPendingRequests,
   contact,
   status,
   communications,
+  unpaidInvoices,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [pendingRequests, setPendingRequests] = useState(initialPendingRequests)
@@ -271,6 +279,16 @@ export function ClientProfileTabs({
   const ownerFields = customFields.filter(f => f.appliesTo === 'OWNER')
   const dogFields   = customFields.filter(f => f.appliesTo === 'DOG')
 
+  // Overview tab derivations — what a trainer actually wants at a glance:
+  // the next sessions coming up and the most recent session that's done.
+  const overviewNow = Date.now()
+  const upcomingSessions = sessions
+    .filter(s => new Date(s.scheduledAt).getTime() >= overviewNow)
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+  const latestPastSession = sessions
+    .filter(s => new Date(s.scheduledAt).getTime() < overviewNow)
+    .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())[0] ?? null
+
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
     { id: 'overview',     label: 'Overview',     icon: Home },
     { id: 'sessions',     label: 'Sessions',     icon: Calendar, badge: sessions.length > 0 ? sessions.length : undefined },
@@ -315,10 +333,107 @@ export function ClientProfileTabs({
       {/* ── Overview ─────────────────────────────────────────────────────── */}
       {tab === 'overview' && (
         <div className="flex flex-col gap-6">
-          {/* Previous week / Upcoming week — rolling 7-day windows around now */}
-          <OverviewWeekPanels sessions={sessions} />
+          {/* What a trainer wants first: what's coming up, who owes money,
+              the last session, and the latest chatter. */}
+          <Card>
+            <CardBody className="py-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-slate-900">Upcoming sessions</h2>
+                {upcomingSessions.length > 0 && (
+                  <button onClick={() => setTab('sessions')} className="text-xs font-medium text-blue-600 hover:underline">
+                    View all
+                  </button>
+                )}
+              </div>
+              {upcomingSessions.length === 0 ? (
+                <p className="text-sm text-slate-400">No upcoming sessions scheduled.</p>
+              ) : (
+                <ul className="flex flex-col divide-y divide-slate-100 -mx-2">
+                  {upcomingSessions.slice(0, 4).map(s => (
+                    <li key={s.id}><ClientSessionRow session={s} /></li>
+                  ))}
+                </ul>
+              )}
+            </CardBody>
+          </Card>
 
-          {/* Bring to next session */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* Unpaid invoices */}
+            <Card>
+              <CardBody className="py-5">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold text-slate-900">Unpaid invoices</h2>
+                  {unpaidInvoices.length > 0 && (
+                    <Link href="/finances" className="text-xs font-medium text-blue-600 hover:underline">Finances</Link>
+                  )}
+                </div>
+                {unpaidInvoices.length === 0 ? (
+                  <p className="text-sm text-slate-400">No unpaid invoices.</p>
+                ) : (
+                  <ul className="flex flex-col divide-y divide-slate-100">
+                    {unpaidInvoices.map(inv => (
+                      <li key={inv.id} className="flex items-center justify-between gap-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900">{inv.description ?? 'Invoice'}</p>
+                          <p className="text-xs text-slate-400">{formatDate(inv.createdAt)}</p>
+                        </div>
+                        <span className="flex flex-shrink-0 items-center gap-2">
+                          <span className="text-sm font-semibold tabular-nums text-slate-900">{formatMoney(inv.amountTotal, inv.currency)}</span>
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Unpaid</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardBody>
+            </Card>
+
+            {/* Latest session */}
+            <Card>
+              <CardBody className="py-5">
+                <h2 className="mb-3 text-sm font-semibold text-slate-900">Latest session</h2>
+                {latestPastSession ? (
+                  <Link href={`/sessions/${latestPastSession.id}`} className="group block">
+                    <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
+                      <p className="text-sm font-medium text-slate-900 group-hover:underline">{formatSessionTitle(latestPastSession.title)}</p>
+                      <span className="text-xs text-slate-400">{formatDate(latestPastSession.scheduledAt)}</span>
+                    </div>
+                    {latestPastSession.description ? (
+                      <p className="line-clamp-3 text-sm text-slate-600">{latestPastSession.description}</p>
+                    ) : (
+                      <p className="text-sm text-slate-400">No notes recorded — open the session to add a recap.</p>
+                    )}
+                  </Link>
+                ) : (
+                  <p className="text-sm text-slate-400">No past sessions yet.</p>
+                )}
+              </CardBody>
+            </Card>
+          </div>
+
+          {/* Recent communication */}
+          <Card>
+            <CardBody className="py-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-slate-900">Recent communication</h2>
+                {communications.length > 0 && (
+                  <button onClick={() => setTab('communication')} className="text-xs font-medium text-blue-600 hover:underline">
+                    View all
+                  </button>
+                )}
+              </div>
+              {communications.length === 0 ? (
+                <p className="text-sm text-slate-400">No messages or emails yet.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {communications.slice(0, 3).map(c => <CommunicationRow key={c.id} item={c} />)}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* Bring to next session — kept for the shop workflow, de-emphasised
+              at the bottom now the priority info leads the tab. */}
           {canEdit && (
             <Card>
               <CardBody className="py-5">
@@ -363,66 +478,6 @@ export function ClientProfileTabs({
               </CardBody>
             </Card>
           )}
-
-          {/* Recent tasks */}
-          <Card>
-            <CardBody className="py-5">
-              <h2 className="text-sm font-semibold text-slate-900 mb-3">Recent tasks</h2>
-              {tasks.length === 0 ? (
-                <p className="text-sm text-slate-400">No tasks assigned yet.</p>
-              ) : (
-                <ul className="flex flex-col divide-y divide-slate-100 -mx-2">
-                  {tasks.map(task => (
-                    <li key={task.id} className="flex items-center gap-3 px-2 py-2.5">
-                      <span className={`h-6 w-6 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${
-                        task.completed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'
-                      }`}>
-                        {task.completed ? '✓' : '○'}
-                      </span>
-                      <span className="text-sm text-slate-700 flex-1 min-w-0 truncate">{task.title}</span>
-                      {task.dogId && dogNames[task.dogId] && (
-                        <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full flex-shrink-0">
-                          {dogNames[task.dogId]}
-                        </span>
-                      )}
-                      <span className="text-xs text-slate-400 flex-shrink-0 tabular-nums">{formatDate(task.date)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* Stat cards — pinned to the bottom while the compliance / tasks
-              numbers are still being designed. Each card shares the same
-              structural shape: big number, uppercase label, single small
-              subtitle line. Heights match because the grid uses auto-rows-fr. */}
-          <div className="grid grid-cols-3 gap-4 auto-rows-fr">
-            <Card className="p-5 flex flex-col items-center text-center">
-              <p className={`text-4xl font-bold leading-none ${
-                stats.complianceRate == null ? 'text-slate-300'
-                : stats.complianceRate >= 70 ? 'text-emerald-600'
-                : stats.complianceRate >= 40 ? 'text-amber-500'
-                : 'text-rose-500'
-              }`}>
-                {stats.complianceRate != null ? `${stats.complianceRate}%` : '—'}
-              </p>
-              <p className="mt-2 text-[11px] text-slate-500 font-semibold uppercase tracking-wide">14-day compliance</p>
-              <p className="mt-1 text-xs text-slate-400">last 14 days</p>
-            </Card>
-
-            <Card className="p-5 flex flex-col items-center text-center">
-              <p className="text-4xl font-bold text-slate-900 leading-none">{stats.completedTasks}</p>
-              <p className="mt-2 text-[11px] text-slate-500 font-semibold uppercase tracking-wide">Tasks completed</p>
-              <p className="mt-1 text-xs text-slate-400">of {stats.totalTasks} assigned</p>
-            </Card>
-
-            <Card className="p-5 flex flex-col items-center text-center">
-              <p className="text-4xl font-bold text-slate-900 leading-none">{stats.totalTasks - stats.completedTasks}</p>
-              <p className="mt-2 text-[11px] text-slate-500 font-semibold uppercase tracking-wide">Remaining</p>
-              <p className="mt-1 text-xs text-slate-400">last 14 days</p>
-            </Card>
-          </div>
         </div>
       )}
 
@@ -905,36 +960,15 @@ function ProductPickerModal({
   )
 }
 
-// ─── Overview week panels ──────────────────────────────────────────────────
-//
-// Two compact lists on the Overview tab — last 7 days, next 7 days. Same
-// SessionRowCard the Sessions tab uses, with showDate so the trainer can
-// orient at a glance without opening the full Sessions tab.
-
-function OverviewWeekPanels({ sessions }: { sessions: TrainingSession[] }) {
-  const now = Date.now()
-  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
-
-  const previousWeek = sessions
-    .filter(s => {
-      const t = new Date(s.scheduledAt).getTime()
-      return t >= now - sevenDaysMs && t < now
-    })
-    .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
-
-  const upcomingWeek = sessions
-    .filter(s => {
-      const t = new Date(s.scheduledAt).getTime()
-      return t >= now && t < now + sevenDaysMs
-    })
-    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <WeekPanel title="Previous week" sessions={previousWeek} emptyText="No sessions in the last 7 days." />
-      <WeekPanel title="Upcoming week" sessions={upcomingWeek} emptyText="No sessions in the next 7 days." />
-    </div>
-  )
+// Format a Payment amount (minor units + ISO currency) for the Overview's
+// unpaid-invoices list. Falls back to a plain "12.00 USD" if the runtime
+// rejects the currency code.
+function formatMoney(minor: number, currency: string) {
+  try {
+    return new Intl.NumberFormat('en-NZ', { style: 'currency', currency: currency.toUpperCase() }).format(minor / 100)
+  } catch {
+    return `${(minor / 100).toFixed(2)} ${currency.toUpperCase()}`
+  }
 }
 
 const STATUS_PILL: Record<SessionStatus, string> = {
@@ -1034,35 +1068,6 @@ function ClientSessionRow({
       {row}
       {trailing}
     </div>
-  )
-}
-
-function WeekPanel({
-  title,
-  sessions,
-  emptyText,
-}: {
-  title: string
-  sessions: TrainingSession[]
-  emptyText: string
-}) {
-  return (
-    <Card>
-      <CardBody className="py-5">
-        <h2 className="text-sm font-semibold text-slate-900 mb-3">{title}</h2>
-        {sessions.length === 0 ? (
-          <p className="text-sm text-slate-400">{emptyText}</p>
-        ) : (
-          <ul className="flex flex-col divide-y divide-slate-100 -mx-2">
-            {sessions.map(s => (
-              <li key={s.id}>
-                <ClientSessionRow session={s} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardBody>
-    </Card>
   )
 }
 

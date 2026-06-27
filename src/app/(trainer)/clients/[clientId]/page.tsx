@@ -110,7 +110,9 @@ export default async function ClientDetailPage({
 
   // Communication records for this client — bulk emails received (with
   // open/click status) + the message/email thread — for the Communication tab.
-  const [broadcastEmails, threadMessages] = await Promise.all([
+  // Plus the client's unpaid invoices (PENDING Payments flagged intent.invoice)
+  // for the Overview tab — same definition the Finances › Invoices list uses.
+  const [broadcastEmails, threadMessages, unpaidInvoices] = await Promise.all([
     prisma.emailBroadcastRecipient.findMany({
       where: { clientProfileId: clientId },
       orderBy: { createdAt: 'desc' },
@@ -123,6 +125,19 @@ export default async function ClientDetailPage({
       take: 50,
       select: { id: true, body: true, senderId: true, createdAt: true, readAt: true },
     }),
+    canEdit
+      ? prisma.payment.findMany({
+          where: {
+            trainerId: access.trainerId,
+            clientId,
+            status: 'PENDING',
+            items: { some: { intent: { path: ['invoice'], equals: true } } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          select: { id: true, description: true, amountTotal: true, currency: true, createdAt: true },
+        })
+      : Promise.resolve([]),
   ])
   const communications = [
     ...broadcastEmails.map(e => ({
@@ -232,6 +247,13 @@ export default async function ClientDetailPage({
         clientId={client.id}
         canEdit={canEdit}
         communications={communications}
+        unpaidInvoices={unpaidInvoices.map(p => ({
+          id: p.id,
+          description: p.description,
+          amountTotal: p.amountTotal,
+          currency: p.currency,
+          createdAt: p.createdAt.toISOString(),
+        }))}
         stats={{
           complianceRate,
           completedTasks,
