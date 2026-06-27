@@ -2,30 +2,32 @@
 
 import { useState } from 'react'
 import { ConnectPaymentsPrompt, ConnectPaymentsModal } from '../settings/connect-payments-prompt'
+import { MarketingPromoModal } from '../marketing/marketing-promo'
 
-// Throwaway preview of the connect-Stripe prompt that pops after creating a
-// priced package/class — so the design can be viewed without going through the
-// real flow or resetting account state. Visit /connect-preview.
+// Throwaway preview of the reusable feature-promo modal (payments shown inline;
+// buttons open each add-on's promo as a modal). Visit /connect-preview.
 export default function ConnectPreviewPage() {
-  const [showModal, setShowModal] = useState(false)
+  const [modal, setModal] = useState<null | 'payments' | 'marketing'>(null)
 
   return (
     <div className="mx-auto max-w-2xl p-8">
       <p className="mb-4 text-xs text-slate-400">
-        Preview — the connect-Stripe prompt (not wired to your real account state).
+        Preview — the reusable feature-promo (not wired to your real account state).
       </p>
 
       <ConnectPaymentsPrompt onSkip={() => {}} />
 
-      <button
-        type="button"
-        onClick={() => setShowModal(true)}
-        className="mt-6 text-sm font-medium text-teal-700 hover:underline"
-      >
-        Show as a popup modal →
-      </button>
+      <div className="mt-6 flex gap-4">
+        <button type="button" onClick={() => setModal('payments')} className="text-sm font-medium text-teal-700 hover:underline">
+          Payments modal →
+        </button>
+        <button type="button" onClick={() => setModal('marketing')} className="text-sm font-medium text-teal-700 hover:underline">
+          Marketing modal →
+        </button>
+      </div>
 
-      {showModal && <ConnectPaymentsModal onClose={() => setShowModal(false)} />}
+      {modal === 'payments' && <ConnectPaymentsModal onClose={() => setModal(null)} />}
+      {modal === 'marketing' && <MarketingPromoModal onClose={() => setModal(null)} />}
     </div>
   )
 }
