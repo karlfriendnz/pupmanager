@@ -281,38 +281,38 @@ model VerificationToken {
 // ─── Trainer Profile ─────────────────────────────────────────────────────────
 
 model TrainerProfile {
-  id                String  @id @default(cuid())
-  userId            String  @unique
-  businessName      String
+  id                 String  @id @default(cuid())
+  userId             String  @unique
+  businessName       String
   // URL-safe handle for the public branded client-login page
   // (app.pupmanager.com/c/<slug>). Generated from businessName on demand,
   // editable in settings. Nullable until first generated.
-  slug              String? @unique
+  slug               String? @unique
   // The trainer's phone number — always on file (required at signup, enforced by
   // the (trainer) layout gate). Shown to clients (my-help page + in-app "Call"
   // button) ONLY when showPhoneToClients is true.
-  phone             String?
+  phone              String?
   // Opt-in: whether `phone` is shown to clients. Default false = private (kept
   // for PupManager/ops only); the trainer ticks a box to publish it. Backfilled
   // true for accounts that had a phone before this flag existed, to preserve
   // their prior always-shown behaviour.
   showPhoneToClients Boolean @default(false)
-  logoUrl           String?
-  website           String? // public website URL, shown to clients as a link in the app header
-  publicEmail       String? // public contact email shown to clients (may differ from login email)
-  dashboardBgUrl    String? // background image shown on the client home dashboard
-  inviteTemplate    String? @db.Text // customisable invite email template
+  logoUrl            String?
+  website            String? // public website URL, shown to clients as a link in the app header
+  publicEmail        String? // public contact email shown to clients (may differ from login email)
+  dashboardBgUrl     String? // background image shown on the client home dashboard
+  inviteTemplate     String? @db.Text // customisable invite email template
   // Hex colour for the accent strip across the top of outbound emails.
   // Falls back to a violet default when null.
-  emailAccentColor  String?
+  emailAccentColor   String?
   // Client-app accent gradient — start + end hex. Drive --accent and
   // --accent-strong in the (client) shell. Null falls back to emailAccentColor
   // (start) / a derived darker shade (end), else the PupManager teal default.
-  appGradientStart  String?
-  appGradientEnd    String?
+  appGradientStart   String?
+  appGradientEnd     String?
   // Short personal welcome shown to clients on their app home (set in the
   // first-run personalization wizard, editable later in settings).
-  clientWelcomeNote String? @db.Text
+  clientWelcomeNote  String? @db.Text
 
   // Google Calendar integration
   googleCalendarRefreshToken String? @db.Text
@@ -465,15 +465,15 @@ model TrainerProfile {
   // `sendingFromEmail` is the resolved verified From (hello@mail.theirbiz.com);
   // `domainVerifiedAt` is stamped once Resend reports the domain verified — the
   // bulk-send route hard-blocks until it is non-null.
-  sendingDomain     String?
-  resendDomainId    String?   @unique
-  sendingFromEmail  String?
-  domainVerifiedAt  DateTime?
+  sendingDomain         String?
+  resendDomainId        String?   @unique
+  sendingFromEmail      String?
+  domainVerifiedAt      DateTime?
   // Lets the trainer try bulk email immediately on PupManager's shared verified
   // sender ("<Name> via PupManager") WITHOUT verifying their own domain — a
   // test/trial escape hatch. The trial daily cap still applies. Verifying their
   // own domain is the production path; this just unblocks a first send.
-  useTrialSendingDomain Boolean @default(false)
+  useTrialSendingDomain Boolean   @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -498,6 +498,8 @@ model TrainerProfile {
   availabilitySlots  AvailabilitySlot[]
   blackoutPeriods    BlackoutPeriod[]
   bookingPages       BookingPage[]
+  leadMagnets        LeadMagnet[]
+  subscribers        Subscriber[]
   packages           Package[]
   sessionForms       SessionForm[]
   products           Product[]
@@ -671,7 +673,7 @@ model Timesheet {
 // chosen TimeRate; amountCents = round(minutes/60 * rateCents) (or a manual
 // amount). Optionally tied to a client.
 model TimeEntry {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
   timesheetId String
   date        DateTime @db.Date
   task        String
@@ -682,8 +684,8 @@ model TimeEntry {
   amountCents Int      @default(0) // computed (or manually overridden) line total
   clientId    String? // → ClientProfile.id (optional association)
   category    String?
-  notes       String? @db.Text
-  sortOrder   Int     @default(0)
+  notes       String?  @db.Text
+  sortOrder   Int      @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -742,7 +744,7 @@ model ClientProfile {
   // bulk broadcasts respect it. `marketingOptOutReason` records why.
   marketingEmailOptOut  Boolean   @default(false)
   marketingOptOutAt     DateTime?
-  marketingOptOutReason String?   // "UNSUBSCRIBED" | "BOUNCED" | "COMPLAINED"
+  marketingOptOutReason String? // "UNSUBSCRIBED" | "BOUNCED" | "COMPLAINED"
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1232,8 +1234,8 @@ model ClassRun {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trainer          TrainerProfile     @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  package          Package            @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  trainer          TrainerProfile    @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  package          Package           @relation(fields: [packageId], references: [id], onDelete: Restrict)
   sessions         TrainingSession[]
   enrollments      ClassEnrollment[]
   assignedTrainers ClassRunTrainer[]
@@ -1617,19 +1619,19 @@ model Notification {
 // ─── Custom Client Fields ─────────────────────────────────────────────────────
 
 model CustomField {
-  id        String          @id @default(cuid())
-  trainerId String
-  isSample  Boolean         @default(false)
-  label     String
-  type      CustomFieldType
-  required  Boolean         @default(false)
+  id         String          @id @default(cuid())
+  trainerId  String
+  isSample   Boolean         @default(false)
+  label      String
+  type       CustomFieldType
+  required   Boolean         @default(false)
   // Whether this field appears in (and is required for) the quick-add contact
   // form. `required` above governs the full create form / intake.
-  inQuickAdd Boolean        @default(false)
-  options   Json? // string[] for DROPDOWN
-  order     Int             @default(0)
-  category  String? // optional grouping label
-  appliesTo String          @default("OWNER") // "OWNER" | "DOG"
+  inQuickAdd Boolean         @default(false)
+  options    Json? // string[] for DROPDOWN
+  order      Int             @default(0)
+  category   String? // optional grouping label
+  appliesTo  String          @default("OWNER") // "OWNER" | "DOG"
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2218,6 +2220,74 @@ model EmbedForm {
   @@map("embed_forms")
 }
 
+// ─── Lead magnets (free download → mailing list) ──────────────────────────────
+// A trainer-owned freebie: a downloadable file behind a branded public form.
+// A prospect submits name + email (+ consent) and is emailed the download link
+// and added to the trainer's mailing list (Subscriber). Gated by the
+// 'leadmagnets' add-on. Public URL: /c/<trainerSlug>/free/<slug>.
+model LeadMagnet {
+  id              String   @id @default(cuid())
+  trainerId       String
+  slug            String // per-trainer unique, used in the public URL
+  title           String
+  description     String?  @db.Text
+  // Landing-page copy (fall back to title/description when null).
+  headline        String?  @db.Text
+  intro           String?  @db.Text
+  // The download itself — a public Vercel Blob URL (same model as digital
+  // products). fileName/size are shown in the UI and the delivery email.
+  fileUrl         String
+  fileName        String
+  fileSizeBytes   Int?
+  // Consent copy shown beside the required checkbox; snapshotted onto each
+  // Subscriber at sign-up time for an audit trail.
+  consentText     String   @default("I agree to receive emails and accept the privacy policy.") @db.Text
+  thankYouTitle   String?  @db.Text
+  thankYouMessage String?  @db.Text
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  trainer     TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  subscribers Subscriber[]
+
+  @@unique([trainerId, slug])
+  @@index([trainerId])
+  @@map("lead_magnets")
+}
+
+enum SubscriberStatus {
+  SUBSCRIBED
+  UNSUBSCRIBED
+  BOUNCED
+}
+
+// A marketing subscriber on a trainer's single mailing list — an email-only
+// lead captured via a lead magnet, decoupled from ClientProfile. The Marketing
+// add-on can broadcast to SUBSCRIBED rows. sourceLeadMagnet is SetNull so
+// deleting a magnet leaves its captured leads intact.
+model Subscriber {
+  id                 String           @id @default(cuid())
+  trainerId          String
+  email              String
+  name               String?
+  status             SubscriberStatus @default(SUBSCRIBED)
+  sourceLeadMagnetId String?
+  // Snapshot of the consent text + when they ticked it (compliance trail).
+  consentText        String?          @db.Text
+  consentAt          DateTime?
+  unsubscribedAt     DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  trainer          TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  sourceLeadMagnet LeadMagnet?    @relation(fields: [sourceLeadMagnetId], references: [id], onDelete: SetNull)
+
+  @@unique([trainerId, email])
+  @@index([trainerId, status])
+  @@map("subscribers")
+}
+
 // ─── Enquiries (lead funnel) ──────────────────────────────────────────────────
 // Form submissions land here in NEW state. Trainer can Reply, then Accept
 // (creates User + ClientProfile + Dog + magic-link email) or Decline.
@@ -2423,18 +2493,18 @@ model EmailBroadcast {
 // events back to the row. `clientProfileId` is nullable so a later client delete
 // doesn't orphan the send record.
 model EmailBroadcastRecipient {
-  id              String @id @default(cuid())
+  id              String    @id @default(cuid())
   broadcastId     String
   clientProfileId String?
   email           String
   // Resend message id (from batch.send), unique so the webhook can upsert by it.
-  resendEmailId String? @unique
+  resendEmailId   String?   @unique
   // SENT | DELIVERED | OPENED | CLICKED | BOUNCED | COMPLAINED | FAILED
-  status        String  @default("SENT")
-  openedAt      DateTime?
-  clickedAt     DateTime?
-  bouncedAt     DateTime?
-  complainedAt  DateTime?
+  status          String    @default("SENT")
+  openedAt        DateTime?
+  clickedAt       DateTime?
+  bouncedAt       DateTime?
+  complainedAt    DateTime?
 
   createdAt DateTime @default(now())
 
