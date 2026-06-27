@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Wallet } from 'lucide-react'
 import { PackageForm, type PkgRow, type SessionFormOption } from '../package-form'
 import { ConnectButton } from '../../settings/payments-actions'
 
@@ -41,8 +40,9 @@ export function NewPackageForm({
   if (created) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--pm-brand-50)]">
-          <Wallet className="h-6 w-6 text-[var(--pm-brand-600)]" />
+        <div className="mx-auto mb-4 w-fit rounded-xl bg-white px-4 py-2.5 ring-1 ring-slate-200 shadow-sm">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/stripe.svg" alt="Stripe" className="h-7 w-auto" />
         </div>
         <h2 className="text-lg font-semibold text-slate-900">Package created 🎉</h2>
         <p className="mx-auto mt-1.5 max-w-sm text-sm text-slate-500">
