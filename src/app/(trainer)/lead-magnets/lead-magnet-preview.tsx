@@ -118,7 +118,7 @@ export function LeadMagnetPreview(p: PreviewProps) {
   if (p.layout === 'none') {
     return (
       <PreviewShell>
-        <div className="w-[230px] rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm">
+        <div className="w-[230px] rounded-xl bg-white p-4 text-left">
           {title && <div className="text-[13px] font-semibold text-slate-900">{title}</div>}
           {intro && <p className="mt-0.5 text-[9px] leading-snug text-slate-600">{intro}</p>}
           <MiniForm accent="#0f172a" consentText={p.consentText} />
