@@ -14,6 +14,8 @@ export interface PreviewProps {
   emailSubject: string
   emailIntro: string
   accent: string
+  showHeader: boolean
+  showFieldLabels: boolean
   businessName: string
   logoUrl: string | null
   consentText: string
@@ -39,10 +41,12 @@ function PreviewLogo({ logoUrl, accent, businessName, size = 40 }: { logoUrl: st
   )
 }
 
-function MiniForm({ accent, consentText }: { accent: string; consentText: string }) {
+function MiniForm({ accent, consentText, showLabels = false }: { accent: string; consentText: string; showLabels?: boolean }) {
   return (
     <div className="mt-2">
+      {showLabels && <div className="mb-0.5 text-[8px] font-medium text-slate-600">Name</div>}
       <div className="mb-1.5 h-7 rounded-lg border border-slate-200 bg-white px-2 text-[10px] leading-7 text-slate-400">Your name</div>
+      {showLabels && <div className="mb-0.5 text-[8px] font-medium text-slate-600">Email</div>}
       <div className="mb-1.5 h-7 rounded-lg border border-slate-200 bg-white px-2 text-[10px] leading-7 text-slate-400">you@email.com</div>
       <div className="mb-2 flex items-start gap-1.5 text-left text-[8px] leading-tight text-slate-400">
         <span className="mt-0.5 h-2.5 w-2.5 flex-shrink-0 rounded border border-slate-300" />
@@ -66,7 +70,7 @@ export function LeadMagnetPreview(p: PreviewProps) {
   const { accent, businessName, logoUrl } = p
   const title = p.title.trim() || 'Your free download'
   const intro = p.intro.trim()
-  const form = <MiniForm accent={accent} consentText={p.consentText} />
+  const form = <MiniForm accent={accent} consentText={p.consentText} showLabels={p.showFieldLabels} />
 
   // ── Email preview ──
   if (p.mode === 'email') {
@@ -96,7 +100,7 @@ export function LeadMagnetPreview(p: PreviewProps) {
             <div className="text-[13px] font-bold leading-tight">{title}</div>
             {intro && <div className="text-[8px] leading-snug text-white/90">{intro}</div>}
           </div>
-          <div className="p-3"><PreviewLogo logoUrl={logoUrl} accent={accent} businessName={businessName} size={26} />{form}</div>
+          <div className="p-3">{p.showHeader && <PreviewLogo logoUrl={logoUrl} accent={accent} businessName={businessName} size={26} />}{form}</div>
         </div>
       </PreviewShell>
     )
@@ -121,7 +125,7 @@ export function LeadMagnetPreview(p: PreviewProps) {
         <div className="w-[230px] p-4 text-left">
           {title && <div className="text-[13px] font-semibold text-slate-900">{title}</div>}
           {intro && <p className="mt-0.5 text-[9px] leading-snug text-slate-600">{intro}</p>}
-          <MiniForm accent="#0f172a" consentText={p.consentText} />
+          <MiniForm accent={accent} consentText={p.consentText} showLabels={p.showFieldLabels} />
         </div>
       </PreviewShell>
     )
@@ -132,10 +136,12 @@ export function LeadMagnetPreview(p: PreviewProps) {
     <PreviewShell>
       <div className="w-[240px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         {p.imageUrl ? <div className="h-20 bg-cover bg-center" style={{ backgroundImage: `url(${p.imageUrl})` }} /> : <div style={{ height: 4, background: accent }} />}
-        <div className={`px-4 text-center ${p.imageUrl ? '' : 'pt-4'}`}>
-          <div className={`flex justify-center ${p.imageUrl ? '-mt-5' : ''}`}><span className={p.imageUrl ? 'rounded-xl bg-white p-0.5 shadow-sm' : ''}><PreviewLogo logoUrl={logoUrl} accent={accent} businessName={businessName} size={34} /></span></div>
-          <p className="mt-1 text-[10px] font-semibold">{businessName}</p>
-        </div>
+        {p.showHeader && (
+          <div className={`px-4 text-center ${p.imageUrl ? '' : 'pt-4'}`}>
+            <div className={`flex justify-center ${p.imageUrl ? '-mt-5' : ''}`}><span className={p.imageUrl ? 'rounded-xl bg-white p-0.5 shadow-sm' : ''}><PreviewLogo logoUrl={logoUrl} accent={accent} businessName={businessName} size={34} /></span></div>
+            <p className="mt-1 text-[10px] font-semibold">{businessName}</p>
+          </div>
+        )}
         <div className="px-4 pb-4 pt-1 text-left">
           <div className="text-[14px] font-bold leading-tight text-slate-900">{title}</div>
           {intro && <p className="mt-1 text-[9px] leading-snug text-slate-600">{intro}</p>}

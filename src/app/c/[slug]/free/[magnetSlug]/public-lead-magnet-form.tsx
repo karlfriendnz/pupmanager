@@ -11,6 +11,7 @@ export function PublicLeadMagnetForm({
   magnetSlug,
   consentText,
   accent,
+  showLabels = false,
   thankYouTitle,
   thankYouMessage,
 }: {
@@ -18,6 +19,7 @@ export function PublicLeadMagnetForm({
   magnetSlug: string
   consentText: string
   accent: string
+  showLabels?: boolean
   thankYouTitle: string | null
   thankYouMessage: string | null
 }) {
@@ -70,24 +72,30 @@ export function PublicLeadMagnetForm({
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-3">
-      <input
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Your name"
-        required
-        maxLength={120}
-        className="h-11 rounded-xl border border-slate-200 px-3.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-      />
-      <input
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="you@email.com"
-        required
-        maxLength={200}
-        className="h-11 rounded-xl border border-slate-200 px-3.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
-      />
+      <div>
+        {showLabels && <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>}
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Your name"
+          required
+          maxLength={120}
+          className="h-11 w-full rounded-xl border border-slate-200 px-3.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+        />
+      </div>
+      <div>
+        {showLabels && <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>}
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@email.com"
+          required
+          maxLength={200}
+          className="h-11 w-full rounded-xl border border-slate-200 px-3.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+        />
+      </div>
       <label className="flex items-start gap-2.5 py-1 text-left">
         <input
           type="checkbox"

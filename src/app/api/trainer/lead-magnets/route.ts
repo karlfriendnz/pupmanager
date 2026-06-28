@@ -6,6 +6,7 @@ import { hasAddon } from '@/lib/billing'
 import { uniqueLeadMagnetSlug, DEFAULT_CONSENT_TEXT } from '@/lib/lead-magnet'
 
 const LAYOUTS = ['classic', 'split', 'minimal', 'none'] as const
+const HEX = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Must be a hex colour')
 
 const schema = z.object({
   title: z.string().min(1).max(140),
@@ -14,6 +15,9 @@ const schema = z.object({
   intro: z.string().max(2000).optional().nullable(),
   layout: z.enum(LAYOUTS).default('classic'),
   imageUrl: z.string().url().max(2000).optional().nullable(),
+  accentColor: HEX.optional().nullable(),
+  showHeader: z.boolean().default(true),
+  showFieldLabels: z.boolean().default(false),
   fileUrl: z.string().url().max(2000),
   fileName: z.string().min(1).max(255),
   fileSizeBytes: z.number().int().nonnegative().optional().nullable(),
@@ -63,6 +67,9 @@ export async function POST(req: Request) {
         intro: d.intro ?? null,
         layout: d.layout,
         imageUrl: d.imageUrl ?? null,
+        accentColor: d.accentColor ?? null,
+        showHeader: d.showHeader,
+        showFieldLabels: d.showFieldLabels,
         fileUrl: d.fileUrl,
         fileName: d.fileName,
         fileSizeBytes: d.fileSizeBytes ?? null,

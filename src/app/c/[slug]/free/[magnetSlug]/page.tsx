@@ -60,11 +60,14 @@ export default async function PublicLeadMagnetPage({
   if (!trainer || !magnet) notFound()
   if (!(await hasAddon(trainer.id, 'leadmagnets'))) notFound()
 
-  const accent = trainer.emailAccentColor && HEX.test(trainer.emailAccentColor) ? trainer.emailAccentColor : DEFAULT_ACCENT
+  // Per-magnet accent override, else the trainer's brand accent.
+  const brandAccent = trainer.emailAccentColor && HEX.test(trainer.emailAccentColor) ? trainer.emailAccentColor : DEFAULT_ACCENT
+  const accent = magnet.accentColor && HEX.test(magnet.accentColor) ? magnet.accentColor : brandAccent
   const business = trainer.businessName || 'Your trainer'
   const headline = magnet.headline || magnet.title
   const intro = magnet.intro || magnet.description
   const hero = magnet.imageUrl
+  const showHeader = magnet.showHeader
 
   const form = (
     <PublicLeadMagnetForm
@@ -72,6 +75,7 @@ export default async function PublicLeadMagnetPage({
       magnetSlug={magnetSlug}
       consentText={magnet.consentText}
       accent={accent}
+      showLabels={magnet.showFieldLabels}
       thankYouTitle={magnet.thankYouTitle}
       thankYouMessage={magnet.thankYouMessage}
     />
@@ -98,10 +102,10 @@ export default async function PublicLeadMagnetPage({
             <span className="text-xs font-bold uppercase tracking-widest text-white/80">Free download</span>
             <h1 className="text-2xl font-bold leading-tight">{headline}</h1>
             {intro && <p className="text-sm leading-relaxed text-white/90">{intro}</p>}
-            <div className="mt-2 text-sm font-medium text-white/80">{business}</div>
+            {showHeader && <div className="mt-2 text-sm font-medium text-white/80">{business}</div>}
           </div>
           <div className="p-7">
-            <div className="mb-4">{logo}</div>
+            {showHeader && <div className="mb-4">{logo}</div>}
             {form}
           </div>
         </div>
@@ -119,7 +123,7 @@ export default async function PublicLeadMagnetPage({
           <h1 className="mt-3 text-3xl font-extrabold leading-tight text-slate-900">{headline}</h1>
           {intro && <p className="mt-2 text-sm leading-relaxed text-slate-600">{intro}</p>}
           <div className="mt-5 text-left">{form}</div>
-          <p className="mt-4 text-xs font-medium text-slate-400">{business}</p>
+          {showHeader && <p className="mt-4 text-xs font-medium text-slate-400">{business}</p>}
         </div>
         {!isEmbed && <div className="mx-auto max-w-md"><PoweredBy /></div>}
       </main>
@@ -138,7 +142,8 @@ export default async function PublicLeadMagnetPage({
               slug={slug}
               magnetSlug={magnetSlug}
               consentText={magnet.consentText}
-              accent="#0f172a"
+              accent={accent}
+              showLabels={magnet.showFieldLabels}
               thankYouTitle={magnet.thankYouTitle}
               thankYouMessage={magnet.thankYouMessage}
             />
@@ -159,12 +164,14 @@ export default async function PublicLeadMagnetPage({
           ) : (
             <div style={{ height: 4, background: accent }} />
           )}
-          <div className={`px-6 text-center ${hero ? 'pt-0' : 'pt-6'}`}>
-            <div className={`flex justify-center ${hero ? '-mt-8' : ''}`}>
-              <span className={hero ? 'rounded-2xl bg-white p-1 shadow-sm' : ''}>{logo}</span>
+          {showHeader && (
+            <div className={`px-6 text-center ${hero ? 'pt-0' : 'pt-6'}`}>
+              <div className={`flex justify-center ${hero ? '-mt-8' : ''}`}>
+                <span className={hero ? 'rounded-2xl bg-white p-1 shadow-sm' : ''}>{logo}</span>
+              </div>
+              <p className="mt-2 text-sm font-semibold text-slate-900">{business}</p>
             </div>
-            <p className="mt-2 text-sm font-semibold text-slate-900">{business}</p>
-          </div>
+          )}
           <div className="px-6 pb-6 pt-4">
             <h1 className="text-xl font-bold leading-tight text-slate-900">{headline}</h1>
             {intro && <p className="mt-2 text-sm leading-relaxed text-slate-600">{intro}</p>}

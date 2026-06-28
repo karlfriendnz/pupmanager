@@ -22,6 +22,9 @@ interface Magnet {
   intro: string | null
   layout: string
   imageUrl: string | null
+  accentColor: string | null
+  showHeader: boolean
+  showFieldLabels: boolean
   fileUrl: string
   fileName: string
   fileSizeBytes: number | null
@@ -230,6 +233,9 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
   const [description, setDescription] = useState(magnet?.description ?? '')
   const [layout, setLayout] = useState(magnet?.layout ?? 'classic')
   const [imageUrl, setImageUrl] = useState<string | null>(magnet?.imageUrl ?? null)
+  const [accentColor, setAccentColor] = useState<string | null>(magnet?.accentColor ?? null)
+  const [showHeader, setShowHeader] = useState(magnet?.showHeader ?? true)
+  const [showFieldLabels, setShowFieldLabels] = useState(magnet?.showFieldLabels ?? false)
   const [emailSubject, setEmailSubject] = useState(magnet?.emailSubject ?? '')
   const [emailIntro, setEmailIntro] = useState(magnet?.emailIntro ?? '')
   const [isActive, setIsActive] = useState(magnet?.isActive ?? true)
@@ -283,6 +289,9 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
         description: description.trim() || null,
         layout,
         imageUrl,
+        accentColor,
+        showHeader,
+        showFieldLabels,
         emailSubject: emailSubject.trim() || null,
         emailIntro: emailIntro.trim() || null,
         fileUrl, fileName, fileSizeBytes,
@@ -360,6 +369,30 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
                   ))}
                 </div>
               </Field>
+              <Field label="Style" hint="Colours and what shows on the page.">
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="color"
+                      value={accentColor ?? branding.accent}
+                      onChange={(e) => { setAccentColor(e.target.value); setPreviewMode('page') }}
+                      className="h-8 w-10 cursor-pointer rounded-md border border-slate-200 bg-white p-0.5"
+                    />
+                    Button colour
+                  </label>
+                  {accentColor && (
+                    <button type="button" onClick={() => setAccentColor(null)} className="text-xs font-medium text-slate-400 hover:text-slate-600">Reset to brand</button>
+                  )}
+                </div>
+                <label className="mt-3 flex items-center gap-2.5">
+                  <input type="checkbox" checked={showHeader} onChange={(e) => { setShowHeader(e.target.checked); setPreviewMode('page') }} className="h-4 w-4 rounded border-slate-300" />
+                  <span className="text-sm text-slate-700">Show header (logo &amp; business name)</span>
+                </label>
+                <label className="mt-2 flex items-center gap-2.5">
+                  <input type="checkbox" checked={showFieldLabels} onChange={(e) => { setShowFieldLabels(e.target.checked); setPreviewMode('page') }} className="h-4 w-4 rounded border-slate-300" />
+                  <span className="text-sm text-slate-700">Show labels on form fields</span>
+                </label>
+              </Field>
               <Field label="Delivery email" hint="Customise the email that sends the download. Leave blank for the default.">
                 <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} onFocus={() => setPreviewMode('email')} placeholder="Subject — e.g. Your free puppy guide 🐾" maxLength={200} className="mb-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
                 <textarea value={emailIntro} onChange={(e) => setEmailIntro(e.target.value)} onFocus={() => setPreviewMode('email')} rows={3} maxLength={4000} placeholder="Message above the download button…" className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
@@ -390,7 +423,9 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
                 imageUrl={imageUrl}
                 emailSubject={emailSubject}
                 emailIntro={emailIntro}
-                accent={branding.accent}
+                accent={accentColor ?? branding.accent}
+                showHeader={showHeader}
+                showFieldLabels={showFieldLabels}
                 businessName={branding.businessName}
                 logoUrl={branding.logoUrl}
                 consentText="I agree to receive emails and accept the privacy policy."
