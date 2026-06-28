@@ -38,6 +38,7 @@ const LAYOUTS: { id: string; name: string; hint: string }[] = [
   { id: 'split', name: 'Split', hint: 'Headline panel beside form' },
   { id: 'spotlight', name: 'Spotlight', hint: 'Bold colour background' },
   { id: 'minimal', name: 'Minimal', hint: 'Big headline, no frills' },
+  { id: 'none', name: 'None', hint: 'Bare form, no branding' },
 ]
 
 interface Subscriber {
@@ -148,15 +149,23 @@ function CopyButton({ getText, label, icon }: { getText: () => string; label: st
   )
 }
 
-// Build the paste-on-your-site embed: an iframe to the framable landing PLUS a
-// real "Powered by PupManager" anchor in the parent DOM (the SEO backlink).
-function buildEmbed(absUrl: string): string {
-  return `<iframe src="${absUrl}?embed=1" width="100%" height="520" style="border:0;max-width:480px" title="Free download"></iframe>
+// Branding shown alongside the embed snippet: 'powered' appends the SEO backlink,
+// 'none' produces a bare iframe with no credit line.
+export type EmbedBranding = 'powered' | 'none'
+
+// Build the paste-on-your-site embed: an iframe to the framable landing. When
+// branding is 'powered' it also appends a real "Powered by PupManager" anchor in
+// the parent DOM (the SEO backlink); 'none' omits it entirely.
+export function buildEmbed(absUrl: string, branding: EmbedBranding = 'powered'): string {
+  const iframe = `<iframe src="${absUrl}?embed=1" width="100%" height="520" style="border:0;max-width:480px" title="Free download"></iframe>`
+  if (branding === 'none') return iframe
+  return `${iframe}
 <p style="font:12px sans-serif;color:#64748b;text-align:center;max-width:480px">🐾 Powered by <a href="https://pupmanager.com" style="color:#0d9488">PupManager — software for dog trainers</a></p>`
 }
 
 function MagnetCard({ magnet: m, path, onEdit, onDelete }: { magnet: Magnet; path: string; onEdit: () => void; onDelete: () => void }) {
   const [showEmbed, setShowEmbed] = useState(false)
+  const [embedBranding, setEmbedBranding] = useState<EmbedBranding>('powered')
   const absUrl = () => (typeof window === 'undefined' ? path : window.location.origin + path)
   return (
     <Card>
@@ -189,9 +198,27 @@ function MagnetCard({ magnet: m, path, onEdit, onDelete }: { magnet: Magnet; pat
 
         {showEmbed && (
           <div className="mt-3 rounded-xl bg-slate-50 p-3">
-            <p className="mb-2 text-xs text-slate-500">Paste this on your website. The “Powered by PupManager” line links back to us — keep it to help us both grow.</p>
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-white p-2.5 text-[11px] text-slate-700 ring-1 ring-slate-200">{buildEmbed(absUrl())}</pre>
-            <div className="mt-2"><CopyButton getText={() => buildEmbed(absUrl())} label="Copy embed code" icon={<Copy className="h-3.5 w-3.5" />} /></div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-500">
+                {embedBranding === 'powered'
+                  ? 'Paste this on your website. The “Powered by PupManager” line links back to us — keep it to help us both grow.'
+                  : 'Paste this on your website. No “Powered by PupManager” credit is included.'}
+              </p>
+              <div className="inline-flex flex-shrink-0 rounded-lg bg-white p-0.5 ring-1 ring-slate-200">
+                {([['powered', 'Powered by'], ['none', 'No branding']] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setEmbedBranding(value)}
+                    className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${embedBranding === value ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-white p-2.5 text-[11px] text-slate-700 ring-1 ring-slate-200">{buildEmbed(absUrl(), embedBranding)}</pre>
+            <div className="mt-2"><CopyButton getText={() => buildEmbed(absUrl(), embedBranding)} label="Copy embed code" icon={<Copy className="h-3.5 w-3.5" />} /></div>
           </div>
         )}
       </CardBody>

@@ -154,6 +154,29 @@ export default async function PublicLeadMagnetPage({
     )
   }
 
+  // ── None: bare, unbranded form — for embedding on a site with its own brand ─
+  if (magnet.layout === 'none') {
+    return (
+      <main className={isEmbed ? 'p-2' : 'min-h-screen bg-white px-4 py-10'}>
+        <div className="mx-auto w-full max-w-md">
+          {headline && <h1 className="text-lg font-semibold text-slate-900">{headline}</h1>}
+          {intro && <p className="mt-1 text-sm text-slate-600">{intro}</p>}
+          <div className={headline || intro ? 'mt-4' : ''}>
+            <PublicLeadMagnetForm
+              slug={slug}
+              magnetSlug={magnetSlug}
+              consentText={magnet.consentText}
+              accent="#0f172a"
+              thankYouTitle={magnet.thankYouTitle}
+              thankYouMessage={magnet.thankYouMessage}
+            />
+          </div>
+          {!isEmbed && <PoweredBy />}
+        </div>
+      </main>
+    )
+  }
+
   // ── Classic (default): accent bar + logo + centred form ───────────────────
   return (
     <main className={wrapClass}>

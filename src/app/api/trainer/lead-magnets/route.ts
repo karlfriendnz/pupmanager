@@ -5,7 +5,7 @@ import { guardPermission } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { uniqueLeadMagnetSlug, DEFAULT_CONSENT_TEXT } from '@/lib/lead-magnet'
 
-const LAYOUTS = ['classic', 'split', 'spotlight', 'minimal'] as const
+const LAYOUTS = ['classic', 'split', 'spotlight', 'minimal', 'none'] as const
 
 const schema = z.object({
   title: z.string().min(1).max(140),
