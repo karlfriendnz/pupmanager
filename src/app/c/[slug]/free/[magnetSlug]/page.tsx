@@ -110,34 +110,6 @@ export default async function PublicLeadMagnetPage({
     )
   }
 
-  // ── Spotlight: full accent background, floating form card ──────────────────
-  if (magnet.layout === 'spotlight') {
-    return (
-      <main
-        className={isEmbed ? 'p-3' : 'flex min-h-screen items-center justify-center px-4 py-10'}
-        style={isEmbed ? undefined : (hero
-          ? { backgroundImage: `linear-gradient(160deg, ${accent}d9, ${shade(accent)}cc), url(${hero})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-          : { background: `linear-gradient(160deg, ${accent}, ${shade(accent)})` })}
-      >
-        <div className="w-full max-w-md">
-          {!isEmbed && (
-            <div className="mb-5 text-center text-white">
-              <span className="text-xs font-bold uppercase tracking-widest text-white/80">Free download</span>
-              <h1 className="mt-1 text-2xl font-bold leading-tight">{headline}</h1>
-            </div>
-          )}
-          <div className="rounded-3xl bg-white p-6 shadow-xl">
-            <div className="mb-3 text-center">{logo}</div>
-            {isEmbed && <h1 className="mb-3 text-center text-xl font-bold text-slate-900">{headline}</h1>}
-            {intro && <p className="mb-4 text-center text-sm text-slate-600">{intro}</p>}
-            {form}
-          </div>
-          {!isEmbed && <PoweredBy />}
-        </div>
-      </main>
-    )
-  }
-
   // ── Minimal: bold headline, no photo ──────────────────────────────────────
   if (magnet.layout === 'minimal') {
     return (

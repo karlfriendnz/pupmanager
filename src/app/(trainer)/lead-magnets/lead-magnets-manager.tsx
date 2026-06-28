@@ -36,7 +36,6 @@ interface Magnet {
 const LAYOUTS: { id: string; name: string; hint: string }[] = [
   { id: 'classic', name: 'Classic', hint: 'Logo + centred form' },
   { id: 'split', name: 'Split', hint: 'Headline panel beside form' },
-  { id: 'spotlight', name: 'Spotlight', hint: 'Bold colour background' },
   { id: 'minimal', name: 'Minimal', hint: 'Big headline, no frills' },
   { id: 'none', name: 'None', hint: 'Bare form, no branding' },
 ]
@@ -333,7 +332,7 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
                   </label>
                 )}
               </Field>
-              <Field label="Hero image" hint="Optional — shown on the Classic, Split & Spotlight layouts.">
+              <Field label="Hero image" hint="Optional — shown on the Classic & Split layouts.">
                 {imageUrl ? (
                   <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
                     {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -1,7 +1,7 @@
 'use client'
 
 // Live preview for the lead-magnet editor — a scaled-down render of the chosen
-// landing layout (classic / split / spotlight / minimal) or the delivery email,
+// landing layout (classic / split / minimal / none) or the delivery email,
 // driven by the editor's current form state. Approximates the public page in
 // src/app/c/[slug]/free/[magnetSlug]/page.tsx (kept deliberately lightweight).
 
@@ -97,17 +97,6 @@ export function LeadMagnetPreview(p: PreviewProps) {
             {intro && <div className="text-[8px] leading-snug text-white/90">{intro}</div>}
           </div>
           <div className="p-3"><PreviewLogo logoUrl={logoUrl} accent={accent} businessName={businessName} size={26} />{form}</div>
-        </div>
-      </PreviewShell>
-    )
-  }
-
-  if (p.layout === 'spotlight') {
-    return (
-      <PreviewShell style={p.imageUrl ? { backgroundImage: `linear-gradient(160deg, ${accent}d9, ${shade(accent)}cc), url(${p.imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: `linear-gradient(160deg, ${accent}, ${shade(accent)})` }}>
-        <div className="w-[230px]">
-          <div className="mb-2 text-center text-white"><div className="text-[7px] font-bold uppercase tracking-widest text-white/80">Free download</div><div className="text-[14px] font-bold leading-tight">{title}</div></div>
-          <div className="rounded-xl bg-white p-3 shadow-lg"><div className="text-center"><PreviewLogo logoUrl={logoUrl} accent={accent} businessName={businessName} size={30} /></div>{intro && <p className="mt-1 text-center text-[9px] text-slate-600">{intro}</p>}{form}</div>
         </div>
       </PreviewShell>
     )
