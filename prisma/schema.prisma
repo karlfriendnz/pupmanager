@@ -2243,6 +2243,7 @@ model LeadMagnet {
   // showFieldLabels shows labels above the form fields (vs placeholders only).
   accentColor     String?
   showHeader      Boolean  @default(true)
+  showTitle       Boolean  @default(true)
   showFieldLabels Boolean  @default(false)
   // The download itself — a public Vercel Blob URL (same model as digital
   // products). fileName/size are shown in the UI and the delivery email.

@@ -15,6 +15,7 @@ export interface PreviewProps {
   emailIntro: string
   accent: string
   showHeader: boolean
+  showTitle: boolean
   showFieldLabels: boolean
   businessName: string
   logoUrl: string | null
@@ -97,7 +98,7 @@ export function LeadMagnetPreview(p: PreviewProps) {
         <div className="grid w-[320px] grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col justify-center gap-1.5 p-3 text-white" style={p.imageUrl ? { backgroundImage: `linear-gradient(150deg, ${accent}dd, ${shade(accent)}b3), url(${p.imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : { background: `linear-gradient(150deg, ${accent}, ${shade(accent)})` }}>
             <span className="text-[7px] font-bold uppercase tracking-widest text-white/80">Free download</span>
-            <div className="text-[13px] font-bold leading-tight">{title}</div>
+            {p.showTitle && <div className="text-[13px] font-bold leading-tight">{title}</div>}
             {intro && <div className="text-[8px] leading-snug text-white/90">{intro}</div>}
           </div>
           <div className="p-3">{p.showHeader && <PreviewLogo logoUrl={logoUrl} accent={accent} businessName={businessName} size={26} />}{form}</div>
@@ -111,7 +112,7 @@ export function LeadMagnetPreview(p: PreviewProps) {
       <PreviewShell>
         <div className="w-[230px] rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
           <span className="inline-block rounded-full px-2 py-0.5 text-[7px] font-bold uppercase tracking-wide" style={{ background: `${accent}1a`, color: accent }}>Free download</span>
-          <div className="mt-1.5 text-[20px] font-extrabold leading-tight text-slate-900">{title}</div>
+          {p.showTitle && <div className="mt-1.5 text-[20px] font-extrabold leading-tight text-slate-900">{title}</div>}
           {intro && <p className="mt-1 text-[9px] leading-snug text-slate-600">{intro}</p>}
           <div className="mt-2 text-left">{form}</div>
         </div>
@@ -123,7 +124,7 @@ export function LeadMagnetPreview(p: PreviewProps) {
     return (
       <PreviewShell style={{ background: '#ffffff' }}>
         <div className="w-[230px] p-4 text-left">
-          {title && <div className="text-[13px] font-semibold text-slate-900">{title}</div>}
+          {p.showTitle && title && <div className="text-[13px] font-semibold text-slate-900">{title}</div>}
           {intro && <p className="mt-0.5 text-[9px] leading-snug text-slate-600">{intro}</p>}
           <MiniForm accent={accent} consentText={p.consentText} showLabels={p.showFieldLabels} />
         </div>
@@ -143,7 +144,7 @@ export function LeadMagnetPreview(p: PreviewProps) {
           </div>
         )}
         <div className="px-4 pb-4 pt-1 text-left">
-          <div className="text-[14px] font-bold leading-tight text-slate-900">{title}</div>
+          {p.showTitle && <div className="text-[14px] font-bold leading-tight text-slate-900">{title}</div>}
           {intro && <p className="mt-1 text-[9px] leading-snug text-slate-600">{intro}</p>}
           {form}
         </div>

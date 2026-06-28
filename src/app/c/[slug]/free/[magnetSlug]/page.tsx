@@ -68,6 +68,7 @@ export default async function PublicLeadMagnetPage({
   const intro = magnet.intro || magnet.description
   const hero = magnet.imageUrl
   const showHeader = magnet.showHeader
+  const showTitle = magnet.showTitle
 
   const form = (
     <PublicLeadMagnetForm
@@ -100,7 +101,7 @@ export default async function PublicLeadMagnetPage({
               : { background: `linear-gradient(150deg, ${accent}, ${shade(accent)})` }}
           >
             <span className="text-xs font-bold uppercase tracking-widest text-white/80">Free download</span>
-            <h1 className="text-2xl font-bold leading-tight">{headline}</h1>
+            {showTitle && <h1 className="text-2xl font-bold leading-tight">{headline}</h1>}
             {intro && <p className="text-sm leading-relaxed text-white/90">{intro}</p>}
             {showHeader && <div className="mt-2 text-sm font-medium text-white/80">{business}</div>}
           </div>
@@ -120,7 +121,7 @@ export default async function PublicLeadMagnetPage({
       <main className={wrapClass}>
         <div className="mx-auto w-full max-w-md rounded-3xl border border-slate-100 bg-white p-8 text-center shadow-sm">
           <span className="inline-block rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide" style={{ background: tint(accent), color: accent }}>Free download</span>
-          <h1 className="mt-3 text-3xl font-extrabold leading-tight text-slate-900">{headline}</h1>
+          {showTitle && <h1 className="mt-3 text-3xl font-extrabold leading-tight text-slate-900">{headline}</h1>}
           {intro && <p className="mt-2 text-sm leading-relaxed text-slate-600">{intro}</p>}
           <div className="mt-5 text-left">{form}</div>
           {showHeader && <p className="mt-4 text-xs font-medium text-slate-400">{business}</p>}
@@ -135,9 +136,9 @@ export default async function PublicLeadMagnetPage({
     return (
       <main className={isEmbed ? 'p-2' : 'min-h-screen bg-white px-4 py-10'}>
         <div className="mx-auto w-full max-w-md">
-          {headline && <h1 className="text-lg font-semibold text-slate-900">{headline}</h1>}
+          {showTitle && headline && <h1 className="text-lg font-semibold text-slate-900">{headline}</h1>}
           {intro && <p className="mt-1 text-sm text-slate-600">{intro}</p>}
-          <div className={headline || intro ? 'mt-4' : ''}>
+          <div className={(showTitle && headline) || intro ? 'mt-4' : ''}>
             <PublicLeadMagnetForm
               slug={slug}
               magnetSlug={magnetSlug}
@@ -173,7 +174,7 @@ export default async function PublicLeadMagnetPage({
             </div>
           )}
           <div className="px-6 pb-6 pt-4">
-            <h1 className="text-xl font-bold leading-tight text-slate-900">{headline}</h1>
+            {showTitle && <h1 className="text-xl font-bold leading-tight text-slate-900">{headline}</h1>}
             {intro && <p className="mt-2 text-sm leading-relaxed text-slate-600">{intro}</p>}
             <div className="mt-5">{form}</div>
           </div>

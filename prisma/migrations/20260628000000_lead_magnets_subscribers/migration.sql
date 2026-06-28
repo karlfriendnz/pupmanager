@@ -17,6 +17,7 @@ CREATE TABLE "lead_magnets" (
     "imageUrl" TEXT,
     "accentColor" TEXT,
     "showHeader" BOOLEAN NOT NULL DEFAULT true,
+    "showTitle" BOOLEAN NOT NULL DEFAULT true,
     "showFieldLabels" BOOLEAN NOT NULL DEFAULT false,
     "fileUrl" TEXT NOT NULL,
     "fileName" TEXT NOT NULL,

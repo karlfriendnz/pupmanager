@@ -61,6 +61,7 @@ export default async function LeadMagnetsPage() {
             imageUrl: m.imageUrl,
             accentColor: m.accentColor,
             showHeader: m.showHeader,
+            showTitle: m.showTitle,
             showFieldLabels: m.showFieldLabels,
             fileUrl: m.fileUrl,
             fileName: m.fileName,

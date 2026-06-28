@@ -13,6 +13,7 @@ const patchSchema = z.object({
   imageUrl: z.string().url().max(2000).nullable().optional(),
   accentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).nullable().optional(),
   showHeader: z.boolean().optional(),
+  showTitle: z.boolean().optional(),
   showFieldLabels: z.boolean().optional(),
   fileUrl: z.string().url().max(2000).optional(),
   fileName: z.string().min(1).max(255).optional(),

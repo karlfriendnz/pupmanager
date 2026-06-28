@@ -24,6 +24,7 @@ interface Magnet {
   imageUrl: string | null
   accentColor: string | null
   showHeader: boolean
+  showTitle: boolean
   showFieldLabels: boolean
   fileUrl: string
   fileName: string
@@ -235,6 +236,7 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
   const [imageUrl, setImageUrl] = useState<string | null>(magnet?.imageUrl ?? null)
   const [accentColor, setAccentColor] = useState<string | null>(magnet?.accentColor ?? null)
   const [showHeader, setShowHeader] = useState(magnet?.showHeader ?? true)
+  const [showTitle, setShowTitle] = useState(magnet?.showTitle ?? true)
   const [showFieldLabels, setShowFieldLabels] = useState(magnet?.showFieldLabels ?? false)
   const [emailSubject, setEmailSubject] = useState(magnet?.emailSubject ?? '')
   const [emailIntro, setEmailIntro] = useState(magnet?.emailIntro ?? '')
@@ -291,6 +293,7 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
         imageUrl,
         accentColor,
         showHeader,
+        showTitle,
         showFieldLabels,
         emailSubject: emailSubject.trim() || null,
         emailIntro: emailIntro.trim() || null,
@@ -389,6 +392,10 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
                   <span className="text-sm text-slate-700">Show header (logo &amp; business name)</span>
                 </label>
                 <label className="mt-2 flex items-center gap-2.5">
+                  <input type="checkbox" checked={showTitle} onChange={(e) => { setShowTitle(e.target.checked); setPreviewMode('page') }} className="h-4 w-4 rounded border-slate-300" />
+                  <span className="text-sm text-slate-700">Show title</span>
+                </label>
+                <label className="mt-2 flex items-center gap-2.5">
                   <input type="checkbox" checked={showFieldLabels} onChange={(e) => { setShowFieldLabels(e.target.checked); setPreviewMode('page') }} className="h-4 w-4 rounded border-slate-300" />
                   <span className="text-sm text-slate-700">Show labels on form fields</span>
                 </label>
@@ -425,6 +432,7 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
                 emailIntro={emailIntro}
                 accent={accentColor ?? branding.accent}
                 showHeader={showHeader}
+                showTitle={showTitle}
                 showFieldLabels={showFieldLabels}
                 businessName={branding.businessName}
                 logoUrl={branding.logoUrl}
