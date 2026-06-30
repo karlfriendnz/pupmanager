@@ -515,8 +515,46 @@ model TrainerProfile {
   payments           Payment[]
   brainDumps         TrainerBrainDump[]
   todos              TrainerTodo[]
+  xeroConnection     XeroConnection?
 
   @@map("trainer_profiles")
+}
+
+// ─── Xero accounting integration ──────────────────────────────────────────────
+// Per-trainer connection to their own Xero organisation (OAuth2). One row per
+// trainer who has connected. When the trainer disconnects we delete the row,
+// so presence of a row == "connected". Each trainer's invoices/payments sync to
+// their OWN Xero org — this is the multi-tenant, trainer-keeps-their-books model.
+model XeroConnection {
+  id        String         @id @default(cuid())
+  trainerId String         @unique
+  trainer   TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  // OAuth tokens. The refresh token ROTATES on every refresh — always persist
+  // the newest one returned by the token endpoint or the connection dies. The
+  // access token is cached with its expiry so we only refresh when stale.
+  refreshToken         String    @db.Text
+  accessToken          String?   @db.Text
+  accessTokenExpiresAt DateTime?
+
+  // The connected organisation. A single Xero login can expose multiple orgs;
+  // we capture the one chosen at connect time (first ORGANISATION tenant).
+  tenantId   String
+  tenantName String?
+
+  // Account + tax mapping (populated in Phase 1 from the org's chart of
+  // accounts). bankAccountCode = the account client payments are recorded
+  // against; salesAccountCode = fallback revenue account for line items with no
+  // per-product mapping; taxType = default Xero tax type code (e.g. "NONE").
+  bankAccountCode  String?
+  bankAccountName  String?
+  salesAccountCode String?
+  taxType          String?
+
+  connectedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("xero_connections")
 }
 
 // ─── Promo codes ──────────────────────────────────────────────────────────────

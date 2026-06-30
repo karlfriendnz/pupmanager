@@ -99,6 +99,12 @@ const schema = z.object({
   // path is simply off and checkout behaves exactly as before.
   STRIPE_FOUNDER_COUPON_ID: optionalString,
 
+  // Xero accounting integration (OAuth2 confidential client). Each trainer
+  // connects their OWN Xero org. Optional — when unset, the "Connect Xero"
+  // card surfaces a "not configured" state instead of starting OAuth.
+  XERO_CLIENT_ID: optionalString,
+  XERO_CLIENT_SECRET: optionalString,
+
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 })
 
