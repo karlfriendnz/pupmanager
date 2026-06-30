@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Check, Loader2, AlertCircle } from 'lucide-react'
+import { XeroMappingPanel } from './xero-mapping-panel'
 
 // Settings → Integrations card for the Xero accounting connection. Shows the
 // connected org (or a connect CTA) and lets an owner disconnect. The actual
@@ -84,6 +85,8 @@ export function XeroConnectionCard({
           {flag === 'unconfigured' && (
             <p className="mt-2 text-xs text-rose-600">Xero isn’t configured for this environment yet.</p>
           )}
+
+          {connected && <XeroMappingPanel />}
         </div>
       </div>
     </div>

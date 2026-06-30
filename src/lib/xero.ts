@@ -158,3 +158,60 @@ export async function xeroFetch(
     },
   })
 }
+
+// ─── Phase 1: account + tax mapping options ───────────────────────────────────
+
+export type XeroAccountOption = { code: string; name: string }
+export type XeroTaxOption = { taxType: string; name: string }
+export type XeroMappingOptions = {
+  // Revenue accounts an invoice line can post to (the per-product + default
+  // sales pickers). Bank accounts a client payment can be recorded against.
+  revenueAccounts: XeroAccountOption[]
+  bankAccounts: XeroAccountOption[]
+  taxRates: XeroTaxOption[]
+}
+
+type RawAccount = { Code?: string; Name?: string; Type?: string; Class?: string; Status?: string }
+type RawTaxRate = { Name?: string; TaxType?: string; Status?: string; CanApplyToRevenue?: boolean }
+
+async function getJson<T>(connection: XeroConnection, path: string): Promise<T> {
+  const res = await xeroFetch(connection, path)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Xero GET ${path} failed (${res.status}): ${text}`)
+  }
+  return res.json()
+}
+
+/**
+ * Pull the connected org's chart of accounts + sales tax rates, shaped into the
+ * pick-lists the mapping UI needs. Revenue accounts feed the per-product/default
+ * income pickers; bank accounts feed the "where payments land" picker; tax rates
+ * are limited to those that can apply to revenue (sales).
+ */
+export async function fetchMappingOptions(connection: XeroConnection): Promise<XeroMappingOptions> {
+  const [accountsRes, taxRes] = await Promise.all([
+    getJson<{ Accounts?: RawAccount[] }>(connection, '/Accounts'),
+    getJson<{ TaxRates?: RawTaxRate[] }>(connection, '/TaxRates'),
+  ])
+
+  const accounts = accountsRes.Accounts ?? []
+  const active = (a: RawAccount) => a.Status === 'ACTIVE' && !!a.Code && !!a.Name
+  const byName = (a: XeroAccountOption, b: XeroAccountOption) => a.name.localeCompare(b.name)
+
+  const revenueAccounts = accounts
+    .filter((a) => active(a) && a.Class === 'REVENUE')
+    .map((a) => ({ code: a.Code!, name: a.Name! }))
+    .sort(byName)
+
+  const bankAccounts = accounts
+    .filter((a) => active(a) && a.Type === 'BANK')
+    .map((a) => ({ code: a.Code!, name: a.Name! }))
+    .sort(byName)
+
+  const taxRates = (taxRes.TaxRates ?? [])
+    .filter((t) => t.Status === 'ACTIVE' && t.CanApplyToRevenue && !!t.TaxType && !!t.Name)
+    .map((t) => ({ taxType: t.TaxType!, name: t.Name! }))
+
+  return { revenueAccounts, bankAccounts, taxRates }
+}

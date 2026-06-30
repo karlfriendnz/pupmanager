@@ -1091,6 +1091,9 @@ model Product {
   featured    Boolean     @default(false) // surfaces on the client home dashboard
   active      Boolean     @default(true) // hide from clients without deleting
   order       Int         @default(0)
+  // Xero revenue account code this product's invoice lines post to. Null = fall
+  // back to the connection's default sales account (XeroConnection.salesAccountCode).
+  xeroAccountCode String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1184,6 +1187,9 @@ model Package {
   // (false). Only meaningful when clientSelfBook is true.
   clientSelfBook           Boolean     @default(false)
   selfBookRequiresApproval Boolean     @default(true)
+  // Xero revenue account code this package's invoice lines post to. Null = fall
+  // back to the connection's default sales account (XeroConnection.salesAccountCode).
+  xeroAccountCode          String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

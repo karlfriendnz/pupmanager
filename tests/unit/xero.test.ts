@@ -24,6 +24,7 @@ import {
   xeroAuthorizeUrl,
   getValidAccessToken,
   xeroFetch,
+  fetchMappingOptions,
 } from '@/lib/xero'
 
 type Conn = Parameters<typeof getValidAccessToken>[0]
@@ -125,5 +126,50 @@ describe('xeroFetch', () => {
     expect(url).toBe('https://api.xero.com/api.xro/2.0/Contacts')
     expect(init.headers.Authorization).toBe('Bearer tok')
     expect(init.headers['Xero-tenant-id']).toBe('tenant-1')
+  })
+})
+
+describe('fetchMappingOptions', () => {
+  const fresh = conn({ accessToken: 'tok', accessTokenExpiresAt: new Date(Date.now() + 10 * 60 * 1000) })
+
+  function stubAccountsAndTax(accounts: unknown[], taxRates: unknown[]) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        const body = String(url).includes('/TaxRates') ? { TaxRates: taxRates } : { Accounts: accounts }
+        return Promise.resolve({ ok: true, json: async () => body })
+      }),
+    )
+  }
+
+  it('keeps only ACTIVE revenue accounts, BANK accounts, and revenue-applicable tax rates', async () => {
+    stubAccountsAndTax(
+      [
+        { Code: '200', Name: 'Sales', Type: 'REVENUE', Class: 'REVENUE', Status: 'ACTIVE' },
+        { Code: '260', Name: 'Other Revenue', Type: 'OTHERINCOME', Class: 'REVENUE', Status: 'ACTIVE' },
+        { Code: '090', Name: 'Business Bank', Type: 'BANK', Class: 'ASSET', Status: 'ACTIVE' },
+        { Code: '400', Name: 'Advertising', Type: 'EXPENSE', Class: 'EXPENSE', Status: 'ACTIVE' }, // dropped
+        { Code: '201', Name: 'Archived Sales', Type: 'REVENUE', Class: 'REVENUE', Status: 'ARCHIVED' }, // dropped
+        { Name: 'No Code Revenue', Class: 'REVENUE', Status: 'ACTIVE' }, // dropped (no code)
+      ],
+      [
+        { Name: 'GST on Income', TaxType: 'OUTPUT2', Status: 'ACTIVE', CanApplyToRevenue: true },
+        { Name: 'GST on Expenses', TaxType: 'INPUT2', Status: 'ACTIVE', CanApplyToRevenue: false }, // dropped
+        { Name: 'Old Rate', TaxType: 'OLD', Status: 'DELETED', CanApplyToRevenue: true }, // dropped
+      ],
+    )
+
+    const opts = await fetchMappingOptions(fresh)
+    expect(opts.revenueAccounts.map((a) => a.code).sort()).toEqual(['200', '260'])
+    expect(opts.bankAccounts.map((a) => a.code)).toEqual(['090'])
+    expect(opts.taxRates).toEqual([{ taxType: 'OUTPUT2', name: 'GST on Income' }])
+  })
+
+  it('throws when the Accounts request errors', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: false, status: 401, text: async () => 'unauthorised' })),
+    )
+    await expect(fetchMappingOptions(fresh)).rejects.toThrow(/Xero GET/)
   })
 })
