@@ -784,6 +784,12 @@ model ClientProfile {
   marketingOptOutAt     DateTime?
   marketingOptOutReason String? // "UNSUBSCRIBED" | "BOUNCED" | "COMPLAINED"
 
+  // The matching Xero Contact id, once this client has been synced to the
+  // trainer's Xero org (Phase 2). Null = not yet synced. Scoped naturally to the
+  // (userId, trainerId) relationship, so the same person maps to a different
+  // contact in each trainer's org.
+  xeroContactId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

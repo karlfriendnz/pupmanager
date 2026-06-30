@@ -25,6 +25,7 @@ import {
   getValidAccessToken,
   xeroFetch,
   fetchMappingOptions,
+  ensureXeroContact,
 } from '@/lib/xero'
 
 type Conn = Parameters<typeof getValidAccessToken>[0]
@@ -171,5 +172,75 @@ describe('fetchMappingOptions', () => {
       vi.fn(() => Promise.resolve({ ok: false, status: 401, text: async () => 'unauthorised' })),
     )
     await expect(fetchMappingOptions(fresh)).rejects.toThrow(/Xero GET/)
+  })
+})
+
+describe('ensureXeroContact', () => {
+  const fresh = conn({ accessToken: 'tok', accessTokenExpiresAt: new Date(Date.now() + 10 * 60 * 1000) })
+
+  it('short-circuits to the known contact id without any API call', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const id = await ensureXeroContact(fresh, { name: 'Jo', existingContactId: 'C-EXIST' })
+    expect(id).toBe('C-EXIST')
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('matches an existing contact by email before creating', async () => {
+    const fetchSpy = vi.fn((url: string) => {
+      expect(String(url)).toContain('/Contacts?where=')
+      return Promise.resolve({ ok: true, json: async () => ({ Contacts: [{ ContactID: 'C-BY-EMAIL' }] }) })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    const id = await ensureXeroContact(fresh, { name: 'Jo', email: 'jo@example.com' })
+    expect(id).toBe('C-BY-EMAIL')
+    // only the email lookup — no POST create
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('creates a contact when no email match exists', async () => {
+    const calls: Array<{ url: string; method: string }> = []
+    const fetchSpy = vi.fn((url: string, init?: { method?: string }) => {
+      calls.push({ url: String(url), method: init?.method ?? 'GET' })
+      if (init?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: async () => ({ Contacts: [{ ContactID: 'C-NEW' }] }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ Contacts: [] }) }) // email lookup: no match
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    const id = await ensureXeroContact(fresh, { name: 'New Person', email: 'new@example.com' })
+    expect(id).toBe('C-NEW')
+    expect(calls.some((c) => c.method === 'POST')).toBe(true)
+  })
+
+  it('on a name collision with an email, re-creates under a disambiguated name', async () => {
+    let postCount = 0
+    const bodies: string[] = []
+    const fetchSpy = vi.fn((url: string, init?: { method?: string; body?: string }) => {
+      if (init?.method === 'POST') {
+        postCount++
+        bodies.push(String(init.body))
+        // first create fails (name taken), second (disambiguated) succeeds
+        return postCount === 1
+          ? Promise.resolve({ ok: false, status: 400, json: async () => ({}) })
+          : Promise.resolve({ ok: true, json: async () => ({ Contacts: [{ ContactID: 'C-DISAMB' }] }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ Contacts: [] }) }) // email lookup: no match
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    const id = await ensureXeroContact(fresh, { name: 'John Smith', email: 'john2@example.com' })
+    expect(id).toBe('C-DISAMB')
+    expect(postCount).toBe(2)
+    expect(bodies[1]).toContain('John Smith (john2@example.com)')
+  })
+
+  it('without an email, reuses the same-named contact on collision', async () => {
+    const fetchSpy = vi.fn((url: string, init?: { method?: string }) => {
+      if (init?.method === 'POST') return Promise.resolve({ ok: false, status: 400, json: async () => ({}) })
+      return Promise.resolve({ ok: true, json: async () => ({ Contacts: [{ ContactID: 'C-EXISTING-NAME' }] }) })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+    const id = await ensureXeroContact(fresh, { name: 'Acme Co' })
+    expect(id).toBe('C-EXISTING-NAME')
   })
 })

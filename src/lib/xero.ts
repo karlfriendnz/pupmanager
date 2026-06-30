@@ -215,3 +215,71 @@ export async function fetchMappingOptions(connection: XeroConnection): Promise<X
 
   return { revenueAccounts, bankAccounts, taxRates }
 }
+
+// ─── Phase 2: contacts ────────────────────────────────────────────────────────
+
+export type XeroContactInput = {
+  name: string
+  email?: string | null
+  phone?: string | null
+  // Skip the find/create round-trips entirely when we already know the id.
+  existingContactId?: string | null
+}
+
+// Xero's `where` strings are doubled-quote delimited; strip any quotes from the
+// value so a stray " can't break out of the filter.
+function whereEquals(field: string, value: string): string {
+  return `${field}=="${value.replace(/"/g, '')}"`
+}
+
+async function findContactId(connection: XeroConnection, where: string): Promise<string | null> {
+  const res = await xeroFetch(connection, `/Contacts?where=${encodeURIComponent(where)}`)
+  if (!res.ok) return null
+  const data: { Contacts?: Array<{ ContactID?: string }> } = await res.json()
+  return data.Contacts?.[0]?.ContactID ?? null
+}
+
+async function createContact(connection: XeroConnection, name: string, input: XeroContactInput): Promise<string | null> {
+  const body = {
+    Name: name,
+    EmailAddress: input.email || undefined,
+    Phones: input.phone ? [{ PhoneType: 'DEFAULT', PhoneNumber: input.phone }] : undefined,
+  }
+  const res = await xeroFetch(connection, '/Contacts', { method: 'POST', body: JSON.stringify(body) })
+  if (!res.ok) return null
+  const data: { Contacts?: Array<{ ContactID?: string }> } = await res.json()
+  return data.Contacts?.[0]?.ContactID ?? null
+}
+
+/**
+ * Find-or-create the Xero Contact for a client, returning its ContactID.
+ *   1. Known id → use it.
+ *   2. Match by email (the reliable key — Xero emails aren't unique but a hit is
+ *      almost certainly the same person).
+ *   3. Create. Xero enforces unique contact *names*, so on a name collision:
+ *        - with an email → the colliding contact is a DIFFERENT person, so
+ *          create under a disambiguated "Name (email)" rather than mis-linking;
+ *        - without an email → reuse the existing same-named contact.
+ */
+export async function ensureXeroContact(connection: XeroConnection, input: XeroContactInput): Promise<string> {
+  if (input.existingContactId) return input.existingContactId
+
+  if (input.email) {
+    const byEmail = await findContactId(connection, whereEquals('EmailAddress', input.email))
+    if (byEmail) return byEmail
+  }
+
+  const created = await createContact(connection, input.name, input)
+  if (created) return created
+
+  // Create failed — almost always the unique-name constraint.
+  if (input.email) {
+    const disambiguated = await createContact(connection, `${input.name} (${input.email})`, input)
+    if (disambiguated) return disambiguated
+  } else {
+    const byName = await findContactId(connection, whereEquals('Name', input.name))
+    if (byName) return byName
+  }
+
+  throw new Error(`Xero contact ensure failed for "${input.name}"`)
+}
