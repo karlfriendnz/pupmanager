@@ -13,13 +13,21 @@ const TOKEN_URL = 'https://identity.xero.com/connect/token'
 const CONNECTIONS_URL = 'https://api.xero.com/connections'
 export const XERO_API_BASE = 'https://api.xero.com/api.xro/2.0'
 
-// offline_access → refresh token; accounting.transactions → invoices + payments;
-// accounting.contacts → contacts; accounting.settings.read → chart of accounts +
-// tax rates (read-only, for the Phase 1 mapping picker).
+// Xero's NEW granular scopes (apps created after 2 Mar 2026 only get these; the
+// old broad `accounting.transactions` no longer exists for them → invalid_scope).
+// Note: `app.connections` is auto-granted and must NOT be requested explicitly
+// (doing so → "access_denied: Requested wrong apps scopes"). GET /connections
+// works with the resulting token regardless.
+//   offline_access        → refresh token
+//   accounting.contacts   → find-or-create contacts (Phase 2)
+//   accounting.invoices   → create ACCREC invoices (Phase 3)
+//   accounting.payments   → apply payments to invoices (Phase 4)
+//   accounting.settings.read → chart of accounts + tax rates (Phase 1 mapping)
 const SCOPES = [
   'offline_access',
-  'accounting.transactions',
   'accounting.contacts',
+  'accounting.invoices',
+  'accounting.payments',
   'accounting.settings.read',
 ].join(' ')
 
@@ -44,7 +52,11 @@ export function xeroAuthorizeUrl(state: string): string {
     scope: SCOPES,
     state,
   })
-  return `${AUTHORIZE_URL}?${params}`
+  // URLSearchParams encodes spaces as "+", but Xero's authorize endpoint reads
+  // the scope param as literal characters — a "+"-joined scope string is seen as
+  // one invalid scope (→ invalid_scope). Emit RFC-3986 %20 spaces instead. None
+  // of our other param values contain a literal "+", so this is safe.
+  return `${AUTHORIZE_URL}?${params.toString().replace(/\+/g, '%20')}`
 }
 
 // Xero accepts the client credentials as HTTP Basic auth on the token endpoint.

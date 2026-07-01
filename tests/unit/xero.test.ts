@@ -69,7 +69,8 @@ describe('config + authorize URL', () => {
     expect(url.searchParams.get('redirect_uri')).toBe('https://app.example.com/api/xero/callback')
     expect(url.searchParams.get('state')).toBe('state-123')
     expect(url.searchParams.get('scope')).toContain('offline_access')
-    expect(url.searchParams.get('scope')).toContain('accounting.transactions')
+    expect(url.searchParams.get('scope')).toContain('accounting.invoices')
+    expect(url.searchParams.get('scope')).toContain('accounting.payments')
   })
 })
 
