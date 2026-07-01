@@ -1842,6 +1842,15 @@ enum PurchasableKind {
   CLASS_ENROLLMENT // → ClassEnrollment (group / drop-in)
 }
 
+// Tracks whether a Payment's invoice has been mirrored into the trainer's Xero
+// org. ERROR keeps the last failure retriable/surfaceable; NOT_SYNCED covers
+// both "trainer not connected" and "not attempted yet".
+enum XeroSyncStatus {
+  NOT_SYNCED
+  SYNCED
+  ERROR
+}
+
 model Payment {
   id        String  @id @default(cuid())
   trainerId String
@@ -1873,6 +1882,12 @@ model Payment {
   // Human description of what was bought, denormalised for the earnings list so
   // deleting a Package/Product never orphans payment history.
   description          String?
+
+  // Xero sync. xeroInvoiceId is set once the ACCREC invoice exists in the
+  // trainer's org; status + error track the last attempt for retry/surfacing.
+  xeroInvoiceId  String?
+  xeroSyncStatus XeroSyncStatus @default(NOT_SYNCED)
+  xeroSyncError  String?
 
   createdAt DateTime  @default(now())
   paidAt    DateTime?

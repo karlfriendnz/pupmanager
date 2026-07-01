@@ -26,6 +26,7 @@ import {
   xeroFetch,
   fetchMappingOptions,
   ensureXeroContact,
+  createXeroInvoice,
 } from '@/lib/xero'
 
 type Conn = Parameters<typeof getValidAccessToken>[0]
@@ -242,5 +243,59 @@ describe('ensureXeroContact', () => {
     vi.stubGlobal('fetch', fetchSpy)
     const id = await ensureXeroContact(fresh, { name: 'Acme Co' })
     expect(id).toBe('C-EXISTING-NAME')
+  })
+})
+
+describe('createXeroInvoice', () => {
+  const fresh = conn({ accessToken: 'tok', accessTokenExpiresAt: new Date(Date.now() + 10 * 60 * 1000) })
+
+  it('POSTs an AUTHORISED ACCREC invoice with major-unit amounts and returns the id', async () => {
+    let sentBody: Record<string, unknown> = {}
+    const fetchSpy = vi.fn((url: string, init?: { method?: string; body?: string }) => {
+      sentBody = JSON.parse(String(init?.body))
+      return Promise.resolve({ ok: true, json: async () => ({ Invoices: [{ InvoiceID: 'INV-1' }] }) })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const id = await createXeroInvoice(fresh, {
+      contactId: 'C-1',
+      reference: 'pay-1',
+      hasTax: true,
+      lines: [{ description: 'Puppy Course', quantity: 1, unitAmountMinor: 12500, accountCode: '200', taxType: 'OUTPUT2' }],
+    })
+
+    expect(id).toBe('INV-1')
+    const [url, init] = fetchSpy.mock.calls[0]
+    expect(url).toBe('https://api.xero.com/api.xro/2.0/Invoices')
+    expect(init!.method).toBe('POST')
+    expect(sentBody.Type).toBe('ACCREC')
+    expect(sentBody.Status).toBe('AUTHORISED')
+    expect(sentBody.LineAmountTypes).toBe('Inclusive')
+    expect((sentBody.Contact as { ContactID: string }).ContactID).toBe('C-1')
+    const line = (sentBody.LineItems as Array<Record<string, unknown>>)[0]
+    expect(line.UnitAmount).toBe(125) // 12500 minor → 125.00 major
+    expect(line.AccountCode).toBe('200')
+    expect(line.TaxType).toBe('OUTPUT2')
+  })
+
+  it('uses NoTax and omits TaxType when the trainer has no tax rate', async () => {
+    let sentBody: Record<string, unknown> = {}
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: { body?: string }) => {
+      sentBody = JSON.parse(String(init?.body))
+      return Promise.resolve({ ok: true, json: async () => ({ Invoices: [{ InvoiceID: 'INV-2' }] }) })
+    }))
+    await createXeroInvoice(fresh, {
+      contactId: 'C-1', hasTax: false,
+      lines: [{ description: 'Treats', quantity: 2, unitAmountMinor: 500, accountCode: '260' }],
+    })
+    expect(sentBody.LineAmountTypes).toBe('NoTax')
+    expect((sentBody.LineItems as Array<Record<string, unknown>>)[0]).not.toHaveProperty('TaxType')
+  })
+
+  it('throws when Xero rejects the invoice', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 400, text: async () => 'validation error' })))
+    await expect(
+      createXeroInvoice(fresh, { contactId: 'C-1', hasTax: false, lines: [{ description: 'x', quantity: 1, unitAmountMinor: 100, accountCode: '200' }] }),
+    ).rejects.toThrow(/Xero invoice create failed/)
   })
 })

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { ensureXeroContact } from '@/lib/xero'
+import { ensureXeroContact, createXeroInvoice } from '@/lib/xero'
 
 // Higher-level Xero sync orchestrators that load app data, call the low-level
 // client in @/lib/xero, and persist the resulting Xero ids back. Phase 3's
@@ -43,4 +43,98 @@ export async function ensureClientXeroContact(clientId: string): Promise<string 
     data: { xeroContactId: contactId },
   })
   return contactId
+}
+
+export type InvoiceSyncResult = { ok: boolean; invoiceId?: string; error?: string }
+
+/**
+ * Mirror a Payment's invoice into the trainer's Xero org as an AUTHORISED ACCREC
+ * invoice, attaching each line to its mapped revenue account (per-product/package
+ * code → connection default sales account). Idempotent — a Payment that already
+ * has a xeroInvoiceId is returned as-is.
+ *
+ * Best-effort: never throws. Records SYNCED / ERROR (+ message) on the Payment so
+ * failures are retriable and surfaceable. A no-op (leaves NOT_SYNCED) when the
+ * trainer isn't connected.
+ */
+export async function syncInvoiceToXero(paymentId: string): Promise<InvoiceSyncResult> {
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    select: {
+      id: true,
+      clientId: true,
+      xeroInvoiceId: true,
+      items: {
+        select: {
+          description: true, unitAmount: true, quantity: true,
+          productId: true, clientPackageId: true,
+        },
+      },
+      trainer: { select: { xeroConnection: true } },
+    },
+  })
+  if (!payment) return { ok: false, error: 'payment not found' }
+  if (payment.xeroInvoiceId) return { ok: true, invoiceId: payment.xeroInvoiceId }
+
+  const connection = payment.trainer.xeroConnection
+  if (!connection) return { ok: false, error: 'not connected' } // leave NOT_SYNCED
+
+  try {
+    if (!payment.clientId) throw new Error('This invoice has no client to attach in Xero.')
+    const contactId = await ensureClientXeroContact(payment.clientId)
+    if (!contactId) throw new Error('Could not resolve the client’s Xero contact.')
+
+    // Resolve each line's revenue account: the product/package's own code, else
+    // the connection's default sales account.
+    const productIds = payment.items.map((i) => i.productId).filter((v): v is string => !!v)
+    const packageAssignmentIds = payment.items.map((i) => i.clientPackageId).filter((v): v is string => !!v)
+    const [products, clientPackages] = await Promise.all([
+      productIds.length
+        ? prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, xeroAccountCode: true } })
+        : Promise.resolve([]),
+      packageAssignmentIds.length
+        ? prisma.clientPackage.findMany({ where: { id: { in: packageAssignmentIds } }, select: { id: true, package: { select: { xeroAccountCode: true } } } })
+        : Promise.resolve([]),
+    ])
+    const productCode = new Map(products.map((p) => [p.id, p.xeroAccountCode]))
+    const packageCode = new Map(clientPackages.map((cp) => [cp.id, cp.package?.xeroAccountCode ?? null]))
+    const fallback = connection.salesAccountCode
+
+    const lines = payment.items.map((item) => {
+      const code =
+        (item.productId && productCode.get(item.productId)) ||
+        (item.clientPackageId && packageCode.get(item.clientPackageId)) ||
+        fallback
+      if (!code) {
+        throw new Error('No Xero income account is mapped. Set a default income account in Settings → Integrations.')
+      }
+      return {
+        description: item.description,
+        quantity: item.quantity,
+        unitAmountMinor: item.unitAmount,
+        accountCode: code,
+        taxType: connection.taxType,
+      }
+    })
+
+    const invoiceId = await createXeroInvoice(connection, {
+      contactId,
+      reference: payment.id,
+      hasTax: !!connection.taxType,
+      lines,
+    })
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { xeroInvoiceId: invoiceId, xeroSyncStatus: 'SYNCED', xeroSyncError: null },
+    })
+    return { ok: true, invoiceId }
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'Xero sync failed'
+    console.error('[xero] syncInvoiceToXero failed', paymentId, err)
+    await prisma.payment
+      .update({ where: { id: payment.id }, data: { xeroSyncStatus: 'ERROR', xeroSyncError: error } })
+      .catch(() => {})
+    return { ok: false, error }
+  }
 }

@@ -283,3 +283,54 @@ export async function ensureXeroContact(connection: XeroConnection, input: XeroC
 
   throw new Error(`Xero contact ensure failed for "${input.name}"`)
 }
+
+// ─── Phase 3: invoices ────────────────────────────────────────────────────────
+
+export type XeroInvoiceLine = {
+  description: string
+  quantity: number
+  unitAmountMinor: number // cents — converted to Xero's major-unit decimal
+  accountCode: string
+  taxType?: string | null
+}
+
+export type XeroInvoiceInput = {
+  contactId: string
+  reference?: string | null
+  // Whether a tax rate applies. Drives LineAmountTypes: our prices are
+  // tax-INCLUSIVE, so an inclusive invoice total matches what the client pays
+  // (important for the Phase 4 payment reconciliation). No tax → NoTax.
+  hasTax: boolean
+  lines: XeroInvoiceLine[]
+}
+
+/**
+ * Create an AUTHORISED accounts-receivable (ACCREC) invoice in the trainer's
+ * org and return its InvoiceID. AUTHORISED (not DRAFT) so Phase 4 can apply a
+ * payment against it.
+ */
+export async function createXeroInvoice(connection: XeroConnection, input: XeroInvoiceInput): Promise<string> {
+  const body = {
+    Type: 'ACCREC',
+    Contact: { ContactID: input.contactId },
+    Status: 'AUTHORISED',
+    LineAmountTypes: input.hasTax ? 'Inclusive' : 'NoTax',
+    Reference: input.reference || undefined,
+    LineItems: input.lines.map((l) => ({
+      Description: l.description,
+      Quantity: l.quantity,
+      UnitAmount: Number((l.unitAmountMinor / 100).toFixed(2)),
+      AccountCode: l.accountCode,
+      ...(input.hasTax ? { TaxType: l.taxType || undefined } : {}),
+    })),
+  }
+  const res = await xeroFetch(connection, '/Invoices', { method: 'POST', body: JSON.stringify(body) })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Xero invoice create failed (${res.status}): ${text}`)
+  }
+  const data: { Invoices?: Array<{ InvoiceID?: string }> } = await res.json()
+  const id = data.Invoices?.[0]?.InvoiceID
+  if (!id) throw new Error('Xero invoice create returned no InvoiceID')
+  return id
+}

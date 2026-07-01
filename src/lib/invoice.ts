@@ -2,6 +2,7 @@ import { prisma } from './prisma'
 import { sendEmail } from './email'
 import { sendPush } from './push'
 import { createPaymentRecord, type CheckoutLine } from './connect-checkout'
+import { syncInvoiceToXero } from './xero-sync'
 import { env } from './env'
 
 // Trainer-issued invoice: a PENDING Payment tied to an existing package
@@ -59,6 +60,11 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<s
     amount: input.amount,
     currency: input.currency,
   })
+
+  // Mirror the invoice into Xero if the trainer has connected it. Best-effort —
+  // syncInvoiceToXero never throws and records its own SYNCED/ERROR status, so a
+  // Xero hiccup never blocks the client's invoice from going out.
+  await syncInvoiceToXero(paymentId)
 
   return paymentId
 }
