@@ -1884,8 +1884,11 @@ model Payment {
   description          String?
 
   // Xero sync. xeroInvoiceId is set once the ACCREC invoice exists in the
-  // trainer's org; status + error track the last attempt for retry/surfacing.
+  // trainer's org; xeroPaymentId once the payment has been applied against it
+  // (presence = reconciled, so re-delivery is a no-op). status + error track the
+  // last attempt for retry/surfacing.
   xeroInvoiceId  String?
+  xeroPaymentId  String?
   xeroSyncStatus XeroSyncStatus @default(NOT_SYNCED)
   xeroSyncError  String?
 

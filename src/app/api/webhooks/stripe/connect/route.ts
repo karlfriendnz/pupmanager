@@ -9,6 +9,7 @@ import { materializeBooking } from '@/lib/booking-page'
 import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automations'
 import { enrollInRun } from '@/lib/class-runs'
 import { sendEmail } from '@/lib/email'
+import { syncPaymentToXero } from '@/lib/xero-sync'
 
 // Shape of PaymentItem.intent for a scheduled booking (PACKAGE / SESSION),
 // captured at checkout time and replayed here to create the calendar rows.
@@ -257,6 +258,14 @@ async function markPaidAndFulfil(
   }
   if (didFulfil && classItems.length && payment.clientId) {
     await fulfilClassEnrolments(payment.trainerId, payment.clientId, classItems)
+  }
+
+  // Reconcile into Xero: ensure the invoice exists, then record the payment
+  // against it. Only on a real fulfilment (not a duplicate delivery), and only
+  // for client-attached payments. Best-effort — never throws, records its own
+  // status, so a Xero hiccup can't fail the webhook and trigger a Stripe retry.
+  if (didFulfil && payment.clientId) {
+    await syncPaymentToXero(paymentId)
   }
 }
 

@@ -334,3 +334,40 @@ export async function createXeroInvoice(connection: XeroConnection, input: XeroI
   if (!id) throw new Error('Xero invoice create returned no InvoiceID')
   return id
 }
+
+// ─── Phase 4: payments ────────────────────────────────────────────────────────
+
+export type XeroPaymentInput = {
+  invoiceId: string
+  accountCode: string // the bank account the payment is recorded against
+  amountMinor: number // cents — converted to Xero's major-unit decimal
+  date: Date
+  reference?: string | null
+}
+
+function ymd(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Apply a payment against an existing invoice, recording it into the given bank
+ * account, and return the Xero PaymentID. Marks the invoice PAID in Xero.
+ */
+export async function createXeroPayment(connection: XeroConnection, input: XeroPaymentInput): Promise<string> {
+  const body = {
+    Invoice: { InvoiceID: input.invoiceId },
+    Account: { Code: input.accountCode },
+    Amount: Number((input.amountMinor / 100).toFixed(2)),
+    Date: ymd(input.date),
+    Reference: input.reference || undefined,
+  }
+  const res = await xeroFetch(connection, '/Payments', { method: 'PUT', body: JSON.stringify(body) })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Xero payment create failed (${res.status}): ${text}`)
+  }
+  const data: { Payments?: Array<{ PaymentID?: string }> } = await res.json()
+  const id = data.Payments?.[0]?.PaymentID
+  if (!id) throw new Error('Xero payment create returned no PaymentID')
+  return id
+}

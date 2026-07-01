@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { ensureXeroContact, createXeroInvoice } from '@/lib/xero'
+import { ensureXeroContact, createXeroInvoice, createXeroPayment } from '@/lib/xero'
 
 // Higher-level Xero sync orchestrators that load app data, call the low-level
 // client in @/lib/xero, and persist the resulting Xero ids back. Phase 3's
@@ -132,6 +132,77 @@ export async function syncInvoiceToXero(paymentId: string): Promise<InvoiceSyncR
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Xero sync failed'
     console.error('[xero] syncInvoiceToXero failed', paymentId, err)
+    await prisma.payment
+      .update({ where: { id: payment.id }, data: { xeroSyncStatus: 'ERROR', xeroSyncError: error } })
+      .catch(() => {})
+    return { ok: false, error }
+  }
+}
+
+export type PaymentSyncResult = { ok: boolean; xeroPaymentId?: string; error?: string }
+
+/**
+ * Record a settled Payment against its Xero invoice (into the trainer's chosen
+ * bank account), marking it PAID/reconciled in Xero. Ensures the invoice exists
+ * first — this is where checkout-initiated payments that skipped the trainer-
+ * invoice path get their invoice created lazily (so abandoned checkouts, which
+ * never reach PAID, never hit Xero).
+ *
+ * Idempotent (existing xeroPaymentId → no-op) and best-effort (never throws;
+ * records SYNCED / ERROR). No-op when the trainer isn't connected.
+ */
+export async function syncPaymentToXero(paymentId: string): Promise<PaymentSyncResult> {
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    select: {
+      id: true,
+      xeroInvoiceId: true,
+      xeroPaymentId: true,
+      paidAt: true,
+      items: { select: { unitAmount: true, quantity: true } },
+      trainer: { select: { xeroConnection: true } },
+    },
+  })
+  if (!payment) return { ok: false, error: 'payment not found' }
+  if (payment.xeroPaymentId) return { ok: true, xeroPaymentId: payment.xeroPaymentId }
+
+  const connection = payment.trainer.xeroConnection
+  if (!connection) return { ok: false, error: 'not connected' }
+
+  try {
+    // Ensure the invoice exists (lazy-create for checkout-initiated payments).
+    let invoiceId = payment.xeroInvoiceId
+    if (!invoiceId) {
+      const inv = await syncInvoiceToXero(paymentId)
+      if (!inv.ok || !inv.invoiceId) return { ok: false, error: inv.error ?? 'invoice sync failed' }
+      invoiceId = inv.invoiceId
+    }
+
+    if (!connection.bankAccountCode) {
+      throw new Error('No Xero bank account is set. Choose one in Settings → Integrations.')
+    }
+
+    // Settle exactly the invoice total (sum of line items) — a client-paid
+    // processing surcharge isn't part of the trainer's invoice, so applying
+    // amountTotal would overpay the invoice and Xero would reject it.
+    const amountMinor = payment.items.reduce((sum, i) => sum + i.unitAmount * i.quantity, 0)
+
+    const xeroPaymentId = await createXeroPayment(connection, {
+      invoiceId,
+      accountCode: connection.bankAccountCode,
+      amountMinor,
+      date: payment.paidAt ?? new Date(),
+      reference: payment.id,
+    })
+
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { xeroPaymentId, xeroSyncStatus: 'SYNCED', xeroSyncError: null },
+    })
+    return { ok: true, xeroPaymentId }
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'Xero payment sync failed'
+    console.error('[xero] syncPaymentToXero failed', paymentId, err)
     await prisma.payment
       .update({ where: { id: payment.id }, data: { xeroSyncStatus: 'ERROR', xeroSyncError: error } })
       .catch(() => {})

@@ -27,6 +27,7 @@ import {
   fetchMappingOptions,
   ensureXeroContact,
   createXeroInvoice,
+  createXeroPayment,
 } from '@/lib/xero'
 
 type Conn = Parameters<typeof getValidAccessToken>[0]
@@ -297,5 +298,39 @@ describe('createXeroInvoice', () => {
     await expect(
       createXeroInvoice(fresh, { contactId: 'C-1', hasTax: false, lines: [{ description: 'x', quantity: 1, unitAmountMinor: 100, accountCode: '200' }] }),
     ).rejects.toThrow(/Xero invoice create failed/)
+  })
+})
+
+describe('createXeroPayment', () => {
+  const fresh = conn({ accessToken: 'tok', accessTokenExpiresAt: new Date(Date.now() + 10 * 60 * 1000) })
+
+  it('PUTs a payment against the invoice into the bank account and returns the id', async () => {
+    let sentBody: Record<string, unknown> = {}
+    const fetchSpy = vi.fn((url: string, init?: { method?: string; body?: string }) => {
+      sentBody = JSON.parse(String(init?.body))
+      return Promise.resolve({ ok: true, json: async () => ({ Payments: [{ PaymentID: 'PAY-1' }] }) })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const id = await createXeroPayment(fresh, {
+      invoiceId: 'INV-1', accountCode: '090', amountMinor: 12500,
+      date: new Date('2026-06-15T09:30:00Z'), reference: 'pay-1',
+    })
+
+    expect(id).toBe('PAY-1')
+    const [url, init] = fetchSpy.mock.calls[0]
+    expect(url).toBe('https://api.xero.com/api.xro/2.0/Payments')
+    expect(init!.method).toBe('PUT')
+    expect((sentBody.Invoice as { InvoiceID: string }).InvoiceID).toBe('INV-1')
+    expect((sentBody.Account as { Code: string }).Code).toBe('090')
+    expect(sentBody.Amount).toBe(125) // 12500 minor → 125.00
+    expect(sentBody.Date).toBe('2026-06-15')
+  })
+
+  it('throws when Xero rejects the payment', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 400, text: async () => 'overpayment' })))
+    await expect(
+      createXeroPayment(fresh, { invoiceId: 'INV-1', accountCode: '090', amountMinor: 100, date: new Date() }),
+    ).rejects.toThrow(/Xero payment create failed/)
   })
 })
