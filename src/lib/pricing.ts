@@ -45,7 +45,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets'
+export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero'
 
 export interface AddonDef {
   id: AddonId
@@ -96,6 +96,13 @@ export const ADDONS: AddonDef[] = [
     name: 'Lead magnets',
     description: 'Offer a free download behind a branded sign-up form. Prospects get the file by email and join your mailing list — embed it on your own site to grow your audience.',
     price: { AUD: 9, NZD: 10, GBP: 5, CAD: 8, USD: 7, ZAR: 129 },
+  },
+  {
+    id: 'xero',
+    name: 'Xero',
+    description: 'Sync your invoices, payments and clients straight into your own Xero organisation — no double entry, always reconciled.',
+    free: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
   {
     id: 'timesheets',

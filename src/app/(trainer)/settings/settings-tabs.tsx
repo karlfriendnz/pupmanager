@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle } from 'lucide-react'
+import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 
 const ALL_TABS = [
@@ -13,6 +13,7 @@ const ALL_TABS = [
   { id: 'addons', label: 'Add-ons', icon: Puzzle },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'payments', label: 'Payments', icon: Wallet },
+  { id: 'xero', label: 'Xero', icon: Landmark },
   { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'activity', label: 'Activity', icon: ShieldCheck },
 ] as const
@@ -27,6 +28,7 @@ export function SettingsTabs({
   addons,
   team,
   payments,
+  xero,
   billing,
   activity,
 }: {
@@ -40,11 +42,12 @@ export function SettingsTabs({
   addons?: React.ReactNode
   team?: React.ReactNode
   payments?: React.ReactNode
+  xero?: React.ReactNode
   billing?: React.ReactNode
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, integration, addons, team, payments, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, integration, addons, team, payments, xero, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -126,6 +129,7 @@ export function SettingsTabs({
         {addons != null && <div className={tab === 'addons' ? '' : 'hidden'}>{addons}</div>}
         {team != null && <div className={tab === 'team' ? 'max-w-2xl' : 'hidden'}>{team}</div>}
         {payments != null && <div className={tab === 'payments' ? 'max-w-2xl' : 'hidden'}>{payments}</div>}
+        {xero != null && <div className={tab === 'xero' ? 'max-w-2xl' : 'hidden'}>{xero}</div>}
         {billing != null && !native && <div className={tab === 'billing' ? 'max-w-2xl' : 'hidden'}>{billing}</div>}
         {activity != null && <div className={tab === 'activity' ? '' : 'hidden'}>{activity}</div>}
       </div>

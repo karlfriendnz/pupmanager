@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
   const stateToken = searchParams.get('state')
-  const settings = `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=integration`
+  const settings = `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=xero`
   const fail = `${settings}&xero=error`
 
   if (!code || !stateToken) return NextResponse.redirect(fail)

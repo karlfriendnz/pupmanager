@@ -2,9 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
 import { ensureTrainerSlug } from '@/lib/slug'
-import { isXeroConfigured } from '@/lib/xero'
 import { WebsiteIntegrationPanel } from './website-integration-panel'
-import { XeroConnectionCard } from './xero-connection-card'
 
 // Integrations settings tab — everything a trainer hooks into their own
 // website: the branded client-login link, Calendly-style booking pages (+
@@ -20,7 +18,7 @@ export async function IntegrationTab({ companyId }: { companyId: string }) {
   const slug = await ensureTrainerSlug(companyId)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com'
 
-  const [bookingPages, embedForms, xero] = await Promise.all([
+  const [bookingPages, embedForms] = await Promise.all([
     prisma.bookingPage.findMany({
       where: { trainerId: companyId },
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
@@ -29,21 +27,10 @@ export async function IntegrationTab({ companyId }: { companyId: string }) {
     canManageForms
       ? prisma.embedForm.findMany({ where: { trainerId: companyId }, orderBy: { createdAt: 'desc' } })
       : Promise.resolve([]),
-    prisma.xeroConnection.findUnique({
-      where: { trainerId: companyId },
-      select: { tenantName: true },
-    }),
   ])
 
   return (
     <div className="w-full max-w-2xl md:max-w-[872px]">
-      <div className="mb-6">
-        <XeroConnectionCard
-          connected={!!xero}
-          orgName={xero?.tenantName ?? null}
-          configured={isXeroConfigured()}
-        />
-      </div>
       <WebsiteIntegrationPanel
         slug={slug}
         appUrl={appUrl}

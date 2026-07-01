@@ -12,6 +12,8 @@ import { PaymentsPanel } from './payments-panel'
 import { ActivityPanel } from './activity-panel'
 import { AddonsTab } from './addons-tab'
 import { IntegrationTab } from './integration-tab'
+import { XeroTab } from './xero-tab'
+import { hasAddon } from '@/lib/billing'
 import { FormsManager } from '../forms/forms-manager'
 import type { Question } from '../forms/session/session-forms-manager'
 import { PageHeader } from '@/components/shared/page-header'
@@ -27,6 +29,8 @@ export default async function TrainerSettingsPage() {
 
   const canEditSettings = can('settings.edit', ctx.role, ctx.permissions)
   const canManageForms = can('forms.manage', ctx.role, ctx.permissions)
+  // The Xero tab only exists when the (free) Xero add-on is enabled.
+  const xeroEnabled = canEditSettings && (await hasAddon(ctx.companyId, 'xero'))
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
@@ -82,6 +86,7 @@ export default async function TrainerSettingsPage() {
         addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
         team={<TeamPanel />}
         payments={ctx.role === 'OWNER' ? <PaymentsPanel companyId={ctx.companyId} /> : undefined}
+        xero={xeroEnabled ? <XeroTab companyId={ctx.companyId} /> : undefined}
         billing={ctx.role === 'OWNER' ? (
           <>
             <BillingPanel companyId={ctx.companyId} />
