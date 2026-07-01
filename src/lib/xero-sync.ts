@@ -63,6 +63,7 @@ export async function syncInvoiceToXero(paymentId: string): Promise<InvoiceSyncR
     select: {
       id: true,
       clientId: true,
+      sandbox: true,
       xeroInvoiceId: true,
       items: {
         select: {
@@ -74,6 +75,8 @@ export async function syncInvoiceToXero(paymentId: string): Promise<InvoiceSyncR
     },
   })
   if (!payment) return { ok: false, error: 'payment not found' }
+  // Never sync demo/sandbox money into a trainer's real Xero books.
+  if (payment.sandbox) return { ok: false, error: 'sandbox' }
   if (payment.xeroInvoiceId) return { ok: true, invoiceId: payment.xeroInvoiceId }
 
   const connection = payment.trainer.xeroConnection
@@ -156,6 +159,7 @@ export async function syncPaymentToXero(paymentId: string): Promise<PaymentSyncR
     where: { id: paymentId },
     select: {
       id: true,
+      sandbox: true,
       xeroInvoiceId: true,
       xeroPaymentId: true,
       paidAt: true,
@@ -164,6 +168,7 @@ export async function syncPaymentToXero(paymentId: string): Promise<PaymentSyncR
     },
   })
   if (!payment) return { ok: false, error: 'payment not found' }
+  if (payment.sandbox) return { ok: false, error: 'sandbox' }
   if (payment.xeroPaymentId) return { ok: true, xeroPaymentId: payment.xeroPaymentId }
 
   const connection = payment.trainer.xeroConnection

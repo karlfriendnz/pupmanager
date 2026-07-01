@@ -14,7 +14,7 @@ function fmtDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-interface Page<T> { page: number; totalPages: number; total: number; items: T[] }
+interface Page<T> { page: number; totalPages: number; total: number; items: T[]; xeroConnected?: boolean }
 
 // Shared fetch + debounced search + pagination for a finance endpoint.
 function useFinanceList<T>(endpoint: string, extra = '') {
@@ -184,7 +184,7 @@ function TransactionsTab() {
   )
 }
 
-interface Inv { id: string; description: string | null; clientName: string | null; amountTotal: number; currency: string; status: string; paidAt: string | null; createdAt: string }
+interface Inv { id: string; description: string | null; clientName: string | null; amountTotal: number; currency: string; status: string; paidAt: string | null; createdAt: string; xeroSyncStatus: 'NOT_SYNCED' | 'SYNCED' | 'ERROR'; xeroSyncError: string | null }
 
 function invoiceBadge(status: string): { label: string; cls: string } {
   if (status === 'PENDING') return { label: 'Unpaid', cls: 'bg-amber-100 text-amber-700' }
@@ -271,7 +271,7 @@ function InvoicesTab() {
         )}
       </div>
       {data && <Pager page={data.page} totalPages={data.totalPages} total={data.total} onGo={goTo} loading={loading} />}
-      {open && <InvoiceDetail inv={open} onClose={() => setOpen(null)} />}
+      {open && <InvoiceDetail inv={open} xeroConnected={!!data?.xeroConnected} onClose={() => setOpen(null)} />}
     </div>
   )
 }
@@ -353,12 +353,15 @@ function TransactionDetail({ tx, onClose, onChanged }: { tx: Tx; onClose: () => 
   )
 }
 
-function InvoiceDetail({ inv, onClose }: { inv: Inv; onClose: () => void }) {
+function InvoiceDetail({ inv, xeroConnected, onClose }: { inv: Inv; xeroConnected: boolean; onClose: () => void }) {
   const b = invoiceBadge(inv.status)
   const unpaid = inv.status === 'PENDING'
   const [copied, setCopied] = useState(false)
   const [resending, setResending] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  // Local Xero sync state so a retry reflects immediately without a full reload.
+  const [xero, setXero] = useState<{ status: Inv['xeroSyncStatus']; error: string | null }>({ status: inv.xeroSyncStatus, error: inv.xeroSyncError })
+  const [retrying, setRetrying] = useState(false)
   const payLink = typeof window !== 'undefined' ? `${window.location.origin}/my/pay/${inv.id}` : ''
 
   async function copy() {
@@ -370,6 +373,14 @@ function InvoiceDetail({ inv, onClose }: { inv: Inv; onClose: () => void }) {
       const res = await fetch(`/api/trainer/finances/invoices/${inv.id}/resend`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       setMsg(res.ok ? 'Reminder sent to the client.' : 'Could not resend — try again.')
     } catch { setMsg('Could not resend — try again.') } finally { setResending(false) }
+  }
+  async function retryXero() {
+    setRetrying(true)
+    try {
+      const res = await fetch('/api/xero/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentId: inv.id }) })
+      const json = await res.json().catch(() => ({}))
+      setXero(res.ok && json.ok ? { status: 'SYNCED', error: null } : { status: 'ERROR', error: json.error ?? 'Sync failed — try again.' })
+    } catch { setXero({ status: 'ERROR', error: 'Sync failed — try again.' }) } finally { setRetrying(false) }
   }
 
   return (
@@ -401,6 +412,26 @@ function InvoiceDetail({ inv, onClose }: { inv: Inv; onClose: () => void }) {
         <div className="mt-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Payment link</p>
           <p className="mt-1 text-xs text-slate-400 break-all">{payLink}</p>
+        </div>
+      )}
+      {xeroConnected && (
+        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Xero</span>
+            {xero.status === 'SYNCED' ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600"><Check className="h-3.5 w-3.5" /> Synced</span>
+            ) : xero.status === 'ERROR' ? (
+              <span className="text-xs font-medium text-rose-600">Sync failed</span>
+            ) : (
+              <span className="text-xs font-medium text-slate-400">Not synced yet</span>
+            )}
+          </div>
+          {xero.status === 'ERROR' && xero.error && <p className="mt-1.5 text-xs text-rose-500">{xero.error}</p>}
+          {xero.status !== 'SYNCED' && (
+            <button type="button" onClick={retryXero} disabled={retrying} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+              {retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}{retrying ? 'Syncing…' : 'Retry Xero sync'}
+            </button>
+          )}
         </div>
       )}
       {msg && <p className="mt-3 text-sm text-slate-600">{msg}</p>}

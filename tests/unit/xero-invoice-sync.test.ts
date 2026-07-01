@@ -65,6 +65,14 @@ it('no-ops (leaves NOT_SYNCED) when the trainer is not connected', async () => {
   expect(h.paymentUpdate).not.toHaveBeenCalled()
 })
 
+it('never syncs sandbox/demo payments into a real Xero org', async () => {
+  seedPayment({ sandbox: true })
+  const res = await syncInvoiceToXero('pay-1')
+  expect(res.error).toBe('sandbox')
+  expect(h.createXeroInvoice).not.toHaveBeenCalled()
+  expect(h.paymentUpdate).not.toHaveBeenCalled()
+})
+
 it('resolves the package account code, creates the invoice, and marks SYNCED', async () => {
   seedPayment()
   h.clientPackageFindMany.mockResolvedValue([{ id: 'clp-1', package: { xeroAccountCode: '210' } }])

@@ -36,7 +36,7 @@ export async function GET(req: Request) {
       : {}),
   }
 
-  const [total, rows] = await Promise.all([
+  const [total, rows, xeroConn] = await Promise.all([
     prisma.payment.count({ where }),
     prisma.payment.findMany({
       where,
@@ -46,9 +46,12 @@ export async function GET(req: Request) {
       select: {
         id: true, description: true, amountTotal: true, currency: true,
         status: true, paidAt: true, createdAt: true,
+        xeroSyncStatus: true, xeroSyncError: true,
         client: { select: { user: { select: { name: true } } } },
       },
     }),
+    // Only surface Xero sync state to trainers who've actually connected it.
+    prisma.xeroConnection.findUnique({ where: { trainerId: ctx.companyId }, select: { id: true } }),
   ])
 
   return NextResponse.json({
@@ -56,6 +59,7 @@ export async function GET(req: Request) {
     pageSize: PAGE_SIZE,
     total,
     totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+    xeroConnected: !!xeroConn,
     items: rows.map(r => ({
       id: r.id,
       description: r.description,
@@ -65,6 +69,8 @@ export async function GET(req: Request) {
       status: r.status,
       paidAt: r.paidAt?.toISOString() ?? null,
       createdAt: r.createdAt.toISOString(),
+      xeroSyncStatus: r.xeroSyncStatus,
+      xeroSyncError: r.xeroSyncError,
     })),
   })
 }

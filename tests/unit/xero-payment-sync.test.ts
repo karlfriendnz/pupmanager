@@ -70,6 +70,14 @@ it('no-ops when the trainer is not connected', async () => {
   expect(h.paymentUpdate).not.toHaveBeenCalled()
 })
 
+it('never reconciles sandbox/demo payments into a real Xero org', async () => {
+  seedPayment({ sandbox: true })
+  const res = await syncPaymentToXero('pay-1')
+  expect(res.error).toBe('sandbox')
+  expect(h.createXeroPayment).not.toHaveBeenCalled()
+  expect(h.paymentUpdate).not.toHaveBeenCalled()
+})
+
 it('applies the invoice-total payment and marks SYNCED', async () => {
   seedPayment()
   h.createXeroPayment.mockResolvedValue('PAY-NEW')
