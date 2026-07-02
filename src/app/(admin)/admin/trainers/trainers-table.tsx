@@ -1,18 +1,18 @@
 import { prisma } from '@/lib/prisma'
 import type { SubscriptionStatus } from '@/generated/prisma'
-import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { TrainerRow } from './trainer-actions'
 
 // The canonical trainers table — used on the dedicated Trainers page and on the
-// admin dashboard so the two never drift apart. `q` filters by name/email
-// (empty = no filter); `statuses` keeps only those subscription statuses
-// (undefined = all); `limit` caps the rows; `onlyNonPaying` keeps just trainers
-// without an ACTIVE (paying) subscription — trials, lapsed, free, or no profile.
-// `deactivated` filters by soft-delete state: 'exclude' (default) hides
-// deactivated accounts so they only live on the Inactive tab; 'only' shows just
-// them; 'all' ignores the flag. `internal` does the same for PupManager-owned
-// ("Ours") accounts: 'exclude' (default) keeps them off the normal tabs, 'only'
-// shows just them, 'all' ignores the flag.
+// admin dashboard so the two never drift apart. Deliberately slim: a handful of
+// at-a-glance columns; the full detail + all actions live on each trainer's
+// full view (/admin/trainers/[id]), which every row opens.
+//
+// `q` filters by name/email (empty = no filter); `statuses` keeps only those
+// subscription statuses (undefined = all); `limit` caps the rows; `onlyNonPaying`
+// keeps just trainers without an ACTIVE (paying) subscription. `deactivated`
+// filters soft-delete state: 'exclude' (default) hides deactivated accounts,
+// 'only' shows just them, 'all' ignores the flag. `internal` does the same for
+// PupManager-owned ("Ours") accounts.
 export async function TrainersTable({
   q = '',
   statuses,
@@ -28,20 +28,15 @@ export async function TrainersTable({
   deactivated?: 'exclude' | 'only' | 'all'
   internal?: 'exclude' | 'only' | 'all'
 }) {
-  // Built as an AND array so multiple trainerProfile conditions (status +
-  // internal flag) compose instead of overwriting each other.
   const and: Array<Record<string, unknown>> = []
   if (q) and.push({ OR: [
     { name: { contains: q, mode: 'insensitive' } },
     { email: { contains: q, mode: 'insensitive' } },
   ] })
   if (statuses && statuses.length) and.push({ trainerProfile: { subscriptionStatus: { in: statuses } } })
-  // "Not on a paying plan" = no ACTIVE subscription. NOT on the relation also
-  // catches trainers with no profile or a null status.
   if (onlyNonPaying) and.push({ NOT: { trainerProfile: { subscriptionStatus: 'ACTIVE' } } })
   if (deactivated === 'exclude') and.push({ deactivatedAt: null })
   if (deactivated === 'only') and.push({ deactivatedAt: { not: null } })
-  // NOT-on-relation form so non-internal also keeps trainers with no profile.
   if (internal === 'exclude') and.push({ NOT: { trainerProfile: { isInternal: true } } })
   if (internal === 'only') and.push({ trainerProfile: { isInternal: true } })
 
@@ -49,8 +44,7 @@ export async function TrainersTable({
     where: {
       role: 'TRAINER',
       // One row per company: only account owners (a User who owns a
-      // TrainerProfile). Invited team members are TRAINER users with no profile
-      // of their own and must not show as separate rows.
+      // TrainerProfile). Invited team members have no profile of their own.
       trainerProfile: { isNot: null },
       ...(and.length ? { AND: and } : {}),
     },
@@ -59,101 +53,52 @@ export async function TrainersTable({
     include: {
       trainerProfile: {
         select: {
-          id: true,
           businessName: true,
           subscriptionStatus: true,
           trialEndsAt: true,
           isInternal: true,
-          signupCountry: true,
           gracePeriodUntil: true,
-          seatCount: true,
           subscriptionPlan: { select: { name: true } },
-          _count: { select: { clients: true, members: true } },
-          // Count of onboarding emails actually sent to this trainer.
-          onboardingProgress: { select: { _count: { select: { emails: true } } } },
+          _count: { select: { clients: true } },
         },
       },
     },
   })
 
-  // "Sample data" flag per trainer — same signal the trainer app uses to know a
-  // brand-new account is still on the first-run preview records: any remaining
-  // ClientProfile with isSample=true (see (trainer)/layout.tsx + dashboard).
-  // One groupBy keeps it to a single extra query for the whole page.
-  const profileIds = trainers
-    .map(t => t.trainerProfile?.id)
-    .filter((id): id is string => Boolean(id))
-  const sampleGroups = profileIds.length
-    ? await prisma.clientProfile.groupBy({
-        by: ['trainerId'],
-        where: { trainerId: { in: profileIds }, isSample: true },
-        _count: { _all: true },
-      })
-    : []
-  const sampleByTrainer = new Map(sampleGroups.map(g => [g.trainerId, g._count._all]))
-
-  // Onboarding progress per trainer — use the same live-derived completion the
-  // dashboard checklist uses (a step counts as done when the underlying action
-  // is done OR it was explicitly marked), not just the raw step-progress rows.
-  const onboarding = await Promise.all(
-    trainers.map(async t => {
-      if (!t.trainerProfile?.id) return { completed: 0, total: 0 }
-      const fab = await getOnboardingFabState(t.trainerProfile.id)
-      return { completed: fab.steps.filter(s => s.status === 'completed').length, total: fab.totalSteps }
-    }),
-  )
-
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-      {/* overflow-x-auto + min-w on the table lets the 10 columns scroll
-          horizontally on a phone instead of squashing into an unreadable mess. */}
+      {/* overflow-x-auto + min-w keeps the columns readable on a phone; each row
+          taps through to the trainer's full view. */}
       <div className="overflow-x-auto">
-      {/* [&_td]:align-middle — table cells default to baseline alignment, which
-          left the action icons sitting on the text baseline; middle keeps every
-          column (and the icon row) vertically centered. */}
-      <table className="w-full min-w-[900px] text-sm [&_td]:align-middle">
-        <thead>
-          <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
-            <th className="text-left px-4 py-3">Name</th>
-            <th className="text-left px-4 py-3">Business</th>
-            <th className="text-left px-4 py-3">Country</th>
-            <th className="text-left px-4 py-3">Plan</th>
-            <th className="text-left px-4 py-3">Clients</th>
-            <th className="text-left px-4 py-3">Onboarding</th>
-            <th className="text-left px-4 py-3">Emails</th>
-            <th className="text-left px-4 py-3">Joined</th>
-            <th className="text-left px-4 py-3">Last seen</th>
-            <th className="text-left px-4 py-3">Trial ends</th>
-            <th className="px-4 py-3" />
-          </tr>
-        </thead>
-        <tbody>
-          {trainers.map((t, i) => (
-            <TrainerRow key={t.id} trainer={{
-              id: t.id,
-              name: t.name,
-              email: t.email,
-              businessName: t.trainerProfile?.businessName ?? null,
-              subscriptionPlanName: t.trainerProfile?.subscriptionPlan?.name ?? null,
-              subscriptionStatus: t.trainerProfile?.subscriptionStatus ?? null,
-              trialEndsAt: t.trainerProfile?.trialEndsAt ?? null,
-              isInternal: t.trainerProfile?.isInternal ?? false,
-              signupCountry: t.trainerProfile?.signupCountry ?? null,
-              clientCount: t.trainerProfile?._count?.clients ?? 0,
-              sampleClientCount: t.trainerProfile?.id ? (sampleByTrainer.get(t.trainerProfile.id) ?? 0) : 0,
-              onboardingCompleted: onboarding[i].completed,
-              onboardingTotal: onboarding[i].total,
-              onboardingEmails: t.trainerProfile?.onboardingProgress?._count?.emails ?? 0,
-              gracePeriodUntil: t.trainerProfile?.gracePeriodUntil ?? null,
-              seatCount: t.trainerProfile?.seatCount ?? 1,
-              seatsUsed: t.trainerProfile?._count?.members ?? 0,
-              deactivatedAt: t.deactivatedAt ?? null,
-              createdAt: t.createdAt,
-              lastLoginAt: t.lastLoginAt ?? null,
-            }} />
-          ))}
-        </tbody>
-      </table>
+        <table className="w-full min-w-[560px] text-sm [&_td]:align-middle">
+          <thead>
+            <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
+              <th className="text-left px-4 py-3">Business</th>
+              <th className="text-left px-4 py-3">Plan</th>
+              <th className="text-left px-4 py-3">Clients</th>
+              <th className="text-left px-4 py-3">Joined</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {trainers.map(t => (
+              <TrainerRow key={t.id} trainer={{
+                id: t.id,
+                name: t.name,
+                email: t.email,
+                businessName: t.trainerProfile?.businessName ?? null,
+                subscriptionPlanName: t.trainerProfile?.subscriptionPlan?.name ?? null,
+                subscriptionStatus: t.trainerProfile?.subscriptionStatus ?? null,
+                trialEndsAt: t.trainerProfile?.trialEndsAt ?? null,
+                gracePeriodUntil: t.trainerProfile?.gracePeriodUntil ?? null,
+                isInternal: t.trainerProfile?.isInternal ?? false,
+                clientCount: t.trainerProfile?._count?.clients ?? 0,
+                deactivatedAt: t.deactivatedAt ?? null,
+                createdAt: t.createdAt,
+              }} />
+            ))}
+          </tbody>
+        </table>
       </div>
       {trainers.length === 0 && (
         <p className="text-center py-8 text-slate-500">No trainers found</p>
