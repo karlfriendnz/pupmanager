@@ -245,7 +245,7 @@ function StepEditor({
         <textarea value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} rows={4} className={cn(inputClass, 'py-2 resize-y')} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs text-slate-400 mb-1">CTA label</label>
           <input value={form.ctaLabel} onChange={e => setForm(f => ({ ...f, ctaLabel: e.target.value }))} className={cn(inputClass, 'h-11')} />

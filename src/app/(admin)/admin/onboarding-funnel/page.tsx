@@ -159,7 +159,9 @@ export default async function AdminOnboardingFunnelPage() {
               </p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              {/* min-w keeps the five columns readable — they scroll horizontally
+                  on a phone rather than squashing the long headers. */}
+              <table className="w-full min-w-[560px] text-sm">
                 <thead>
                   <tr className="text-left text-slate-400 text-xs uppercase tracking-wide border-b border-slate-700">
                     <th className="px-4 py-2 font-medium">Step</th>

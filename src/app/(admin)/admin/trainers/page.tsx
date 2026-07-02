@@ -49,8 +49,9 @@ export default async function AdminTrainersPage({
         <p className="text-slate-400 text-sm mt-1">{all} business{all !== 1 ? 'es' : ''} registered</p>
       </div>
 
-      {/* Lifecycle tabs */}
-      <div className="flex items-center gap-1 mb-6 border-b border-slate-700">
+      {/* Lifecycle tabs — horizontally scrollable on mobile (six tabs don't fit
+          a phone width); scrollbar hidden so it reads as a clean swipe strip. */}
+      <div className="flex items-center gap-1 mb-6 border-b border-slate-700 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {TABS.map(t => {
           const active = t.key === current.key
           const href = `/admin/trainers?tab=${t.key}${q ? `&q=${encodeURIComponent(q)}` : ''}`
@@ -58,7 +59,7 @@ export default async function AdminTrainersPage({
             <Link
               key={t.key}
               href={href}
-              className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+              className={`relative flex shrink-0 items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
                 active ? 'text-white' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -68,7 +69,10 @@ export default async function AdminTrainersPage({
               }`}>
                 {counts[t.key] ?? 0}
               </span>
-              {active && <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-blue-500 rounded-full" />}
+              {/* bottom-0 (inside the box), not -bottom-px: overflow-x-auto forces
+                  overflow-y to auto, which would clip a below-the-box indicator
+                  and trigger a stray vertical scrollbar. */}
+              {active && <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-blue-500 rounded-full" />}
             </Link>
           )
         })}

@@ -16,7 +16,9 @@ const TABS = [
 export function OnboardingSubNav() {
   const pathname = usePathname()
   return (
-    <div className="mb-6 inline-flex items-center gap-1 rounded-xl bg-slate-800/60 p-1 border border-slate-700">
+    // w-max keeps the pill hugging its tabs on desktop; max-w-full + overflow-x
+    // let it scroll instead of overflowing the viewport on a narrow phone.
+    <div className="mb-6 flex w-max max-w-full items-center gap-1 rounded-xl bg-slate-800/60 p-1 border border-slate-700 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       {TABS.map(tab => {
         const active = pathname === tab.href || pathname.startsWith(tab.href + '/')
         const Icon = tab.icon
@@ -24,7 +26,7 @@ export function OnboardingSubNav() {
           <Link
             key={tab.href}
             href={tab.href}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               active ? 'bg-slate-700 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700/40'
             }`}
           >

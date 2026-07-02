@@ -21,7 +21,10 @@ export default async function AdminPromoCodesPage() {
       <PromoCodeCreate />
 
       <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-        <table className="w-full text-sm">
+        {/* overflow-x-auto + min-w lets the seven columns scroll horizontally on
+            a phone instead of squashing into an unreadable mess. */}
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
               <th className="text-left px-4 py-3">Code</th>
@@ -39,6 +42,7 @@ export default async function AdminPromoCodesPage() {
             ))}
           </tbody>
         </table>
+        </div>
         {codes.length === 0 && (
           <p className="text-center py-8 text-slate-500">No promo codes yet — create one above.</p>
         )}
