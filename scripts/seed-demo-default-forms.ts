@@ -2,10 +2,10 @@
 // than waiting for them to hit the dashboard, which would do this via the
 // init helper). Useful after a forms-wipe.
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 import { seedDefaultFormsFor } from '../src/lib/onboarding/form-defaults'
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   const tp = await prisma.trainerProfile.findFirst({

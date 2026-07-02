@@ -10,7 +10,7 @@
  * Requires the 20260604_dual_mode_billing migration to be applied first.
  */
 import fs from 'node:fs'
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
 // Load .env.local into process.env (no .env in this repo). Don't override
 // anything already set in the ambient environment.
@@ -22,7 +22,7 @@ try {
 } catch { /* rely on ambient environment */ }
 
 const DEMO_EMAIL = 'demo@pupmanager.com'
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   const user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL }, select: { id: true } })

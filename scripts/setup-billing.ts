@@ -23,13 +23,13 @@
  * while STRIPE_SECRET_KEY is unset in prod (checkout stays off), but treat
  * it as a production write regardless.
  */
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 import {
   PLAN_NAME, CORE_PRICE, SEAT_PRICE, ADDONS,
   CURRENCIES, type CurrencyCode,
 } from '../src/lib/pricing'
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 type PriceMap = Record<CurrencyCode, string>
 const TODO = 'price_REPLACE_ME'

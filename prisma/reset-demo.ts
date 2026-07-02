@@ -4,14 +4,14 @@
 //
 // Run with: `npm run db:reset-demo`
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 import {
   DEMO_EMAIL,
   ensureDemoTrainer,
   resetDemoData,
 } from '../src/lib/demo-seed'
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   console.log(`Resetting demo trainer: ${DEMO_EMAIL}`)

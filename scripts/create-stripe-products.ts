@@ -22,7 +22,7 @@
  */
 import fs from 'node:fs'
 import Stripe from 'stripe'
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 import {
   CORE_PRICE, SEAT_PRICE, ADDONS, CURRENCIES, PLAN_NAME,
   type CurrencyCode,
@@ -47,7 +47,7 @@ if (!SECRET) {
 }
 const MODE = SECRET.startsWith('sk_live_') ? 'LIVE' : 'TEST'
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 const stripe = new Stripe(SECRET, { apiVersion: '2026-04-22.dahlia' })
 
 interface ProductDef {

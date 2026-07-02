@@ -11,7 +11,7 @@
  */
 import fs from 'node:fs'
 import Stripe from 'stripe'
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
 for (const line of fs.readFileSync('.env.local', 'utf8').split('\n')) {
   const m = line.match(/^([A-Z0-9_]+)=(.*)$/)
@@ -21,7 +21,7 @@ for (const line of fs.readFileSync('.env.local', 'utf8').split('\n')) {
 const key = process.env.STRIPE_SECRET_KEY ?? ''
 if (!key.startsWith('sk_test_')) { console.error('.env.local STRIPE_SECRET_KEY must be a test key'); process.exit(1) }
 const stripe = new Stripe(key, { apiVersion: '2026-04-22.dahlia' })
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 const sleep = (ms: number) => new Promise<void>((r) => { const t = setTimeout(r, ms); t.unref?.() })
 

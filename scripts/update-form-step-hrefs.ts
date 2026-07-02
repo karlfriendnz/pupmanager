@@ -1,9 +1,9 @@
 // Updates the live OnboardingStep rows for intake_form + session_form so their
 // CTAs point at the Settings → Forms tab instead of the broken /forms route.
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   const updates = [

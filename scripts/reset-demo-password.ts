@@ -2,10 +2,10 @@
 // upserts the credentials Account row so it works whether they signed up
 // originally with credentials or via OAuth.
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 import bcrypt from 'bcryptjs'
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 const EMAIL = 'demo@pupmanager.com'
 const NEW_PASSWORD = 'demo1234'

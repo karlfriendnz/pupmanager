@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaClient } from '../../src/generated/prisma/index.js'
+import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
 
 // UAT + security for: the trainer profile-completion gate, cross-tenant org
@@ -17,7 +18,7 @@ async function login(page: Page, email: string, password: string) {
   await page.waitForURL('**/dashboard', { timeout: 30_000 })
 }
 
-const prisma = new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL } } })
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
 
 test.afterAll(async () => {
   await prisma.$disconnect()

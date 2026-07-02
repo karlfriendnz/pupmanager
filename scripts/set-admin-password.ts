@@ -4,13 +4,13 @@
 //
 // Run with: `npm run set-admin-password`
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 import bcrypt from 'bcryptjs'
 
 const ADMIN_EMAIL = 'admin@pupmanager.app'
 const ADMIN_PASSWORD = 'Fr1end1y_01'
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   const admin = await prisma.user.findUnique({

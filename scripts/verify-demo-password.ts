@@ -1,7 +1,7 @@
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 import bcrypt from 'bcryptjs'
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   const user = await prisma.user.findUnique({

@@ -1,9 +1,9 @@
 // Wipes all forms (EmbedForm, SessionForm, INTAKE CustomFields) for the demo
 // trainer so the "Review your forms" step starts from a clean slate.
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   const tp = await prisma.trainerProfile.findFirst({

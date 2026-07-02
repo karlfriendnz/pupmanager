@@ -6,9 +6,9 @@
 //   • billing back to a 10-day TRIALING trial with no plan
 //   • no leftover enquiries, availability slots, etc.
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 // Mirror the real /signup flow (src/app/api/auth/signup/route.ts).
 const TRIAL_DAYS = 10

@@ -6,10 +6,11 @@ generator client {
   output   = "../src/generated/prisma"
 }
 
+// Prisma 7 moved connection URLs out of the schema. The runtime client connects
+// via the pg driver adapter (see src/lib/prisma.ts, using DATABASE_URL);
+// migrations/introspection read DIRECT_URL from prisma.config.ts.
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
 }
 
 // ─── Enums ───────────────────────────────────────────────────────────────────

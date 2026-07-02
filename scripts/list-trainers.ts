@@ -1,6 +1,6 @@
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   const trainers = await prisma.trainerProfile.findMany({

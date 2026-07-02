@@ -6,6 +6,7 @@
 import EmbeddedPostgres from 'embedded-postgres'
 import { execSync } from 'node:child_process'
 import bcrypt from 'bcryptjs'
+import { PrismaPg } from '@prisma/adapter-pg'
 import { TEST_DB, TEST_DATABASE_URL, SEED } from './test-db'
 
 export default async function globalSetup() {
@@ -34,7 +35,7 @@ export default async function globalSetup() {
   // Seed an owner trainer (verified, with a credentials password) + an OWNER
   // membership + a sample client and package so specs have data to assign.
   const { PrismaClient } = await import('../../src/generated/prisma/index.js')
-  const prisma = new PrismaClient()
+  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
   try {
     const hash = await bcrypt.hash(SEED.owner.password, 12)
     const user = await prisma.user.create({

@@ -15,7 +15,7 @@
 // and standing product requests. See seedTeamAndOps() below — it's separately
 // idempotent (clears its own prior rows for the demo trainer, then rebuilds).
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 import { ADDONS } from '../src/lib/pricing'
 import {
   DEMO_EMAIL,
@@ -24,7 +24,7 @@ import {
   seedDemoData,
 } from '../src/lib/demo-seed'
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 // ─── Team members + business-ops demo data ────────────────────────────────────
 

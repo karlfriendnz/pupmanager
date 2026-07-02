@@ -1,8 +1,8 @@
 // One-shot: insert the new schedule_session onboarding step into the live DB.
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   const r = await prisma.onboardingStep.upsert({

@@ -1,10 +1,10 @@
 // Two credentials accounts exist for demo@pupmanager.com — clean up to one
 // with a known password, then verify bcrypt round-trips correctly.
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 import bcrypt from 'bcryptjs'
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   // Sanity: bcrypt itself works

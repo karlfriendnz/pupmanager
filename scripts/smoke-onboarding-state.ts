@@ -2,10 +2,12 @@
 // and confirm they return without errors. Logs query timing so we can spot
 // regressions in pool pressure.
 
+import 'dotenv/config'
 import { PrismaClient } from '../src/generated/prisma'
+import { PrismaPg } from '@prisma/adapter-pg'
 import { getOnboardingState, getOnboardingFabState } from '../src/lib/onboarding/state'
 
-const prisma = new PrismaClient({ log: ['query'] })
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }), log: ['query'] })
 
 async function main() {
   const trainer = await prisma.trainerProfile.findFirst({

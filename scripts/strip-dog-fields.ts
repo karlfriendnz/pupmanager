@@ -1,9 +1,9 @@
-import { PrismaClient } from '@/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
 // One-shot cleanup: any saved EmbedForm.fields entries with dog* keys are
 // removed so the narrowed Zod enum doesn't reject the form on next save.
 async function main() {
-  const prisma = new PrismaClient()
+  const prisma = scriptPrisma()
   const dogKeys = new Set(['dogName', 'dogBreed', 'dogWeight', 'dogDob'])
   const forms = await prisma.embedForm.findMany({ select: { id: true, fields: true } })
   let touched = 0

@@ -1,8 +1,8 @@
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 import bcrypt from 'bcryptjs'
 import { PLAN_NAME, CORE_PRICE, SEAT_PRICE, ADDONS } from '../src/lib/pricing'
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 async function main() {
   console.log('Seeding database...')

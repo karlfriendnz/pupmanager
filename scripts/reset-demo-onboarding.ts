@@ -5,9 +5,9 @@
 //   • TrainerProfile.createdAt → now (so isBackfill = false → auto-modal)
 //   • TrainerProfile.businessName → 'My Business' (sentinel → step 1 pending)
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 const EMAIL = 'demo@pupmanager.com'
 

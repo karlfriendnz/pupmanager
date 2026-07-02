@@ -3,9 +3,9 @@
 // remaining steps shift up one) AND reset the demo trainer for a clean
 // fresh-signup experience.
 
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 const STEP_UPDATES = [
   {

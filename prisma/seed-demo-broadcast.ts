@@ -8,9 +8,9 @@
  *
  * Defaults to the dev seed trainer (trainer@demo.co.nz).
  */
-import { PrismaClient } from '../src/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
-const prisma = new PrismaClient()
+const prisma = scriptPrisma()
 
 const trainerEmail = process.argv[2] ?? 'trainer@demo.co.nz'
 

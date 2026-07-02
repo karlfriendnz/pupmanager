@@ -1,7 +1,7 @@
-import { PrismaClient } from '@/generated/prisma'
+import { scriptPrisma } from "../src/lib/prisma-script"
 
 async function main() {
-  const prisma = new PrismaClient()
+  const prisma = scriptPrisma()
 
   // Seed against the canonical demo trainer (demo@pupmanager.com) — same
   // account used in App Review and `npm run db:seed-demo`.

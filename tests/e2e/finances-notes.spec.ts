@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaClient } from '../../src/generated/prisma/index.js'
+import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
 
 // UAT for client→trainer finances + the session notes/homework flow against the
@@ -104,6 +105,6 @@ test.describe('session notes / homework flow — owner UAT', () => {
 // so a future assertion can verify no mutation happened. Kept here to document
 // the connection pattern; closed eagerly to avoid a dangling pool.
 test.afterAll(async () => {
-  const prisma = new PrismaClient({ datasourceUrl: TEST_DATABASE_URL })
+  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
   await prisma.$disconnect()
 })
