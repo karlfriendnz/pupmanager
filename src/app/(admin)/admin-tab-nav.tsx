@@ -2,35 +2,49 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Package, Database, ClipboardList, Mail, Ticket } from 'lucide-react'
+import { LayoutDashboard, Users, Package, Database, ClipboardList, Mail, Ticket, type LucideIcon } from 'lucide-react'
 
-// `match` (optional) overrides the active-state prefix — the Onboarding tab
-// spans three sibling routes (-steps / -emails / -funnel), so it highlights for
-// the whole /admin/onboarding namespace, not just its landing href.
-const TABS = [
+// Shared admin tab list — rendered as a horizontal top bar on desktop
+// (AdminTabNav) and as a fixed bottom bar on mobile (AdminBottomNav).
+// `match` overrides the active-state prefix: the Onboarding tab spans three
+// sibling routes (-steps / -emails / -funnel), so it highlights for the whole
+// /admin/onboarding namespace, not just its landing href. `short` is a compact
+// label for the narrow mobile bottom bar.
+export type AdminTab = {
+  href: string
+  label: string
+  short?: string
+  icon: LucideIcon
+  match?: string
+}
+
+export const ADMIN_TABS: AdminTab[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/trainers', label: 'Trainers', icon: Users },
-  { href: '/admin/onboarding-steps', label: 'Onboarding', icon: Mail, match: '/admin/onboarding' },
+  { href: '/admin/onboarding-steps', label: 'Onboarding', short: 'Onboard', icon: Mail, match: '/admin/onboarding' },
   { href: '/admin/plans', label: 'Plans', icon: Package },
-  { href: '/admin/promo-codes', label: 'Promo codes', icon: Ticket },
-  { href: '/admin/demo', label: 'Demo data', icon: Database },
+  { href: '/admin/promo-codes', label: 'Promo codes', short: 'Promos', icon: Ticket },
+  { href: '/admin/demo', label: 'Demo data', short: 'Demo', icon: Database },
   { href: '/admin/status', label: 'Status', icon: ClipboardList },
-] as const
+]
+
+// Active-state test shared by both nav renderers.
+export function isAdminTabActive(tab: AdminTab, pathname: string): boolean {
+  if (tab.match) return pathname.startsWith(tab.match)
+  if (tab.href === '/admin') return pathname === '/admin'
+  return pathname === tab.href || pathname.startsWith(tab.href + '/')
+}
 
 export function AdminTabNav() {
   const pathname = usePathname()
 
   return (
-    // Horizontally scrollable on mobile (the seven tabs don't fit a phone
-    // width); scrollbar hidden so it reads as a clean swipe strip.
+    // Horizontally scrollable safety net (desktop is wide enough for all seven,
+    // but a narrow desktop window shouldn't push Sign out off-screen);
+    // scrollbar hidden so it reads as a clean strip.
     <nav className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-      {TABS.map(tab => {
-        const match = 'match' in tab ? (tab as { match?: string }).match : undefined
-        const active = match
-          ? pathname.startsWith(match)
-          : tab.href === '/admin'
-            ? pathname === '/admin'
-            : pathname === tab.href || pathname.startsWith(tab.href + '/')
+      {ADMIN_TABS.map(tab => {
+        const active = isAdminTabActive(tab, pathname)
         const Icon = tab.icon
         return (
           <Link
