@@ -114,10 +114,19 @@ describe.each(routes)('POST /api/auth/%s — validation, duplicates, role escala
     expect(h.userCreate.mock.calls[0][0].data.role).toBe('TRAINER')
   })
 
-  it('hashes the password (never stores plaintext) and the account holds the hash', async () => {
+  it('password handling per route (register = passwordless lead, signup = hashed)', async () => {
     await POST(req(body({ password: 'plaintext-pw' })))
-    expect(h.bcryptHash).toHaveBeenCalledWith('plaintext-pw', 12)
-    expect(h.accountCreate.mock.calls[0][0].data.providerAccountId).toBe('HASHED')
+    if (label === 'register') {
+      // Split signup: /register only captures the lead. The password +
+      // credentials account are created later by /api/auth/set-password once
+      // the OTP is verified — so register must NOT hash or create an account.
+      expect(h.bcryptHash).not.toHaveBeenCalled()
+      expect(h.accountCreate).not.toHaveBeenCalled()
+    } else {
+      // /signup still sets a password inline and stores only the hash.
+      expect(h.bcryptHash).toHaveBeenCalledWith('plaintext-pw', 12)
+      expect(h.accountCreate.mock.calls[0][0].data.providerAccountId).toBe('HASHED')
+    }
     // emailVerified stays null — login is blocked until the code is entered.
     expect(h.userCreate.mock.calls[0][0].data.emailVerified).toBeNull()
   })

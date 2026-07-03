@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import { z } from 'zod'
@@ -25,10 +25,13 @@ const schema = z.object({
 })
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ clientId: string }> }) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  // Deleting a client hard-deletes their User + dogs + history — gate on the
+  // clients.edit capability (respects a per-member override, and re-validates
+  // membership so a removed member can't delete).
+  const guard = await guardPermission('clients.edit')
+  if (guard instanceof NextResponse) return guard
   const { clientId } = await params
-  const access = await getClientAccess(clientId, session.user.id)
+  const access = await getClientAccess(clientId, guard.userId)
   if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   // Only the primary trainer can delete
   if (access.client.trainerId !== access.trainerId) return NextResponse.json({ error: 'Only the primary trainer can delete a client' }, { status: 403 })
@@ -83,11 +86,11 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ clie
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ clientId: string }> }) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const guard = await guardPermission('clients.edit')
+  if (guard instanceof NextResponse) return guard
 
   const { clientId } = await params
-  const access = await getClientAccess(clientId, session.user.id)
+  const access = await getClientAccess(clientId, guard.userId)
   if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!access.canEdit) return NextResponse.json({ error: 'Read-only access' }, { status: 403 })
 

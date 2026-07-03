@@ -21,6 +21,9 @@ export async function PATCH(req: Request) {
   const user = await prisma.user.update({
     where: { id: session.user.id },
     data: parsed.data,
+    // Return only the fields the client set — not the whole User row (which
+    // carries internal flags like emailVerified / lastLoginAt / role).
+    select: { id: true, name: true, timezone: true, notifyEmail: true, notifyPush: true },
   })
 
   return NextResponse.json(user)

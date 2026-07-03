@@ -45,7 +45,8 @@ vi.mock('@/lib/unsubscribe-token', () => ({ unsubscribeUrl: (id: string) => `htt
 vi.mock('@/lib/billing', () => ({ hasAddon: h.hasAddon }))
 
 import { NextResponse } from 'next/server'
-import { POST, TRIAL_DAILY_RECIPIENT_LIMIT } from '@/app/api/clients/email-bulk/route'
+import { POST } from '@/app/api/clients/email-bulk/route'
+import { TRIAL_DAILY_RECIPIENT_LIMIT } from '@/lib/bulk-email-limits'
 
 function grant(companyId = 'company-A') {
   h.guardPermission.mockResolvedValue({ companyId, userId: 'u1', membershipId: 'mem1', role: 'OWNER', permissions: {} })

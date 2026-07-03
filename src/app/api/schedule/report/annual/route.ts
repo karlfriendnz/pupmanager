@@ -1,18 +1,20 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { getTrainerContext } from '@/lib/membership'
+import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  if (!can('schedule.viewAll', ctx.role, ctx.permissions)) {
+    return NextResponse.json({ error: 'You don’t have access to the whole-business report.' }, { status: 403 })
   }
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { id: session.user.trainerId ?? '' },
+    where: { id: ctx.companyId },
     select: {
       id: true,
       scheduleExtraFields: true,

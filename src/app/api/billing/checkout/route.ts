@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
+import { getTrainerContext } from '@/lib/membership'
+import { can } from '@/lib/permissions'
+import { requireSameOrigin } from '@/lib/csrf'
 import { prisma } from '@/lib/prisma'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
@@ -48,12 +51,22 @@ const schema = z.object({
 // anti-steering rules tolerate B2B web checkout) and web users
 // navigate in-tab.
 export async function POST(req: Request) {
+  const csrf = requireSameOrigin(req); if (csrf) return csrf
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   }
   const trainerId = session.user.trainerId
   if (!trainerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // Starting a subscription commits the business to a recurring charge and
+  // writes billing profile fields — gate on the billing spend permission
+  // (OWNER by default) so a restricted member can't open checkout or mutate
+  // the business's billing details. Mirrors /api/billing/seats + /api/addons.
+  const ctx = await getTrainerContext()
+  if (!ctx || !can('billing.seats', ctx.role, ctx.permissions)) {
+    return NextResponse.json({ error: 'Only owners can manage billing.' }, { status: 403 })
+  }
 
   // Sandbox trainers (the demo) bill against Stripe test mode end-to-end —
   // test key + the test price columns.

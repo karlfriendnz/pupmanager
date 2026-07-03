@@ -88,6 +88,18 @@ export async function POST(req: Request) {
   const { name, email, role, title } = parsed.data
   const permissions = asPermissionMap(parsed.data.permissions)
 
+  // Privilege-escalation guard (mirrors the PATCH route): a non-OWNER inviter
+  // must not GRANT a capability they don't themselves hold — otherwise a MANAGER
+  // with team.manage could mint a member carrying billing.seats / team.manage and
+  // escalate through that controlled account.
+  if (ctx.role !== 'OWNER') {
+    const overreach = (Object.keys(permissions) as (keyof typeof permissions)[])
+      .filter((k) => permissions[k] === true && !can(k, ctx.role, ctx.permissions))
+    if (overreach.length > 0) {
+      return NextResponse.json({ error: 'You can only grant permissions you hold yourself.' }, { status: 403 })
+    }
+  }
+
   // One account per email. A person who already has a PupManager login (their
   // own business, a client, or already on a team) can't be invited as a member
   // here — that's a future "link existing account" flow.
@@ -104,15 +116,19 @@ export async function POST(req: Request) {
       logoUrl: true,
       emailAccentColor: true,
       seatCount: true,
+      subscriptionStatus: true,
       user: { select: { name: true, email: true } },
     },
   })
   if (!company) return NextResponse.json({ error: 'Business not found' }, { status: 404 })
 
-  // Seat cap: owner + members must fit within seatCount. (Stripe seat
-  // purchasing isn't wired yet; the owner adjusts seatCount via PATCH below.)
+  // Seat cap: owner + members must fit within seatCount, and adding a seat is a
+  // paid upgrade (POST /api/billing/seats). EXCEPTION: during the free trial,
+  // seats are free — trialing businesses can invite their whole team to try it
+  // out, and seat billing reconciles when the trial converts.
+  const isTrialing = company.subscriptionStatus === 'TRIALING'
   const seatsUsed = await prisma.trainerMembership.count({ where: { companyId: ctx.companyId } })
-  if (seatsUsed >= company.seatCount) {
+  if (!isTrialing && seatsUsed >= company.seatCount) {
     return NextResponse.json(
       { error: `All ${company.seatCount} seat${company.seatCount === 1 ? '' : 's'} are in use. Add more seats before inviting another trainer.` },
       { status: 403 },

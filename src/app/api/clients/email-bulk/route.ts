@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { TRIAL_DAILY_RECIPIENT_LIMIT, PAID_DAILY_RECIPIENT_LIMIT } from '@/lib/bulk-email-limits'
 import { auth } from '@/lib/auth'
 import { guardPermission, scopeForMember } from '@/lib/membership'
+import { enforceRateLimit } from '@/lib/rate-limit'
 import { prisma } from '@/lib/prisma'
 import { buildClientEmail } from '@/lib/client-email'
 import { sendEmailBatch, fromTrainerDomain, fromTrainer } from '@/lib/email'
@@ -12,8 +14,6 @@ import { hasAddon } from '@/lib/billing'
 // Per-day send caps, counted by *recipient* over a rolling 24h window. Trial
 // trainers are tightly capped to protect deliverability while they evaluate;
 // paid trainers get a high backstop that exists only to catch abuse/bugs.
-export const TRIAL_DAILY_RECIPIENT_LIMIT = 5
-export const PAID_DAILY_RECIPIENT_LIMIT = 500
 
 // Resend's batch endpoint accepts up to 100 messages per call.
 const BATCH_SIZE = 100
@@ -47,6 +47,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   }
   const trainerId = guard.companyId
+
+  // Rate-limit the batch-send itself (on top of the per-day recipient caps
+  // below) so a script can't fan out email + burn sender reputation rapidly.
+  const limited = await enforceRateLimit({ key: `bulk-email:${trainerId}`, limit: 10, windowMs: 60 * 60_000 })
+  if (limited) return limited
 
   // Bulk client email is the Marketing add-on — gate the capability on it.
   if (!(await hasAddon(trainerId, 'marketing'))) {

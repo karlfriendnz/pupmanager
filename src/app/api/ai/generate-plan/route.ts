@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
+import { enforceRateLimit } from '@/lib/rate-limit'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
@@ -16,6 +17,9 @@ const schema = z.object({
 export async function POST(req: Request) {
   const guard = await guardPermission('ai.use')
   if (guard instanceof NextResponse) return guard
+  // LLM calls cost money — cap per company to stop a script running up a bill.
+  const limited = await enforceRateLimit({ key: `ai-plan:${guard.companyId}`, limit: 30, windowMs: 60 * 60_000 })
+  if (limited) return limited
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

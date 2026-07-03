@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { auth } from '@/lib/auth'
+import { getTrainerContext } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { enforceRateLimit } from '@/lib/rate-limit'
@@ -22,11 +22,15 @@ const schema = z.object({
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const csrf = requireSameOrigin(req); if (csrf) return csrf
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER' || !session.user.trainerId) {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  // Refunds move money out of the business's Stripe balance — an owner-only
+  // action (matches the OWNER-gated Payments settings surface). Restricted
+  // members (STAFF/MANAGER) authenticate as role TRAINER but must not refund.
+  if (ctx.role !== 'OWNER') {
+    return NextResponse.json({ error: 'Only the account owner can issue refunds.' }, { status: 403 })
   }
-  const trainerId = session.user.trainerId
+  const trainerId = ctx.companyId
   const { id } = await params
 
   const limited = await enforceRateLimit({ key: `refund:${trainerId}`, limit: 20, windowMs: 10 * 60_000 })
@@ -110,7 +114,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   await recordAudit({
     action: 'BILLING_CHANGED',
     companyId: trainerId,
-    actorUserId: session.user.id,
+    actorUserId: ctx.userId,
     targetType: 'payment',
     targetId: id,
     meta: { refundId: refund.id, amount },

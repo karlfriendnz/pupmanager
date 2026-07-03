@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { enforceRateLimit } from '@/lib/rate-limit'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
@@ -40,6 +41,8 @@ export async function POST(
   }
   const trainerId = session.user.trainerId
   if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const limited = await enforceRateLimit({ key: `ai-polish:${trainerId}`, limit: 40, windowMs: 60 * 60_000 })
+  if (limited) return limited
 
   const { sessionId } = await params
 

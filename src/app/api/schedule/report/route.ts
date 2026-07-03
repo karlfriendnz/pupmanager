@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { getTrainerContext } from '@/lib/membership'
+import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
 
@@ -21,13 +22,17 @@ function mondayOf(dateStr: string): string {
 }
 
 export async function GET(req: Request) {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  // This report aggregates the WHOLE company's sessions + revenue. Gate on the
+  // same data-scope permission as "see the whole schedule" so a restricted staff
+  // member (schedule.viewAll off) can't pull company-wide financials.
+  if (!can('schedule.viewAll', ctx.role, ctx.permissions)) {
+    return NextResponse.json({ error: 'You don’t have access to the whole-business report.' }, { status: 403 })
   }
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { id: session.user.trainerId ?? '' },
+    where: { id: ctx.companyId },
     select: {
       id: true,
       scheduleExtraFields: true,

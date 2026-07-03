@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { auth } from '@/lib/auth'
+import { getTrainerContext } from '@/lib/membership'
+import { can } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import { requireSameOrigin } from '@/lib/csrf'
 import { fetchMappingOptions } from '@/lib/xero'
@@ -10,14 +11,17 @@ import { fetchMappingOptions } from '@/lib/xero'
 // choices (connection-level defaults + per-product/package account codes). PUT
 // saves them. Owner-only, mirroring the rest of the Xero + Billing surface.
 
-async function ownerTrainerId(): Promise<string | null> {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER' || !session.user.trainerId) return null
-  return session.user.trainerId
+// The Xero mapping surface (chart-of-accounts pull + per-product mapping + tax)
+// is settings.edit-gated in the UI; enforce the same here so a staff member
+// can't read the org's accounts or change tax/account mapping via the API.
+async function settingsTrainerId(): Promise<string | null> {
+  const ctx = await getTrainerContext()
+  if (!ctx || !can('settings.edit', ctx.role, ctx.permissions)) return null
+  return ctx.companyId
 }
 
 export async function GET() {
-  const trainerId = await ownerTrainerId()
+  const trainerId = await settingsTrainerId()
   if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const connection = await prisma.xeroConnection.findUnique({ where: { trainerId } })
@@ -50,6 +54,7 @@ export async function GET() {
       bankAccountCode: connection.bankAccountCode,
       salesAccountCode: connection.salesAccountCode,
       taxType: connection.taxType,
+      accountShortlist: (connection.accountShortlist as { code: string; name: string }[] | null) ?? [],
       products,
       packages,
     },
@@ -64,6 +69,8 @@ const putSchema = z.object({
   bankAccountName: z.string().trim().max(200).nullish().transform((v) => v || null),
   salesAccountCode: code,
   taxType: code,
+  // Curated income-account shortlist offered on the create forms.
+  accountShortlist: z.array(z.object({ code: z.string().trim().max(50), name: z.string().trim().max(200) })).max(50).optional(),
   products: z.record(z.string(), code).default({}),
   packages: z.record(z.string(), code).default({}),
 })
@@ -72,19 +79,22 @@ export async function PUT(req: Request) {
   const csrf = requireSameOrigin(req)
   if (csrf) return csrf
 
-  const trainerId = await ownerTrainerId()
+  const trainerId = await settingsTrainerId()
   if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const parsed = putSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
-  const { bankAccountCode, bankAccountName, salesAccountCode, taxType, products, packages } = parsed.data
+  const { bankAccountCode, bankAccountName, salesAccountCode, taxType, accountShortlist, products, packages } = parsed.data
 
   // Per-item updates are scoped by trainerId in the filter so a trainer can only
   // ever touch their own products/packages (updateMany ignores foreign ids).
   await prisma.$transaction([
     prisma.xeroConnection.update({
       where: { trainerId },
-      data: { bankAccountCode, bankAccountName, salesAccountCode, taxType },
+      data: {
+        bankAccountCode, bankAccountName, salesAccountCode, taxType,
+        ...(accountShortlist ? { accountShortlist } : {}),
+      },
     }),
     ...Object.entries(products).map(([id, xeroAccountCode]) =>
       prisma.product.updateMany({ where: { id, trainerId }, data: { xeroAccountCode } }),

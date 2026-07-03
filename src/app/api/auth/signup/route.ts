@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { sendVerificationEmail } from '@/lib/auth-emails'
 import { notifyNewTrainerSignup } from '@/lib/notify-new-trainer'
 import { validatePromoCode } from '@/lib/promo'
+import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 
 const TRIAL_DAYS = 10
 
@@ -51,6 +52,12 @@ function generateCode(): string {
 }
 
 export async function POST(req: Request) {
+  // Throttle account-creation / verification-email spam per IP (matches
+  // /api/auth/register). Without this a single IP can bulk-create accounts and
+  // trigger unbounded verification emails.
+  const limited = await enforceRateLimit({ key: `signup:${getClientIp(req)}`, limit: 5, windowMs: 60 * 60_000 })
+  if (limited) return limited
+
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {

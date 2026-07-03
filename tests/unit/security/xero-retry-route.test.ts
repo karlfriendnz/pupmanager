@@ -1,18 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { NextResponse } from 'next/server'
 
 // Xero manual retry route. Security/behaviour focus:
 //   - same-origin + owner-only
 //   - ownership scoping (can't retry another trainer's payment → 404)
 //   - dispatches to payment sync when PAID, invoice sync when unpaid
 const h = vi.hoisted(() => ({
-  auth: vi.fn(),
+  guardPermission: vi.fn(),
   paymentFindFirst: vi.fn(),
   requireSameOrigin: vi.fn((): Response | null => null),
   syncInvoiceToXero: vi.fn(),
   syncPaymentToXero: vi.fn(),
 }))
 
-vi.mock('@/lib/auth', () => ({ auth: h.auth }))
+vi.mock('@/lib/membership', () => ({ guardPermission: h.guardPermission }))
 vi.mock('@/lib/csrf', () => ({ requireSameOrigin: h.requireSameOrigin }))
 vi.mock('@/lib/prisma', () => ({ prisma: { payment: { findFirst: h.paymentFindFirst } } }))
 vi.mock('@/lib/xero-sync', () => ({ syncInvoiceToXero: h.syncInvoiceToXero, syncPaymentToXero: h.syncPaymentToXero }))
@@ -20,7 +21,7 @@ vi.mock('@/lib/xero-sync', () => ({ syncInvoiceToXero: h.syncInvoiceToXero, sync
 import { POST } from '@/app/api/xero/retry/route'
 
 function asOwner(trainerId = 't-1') {
-  h.auth.mockResolvedValue({ user: { role: 'TRAINER', trainerId, id: 'u-1' } })
+  h.guardPermission.mockResolvedValue({ userId: 'u-1', companyId: trainerId, membershipId: 'm-1', role: 'OWNER', permissions: {} })
 }
 function req(body: unknown = { paymentId: 'pay-1' }) {
   return new Request('http://localhost/api/xero/retry', {
@@ -44,8 +45,8 @@ describe('guards', () => {
   })
 
   it('401s a non-owner', async () => {
-    h.auth.mockResolvedValue({ user: { role: 'CLIENT', id: 'u-9' } })
-    expect((await POST(req())).status).toBe(401)
+    h.guardPermission.mockResolvedValue(NextResponse.json({ error: 'no' }, { status: 403 }))
+    expect((await POST(req())).status).toBe(403)
   })
 
   it('404s when the payment is not this trainer’s', async () => {

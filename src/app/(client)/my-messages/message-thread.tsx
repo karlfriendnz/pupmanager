@@ -9,7 +9,7 @@ interface Message {
   body: string
   senderId: string
   createdAt: string
-  sender: { name: string | null; email: string }
+  sender: { name: string | null }
 }
 
 export function MessageThread({
@@ -62,7 +62,7 @@ export function MessageThread({
       body: text,
       senderId: currentUserId,
       createdAt: new Date().toISOString(),
-      sender: { name: null, email: '' },
+      sender: { name: null },
     }
     setMessages(prev => [...prev, optimistic])
 

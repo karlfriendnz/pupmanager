@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // tested in payments-fees.test.ts; this asserts the route actually calls it.)
 
 const h = vi.hoisted(() => ({
-  auth: vi.fn(),
+  getTrainerContext: vi.fn(),
   requireSameOrigin: vi.fn(),
   trainerFindUnique: vi.fn(),
   trainerUpdate: vi.fn(),
@@ -20,7 +20,7 @@ const h = vi.hoisted(() => ({
   auditRequestMeta: vi.fn(() => ({})),
 }))
 
-vi.mock('@/lib/auth', () => ({ auth: h.auth }))
+vi.mock('@/lib/membership', () => ({ getTrainerContext: h.getTrainerContext }))
 vi.mock('@/lib/csrf', () => ({ requireSameOrigin: h.requireSameOrigin }))
 vi.mock('@/lib/audit', () => ({ recordAudit: h.recordAudit, auditRequestMeta: h.auditRequestMeta }))
 vi.mock('@/lib/connect', () => ({
@@ -51,14 +51,14 @@ beforeEach(() => {
 
 describe('POST /api/connect/account — live allowlist onboarding gate', () => {
   it('401 when not an authenticated trainer', async () => {
-    h.auth.mockResolvedValue(null)
+    h.getTrainerContext.mockResolvedValue(null)
     const res = await POST(req())
     expect(res.status).toBe(401)
     expect(h.createExpressAccount).not.toHaveBeenCalled()
   })
 
   it('403 for a non-allowlisted LIVE trainer (no account created)', async () => {
-    h.auth.mockResolvedValue({ user: { role: 'TRAINER', id: 'u1', trainerId: 't1' } })
+    h.getTrainerContext.mockResolvedValue({ userId: 'u1', companyId: 't1', membershipId: 'm1', role: 'OWNER', permissions: {} })
     h.trainerFindUnique.mockResolvedValue({ connectAccountId: null, sandboxBilling: false, payoutCurrency: null, signupCountry: 'NZ', addressCountry: null, businessName: 'X', user: { email: 'a@b.c' } })
     h.isLivePaymentsAllowed.mockReturnValue(false)
     const res = await POST(req())
@@ -68,7 +68,7 @@ describe('POST /api/connect/account — live allowlist onboarding gate', () => {
   })
 
   it('sandbox (demo) trainer is always allowed to onboard', async () => {
-    h.auth.mockResolvedValue({ user: { role: 'TRAINER', id: 'u1', trainerId: 't1' } })
+    h.getTrainerContext.mockResolvedValue({ userId: 'u1', companyId: 't1', membershipId: 'm1', role: 'OWNER', permissions: {} })
     h.trainerFindUnique.mockResolvedValue({ connectAccountId: null, sandboxBilling: true, payoutCurrency: null, signupCountry: 'NZ', addressCountry: null, businessName: 'X', user: { email: 'a@b.c' } })
     h.isLivePaymentsAllowed.mockReturnValue(true)
     const res = await POST(req())
@@ -78,7 +78,7 @@ describe('POST /api/connect/account — live allowlist onboarding gate', () => {
   })
 
   it('allowlisted LIVE trainer is allowed and gets an onboarding link', async () => {
-    h.auth.mockResolvedValue({ user: { role: 'TRAINER', id: 'u1', trainerId: 't1' } })
+    h.getTrainerContext.mockResolvedValue({ userId: 'u1', companyId: 't1', membershipId: 'm1', role: 'OWNER', permissions: {} })
     h.trainerFindUnique.mockResolvedValue({ connectAccountId: null, sandboxBilling: false, payoutCurrency: null, signupCountry: 'NZ', addressCountry: null, businessName: 'X', user: { email: 'a@b.c' } })
     h.isLivePaymentsAllowed.mockReturnValue(true)
     const res = await POST(req())

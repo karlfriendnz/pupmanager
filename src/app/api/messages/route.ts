@@ -42,7 +42,9 @@ export async function GET(req: Request) {
 
   const messages = await prisma.message.findMany({
     where: { clientId, channel: 'TRAINER_CLIENT' },
-    include: { sender: { select: { name: true, email: true } } },
+    // Only the sender's display name — never User.email (the trainer's PRIVATE
+    // sign-in address). Clients must only ever see publicEmail, not this one.
+    include: { sender: { select: { name: true } } },
     orderBy: { createdAt: 'asc' },
   })
 

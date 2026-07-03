@@ -88,7 +88,8 @@ export async function GET(req: Request) {
                 createdAt: { gt: lastSeenAt },
               },
               orderBy: { createdAt: 'asc' },
-              include: { sender: { select: { name: true, email: true } } },
+              // Name only — never leak the trainer's private User.email to clients.
+              include: { sender: { select: { name: true } } },
             })
             if (fresh.length > 0) {
               lastSeenAt = fresh[fresh.length - 1].createdAt
@@ -98,7 +99,7 @@ export async function GET(req: Request) {
                   body: m.body,
                   senderId: m.senderId,
                   createdAt: m.createdAt.toISOString(),
-                  sender: { name: m.sender.name, email: m.sender.email ?? '' },
+                  sender: { name: m.sender.name },
                 })
               }
             }

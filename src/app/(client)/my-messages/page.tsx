@@ -13,14 +13,16 @@ export default async function ClientMessagesPage() {
   const clientProfile = await prisma.clientProfile.findFirst({
     where: { id: active.clientId },
     include: {
-      trainer: { include: { user: { select: { name: true, email: true } } } },
+      // businessName is the client-facing label; NEVER expose the trainer's
+      // private User.email to the client.
+      trainer: { select: { businessName: true, user: { select: { name: true } } } },
     },
   })
   if (!clientProfile) redirect('/login')
 
   const messages = await prisma.message.findMany({
     where: { clientId: clientProfile.id, channel: 'TRAINER_CLIENT' },
-    include: { sender: { select: { name: true, email: true } } },
+    include: { sender: { select: { name: true } } },
     orderBy: { createdAt: 'asc' },
   })
 
@@ -34,7 +36,7 @@ export default async function ClientMessagesPage() {
     }
   }
 
-  const trainerName = clientProfile.trainer.user.name ?? clientProfile.trainer.user.email
+  const trainerName = clientProfile.trainer.user.name ?? clientProfile.trainer.businessName ?? 'Your trainer'
 
   return (
     // Full-height chat surface — fills <main>'s flex column and reclaims

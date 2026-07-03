@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { auth } from '@/lib/auth'
+import { getTrainerContext } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import {
   createExpressAccount,
@@ -17,16 +17,22 @@ import { recordAudit, auditRequestMeta } from '@/lib/audit'
 // owner action. POST creates-or-resumes the Express account and returns a
 // hosted onboarding link; PATCH flips the "accept payments" master switch.
 
-async function ownerContext(): Promise<{ trainerId: string; userId: string } | null> {
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER' || !session.user.trainerId) return null
-  return { trainerId: session.user.trainerId, userId: session.user.id }
+// Owner-only: onboarding/toggling the business's payout account is an account-
+// owner action. Restricted members (STAFF/MANAGER) authenticate as role TRAINER
+// but must not create the payout account or flip payment acceptance / fee-pass.
+async function requireOwner(): Promise<{ trainerId: string; userId: string } | NextResponse> {
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  if (ctx.role !== 'OWNER') {
+    return NextResponse.json({ error: 'Only the account owner can manage payments.' }, { status: 403 })
+  }
+  return { trainerId: ctx.companyId, userId: ctx.userId }
 }
 
 export async function POST(req: Request) {
   const csrf = requireSameOrigin(req); if (csrf) return csrf
-  const ctx = await ownerContext()
-  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await requireOwner()
+  if (ctx instanceof NextResponse) return ctx
   const trainerId = ctx.trainerId
 
   const trainer = await prisma.trainerProfile.findUnique({
@@ -89,8 +95,8 @@ const patchSchema = z.object({
 
 export async function PATCH(req: Request) {
   const csrf = requireSameOrigin(req); if (csrf) return csrf
-  const ctx = await ownerContext()
-  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const ctx = await requireOwner()
+  if (ctx instanceof NextResponse) return ctx
   const trainerId = ctx.trainerId
 
   const parsed = patchSchema.safeParse(await req.json().catch(() => ({})))

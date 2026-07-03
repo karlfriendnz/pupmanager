@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 //   - PUT saves connection defaults and scopes every per-item write by trainerId
 //     (a client can't repoint another trainer's product to their own account)
 const h = vi.hoisted(() => ({
-  auth: vi.fn(),
+  getTrainerContext: vi.fn(),
   connFindUnique: vi.fn(),
   connUpdate: vi.fn(),
   productUpdateMany: vi.fn(),
@@ -18,7 +18,7 @@ const h = vi.hoisted(() => ({
   $transaction: vi.fn((ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
 }))
 
-vi.mock('@/lib/auth', () => ({ auth: h.auth }))
+vi.mock('@/lib/membership', () => ({ getTrainerContext: h.getTrainerContext }))
 vi.mock('@/lib/csrf', () => ({ requireSameOrigin: h.requireSameOrigin }))
 vi.mock('@/lib/xero', () => ({ fetchMappingOptions: h.fetchMappingOptions }))
 vi.mock('@/lib/prisma', () => ({
@@ -33,7 +33,7 @@ vi.mock('@/lib/prisma', () => ({
 import { GET, PUT } from '@/app/api/xero/mapping/route'
 
 function asOwner(trainerId = 't-1') {
-  h.auth.mockResolvedValue({ user: { role: 'TRAINER', trainerId, id: 'u-1' } })
+  h.getTrainerContext.mockResolvedValue({ userId: 'u-1', companyId: trainerId, membershipId: 'm-1', role: 'OWNER', permissions: {} })
 }
 function putReq(body: unknown) {
   return new Request('http://localhost/api/xero/mapping', {
@@ -49,12 +49,12 @@ beforeEach(() => {
 
 describe('auth gating', () => {
   it('GET 401s when not an owner', async () => {
-    h.auth.mockResolvedValue({ user: { role: 'CLIENT', id: 'u-9' } })
+    h.getTrainerContext.mockResolvedValue({ userId: 'u-9', companyId: 't-1', membershipId: 'm', role: 'STAFF', permissions: {} })
     expect((await GET()).status).toBe(401)
   })
 
   it('PUT 401s when not an owner', async () => {
-    h.auth.mockResolvedValue(null)
+    h.getTrainerContext.mockResolvedValue(null)
     const res = await PUT(putReq({}))
     expect(res.status).toBe(401)
     expect(h.connUpdate).not.toHaveBeenCalled()

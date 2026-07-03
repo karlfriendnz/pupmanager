@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { auth } from '@/lib/auth'
+import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { requireSameOrigin } from '@/lib/csrf'
 import { syncInvoiceToXero, syncPaymentToXero } from '@/lib/xero-sync'
@@ -15,17 +15,17 @@ export async function POST(req: Request) {
   const csrf = requireSameOrigin(req)
   if (csrf) return csrf
 
-  const session = await auth()
-  if (!session || session.user.role !== 'TRAINER' || !session.user.trainerId) {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  }
+  // Re-running a Xero sync touches the accounting connection — gate on
+  // settings.edit (owner/manager), matching the Xero surface.
+  const guard = await guardPermission('settings.edit')
+  if (guard instanceof NextResponse) return guard
 
   const parsed = schema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
 
   // Ownership: the payment must belong to this trainer.
   const payment = await prisma.payment.findFirst({
-    where: { id: parsed.data.paymentId, trainerId: session.user.trainerId },
+    where: { id: parsed.data.paymentId, trainerId: guard.companyId },
     select: { id: true, status: true },
   })
   if (!payment) return NextResponse.json({ error: 'Not found' }, { status: 404 })
