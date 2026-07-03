@@ -7,6 +7,7 @@ import { Mail, CheckCircle2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
+import { SetPasswordStep } from '../set-password-step'
 import { safeInternalPath } from '@/lib/safe-redirect'
 
 export function VerifyAccountForm() {
@@ -26,6 +27,8 @@ export function VerifyAccountForm() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [verified, setVerified] = useState(false)
+  // Set for a fresh web lead that still needs a password (not the Apple flow).
+  const [setupToken, setSetupToken] = useState<string | null>(null)
   const [resentAt, setResentAt] = useState<number | null>(null)
   const [resending, setResending] = useState(false)
   const codeInputRef = useRef<HTMLInputElement>(null)
@@ -82,14 +85,22 @@ export function VerifyAccountForm() {
       setSubmitting(false)
       return
     }
-    setVerified(true)
+    const body = await res.json().catch(() => ({}))
     setSubmitting(false)
-    // Apple flow: session already exists, so go straight on. Full navigation so
-    // the server layout re-reads the now-verified state. Short beat to let the
-    // success state paint first.
+    // Apple flow (`next` present): a session already exists — no password
+    // needed. Go straight on with a full navigation so the server layout
+    // re-reads the now-verified state. Short beat to let success paint first.
     if (next) {
+      setVerified(true)
       setTimeout(() => { window.location.href = next }, 900)
+      return
     }
+    // Fresh web lead with no password yet → set one before landing.
+    if (body.needsPassword && body.setupToken) {
+      setSetupToken(body.setupToken as string)
+      return
+    }
+    setVerified(true)
   }
 
   async function handleResend() {
@@ -106,6 +117,10 @@ export function VerifyAccountForm() {
     })
     setResentAt(Date.now())
     setResending(false)
+  }
+
+  if (setupToken) {
+    return <SetPasswordStep email={email} setupToken={setupToken} redirectTo="/dashboard" />
   }
 
   if (verified) {

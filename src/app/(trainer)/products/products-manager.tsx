@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { XeroAccountField } from '@/components/shared/xero-account-field'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
@@ -26,6 +27,7 @@ interface Product {
   category: string | null
   featured: boolean
   active: boolean
+  xeroAccountCode: string | null
 }
 
 const EMPTY_DRAFT: Omit<Product, 'id'> = {
@@ -37,6 +39,7 @@ const EMPTY_DRAFT: Omit<Product, 'id'> = {
   downloadUrl: null,
   category: null,
   featured: false,
+  xeroAccountCode: null,
   active: true,
 }
 
@@ -274,6 +277,7 @@ function ProductEditor({
       category: draft.category,
       featured: draft.featured,
       active: draft.active,
+      xeroAccountCode: draft.xeroAccountCode,
     }
 
     try {
@@ -301,6 +305,7 @@ function ProductEditor({
         category: body.category,
         featured: body.featured,
         active: body.active,
+        xeroAccountCode: body.xeroAccountCode ?? null,
       })
     } finally {
       setSaving(false)
@@ -469,6 +474,12 @@ function ProductEditor({
             </datalist>
             <p className="text-[11px] text-slate-400">Type a new one or pick an existing.</p>
           </div>
+
+          {/* Xero income account (only shows when Xero + a shortlist exist) */}
+          <XeroAccountField
+            value={draft.xeroAccountCode ?? ''}
+            onChange={(v) => update('xeroAccountCode', v || null)}
+          />
 
           {/* Toggles */}
           <div className="flex flex-col gap-2">

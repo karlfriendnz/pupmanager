@@ -52,6 +52,8 @@ interface Props {
   /** Whether this trainer is the primary trainer (some actions —
    *  Share + Delete — only make sense for the primary). */
   isPrimaryTrainer: boolean
+  /** Client app add-on on — gates the preview + re-invite actions. */
+  clientAppEnabled: boolean
 }
 
 // Single dropdown that consolidates every per-client action: Edit,
@@ -79,7 +81,7 @@ type ReinviteState =
 
 export function ClientActionsMenu({
   clientId, clientName, clientEmail, needsInvite, packages, availability, dogs,
-  canEdit, isPrimaryTrainer,
+  canEdit, isPrimaryTrainer, clientAppEnabled,
 }: Props) {
   const router = useRouter()
   // In the native app, target="_blank" links are handed to the OS browser
@@ -185,25 +187,31 @@ export function ClientActionsMenu({
             label="Edit details"
             onClick={() => setMenuOpen(false)}
           />
-          <MenuLink
-            href={`/preview-as/${clientId}`}
-            icon={<Eye className="h-4 w-4 text-slate-400" />}
-            label="View as client"
-            target={previewTarget}
-            onClick={() => setMenuOpen(false)}
-          />
-          <MenuButton
-            icon={<Send className="h-4 w-4 text-slate-400" />}
-            label={needsInvite ? 'Re-invite client' : 'Re-send sign-in link'}
-            onClick={() => {
-              setMenuOpen(false)
-              // Reset any previous error so the confirm dialog opens
-              // clean — error from a prior attempt would otherwise
-              // sit at the bottom of the menu trigger.
-              setReinvite({ kind: 'idle' })
-              setActiveModal('reinvite')
-            }}
-          />
+          {/* Client-app-only actions (preview + re-invite) — hidden when the
+              Client app add-on is off. */}
+          {clientAppEnabled && (
+            <>
+              <MenuLink
+                href={`/preview-as/${clientId}`}
+                icon={<Eye className="h-4 w-4 text-slate-400" />}
+                label="View as client"
+                target={previewTarget}
+                onClick={() => setMenuOpen(false)}
+              />
+              <MenuButton
+                icon={<Send className="h-4 w-4 text-slate-400" />}
+                label={needsInvite ? 'Re-invite client' : 'Re-send sign-in link'}
+                onClick={() => {
+                  setMenuOpen(false)
+                  // Reset any previous error so the confirm dialog opens
+                  // clean — error from a prior attempt would otherwise
+                  // sit at the bottom of the menu trigger.
+                  setReinvite({ kind: 'idle' })
+                  setActiveModal('reinvite')
+                }}
+              />
+            </>
+          )}
           <MenuButton
             icon={<PackageIcon className="h-4 w-4 text-slate-400" />}
             label="Assign package"

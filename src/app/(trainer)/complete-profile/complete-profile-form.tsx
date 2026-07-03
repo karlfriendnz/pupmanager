@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
+import { formatPhoneInput } from '@/lib/format-phone'
 import { useState } from 'react'
 
 const schema = z.object({
@@ -48,6 +49,8 @@ export function CompleteProfileForm({
       publicEmail: defaultPublicEmail,
     },
   })
+
+  const phoneField = register('phone')
 
   async function onSubmit(data: FormData) {
     setServerError(null)
@@ -94,7 +97,11 @@ export function CompleteProfileForm({
               autoComplete="tel"
               placeholder="021 234 5678"
               error={errors.phone?.message}
-              {...register('phone')}
+              {...phoneField}
+              onChange={e => {
+                e.target.value = formatPhoneInput(e.target.value)
+                void phoneField.onChange(e)
+              }}
             />
             <label className="mt-2 flex items-start gap-2 text-sm text-slate-600">
               <input

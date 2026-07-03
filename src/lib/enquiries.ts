@@ -5,6 +5,10 @@ import { sendEmail } from './email'
 import { emailBodyToHtml } from './email-html'
 import { materializeBooking } from './booking-page'
 import { findOrJoinClient } from './client-upsert'
+// escapeHtml lives in a client-safe module now; imported for internal use and
+// re-exported so existing `from '@/lib/enquiries'` callers keep working.
+import { escapeHtml } from './html-escape'
+export { escapeHtml }
 
 // Convert an enquiry into a real client. Mirrors what the form submit
 // endpoint used to do inline:
@@ -271,11 +275,3 @@ export class EnquiryError extends Error {
   }
 }
 
-export function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}

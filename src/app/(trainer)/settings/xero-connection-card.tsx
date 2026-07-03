@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { Check, Loader2, AlertCircle } from 'lucide-react'
 import { XeroMappingPanel } from './xero-mapping-panel'
 
@@ -17,7 +17,6 @@ export function XeroConnectionCard({
   orgName: string | null
   configured: boolean
 }) {
-  const router = useRouter()
   const params = useSearchParams()
   const [busy, setBusy] = useState(false)
 
@@ -29,18 +28,18 @@ export function XeroConnectionCard({
     setBusy(true)
     try {
       const res = await fetch('/api/xero/disconnect', { method: 'POST' })
-      if (res.ok) router.refresh()
+      // Full navigation (not router.refresh) so the server re-reads the now-gone
+      // connection AND the stale ?xero=connected success flag is cleared.
+      if (res.ok) { window.location.assign('/settings?tab=xero'); return }
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start gap-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/xero.svg" alt="Xero" className="h-10 w-10 flex-shrink-0 rounded-lg" />
-        <div className="min-w-0 flex-1">
+    <div className="relative rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      {/* Xero logo will sit here, top-right. */}
+      <div className="min-w-0">
           <h3 className="text-base font-semibold text-slate-900">Xero accounting</h3>
           <p className="mt-0.5 text-sm text-slate-500">
             Sync invoices, payments and clients straight into your own Xero organisation.
@@ -76,9 +75,6 @@ export function XeroConnectionCard({
             </p>
           )}
 
-          {flag === 'connected' && (
-            <p className="mt-2 text-xs text-emerald-600">Xero connected successfully.</p>
-          )}
           {flag === 'error' && (
             <p className="mt-2 text-xs text-rose-600">Couldn’t connect to Xero. Please try again.</p>
           )}
@@ -87,7 +83,6 @@ export function XeroConnectionCard({
           )}
 
           {connected && <XeroMappingPanel />}
-        </div>
       </div>
     </div>
   )

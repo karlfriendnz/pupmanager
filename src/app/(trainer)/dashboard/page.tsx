@@ -16,6 +16,7 @@ import { TodoBrainDumpPanel } from './todo-braindump-panel'
 import { hasAddon, getEnabledAddons } from '@/lib/billing'
 import { isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 import { OnboardingPanel } from './onboarding-panel'
+import { TeamInviteCard } from './team-invite-card'
 import { SampleDataBanner } from './sample-data-banner'
 import { CountryPrompt } from './country-prompt'
 import { TrialBanner } from '../trial-banner'
@@ -63,7 +64,7 @@ export default async function DashboardPage({
     select: {
       businessName: true, logoUrl: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true,
       clientWelcomeNote: true, website: true, phone: true, publicEmail: true, signupCountry: true,
-      payoutCurrency: true,
+      payoutCurrency: true, pendingTeamInvites: true,
       subscriptionStatus: true, trialEndsAt: true, stripeSubscriptionId: true,
       user: { select: { email: true } },
     },
@@ -220,6 +221,7 @@ export default async function DashboardPage({
   const clients = await clientsP
   // The To-do / Brain dump scratchpad is a (free) add-on — only show it when on.
   const hasTodos = await hasAddon(trainerId, 'todos')
+  const notesOn = await hasAddon(trainerId, 'notes')
 
   const totalClients = clients.length
   const activeClients = clients.filter(c => c.status === 'ACTIVE').length
@@ -324,12 +326,18 @@ export default async function DashboardPage({
         <BookingRequestsPanel trainerId={trainerId} />
         <WaitlistNudge trainerId={trainerId} />
         {sampleClientCount === 0 && <OnboardingPanel state={onboardingState} branding={branding} impersonating={!!session.user.impersonatorId} />}
+        {/* Send-your-team-invites prompt: the emails captured during onboarding,
+            held until the owner is set up. Shown while any remain unsent. */}
+        {(brandingProfile?.pendingTeamInvites?.length ?? 0) > 0 && (
+          <TeamInviteCard pending={brandingProfile!.pendingTeamInvites} />
+        )}
 
       {/* Vital stats strip — four tiles in one row: Notes, Invoice, Clients,
           Dogs. The first two link to /sessions/needs-notes; Clients/Dogs are
           informational. Tiles show their value even when zero so the row stays
           a stable four-up. */}
       <div className="mb-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {notesOn && (
         <Link
           href="/sessions/needs-notes"
           className={cn(
@@ -352,6 +360,7 @@ export default async function DashboardPage({
             </div>
           </div>
         </Link>
+        )}
         <Link
           href="/sessions/needs-notes"
           className={cn(

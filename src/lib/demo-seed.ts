@@ -145,7 +145,7 @@ const SESSION_TITLES = [
   'Trick session',
 ]
 
-const PACKAGE_DEFS: Array<{
+type PackageDef = {
   name: string
   description: string
   sessionCount: number
@@ -156,9 +156,16 @@ const PACKAGE_DEFS: Array<{
   color: string
   // Group classes — the Classes page only surfaces runs when a group package
   // exists, so the class-style packages are flagged isGroup with a capacity.
+  // Only trainer/behaviourist sets use this; walkers/groomers/sitters don't run
+  // classes, so their group offerings (e.g. group walks) are NOT flagged isGroup.
   isGroup?: boolean
   capacity?: number
-}> = [
+}
+
+// Persona-specific sample package sets. The "Explore with sample data" flow
+// picks the set(s) matching the trainer's onboarding roles so a dog walker
+// doesn't land in a training-class demo.
+const TRAINER_PACKAGES: PackageDef[] = [
   { name: 'Puppy Foundations',     description: '4 sessions covering recall, sit, drop and loose-leash basics.', sessionCount: 4, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 38000, color: 'blue', isGroup: true, capacity: 8 },
   { name: 'Reactive Rover',        description: '6-session behaviour plan for leash-reactive dogs.',              sessionCount: 6, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 72000, color: 'amber', isGroup: true, capacity: 6 },
   { name: 'Loose-Leash Bootcamp',  description: 'Three intensive walks focused on polite leash skills.',           sessionCount: 3, weeksBetween: 1, durationMins: 45, sessionType: 'IN_PERSON', priceCents: 28500, color: 'emerald' },
@@ -168,6 +175,58 @@ const PACKAGE_DEFS: Array<{
   { name: 'Anxious Dog Programme', description: '6 sessions building confidence in fearful or anxious dogs.',       sessionCount: 6, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 78000, color: 'teal' },
   { name: 'Trick Title Prep',      description: 'Fun 5-session course toward a Novice Trick Dog title.',            sessionCount: 5, weeksBetween: 1, durationMins: 45, sessionType: 'IN_PERSON', priceCents: 47500, color: 'pink' },
 ]
+
+const BEHAVIOURIST_PACKAGES: PackageDef[] = [
+  { name: 'Behaviour Assessment',   description: 'Initial 90-minute consult to assess the dog and set a plan.',     sessionCount: 1, weeksBetween: 1, durationMins: 90, sessionType: 'IN_PERSON', priceCents: 18000, color: 'purple' },
+  { name: 'Reactivity Programme',   description: '6-session plan for leash-reactive or fearful dogs.',              sessionCount: 6, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 84000, color: 'amber' },
+  { name: 'Separation Anxiety Plan', description: 'Graduated absence programme with weekly check-ins.',              sessionCount: 8, weeksBetween: 1, durationMins: 45, sessionType: 'VIRTUAL',   priceCents: 96000, color: 'teal' },
+  { name: 'Follow-up Session',      description: 'Single review session to adjust the behaviour plan.',             sessionCount: 1, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 12000, color: 'cyan' },
+]
+
+const WALKER_PACKAGES: PackageDef[] = [
+  { name: 'Solo Walk',        description: 'A dedicated 45-minute walk, just for your dog.',            sessionCount: 1, weeksBetween: 1, durationMins: 45, sessionType: 'IN_PERSON', priceCents: 3000, color: 'emerald' },
+  { name: 'Group Walk',       description: 'A sociable 60-minute walk with a small, matched group.',    sessionCount: 1, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 2200, color: 'blue' },
+  { name: 'Pack Walk',        description: 'An off-lead adventure walk for confident, social dogs.',     sessionCount: 1, weeksBetween: 1, durationMins: 90, sessionType: 'IN_PERSON', priceCents: 3500, color: 'amber' },
+  { name: 'Drop-In Visit',    description: 'A quick home visit — feed, toilet break and a cuddle.',      sessionCount: 1, weeksBetween: 1, durationMins: 30, sessionType: 'IN_PERSON', priceCents: 2000, color: 'cyan' },
+  { name: 'Weekly Walk Pack', description: '5 walks a week — Monday to Friday, same time each day.',     sessionCount: 5, weeksBetween: 1, durationMins: 45, sessionType: 'IN_PERSON', priceCents: 13500, color: 'purple' },
+]
+
+const GROOMER_PACKAGES: PackageDef[] = [
+  { name: 'Full Groom',       description: 'Wash, dry, clip/scissor, nails and ears — the works.',        sessionCount: 1, weeksBetween: 6, durationMins: 120, sessionType: 'IN_PERSON', priceCents: 8500, color: 'purple' },
+  { name: 'Bath & Tidy',      description: 'Wash, blow-dry, brush-out and a light tidy.',                 sessionCount: 1, weeksBetween: 4, durationMins: 60,  sessionType: 'IN_PERSON', priceCents: 5000, color: 'blue' },
+  { name: 'Nail Trim',        description: 'A quick nail trim and file.',                                 sessionCount: 1, weeksBetween: 4, durationMins: 20,  sessionType: 'IN_PERSON', priceCents: 2000, color: 'emerald' },
+  { name: 'Puppy Intro Groom', description: 'A gentle first-groom experience for puppies.',                sessionCount: 1, weeksBetween: 4, durationMins: 45,  sessionType: 'IN_PERSON', priceCents: 4000, color: 'pink' },
+  { name: 'De-shed Treatment', description: 'Deep de-shedding wash and blow-out for double coats.',        sessionCount: 1, weeksBetween: 6, durationMins: 90,  sessionType: 'IN_PERSON', priceCents: 7000, color: 'amber' },
+]
+
+const SITTER_PACKAGES: PackageDef[] = [
+  { name: 'Home Visit',       description: 'A 30-minute drop-in — feed, toilet, play and company.',       sessionCount: 1, weeksBetween: 1, durationMins: 30,  sessionType: 'IN_PERSON', priceCents: 2500, color: 'emerald' },
+  { name: 'Overnight Stay',   description: 'An overnight in your home so your dog keeps their routine.',   sessionCount: 1, weeksBetween: 1, durationMins: 720, sessionType: 'IN_PERSON', priceCents: 7500, color: 'blue' },
+  { name: 'House Sitting',    description: 'Full house-and-dog sitting while you’re away.',                sessionCount: 1, weeksBetween: 1, durationMins: 1440, sessionType: 'IN_PERSON', priceCents: 9500, color: 'purple' },
+  { name: 'Doggy Day Care',   description: 'A full day of care, walks and play at ours.',                  sessionCount: 1, weeksBetween: 1, durationMins: 480, sessionType: 'IN_PERSON', priceCents: 4500, color: 'amber' },
+]
+
+const PACKAGES_BY_ROLE: Record<string, PackageDef[]> = {
+  trainer: TRAINER_PACKAGES,
+  behaviourist: BEHAVIOURIST_PACKAGES,
+  walker: WALKER_PACKAGES,
+  groomer: GROOMER_PACKAGES,
+  petsitter: SITTER_PACKAGES,
+}
+
+// The sample package set for the chosen onboarding roles: the union of the
+// matching sets (deduped by name, capped), or the trainer set as a fallback
+// when no roles were captured.
+export function packageDefsFor(roles: string[]): PackageDef[] {
+  const seen = new Set<string>()
+  const out: PackageDef[] = []
+  for (const role of roles) {
+    for (const p of PACKAGES_BY_ROLE[role] ?? []) {
+      if (!seen.has(p.name)) { seen.add(p.name); out.push(p) }
+    }
+  }
+  return out.length ? out.slice(0, 10) : TRAINER_PACKAGES
+}
 
 const LIBRARY_CONTENT: Array<{ type: string; themes: Array<{ name: string; tasks: Array<{ title: string; description?: string; repetitions?: number }> }> }> = [
   {
@@ -518,6 +577,10 @@ export async function clearSampleData(prisma: PrismaClient, trainerId: string): 
 export type SeedOptions = {
   clientCount?: number
   seed?: number
+  // Onboarding roles (dog walker / trainer / groomer / …) — picks the sample
+  // package set so the demo matches what the trainer actually does. Empty/absent
+  // falls back to the training set.
+  roles?: string[]
   // Wipe the trainer's data before seeding (admin demo account). Trainer
   // "sample data" loads pass false so real data is never touched.
   reset?: boolean
@@ -565,6 +628,8 @@ export async function seedDemoData(
   const clientCount = opts.clientCount ?? 50
   const rand = rng(opts.seed ?? 0x70757070) // 'pupp'
   const reset = opts.reset ?? true
+  // Package set tailored to the trainer's line of work (falls back to training).
+  const packageDefs = packageDefsFor(opts.roles ?? [])
   const markSample = opts.markSample ?? false
   const finalize = opts.finalize ?? true
 
@@ -642,7 +707,7 @@ export async function seedDemoData(
   ))
 
   // Packages.
-  const packages = await Promise.all(PACKAGE_DEFS.map((p, i) =>
+  const packages = await Promise.all(packageDefs.map((p, i) =>
     prisma.package.create({
       data: {
         trainerId,
@@ -803,7 +868,7 @@ export async function seedDemoData(
         const dayOffset = Math.floor(rand() * 42) - 21
         const start = new Date(now)
         start.setDate(start.getDate() + dayOffset)
-        start.setHours(9 + Math.floor(rand() * 8), rand() < 0.5 ? 0 : 30, 0, 0)
+        start.setHours(12 + Math.floor(rand() * 6), rand() < 0.5 ? 0 : 30, 0, 0)
         sessionRows.push({
           id: randomUUID(),
           trainerId,
@@ -829,7 +894,7 @@ export async function seedDemoData(
     for (let s = 0; s < pkg.sessionCount; s++) {
       const sessionDate = new Date(startDate)
       sessionDate.setDate(sessionDate.getDate() + s * pkg.weeksBetween * 7)
-      sessionDate.setHours(9 + Math.floor(rand() * 8), rand() < 0.5 ? 0 : 30, 0, 0)
+      sessionDate.setHours(12 + Math.floor(rand() * 6), rand() < 0.5 ? 0 : 30, 0, 0)
       const isPast = sessionDate.getTime() < now.getTime()
       const status: 'UPCOMING' | 'COMPLETED' | 'COMMENTED' = isPast
         ? (rand() < 0.7 ? 'COMMENTED' : 'COMPLETED')
@@ -890,7 +955,7 @@ export async function seedDemoData(
     const perDay = 2 + Math.floor(rand() * 3) // 2–4 sessions per weekday
     for (let k = 0; k < perDay; k++) {
       const slot = new Date(day)
-      slot.setHours(9 + Math.floor(rand() * 8), rand() < 0.5 ? 0 : 30, 0, 0)
+      slot.setHours(12 + Math.floor(rand() * 6), rand() < 0.5 ? 0 : 30, 0, 0)
       pushFillSession(slot, Math.floor(rand() * packages.length))
     }
   }
@@ -996,12 +1061,14 @@ export async function seedDemoData(
     { name: 'Reactive Rover Group', scheduleNote: 'Thursdays · 7:00pm', status: 'SCHEDULED', startOffset: 7, enrol: 5 },
     { name: 'Foundations Group', scheduleNote: 'Saturdays · 10:00am', status: 'COMPLETED', startOffset: -63, enrol: 7 },
   ]
-  // Class runs must sit on a GROUP package or the Classes page hides them.
+  // Class runs must sit on a GROUP package. Only trainers/behaviourists have
+  // those — walkers, groomers and sitters don't run classes, so skip entirely.
   const groupPkgs = packages.filter(p => p.isGroup)
+  const activeClassRuns = groupPkgs.length > 0 ? classRunDefs : []
   let classEnrolCount = 0
-  for (let i = 0; i < classRunDefs.length; i++) {
-    const def = classRunDefs[i]
-    const pkg = (groupPkgs.length ? groupPkgs : packages)[i % (groupPkgs.length || packages.length)]
+  for (let i = 0; i < activeClassRuns.length; i++) {
+    const def = activeClassRuns[i]
+    const pkg = groupPkgs[i % groupPkgs.length]
     const base = new Date(now)
     base.setDate(base.getDate() + def.startOffset)
     const start = noteToStart(base, def.scheduleNote)
@@ -1131,7 +1198,7 @@ export async function seedDemoData(
   }
 
   const result: SeedResult = {
-    classRuns: classRunDefs.length,
+    classRuns: activeClassRuns.length,
     classEnrolments: classEnrolCount,
     clients: createdClients.length,
     dogs: createdClients.length,

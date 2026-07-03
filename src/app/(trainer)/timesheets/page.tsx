@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
+import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
 import { TimesheetsView } from './timesheets-view'
 import { canViewAllTimesheets } from '@/app/api/timesheets/_access'
@@ -11,6 +12,7 @@ export const metadata: Metadata = { title: 'Timesheets' }
 export default async function TimesheetsPage() {
   const ctx = await getTrainerContext()
   if (!ctx) redirect('/login')
+  if (!(await hasAddon(ctx.companyId, 'timesheets'))) redirect('/settings?tab=addons')
 
   // Owners/managers can browse every member's timesheets via tabs; staff only
   // ever see their own, so we don't even load the roster for them.

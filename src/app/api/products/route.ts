@@ -14,6 +14,7 @@ const createSchema = z.object({
   category: z.string().max(60).optional().nullable(),
   featured: z.boolean().optional(),
   active: z.boolean().optional(),
+  xeroAccountCode: z.string().max(50).optional().nullable(),
 })
 
 export async function GET() {
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
       downloadUrl: parsed.data.downloadUrl || null,
       category: parsed.data.category?.trim() || null,
       featured: parsed.data.featured ?? false,
+      xeroAccountCode: parsed.data.xeroAccountCode || null,
       active: parsed.data.active ?? true,
     },
   })

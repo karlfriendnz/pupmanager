@@ -6,6 +6,7 @@ import { Calendar, Clock, MapPin, Video, ExternalLink, ChevronDown, History, Pap
 import { Card, CardBody } from '@/components/ui/card'
 import { formatSessionTitle } from '@/lib/utils'
 import { SessionFormReport } from '@/components/session-form-report'
+import { hasAddon } from '@/lib/billing'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
 import { MarkCompleteButton } from '@/components/mark-complete-button'
 import { MarkInvoicedButton } from '@/components/mark-invoiced-button'
@@ -29,6 +30,9 @@ export default async function SessionPage({
 
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
+  // Session notes are gated by the Notes add-on (default-on). When off, the
+  // write-up editor is hidden and the page just shows the session details.
+  const notesOn = await hasAddon(trainerId, 'notes')
 
   const { sessionId } = await params
 
@@ -320,9 +324,11 @@ export default async function SessionPage({
           {/* The form section overrides Card's padding so the questions/inputs
               stretch the full width of the card. The header line above sets the
               title; SessionFormReport itself supplies the dropdown or filler. */}
-          <Card className="overflow-hidden">
-            <SessionFormReport sessionId={trainingSession.id} layout="inline" autoPromptIfEmpty />
-          </Card>
+          {notesOn && (
+            <Card className="overflow-hidden">
+              <SessionFormReport sessionId={trainingSession.id} layout="inline" autoPromptIfEmpty />
+            </Card>
+          )}
 
           {/* Trainer-uploaded media. Sits between the form and the
               library-tasks card so anything the trainer captures live in

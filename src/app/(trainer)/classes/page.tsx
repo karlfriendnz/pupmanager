@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isConnectConfigured, isLivePaymentsAllowed } from '@/lib/connect'
+import { hasAddon } from '@/lib/billing'
 import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
 
@@ -12,6 +13,8 @@ export default async function ClassesPage() {
   if (!session) redirect('/login')
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
+  // Gated by the Group classes add-on (default-on; hidden + blocked when off).
+  if (!(await hasAddon(trainerId, 'classes'))) redirect('/settings?tab=addons')
 
   const [runs, teamMembers, trainer] = await Promise.all([
     prisma.classRun.findMany({

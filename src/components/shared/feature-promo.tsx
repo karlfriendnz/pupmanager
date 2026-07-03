@@ -54,6 +54,8 @@ function Benefit({ children }: { children: ReactNode }) {
 }
 
 export type FeaturePromoProps = {
+  /** Small eyebrow above the title — e.g. the add-on's name. */
+  eyebrow?: ReactNode
   title: string
   description: string
   /** Header photo. translateX/objectPosition let you frame the subject. */
@@ -74,6 +76,7 @@ export type FeaturePromoProps = {
 }
 
 export function FeaturePromoCard({
+  eyebrow,
   title,
   description,
   image,
@@ -119,6 +122,9 @@ export function FeaturePromoCard({
         />
         {badge}
         <div className="relative z-10 w-[52%] py-[60px] pl-8 pr-3">
+          {eyebrow && (
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">{eyebrow}</p>
+          )}
           <h2 className="text-[32px] font-bold leading-[1.1] tracking-tight">{title}</h2>
           <p className="mt-2.5 text-[15px] leading-relaxed text-white/90">{description}</p>
         </div>

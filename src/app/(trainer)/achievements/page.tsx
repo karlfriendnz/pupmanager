@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { AchievementsManager } from './achievements-manager'
+import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
@@ -16,6 +17,7 @@ export default async function AchievementsPage() {
     select: { id: true },
   })
   if (!trainerProfile) redirect('/login')
+  if (!(await hasAddon(trainerProfile.id, 'achievements'))) redirect('/settings?tab=addons')
 
   const achievements = await prisma.achievement.findMany({
     where: { trainerId: trainerProfile.id },

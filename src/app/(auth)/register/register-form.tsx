@@ -12,24 +12,19 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { OAuthButtons, type EnabledOAuth } from '../oauth-buttons'
 import { AppleNativeButton } from '../apple-native-button'
+import { SetPasswordStep } from '../set-password-step'
 import { useNativePlatform } from '@/lib/native'
+import { formatPhoneInput } from '@/lib/format-phone'
 
-const schema = z
-  .object({
-    name: z.string().min(2, 'Name must be at least 2 characters'),
-    businessName: z.string().min(2, 'Business name is required'),
-    phone: z.string().trim().min(6, 'Phone number is required'),
-    showPhoneToClients: z.boolean().optional(),
-    email: z.string().email('Please enter a valid email address'),
-    publicEmail: z.union([z.string().email('Please enter a valid email address'), z.literal('')]).optional(),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
-    confirmPassword: z.string(),
-    promoCode: z.string().optional(),
-  })
-  .refine(d => d.password === d.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
-  })
+// Minimal signup: just enough to reach out to a lead. No password here — they
+// set one after verifying the OTP — and the rest of the business profile
+// (logo, public email, colours) is collected later in the onboarding wizard.
+const schema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  businessName: z.string().min(2, 'Business name is required'),
+  phone: z.string().trim().min(6, 'Phone number is required'),
+  email: z.string().email('Please enter a valid email address'),
+})
 
 type FormData = z.infer<typeof schema>
 
@@ -49,8 +44,11 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({ resolver: zodResolver(schema) })
+
+  const phoneField = register('phone')
 
   async function onSubmit(data: FormData) {
     setServerError(null)
@@ -61,11 +59,7 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
         name: data.name,
         businessName: data.businessName,
         phone: data.phone,
-        showPhoneToClients: data.showPhoneToClients ?? false,
         email: data.email,
-        publicEmail: data.publicEmail,
-        password: data.password,
-        promoCode: data.promoCode,
       }),
     })
 
@@ -109,67 +103,25 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
             error={errors.businessName?.message}
             {...register('businessName')}
           />
-          <div>
-            <Input
-              label="Phone number"
-              type="tel"
-              autoComplete="tel"
-              placeholder="021 234 5678"
-              error={errors.phone?.message}
-              {...register('phone')}
-            />
-            <label className="mt-2 flex items-start gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                {...register('showPhoneToClients')}
-              />
-              <span>Show my phone number to clients. Leave unticked to keep it private.</span>
-            </label>
-          </div>
+          <Input
+            label="Phone number"
+            type="tel"
+            autoComplete="tel"
+            placeholder="021 234 5678"
+            error={errors.phone?.message}
+            {...phoneField}
+            onChange={e => {
+              e.target.value = formatPhoneInput(e.target.value)
+              void phoneField.onChange(e)
+            }}
+          />
           <Input
             label="Your email"
             type="email"
             autoComplete="email"
             placeholder="jane@pawsome.co.nz"
-            hint="You'll use this to sign in. Kept private — not shown to clients."
             error={errors.email?.message}
             {...register('email')}
-          />
-          <Input
-            label="Business email (optional)"
-            type="email"
-            autoComplete="email"
-            placeholder="hello@pawsome.co.nz"
-            hint="Shown to clients as your business contact. Leave blank to skip."
-            error={errors.publicEmail?.message}
-            {...register('publicEmail')}
-          />
-          <Input
-            label="Password"
-            type="password"
-            autoComplete="new-password"
-            hint="At least 8 characters"
-            error={errors.password?.message}
-            {...register('password')}
-          />
-          <Input
-            label="Confirm password"
-            type="password"
-            autoComplete="new-password"
-            error={errors.confirmPassword?.message}
-            {...register('confirmPassword')}
-          />
-          <Input
-            label="Promo code"
-            type="text"
-            autoComplete="off"
-            autoCapitalize="characters"
-            placeholder="e.g. LAUNCH"
-            hint="Optional — extends your free trial."
-            className="uppercase placeholder:normal-case"
-            error={errors.promoCode?.message}
-            {...register('promoCode')}
           />
           <Button type="submit" size="lg" className="w-full mt-1" loading={isSubmitting}>
             Create account
@@ -194,6 +146,10 @@ function VerifyStep({ email, trialDays }: { email: string; trialDays: number }) 
   const [resentAt, setResentAt] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [resending, setResending] = useState(false)
+  // After a successful verify we either move to the set-password step (a fresh
+  // web lead with no password yet) or, in the rare case a password already
+  // exists, show the plain "verified — sign in" success.
+  const [setupToken, setSetupToken] = useState<string | null>(null)
   const [verified, setVerified] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -220,7 +176,12 @@ function VerifyStep({ email, trialDays }: { email: string; trialDays: number }) 
       setSubmitting(false)
       return
     }
-    setVerified(true)
+    const body = await res.json().catch(() => ({}))
+    if (body.needsPassword && body.setupToken) {
+      setSetupToken(body.setupToken as string)
+    } else {
+      setVerified(true)
+    }
   }
 
   async function handleResend() {
@@ -233,6 +194,10 @@ function VerifyStep({ email, trialDays }: { email: string; trialDays: number }) 
     })
     setResentAt(Date.now())
     setResending(false)
+  }
+
+  if (setupToken) {
+    return <SetPasswordStep email={email} setupToken={setupToken} redirectTo="/dashboard" />
   }
 
   if (verified) {

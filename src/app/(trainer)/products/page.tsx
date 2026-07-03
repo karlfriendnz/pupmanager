@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ProductsManager } from './products-manager'
+import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
@@ -12,6 +13,7 @@ export default async function ProductsPage() {
   if (!session || session.user.role !== 'TRAINER') redirect('/login')
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
+  if (!(await hasAddon(trainerId, 'shop'))) redirect('/settings?tab=addons')
 
   const products = await prisma.product.findMany({
     where: { trainerId },
@@ -38,6 +40,7 @@ export default async function ProductsPage() {
           category: p.category,
           featured: p.featured,
           active: p.active,
+          xeroAccountCode: p.xeroAccountCode,
         }))}
       />
       </div>

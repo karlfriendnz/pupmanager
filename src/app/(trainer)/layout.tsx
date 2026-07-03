@@ -8,6 +8,7 @@ import { can, type PermissionKey } from '@/lib/permissions'
 import { getEnabledAddons } from '@/lib/billing'
 import type { AddonId } from '@/lib/pricing'
 import { AppShell } from '@/components/shared/app-shell'
+import { BookingConflictProvider } from '@/components/schedule/booking-conflict-dialog'
 import { OnboardingFab } from './onboarding-fab'
 import { PaywallFrame } from './paywall-frame'
 import { CompleteProfileFrame } from './complete-profile/frame'
@@ -108,6 +109,15 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   const addonLockedHrefs = Object.entries(ADDON_NAV)
     .filter(([, addon]) => !enabledAddons.has(addon))
     .map(([href]) => href)
+
+  // Core feature add-ons (Client app / Notes / Classes) are default-on; when a
+  // trainer turns one off we HIDE its nav entirely (unlike paid add-ons, which
+  // show a locked upsell via addonLockedHrefs).
+  if (!enabledAddons.has('classes')) hiddenNavHrefs.push('/classes')
+  // The "Library" nav item lives at /templates.
+  if (!enabledAddons.has('library')) hiddenNavHrefs.push('/templates')
+  // No client app → no client↔trainer messaging.
+  if (!enabledAddons.has('clientapp')) hiddenNavHrefs.push('/messages')
 
   // Organisations this user belongs to (their own + any they're a team member
   // at). Powers the sidebar org switcher when there's more than one.
@@ -244,7 +254,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
           totalSteps={fabState.totalSteps}
         />
       )}
-      {children}
+      <BookingConflictProvider>{children}</BookingConflictProvider>
     </AppShell>
   )
 }

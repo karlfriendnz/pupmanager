@@ -2,11 +2,30 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, Upload, ImageIcon, ArrowRight, ArrowLeft, Sparkles, PawPrint, Wand2, ChevronLeft, ChevronRight, FlaskConical } from 'lucide-react'
+import { Loader2, Upload, ImageIcon, ArrowRight, ArrowLeft, Sparkles, PawPrint, Wand2, ChevronLeft, ChevronRight, FlaskConical, Check, Plus, Receipt, CreditCard, Users, Car, ShoppingBag, Trophy, Calendar, NotebookPen, Smartphone, type LucideIcon } from 'lucide-react'
 import { BrandPreview } from '@/components/brand-preview'
 import { extractLogoColors, type LogoPalette } from '@/lib/logo-colors'
 import { compressImageFile } from '@/lib/compress-image'
-import { ADDONS, currencyMeta, type CurrencyCode } from '@/lib/pricing'
+import { type CurrencyCode } from '@/lib/pricing'
+import { PERSONAS, WIZ_QUESTIONS, MANAGED_ADDON_IDS, recommendedAddons, coreAddonState, packageOptionsFor, questionApplies, type WizAnswers } from '@/lib/onboarding-recommendations'
+
+// The paged "Your tools" sub-flow is: role picker → tailored "what do you offer?"
+// → one question per screen (only those relevant to the chosen roles). Rendered
+// inside wizard step 4; the wizard's Back/Continue page through them. The screen
+// list is computed per-render from the selected roles (see `screens` below).
+
+// Maps a question's `icon` key to a lucide component (data stays framework-free).
+const QUESTION_ICONS: Record<string, LucideIcon> = {
+  receipt: Receipt,
+  creditCard: CreditCard,
+  users: Users,
+  car: Car,
+  shoppingBag: ShoppingBag,
+  trophy: Trophy,
+  calendar: Calendar,
+  notebook: NotebookPen,
+  smartphone: Smartphone,
+}
 
 // Drop in the real welcome video here (an MP4 URL or an embed). Until then the
 // step shows a branded "coming soon" placeholder.
@@ -41,7 +60,7 @@ export type WizardInitial = {
 
 // Index 0 ('Welcome') is the unnumbered intro; the numbered count starts at
 // index 1, so "Make it yours" shows as Step 1 of 6.
-const STEPS = ['Welcome', 'Make it yours', 'Your colours', 'Say hello', 'Add-ons', 'Take a look', 'Sample data'] as const
+const STEPS = ['Welcome', 'Make it yours', 'Your colours', 'Say hello', 'Your tools', 'Take a look', 'Sample data'] as const
 
 // Ready-to-go welcome notes (shown on the client's home screen). The wizard
 // pre-fills the first so trainers tweak rather than face a blank box; "Try
@@ -109,13 +128,70 @@ export function PersonalizationWizard({
     el.style.height = `${el.scrollHeight}px`
   }, [note, step])
 
-  // Add-ons step — local on/off state seeded from what's already enabled, so a
-  // toggle reflects instantly. Persists to the same /api/addons endpoint the
-  // Add-ons page uses.
-  const [addonOn, setAddonOn] = useState<Record<string, boolean>>(
-    () => Object.fromEntries(initial.enabledAddonIds.map((id) => [id, true])),
-  )
-  const [addonBusy, setAddonBusy] = useState<string | null>(null)
+  // "Your tools" step — a paged sub-flow. Roles + how-they-work answers drive a
+  // recommended add-on set. addonOn is the local source of truth for what's on;
+  // we only persist to /api/addons when they leave the step (via Continue), so
+  // paid add-ons are confirmed, not charged mid-flow. Only "managed" add-ons
+  // (those a question decides on) are ever touched — the always-on free to-do
+  // scratchpad is left alone.
+  const [extra, setExtra] = useState(0) // index into the computed `screens`
+  const [roles, setRoles] = useState<string[]>([])
+  // Team emails captured on the team screen — held (not sent) until the owner
+  // sends them from the dashboard once set up.
+  const [teamEmails, setTeamEmails] = useState<string[]>([''])
+  // Nothing is pre-selected — every question starts blank and the trainer picks.
+  const [answers, setAnswers] = useState<WizAnswers>({})
+  const [addonOn, setAddonOn] = useState<Record<string, boolean>>(() => addonMapFrom({}))
+
+  // Build the managed on/off map from a set of answers.
+  function addonMapFrom(a: WizAnswers): Record<string, boolean> {
+    const rec = recommendedAddons(a)
+    const map: Record<string, boolean> = {}
+    for (const id of MANAGED_ADDON_IDS) map[id] = rec.has(id)
+    return map
+  }
+
+  function toggleRole(id: string) {
+    setRoles(prev => (prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]))
+  }
+
+  // Record an answer for a question (or a follow-up), then recompute add-ons.
+  function setAnswer(id: string, optId: string, multi = false) {
+    setAnswers(prev => {
+      let next: WizAnswers
+      if (multi) {
+        const cur = Array.isArray(prev[id]) ? (prev[id] as string[]) : []
+        next = { ...prev, [id]: cur.includes(optId) ? cur.filter(x => x !== optId) : [...cur, optId] }
+      } else {
+        next = { ...prev, [id]: optId }
+      }
+      setAddonOn(addonMapFrom(next))
+      return next
+    })
+  }
+
+  // Sync the chosen add-on set to the server — only managed add-ons that changed
+  // from what was already enabled. Called when leaving the step.
+  async function persistAddons() {
+    const initiallyOn = new Set(initial.enabledAddonIds)
+    // Recommended (off-by-default) add-ons + the default-on core add-ons
+    // (Client app / Notes / Classes), derived from the answers.
+    const desired: Record<string, boolean> = {}
+    for (const id of MANAGED_ADDON_IDS) desired[id] = !!addonOn[id]
+    Object.assign(desired, coreAddonState(answers))
+    const jobs: Promise<unknown>[] = []
+    for (const [id, want] of Object.entries(desired)) {
+      if (want === initiallyOn.has(id)) continue
+      jobs.push(
+        fetch('/api/addons', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itemId: id, active: want }),
+        }).catch(() => {}),
+      )
+    }
+    await Promise.all(jobs)
+  }
 
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -142,28 +218,6 @@ export function PersonalizationWizard({
     setNote(STARTER_NOTES[i])
   }
 
-  // Flip an add-on on/off from the wizard's Add-ons step (optimistic; reverts
-  // on failure). Free add-ons toggle without Stripe; paid ones are added to the
-  // subscription server-side.
-  async function toggleAddon(id: string) {
-    if (addonBusy) return
-    const next = !addonOn[id]
-    setAddonOn((p) => ({ ...p, [id]: next }))
-    setAddonBusy(id)
-    try {
-      const res = await fetch('/api/addons', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId: id, active: next }),
-      })
-      if (!res.ok) throw new Error('toggle failed')
-    } catch {
-      setAddonOn((p) => ({ ...p, [id]: !next }))
-    } finally {
-      setAddonBusy(null)
-    }
-  }
-
   async function saveProfile() {
     await fetch('/api/trainer/profile', {
       method: 'PATCH',
@@ -178,6 +232,10 @@ export function PersonalizationWizard({
         appGradientStart: HEX.test(gradStart) ? gradStart : '',
         appGradientEnd: HEX.test(gradEnd) ? gradEnd : '',
         clientWelcomeNote: note.trim(),
+        // Team emails to invite later — only when they said they have a team.
+        pendingTeamInvites: answers.team === 'team'
+          ? teamEmails.map(e => e.trim()).filter(e => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e))
+          : [],
       }),
     }).catch(() => {})
   }
@@ -209,14 +267,43 @@ export function PersonalizationWizard({
     }
   }
 
-  async function next() {
+  // The tools sub-flow's screens, tailored to the chosen roles: role picker →
+  // (a "what do you offer?" screen once ≥1 role is picked) → only the questions
+  // relevant to those roles.
+  const packageOptions = packageOptionsFor(roles)
+  const screens: string[] = [
+    'roles',
+    ...(packageOptions.length ? ['packages'] : []),
+    ...WIZ_QUESTIONS.filter(q => questionApplies(q, roles)).map(q => q.id),
+  ]
+
+  // Forward nav. Steps 1–3 save the profile then advance. Step 4 pages through
+  // the tools sub-flow and only commits the add-ons + advances at the end.
+  async function handleNext() {
+    if (step === 4) {
+      if (extra < screens.length - 1) { setExtra(e => e + 1); return }
+      setBusy(true)
+      try { await persistAddons(); await saveProfile(); setStep(5) } finally { setBusy(false) }
+      return
+    }
     setBusy(true)
     try {
       await saveProfile()
-      setStep(s => Math.min(s + 1, STEPS.length - 1))
+      const target = step + 1
+      if (target === 4) setExtra(0) // entering the sub-flow at the role picker
+      setStep(target)
     } finally {
       setBusy(false)
     }
+  }
+
+  // Back nav. Inside step 4, step back through the sub-flow first; when leaving
+  // step 5 backwards, land on the sub-flow's recap rather than its first screen.
+  function handleBack() {
+    if (step === 4 && extra > 0) { setExtra(e => e - 1); return }
+    const target = Math.max(0, step - 1)
+    if (target === 4) setExtra(screens.length - 1)
+    setStep(target)
   }
 
   async function finish() {
@@ -235,7 +322,11 @@ export function PersonalizationWizard({
     setSeeding(true)
     setSeedError(null)
     try {
-      const res = await fetch('/api/trainer/sample-data/seed', { method: 'POST' })
+      const res = await fetch('/api/trainer/sample-data/seed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roles }),
+      })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setSeedError(typeof body.error === 'string' ? body.error : 'Could not load sample data. Please try again.')
@@ -291,7 +382,7 @@ export function PersonalizationWizard({
 
           {/* progress */}
           <div className="relative">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 mb-2">{step === 0 ? STEPS[0] : `Step ${step} of ${STEPS.length - 1} · ${STEPS[step]}`}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 mb-2">{STEPS[step]}</p>
             <div className="flex gap-1.5">
               {STEPS.slice(1).map((_, i) => (
                 <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${i + 1 <= step ? 'bg-white' : 'bg-white/25'}`} />
@@ -324,7 +415,7 @@ export function PersonalizationWizard({
                     <img src="/hero-illustration.png" alt="PupManager" className="absolute inset-0 h-full w-full object-contain scale-110" />
                   )}
                 </div>
-                <p className="text-[15px] text-slate-500 mt-5 leading-relaxed">
+                <p className="text-[15px] text-slate-500 mt-10 leading-relaxed">
                   So glad you’re here. We built PupManager to give you back the evenings you’ve been losing to admin. Let’s make the app yours, then take a look at exactly what your clients will see — two minutes, tops.
                 </p>
               </div>
@@ -426,58 +517,199 @@ export function PersonalizationWizard({
               </div>
             )}
 
-            {step === 4 && (
-              <div key="s4">
-                <StepHead title="Switch on your extras" sub="These optional add-ons bolt extra power onto your account. Flip on anything that fits — you can change your mind any time in Settings → Add-ons." />
-                <div className="mt-6 flex flex-col gap-3">
-                  {ADDONS.map((a) => {
-                    const meta = currencyMeta(initial.currency)
-                    const isOn = !!addonOn[a.id]
-                    const priceLabel = a.comingSoon
-                      ? 'Coming soon'
-                      : a.free
-                        ? 'Free'
-                        : `${meta.symbol}${a.price[initial.currency]}/mo`
-                    return (
-                      <div
-                        key={a.id}
-                        className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-[15px] font-semibold text-slate-900">{a.name}</h3>
-                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${a.comingSoon ? 'bg-slate-100 text-slate-500' : a.free ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-600'}`}>
-                              {priceLabel}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-[13px] leading-snug text-slate-500">{a.description}</p>
-                        </div>
-                        <WizardSwitch
-                          checked={isOn}
-                          disabled={a.comingSoon || addonBusy === a.id}
-                          busy={addonBusy === a.id}
-                          label={`Enable ${a.name}`}
-                          onChange={() => toggleAddon(a.id)}
-                        />
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+            {step === 4 && (() => {
+              // Clamp in case the role selection shrank the screen list.
+              const screen = screens[Math.min(extra, screens.length - 1)]
 
-            {step === 5 && (
-              <div className="text-center max-w-md mx-auto py-4" key="s5">
-                <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ backgroundImage: brandGradient }}>
-                  <Sparkles className="h-8 w-8 text-white" />
+              // ── Role picker ──────────────────────────────────────────────
+              if (screen === 'roles') {
+                return (
+                  <div key="s4-roles" className="max-w-md mx-auto py-2">
+                    <h2 className="font-display text-2xl font-bold text-slate-900 tracking-tight">What’s your line of work?</h2>
+                    <p className="text-sm text-slate-500 mt-1.5">Pick any that apply — we’ll tailor the setup to you.</p>
+                    <div className="mt-6 flex flex-col gap-3">
+                      {PERSONAS.map(p => {
+                        const on = roles.includes(p.id)
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => toggleRole(p.id)}
+                            aria-pressed={on}
+                            className={`flex items-center gap-3 rounded-2xl border-2 px-4 py-3.5 text-left transition-colors ${on ? 'border-teal-600 bg-teal-50' : 'border-slate-200 hover:border-slate-300'}`}
+                          >
+                            <span className="text-xl" aria-hidden>{p.icon}</span>
+                            <span className={`flex-1 text-[15px] font-medium ${on ? 'text-teal-900' : 'text-slate-700'}`}>{p.label}</span>
+                            <span className={`h-5 w-5 rounded-md border-2 flex items-center justify-center ${on ? 'border-teal-600 bg-teal-600' : 'border-slate-300'}`}>
+                              {on && <Check className="h-3 w-3 text-white" />}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              }
+
+              // ── "What do you offer?" — tailored to the chosen roles ───────
+              if (screen === 'packages') {
+                const selected = Array.isArray(answers.packages) ? (answers.packages as string[]) : []
+                return (
+                  <div key="s4-packages" className="max-w-md mx-auto py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-600 mb-2">Your packages</p>
+                    <h2 className="font-display text-2xl font-bold text-slate-900 tracking-tight">What do you offer?</h2>
+                    <p className="text-sm text-slate-500 mt-1.5">Pick any that apply — we’ll set your app up around them.</p>
+                    <div className="mt-6 flex flex-col gap-3">
+                      {packageOptions.map(opt => {
+                        const on = selected.includes(opt.id)
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setAnswer('packages', opt.id, true)}
+                            aria-pressed={on}
+                            className={`flex items-center gap-3 rounded-2xl border-2 px-4 py-4 text-left transition-colors ${on ? 'border-teal-600 bg-teal-50' : 'border-slate-200 hover:border-slate-300'}`}
+                          >
+                            <span className={`flex-1 text-[15px] font-medium ${on ? 'text-teal-900' : 'text-slate-700'}`}>{opt.label}</span>
+                            <span className={`h-5 w-5 rounded-md border-2 flex items-center justify-center ${on ? 'border-teal-600 bg-teal-600' : 'border-slate-300'}`}>
+                              {on && <Check className="h-3 w-3 text-white" />}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              }
+
+              // ── One question per screen ──────────────────────────────────
+              const q = WIZ_QUESTIONS.find(x => x.id === screen)!
+              const selectedOpt = q.multi ? null : q.options.find(o => o.id === answers[q.id])
+              const followUp = selectedOpt?.followUp
+              return (
+                <div key={`s4-${q.id}`} className="max-w-md mx-auto py-2">
+                  {(() => {
+                    const Icon = QUESTION_ICONS[q.icon]
+                    return Icon ? (
+                      <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-50 text-teal-600">
+                        <Icon className="h-5 w-5" />
+                      </div>
+                    ) : null
+                  })()}
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-600 mb-2">{q.category}</p>
+                  <h2 className="font-display text-2xl font-bold text-slate-900 tracking-tight">{q.q}</h2>
+                  {q.multi && <p className="text-sm text-slate-500 mt-1.5">Pick any that apply.</p>}
+                  <div className="mt-6 flex flex-col gap-3">
+                    {q.options.map(opt => {
+                      const selected = q.multi
+                        ? Array.isArray(answers[q.id]) && (answers[q.id] as string[]).includes(opt.id)
+                        : answers[q.id] === opt.id
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setAnswer(q.id, opt.id, q.multi)}
+                          aria-pressed={selected}
+                          className={`flex items-center gap-3 rounded-2xl border-2 px-4 py-4 text-left transition-colors ${selected ? 'border-teal-600 bg-teal-50' : 'border-slate-200 hover:border-slate-300'}`}
+                        >
+                          <span className={`flex-1 text-[15px] font-medium ${selected ? 'text-teal-900' : 'text-slate-700'}`}>{opt.label}</span>
+                          <span className={`h-5 w-5 flex items-center justify-center border-2 ${q.multi ? 'rounded-md' : 'rounded-full'} ${selected ? 'border-teal-600 bg-teal-600' : 'border-slate-300'}`}>
+                            {selected && <Check className="h-3 w-3 text-white" />}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Follow-up revealed by the selected option (e.g. which software) */}
+                  {followUp && (
+                    <div className="mt-6 border-t border-slate-100 pt-5">
+                      <p className="text-[14px] font-semibold text-slate-800 mb-3">{followUp.q}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {followUp.options.map(fopt => {
+                          const fsel = answers[followUp.id] === fopt.id
+                          return (
+                            <button
+                              key={fopt.id}
+                              type="button"
+                              onClick={() => setAnswer(followUp.id, fopt.id)}
+                              aria-pressed={fsel}
+                              className={`rounded-xl border px-4 h-11 text-[14px] font-medium transition-colors ${fsel ? 'border-teal-600 bg-teal-50 text-teal-900' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
+                            >
+                              {fopt.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {(() => {
+                        const chosen = followUp.options.find(o => o.id === answers[followUp.id])
+                        if (!chosen || chosen.addons.length > 0) return null
+                        return (
+                          <p className="mt-3 text-[12px] text-slate-500">
+                            We sync directly with Xero today — we’ve noted you use {chosen.label}, and we’ll add more integrations over time.
+                          </p>
+                        )
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Team emails — captured here, held until they send them from
+                      the dashboard once set up (so staff don't open a blank app). */}
+                  {q.id === 'team' && answers.team === 'team' && (
+                    <div className="mt-6 border-t border-slate-100 pt-5">
+                      <p className="text-[14px] font-semibold text-slate-800">Add your team’s emails</p>
+                      <p className="mt-0.5 text-[12px] text-slate-500">We’ll hold these — you send the invites from your dashboard once you’re set up, so no one opens a blank system.</p>
+                      <div className="mt-3 flex flex-col gap-2">
+                        {teamEmails.map((val, i) => (
+                          <input
+                            key={i}
+                            type="email"
+                            value={val}
+                            onChange={e => setTeamEmails(list => list.map((v, idx) => (idx === i ? e.target.value : v)))}
+                            placeholder="name@example.com"
+                            className="rounded-xl border border-slate-200 px-3.5 h-11 text-[14px] focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTeamEmails(list => [...list, ''])}
+                        className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-teal-700 hover:underline"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add another
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <h2 className="font-display text-2xl font-bold text-slate-900 mt-5 tracking-tight">You’re set — take a look</h2>
-                <p className="text-[15px] text-slate-500 mt-2.5 leading-relaxed">Here’s a live preview of what your clients see — branded in your colours, with a sample pup. It’s just a demo; nothing’s added to your account.</p>
-                <Link href="/preview-as" onClick={() => { try { sessionStorage.setItem('pm_wizard_resume_last', '1') } catch { /* ignore */ } }} className="mt-6 inline-flex items-center gap-2 rounded-2xl px-6 h-12 text-sm font-semibold text-white shadow-lg hover:-translate-y-px transition-transform" style={{ backgroundImage: brandGradient }}>
-                  See the client app <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-            )}
+              )
+            })()}
+
+            {step === 5 && (() => {
+              // No client app? Don't push the client-app preview — show a plain
+              // "you're set" for their admin workspace instead.
+              const wantsClientApp = answers.clientapp !== 'email' && answers.clientapp !== 'none'
+              return (
+                <div className="text-center max-w-md mx-auto py-4" key="s5">
+                  <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ backgroundImage: brandGradient }}>
+                    <Sparkles className="h-8 w-8 text-white" />
+                  </div>
+                  {wantsClientApp ? (
+                    <>
+                      <h2 className="font-display text-2xl font-bold text-slate-900 mt-5 tracking-tight">You’re set — take a look</h2>
+                      <p className="text-[15px] text-slate-500 mt-2.5 leading-relaxed">Here’s a live preview of what your clients see — branded in your colours, with a sample pup. It’s just a demo; nothing’s added to your account.</p>
+                      <Link href="/preview-as" onClick={() => { try { sessionStorage.setItem('pm_wizard_resume_last', '1') } catch { /* ignore */ } }} className="mt-6 inline-flex items-center gap-2 rounded-2xl px-6 h-12 text-sm font-semibold text-white shadow-lg hover:-translate-y-px transition-transform" style={{ backgroundImage: brandGradient }}>
+                        See the client app <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="font-display text-2xl font-bold text-slate-900 mt-5 tracking-tight">You’re all set</h2>
+                      <p className="text-[15px] text-slate-500 mt-2.5 leading-relaxed">Your workspace is ready — scheduling, invoicing and your day-to-day admin in one place. Hit continue to add some sample data to explore, or dive straight in.</p>
+                    </>
+                  )}
+                </div>
+              )
+            })()}
 
             {step === 6 && (
               <div className="max-w-md mx-auto py-2" key="s6">
@@ -530,11 +762,11 @@ export function PersonalizationWizard({
 
           {/* Footer nav */}
           <div className="flex items-center justify-between gap-3 px-6 md:px-8 py-4 border-t border-slate-100">
-            <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={busy || step === 0} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-0">
+            <button onClick={handleBack} disabled={busy || step === 0} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-0">
               <ArrowLeft className="h-4 w-4" /> Back
             </button>
             {step < STEPS.length - 1 ? (
-              <button onClick={next} disabled={busy} className="inline-flex items-center gap-2 rounded-2xl px-6 h-12 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 shadow-md hover:-translate-y-px transition-all disabled:opacity-60 disabled:hover:translate-y-0">
+              <button onClick={handleNext} disabled={busy} className="inline-flex items-center gap-2 rounded-2xl px-6 h-12 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 shadow-md hover:-translate-y-px transition-all disabled:opacity-60 disabled:hover:translate-y-0">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Continue <ArrowRight className="h-4 w-4" />
               </button>
             ) : (
@@ -568,24 +800,6 @@ function MobilePreview(props: { show: boolean; businessName: string; logoUrl: st
   )
 }
 
-// Toggle in the wizard's house style (teal when on). Mirrors the Add-ons page
-// Switch but scoped here so the wizard stays self-contained.
-function WizardSwitch({ checked, disabled, busy, label, onChange }: { checked: boolean; disabled?: boolean; busy?: boolean; label: string; onChange: () => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={onChange}
-      className={`relative inline-flex w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 ${checked ? 'bg-teal-600' : 'bg-slate-300'}`}
-      style={{ height: 24, minHeight: 0 }}
-    >
-      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-[22px]' : 'translate-x-0.5'} ${busy ? 'animate-pulse' : ''}`} />
-    </button>
-  )
-}
 
 function ColorField({ label, value, onChange, fallback }: { label: string; value: string; onChange: (v: string) => void; fallback: string }) {
   return (

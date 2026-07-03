@@ -204,6 +204,7 @@ export function OnboardingPanel({ state, branding, impersonating = false }: { st
       <ChecklistWidget
         steps={state.steps}
         allComplete={allComplete}
+        clientAppEnabled={state.clientAppEnabled}
         onOpenStep={(key) => {
           const step = state.steps.find(s => s.key === key)
           if (step) goToStep(step)
@@ -397,12 +398,17 @@ function QrTile({ label, icon, url, fg }: { label: string; icon: React.ReactNode
 // ─── Checklist widget ────────────────────────────────────────────────────────
 
 function ChecklistWidget({
-  steps, allComplete, onOpenStep,
+  steps, allComplete, onOpenStep, clientAppEnabled,
 }: {
   steps: OnboardingStepView[]
   allComplete: boolean
   onOpenStep: (key: string) => void
+  clientAppEnabled: boolean
 }) {
+  // Tailor the tier-1 subtitle to the client-app choice (no "using the app").
+  const tier1Meta = clientAppEnabled
+    ? TIER_META[1]
+    : { title: TIER_META[1].title, sub: 'The essentials to get your business up and running.' }
   return (
     <div className="mb-6 rounded-3xl overflow-hidden bg-white shadow-[0_18px_48px_-16px_rgba(42,157,169,0.55)] ring-1 ring-slate-200/70">
       {/* Brand-teal header (pm-brand tokens, synced with the marketing site). */}
@@ -440,15 +446,9 @@ function ChecklistWidget({
         const tier1Done = tier1.every(s => s.status === 'completed' || s.status === 'skipped')
         return (
           <div className="px-3 sm:px-4 py-3 space-y-4">
-            <TierSection meta={TIER_META[1]} tierSteps={tier1} onOpenStep={onOpenStep} />
-            {tier2.length > 0 && (
-              tier1Done
-                ? <TierSection meta={TIER_META[2]} tierSteps={tier2} onOpenStep={onOpenStep} />
-                : (
-                  <p className="px-2.5 pt-1 text-xs text-slate-400">
-                    ✨ Finish setup to unlock {tier2.length} more ways to level up.
-                  </p>
-                )
+            <TierSection meta={tier1Meta} tierSteps={tier1} onOpenStep={onOpenStep} />
+            {tier2.length > 0 && tier1Done && (
+              <TierSection meta={TIER_META[2]} tierSteps={tier2} onOpenStep={onOpenStep} />
             )}
           </div>
         )

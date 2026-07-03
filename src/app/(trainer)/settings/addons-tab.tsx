@@ -40,7 +40,7 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
   const [trainer, { addons: addonItems }, activeRows] = await Promise.all([
     prisma.trainerProfile.findUnique({
       where: { id: companyId },
-      select: { payoutCurrency: true },
+      select: { payoutCurrency: true, connectChargesEnabled: true },
     }),
     loadBillingConfig(),
     prisma.trainerAddon.findMany({
@@ -58,7 +58,15 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
   // Which BillingItem ids are actually sellable add-ons right now (DB-active).
   // BillingItem.id == pricing AddonId, so we match the two by id.
   const sellableIds = new Set(addonItems.map((a) => a.id))
-  const activeIds = new Set(activeRows.filter((r) => r.active).map((r) => r.itemId))
+  // Explicit on/off from the DB; default-on add-ons (core features) fall back to
+  // ON when there's no row.
+  const explicitActive = new Map(activeRows.map((r) => [r.itemId, r.active]))
+  // Payments isn't a DB toggle — its "on" state mirrors whether Stripe Connect
+  // charges are enabled. Everything else: explicit DB row, else default-on.
+  const isActive = (a: (typeof ADDONS)[number]) =>
+    a.id === 'payments'
+      ? !!trainer?.connectChargesEnabled
+      : (explicitActive.get(a.id) ?? !!a.defaultOn)
 
   // Real add-ons from pricing.ts (source of truth for name/blurb/price), each
   // carrying its current on/off state and longer modal copy. Free add-ons (e.g.
@@ -69,7 +77,7 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
     blurb: a.description,
     badge: a.free ? 'Free' : (a.badge ?? null),
     price: a.free ? null : a.price[currency],
-    active: activeIds.has(a.id), // every add-on is off until explicitly enabled
+    active: isActive(a), // off until enabled, except default-on core add-ons
     // Free add-ons toggle without Stripe; paid ones need a sellable BillingItem.
     available: a.free ? true : sellableIds.has(a.id),
     details: DETAILS[a.id] ?? a.description,

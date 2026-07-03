@@ -120,6 +120,29 @@ function expiryFrom(expiresInSeconds: number): Date {
 }
 
 /**
+ * Fully disconnect from Xero: delete every tenant connection this token holds
+ * (DELETE /connections/{id}), so the app is actually removed from Xero's
+ * "connected apps" list — not just our local record. Best-effort: any Xero
+ * error is swallowed so the caller's local disconnect still proceeds.
+ */
+export async function revokeXeroConnections(connection: XeroConnection): Promise<void> {
+  const accessToken = await getValidAccessToken(connection)
+  const res = await fetch(CONNECTIONS_URL, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+  })
+  if (!res.ok) return
+  const conns: Array<{ id: string }> = await res.json()
+  await Promise.all(
+    conns.map((c) =>
+      fetch(`${CONNECTIONS_URL}/${c.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }).catch(() => {}),
+    ),
+  )
+}
+
+/**
  * Return a usable access token for this connection, refreshing (and persisting
  * the rotated refresh token + new access token) when the cached one is stale.
  * Throws if the refresh fails — the caller decides whether to surface or swallow.

@@ -30,6 +30,7 @@ const schema = z.object({
   publicEnrollment: z.boolean().optional(),
   clientSelfBook: z.boolean().optional(),
   selfBookRequiresApproval: z.boolean().optional(),
+  xeroAccountCode: z.string().max(50).nullable().optional(),
 })
 
 export async function GET() {
@@ -90,6 +91,7 @@ export async function POST(req: Request) {
       publicEnrollment: parsed.data.publicEnrollment ?? false,
       clientSelfBook: parsed.data.clientSelfBook ?? false,
       selfBookRequiresApproval: parsed.data.selfBookRequiresApproval ?? true,
+      xeroAccountCode: parsed.data.xeroAccountCode || null,
       order: nextOrder,
     },
   })

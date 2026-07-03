@@ -163,6 +163,8 @@ export default async function ClientDetailPage({
   // either has no location set, or Google is unreachable). Gated on the Route
   // planner add-on, which covers all address/distance calculations. One external
   // call after the batch, since it needs both the client's and base's coordinates.
+  const clientAppEnabled = await hasAddon(access.trainerId, 'clientapp')
+
   let distanceFromBase: string | null = null
   if (
     client.addressLat != null && client.addressLng != null &&
@@ -202,6 +204,7 @@ export default async function ClientDetailPage({
             clientEmail={client.user.email ?? ''}
             canEdit={canEdit}
             isPrimaryTrainer={isPrimaryTrainer}
+            clientAppEnabled={clientAppEnabled}
             needsInvite={!client.user.emailVerified}
             dogs={allDogs.map(d => ({ id: d.id, name: d.name }))}
             packages={packages.map(p => ({

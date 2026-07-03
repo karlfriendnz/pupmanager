@@ -26,6 +26,9 @@ export interface LimboClient {
 
 export interface OnboardingState {
   steps: OnboardingStepView[]
+  // Whether the trainer offers a client app (from onboarding). Drives which
+  // checklist steps + copy apply.
+  clientAppEnabled: boolean
   ahaReachedAt: string | null
   backfilledAt: string | null
   checklistDismissedAt: string | null

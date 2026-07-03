@@ -64,6 +64,7 @@ export default async function EditPackagePage({
             publicEnrollment: pkg.publicEnrollment,
             clientSelfBook: pkg.clientSelfBook,
             selfBookRequiresApproval: pkg.selfBookRequiresApproval,
+            xeroAccountCode: pkg.xeroAccountCode,
             assignments: pkg._count.assignments,
           }}
           sessionForms={sessionForms}

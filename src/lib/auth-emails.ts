@@ -17,6 +17,17 @@ interface VerificationEmailArgs {
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com'
 
+// Emails render in the recipient's mail client, OUTSIDE the app — so any image
+// src must be a publicly reachable absolute URL. A dev origin like
+// http://localhost:7777 can't be loaded by a mail client (the logo just comes
+// up blank, which is exactly why signup emails looked "generic"). So for email
+// assets we only trust an https origin and otherwise fall back to production.
+function emailAssetOrigin(): string {
+  const u = process.env.NEXT_PUBLIC_APP_URL
+  if (u && u.startsWith('https://')) return u.replace(/\/$/, '')
+  return 'https://app.pupmanager.com'
+}
+
 /**
  * Sends the verification-code email used during signup. Branded layout with
  * PupManager's logo, a prominent code pill, and a one-click verify button
@@ -47,7 +58,8 @@ export async function sendVerificationEmail({
 
   const firstName = name.split(' ')[0] || name
   const verifyUrl = `${APP_URL}/verify-account?email=${encodeURIComponent(to)}&code=${code}`
-  const logoUrl = `${APP_URL}/logo.png`
+  // Always an https, publicly reachable wordmark — never the localhost origin.
+  const logoUrl = `${emailAssetOrigin()}/email-logo.png`
 
   const resend = new Resend(apiKey)
   const result = await resend.emails.send({
@@ -93,22 +105,25 @@ function renderVerificationEmail({
     <tr>
       <td align="center">
         <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:20px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,0.04);">
-          <!-- Brand strip -->
+          <!-- Brand header: teal wordmark on white -->
           <tr>
-            <td align="center" style="padding:32px 32px 16px;background:linear-gradient(135deg,#0d9488,#14b8a6);">
-              <img src="${escapeAttr(logoUrl)}" alt="PupManager" width="56" height="56" style="display:block;border-radius:14px;background:#ffffff;padding:8px;" />
-              <p style="margin:12px 0 0;color:#ecfeff;font-size:13px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">PupManager</p>
+            <td align="center" style="padding:36px 32px 20px;background:#ffffff;">
+              <img src="${escapeAttr(logoUrl)}" alt="PupManager" width="210" style="display:block;width:210px;max-width:66%;height:auto;border:0;outline:none;text-decoration:none;" />
             </td>
+          </tr>
+          <!-- Teal accent bar -->
+          <tr>
+            <td style="height:4px;line-height:4px;font-size:0;background:linear-gradient(90deg,#0d9488,#14b8a6,#2dd4bf);">&nbsp;</td>
           </tr>
 
           <!-- Body -->
           <tr>
             <td style="padding:32px;">
-              <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;line-height:1.3;">Welcome aboard, ${escapeHtml(firstName)} 🐾</h1>
+              <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;line-height:1.3;">Welcome aboard, ${escapeHtml(firstName)}</h1>
               <p style="margin:0 0 20px;font-size:15px;line-height:1.55;color:#475569;">
                 Your <strong>${escapeHtml(businessName)}</strong> account is almost ready.
                 Pop in the verification code below to finish setting things up — once you do,
-                we'll walk you through your first client and a 14-day free trial starts.
+                we'll walk you through your first client and your free trial begins.
               </p>
 
               <!-- Code pill -->

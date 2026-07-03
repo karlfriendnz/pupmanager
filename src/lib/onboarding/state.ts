@@ -10,6 +10,7 @@
 
 import { cache } from 'react'
 import { prisma } from '@/lib/prisma'
+import { getEnabledAddons } from '@/lib/billing'
 import type { OnboardingState, OnboardingStepView, StepStatus } from './types'
 
 // Steps with no live-state signal — completion only flips when the trainer
@@ -218,7 +219,22 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
     })
   }
 
-  const stepViews: OnboardingStepView[] = steps.map(s => {
+  // Hide checklist steps the trainer opted out of, so the "Get set up" list
+  // matches their choices — no "preview/invite client" or "download the app"
+  // steps when the Client app add-on is off, no notes step when Notes is off.
+  // Both are default-on core add-ons.
+  const enabledAddons = await getEnabledAddons(trainerId)
+  const clientAppOn = enabledAddons.has('clientapp')
+  const notesOn = enabledAddons.has('notes')
+  const CLIENT_APP_STEPS = new Set(['client_view', 'invite_client', 'download_app'])
+  const NOTES_STEPS = new Set(['show_notes'])
+  const applicableSteps = steps.filter(s => {
+    if (!clientAppOn && CLIENT_APP_STEPS.has(s.key)) return false
+    if (!notesOn && NOTES_STEPS.has(s.key)) return false
+    return true
+  })
+
+  const stepViews: OnboardingStepView[] = applicableSteps.map(s => {
     const exp = explicit.get(s.key)
     let status: StepStatus
     if (liveDerived[s.key] || exp?.completed) status = 'completed'
@@ -254,6 +270,7 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
 
   return {
     steps: stepViews,
+    clientAppEnabled: clientAppOn,
     ahaReachedAt: progress?.ahaReachedAt?.toISOString() ?? null,
     backfilledAt: progress?.backfilledAt?.toISOString() ?? null,
     checklistDismissedAt: progress?.checklistDismissedAt?.toISOString() ?? null,

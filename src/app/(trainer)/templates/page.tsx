@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { hasAddon } from '@/lib/billing'
 import { LibraryBrowser } from './library-browser'
 import type { Metadata } from 'next'
 
@@ -12,6 +13,8 @@ export default async function LibraryPage() {
 
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
+  // The Library lives here; gated by the Training library add-on (default-on).
+  if (!(await hasAddon(trainerId, 'library'))) redirect('/settings?tab=addons')
 
   const types = await prisma.libraryType.findMany({
     where: { trainerId },

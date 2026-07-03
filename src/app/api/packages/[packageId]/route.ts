@@ -24,6 +24,7 @@ const updateSchema = z.object({
   publicEnrollment: z.boolean().optional(),
   clientSelfBook: z.boolean().optional(),
   selfBookRequiresApproval: z.boolean().optional(),
+  xeroAccountCode: z.string().max(50).nullable().optional(),
 })
 
 async function ownPackage(packageId: string, trainerId: string) {

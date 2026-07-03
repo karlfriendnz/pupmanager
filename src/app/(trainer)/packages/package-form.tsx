@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
+import { XeroAccountField } from '@/components/shared/xero-account-field'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
@@ -47,6 +48,7 @@ export interface PkgRow {
   publicEnrollment?: boolean
   clientSelfBook?: boolean
   selfBookRequiresApproval?: boolean
+  xeroAccountCode?: string | null
   assignments: number
 }
 
@@ -117,6 +119,8 @@ export function PackageForm({
   const [allowWaitlist, setAllowWaitlist] = useState<boolean>(existing?.allowWaitlist ?? false)
   const [publicEnrollment, setPublicEnrollment] = useState<boolean>(existing?.publicEnrollment ?? false)
   // Client self-booking (independent of group classes).
+  const [xeroAccountCode, setXeroAccountCode] = useState<string>(existing?.xeroAccountCode ?? '')
+  const [xeroActive, setXeroActive] = useState(false)
   const [clientSelfBook, setClientSelfBook] = useState<boolean>(existing?.clientSelfBook ?? false)
   const [selfBookRequiresApproval, setSelfBookRequiresApproval] = useState<boolean>(existing?.selfBookRequiresApproval ?? true)
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
@@ -137,6 +141,12 @@ export function PackageForm({
 
   async function onSubmit(values: FormValues) {
     setError(null)
+    // When Xero is connected with a curated shortlist, the income account is
+    // required so every package/class posts to a real Xero account.
+    if (xeroActive && !xeroAccountCode) {
+      setError('Choose a Xero income account for this package.')
+      return
+    }
     const url = existing ? `/api/packages/${existing.id}` : '/api/packages'
     const method = existing ? 'PATCH' : 'POST'
     // Convert the dollar-string price fields into cents before sending; the
@@ -161,6 +171,7 @@ export function PackageForm({
         publicEnrollment: isGroup && publicEnrollment,
         clientSelfBook,
         selfBookRequiresApproval,
+        xeroAccountCode: xeroAccountCode || null,
       }),
     })
     if (!res.ok) { setError('Failed to save.'); return }
@@ -187,6 +198,7 @@ export function PackageForm({
         publicEnrollment: saved.publicEnrollment ?? false,
         clientSelfBook: saved.clientSelfBook ?? false,
         selfBookRequiresApproval: saved.selfBookRequiresApproval ?? true,
+        xeroAccountCode: saved.xeroAccountCode ?? null,
         assignments: existing?.assignments ?? 0,
       },
       !existing
@@ -263,6 +275,12 @@ export function PackageForm({
         placeholder="—"
         {...register('specialPrice')}
       />
+
+      {/* Sits with the price — required when Xero is connected so revenue posts
+          to the right account. Renders nothing when Xero isn't set up. */}
+      <div className="md:col-span-2">
+        <XeroAccountField value={xeroAccountCode} onChange={setXeroAccountCode} required onActiveChange={setXeroActive} />
+      </div>
 
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form</label>

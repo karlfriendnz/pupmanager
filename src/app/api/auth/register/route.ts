@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { sendVerificationEmail } from '@/lib/auth-emails'
@@ -8,19 +7,22 @@ import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 import { validatePromoCode } from '@/lib/promo'
 import crypto from 'crypto'
 
+// Registration collects only what we need to follow up on a lead: name,
+// business name, phone and email. No password here — the trainer sets one
+// AFTER verifying the OTP (see /api/auth/set-password), and the rest of the
+// business profile (logo, public email, colours) is gathered later in the
+// onboarding wizard. That means a User + TrainerProfile exists (a contactable
+// lead) even if they never finish setting a password.
 const schema = z.object({
   name: z.string().min(2),
   businessName: z.string().min(2),
   // Required: every trainer must have a phone on file (admin + ops need it).
   phone: z.string().trim().min(6).max(30),
-  // Opt-in to showing the phone to clients (default private).
-  showPhoneToClients: z.boolean().optional().default(false),
   // The person's own login email (private).
   email: z.string().email(),
-  // Optional company/business email shown to clients (publicEmail). Empty
-  // string treated as "not provided".
+  // Deferred to onboarding, but still accepted if a caller sends them.
+  showPhoneToClients: z.boolean().optional().default(false),
   publicEmail: z.union([z.string().email(), z.literal('')]).optional(),
-  password: z.string().min(8),
   // Optional promo code — when valid it sets the total trial length.
   promoCode: z.string().max(40).optional(),
 })
@@ -48,7 +50,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message, details: flat }, { status: 400 })
   }
 
-  const { name, businessName, phone, showPhoneToClients, email, publicEmail, password, promoCode } = parsed.data
+  const { name, businessName, phone, showPhoneToClients, email, publicEmail, promoCode } = parsed.data
 
   const existing = await prisma.user.findUnique({ where: { email } })
   if (existing) {
@@ -69,7 +71,6 @@ export async function POST(req: Request) {
     promoCodeId = result.promo.id
   }
 
-  const passwordHash = await bcrypt.hash(password, 12)
   const trialEndsAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000)
 
   await prisma.$transaction(async (tx) => {
@@ -84,14 +85,9 @@ export async function POST(req: Request) {
       },
     })
 
-    await tx.account.create({
-      data: {
-        userId: user.id,
-        type: 'credentials',
-        provider: 'credentials',
-        providerAccountId: passwordHash,
-      },
-    })
+    // No credentials account yet — the trainer sets their password after
+    // verifying the OTP (POST /api/auth/set-password). Until then this is a
+    // passwordless lead that can't log in but is fully contactable.
 
     const profile = await tx.trainerProfile.create({
       data: {

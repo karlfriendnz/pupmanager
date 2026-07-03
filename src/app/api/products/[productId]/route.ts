@@ -13,6 +13,7 @@ const patchSchema = z.object({
   downloadUrl: z.string().url().optional().or(z.literal('')).nullable(),
   category: z.string().max(60).nullable().optional(),
   featured: z.boolean().optional(),
+  xeroAccountCode: z.string().max(50).nullable().optional(),
   active: z.boolean().optional(),
   order: z.number().int().optional(),
 })
@@ -57,6 +58,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ produc
       ...(data.downloadUrl !== undefined && { downloadUrl: data.downloadUrl || null }),
       ...(data.category !== undefined && { category: data.category?.trim() || null }),
       ...(data.featured !== undefined && { featured: data.featured }),
+      ...(data.xeroAccountCode !== undefined && { xeroAccountCode: data.xeroAccountCode || null }),
       ...(data.active !== undefined && { active: data.active }),
       ...(data.order !== undefined && { order: data.order }),
     },
