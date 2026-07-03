@@ -3,6 +3,7 @@ import { after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
+import { allowedSlotTypes } from '@/lib/service-offerings'
 import { ScheduleView } from './schedule-view'
 import { AddonNudge, GoogleGlyph } from '@/components/shared/addon-nudge'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
@@ -77,6 +78,7 @@ export default async function SchedulePage({
       scheduleMobileEndHour: true,
       scheduleDays: true,
       scheduleExtraFields: true,
+      businessRoles: true,
     },
   })
   if (!trainerProfile) redirect('/login')
@@ -387,6 +389,7 @@ export default async function SchedulePage({
       scheduleMobileEndHour={trainerProfile.scheduleMobileEndHour}
       scheduleDays={scheduleDaysArr}
       scheduleExtraFields={scheduleSelections}
+      allowedSlotTypes={allowedSlotTypes(trainerProfile.businessRoles)}
       customFields={customFields}
       clientExtras={clientExtras}
       showHints={showHints}

@@ -298,6 +298,12 @@ model TrainerProfile {
   // true for accounts that had a phone before this flag existed, to preserve
   // their prior always-shown behaviour.
   showPhoneToClients Boolean @default(false)
+  // What this business actually does — persona ids from the onboarding wizard
+  // ("walker" | "trainer" | "behaviourist" | "groomer" | "petsitter"). Drives
+  // which schedule "add" options show (a groomer never runs group walks or
+  // classes). Empty = unknown → show everything (backward-compatible for
+  // accounts that predate this capture).
+  businessRoles      String[] @default([])
   // Feature toggles set during onboarding (and editable in Settings). Not every
   // trainer runs classes, records notes, or wants a client-facing app — these
   // gate those surfaces. Default on so existing accounts are unaffected.

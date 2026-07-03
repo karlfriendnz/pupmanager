@@ -232,6 +232,10 @@ export function PersonalizationWizard({
         appGradientStart: HEX.test(gradStart) ? gradStart : '',
         appGradientEnd: HEX.test(gradEnd) ? gradEnd : '',
         clientWelcomeNote: note.trim(),
+        // Persist the chosen personas so the rest of the app can tailor itself
+        // (e.g. the schedule "add" options). Only write once picked so an early
+        // save on the branding steps never clobbers a prior value with [].
+        ...(roles.length ? { businessRoles: roles } : {}),
         // Team emails to invite later — only when they said they have a team.
         pendingTeamInvites: answers.team === 'team'
           ? teamEmails.map(e => e.trim()).filter(e => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e))

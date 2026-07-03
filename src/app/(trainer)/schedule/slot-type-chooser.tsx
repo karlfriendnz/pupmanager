@@ -18,12 +18,16 @@ export function SlotTypeChooser({
   time,
   onSelect,
   onClose,
+  allowed,
 }: {
   date: string
   time?: string
   onSelect: (type: SlotAddType) => void
   onClose: () => void
+  /** Restrict to these add-types (from the business's personas). Undefined = all. */
+  allowed?: SlotAddType[]
 }) {
+  const opts = allowed ? OPTIONS.filter((o) => allowed.includes(o.type)) : OPTIONS
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
@@ -37,8 +41,8 @@ export function SlotTypeChooser({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="p-4 grid grid-cols-2 gap-3">
-          {OPTIONS.map(({ type, label, hint, Icon }) => (
+        <div className={`p-4 grid gap-3 ${opts.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          {opts.map(({ type, label, hint, Icon }) => (
             <button
               key={type}
               onClick={() => onSelect(type)}

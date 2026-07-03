@@ -14,6 +14,7 @@ import { COUNTRIES } from '@/lib/countries'
 import { Accordion, AccordionItem } from '@/components/ui/accordion'
 import { BrandPreview } from '@/components/brand-preview'
 import { TIMEZONES } from '@/lib/timezones'
+import { PERSONAS } from '@/lib/onboarding-recommendations'
 import { ImagePlus, Loader2 } from 'lucide-react'
 
 const businessSchema = z.object({
@@ -51,11 +52,16 @@ export function TrainerSettingsForm({
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; dashboardBgUrl: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; dashboardBgUrl: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
   const [designMsg, setDesignMsg] = useState<string | null>(null)
+  // What the business offers — drives which schedule "add" options appear.
+  // Plain state (not RHF) since it's a simple multi-select saved with the form.
+  const [bizRoles, setBizRoles] = useState<string[]>(profile.businessRoles ?? [])
+  const toggleRole = (id: string) =>
+    setBizRoles(prev => (prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]))
 
   const businessForm = useForm<BusinessData>({
     resolver: zodResolver(businessSchema),
@@ -118,7 +124,7 @@ export function TrainerSettingsForm({
     setBusinessMsg(null)
     const [r1, r2] = await Promise.all([
       fetch('/api/user', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: data.name, timezone: data.timezone }) }),
-      fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, showPhoneToClients: data.showPhoneToClients ?? false, publicEmail: data.publicEmail ?? '', signupCountry: data.signupCountry ?? '' }) }),
+      fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, showPhoneToClients: data.showPhoneToClients ?? false, publicEmail: data.publicEmail ?? '', signupCountry: data.signupCountry ?? '', businessRoles: bizRoles }) }),
     ])
     setBusinessMsg(r1.ok && r2.ok ? 'Saved!' : 'Failed to save.')
     router.refresh()
@@ -185,6 +191,28 @@ export function TrainerSettingsForm({
             <select className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" {...businessForm.register('timezone')}>
               {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
             </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">What your business offers</label>
+            <p className="text-xs text-slate-500">Tailors the app to you — e.g. the schedule only offers group walks or classes if you run them.</p>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {PERSONAS.map(p => {
+                const on = bizRoles.includes(p.id)
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => toggleRole(p.id)}
+                    aria-pressed={on}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? 'border-teal-600 bg-teal-50 text-teal-900' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                  >
+                    <span aria-hidden>{p.icon}</span>
+                    <span>{p.label}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           <Button type="submit" size="sm" className="self-start" loading={businessForm.formState.isSubmitting}>Save business details</Button>

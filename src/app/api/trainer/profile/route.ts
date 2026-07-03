@@ -16,6 +16,11 @@ const patchSchema = z.object({
   clientAppEnabled: z.boolean().optional(),
   classesEnabled: z.boolean().optional(),
   notesEnabled: z.boolean().optional(),
+  // Onboarding personas that describe what the business offers. Drives which
+  // schedule "add" options appear. Loose string ids (validated against the
+  // known persona list would couple this route to the wizard) — unknown ids are
+  // simply ignored by the mapping in service-offerings.ts.
+  businessRoles: z.array(z.string().min(1).max(30)).max(10).optional(),
   // Team emails to invite later (captured in onboarding, sent from dashboard).
   pendingTeamInvites: z.array(z.string().email()).max(50).optional(),
   // ISO 3166-1 alpha-2 country (e.g. "NZ"), or empty string to clear. Normally

@@ -2697,6 +2697,7 @@ export function ScheduleView({
   scheduleMobileEndHour,
   scheduleDays,
   scheduleExtraFields,
+  allowedSlotTypes,
   customFields,
   clientExtras: initialClientExtras,
   members = [],
@@ -2723,6 +2724,9 @@ export function ScheduleView({
   scheduleMobileEndHour: number | null
   scheduleDays: number[]   // 1=Mon..7=Sun
   scheduleExtraFields: string[]
+  // Which "add to schedule" options this business offers (from its personas).
+  // Undefined = show all. Filters the SlotTypeChooser.
+  allowedSlotTypes?: SlotAddType[]
   customFields: CustomFieldMeta[]
   clientExtras: Record<string, ClientExtra>
   // Trainers in this business. Empty / single-member businesses hide the
@@ -3384,6 +3388,7 @@ export function ScheduleView({
           time={slotChooser.time}
           onSelect={handleSlotChoice}
           onClose={() => setSlotChooser(null)}
+          allowed={allowedSlotTypes}
         />
       )}
 
