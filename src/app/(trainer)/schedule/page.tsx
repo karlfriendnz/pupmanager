@@ -2,7 +2,9 @@ import { redirect } from 'next/navigation'
 import { after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
+import { hasAddon } from '@/lib/billing'
 import { ScheduleView } from './schedule-view'
+import { AddonNudge, GoogleGlyph } from '@/components/shared/addon-nudge'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { todayInTz, startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
@@ -322,7 +324,24 @@ export default async function SchedulePage({
     }
   }
 
+  // Add-on nudge: only surface "connect Google Calendar" when this member
+  // hasn't already connected. Cheap lookups, run in parallel.
+  const [googleConn, googleAddonOn] = await Promise.all([
+    ctx.membershipId
+      ? prisma.googleCalendarConnection.findUnique({
+          where: { membershipId: ctx.membershipId },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    hasAddon(ctx.companyId, 'googlecalendar'),
+  ])
+  // On local dev, always surface it (even when connected/dismissed) so it's
+  // easy to preview. In prod it only shows when this member hasn't connected.
+  const isDevPreview = process.env.NODE_ENV === 'development'
+  const showGoogleNudge = !googleConn || isDevPreview
+
   return (
+    <>
     <ScheduleView
       sessions={sessions.map(s => ({
         ...s,
@@ -372,5 +391,18 @@ export default async function SchedulePage({
       clientExtras={clientExtras}
       showHints={showHints}
     />
+    {showGoogleNudge && (
+      <AddonNudge
+        id="schedule-google-calendar"
+        title="Sync your Google Calendar"
+        body="See your sessions in Google Calendar and get a heads-up before you double-book."
+        ctaLabel={googleAddonOn ? 'Connect Google Calendar' : 'Set it up'}
+        ctaHref={googleAddonOn ? '/settings?tab=googlecalendar' : '/add-ons'}
+        image={{ src: '/promo-timesheets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' }}
+        icon={<GoogleGlyph className="h-5 w-5" />}
+        forceShow={isDevPreview}
+      />
+    )}
+    </>
   )
 }
