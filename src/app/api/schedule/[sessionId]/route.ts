@@ -255,7 +255,7 @@ export async function PATCH(
   // connected). Awaited inside try/catch so it completes before the response —
   // fire-and-forget is unsafe on serverless. Never breaks the update.
   try {
-    const { syncSessionToGoogle, syncSessionsToGoogle } = await import('@/lib/google-calendar')
+    const { syncSessionToGoogle, syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
     await syncSessionToGoogle(sessionId)
     if (followerIds.length) await syncSessionsToGoogle(followerIds)
   } catch {
@@ -276,7 +276,7 @@ export async function DELETE(
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
-    select: { id: true, googleCalendarRefreshToken: true },
+    select: { id: true },
   })
   if (!trainerProfile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
@@ -302,20 +302,16 @@ export async function DELETE(
     })
   }
 
-  // Best-effort calendar cleanup — non-critical.
-  if (trainerProfile.googleCalendarRefreshToken) {
-    const eventIds = [
-      ...(trainingSession.googleCalendarEventId ? [trainingSession.googleCalendarEventId] : []),
-      ...followers.map(f => f.googleCalendarEventId).filter((id): id is string => !!id),
-    ]
-    if (eventIds.length > 0) {
-      try {
-        const { deleteGoogleCalendarEvent } = await import('@/lib/google-calendar')
-        await Promise.all(eventIds.map(id => deleteGoogleCalendarEvent(trainerProfile.googleCalendarRefreshToken!, id)))
-      } catch {
-        // Non-critical
-      }
-    }
+  // Best-effort calendar cleanup — non-critical. deleteGoogleEvents self-gates
+  // on the add-on + an active connection, so this no-ops when sync is off.
+  try {
+    const { deleteGoogleEvents } = await import('@/lib/google-calendar-sync')
+    await deleteGoogleEvents(trainerProfile.id, [
+      trainingSession.googleCalendarEventId,
+      ...followers.map(f => f.googleCalendarEventId),
+    ], trainingSession.assignedMembershipId)
+  } catch {
+    // Non-critical
   }
 
   const idsToDelete = [sessionId, ...followers.map(f => f.id)]

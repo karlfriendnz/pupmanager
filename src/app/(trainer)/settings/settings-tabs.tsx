@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark } from 'lucide-react'
+import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, CalendarDays } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 
 const ALL_TABS = [
@@ -14,6 +14,7 @@ const ALL_TABS = [
   { id: 'team', label: 'Team', icon: Users },
   { id: 'payments', label: 'Payments', icon: Wallet },
   { id: 'xero', label: 'Xero', icon: Landmark },
+  { id: 'googlecalendar', label: 'Google Calendar', icon: CalendarDays },
   { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'activity', label: 'Activity', icon: ShieldCheck },
 ] as const
@@ -29,6 +30,7 @@ export function SettingsTabs({
   team,
   payments,
   xero,
+  googlecalendar,
   billing,
   activity,
 }: {
@@ -43,11 +45,12 @@ export function SettingsTabs({
   team?: React.ReactNode
   payments?: React.ReactNode
   xero?: React.ReactNode
+  googlecalendar?: React.ReactNode
   billing?: React.ReactNode
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, integration, addons, team, payments, xero, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, integration, addons, team, payments, xero, googlecalendar, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -69,6 +72,17 @@ export function SettingsTabs({
     : firstTab
   const [tab, setTab] = useState<TabId>(initialTab)
 
+  // React to ?tab= changing without a remount — e.g. the Add-ons page's
+  // "Manage" action does router.push('/settings?tab=xero') while already on
+  // /settings, so the state must follow the new query param.
+  useEffect(() => {
+    if (queryTab && (tabIds as readonly string[]).includes(queryTab)) {
+      setTab(queryTab as TabId)
+    }
+    // Only react to the query param changing — tabIds is stable in content.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryTab])
+
   useEffect(() => {
     const fromHash = readHashTab()
     if (fromHash) setTab(fromHash)
@@ -83,8 +97,14 @@ export function SettingsTabs({
 
   function selectTab(id: TabId) {
     setTab(id)
-    if (typeof window !== 'undefined' && window.location.hash !== `#${id}`) {
-      history.replaceState(null, '', `#${id}`)
+    // Keep the URL on the canonical ?tab= form and clear any stale hash, so the
+    // query (the source of truth) never disagrees with the shown tab — e.g.
+    // avoid ?tab=xero#addons after arriving via a ?tab= link then clicking away.
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', id)
+      url.hash = ''
+      history.replaceState(null, '', `${url.pathname}${url.search}`)
     }
   }
 
@@ -130,6 +150,7 @@ export function SettingsTabs({
         {team != null && <div className={tab === 'team' ? 'max-w-2xl' : 'hidden'}>{team}</div>}
         {payments != null && <div className={tab === 'payments' ? 'max-w-2xl' : 'hidden'}>{payments}</div>}
         {xero != null && <div className={tab === 'xero' ? 'max-w-2xl' : 'hidden'}>{xero}</div>}
+        {googlecalendar != null && <div className={tab === 'googlecalendar' ? 'max-w-2xl' : 'hidden'}>{googlecalendar}</div>}
         {billing != null && !native && <div className={tab === 'billing' ? 'max-w-2xl' : 'hidden'}>{billing}</div>}
         {activity != null && <div className={tab === 'activity' ? '' : 'hidden'}>{activity}</div>}
       </div>

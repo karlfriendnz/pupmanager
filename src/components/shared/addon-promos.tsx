@@ -4,7 +4,7 @@ import { type ReactNode } from 'react'
 import {
   Users, PenLine, Send, LineChart, Trophy, Share2, Sparkles, Tag, ShoppingBag,
   Wallet, MapPin, Route, Clock, FileText, ListChecks, NotebookPen, Check,
-  Download, Mail,
+  Download, Mail, CalendarDays, RefreshCw,
 } from 'lucide-react'
 import { FeaturePromoCard, FeaturePromoModal, PROMO_ICON, type PromoStep } from '@/components/shared/feature-promo'
 import { EnableAddonButton } from '@/components/shared/enable-addon-button'
@@ -85,6 +85,18 @@ const PROMOS: Record<string, Cfg> = {
     ],
     benefits: ['Record the distance', 'Drive-time from base', 'Cut the kilometres'],
   },
+  googlecalendar: {
+    title: 'On your Google Calendar',
+    description: 'Your sessions, classes and blocked-out time — synced to Google.',
+    image: { src: '/promo-timesheets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
+    badge: chip('Synced'),
+    steps: [
+      { icon: <CalendarDays className={I} />, label: 'Connect Google' },
+      { icon: <Clock className={I} />, label: 'Sessions & classes' },
+      { icon: <RefreshCw className={I} />, label: 'Stays in sync' },
+    ],
+    benefits: ['One-way, private to you', 'Sessions, classes & blocked time', 'Updates on create, edit & cancel'],
+  },
   timesheets: {
     title: 'Track your team’s hours',
     description: 'Turn worked time into payroll-ready totals.',
@@ -132,6 +144,51 @@ const PROMOS: Record<string, Cfg> = {
     ],
     benefits: ['Drafts in seconds', 'You stay in control', 'Sunday-night saved'],
   },
+  clientapp: {
+    title: 'Your own client app',
+    description: 'A branded app where clients follow their dog’s journey.',
+    image: { src: '/hero-illustration.png', objectPosition: 'center 40%' },
+    steps: [
+      { icon: <Users className={I} />, label: 'Clients log in' },
+      { icon: <FileText className={I} />, label: 'See sessions' },
+      { icon: <Mail className={I} />, label: 'Message you' },
+      { icon: <LineChart className={I} />, label: 'Track progress' },
+    ],
+    benefits: ['Branded in your colours', 'Sessions, homework & progress', 'Direct messaging'],
+  },
+  notes: {
+    title: 'Notes on every session',
+    description: 'Record write-ups and progress against each session.',
+    image: { src: '/promo-todos-v3.jpg', objectPosition: 'center 52%' },
+    steps: [
+      { icon: <Users className={I} />, label: 'Run the session' },
+      { icon: <NotebookPen className={I} />, label: 'Write it up' },
+      { icon: <LineChart className={I} />, label: 'See progress' },
+    ],
+    benefits: ['Per-session write-ups', 'Progress over time', 'Shareable with clients'],
+  },
+  classes: {
+    title: 'Run group classes',
+    description: 'Class cohorts with shared sessions and enrolments.',
+    image: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%', translateX: '28%' },
+    steps: [
+      { icon: <Users className={I} />, label: 'Create a class' },
+      { icon: <Check className={I} />, label: 'Enrol clients' },
+      { icon: <Clock className={I} />, label: 'Run weekly' },
+    ],
+    benefits: ['Shared class sessions', 'Enrolment tracking', 'Waitlist-ready'],
+  },
+  library: {
+    title: 'Your training library',
+    description: 'A reusable bank of exercises and tasks to drop into sessions.',
+    image: { src: '/promo-todos-v3.jpg', objectPosition: 'center 52%' },
+    steps: [
+      { icon: <ListChecks className={I} />, label: 'Build your library' },
+      { icon: <FileText className={I} />, label: 'Drop into sessions' },
+      { icon: <Users className={I} />, label: 'Assign as homework' },
+    ],
+    benefits: ['Reusable exercises', 'Session-ready', 'Assign as homework'],
+  },
 }
 
 export const ADDON_PROMO_IDS = Object.keys(PROMOS)
@@ -165,11 +222,11 @@ function ctaFor(addonId: string): ReactNode {
 export function AddonPromoCard({ addonId, currency = 'NZD', onClose, cta }: { addonId: string; currency?: string; onClose: () => void; cta?: ReactNode }) {
   const cfg = PROMOS[addonId]
   if (!cfg) return null
-  return <FeaturePromoCard {...cfg} priceNote={priceNote(addonId, currency)} cta={cta ?? ctaFor(addonId)} onSkip={onClose} />
+  return <FeaturePromoCard {...cfg} eyebrow={addonById(addonId)?.name} priceNote={priceNote(addonId, currency)} cta={cta ?? ctaFor(addonId)} onSkip={onClose} />
 }
 
 export function AddonPromoModal({ addonId, currency = 'NZD', onClose, cta }: { addonId: string; currency?: string; onClose: () => void; cta?: ReactNode }) {
   const cfg = PROMOS[addonId]
   if (!cfg) return null
-  return <FeaturePromoModal {...cfg} priceNote={priceNote(addonId, currency)} cta={cta ?? ctaFor(addonId)} onSkip={onClose} onClose={onClose} />
+  return <FeaturePromoModal {...cfg} eyebrow={addonById(addonId)?.name} priceNote={priceNote(addonId, currency)} cta={cta ?? ctaFor(addonId)} onSkip={onClose} onClose={onClose} />
 }

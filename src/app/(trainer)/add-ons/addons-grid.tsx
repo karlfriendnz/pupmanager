@@ -1,6 +1,18 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+
+// Where an ENABLED add-on's "Manage" action goes (a dedicated config page).
+// Add-ons not listed just re-open their promo (which offers the on/off toggle).
+const MANAGE_HREF: Record<string, string> = {
+  xero: '/settings?tab=xero',
+  googlecalendar: '/settings?tab=googlecalendar',
+  payments: '/settings?tab=payments',
+}
+// Add-ons that ALWAYS route to their config page (never a toggle) — e.g.
+// Payments, which is enabled by connecting Stripe, not flipping a switch.
+const LINK_ONLY = new Set<string>(['payments'])
 import { Button } from '@/components/ui/button'
 import { currencyMeta, type CurrencyCode } from '@/lib/pricing'
 import { AddonPromoModal, addonPromoImage } from '@/components/shared/addon-promos'
@@ -36,6 +48,8 @@ export function AddonsGrid({
     () => Object.fromEntries(cards.map((c) => [c.id, c.active])),
   )
   const [busy, setBusy] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'all' | 'free' | 'paid'>('all')
+  const router = useRouter()
   const [learnMore, setLearnMore] = useState<AddonCard | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -61,6 +75,9 @@ export function AddonsGrid({
         return
       }
       setLearnMore(null) // success → close the popup
+      // Just enabled an add-on that needs setup (connect Xero / Google) → take
+      // them straight to its setup page.
+      if (next && MANAGE_HREF[card.id]) { router.push(MANAGE_HREF[card.id]); return }
     } catch {
       setActive((prev) => ({ ...prev, [card.id]: !next }))
       setError('Could not change this add-on. Please try again.')
@@ -69,8 +86,12 @@ export function AddonsGrid({
     }
   }
 
-  const enabled = cards.filter((c) => active[c.id])
-  const availableCards = cards.filter((c) => !active[c.id])
+  // Free vs paid filter. Free add-ons have no price; paid (incl. coming-soon)
+  // carry one.
+  const matchesFilter = (c: AddonCard) =>
+    filter === 'all' || (filter === 'free' ? c.price == null : c.price != null)
+  const enabled = cards.filter((c) => active[c.id] && matchesFilter(c))
+  const availableCards = cards.filter((c) => !active[c.id] && matchesFilter(c))
 
   function renderCard(card: AddonCard) {
     const img = addonPromoImage(card.id)
@@ -83,7 +104,14 @@ export function AddonsGrid({
       <button
         key={card.id}
         type="button"
-        onClick={() => { setError(null); setLearnMore(card) }}
+        onClick={() => {
+          setError(null)
+          // An enabled add-on with a config page → go manage it; otherwise the
+          // promo (which carries the on/off toggle).
+          const manageHref = MANAGE_HREF[card.id]
+          if (manageHref && (LINK_ONLY.has(card.id) || active[card.id])) { router.push(manageHref); return }
+          setLearnMore(card)
+        }}
         className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-shadow hover:shadow-md"
       >
         {/* Mini-promo header: name left, hero image bleeding in on the right
@@ -122,7 +150,7 @@ export function AddonsGrid({
           <div className="mt-auto flex items-center justify-between gap-2">
             <p className="text-sm font-semibold" style={{ color: 'var(--pm-ink-900)' }}>{cost}</p>
             <span className="text-[13px] font-medium group-hover:underline" style={{ color: 'var(--pm-brand-700)' }}>
-              {active[card.id] ? 'Manage' : 'Learn more'} →
+              {active[card.id] ? 'Manage' : LINK_ONLY.has(card.id) ? 'Set up' : 'Learn more'} →
             </span>
           </div>
         </div>
@@ -153,6 +181,23 @@ export function AddonsGrid({
 
   return (
     <>
+      {/* Free / paid filter */}
+      <div className="mb-6 inline-flex rounded-xl border border-slate-200 bg-white p-1">
+        {(['all', 'free', 'paid'] as const).map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilter(f)}
+            aria-pressed={filter === f}
+            className={`rounded-lg px-4 h-9 text-sm font-medium capitalize transition-colors ${
+              filter === f ? 'bg-teal-600 text-white' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
       {enabled.length > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Your add-ons</h2>

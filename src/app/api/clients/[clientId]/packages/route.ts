@@ -221,7 +221,7 @@ export async function POST(
       select: { id: true },
     })
     if (createdRows.length) {
-      const { syncSessionsToGoogle } = await import('@/lib/google-calendar')
+      const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
       await syncSessionsToGoogle(createdRows.map(r => r.id))
     }
   } catch {

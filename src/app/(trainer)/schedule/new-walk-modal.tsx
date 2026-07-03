@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { X, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { X, Plus, Trash2, CalendarClock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { useBookingConflicts, fetchBookingConflicts, conflictMessage } from '@/lib/use-booking-conflicts'
 
 type ClientOption = { id: string; name: string; dogs?: { id: string; name: string }[] }
 type Attendee = { clientId: string; dogId: string }
@@ -39,8 +40,24 @@ export function NewWalkModal({
   ])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const { confirmBooking } = useBookingConflicts()
+  // Live inline conflict hint WHILE the modal is open (a fresh check as the time
+  // changes), in addition to the final check on save.
+  const [conflictHint, setConflictHint] = useState<string | null>(null)
 
   const fieldCls = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+
+  useEffect(() => {
+    if (!date || !time) { setConflictHint(null); return }
+    const startIso = new Date(`${date}T${time}`).toISOString()
+    const mins = Math.max(5, Math.floor(Number(durationMins) || 60))
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      const data = await fetchBookingConflicts({ startIso, durationMins: mins })
+      if (!cancelled) setConflictHint(conflictMessage(data))
+    }, 350)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [date, time, durationMins])
 
   function setRow(i: number, patch: Partial<Attendee>) {
     setAttendees(rows => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
@@ -61,15 +78,21 @@ export function NewWalkModal({
       setError('Pick a date and time.')
       return
     }
+    const scheduledAt = new Date(`${date}T${time}`).toISOString()
+    const mins = Math.max(5, Math.floor(Number(durationMins) || 60))
+    // Explicit confirm-to-override if this clashes with the trainer's own
+    // sessions or a Google Calendar event. Walks are owner-run (unassigned).
+    const proceed = await confirmBooking({ startIso: scheduledAt, durationMins: mins })
+    if (!proceed) return
+
     setSaving(true)
     try {
-      const scheduledAt = new Date(`${date}T${time}`).toISOString()
       const res = await fetch('/api/schedule/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scheduledAt,
-          durationMins: Math.max(5, Math.floor(Number(durationMins) || 60)),
+          durationMins: mins,
           sessionType,
           title: title.trim() || 'Group walk',
           location: location.trim() || null,
@@ -200,6 +223,13 @@ export function NewWalkModal({
             </button>
             <p className="text-[11px] text-slate-400 mt-1">The first dog is the main attendee; the rest join the group walk.</p>
           </div>
+
+          {conflictHint && (
+            <Alert variant="warning" className="flex items-start gap-2">
+              <CalendarClock className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{conflictHint.replace(/\.?\s*Book anyway\?$/, '')} — you can still create it.</span>
+            </Alert>
+          )}
 
           <div className="flex gap-2 pt-2">
             <Button type="submit" loading={saving}>Create walk</Button>

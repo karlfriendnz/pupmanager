@@ -64,5 +64,14 @@ export async function POST(req: Request) {
     },
   })
 
+  // Best-effort: mirror the slot onto the trainer's Google Calendar (no-ops when
+  // the add-on is off or Google isn't connected). Never breaks the save.
+  try {
+    const { syncAvailabilitySlotToGoogle } = await import('@/lib/google-calendar-sync')
+    await syncAvailabilitySlotToGoogle(slot.id)
+  } catch {
+    // Non-critical
+  }
+
   return NextResponse.json(slot, { status: 201 })
 }

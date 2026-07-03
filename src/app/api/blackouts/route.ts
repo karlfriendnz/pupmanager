@@ -53,6 +53,16 @@ export async function POST(req: Request) {
       endDate: new Date(parsed.data.endDate),
     },
   })
+
+  // Best-effort: mirror the blocked-out range as an all-day Google Calendar
+  // event (no-ops when the add-on is off / not connected). Never breaks the save.
+  try {
+    const { syncBlackoutToGoogle } = await import('@/lib/google-calendar-sync')
+    await syncBlackoutToGoogle(created.id)
+  } catch {
+    // Non-critical
+  }
+
   return NextResponse.json({
     ...created,
     startDate: created.startDate.toISOString().split('T')[0],

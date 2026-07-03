@@ -8,7 +8,11 @@
 // which set to resolve against, so the demo account runs entirely on Stripe
 // test mode while everyone else is on live.
 import { prisma } from './prisma'
-import { DEFAULT_CURRENCY, type CurrencyCode } from './pricing'
+import { DEFAULT_CURRENCY, ADDONS, type CurrencyCode } from './pricing'
+
+// Core add-ons that are ON by default (enabled unless the trainer explicitly
+// turned them off with an active:false row).
+const DEFAULT_ON_ADDON_IDS = ADDONS.filter(a => a.defaultOn).map(a => a.id)
 
 export interface PricedItem {
   stripePriceId: string | null
@@ -131,19 +135,28 @@ export async function loadBillingConfig(): Promise<BillingConfig> {
  */
 export async function getEnabledAddons(trainerId: string): Promise<Set<string>> {
   const rows = await prisma.trainerAddon.findMany({
-    where: { trainerId, active: true },
-    select: { itemId: true },
+    where: { trainerId },
+    select: { itemId: true, active: true },
   })
-  return new Set(rows.map((r) => r.itemId))
+  const explicit = new Map(rows.map((r) => [r.itemId, r.active]))
+  const enabled = new Set<string>()
+  for (const [id, active] of explicit) if (active) enabled.add(id)
+  // Default-on add-ons count as enabled unless explicitly disabled.
+  for (const id of DEFAULT_ON_ADDON_IDS) if (explicit.get(id) !== false) enabled.add(id)
+  return enabled
 }
 
-/** Is a specific add-on active for this trainer? Off until explicitly enabled. */
+/**
+ * Is a specific add-on active for this trainer? Off until explicitly enabled —
+ * EXCEPT default-on add-ons (core features), which are on unless turned off.
+ */
 export async function hasAddon(trainerId: string, addonId: string): Promise<boolean> {
   const row = await prisma.trainerAddon.findUnique({
     where: { trainerId_itemId: { trainerId, itemId: addonId } },
     select: { active: true },
   })
-  return !!row?.active
+  if (row) return row.active
+  return DEFAULT_ON_ADDON_IDS.includes(addonId as never)
 }
 
 export type PriceClassification =

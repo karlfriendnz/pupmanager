@@ -98,7 +98,7 @@ export async function POST(req: Request) {
   // Best-effort: mirror the new walk(s) onto the trainer's Google Calendar.
   // Awaited (not fire-and-forget) but wrapped so it never breaks creation.
   try {
-    const { syncSessionsToGoogle } = await import('@/lib/google-calendar')
+    const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
     await syncSessionsToGoogle(createdIds)
   } catch {
     // Non-critical

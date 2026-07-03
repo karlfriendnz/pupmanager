@@ -88,6 +88,7 @@ export function AssignPackageFromScheduleModal({
   availability,
   defaultStartDate,
   defaultStartTime,
+  initialBusy = [],
   onClose,
 }: {
   clients: ClientOption[]
@@ -95,6 +96,9 @@ export function AssignPackageFromScheduleModal({
   availability: AvailabilityRow[]
   defaultStartDate?: string
   defaultStartTime?: string
+  // The schedule's already-loaded Google busy blocks (with titles) so the modal
+  // can flag a clash the instant it opens, before its own live refresh lands.
+  initialBusy?: { startsAt: string; endsAt: string; title?: string | null }[]
   onClose: () => void
 }) {
   // Guard against opening the modal before any clients/packages exist —
@@ -110,6 +114,7 @@ export function AssignPackageFromScheduleModal({
       availability={availability}
       defaultStartDate={defaultStartDate}
       defaultStartTime={defaultStartTime}
+      initialBusy={initialBusy}
       onClose={onClose}
     />
   )
@@ -148,6 +153,7 @@ function AssignPackageFromScheduleModalInner({
   availability,
   defaultStartDate,
   defaultStartTime,
+  initialBusy = [],
   onClose,
 }: {
   clients: ClientOption[]
@@ -155,6 +161,7 @@ function AssignPackageFromScheduleModalInner({
   availability: AvailabilityRow[]
   defaultStartDate?: string
   defaultStartTime?: string
+  initialBusy?: { startsAt: string; endsAt: string; title?: string | null }[]
   onClose: () => void
 }) {
   const router = useRouter()
@@ -185,6 +192,12 @@ function AssignPackageFromScheduleModalInner({
   // the new ClientPackage row.
   const [markInvoiced, setMarkInvoiced] = useState(false)
   const [notify, setNotify] = useState(true)
+  // Per-session double-booking override: the trainer must explicitly tick
+  // "book anyway" on each clashing session before it can be created. Keyed by
+  // the session's position index.
+  const [overrides, setOverrides] = useState<Set<number>>(new Set())
+  const toggleOverride = (i: number) =>
+    setOverrides(prev => { const next = new Set(prev); next.has(i) ? next.delete(i) : next.add(i); return next })
 
   const pkg = packages.find(p => p.id === packageId)!
   const isOngoing = pkg.sessionCount === 0
@@ -262,44 +275,72 @@ function AssignPackageFromScheduleModalInner({
   // flag any proposal whose interval overlaps. Refetches when the date
   // range covered by proposals changes.
   const [existing, setExisting] = useState<{ id: string; title: string; scheduledAt: string; durationMins: number }[]>([])
+  // Google Calendar busy blocks over the same range, so the screen "already
+  // knows" about a Google event at a proposed time — not just PupManager sessions.
+  // Seeded from the schedule's already-loaded busy blocks so a clash shows the
+  // instant the modal opens; the live fetch below then refreshes it.
+  const [busy, setBusy] = useState<{ startsAt: string; endsAt: string; title?: string | null }[]>(initialBusy)
   const placed = proposals.map(p => p.at).filter((d): d is Date => d !== null)
   const rangeFromIso = placed.length > 0 ? new Date(placed[0].getTime() - 60 * 60 * 1000).toISOString() : null
   const rangeToIso = placed.length > 0
     ? new Date(placed[placed.length - 1].getTime() + pkg.durationMins * 60 * 1000 + 60 * 60 * 1000).toISOString()
     : null
   useEffect(() => {
-    if (!rangeFromIso || !rangeToIso) { setExisting([]); return }
+    if (!rangeFromIso || !rangeToIso) { setExisting([]); return } // keep the seeded busy
     let cancelled = false
     fetch(`/api/schedule/range?from=${encodeURIComponent(rangeFromIso)}&to=${encodeURIComponent(rangeToIso)}`)
       .then(r => r.ok ? r.json() : [])
       .then(data => { if (!cancelled) setExisting(data) })
       .catch(() => {})
+    // LIVE Google FreeBusy over the proposal range (not the cached grid strips),
+    // so a Google event that hasn't synced to the strips yet is still caught the
+    // moment the modal is open. busyConflicts = [{ startsAt, endsAt }].
+    fetch(`/api/schedule/conflicts?start=${encodeURIComponent(rangeFromIso)}&end=${encodeURIComponent(rangeToIso)}`)
+      .then(r => r.ok ? r.json() : { busyConflicts: [] })
+      .then(d => { if (!cancelled) setBusy(Array.isArray(d.busyConflicts) ? d.busyConflicts : []) })
+      .catch(() => {})
     return () => { cancelled = true }
   }, [rangeFromIso, rangeToIso])
 
-  function conflictFor(at: Date): { id: string; title: string; scheduledAt: string } | null {
+  function conflictFor(at: Date): { title: string; scheduledAt: string } | null {
     const startA = at.getTime()
     const endA = startA + pkg.durationMins * 60 * 1000
     for (const s of existing) {
       const startB = new Date(s.scheduledAt).getTime()
       const endB = startB + s.durationMins * 60 * 1000
-      if (startA < endB && startB < endA) return { id: s.id, title: s.title, scheduledAt: s.scheduledAt }
+      if (startA < endB && startB < endA) return { title: s.title, scheduledAt: s.scheduledAt }
+    }
+    // Then the trainer's own Google Calendar events (named when we have the title).
+    for (const b of busy) {
+      const startB = new Date(b.startsAt).getTime()
+      const endB = new Date(b.endsAt).getTime()
+      if (startA < endB && startB < endA) {
+        return { title: b.title ? `“${b.title}” (Google Calendar)` : 'a Google Calendar event', scheduledAt: b.startsAt }
+      }
     }
     return null
   }
-  const conflictsCount = proposals.filter(p => p.at && conflictFor(p.at)).length
+  // Clashing sessions the trainer hasn't yet ticked "book anyway" on — blocks submit.
+  const unresolvedConflicts = proposals.filter((p, i) => p.at && conflictFor(p.at) && !overrides.has(i)).length
 
   async function handleSubmit() {
     if (placedCount === 0) {
       setError('No availability found for any session. Add availability slots first.')
       return
     }
-    setSubmitting(true)
-    setError(null)
+    // Every clashing session must have its "Book anyway" box ticked first.
+    if (unresolvedConflicts > 0) {
+      setError('Some sessions are double-booked. Tick “Book anyway” on each, or change the time.')
+      return
+    }
+
     const sessionDates = proposals
       .map(p => p.at)
       .filter((d): d is Date => d !== null)
       .map(d => d.toISOString())
+
+    setSubmitting(true)
+    setError(null)
 
     const res = await fetch(`/api/clients/${clientId}/packages`, {
       method: 'POST',
@@ -460,6 +501,7 @@ function AssignPackageFromScheduleModalInner({
             <div className="flex flex-col gap-1.5">
               {proposals.map((p, i) => {
                 const conflict = p.at ? conflictFor(p.at) : null
+                const overridden = overrides.has(i)
                 return (
                   <div
                     key={i}
@@ -467,17 +509,21 @@ function AssignPackageFromScheduleModalInner({
                       !p.at
                         ? 'bg-amber-50 border border-amber-200'
                         : conflict
-                          ? 'bg-amber-50 border border-amber-200'
+                          ? 'bg-red-50 border border-red-200'
                           : 'bg-slate-50'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-slate-600 flex items-center gap-1.5">
-                        {(!p.at || conflict) && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
+                        {!p.at
+                          ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                          : conflict
+                            ? <AlertTriangle className="h-3.5 w-3.5 text-red-500" />
+                            : null}
                         Session {i + 1}{isOngoing ? '' : `/${pkg.sessionCount}`}
                       </span>
                       {p.at ? (
-                        <span className="text-slate-900 font-medium">
+                        <span className={conflict ? 'text-red-700 font-medium' : 'text-slate-900 font-medium'}>
                           {p.at.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' })}
                           {' · '}
                           {p.at.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
@@ -489,21 +535,26 @@ function AssignPackageFromScheduleModalInner({
                       )}
                     </div>
                     {conflict && (
-                      <p className="text-[11px] text-amber-700 ml-5">
-                        Already booked: {conflict.title}
-                        {' at '}
-                        {new Date(conflict.scheduledAt).toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                      </p>
+                      <div className="ml-5 flex flex-col gap-1.5">
+                        <p className="text-[11px] font-semibold text-red-700">
+                          Double-booked — clashes with {conflict.title} at{' '}
+                          {new Date(conflict.scheduledAt).toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })}.
+                        </p>
+                        <label className="inline-flex cursor-pointer select-none items-center gap-2 text-[11px] font-medium text-red-700">
+                          <input
+                            type="checkbox"
+                            checked={overridden}
+                            onChange={() => toggleOverride(i)}
+                            className="h-3.5 w-3.5 rounded border-red-300 text-red-600 focus:ring-red-500"
+                          />
+                          Book anyway — override the clash
+                        </label>
+                      </div>
                     )}
                   </div>
                 )
               })}
             </div>
-            {conflictsCount > 0 && (
-              <p className="text-[11px] text-amber-700 mt-2">
-                {conflictsCount} session{conflictsCount > 1 ? 's' : ''} overlap an existing booking. Pick a different time or proceed and resolve manually.
-              </p>
-            )}
             {anyMissing && (
               <p className="text-[11px] text-amber-700 mt-2">
                 {pkg.sessionCount - placedCount} of {pkg.sessionCount} sessions could not be placed.
@@ -560,12 +611,13 @@ function AssignPackageFromScheduleModalInner({
             <Button
               onClick={handleSubmit}
               loading={submitting}
-              disabled={placedCount === 0}
-              variant={allPlaced ? 'primary' : 'primary'}
+              disabled={placedCount === 0 || unresolvedConflicts > 0}
             >
-              {allPlaced
-                ? 'Assign & create sessions'
-                : `Create ${placedCount} session${placedCount === 1 ? '' : 's'}`}
+              {unresolvedConflicts > 0
+                ? `Resolve ${unresolvedConflicts} clash${unresolvedConflicts > 1 ? 'es' : ''} to continue`
+                : allPlaced
+                  ? 'Assign & create sessions'
+                  : `Create ${placedCount} session${placedCount === 1 ? '' : 's'}`}
             </Button>
             <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
           </div>

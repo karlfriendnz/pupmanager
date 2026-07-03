@@ -23,5 +23,14 @@ export async function DELETE(
   if (!found) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   await prisma.blackoutPeriod.delete({ where: { id: blackoutId } })
+
+  // Best-effort: remove the mirrored all-day Google Calendar event. Never breaks.
+  try {
+    const { deleteGoogleEvents } = await import('@/lib/google-calendar-sync')
+    await deleteGoogleEvents(trainerId, [found.googleEventId])
+  } catch {
+    // Non-critical
+  }
+
   return NextResponse.json({ ok: true })
 }

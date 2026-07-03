@@ -21,6 +21,7 @@ import {
 } from './assign-package-from-schedule'
 import { SlotTypeChooser, type SlotAddType } from './slot-type-chooser'
 import { NewWalkModal } from './new-walk-modal'
+import { useBookingConflicts } from '@/lib/use-booking-conflicts'
 import { ClassFormModal } from '../classes/class-form-modal'
 import { ScheduleSettings } from './schedule-settings'
 import { ScheduleReport } from './schedule-report'
@@ -155,6 +156,15 @@ interface Blackout {
   reason: string | null
   startDate: string  // YYYY-MM-DD inclusive
   endDate: string    // YYYY-MM-DD inclusive
+}
+
+// A "busy" block imported (one-way) from the trainer's own Google Calendar. We
+// only ever know WHEN they're busy, never what the event is — so it renders as a
+// greyed-out, detail-less strip. Advisory only; never blocks scheduling.
+interface BusyBlock {
+  startsAt: string // ISO instant
+  endsAt: string   // ISO instant
+  title?: string | null // the Google event's title, for the hover popup
 }
 
 // The trainer's configured timezone, provided once at the ScheduleView
@@ -316,6 +326,66 @@ function AvailStrip({ slot, dayDate, onDelete, startHour, pxPerHour }: {
         </button>
       </div>
     </>
+  )
+}
+
+// ─── Google "busy" strip ──────────────────────────────────────────────────────
+
+// A grey "busy" block showing WHEN the trainer is busy in their own Google
+// Calendar. Hovering pops up the event's title + time. Renders behind sessions
+// so a PupManager booking always sits on top; clicks pass through to the column
+// (so you can still book over it). Positioned on the block's start day, clamped
+// to the visible hour range.
+function BusyStrip({ block, dayDate, tz, startHour, endHour, pxPerHour }: {
+  block: BusyBlock
+  dayDate: Date
+  tz: string
+  startHour: number
+  endHour: number
+  pxPerHour: number
+}) {
+  if (ymdInTz(block.startsAt, tz) !== toDateStr(dayDate)) return null
+
+  // Position by the block's TRUE local start/end minutes, clamped to the visible
+  // hours — rendering only the visible slice.
+  const startMin = minutesIntoDayInTz(block.startsAt, tz)
+  const endMin = startMin + (new Date(block.endsAt).getTime() - new Date(block.startsAt).getTime()) / 60000
+  const gridStartMin = startHour * 60
+  const gridEndMin = endHour * 60
+  const visTop = Math.max(startMin, gridStartMin)
+  const visEnd = Math.min(endMin, gridEndMin)
+  if (visEnd <= visTop) return null // entirely outside the visible hours
+
+  const top = ((visTop - gridStartMin) / 60) * pxPerHour
+  const height = Math.max(4, ((visEnd - visTop) / 60) * pxPerHour)
+
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz })
+  const timeRange = `${fmt(block.startsAt)} – ${fmt(block.endsAt)}`
+  const label = block.title || 'Busy'
+
+  return (
+    // Outer wrapper is the hover target (no clip, so the popup can overflow) and
+    // is click-transparent so a click still bubbles to the column to book.
+    <div className="group absolute left-0.5 right-0.5" style={{ top, height }} title={`${label} · ${timeRange}`}>
+      <div
+        className="h-full w-full overflow-hidden rounded-md border-l-2 border-slate-300 bg-slate-200/70 transition-colors group-hover:bg-slate-300/80"
+        style={{
+          backgroundImage:
+            'repeating-linear-gradient(45deg, rgba(148,163,184,0.18) 0, rgba(148,163,184,0.18) 6px, transparent 6px, transparent 12px)',
+        }}
+      >
+        <span className="px-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500 leading-tight">
+          Busy
+        </span>
+      </div>
+      {/* Hover popup — what the busy time is. */}
+      <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-1 hidden w-max max-w-[220px] -translate-x-1/2 rounded-lg bg-slate-900 px-2.5 py-1.5 shadow-xl group-hover:block">
+        <p className="truncate text-[11px] font-semibold leading-tight text-white">{label}</p>
+        <p className="text-[10px] leading-tight text-slate-300">{timeRange}</p>
+        <p className="mt-0.5 text-[9px] uppercase tracking-wide text-slate-400">Google Calendar</p>
+      </div>
+    </div>
   )
 }
 
@@ -528,6 +598,7 @@ function WeekGrid({
   sessions,
   availSlots,
   blackouts,
+  busyBlocks,
   today,
   selectedDate,
   onSlotClick,
@@ -548,6 +619,7 @@ function WeekGrid({
   sessions: Session[]
   availSlots: AvailSlot[]
   blackouts: Blackout[]
+  busyBlocks: BusyBlock[]
   today: string
   selectedDate: string
   onSlotClick: (dateStr: string, time: string) => void
@@ -921,6 +993,19 @@ function WeekGrid({
                 {/* Availability strips */}
                 {availSlots.map((slot) => (
                   <AvailStrip key={slot.id} slot={slot} dayDate={d} onDelete={onDeleteAvail} startHour={startHour} pxPerHour={pxPerHour} />
+                ))}
+
+                {/* Google Calendar "busy" strips — greyed out, no details. */}
+                {busyBlocks.map((block, i) => (
+                  <BusyStrip
+                    key={`busy-${i}`}
+                    block={block}
+                    dayDate={d}
+                    tz={tz}
+                    startHour={startHour}
+                    endHour={endHour}
+                    pxPerHour={pxPerHour}
+                  />
                 ))}
 
                 {/* Sessions that belong to this day */}
@@ -1602,6 +1687,8 @@ function SessionModal({
     return () => { cancelled = true }
   }, [clientId])
 
+  const { confirmBooking } = useBookingConflicts()
+
   async function handlePackageChange(nextAssignmentId: string | null) {
     setSavingPackage(true)
     const before = { clientPackageId: session.clientPackageId, packageColor: session.packageColor }
@@ -1691,27 +1778,31 @@ function SessionModal({
   const [conflict, setConflict] = useState<{ id: string; title: string; scheduledAt: string } | null>(null)
   useEffect(() => {
     if (!draftIso || draftDuration <= 0) { setConflict(null); return }
-    const start = new Date(draftIso).getTime()
-    const end = start + draftDuration * 60 * 1000
     let cancelled = false
-    fetch(`/api/schedule/range?from=${encodeURIComponent(new Date(start - 60 * 60 * 1000).toISOString())}&to=${encodeURIComponent(new Date(end + 60 * 60 * 1000).toISOString())}`)
-      .then(r => r.ok ? r.json() : [])
-      .then((rows: { id: string; title: string; scheduledAt: string; durationMins: number }[]) => {
-        if (cancelled) return
-        for (const s of rows) {
-          if (s.id === session.id) continue
-          const startB = new Date(s.scheduledAt).getTime()
-          const endB = startB + s.durationMins * 60 * 1000
-          if (start < endB && startB < end) {
-            setConflict({ id: s.id, title: s.title, scheduledAt: s.scheduledAt })
-            return
-          }
-        }
-        setConflict(null)
-      })
-      .catch(() => setConflict(null))
-    return () => { cancelled = true }
-  }, [draftIso, draftDuration, session.id])
+    // Live check via the shared endpoint: the assignee's own sessions AND a LIVE
+    // Google FreeBusy for this exact window (so a not-yet-synced Google event is
+    // still caught while the modal is open), excluding this session itself.
+    const params = new URLSearchParams({
+      start: new Date(draftIso).toISOString(),
+      end: new Date(new Date(draftIso).getTime() + draftDuration * 60 * 1000).toISOString(),
+      excludeSessionId: session.id,
+    })
+    if (session.assignedMembershipId) params.set('membershipId', session.assignedMembershipId)
+    const timer = setTimeout(() => {
+      fetch(`/api/schedule/conflicts?${params.toString()}`)
+        .then(r => r.ok ? r.json() : { sessionConflicts: [], busyConflicts: [] })
+        .then((d: { sessionConflicts?: { id: string; title: string; scheduledAt: string; label: string | null }[]; busyConflicts?: { startsAt: string; endsAt: string }[] }) => {
+          if (cancelled) return
+          const sc = d.sessionConflicts?.[0]
+          const bc = d.busyConflicts?.[0]
+          if (sc) setConflict({ id: sc.id, title: sc.label || sc.title, scheduledAt: sc.scheduledAt })
+          else if (bc) setConflict({ id: 'google', title: 'a Google Calendar event', scheduledAt: bc.startsAt })
+          else setConflict(null)
+        })
+        .catch(() => setConflict(null))
+    }, 300)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [draftIso, draftDuration, session.id, session.assignedMembershipId])
 
   async function saveDraft(scope: 'this' | 'following') {
     setDraftError(null)
@@ -1724,6 +1815,15 @@ function SessionModal({
       setDraftError('Invalid date or time')
       return
     }
+    // Confirm-to-override if the new time clashes with the same trainer's other
+    // sessions or a Google event (excluding this session itself).
+    const proceed = await confirmBooking({
+      startIso: iso,
+      durationMins: draftDuration,
+      membershipId: session.assignedMembershipId,
+      excludeSessionId: session.id,
+    })
+    if (!proceed) return
     setSavingDraft(true)
     const updates = { scheduledAt: iso, durationMins: draftDuration }
     const url = `/api/schedule/${session.id}${scope === 'following' ? '?scope=following' : ''}`
@@ -2601,10 +2701,12 @@ export function ScheduleView({
   clientExtras: initialClientExtras,
   members = [],
   showHints = false,
+  initialBusyBlocks = [],
 }: {
   tz: string
   sessions: Session[]
   availabilitySlots: AvailSlot[]
+  initialBusyBlocks?: BusyBlock[]
   clients: ClientOption[]
   packages: PkgOption[]
   selectedDate: string
@@ -2686,7 +2788,11 @@ export function ScheduleView({
   const [sessions, setSessions]         = useState(initialSessions)
   const [availSlots, setAvailSlots]     = useState(initialAvailSlots)
   const [blackouts, setBlackouts]       = useState<Blackout[]>([])
+  // Seeded from the server (SSR) so the grey "busy" strips are painted with the
+  // page — no post-mount fetch flash. Re-seeded when a new week's data arrives.
+  const [busyBlocks, setBusyBlocks]     = useState<BusyBlock[]>(initialBusyBlocks)
   const [showAvail, setShowAvail]       = useState(false)
+  const { confirmBooking }              = useBookingConflicts()
   const [showReport, setShowReport]     = useState(false)
 
   // The onboarding wizard's "set your hours" step links to /schedule#availability
@@ -2727,6 +2833,28 @@ export function ScheduleView({
       .then(r => r.ok ? r.json() : [])
       .then(setBlackouts)
       .catch(() => {})
+  }, [])
+  // Google "busy" times arrive server-rendered (initialBusyBlocks) so the strips
+  // paint instantly (cached, possibly a little stale). Keep in sync if a later
+  // RSC render (e.g. week navigation) delivers a fresh set.
+  useEffect(() => { setBusyBlocks(initialBusyBlocks) }, [initialBusyBlocks])
+  // Then, in the background after mount, pull the member's CURRENT Google
+  // calendar (live) and update the strips — so an event added in Google shows up
+  // within a second or two of opening the schedule, not on the next 3-hourly
+  // cron. Throttled to at most once every 2 minutes per browser session so
+  // repeated visits don't hammer Google's API.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const KEY = 'pm-busy-refreshed-at'
+    const last = Number(sessionStorage.getItem(KEY) || 0)
+    if (Date.now() - last < 2 * 60_000) return
+    sessionStorage.setItem(KEY, String(Date.now()))
+    let cancelled = false
+    fetch('/api/google-calendar/busy/refresh', { method: 'POST' })
+      .then(r => r.ok ? r.json() : { busy: [] })
+      .then(d => { if (!cancelled && Array.isArray(d.busy)) setBusyBlocks(d.busy) })
+      .catch(() => {})
+    return () => { cancelled = true }
   }, [])
   // For the package-assign modal: { date: YYYY-MM-DD, time?: HH:mm }. When
   // opened from a calendar slot, time is the exact slot time so session 1 is
@@ -2856,6 +2984,17 @@ export function ScheduleView({
   async function handleSessionDrop(sessionId: string, newIso: string) {
     const dragged = sessions.find(s => s.id === sessionId)
     if (!dragged) return
+
+    // Confirm-to-override BEFORE committing the move if the new time clashes with
+    // the same trainer's other sessions or a Google event. Cancel = snap back
+    // (nothing moved yet — we return before the optimistic update).
+    const proceedDrop = await confirmBooking({
+      startIso: newIso,
+      durationMins: dragged.durationMins,
+      membershipId: dragged.assignedMembershipId,
+      excludeSessionId: sessionId,
+    })
+    if (!proceedDrop) { router.refresh(); return }
 
     const deltaMs = new Date(newIso).getTime() - new Date(dragged.scheduledAt).getTime()
     const propagate = !!dragged.clientPackageId
@@ -3210,6 +3349,7 @@ export function ScheduleView({
             sessions={sessions}
             availSlots={availSlots}
             blackouts={blackouts}
+            busyBlocks={busyBlocks}
             today={today}
             selectedDate={selectedDate}
             onSlotClick={openAssignModal}
@@ -3254,6 +3394,7 @@ export function ScheduleView({
           availability={availSlots}
           defaultStartDate={assignAt.date}
           defaultStartTime={assignAt.time}
+          initialBusy={busyBlocks}
           onClose={() => setAssignAt(null)}
         />
       )}

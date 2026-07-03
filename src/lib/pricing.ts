@@ -45,7 +45,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero'
+export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments'
 
 export interface AddonDef {
   id: AddonId
@@ -62,6 +62,10 @@ export interface AddonDef {
   // touching Stripe and never appears at checkout (off until enabled, like every
   // add-on). Price is 0 in every currency.
   free?: boolean
+  // When true this add-on is ON by default (a core feature living on the Add-ons
+  // page), enabled unless the trainer explicitly turns it off. Contrast the
+  // usual "off until enabled" add-ons. Implies free.
+  defaultOn?: boolean
   price: Record<CurrencyCode, number>
 }
 
@@ -105,6 +109,13 @@ export const ADDONS: AddonDef[] = [
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
   {
+    id: 'googlecalendar',
+    name: 'Google Calendar',
+    description: 'Push your sessions, classes and blocked-out time straight into your own Google Calendar — always up to date, on every device.',
+    free: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
     id: 'timesheets',
     name: 'Timesheets',
     description: 'Track the hours your team works across sessions, classes and admin, then turn them into payroll-ready totals.',
@@ -115,6 +126,47 @@ export const ADDONS: AddonDef[] = [
     id: 'todos',
     name: 'To-do & brain dump',
     description: 'A quick scratchpad on your dashboard — jot to-dos and brain-dump notes so nothing slips between sessions.',
+    free: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
+    id: 'clientapp',
+    name: 'Client app',
+    description: 'Give your clients a branded app to see sessions, message you, and follow their dog’s progress. Turn off if you just want the admin side.',
+    free: true,
+    defaultOn: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
+    id: 'notes',
+    name: 'Session notes',
+    description: 'Record write-ups and progress notes against each session. Turn off for a simpler, notes-free session view.',
+    free: true,
+    defaultOn: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
+    id: 'classes',
+    name: 'Group classes',
+    description: 'Run class cohorts with shared sessions and enrolments. Turn off if you only do 1:1 work.',
+    free: true,
+    defaultOn: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
+    id: 'library',
+    name: 'Training library',
+    description: 'Build a reusable library of exercises and tasks to drop into sessions and homework.',
+    free: true,
+    defaultOn: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
+    // Not a normal toggle — enabling means connecting Stripe. The card is a link
+    // to Settings → Payments; its "on" state mirrors connectChargesEnabled.
+    id: 'payments',
+    name: 'Client payments',
+    description: 'Take card payments from clients for sessions and invoices — connect your Stripe and get paid in-app. Pay-as-you-go, no monthly fee.',
     free: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },

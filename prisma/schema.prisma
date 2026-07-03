@@ -298,6 +298,16 @@ model TrainerProfile {
   // true for accounts that had a phone before this flag existed, to preserve
   // their prior always-shown behaviour.
   showPhoneToClients Boolean @default(false)
+  // Feature toggles set during onboarding (and editable in Settings). Not every
+  // trainer runs classes, records notes, or wants a client-facing app — these
+  // gate those surfaces. Default on so existing accounts are unaffected.
+  clientAppEnabled   Boolean @default(true)
+  classesEnabled     Boolean @default(true)
+  notesEnabled       Boolean @default(true)
+  // Team emails captured during onboarding but NOT yet invited — the owner
+  // sends them from the dashboard once they've set things up, so staff don't
+  // open a blank system. Cleared when the invites are actually sent.
+  pendingTeamInvites String[] @default([])
   logoUrl            String?
   website            String? // public website URL, shown to clients as a link in the app header
   publicEmail        String? // public contact email shown to clients (may differ from login email)
@@ -551,11 +561,70 @@ model XeroConnection {
   bankAccountName  String?
   salesAccountCode String?
   taxType          String?
+  // Curated shortlist of income accounts the trainer uses — [{ code, name }].
+  // Product/package/class create forms offer these when assigning an account.
+  accountShortlist Json?
 
   connectedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("xero_connections")
+}
+
+// ─── Google Calendar integration ──────────────────────────────────────────────
+// Per-STAFF-MEMBER, ONE-WAY sync (PupManager → that person's own Google
+// Calendar). Keyed by the individual's TrainerMembership, NOT the company — so
+// each staff member connects their own account and their own sessions land in
+// their own calendar. companyId is denormalised for scoping/gating queries.
+// One row per connected member; deleting the row == disconnected. Google refresh
+// tokens normally do NOT rotate, but the access token is short-lived and cached
+// with its expiry so we only refresh when stale — and we persist a rotated
+// refresh token on the rare occasion one is returned, or the connection dies.
+model GoogleCalendarConnection {
+  id           String            @id @default(cuid())
+  membershipId String            @unique
+  membership   TrainerMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  // The business this member belongs to (== TrainerMembership.companyId). Kept
+  // here so the add-on gate + cron scoping don't need a join.
+  companyId    String
+
+  refreshToken         String    @db.Text
+  accessToken          String?   @db.Text
+  accessTokenExpiresAt DateTime?
+
+  // Which of the member's calendars events are written to. "primary" is their
+  // default calendar; kept configurable so a member could point sync at a
+  // dedicated "PupManager" calendar later without a schema change.
+  calendarId String @default("primary")
+
+  connectedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("google_calendar_connections")
+}
+
+// Busy times imported FROM a connected member's Google Calendar (the two-way
+// half: Google → PupManager). Refreshed as a window (now → ~60 days) on connect
+// and by the busy-refresh cron — delete + reinsert per member each time. Used
+// only to WARN (never block) when a new/edited session overlaps something the
+// member already has in their personal calendar.
+model GoogleBusyBlock {
+  id           String            @id @default(cuid())
+  membershipId String
+  membership   TrainerMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  companyId    String
+  startsAt     DateTime
+  endsAt       DateTime
+  // The event's title, for the schedule hover popup. Null for busy blocks with
+  // no summary (or imported via FreeBusy, which returns no details).
+  title        String?
+  // Google's event id for the busy block, when returned (informational).
+  sourceId     String?
+  createdAt    DateTime          @default(now())
+
+  @@index([membershipId, startsAt])
+  @@map("google_busy_blocks")
 }
 
 // ─── Promo codes ──────────────────────────────────────────────────────────────
@@ -628,6 +697,11 @@ model TrainerMembership {
 
   // Dashboard to-do items assigned to this member.
   assignedTodos TrainerTodo[] @relation("TodoAssignee")
+
+  // This member's OWN Google Calendar connection (per-staff, one-way sync) and
+  // the busy-times imported from it (for soft double-booking warnings).
+  googleCalendarConnection GoogleCalendarConnection?
+  googleBusyBlocks         GoogleBusyBlock[]
 
   @@unique([companyId, userId])
   @@index([companyId])
@@ -2036,6 +2110,10 @@ model AvailabilitySlot {
   firstDate    DateTime? @db.Date
   createdAt    DateTime  @default(now())
 
+  // Mirrored Google Calendar event id (when the trainer has Google Calendar
+  // sync on). Null = not yet mirrored / not connected.
+  googleEventId String?
+
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
 
   @@index([trainerId])
@@ -2051,6 +2129,9 @@ model BlackoutPeriod {
   startDate DateTime @db.Date
   endDate   DateTime @db.Date
   createdAt DateTime @default(now())
+
+  // Mirrored Google Calendar (all-day) event id when the trainer has sync on.
+  googleEventId String?
 
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
 

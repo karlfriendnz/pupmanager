@@ -53,6 +53,14 @@ export async function PATCH(
     data,
   })
 
+  // Best-effort: push the edit to the trainer's Google Calendar. Never breaks.
+  try {
+    const { syncAvailabilitySlotToGoogle } = await import('@/lib/google-calendar-sync')
+    await syncAvailabilitySlotToGoogle(slotId)
+  } catch {
+    // Non-critical
+  }
+
   return NextResponse.json(updated)
 }
 
@@ -78,5 +86,14 @@ export async function DELETE(
   if (!slot) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   await prisma.availabilitySlot.delete({ where: { id: slotId } })
+
+  // Best-effort: remove the mirrored Google Calendar event. Never breaks.
+  try {
+    const { deleteGoogleEvents } = await import('@/lib/google-calendar-sync')
+    await deleteGoogleEvents(trainerId, [slot.googleEventId])
+  } catch {
+    // Non-critical
+  }
+
   return NextResponse.json({ ok: true })
 }

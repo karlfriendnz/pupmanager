@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useBookingConflicts } from '@/lib/use-booking-conflicts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
@@ -79,6 +80,7 @@ export function ClassFormModal({
   const [forms, setForms] = useState<{ id: string; name: string }[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const { confirmBooking } = useBookingConflicts()
 
   // Only worth showing the multi-select when the company has 2+ team members.
   const showTrainerPicker = teamMembers.length > 1
@@ -108,6 +110,17 @@ export function ClassFormModal({
     if (!name.trim() || !startDate) {
       setError('Class name and first session date/time are required.')
       return
+    }
+    // Confirm-to-override if the first class session clashes with what the
+    // assigned trainer (first assignee, else owner) already has.
+    if (mode !== 'edit') {
+      const firstAssignee = showTrainerPicker && assignedIds.length > 0 ? assignedIds[0] : undefined
+      const proceed = await confirmBooking({
+        startIso: new Date(startDate).toISOString(),
+        durationMins: Math.max(5, Math.floor(Number(durationMins) || 60)),
+        membershipId: firstAssignee,
+      })
+      if (!proceed) return
     }
     setSaving(true)
     try {

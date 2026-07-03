@@ -1,17 +1,20 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { exchangeCodeForTokens } from '@/lib/google-calendar'
+import { refreshBusyForMembership } from '@/lib/google-calendar-sync'
 
+// OAuth2 redirect target. Verifies the CSRF state, exchanges the code for
+// tokens, and upserts the member's GoogleCalendarConnection (keyed by membership).
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
   const stateToken = searchParams.get('state')
-  const fail = `${process.env.NEXT_PUBLIC_APP_URL}/schedule?error=gcal`
+  const settings = `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=googlecalendar`
+  const fail = `${settings}&googlecalendar=error`
 
-  if (!code || !stateToken) {
-    return NextResponse.redirect(fail)
-  }
+  if (!code || !stateToken) return NextResponse.redirect(fail)
 
-  // Verify the CSRF state token and find the associated user
+  // Verify + consume the one-time state token, recovering the membership id.
   const stateRecord = await prisma.verificationToken.findFirst({
     where: {
       token: stateToken,
@@ -19,42 +22,48 @@ export async function GET(req: Request) {
       expires: { gt: new Date() },
     },
   })
-
-  if (!stateRecord) {
-    return NextResponse.redirect(fail)
-  }
-
-  // Delete the state token — one-time use
+  if (!stateRecord) return NextResponse.redirect(fail)
   await prisma.verificationToken.delete({
     where: { identifier_token: { identifier: stateRecord.identifier, token: stateToken } },
   })
+  const membershipId = stateRecord.identifier.replace('gcal-oauth:', '')
 
-  const userId = stateRecord.identifier.replace('gcal-oauth:', '')
-
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code,
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/google-calendar/callback`,
-      grant_type: 'authorization_code',
-    }),
+  // Resolve the company from the membership (also validates the id is still real).
+  const membership = await prisma.trainerMembership.findUnique({
+    where: { id: membershipId },
+    select: { companyId: true },
   })
+  if (!membership) return NextResponse.redirect(fail)
 
-  const tokens = await tokenRes.json()
-  if (!tokens.refresh_token) {
+  try {
+    const tokens = await exchangeCodeForTokens(code)
+    // Without a refresh token we can't keep the connection alive — treat as a
+    // failed connect (usually means prompt=consent wasn't honoured).
+    if (!tokens.refresh_token) return NextResponse.redirect(fail)
+
+    const data = {
+      companyId: membership.companyId,
+      refreshToken: tokens.refresh_token,
+      accessToken: tokens.access_token,
+      accessTokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000 - 60 * 1000),
+    }
+    await prisma.googleCalendarConnection.upsert({
+      where: { membershipId },
+      create: { membershipId, ...data },
+      update: data,
+    })
+  } catch (err) {
+    console.error('[google-calendar] callback failed', err)
     return NextResponse.redirect(fail)
   }
 
-  await prisma.trainerProfile.update({
-    where: { userId },
-    data: {
-      googleCalendarRefreshToken: tokens.refresh_token,
-      googleCalendarConnected: true,
-    },
-  })
+  // Immediately pull the member's busy window so overlap warnings work right away.
+  // Best-effort — a failure here doesn't undo the successful connect.
+  try {
+    await refreshBusyForMembership(membershipId)
+  } catch (err) {
+    console.error('[google-calendar] initial busy refresh failed', err)
+  }
 
-  return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/schedule?gcal=connected`)
+  return NextResponse.redirect(`${settings}&googlecalendar=connected`)
 }

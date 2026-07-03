@@ -142,9 +142,24 @@ export default async function SchedulePage({
     .filter(c => c.startsWith('custom:'))
     .map(c => c.slice('custom:'.length))
 
+  // The current member's imported Google "busy" times, server-rendered so the
+  // grey strips are in the first paint of the schedule instead of a slow
+  // client fetch after mount. Window matches what the client used (now → ~63d),
+  // scoped to THIS member. Empty when the member isn't connected / no membership.
+  const busyWindowStart = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+  const busyWindowEnd = new Date(Date.now() + 63 * 24 * 60 * 60 * 1000)
+  const busyBlocksP = ctx.membershipId
+    ? prisma.googleBusyBlock.findMany({
+        where: { membershipId: ctx.membershipId, startsAt: { lt: busyWindowEnd }, endsAt: { gt: busyWindowStart } },
+        select: { startsAt: true, endsAt: true, title: true },
+        orderBy: { startsAt: 'asc' },
+        take: 500,
+      })
+    : Promise.resolve([] as { startsAt: Date; endsAt: Date; title: string | null }[])
+
   // Single parallel fan-out — every independent query (incl. team members,
   // onboarding state, and the hidden-day probe) runs at once.
-  const [teamMembers, fabState, sessionsOnHiddenDays, customFields, sessions, availabilitySlots, clients, packages] = await Promise.all([
+  const [teamMembers, fabState, sessionsOnHiddenDays, customFields, sessions, availabilitySlots, clients, packages, busyBlocks] = await Promise.all([
     teamMembersP,
     fabStateP,
     sessionsOnHiddenDaysP,
@@ -212,6 +227,7 @@ export default async function SchedulePage({
       where: { trainerId: trainerProfile.id },
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
     }),
+    busyBlocksP,
   ])
 
   const showHints = fabState.show
@@ -319,6 +335,7 @@ export default async function SchedulePage({
         name: m.user.name ?? m.user.email,
         role: m.role,
       }))}
+      initialBusyBlocks={busyBlocks.map(b => ({ startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), title: b.title }))}
       availabilitySlots={availabilitySlots.map(s => ({
         ...s,
         date: s.date ? s.date.toISOString().split('T')[0] : null,
