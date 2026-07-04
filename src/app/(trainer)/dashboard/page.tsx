@@ -14,6 +14,8 @@ import { StreakChip } from '@/components/shared/streak-chip'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { TodoBrainDumpPanel } from './todo-braindump-panel'
 import { hasAddon, getEnabledAddons } from '@/lib/billing'
+import { AddonNudge } from '@/components/shared/addon-nudge'
+import { addonNudge, pickNudgeAddonId } from '@/components/shared/addon-nudge-registry'
 import { isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 import { OnboardingPanel } from './onboarding-panel'
 import { TeamInviteCard } from './team-invite-card'
@@ -64,7 +66,7 @@ export default async function DashboardPage({
     select: {
       businessName: true, logoUrl: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true,
       clientWelcomeNote: true, website: true, phone: true, publicEmail: true, signupCountry: true,
-      payoutCurrency: true, pendingTeamInvites: true,
+      payoutCurrency: true, pendingTeamInvites: true, connectChargesEnabled: true,
       subscriptionStatus: true, trialEndsAt: true, stripeSubscriptionId: true,
       user: { select: { email: true } },
     },
@@ -293,6 +295,17 @@ export default async function DashboardPage({
     id: m.id,
     name: m.user.name?.trim() || m.user.email || 'Trainer',
   }))
+
+  // Add-on nudge: rotate through the add-ons this trainer hasn't turned on yet,
+  // picking one at random each load. Exclude anything already active — the
+  // toggle-enabled set plus Payments when Stripe is connected (its "on" state is
+  // the connection, not a toggle). Coming-soon add-ons are filtered in the
+  // registry. Each nudge keeps its own localStorage dismissal via its `id`.
+  const activeAddonIds = new Set(enabledAddonSet)
+  if (brandingProfile?.connectChargesEnabled) activeAddonIds.add('payments')
+  const dashboardNudgeAddonId = pickNudgeAddonId(activeAddonIds)
+  const dashboardNudge = dashboardNudgeAddonId ? addonNudge(dashboardNudgeAddonId) : null
+  const isDevPreview = process.env.NODE_ENV === 'development'
 
   return (
     <>
@@ -593,6 +606,9 @@ export default async function DashboardPage({
           )}
         </div>
       </div>
+      {dashboardNudge && (
+        <AddonNudge id={`dashboard-${dashboardNudge.addonId}`} {...dashboardNudge} forceShow={isDevPreview} />
+      )}
     </>
   )
 }

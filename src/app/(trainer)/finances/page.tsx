@@ -1,7 +1,10 @@
 import { redirect } from 'next/navigation'
+import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
 import { PageHeader } from '@/components/shared/page-header'
+import { AddonNudge } from '@/components/shared/addon-nudge'
+import { addonNudge } from '@/components/shared/addon-nudge-registry'
 import { FinancesView } from './finances-view'
 import type { Metadata } from 'next'
 
@@ -12,12 +15,26 @@ export default async function FinancesPage() {
   if (!ctx) redirect('/login')
   if (!can('billing.view', ctx.role, ctx.permissions)) redirect('/dashboard')
 
+  // Nudge: promote taking card payments when Stripe isn't connected yet.
+  // Payments is enabled by connecting Stripe (charges_enabled), not a toggle,
+  // so gate on connectChargesEnabled — mirrors the schedule's googleConn check.
+  const profile = await prisma.trainerProfile.findUnique({
+    where: { id: ctx.companyId },
+    select: { connectChargesEnabled: true },
+  })
+  const isDevPreview = process.env.NODE_ENV === 'development'
+  const paymentsNudge = addonNudge('payments')
+  const showPaymentsNudge = (!profile?.connectChargesEnabled || isDevPreview) && !!paymentsNudge
+
   return (
     <>
       <PageHeader title="Finances" />
       <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-[960px] mx-auto">
         <FinancesView />
       </div>
+      {showPaymentsNudge && paymentsNudge && (
+        <AddonNudge id="finances-payments" {...paymentsNudge} forceShow={isDevPreview} />
+      )}
     </>
   )
 }

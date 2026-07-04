@@ -6,6 +6,9 @@ import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Inbox, ArrowRight, CheckCircle2, XCircle } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
+import { AddonNudge } from '@/components/shared/addon-nudge'
+import { addonNudge } from '@/components/shared/addon-nudge-registry'
+import { hasAddon } from '@/lib/billing'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Enquiries' }
@@ -51,6 +54,12 @@ export default async function EnquiriesPage({
   ])
 
   const countByStatus = Object.fromEntries(counts.map(c => [c.status, c._count._all]))
+
+  // Nudge: promote lead magnets (capture emails, grow the list) to trainers
+  // fielding enquiries, unless they've already switched it on.
+  const isDevPreview = process.env.NODE_ENV === 'development'
+  const leadMagnetNudge = addonNudge('leadmagnets')
+  const showLeadMagnetNudge = (!(await hasAddon(trainerId, 'leadmagnets')) || isDevPreview) && !!leadMagnetNudge
 
   return (
     <>
@@ -129,6 +138,9 @@ export default async function EnquiriesPage({
         </div>
       )}
       </div>
+      {showLeadMagnetNudge && leadMagnetNudge && (
+        <AddonNudge id="enquiries-leadmagnets" {...leadMagnetNudge} forceShow={isDevPreview} />
+      )}
     </>
   )
 }

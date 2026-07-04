@@ -34,6 +34,10 @@ export function AddonNudge({
   icon?: ReactNode
   /** Dev-only: show immediately, ignoring a prior dismissal (for local preview). */
   forceShow?: boolean
+  /** Ignored — lets a registry content object (which carries the add-on id) be
+   *  spread onto this component without a type error. The call site supplies the
+   *  real dismissal key via `id`. */
+  addonId?: string
 }) {
   // Start hidden to avoid an SSR/first-paint flash; reveal after we've checked
   // localStorage and let the page settle.

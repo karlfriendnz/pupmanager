@@ -1,12 +1,15 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
+import { hasAddon } from '@/lib/billing'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { UserPlus } from 'lucide-react'
 import { ClientsList } from './clients-list'
 import { QuickAddContact } from './quick-add-contact'
 import { PageHeader } from '@/components/shared/page-header'
+import { AddonNudge } from '@/components/shared/addon-nudge'
+import { addonNudge } from '@/components/shared/addon-nudge-registry'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Clients' }
@@ -193,6 +196,11 @@ export default async function ClientsPage({
     return t === 'active' ? '/clients' : `/clients?tab=${t}`
   }
 
+  // Nudge: promote bulk client email (Marketing) when it isn't switched on.
+  const isDevPreview = process.env.NODE_ENV === 'development'
+  const marketingNudge = addonNudge('marketing')
+  const showMarketingNudge = (!(await hasAddon(trainerId, 'marketing')) || isDevPreview) && !!marketingNudge
+
   return (
     <>
       <PageHeader
@@ -262,6 +270,9 @@ export default async function ClientsPage({
         searchScope={(['client', 'breed', 'dog'].includes(sp.scope ?? '') ? sp.scope : 'all') as 'all' | 'client' | 'breed' | 'dog'}
       />
       </div>
+      {showMarketingNudge && marketingNudge && (
+        <AddonNudge id="clients-marketing" {...marketingNudge} forceShow={isDevPreview} />
+      )}
     </>
   )
 }
