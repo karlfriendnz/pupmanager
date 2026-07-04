@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react'
 import { Mail, Download, CreditCard, Route, Trophy, ShoppingBag, Clock, Calculator } from 'lucide-react'
 import { GoogleGlyph } from './addon-nudge'
-import { addonPromoImage } from './addon-promos'
+import { addonPromoImage } from '@/lib/addon-promo-images'
 import { NUDGE_COPY, nudgeCtaHref } from '@/lib/addon-nudges'
 
 // Presentational half of the add-on nudge registry: it layers icons + hero art
@@ -37,14 +37,6 @@ const ICON: Record<string, ReactNode> = {
   xero: <Calculator className="h-5 w-5 text-teal-600" />,
 }
 
-// Per-add-on hero art. Reuse the Add-ons card image where one exists; supply a
-// sensible fallback for the connect-based add-ons (payments/xero) that carry a
-// bespoke promo without one.
-const IMAGE_FALLBACK: Record<string, { src: string; objectPosition?: string; translateX?: string }> = {
-  payments: { src: '/promo-shop-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
-  xero: { src: '/promo-timesheets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
-}
-
 /** The nudge content for an add-on, or null if we don't promote it. */
 export function addonNudge(addonId: string): AddonNudgeContent | null {
   const copy = NUDGE_COPY[addonId]
@@ -55,7 +47,8 @@ export function addonNudge(addonId: string): AddonNudgeContent | null {
     body: copy.body,
     ctaLabel: copy.ctaLabel,
     ctaHref: nudgeCtaHref(addonId),
-    image: addonPromoImage(addonId) ?? IMAGE_FALLBACK[addonId],
+    // Server-safe lookup; covers payments/xero too (see addon-promo-images.ts).
+    image: addonPromoImage(addonId) ?? undefined,
     icon: ICON[addonId],
   }
 }
