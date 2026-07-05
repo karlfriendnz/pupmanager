@@ -2098,6 +2098,11 @@ model Invoice {
   // Stripe `Payment` model stays exactly as-is.
   paymentId String? @unique
 
+  // Unguessable public pay-token — the key to the no-login pay page at
+  // /pay/<payToken>. cuid2 (high entropy) so the URL can't be enumerated;
+  // auto-generated for every invoice, backfilled for pre-existing rows.
+  payToken String? @unique @default(cuid(2))
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

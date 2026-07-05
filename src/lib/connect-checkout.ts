@@ -47,6 +47,12 @@ export interface CreatePaymentRecordInput {
 export interface CreateConnectCheckoutInput extends CreatePaymentRecordInput {
   successUrl: string
   cancelUrl: string
+  /**
+   * Extra Stripe metadata merged onto BOTH the Checkout Session and its
+   * PaymentIntent (so either webhook path can read it), e.g. { invoiceId }.
+   * paymentId/trainerId are always set and can't be overridden.
+   */
+  metadata?: Record<string, string>
 }
 
 /**
@@ -116,6 +122,7 @@ export async function createPaymentRecord(input: CreatePaymentRecordInput): Prom
 export async function mintCheckoutSession(
   paymentId: string,
   urls: { successUrl: string; cancelUrl: string },
+  extraMetadata?: Record<string, string>,
 ): Promise<string | null> {
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
@@ -145,10 +152,11 @@ export async function mintCheckoutSession(
         },
       })),
       payment_intent_data: {
-        metadata: { paymentId: payment.id },
+        // Merge extra keys (e.g. invoiceId) but never let them clobber paymentId.
+        metadata: { ...extraMetadata, paymentId: payment.id },
       },
       client_reference_id: payment.id,
-      metadata: { paymentId: payment.id, trainerId: payment.trainerId },
+      metadata: { ...extraMetadata, paymentId: payment.id, trainerId: payment.trainerId },
       success_url: urls.successUrl,
       cancel_url: urls.cancelUrl,
     },
@@ -167,6 +175,6 @@ export async function createConnectCheckout(
   input: CreateConnectCheckoutInput,
 ): Promise<{ url: string | null; paymentId: string }> {
   const paymentId = await createPaymentRecord(input)
-  const url = await mintCheckoutSession(paymentId, { successUrl: input.successUrl, cancelUrl: input.cancelUrl })
+  const url = await mintCheckoutSession(paymentId, { successUrl: input.successUrl, cancelUrl: input.cancelUrl }, input.metadata)
   return { url, paymentId }
 }

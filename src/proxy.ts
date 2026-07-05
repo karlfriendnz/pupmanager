@@ -14,6 +14,8 @@ const PUBLIC_PATHS = [
   '/api/form',   // public form submission API
   '/unsubscribe', // public bulk-email unsubscribe (HMAC-token gated inside)
   '/c/',         // public per-trainer branded client login (/c/<slug>) — trailing slash so it can't match /clients
+  '/pay/',       // public no-login invoice pay page (/pay/<payToken>) — trailing slash
+  '/api/pay/',   // public invoice checkout API (rate-limited, token-gated inside)
 
   '/concepts',   // TEMP: client-home redesign concept previews (mock data, no auth) — remove before ship
   '/concept-products', // TEMP: generated product images for the concept shop — remove before ship

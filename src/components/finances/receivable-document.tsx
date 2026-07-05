@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { X, Loader2, Check, Send, Printer, Pencil, Plus, Trash2 } from 'lucide-react'
+import { X, Loader2, Check, Send, Printer, Pencil, Plus, Trash2, Link2 } from 'lucide-react'
 
 // Shared receivable (invoice) helpers + the printable invoice-document modal.
 // Used by BOTH the Finances → Invoices tab and the client profile's Invoices
@@ -63,7 +63,7 @@ export interface RcvLine { id: string; description: string; quantity: number; un
 export interface RcvDetail {
   id: string; reference: string; description: string | null
   amountCents: number; amountPaidCents: number; currency: string; status: string
-  createdAt: string; sentAt: string | null; paidAt: string | null
+  createdAt: string; sentAt: string | null; paidAt: string | null; payToken: string | null
   xeroInvoiceId: string | null; xeroSyncStatus: 'SYNCED' | 'ERROR' | null; xeroSyncError: string | null
   lines: RcvLine[]
   client: { name: string | null; email: string | null; address: string | null; phone: string | null }
@@ -95,6 +95,7 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [draftLines, setDraftLines] = useState<DraftLine[]>([])
+  const [copied, setCopied] = useState(false)
 
   const load = useCallback(async () => {
     const d = await fetch(`/api/trainer/finances/receivables/${summary.id}`).then(r => (r.ok ? r.json() : null)).catch(() => null)
@@ -123,6 +124,8 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   const unpaidUnsent = view.status === 'UNPAID' && !view.sentAt
   // A paid or cancelled invoice is locked — only UNPAID is editable.
   const editable = view.status === 'UNPAID'
+  // Still-open invoices can be paid → offer the shareable public pay link.
+  const payable = view.status === 'UNPAID' || view.status === 'PARTIAL'
 
   // Live draft totals + validity.
   const draftCents = draftLines.map(draftLineCents)
@@ -146,6 +149,17 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   }
   function removeLine(i: number) {
     setDraftLines(ls => (ls.length <= 1 ? ls : ls.filter((_, idx) => idx !== i)))
+  }
+
+  async function copyPayLink() {
+    if (!data?.payToken) return
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/pay/${data.payToken}`)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } catch {
+      setMsg('Could not copy — copy the pay link manually.')
+    }
   }
 
   async function send() {
@@ -220,6 +234,11 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
               {editable && data && (
                 <button type="button" onClick={startEdit} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50">
                   <Pencil className="h-4 w-4" /> Edit
+                </button>
+              )}
+              {payable && data?.payToken && (
+                <button type="button" onClick={copyPayLink} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Link2 className="h-4 w-4" />} {copied ? 'Copied' : 'Copy pay link'}
                 </button>
               )}
               <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50">

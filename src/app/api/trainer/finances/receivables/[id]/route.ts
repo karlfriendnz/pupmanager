@@ -19,7 +19,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     where: { id, trainerId: ctx.companyId },
     select: {
       id: true, description: true, amountCents: true, amountPaidCents: true, currency: true,
-      status: true, sentAt: true, paidAt: true, createdAt: true,
+      status: true, sentAt: true, paidAt: true, createdAt: true, payToken: true,
       xeroInvoiceId: true, xeroSyncStatus: true, xeroSyncError: true,
       lines: {
         orderBy: { sortOrder: 'asc' },
@@ -59,6 +59,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     createdAt: invoice.createdAt.toISOString(),
     sentAt: invoice.sentAt?.toISOString() ?? null,
     paidAt: invoice.paidAt?.toISOString() ?? null,
+    payToken: invoice.payToken,
     xeroInvoiceId: invoice.xeroInvoiceId,
     xeroSyncStatus: invoice.xeroSyncStatus,
     xeroSyncError: invoice.xeroSyncError,

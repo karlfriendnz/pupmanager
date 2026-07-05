@@ -10,6 +10,7 @@ import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automa
 import { enrollInRun } from '@/lib/class-runs'
 import { sendEmail } from '@/lib/email'
 import { syncPaymentToXero } from '@/lib/xero-sync'
+import { settleInvoiceFromPayment } from '@/lib/invoicing'
 
 // Shape of PaymentItem.intent for a scheduled booking (PACKAGE / SESSION),
 // captured at checkout time and replayed here to create the calendar rows.
@@ -97,14 +98,14 @@ export async function POST(req: Request) {
         const piId = typeof session.payment_intent === 'string'
           ? session.payment_intent
           : session.payment_intent?.id ?? null
-        await markPaidAndFulfil(session.metadata?.paymentId ?? null, sandbox, piId, event.account ?? null)
+        await markPaidAndFulfil(session.metadata?.paymentId ?? null, sandbox, piId, event.account ?? null, session.metadata?.invoiceId ?? null)
         break
       }
       case 'payment_intent.succeeded': {
         // Belt-and-braces — the primary trigger is checkout.session.completed,
         // but this guarantees fulfilment if that event is missed. Idempotent.
         const pi = event.data.object as Stripe.PaymentIntent
-        await markPaidAndFulfil(pi.metadata?.paymentId ?? null, sandbox, pi.id, event.account ?? null)
+        await markPaidAndFulfil(pi.metadata?.paymentId ?? null, sandbox, pi.id, event.account ?? null, pi.metadata?.invoiceId ?? null)
         break
       }
       case 'charge.updated':
@@ -148,6 +149,7 @@ async function markPaidAndFulfil(
   eventSandbox: boolean,
   piId: string | null,
   eventAccount: string | null,
+  invoiceId: string | null = null,
 ) {
   if (!paymentId || !piId) return // not one of ours / no charge to verify against
 
@@ -260,11 +262,16 @@ async function markPaidAndFulfil(
     await fulfilClassEnrolments(payment.trainerId, payment.clientId, classItems)
   }
 
-  // Reconcile into Xero: ensure the invoice exists, then record the payment
-  // against it. Only on a real fulfilment (not a duplicate delivery), and only
-  // for client-attached payments. Best-effort — never throws, records its own
-  // status, so a Xero hiccup can't fail the webhook and trigger a Stripe retry.
-  if (didFulfil && payment.clientId) {
+  // Settle the receivable Invoice this payment was for (public pay page), or —
+  // for the other purchasables — reconcile the Payment into Xero directly. Only
+  // on a real fulfilment (not a duplicate delivery). Both are best-effort: they
+  // never throw, so a Xero hiccup can't fail the webhook and trigger a retry.
+  if (didFulfil && invoiceId) {
+    // Invoice payment: settleInvoiceFromPayment records the payment against the
+    // invoice's OWN Xero invoice — so we do NOT also call syncPaymentToXero
+    // (which would create a duplicate Xero invoice from the payment items).
+    await settleInvoiceFromPayment(invoiceId, paymentId)
+  } else if (didFulfil && payment.clientId) {
     await syncPaymentToXero(paymentId)
   }
 }

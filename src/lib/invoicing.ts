@@ -2,7 +2,7 @@ import { prisma } from './prisma'
 import { sendEmail } from './email'
 import { sendPush } from './push'
 import { ensureClientXeroContact } from './xero-sync'
-import { createXeroInvoice, fetchXeroInvoiceState } from './xero'
+import { createXeroInvoice, fetchXeroInvoiceState, createXeroPayment } from './xero'
 import { env } from './env'
 
 // Payment-method-agnostic receivables. When a *priced* package or product is
@@ -112,7 +112,7 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
           create: [{ description, quantity: 1, unitAmountCents: amountCents, amountCents, sortOrder: 0 }],
         },
       },
-      select: { id: true },
+      select: { id: true, payToken: true },
     })
 
     // Email/notify the client only when the trainer opted into auto-send. When
@@ -126,6 +126,7 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
         description,
         amountCents,
         currency,
+        payToken: invoice.payToken,
       }).catch((e) => console.error('[invoicing] notify failed', invoice.id, e))
     }
 
@@ -146,9 +147,9 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
 
 /**
  * Notify a client that a receivable has been issued: in-app notification, push,
- * and a branded email. Phase 1 has no Stripe pay link (that's Phase 2) — the
- * email is informational and links the client to their app home. Invoice
- * notifications aren't user-suppressible, so we send directly.
+ * and a branded email with a "Pay now" CTA to the public pay page
+ * (/pay/<payToken>, no login required). Invoice notifications aren't
+ * user-suppressible, so we send directly.
  */
 export async function notifyClientOfInvoice(args: {
   trainerId: string
@@ -157,6 +158,7 @@ export async function notifyClientOfInvoice(args: {
   description: string
   amountCents: number
   currency: string
+  payToken: string | null
 }): Promise<void> {
   const client = await prisma.clientProfile.findUnique({
     where: { id: args.clientId },
@@ -167,18 +169,20 @@ export async function notifyClientOfInvoice(args: {
   const amountStr = money(args.amountCents, args.currency)
   const title = `New invoice: ${amountStr}`
   const body = `${args.businessName} has sent you an invoice for ${amountStr} — ${args.description}.`
-  const link = `${env.NEXT_PUBLIC_APP_URL}/my`
+  // The public pay page is the destination; fall back to the app home only if a
+  // (legacy) invoice somehow has no token.
+  const payLink = args.payToken ? `${env.NEXT_PUBLIC_APP_URL}/pay/${args.payToken}` : `${env.NEXT_PUBLIC_APP_URL}/my`
 
   if (client.userId) {
-    await prisma.notification.create({ data: { userId: client.userId, title, body, link } }).catch(() => {})
-    await sendPush(client.userId, { alert: { title, body }, customData: { path: link } }).catch(() => {})
+    await prisma.notification.create({ data: { userId: client.userId, title, body, link: payLink } }).catch(() => {})
+    await sendPush(client.userId, { alert: { title, body }, customData: { path: payLink } }).catch(() => {})
   }
   if (client.user?.email) {
     await sendEmail({
       to: client.user.email,
       subject: `${args.businessName}: new invoice`,
-      html: invoiceEmail(args.businessName, args.description, amountStr),
-      text: `${body}`,
+      html: invoiceEmail(args.businessName, args.description, amountStr, args.payToken ? payLink : null),
+      text: `${body}${args.payToken ? `\n\nPay now: ${payLink}` : ''}`,
     }).catch(() => {})
   }
 }
@@ -417,6 +421,100 @@ export async function reconcileAllXeroPayments(): Promise<{ checked: number; upd
   return { checked: invoices.length, updated }
 }
 
+// ─── Outbound settlement (Stripe card payment → invoice PAID) ─────────────────
+
+/**
+ * Settle an invoice from a successful Stripe `Payment` (the public pay page).
+ * Called by the Connect webhook AFTER the Payment is marked PAID. Adds the base
+ * (non-surcharge) amount the client paid to `amountPaidCents`, recomputes the
+ * status via applyPaidAmount, stamps paidAt, and links `Invoice.paymentId`.
+ * Then records the payment against the Xero invoice (best-effort).
+ *
+ * Idempotent: a re-delivery (invoice already PAID by this payment) is a no-op.
+ * Never throws — a failure here must not fail the webhook (→ Stripe retry loop).
+ */
+export async function settleInvoiceFromPayment(invoiceId: string, paymentId: string): Promise<void> {
+  try {
+    const [invoice, payment] = await Promise.all([
+      prisma.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { id: true, amountCents: true, amountPaidCents: true, status: true, paidAt: true, paymentId: true },
+      }),
+      prisma.payment.findUnique({
+        where: { id: paymentId },
+        select: { id: true, paidAt: true, items: { select: { unitAmount: true, quantity: true, intent: true } } },
+      }),
+    ])
+    if (!invoice || !payment) return
+    // Already fully settled — nothing to do (webhook retry / duplicate delivery).
+    if (invoice.status === 'PAID') return
+
+    // The client paid the invoice balance PLUS an optional card surcharge line;
+    // only the base (non-surcharge) lines count toward the invoice.
+    const basePaid = payment.items
+      .filter((i) => !(i.intent && typeof i.intent === 'object' && (i.intent as Record<string, unknown>).surcharge === true))
+      .reduce((sum, i) => sum + i.unitAmount * i.quantity, 0)
+    if (basePaid <= 0) return
+
+    const next = applyPaidAmount({ amountCents: invoice.amountCents }, invoice.amountPaidCents + basePaid)
+    const paidAt = next.status === 'PAID' ? invoice.paidAt ?? payment.paidAt ?? next.paidAt : invoice.paidAt
+
+    await prisma.invoice.update({
+      where: { id: invoice.id },
+      data: { amountPaidCents: next.amountPaidCents, status: next.status, paidAt, paymentId },
+    })
+
+    // Record the payment against the Xero invoice (best-effort).
+    await syncReceivablePaymentToXero(invoice.id, basePaid, payment.paidAt ?? new Date())
+      .catch((e) => console.error('[invoicing] xero payment push failed', invoice.id, e))
+  } catch (err) {
+    console.error('[invoicing] settleInvoiceFromPayment failed', invoiceId, paymentId, err)
+  }
+}
+
+/**
+ * Record a settled card payment against the invoice's Xero invoice (marking it
+ * paid in Xero). Lazily creates the Xero ACCREC invoice first if it wasn't
+ * synced. Best-effort — never throws; records SYNCED / ERROR. No-op when the
+ * trainer isn't connected, or (in prod) is a sandbox/demo trainer.
+ */
+export async function syncReceivablePaymentToXero(invoiceId: string, amountMinor: number, date: Date): Promise<void> {
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { id: true, xeroInvoiceId: true, trainer: { select: { sandboxBilling: true, xeroConnection: true } } },
+  })
+  if (!invoice) return
+  if (invoice.trainer.sandboxBilling && process.env.NODE_ENV !== 'development') return // sandbox bypass
+  const connection = invoice.trainer.xeroConnection
+  if (!connection) return
+  if (amountMinor <= 0) return
+
+  try {
+    // Ensure the ACCREC invoice exists in Xero before applying a payment to it.
+    let xeroInvoiceId = invoice.xeroInvoiceId
+    if (!xeroInvoiceId) {
+      const r = await syncReceivableToXero(invoiceId)
+      if (!r.ok || !r.xeroInvoiceId) return
+      xeroInvoiceId = r.xeroInvoiceId
+    }
+    if (!connection.bankAccountCode) {
+      throw new Error('No Xero bank account is set. Choose one in Settings → Integrations.')
+    }
+    await createXeroPayment(connection, {
+      invoiceId: xeroInvoiceId,
+      accountCode: connection.bankAccountCode,
+      amountMinor,
+      date,
+      reference: invoice.id,
+    })
+    await prisma.invoice.update({ where: { id: invoice.id }, data: { xeroSyncStatus: 'SYNCED', xeroSyncError: null } }).catch(() => {})
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'Xero payment push failed'
+    console.error('[invoicing] syncReceivablePaymentToXero failed', invoiceId, err)
+    await prisma.invoice.update({ where: { id: invoice.id }, data: { xeroSyncStatus: 'ERROR', xeroSyncError: error } }).catch(() => {})
+  }
+}
+
 /**
  * Mark an unsent receivable as sent and notify the client. Used by the Finances
  * "Send" action. Idempotent-ish: re-sending an already-sent invoice just
@@ -427,7 +525,7 @@ export async function sendReceivable(invoiceId: string, trainerId: string): Prom
   const invoice = await prisma.invoice.findFirst({
     where: { id: invoiceId, trainerId },
     select: {
-      id: true, clientId: true, description: true, amountCents: true, currency: true, status: true,
+      id: true, clientId: true, description: true, amountCents: true, currency: true, status: true, payToken: true,
       trainer: { select: { businessName: true } },
     },
   })
@@ -441,11 +539,18 @@ export async function sendReceivable(invoiceId: string, trainerId: string): Prom
     description: invoice.description ?? 'Invoice',
     amountCents: invoice.amountCents,
     currency: invoice.currency,
+    payToken: invoice.payToken,
   }).catch((e) => console.error('[invoicing] sendReceivable notify failed', invoice.id, e))
   return true
 }
 
-function invoiceEmail(business: string, description: string, amount: string): string {
+function invoiceEmail(business: string, description: string, amount: string, payLink: string | null): string {
+  const cta = payLink
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 0"><tr><td>
+        <a href="${payLink}" style="display:inline-block;background:${ACCENT};color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 22px;border-radius:10px">Pay now</a>
+      </td></tr></table>
+      <p style="margin:14px 0 0;font-size:12px;color:#94a3b8">Secure card payment — no account needed.</p>`
+    : `<p style="margin:16px 0 0;font-size:12px;color:#94a3b8">${business} will let you know how to pay. Please get in touch if you have any questions.</p>`
   return `<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 12px"><tr><td align="center">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 16px rgba(15,31,36,0.06)">
@@ -455,7 +560,7 @@ function invoiceEmail(business: string, description: string, amount: string): st
         <h1 style="margin:0 0 8px;font-size:19px;line-height:1.3;color:#0f172a">You have a new invoice</h1>
         <p style="margin:0 0 4px;font-size:14px;color:#475569">${description}</p>
         <p style="margin:0 0 18px;font-size:24px;font-weight:700;color:#0f172a">${amount}</p>
-        <p style="margin:16px 0 0;font-size:12px;color:#94a3b8">${business} will let you know how to pay. Please get in touch if you have any questions.</p>
+        ${cta}
       </td></tr>
     </table>
   </td></tr></table></body></html>`

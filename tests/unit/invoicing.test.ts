@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   invoiceFindMany: vi.fn(),
   invoiceCreate: vi.fn(),
   invoiceUpdate: vi.fn(),
+  paymentFindUnique: vi.fn(),
   trainerFindUnique: vi.fn(),
   clientProfileFindUnique: vi.fn(),
   notificationCreate: vi.fn(),
@@ -25,6 +26,7 @@ const h = vi.hoisted(() => ({
   sendPush: vi.fn(),
   ensureClientXeroContact: vi.fn(),
   createXeroInvoice: vi.fn(),
+  createXeroPayment: vi.fn(),
   fetchXeroInvoiceState: vi.fn(),
 }))
 
@@ -33,6 +35,7 @@ vi.mock('@/lib/prisma', () => ({
     clientPackage: { findFirst: h.clientPackageFindFirst, findUnique: h.clientPackageFindUnique },
     product: { findFirst: h.productFindFirst, findUnique: h.productFindUnique },
     invoice: { findFirst: h.invoiceFindFirst, findUnique: h.invoiceFindUnique, findMany: h.invoiceFindMany, create: h.invoiceCreate, update: h.invoiceUpdate },
+    payment: { findUnique: h.paymentFindUnique },
     trainerProfile: { findUnique: h.trainerFindUnique },
     clientProfile: { findUnique: h.clientProfileFindUnique },
     notification: { create: h.notificationCreate },
@@ -41,7 +44,7 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/email', () => ({ sendEmail: h.sendEmail }))
 vi.mock('@/lib/push', () => ({ sendPush: h.sendPush }))
 vi.mock('@/lib/xero-sync', () => ({ ensureClientXeroContact: h.ensureClientXeroContact }))
-vi.mock('@/lib/xero', () => ({ createXeroInvoice: h.createXeroInvoice, fetchXeroInvoiceState: h.fetchXeroInvoiceState }))
+vi.mock('@/lib/xero', () => ({ createXeroInvoice: h.createXeroInvoice, createXeroPayment: h.createXeroPayment, fetchXeroInvoiceState: h.fetchXeroInvoiceState }))
 vi.mock('@/lib/env', () => ({ env: { NEXT_PUBLIC_APP_URL: 'https://app.test' } }))
 
 import {
@@ -51,6 +54,7 @@ import {
   reconcileTrainerXeroPayments,
   reconcileAllXeroPayments,
   sendReceivable,
+  settleInvoiceFromPayment,
 } from '@/lib/invoicing'
 
 const PKG = { name: 'Puppy Course', priceCents: 12500, specialPriceCents: null, xeroAccountCode: null }
@@ -354,6 +358,53 @@ describe('reconcileAllXeroPayments', () => {
     const where = h.invoiceFindMany.mock.calls[0][0].where
     expect(where).toEqual({ xeroInvoiceId: { not: null }, status: { in: ['UNPAID', 'PARTIAL'] } })
     expect(where).not.toHaveProperty('trainerId')
+  })
+})
+
+describe('settleInvoiceFromPayment', () => {
+  function seed(invoiceOver: Record<string, unknown> = {}, paymentOver: Record<string, unknown> = {}) {
+    h.invoiceFindUnique.mockResolvedValue({
+      id: 'inv-1', amountCents: 38000, amountPaidCents: 0, status: 'UNPAID', paidAt: null, paymentId: null,
+      // Second lookup (syncReceivablePaymentToXero) reads these — no Xero connection → no-op.
+      xeroInvoiceId: null, trainer: { sandboxBilling: false, xeroConnection: null },
+      ...invoiceOver,
+    })
+    h.paymentFindUnique.mockResolvedValue({
+      id: 'pay-1', paidAt: new Date('2026-07-05T00:00:00Z'),
+      items: [
+        { unitAmount: 38000, quantity: 1, intent: { invoicePayment: true, invoiceId: 'inv-1' } },
+        { unitAmount: 1400, quantity: 1, intent: { surcharge: true } }, // excluded from the invoice
+      ],
+      ...paymentOver,
+    })
+  }
+
+  it('marks the invoice PAID, links paymentId, and ignores the card-surcharge line', async () => {
+    seed()
+    await settleInvoiceFromPayment('inv-1', 'pay-1')
+    const data = h.invoiceUpdate.mock.calls[0][0].data
+    expect(data).toMatchObject({ amountPaidCents: 38000, status: 'PAID', paymentId: 'pay-1' })
+    expect(data.paidAt).toBeInstanceOf(Date)
+  })
+
+  it('settles a PARTIAL invoice to PAID via the balance paid', async () => {
+    seed(
+      { amountPaidCents: 15000, status: 'PARTIAL' },
+      { items: [{ unitAmount: 23000, quantity: 1, intent: { invoicePayment: true } }] },
+    )
+    await settleInvoiceFromPayment('inv-1', 'pay-1')
+    expect(h.invoiceUpdate.mock.calls[0][0].data).toMatchObject({ amountPaidCents: 38000, status: 'PAID', paymentId: 'pay-1' })
+  })
+
+  it('is idempotent — a re-delivery on an already-PAID invoice is a no-op', async () => {
+    seed({ status: 'PAID' })
+    await settleInvoiceFromPayment('inv-1', 'pay-1')
+    expect(h.invoiceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('never throws (a DB failure is swallowed so the webhook can ack)', async () => {
+    h.invoiceFindUnique.mockRejectedValue(new Error('db down'))
+    await expect(settleInvoiceFromPayment('inv-1', 'pay-1')).resolves.toBeUndefined()
   })
 })
 
