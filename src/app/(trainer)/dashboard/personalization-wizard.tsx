@@ -7,7 +7,9 @@ import { BrandPreview } from '@/components/brand-preview'
 import { extractLogoColors, type LogoPalette } from '@/lib/logo-colors'
 import { compressImageFile } from '@/lib/compress-image'
 import { type CurrencyCode } from '@/lib/pricing'
+import { type ResolvedFieldConfig } from '@/lib/client-fields'
 import { PERSONAS, WIZ_QUESTIONS, MANAGED_ADDON_IDS, recommendedAddons, coreAddonState, packageOptionsFor, questionApplies, type WizAnswers } from '@/lib/onboarding-recommendations'
+import { ClientFieldsStep } from './client-fields-step'
 
 // The paged "Your tools" sub-flow is: role picker → tailored "what do you offer?"
 // → one question per screen (only those relevant to the chosen roles). Rendered
@@ -60,7 +62,7 @@ export type WizardInitial = {
 
 // Index 0 ('Welcome') is the unnumbered intro; the numbered count starts at
 // index 1, so "Make it yours" shows as Step 1 of 6.
-const STEPS = ['Welcome', 'Make it yours', 'Your colours', 'Say hello', 'Your tools', 'Take a look', 'Sample data'] as const
+const STEPS = ['Welcome', 'Make it yours', 'Your colours', 'Say hello', 'Your tools', 'Client form', 'Take a look', 'Sample data'] as const
 
 // Ready-to-go welcome notes (shown on the client's home screen). The wizard
 // pre-fills the first so trainers tweak rather than face a blank box; "Try
@@ -143,6 +145,11 @@ export function PersonalizationWizard({
   const [answers, setAnswers] = useState<WizAnswers>({})
   const [addonOn, setAddonOn] = useState<Record<string, boolean>>(() => addonMapFrom({}))
 
+  // "Client form" step — the live built-in field config the step hands up, held
+  // here so Continue can persist it through the shared field config. null until
+  // the step has loaded (so we never PATCH an empty/half-loaded config).
+  const [fieldConfig, setFieldConfig] = useState<ResolvedFieldConfig | null>(null)
+
   // Build the managed on/off map from a set of answers.
   function addonMapFrom(a: WizAnswers): Record<string, boolean> {
     const rec = recommendedAddons(a)
@@ -191,6 +198,18 @@ export function PersonalizationWizard({
       )
     }
     await Promise.all(jobs)
+  }
+
+  // Persist the "Client form" choices through the SAME config the quick-add
+  // form, create-client form and Settings → Forms all read (mirrors
+  // client-fields-config.tsx). No-op until the step has loaded its config.
+  async function persistFieldConfig() {
+    if (!fieldConfig) return
+    await fetch('/api/trainer/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientFieldConfig: fieldConfig }),
+    }).catch(() => {})
   }
 
   const [uploading, setUploading] = useState(false)
@@ -293,6 +312,8 @@ export function PersonalizationWizard({
     setBusy(true)
     try {
       await saveProfile()
+      // Leaving the "Client form" step commits the field config choices.
+      if (STEPS[step] === 'Client form') await persistFieldConfig()
       const target = step + 1
       if (target === 4) setExtra(0) // entering the sub-flow at the role picker
       setStep(target)
@@ -688,7 +709,11 @@ export function PersonalizationWizard({
               )
             })()}
 
-            {step === 5 && (() => {
+            {step === 5 && (
+              <ClientFieldsStep onConfigChange={setFieldConfig} />
+            )}
+
+            {step === 6 && (() => {
               // No client app? Don't push the client-app preview — show a plain
               // "you're set" for their admin workspace instead.
               const wantsClientApp = answers.clientapp !== 'email' && answers.clientapp !== 'none'
@@ -715,7 +740,7 @@ export function PersonalizationWizard({
               )
             })()}
 
-            {step === 6 && (
+            {step === 7 && (
               <div className="max-w-md mx-auto py-2" key="s6">
                 <div className="text-center">
                   <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ backgroundImage: brandGradient }}>
