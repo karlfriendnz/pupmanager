@@ -4,8 +4,9 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
-import { Package as PackageIcon, X, AlertTriangle, ChevronDown, Check, Search } from 'lucide-react'
+import { Package as PackageIcon, X, AlertTriangle, ChevronDown, Check, Search, Plus } from 'lucide-react'
 import { findNextAvailable, type AvailabilityRow } from '@/lib/availability'
+import { createQuickClient } from '@/lib/quick-client'
 
 interface ClientOption {
   id: string
@@ -165,17 +166,23 @@ function AssignPackageFromScheduleModalInner({
   onClose: () => void
 }) {
   const router = useRouter()
+  // A LOCAL, mutable copy of the roster so a client created inline (below) can be
+  // added + selected without leaving the modal (which would lose the time slot).
+  const [clientList, setClientList] = useState<ClientOption[]>(clients)
   const [clientId, setClientId] = useState(clients[0].id)
+  // When true, the Client field shows the compact inline "new client" form
+  // instead of the picker.
+  const [creatingClient, setCreatingClient] = useState(false)
   const [packageId, setPackageId] = useState(packages[0].id)
   // Dog defaults to the client's only dog when there's exactly one (the common
   // case); null when the client has no dogs or multiple and no choice is made.
-  const clientDogs = clients.find(c => c.id === clientId)?.dogs ?? []
+  const clientDogs = clientList.find(c => c.id === clientId)?.dogs ?? []
   const [dogId, setDogId] = useState<string | null>(clientDogs.length === 1 ? clientDogs[0].id : null)
   // Reset the dog whenever the chosen client changes.
   useEffect(() => {
-    const dogs = clients.find(c => c.id === clientId)?.dogs ?? []
+    const dogs = clientList.find(c => c.id === clientId)?.dogs ?? []
     setDogId(dogs.length === 1 ? dogs[0].id : null)
-  }, [clientId, clients])
+  }, [clientId, clientList])
   const [startDate, setStartDate] = useState(() => defaultStartDate ?? defaultTomorrow())
   // Empty string = "auto-find via availability"; HH:MM = "pin session 1 here"
   const [startTime, setStartTime] = useState(() => defaultStartTime ?? '')
@@ -380,7 +387,25 @@ function AssignPackageFromScheduleModalInner({
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Client</label>
-            <ClientPicker clients={clients} value={clientId} onChange={setClientId} />
+            {creatingClient ? (
+              <NewClientInlineForm
+                onCancel={() => setCreatingClient(false)}
+                onCreated={(client) => {
+                  // Add + select the new client, then drop back to the assignment
+                  // — the package + proposed slots are untouched.
+                  setClientList(prev => [client, ...prev.filter(c => c.id !== client.id)])
+                  setClientId(client.id)
+                  setCreatingClient(false)
+                }}
+              />
+            ) : (
+              <ClientPicker
+                clients={clientList}
+                value={clientId}
+                onChange={setClientId}
+                onCreate={() => setCreatingClient(true)}
+              />
+            )}
           </div>
 
           <div>
@@ -667,10 +692,14 @@ function ClientPicker({
   clients,
   value,
   onChange,
+  onCreate,
 }: {
   clients: ClientOption[]
   value: string
   onChange: (id: string) => void
+  // When provided, renders a "+ New client" affordance that opens the inline
+  // create form (handled by the parent).
+  onCreate?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -745,6 +774,15 @@ function ClientPicker({
               className="flex-1 text-sm bg-transparent outline-none placeholder:text-slate-400"
             />
           </div>
+          {onCreate && (
+            <button
+              type="button"
+              onClick={() => { setOpen(false); onCreate() }}
+              className="flex items-center gap-2 w-full text-left px-3 py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 border-b border-slate-100"
+            >
+              <Plus className="h-4 w-4" /> New client
+            </button>
+          )}
           <div className="overflow-y-auto">
             {filtered.length === 0 ? (
               <p className="text-xs text-slate-400 px-3 py-3">No matches.</p>
@@ -781,6 +819,67 @@ function ClientPicker({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Compact inline "new client" form shown inside the assign modal — so a trainer
+// can add a client without navigating away and losing the schedule slot they
+// set up. Mirrors the quick-add-contact POST; on success it hands the new client
+// (as a picker option) back to the parent to add + select.
+function NewClientInlineForm({
+  onCancel,
+  onCreated,
+}: {
+  onCancel: () => void
+  onCreated: (client: ClientOption) => void
+}) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [dogName, setDogName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit() {
+    if (!name.trim()) { setError('Name is required.'); return }
+    setBusy(true)
+    setError(null)
+    const r = await createQuickClient({ name, email, phone, dogName })
+    if (!r.ok) {
+      setError(r.error)
+      setBusy(false)
+      return
+    }
+    onCreated(r.client)
+  }
+
+  const inputCls = 'h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">New client</p>
+        <button type="button" onClick={onCancel} className="text-xs text-slate-500 hover:text-slate-700">Pick existing</button>
+      </div>
+      <input
+        autoFocus
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && name.trim() && !busy) submit() }}
+        placeholder="Name (required)"
+        className={inputCls}
+      />
+      <div className="flex gap-2">
+        <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email (optional)" className={inputCls} />
+        <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" placeholder="Phone (optional)" className={inputCls} />
+      </div>
+      <input value={dogName} onChange={e => setDogName(e.target.value)} placeholder="Dog’s name (optional)" className={inputCls} />
+      {error && <p className="text-xs text-rose-600">{error}</p>}
+      <div className="flex gap-2 mt-0.5">
+        <Button size="sm" onClick={submit} loading={busy} disabled={!name.trim()}>Add client</Button>
+        <Button size="sm" variant="ghost" type="button" onClick={onCancel}>Cancel</Button>
+      </div>
     </div>
   )
 }
