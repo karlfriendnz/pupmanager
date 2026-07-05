@@ -365,8 +365,12 @@ describe('settleInvoiceFromPayment', () => {
   function seed(invoiceOver: Record<string, unknown> = {}, paymentOver: Record<string, unknown> = {}) {
     h.invoiceFindUnique.mockResolvedValue({
       id: 'inv-1', amountCents: 38000, amountPaidCents: 0, status: 'UNPAID', paidAt: null, paymentId: null,
-      // Second lookup (syncReceivablePaymentToXero) reads these — no Xero connection → no-op.
-      xeroInvoiceId: null, trainer: { sandboxBilling: false, xeroConnection: null },
+      currency: 'nzd', description: 'Course',
+      // trainer.userId drives the trainer notification; sandboxBilling/xeroConnection
+      // are read by the second lookup (syncReceivablePaymentToXero) → no-op.
+      trainer: { userId: 'tu-1', sandboxBilling: false, xeroConnection: null },
+      client: { user: { name: 'Sam' } },
+      xeroInvoiceId: null,
       ...invoiceOver,
     })
     h.paymentFindUnique.mockResolvedValue({
@@ -396,10 +400,33 @@ describe('settleInvoiceFromPayment', () => {
     expect(h.invoiceUpdate.mock.calls[0][0].data).toMatchObject({ amountPaidCents: 38000, status: 'PAID', paymentId: 'pay-1' })
   })
 
-  it('is idempotent — a re-delivery on an already-PAID invoice is a no-op', async () => {
+  it('notifies the TRAINER (in-app + push) on a real settlement', async () => {
+    seed()
+    await settleInvoiceFromPayment('inv-1', 'pay-1')
+    // In-app notification aimed at the trainer's user.
+    expect(h.notificationCreate).toHaveBeenCalledTimes(1)
+    expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({ userId: 'tu-1' })
+    expect(h.notificationCreate.mock.calls[0][0].data.title).toContain('Payment received')
+    // Push aimed at the trainer's user.
+    expect(h.sendPush).toHaveBeenCalledTimes(1)
+    expect(h.sendPush.mock.calls[0][0]).toBe('tu-1')
+  })
+
+  it('is idempotent — a re-delivery on an already-PAID invoice does NOT re-notify', async () => {
     seed({ status: 'PAID' })
     await settleInvoiceFromPayment('inv-1', 'pay-1')
     expect(h.invoiceUpdate).not.toHaveBeenCalled()
+    expect(h.notificationCreate).not.toHaveBeenCalled()
+    expect(h.sendPush).not.toHaveBeenCalled()
+  })
+
+  it('still settles (never throws) when the trainer notification fails', async () => {
+    seed()
+    h.notificationCreate.mockRejectedValue(new Error('notif down'))
+    h.sendPush.mockRejectedValue(new Error('apns down'))
+    await expect(settleInvoiceFromPayment('inv-1', 'pay-1')).resolves.toBeUndefined()
+    // The settlement itself still happened.
+    expect(h.invoiceUpdate).toHaveBeenCalledTimes(1)
   })
 
   it('never throws (a DB failure is swallowed so the webhook can ack)', async () => {

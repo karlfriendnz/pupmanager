@@ -438,7 +438,12 @@ export async function settleInvoiceFromPayment(invoiceId: string, paymentId: str
     const [invoice, payment] = await Promise.all([
       prisma.invoice.findUnique({
         where: { id: invoiceId },
-        select: { id: true, amountCents: true, amountPaidCents: true, status: true, paidAt: true, paymentId: true },
+        select: {
+          id: true, amountCents: true, amountPaidCents: true, status: true, paidAt: true, paymentId: true,
+          currency: true, description: true,
+          trainer: { select: { userId: true } },
+          client: { select: { user: { select: { name: true } } } },
+        },
       }),
       prisma.payment.findUnique({
         where: { id: paymentId },
@@ -447,6 +452,7 @@ export async function settleInvoiceFromPayment(invoiceId: string, paymentId: str
     ])
     if (!invoice || !payment) return
     // Already fully settled — nothing to do (webhook retry / duplicate delivery).
+    // Notifying below sits AFTER this guard, so a retry never re-notifies.
     if (invoice.status === 'PAID') return
 
     // The client paid the invoice balance PLUS an optional card surcharge line;
@@ -464,12 +470,47 @@ export async function settleInvoiceFromPayment(invoiceId: string, paymentId: str
       data: { amountPaidCents: next.amountPaidCents, status: next.status, paidAt, paymentId },
     })
 
+    // The invoice actually transitioned (PAID / PARTIAL, amountPaidCents up) —
+    // notify the TRAINER that a payment landed. Best-effort; only reached on a
+    // real settlement (past the already-PAID guard), so webhook retries — which
+    // don't even re-enter here (didFulfil is false) — never double-notify. The
+    // client is the payer and already knows, so they're never notified here.
+    await notifyTrainerOfPayment({
+      trainerUserId: invoice.trainer.userId,
+      clientName: invoice.client?.user?.name ?? null,
+      amountCents: basePaid,
+      currency: invoice.currency,
+      description: invoice.description,
+    }).catch((e) => console.error('[invoicing] trainer payment notify failed', invoice.id, e))
+
     // Record the payment against the Xero invoice (best-effort).
     await syncReceivablePaymentToXero(invoice.id, basePaid, payment.paidAt ?? new Date())
       .catch((e) => console.error('[invoicing] xero payment push failed', invoice.id, e))
   } catch (err) {
     console.error('[invoicing] settleInvoiceFromPayment failed', invoiceId, paymentId, err)
   }
+}
+
+/**
+ * Notify a trainer (in-app + push) that a client paid an invoice. Trainer-only —
+ * the payer already knows. Mirrors notifyClientOfInvoice's shape, aimed at the
+ * trainer's user. Best-effort; each side is independently swallowed.
+ */
+async function notifyTrainerOfPayment(args: {
+  trainerUserId: string
+  clientName: string | null
+  amountCents: number
+  currency: string
+  description: string | null
+}): Promise<void> {
+  const amountStr = money(args.amountCents, args.currency)
+  const who = args.clientName?.trim() || 'A client'
+  const title = `Payment received: ${amountStr}`
+  const body = `${who} paid ${amountStr}${args.description ? ` for ${args.description}` : ''}.`
+  const link = `${env.NEXT_PUBLIC_APP_URL}/finances`
+
+  await prisma.notification.create({ data: { userId: args.trainerUserId, title, body, link } }).catch(() => {})
+  await sendPush(args.trainerUserId, { alert: { title, body }, customData: { path: link } }).catch(() => {})
 }
 
 /**
