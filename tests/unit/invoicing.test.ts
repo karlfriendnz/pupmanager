@@ -46,6 +46,12 @@ vi.mock('@/lib/push', () => ({ sendPush: h.sendPush }))
 vi.mock('@/lib/xero-sync', () => ({ ensureClientXeroContact: h.ensureClientXeroContact }))
 vi.mock('@/lib/xero', () => ({ createXeroInvoice: h.createXeroInvoice, createXeroPayment: h.createXeroPayment, fetchXeroInvoiceState: h.fetchXeroInvoiceState }))
 vi.mock('@/lib/env', () => ({ env: { NEXT_PUBLIC_APP_URL: 'https://app.test' } }))
+// createInvoiceForAssignment defers notify + Xero via next/server `after()` (so
+// bookings don't block on those network calls). Collect the callbacks and
+// `flushAfter()` them where a test asserts the deferred work happened.
+const { deferred } = vi.hoisted(() => ({ deferred: [] as Array<() => unknown> }))
+vi.mock('next/server', async (orig) => ({ ...(await orig() as object), after: (fn: () => unknown) => { deferred.push(fn) } }))
+async function flushAfter() { const fns = deferred.splice(0); for (const fn of fns) await fn() }
 
 import {
   createInvoiceForAssignment,
@@ -72,6 +78,7 @@ function seedTrainer(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  deferred.length = 0
   h.clientPackageFindFirst.mockResolvedValue({ package: PKG })
   h.invoiceFindFirst.mockResolvedValue(null)
   h.invoiceCreate.mockResolvedValue({ id: 'inv-1' })
@@ -125,6 +132,7 @@ describe('createInvoiceForAssignment', () => {
   it('stamps sentAt and notifies the client when autoSendInvoices is on', async () => {
     seedTrainer({ autoSendInvoices: true })
     await createInvoiceForAssignment({ trainerId: 't-1', clientId: 'cp-1', sourceType: 'PACKAGE', clientPackageId: 'clp-1' })
+    await flushAfter()
     expect(h.invoiceCreate.mock.calls[0][0].data.sentAt).toBeInstanceOf(Date)
     expect(h.notificationCreate).toHaveBeenCalledTimes(1)
     expect(h.sendPush).toHaveBeenCalledTimes(1)
@@ -155,6 +163,7 @@ describe('createInvoiceForAssignment', () => {
     h.createXeroInvoice.mockResolvedValue('XINV-1')
 
     await createInvoiceForAssignment({ trainerId: 't-1', clientId: 'cp-1', sourceType: 'PACKAGE', clientPackageId: 'clp-1' })
+    await flushAfter()
     expect(h.createXeroInvoice).toHaveBeenCalledTimes(1)
     // Falls back to the connection's default sales account.
     expect(h.createXeroInvoice.mock.calls[0][1].lines[0].accountCode).toBe('200')
@@ -181,6 +190,7 @@ describe('createInvoiceForAssignment', () => {
     h.createXeroInvoice.mockResolvedValue('XINV-1')
 
     await createInvoiceForAssignment({ trainerId: 't-1', clientId: 'cp-1', sourceType: 'PACKAGE', clientPackageId: 'clp-1' })
+    await flushAfter()
     const lines = h.createXeroInvoice.mock.calls[0][1].lines
     expect(lines).toHaveLength(2)
     // Line 1: no own code → invoice source (package) code 210.

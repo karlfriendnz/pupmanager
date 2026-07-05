@@ -1,3 +1,4 @@
+import { after } from 'next/server'
 import { prisma } from './prisma'
 import { sendEmail } from './email'
 import { sendPush } from './push'
@@ -142,28 +143,31 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       select: { id: true, payToken: true },
     })
 
-    // Email/notify the client only when the trainer opted into auto-send. When
-    // off, the invoice still exists (fully reconcilable) — the trainer sends it
-    // from Finances when ready.
-    if (autoSend) {
-      await notifyClientOfInvoice({
-        trainerId: input.trainerId,
-        clientId: input.clientId,
-        businessName: trainer.businessName ?? 'Your trainer',
-        description,
-        amountCents,
-        currency,
-        payToken: invoice.payToken,
-      }).catch((e) => console.error('[invoicing] notify failed', invoice.id, e))
-    }
-
-    // Mirror into Xero when the trainer has connected it (best-effort). Sandbox
-    // (demo) trainers are skipped in prod so demo data never hits a real org —
-    // but in local dev we allow it so Xero can be tested end-to-end against the
-    // connected (throwaway) demo org.
-    if (trainer.xeroConnection && (!trainer.sandboxBilling || process.env.NODE_ENV === 'development')) {
-      await syncReceivableToXero(invoice.id).catch((e) => console.error('[invoicing] xero push failed', invoice.id, e))
-    }
+    // Side effects (client email + Xero push) run AFTER the response so the
+    // booking/assignment that triggered this never blocks on Resend/Xero network
+    // round-trips (which made self-book feel slow). The invoice row itself is
+    // already committed above; these are best-effort and never affect it.
+    const xeroEnabled = !!trainer.xeroConnection && (!trainer.sandboxBilling || process.env.NODE_ENV === 'development')
+    after(() => {
+      const tasks: Promise<unknown>[] = []
+      if (autoSend) {
+        tasks.push(notifyClientOfInvoice({
+          trainerId: input.trainerId,
+          clientId: input.clientId,
+          businessName: trainer.businessName ?? 'Your trainer',
+          description,
+          amountCents,
+          currency,
+          payToken: invoice.payToken,
+        }).catch((e) => console.error('[invoicing] notify failed', invoice.id, e)))
+      }
+      // Mirror into Xero when connected. Sandbox/demo trainers are skipped in
+      // prod (never hit a real org) but allowed in local dev for testing.
+      if (xeroEnabled) {
+        tasks.push(syncReceivableToXero(invoice.id).catch((e) => console.error('[invoicing] xero push failed', invoice.id, e)))
+      }
+      return Promise.all(tasks)
+    })
 
     return invoice.id
   } catch (err) {
