@@ -28,12 +28,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if ('error' in r) return r.error
   const { ctx, sheet } = r
 
-  const [entries, rates, company, clients] = await Promise.all([
+  const [entries, employee, rates, company, clients] = await Promise.all([
     prisma.timeEntry.findMany({
       where: { timesheetId: id },
       orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
       include: { client: { select: { id: true, user: { select: { name: true } } } } },
     }),
+    prisma.user.findUnique({ where: { id: sheet.userId }, select: { name: true, email: true } }),
     prisma.timeRate.findMany({
       where: { companyId: ctx.companyId, archivedAt: null },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -66,6 +67,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     currency: company?.payoutCurrency ?? 'nzd',
     businessName: company?.businessName ?? 'PupManager',
     ownerEmail: company?.user?.email ?? null,
+    employeeName: employee?.name ?? employee?.email ?? null,
   })
 }
 

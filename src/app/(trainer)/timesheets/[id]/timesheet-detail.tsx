@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Plus, Pencil, Trash2, CheckCircle2, Mail, Download, Lock, Unlock, X } from 'lucide-react'
+import { Loader2, Plus, Pencil, Trash2, CheckCircle2, Mail, Download, Lock, Unlock, X, Printer, LayoutGrid, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { money, minutesToHours, hoursToMinutes, amountFor } from '@/lib/timesheets'
+import { TimesheetReport } from './timesheet-report'
 
 type Rate = { id: string; name: string; rateCents: number }
 type ClientOpt = { id: string; name: string }
@@ -14,7 +15,7 @@ type Entry = {
   clientId: string | null; clientName: string | null; category: string | null; notes: string | null
 }
 type Sheet = { id: string; weekStart: string; title: string | null; status: string; notes: string | null; recipientEmail: string | null; finalisedAt: string | null; sentAt: string | null }
-type Data = { timesheet: Sheet; entries: Entry[]; rates: Rate[]; clients: ClientOpt[]; currency: string; businessName: string; ownerEmail: string | null }
+type Data = { timesheet: Sheet; entries: Entry[]; rates: Rate[]; clients: ClientOpt[]; currency: string; businessName: string; ownerEmail: string | null; employeeName: string | null }
 
 type Draft = { id: string | null; date: string; task: string; hours: string; rateId: string; manualDollars: string; clientId: string; category: string; notes: string }
 
@@ -33,6 +34,7 @@ export function TimesheetDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [recipient, setRecipient] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
+  const [view, setView] = useState<'edit' | 'report'>('edit')
 
   async function load() {
     const res = await fetch(`/api/timesheets/${id}`)
@@ -156,9 +158,25 @@ export function TimesheetDetail({ id }: { id: string }) {
               className="mt-1 w-full max-w-sm text-sm text-slate-600 bg-transparent border-0 border-b border-transparent focus:border-slate-200 focus:outline-none disabled:opacity-70"
             />
           </div>
-          <button type="button" onClick={remove} className="text-xs text-slate-400 hover:text-rose-600">Delete</button>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex rounded-lg bg-slate-100 p-0.5 print:hidden">
+              <button type="button" onClick={() => setView('edit')} className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${view === 'edit' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}><ListChecks className="h-3.5 w-3.5" /> Edit</button>
+              <button type="button" onClick={() => setView('report')} className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${view === 'report' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}><LayoutGrid className="h-3.5 w-3.5" /> Report</button>
+            </div>
+            <button type="button" onClick={remove} className="text-xs text-slate-400 hover:text-rose-600 print:hidden">Delete</button>
+          </div>
         </div>
       </div>
+
+      {view === 'report' ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex justify-end print:hidden">
+            <Button type="button" size="sm" variant="secondary" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
+          </div>
+          <TimesheetReport weekStart={ts.weekStart} entries={entries} currency={currency} businessName={data.businessName} employeeName={data.employeeName} status={ts.status} />
+        </div>
+      ) : (
+      <>
 
       {/* Entries */}
       <div className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
@@ -266,6 +284,8 @@ export function TimesheetDetail({ id }: { id: string }) {
         {!locked && <p className="text-xs text-slate-400">Finalise to lock the entries, then email the PDF. You can reopen later if you need to change something.</p>}
         {notice && <p className="text-sm text-slate-600">{notice}</p>}
       </div>
+      </>
+      )}
     </div>
   )
 }
