@@ -45,6 +45,25 @@ export async function createBookingAssignment(
     bookingPageId?: string | null
   },
 ): Promise<string> {
+  // These paths have no "assigned trainer" picker (a client self-books, or a
+  // trainer confirms a pending request), so who runs the sessions follows the
+  // same fallback the assign API uses: the client's assigned member, else the
+  // owner (the "unassigned = owner" convention). This keeps double-booking
+  // scoped to the right person instead of leaving every self-booked session
+  // null and colliding company-wide.
+  const clientRow = await tx.clientProfile.findUnique({
+    where: { id: args.clientId },
+    select: { assignedMembershipId: true },
+  })
+  let assignedMembershipId = clientRow?.assignedMembershipId ?? null
+  if (!assignedMembershipId) {
+    const owner = await tx.trainerMembership.findFirst({
+      where: { companyId: args.trainerId, role: 'OWNER' },
+      select: { id: true },
+    })
+    assignedMembershipId = owner?.id ?? null
+  }
+
   const assignment = await tx.clientPackage.create({
     data: {
       packageId: args.packageId,
@@ -57,6 +76,7 @@ export async function createBookingAssignment(
       trainerId: args.trainerId,
       clientId: args.clientId,
       dogId: args.dogId,
+      assignedMembershipId,
       clientPackageId: assignment.id,
       bookingPageId: args.bookingPageId ?? null,
       title: sessionTitle(args.pkg.name, args.pkg.sessionCount, i),

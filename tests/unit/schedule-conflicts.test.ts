@@ -55,6 +55,52 @@ describe('findDropClashes', () => {
     expect(findDropClashes(moved, existing)).toHaveLength(1)
   })
 
+  // ── Per-person double-booking (null resolves to the owner) ────────────────
+  describe('per-member scoping (ownerMembershipId provided)', () => {
+    const OWNER = 'mem-owner'
+    const A = 'mem-a'
+    const B = 'mem-b'
+
+    it('clashes two sessions run by the SAME member', () => {
+      const moved = [{ id: 'drag', scheduledAt: '2026-07-10T09:00:00Z', durationMins: 60, assignedMembershipId: A }]
+      const existing = [at('2026-07-10T09:30:00Z', 60, { id: 'same', assignedMembershipId: A })]
+      expect(findDropClashes(moved, existing, OWNER).map(c => c.id)).toEqual(['same'])
+    })
+
+    it('does NOT clash an overlap between DIFFERENT members (two trainers @ 2pm)', () => {
+      const moved = [{ id: 'drag', scheduledAt: '2026-07-10T14:00:00Z', durationMins: 60, assignedMembershipId: A }]
+      const existing = [at('2026-07-10T14:00:00Z', 60, { id: 'other', assignedMembershipId: B })]
+      expect(findDropClashes(moved, existing, OWNER)).toHaveLength(0)
+    })
+
+    it('resolves null → owner: a null-assigned move clashes with an OWNER-assigned session', () => {
+      const moved = [{ id: 'drag', scheduledAt: '2026-07-10T09:00:00Z', durationMins: 60, assignedMembershipId: null }]
+      const existing = [at('2026-07-10T09:15:00Z', 60, { id: 'owner-run', assignedMembershipId: OWNER })]
+      expect(findDropClashes(moved, existing, OWNER).map(c => c.id)).toEqual(['owner-run'])
+    })
+
+    it('resolves null → owner: a null-assigned move does NOT clash with another member', () => {
+      const moved = [{ id: 'drag', scheduledAt: '2026-07-10T09:00:00Z', durationMins: 60, assignedMembershipId: null }]
+      const existing = [at('2026-07-10T09:15:00Z', 60, { id: 'a-run', assignedMembershipId: A })]
+      expect(findDropClashes(moved, existing, OWNER)).toHaveLength(0)
+    })
+
+    it('a class session occupies its assigned member (per-member rule applies to classes)', () => {
+      const moved = [{ id: 'cls', scheduledAt: '2026-07-10T10:00:00Z', durationMins: 60, classRunId: 'run-1', assignedMembershipId: A }]
+      const existing = [at('2026-07-10T10:15:00Z', 60, { id: '1to1-a', assignedMembershipId: A })]
+      expect(findDropClashes(moved, existing, OWNER)).toHaveLength(1)
+      // …but not against a session run by a different member.
+      const otherMember = [at('2026-07-10T10:15:00Z', 60, { id: '1to1-b', assignedMembershipId: B })]
+      expect(findDropClashes(moved, otherMember, OWNER)).toHaveLength(0)
+    })
+
+    it('solo company (all null, owner known) still clashes — per-member == whole-company', () => {
+      const moved = [{ id: 'drag', scheduledAt: '2026-07-10T09:00:00Z', durationMins: 60, assignedMembershipId: null }]
+      const existing = [at('2026-07-10T09:30:00Z', 60, { id: 'other', assignedMembershipId: null })]
+      expect(findDropClashes(moved, existing, OWNER).map(c => c.id)).toEqual(['other'])
+    })
+  })
+
   it('ignores non-overlapping and self (moved) sessions, and de-dupes', () => {
     const moved = [
       { id: 'a', scheduledAt: '2026-07-10T09:00:00Z', durationMins: 60 },

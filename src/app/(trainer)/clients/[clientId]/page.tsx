@@ -198,6 +198,12 @@ export default async function ClientDetailPage({
             isPrimaryTrainer={isPrimaryTrainer}
             clientAppEnabled={clientAppEnabled}
             needsInvite={!client.user.emailVerified}
+            members={teamMembers.map(m => ({
+              id: m.id,
+              name: m.user.name ?? m.user.email,
+              role: m.role,
+            }))}
+            currentMembershipId={trainerCtx?.membershipId ?? null}
             dogs={allDogs.map(d => ({ id: d.id, name: d.name }))}
             packages={packages.map(p => ({
               id: p.id,

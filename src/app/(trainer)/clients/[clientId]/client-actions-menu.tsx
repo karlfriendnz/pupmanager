@@ -45,6 +45,11 @@ interface Props {
   packages: PkgOption[]
   availability: AvailabilityRow[]
   dogs: { id: string; name: string }[]
+  /** Staff members in the business + the logged-in user's membership id.
+   *  Drive the optional "Assigned trainer" picker in the assign-package modal
+   *  (hidden unless the business has more than one member). */
+  members?: { id: string; name: string; role: string; title?: string | null }[]
+  currentMembershipId?: string | null
   /** Whether the trainer can perform editing actions (false for
    *  read-only co-managers). When false the menu becomes a plain
    *  "View as client" button — that's the only action they have. */
@@ -81,6 +86,7 @@ type ReinviteState =
 
 export function ClientActionsMenu({
   clientId, clientName, clientEmail, needsInvite, packages, availability, dogs,
+  members = [], currentMembershipId = null,
   canEdit, isPrimaryTrainer, clientAppEnabled,
 }: Props) {
   const router = useRouter()
@@ -261,6 +267,8 @@ export function ClientActionsMenu({
         packages={packages}
         availability={availability}
         dogs={dogs}
+        members={members}
+        currentMembershipId={currentMembershipId}
         open={activeModal === 'assign'}
         onOpenChange={v => setActiveModal(v ? 'assign' : null)}
       />

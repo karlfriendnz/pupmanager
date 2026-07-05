@@ -46,6 +46,10 @@ const schema = z.object({
   sessionDates: z.array(z.string().min(1)).min(1).max(52),
   // Optional dog to attach to every created session. Must belong to the client.
   dogId: z.string().min(1).optional().nullable(),
+  // Optional staff member to run every created session (multi-trainer picker).
+  // Validated to belong to this company; takes precedence over the client's
+  // assigned member. Omitted for solo businesses.
+  membershipId: z.string().min(1).optional().nullable(),
   // True = "no end date". The schedule keeps topping the assignment up
   // with ~6 weeks of upcoming sessions on each load.
   extendIndefinitely: z.boolean().optional(),
@@ -164,13 +168,44 @@ export async function POST(
     }
   }
 
-  // New sessions inherit the client's assigned trainer (if any), so a member's
-  // bookings show up on their own calendar straight away.
-  const clientRow = await prisma.clientProfile.findUnique({
-    where: { id: clientId },
-    select: { assignedMembershipId: true },
-  })
-  const assignedMembershipId = clientRow?.assignedMembershipId ?? null
+  // Who runs the created sessions. Precedence:
+  //   1. an explicitly picked member (the multi-trainer picker) — validated to
+  //      belong to THIS company so nobody can stamp a cross-tenant membership;
+  //   2. else the client's assigned member (their sessions land on that
+  //      member's calendar automatically);
+  //   3. else the logged-in user's own membership;
+  //   4. else the owner's membership (the "unassigned = owner" convention).
+  let assignedMembershipId: string | null = null
+  if (parsed.data.membershipId) {
+    const picked = await prisma.trainerMembership.findFirst({
+      where: { id: parsed.data.membershipId, companyId: trainerId },
+      select: { id: true },
+    })
+    if (!picked) return NextResponse.json({ error: 'Assigned trainer not found' }, { status: 400 })
+    assignedMembershipId = picked.id
+  } else {
+    const clientRow = await prisma.clientProfile.findUnique({
+      where: { id: clientId },
+      select: { assignedMembershipId: true },
+    })
+    if (clientRow?.assignedMembershipId) {
+      assignedMembershipId = clientRow.assignedMembershipId
+    } else {
+      const mine = await prisma.trainerMembership.findUnique({
+        where: { companyId_userId: { companyId: trainerId, userId: session.user.id } },
+        select: { id: true },
+      })
+      if (mine) {
+        assignedMembershipId = mine.id
+      } else {
+        const owner = await prisma.trainerMembership.findFirst({
+          where: { companyId: trainerId, role: 'OWNER' },
+          select: { id: true },
+        })
+        assignedMembershipId = owner?.id ?? null
+      }
+    }
+  }
 
   // The startDate field stores when the package began for this client — use the
   // first scheduled session as the canonical start.

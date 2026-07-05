@@ -2867,6 +2867,8 @@ export function ScheduleView({
   customFields,
   clientExtras: initialClientExtras,
   members = [],
+  ownerMembershipId = null,
+  currentMembershipId = null,
   canViewAllSchedule = false,
   initialMember = null,
   showHints = false,
@@ -2901,6 +2903,14 @@ export function ScheduleView({
   // Trainers in this business. Empty / single-member businesses hide the
   // assigned-trainer picker entirely.
   members?: TeamMemberOption[]
+  // The owner's TrainerMembership id. A null-assigned session is "owner-run", so
+  // per-person double-booking checks resolve null → this id (matching the
+  // /api/schedule/conflicts convention). Null only for a legacy owner whose
+  // membership row hasn't been backfilled.
+  ownerMembershipId?: string | null
+  // The logged-in user's TrainerMembership id — the default assignee offered when
+  // assigning a package from the schedule (the owner when the owner is signed in).
+  currentMembershipId?: string | null
   // True only for users who can see the whole company's schedule (owner /
   // schedule.viewAll). Gates the staff-member switcher — restricted staff are
   // already server-scoped to their own sessions, so they must not get a
@@ -3230,13 +3240,14 @@ export function ScheduleView({
     // recurring-package followers. Carries classRunId so two occurrences of the
     // same group class aren't counted as clashing with each other.
     const movedNewIsos = [
-      { id: dragged.id, scheduledAt: newIso, durationMins: dragged.durationMins, title: dragged.title, classRunId: dragged.classRunId },
+      { id: dragged.id, scheduledAt: newIso, durationMins: dragged.durationMins, title: dragged.title, classRunId: dragged.classRunId, assignedMembershipId: dragged.assignedMembershipId },
       ...movers.map(s => ({
         id: s.id,
         scheduledAt: new Date(new Date(s.scheduledAt).getTime() + deltaMs).toISOString(),
         durationMins: s.durationMins,
         title: s.title,
         classRunId: s.classRunId,
+        assignedMembershipId: s.assignedMembershipId,
       })),
     ]
     const movedIds = new Set(movedNewIsos.map(m => m.id))
@@ -3245,11 +3256,12 @@ export function ScheduleView({
     // Pop the confirm modal for the SAME clashes a trainer would otherwise only
     // see as a passive banner AFTER the drop. Two sources, mirroring the editor
     // (sessions hard, Google soft):
-    //  1. An UNSCOPED session overlap of every moved interval (dragged + package
+    //  1. A PER-PERSON session overlap of every moved interval (dragged + package
     //     followers, and any class session) against existing sessions via
-    //     /api/schedule/range — catches knock-on follower clashes, 1:1↔class
-    //     clashes, AND a solo trainer's unassigned overlaps the member-scoped
-    //     /api/schedule/conflicts check would miss.
+    //     /api/schedule/range — catches knock-on follower clashes and 1:1↔class
+    //     clashes. Scoped to the SAME assigned person (null = owner), so two
+    //     different trainers at the same time don't false-positive; a solo
+    //     business (all null → owner) still behaves like whole-company.
     //  2. A live Google-busy lookup for the dragged slot.
     // If anything clashes, confirm BEFORE moving; Cancel snaps back (nothing
     // optimistically moved yet, nothing persisted).
@@ -3263,7 +3275,10 @@ export function ScheduleView({
       const r = await fetch(`/api/schedule/range?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`)
       if (r.ok) {
         const rows: ExistingSlot[] = await r.json()
-        sessionClashes = findDropClashes(movedNewIsos, rows.filter(s => !movedIds.has(s.id)))
+        // Per-person gate: only flag existing sessions run by the SAME person as
+        // the dragged one (null-assigned resolves to the owner). Different-member
+        // overlaps at the same clock time are legitimate, not a double-booking.
+        sessionClashes = findDropClashes(movedNewIsos, rows.filter(s => !movedIds.has(s.id)), ownerMembershipId)
       }
     } catch {
       // Best-effort — a failed range lookup never blocks the move.
@@ -3659,6 +3674,8 @@ export function ScheduleView({
           defaultStartDate={assignAt.date}
           defaultStartTime={assignAt.time}
           initialBusy={busyBlocks}
+          members={members}
+          currentMembershipId={currentMembershipId}
           onClose={() => setAssignAt(null)}
         />
       )}

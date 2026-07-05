@@ -61,6 +61,9 @@ export type DropInterval = {
   durationMins: number
   /** Present for group-class sessions. Two occurrences of the SAME run don't clash. */
   classRunId?: string | null
+  /** The member who runs this session (null = unassigned → resolves to owner).
+   *  Omit to opt out of per-member scoping entirely (legacy / solo callers). */
+  assignedMembershipId?: string | null
 }
 
 /** An existing session the moved intervals might land on. */
@@ -71,17 +74,36 @@ export type ExistingSlot = {
   durationMins: number
   label?: string | null
   classRunId?: string | null
+  /** The member who runs this session (null = unassigned → resolves to owner). */
+  assignedMembershipId?: string | null
 }
 
 /**
  * Half-open overlap of the intervals a drag-drop is about to move (the dragged
  * session PLUS any recurring-package followers) against the trainer's existing,
- * non-moved sessions. Pure and UNSCOPED by membership, so it catches knock-on
- * follower clashes and a solo trainer's unassigned overlaps. Two occurrences of
- * the SAME class run never clash (one shared event, not a double-booking —
- * mirrors the self-book rule). De-duped by existing-slot id.
+ * non-moved sessions.
+ *
+ * Double-booking is PER PERSON: two sessions only clash when they overlap in
+ * time AND share the same assigned member. A null/omitted assignee resolves to
+ * `ownerMembershipId` — the established "unassigned = owner" rule — so an
+ * owner-run session clashes with the company's unassigned bookings but not with
+ * another member's. Pass `ownerMembershipId` to enable this scoping; omit it (or
+ * pass undefined) and the check falls back to the old whole-company behaviour
+ * where every unresolved member is `null` and therefore mutually clashing —
+ * which is exactly what a solo (single-member) business wants anyway.
+ *
+ * Two occurrences of the SAME class run never clash (one shared event, not a
+ * double-booking — mirrors the self-book rule). De-duped by existing-slot id.
  */
-export function findDropClashes(moved: DropInterval[], existing: ExistingSlot[]): ExistingSlot[] {
+export function findDropClashes(
+  moved: DropInterval[],
+  existing: ExistingSlot[],
+  ownerMembershipId?: string | null,
+): ExistingSlot[] {
+  // Resolve an assignee to the person actually accountable for the slot:
+  // null/undefined → the owner (when known), else stays null.
+  const runner = (membershipId: string | null | undefined): string | null =>
+    membershipId ?? ownerMembershipId ?? null
   const movedIds = new Set(moved.map((m) => m.id))
   const clashes: ExistingSlot[] = []
   const seen = new Set<string>()
@@ -89,8 +111,11 @@ export function findDropClashes(moved: DropInterval[], existing: ExistingSlot[])
     const startA = new Date(m.scheduledAt).getTime()
     if (isNaN(startA) || !m.durationMins) continue
     const endA = startA + m.durationMins * 60_000
+    const runnerA = runner(m.assignedMembershipId)
     for (const s of existing) {
       if (movedIds.has(s.id) || seen.has(s.id)) continue
+      // Different person → not a double-booking (two trainers at 2pm is fine).
+      if (runner(s.assignedMembershipId) !== runnerA) continue
       // Same class run = the same shared event, not a clash.
       if (m.classRunId && s.classRunId && m.classRunId === s.classRunId) continue
       const startB = new Date(s.scheduledAt).getTime()

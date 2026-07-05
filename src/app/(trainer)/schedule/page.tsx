@@ -393,6 +393,12 @@ export default async function SchedulePage({
         role: m.role,
         title: m.title,
       }))}
+      // The owner's membership backs the "unassigned = owner" rule client-side:
+      // a null-assigned session resolves to the owner for per-person clash checks.
+      ownerMembershipId={teamMembers.find(m => m.role === 'OWNER')?.id ?? null}
+      // The logged-in user's membership — the default assignee when they assign
+      // a package from the schedule.
+      currentMembershipId={ctx.membershipId}
       canViewAllSchedule={canViewAllSchedule}
       initialMember={canViewAllSchedule ? (sp.member ?? null) : null}
       initialBusyBlocks={busyBlocks.map(b => ({ startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), title: b.title }))}

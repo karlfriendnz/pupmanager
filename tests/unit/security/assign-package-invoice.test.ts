@@ -15,6 +15,8 @@ const h = vi.hoisted(() => ({
   packageFindFirst: vi.fn(),
   clientProfileFindUnique: vi.fn(),
   trainingSessionFindMany: vi.fn(),
+  membershipFindUnique: vi.fn(),
+  membershipFindFirst: vi.fn(),
   txClientPackageCreate: vi.fn(),
   txTrainingSessionCreateMany: vi.fn(),
   transaction: vi.fn(),
@@ -31,6 +33,7 @@ vi.mock('@/lib/prisma', () => ({
     package: { findFirst: h.packageFindFirst },
     clientProfile: { findUnique: h.clientProfileFindUnique },
     trainingSession: { findMany: h.trainingSessionFindMany },
+    trainerMembership: { findUnique: h.membershipFindUnique, findFirst: h.membershipFindFirst },
     $transaction: h.transaction,
   },
 }))
@@ -53,6 +56,9 @@ beforeEach(() => {
   h.packageFindFirst.mockResolvedValue({ id: 'pkg-1', trainerId: 't-1', name: 'Puppy', sessionCount: 1, durationMins: 60, sessionType: 'IN_PERSON', weeksBetween: 1, priceCents: 12500 })
   h.clientProfileFindUnique.mockResolvedValue({ assignedMembershipId: null })
   h.trainingSessionFindMany.mockResolvedValue([]) // no rows → Google sync skipped
+  // Assignee precedence lookups: the logged-in user's membership + the owner.
+  h.membershipFindUnique.mockResolvedValue({ id: 'mem-mine' }) // logged-in user's
+  h.membershipFindFirst.mockResolvedValue({ id: 'mem-owner' }) // OWNER fallback
   h.txClientPackageCreate.mockResolvedValue({ id: 'clp-new' })
   h.txTrainingSessionCreateMany.mockResolvedValue({})
   h.transaction.mockImplementation(async (cb: (tx: unknown) => unknown) =>
@@ -95,5 +101,53 @@ describe('assign package → receivable', () => {
     const res = await POST(req(baseBody), params)
     expect(res.status).toBe(401)
     expect(h.createInvoiceForAssignment).not.toHaveBeenCalled()
+  })
+})
+
+// The assignee stamped on every created session follows a strict precedence:
+//   picked member → client's assigned member → logged-in user → owner.
+describe('assign package → assignee precedence', () => {
+  const stampedMembership = () =>
+    h.txTrainingSessionCreateMany.mock.calls[0][0].data[0].assignedMembershipId
+
+  it('1) uses an explicitly picked member (validated to this company)', async () => {
+    h.membershipFindFirst.mockResolvedValue({ id: 'mem-picked' }) // validation lookup
+    const res = await POST(req({ ...baseBody, membershipId: 'mem-picked' }), params)
+    expect(res.status).toBe(201)
+    // Validation scoped to the caller's company (no cross-tenant).
+    expect(h.membershipFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'mem-picked', companyId: 't-1' } }),
+    )
+    expect(stampedMembership()).toBe('mem-picked')
+  })
+
+  it('rejects a picked member that is not in this company (400)', async () => {
+    h.membershipFindFirst.mockResolvedValue(null) // not found in company
+    const res = await POST(req({ ...baseBody, membershipId: 'mem-other-co' }), params)
+    expect(res.status).toBe(400)
+    expect(h.txClientPackageCreate).not.toHaveBeenCalled()
+  })
+
+  it('2) falls back to the client’s assigned member when nothing is picked', async () => {
+    h.clientProfileFindUnique.mockResolvedValue({ assignedMembershipId: 'mem-client' })
+    const res = await POST(req(baseBody), params)
+    expect(res.status).toBe(201)
+    expect(stampedMembership()).toBe('mem-client')
+    // Didn't need the logged-in-user lookup.
+    expect(h.membershipFindUnique).not.toHaveBeenCalled()
+  })
+
+  it('3) falls back to the logged-in user’s membership', async () => {
+    // client has none → uses membershipFindUnique (mem-mine from beforeEach)
+    const res = await POST(req(baseBody), params)
+    expect(res.status).toBe(201)
+    expect(stampedMembership()).toBe('mem-mine')
+  })
+
+  it('4) falls back to the owner when the user has no membership row', async () => {
+    h.membershipFindUnique.mockResolvedValue(null) // legacy owner: no membership row
+    const res = await POST(req(baseBody), params)
+    expect(res.status).toBe(201)
+    expect(stampedMembership()).toBe('mem-owner')
   })
 })

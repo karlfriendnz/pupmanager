@@ -18,6 +18,23 @@ interface PkgOption {
   sessionType: 'IN_PERSON' | 'VIRTUAL'
 }
 
+// A staff member the package can be assigned to. Only used in multi-trainer
+// businesses (the picker is hidden entirely for solo companies).
+interface MemberOption {
+  id: string
+  name: string
+  role: string
+  title?: string | null
+}
+
+// Default assignee for the picker: the logged-in user's membership when it's a
+// real member, else the owner, else the first member. Mirrors the API's
+// precedence for the no-pick case.
+function defaultAssignee(members: MemberOption[], currentMembershipId: string | null): string {
+  if (currentMembershipId && members.some(m => m.id === currentMembershipId)) return currentMembershipId
+  return members.find(m => m.role === 'OWNER')?.id ?? members[0]?.id ?? ''
+}
+
 const SLOT_SEARCH_DAYS = 60
 // Hard ceiling on sessions created in one assignment — matches the API's
 // `sessionDates` schema (max 52). Protects against runaway loops if an ongoing
@@ -34,6 +51,8 @@ export function AssignPackageButton({
   packages,
   availability,
   dogs,
+  members = [],
+  currentMembershipId = null,
   open: externalOpen,
   onOpenChange,
 }: {
@@ -41,6 +60,8 @@ export function AssignPackageButton({
   packages: PkgOption[]
   availability: AvailabilityRow[]
   dogs?: { id: string; name: string }[]
+  members?: MemberOption[]
+  currentMembershipId?: string | null
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) {
@@ -85,6 +106,8 @@ export function AssignPackageButton({
           packages={packages}
           availability={availability}
           dogs={dogs ?? []}
+          members={members}
+          currentMembershipId={currentMembershipId}
           onClose={() => setOpen(false)}
         />
       )}
@@ -97,16 +120,24 @@ function AssignModal({
   packages,
   availability,
   dogs,
+  members,
+  currentMembershipId,
   onClose,
 }: {
   clientId: string
   packages: PkgOption[]
   availability: AvailabilityRow[]
   dogs: { id: string; name: string }[]
+  members: MemberOption[]
+  currentMembershipId: string | null
   onClose: () => void
 }) {
   const router = useRouter()
   const [packageId, setPackageId] = useState(packages[0].id)
+  // "Assigned trainer" picker — only for multi-trainer businesses. Defaults to
+  // the logged-in user's membership (the owner when the owner is signed in).
+  const showTrainerPicker = members.length > 1
+  const [assignedMembershipId, setAssignedMembershipId] = useState(() => defaultAssignee(members, currentMembershipId))
   const [startDate, setStartDate] = useState(defaultTomorrow())
   // Only used when the chosen package has sessionCount = 0 (ongoing).
   const [endDate, setEndDate] = useState(() => addWeeksISO(defaultTomorrow(), ONGOING_DEFAULT_WEEKS))
@@ -170,7 +201,16 @@ function AssignModal({
     const res = await fetch(`/api/clients/${clientId}/packages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ packageId, sessionDates, dogId, markInvoiced, notify }),
+      body: JSON.stringify({
+        packageId,
+        sessionDates,
+        dogId,
+        // Only in multi-trainer businesses; omitted otherwise so the API falls
+        // back to its client/owner precedence.
+        membershipId: showTrainerPicker ? assignedMembershipId : undefined,
+        markInvoiced,
+        notify,
+      }),
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
@@ -215,6 +255,26 @@ function AssignModal({
               <p className="text-xs text-slate-500 mt-1.5">{pkg.description}</p>
             )}
           </div>
+
+          {showTrainerPicker && (
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Assigned trainer</label>
+              <select
+                value={assignedMembershipId}
+                onChange={e => setAssignedMembershipId(e.target.value)}
+                className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {members.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}{m.role === 'OWNER' ? ' (owner)' : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Every session in this package is booked onto this trainer&apos;s calendar.
+              </p>
+            </div>
+          )}
 
           {dogs.length > 0 && (
             <div>
