@@ -64,8 +64,6 @@ export async function GET(req: Request) {
 
 // POST /api/messages — send a message
 export async function POST(req: Request) {
-  const guard = await guardPermission('messages.send')
-  if (guard instanceof NextResponse) return guard
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -82,6 +80,10 @@ export async function POST(req: Request) {
   })
 
   if (trainerProfile) {
+    // Trainer/staff sender: gate on the messages.send permission (clients, who
+    // have no membership, are validated by ownership below instead).
+    const guard = await guardPermission('messages.send')
+    if (guard instanceof NextResponse) return guard
     const client = await prisma.clientProfile.findFirst({
       where: { id: clientId, trainerId: trainerProfile.id },
     })

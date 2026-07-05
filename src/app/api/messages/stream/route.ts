@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic'
 // who owns the client (or the client themselves) can open a stream
 // for that thread. Anyone else gets a 403.
 
-const POLL_INTERVAL_MS = 2000
+const POLL_INTERVAL_MS = 1000
 const STREAM_MAX_MS = 250_000
 
 export async function GET(req: Request) {
