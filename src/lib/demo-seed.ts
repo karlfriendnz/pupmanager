@@ -45,6 +45,49 @@ export function noteToStart(base: Date, note: string): Date {
   return d
 }
 
+// ─── Trainer schedule guard ──────────────────────────────────────────────────
+// A single trainer can only run one session at a time, so no two of their
+// sessions may overlap. This allocator tracks every reserved [start, end)
+// interval (ms) and, given a preferred start, returns the earliest free
+// 15-minute-aligned slot at or after it — reserving as it goes. Preferring the
+// original time (rather than packing from the top of the day) keeps each
+// session on its intended day / part-of-day, so past↔future status is preserved
+// and the calendar still looks naturally spread. Exported for unit testing.
+export type SlotAllocator = {
+  /** Reserve a fixed slot (e.g. a group class) so later placements flow around it. */
+  reserve(startMs: number, durationMins: number): void
+  /** Place a session at the first free slot ≥ preferred; returns the chosen start (ms). */
+  place(preferredMs: number, durationMins: number): number
+  /** Snapshot of reserved intervals — for assertions/tests. */
+  readonly intervals: ReadonlyArray<{ start: number; end: number }>
+}
+
+export function createSlotAllocator(slotMs = 15 * 60_000): SlotAllocator {
+  const occupied: Array<{ start: number; end: number }> = []
+  const free = (start: number, durationMins: number): boolean => {
+    const end = start + durationMins * 60_000
+    for (const o of occupied) if (start < o.end && o.start < end) return false
+    return true
+  }
+  return {
+    reserve(startMs, durationMins) {
+      occupied.push({ start: startMs, end: startMs + durationMins * 60_000 })
+    },
+    place(preferredMs, durationMins) {
+      let t = Math.ceil(preferredMs / slotMs) * slotMs
+      // The open future always has room, so this loop terminates well before the
+      // cap; the cap just guards against a pathological all-day-duration package.
+      const limit = t + 30 * 24 * 3600_000
+      while (t < limit && !free(t, durationMins)) t += slotMs
+      occupied.push({ start: t, end: t + durationMins * 60_000 })
+      return t
+    },
+    get intervals() {
+      return occupied.slice()
+    },
+  }
+}
+
 // ─── Deterministic RNG ───────────────────────────────────────────────────────
 // Mulberry32. Tiny, good enough for picking names/durations from pools.
 function rng(seed: number) {
@@ -846,6 +889,41 @@ export async function seedDemoData(
   // ─── 3. Client packages + sessions (one createMany each) ───────────────────
 
   const now = new Date()
+
+  // Schedule guard — every session below is for this one trainer, so route each
+  // placement through the allocator to guarantee non-overlapping slots. Group
+  // classes sit on a fixed weekday/time (per their scheduleNote) and occupy the
+  // trainer too, so precompute their schedule and RESERVE those slots up front;
+  // the 1:1 sessions then flow around them and around each other.
+  const schedule = createSlotAllocator()
+  const placeSession = (preferred: Date, durationMins: number): Date =>
+    new Date(schedule.place(preferred.getTime(), durationMins))
+
+  const groupPkgs = packages.filter(p => p.isGroup)
+  const classRunDefs: { name: string; scheduleNote: string; status: 'RUNNING' | 'SCHEDULED' | 'COMPLETED'; startOffset: number; enrol: number }[] = [
+    { name: 'Spring Puppy Class', scheduleNote: 'Tuesdays · 6:00pm', status: 'RUNNING', startOffset: -14, enrol: 6 },
+    { name: 'Reactive Rover Group', scheduleNote: 'Thursdays · 7:00pm', status: 'SCHEDULED', startOffset: 7, enrol: 5 },
+    { name: 'Foundations Group', scheduleNote: 'Saturdays · 10:00am', status: 'COMPLETED', startOffset: -63, enrol: 7 },
+  ]
+  // Class runs sit on a GROUP package. Only trainers/behaviourists have those —
+  // walkers/groomers/sitters don't run classes, so skip entirely.
+  const classPlan = groupPkgs.length > 0
+    ? classRunDefs.map((def, i) => {
+        const pkg = groupPkgs[i % groupPkgs.length]
+        const base = new Date(now)
+        base.setDate(base.getDate() + def.startOffset)
+        const start = noteToStart(base, def.scheduleNote)
+        const sessions: Date[] = []
+        for (let s = 0; s < pkg.sessionCount; s++) {
+          const d = new Date(start)
+          d.setDate(d.getDate() + s * Math.max(1, pkg.weeksBetween) * 7)
+          sessions.push(d)
+        }
+        return { def, pkg, start, sessions }
+      })
+    : []
+  for (const cp of classPlan) for (const d of cp.sessions) schedule.reserve(d.getTime(), cp.pkg.durationMins)
+
   const clientPackageRows: Array<{ id: string; packageId: string; clientId: string; startDate: Date }> = []
   const sessionRows: Array<{
     id: string
@@ -866,9 +944,10 @@ export async function seedDemoData(
       const adhoc = Math.floor(rand() * 3) + 1
       for (let s = 0; s < adhoc; s++) {
         const dayOffset = Math.floor(rand() * 42) - 21
-        const start = new Date(now)
-        start.setDate(start.getDate() + dayOffset)
-        start.setHours(12 + Math.floor(rand() * 6), rand() < 0.5 ? 0 : 30, 0, 0)
+        const preferred = new Date(now)
+        preferred.setDate(preferred.getDate() + dayOffset)
+        preferred.setHours(12 + Math.floor(rand() * 6), rand() < 0.5 ? 0 : 30, 0, 0)
+        const scheduledAt = placeSession(preferred, 60)
         sessionRows.push({
           id: randomUUID(),
           trainerId,
@@ -876,10 +955,10 @@ export async function seedDemoData(
           dogId: c.dogId,
           clientPackageId: null,
           title: SESSION_TITLES[Math.floor(rand() * SESSION_TITLES.length)],
-          scheduledAt: start,
+          scheduledAt,
           durationMins: 60,
           sessionType: rand() < 0.85 ? 'IN_PERSON' : 'VIRTUAL',
-          status: dayOffset < 0 ? 'COMPLETED' : 'UPCOMING',
+          status: scheduledAt.getTime() < now.getTime() ? 'COMPLETED' : 'UPCOMING',
         })
       }
       continue
@@ -892,10 +971,11 @@ export async function seedDemoData(
     const cpId = randomUUID()
     clientPackageRows.push({ id: cpId, packageId: pkg.id, clientId: c.profileId, startDate })
     for (let s = 0; s < pkg.sessionCount; s++) {
-      const sessionDate = new Date(startDate)
-      sessionDate.setDate(sessionDate.getDate() + s * pkg.weeksBetween * 7)
-      sessionDate.setHours(12 + Math.floor(rand() * 6), rand() < 0.5 ? 0 : 30, 0, 0)
-      const isPast = sessionDate.getTime() < now.getTime()
+      const preferred = new Date(startDate)
+      preferred.setDate(preferred.getDate() + s * pkg.weeksBetween * 7)
+      preferred.setHours(12 + Math.floor(rand() * 6), rand() < 0.5 ? 0 : 30, 0, 0)
+      const scheduledAt = placeSession(preferred, pkg.durationMins)
+      const isPast = scheduledAt.getTime() < now.getTime()
       const status: 'UPCOMING' | 'COMPLETED' | 'COMMENTED' = isPast
         ? (rand() < 0.7 ? 'COMMENTED' : 'COMPLETED')
         : 'UPCOMING'
@@ -906,7 +986,7 @@ export async function seedDemoData(
         dogId: c.dogId,
         clientPackageId: cpId,
         title: pkg.name + (pkg.sessionCount > 1 ? ` · session ${s + 1}` : ''),
-        scheduledAt: sessionDate,
+        scheduledAt,
         durationMins: pkg.durationMins,
         sessionType: pkg.sessionType,
         status,
@@ -920,6 +1000,7 @@ export async function seedDemoData(
   const pushFillSession = (slot: Date, pkgIndex: number) => {
     const c = createdClients[Math.floor(rand() * createdClients.length)]
     const pkg = packages[pkgIndex % packages.length]
+    const scheduledAt = placeSession(slot, pkg.durationMins)
     sessionRows.push({
       id: randomUUID(),
       trainerId,
@@ -927,10 +1008,10 @@ export async function seedDemoData(
       dogId: c.dogId,
       clientPackageId: null,
       title: pkg.name,
-      scheduledAt: slot,
+      scheduledAt,
       durationMins: pkg.durationMins,
       sessionType: pkg.sessionType,
-      status: slot.getTime() < now.getTime() ? 'COMPLETED' : 'UPCOMING',
+      status: scheduledAt.getTime() < now.getTime() ? 'COMPLETED' : 'UPCOMING',
     })
   }
 
@@ -1055,43 +1136,28 @@ export async function seedDemoData(
   }
   await prisma.enquiry.createMany({ data: enquiryRows })
 
-  // ─── 6. Group classes (a few runs off the first packages, with enrolments) ──
-  const classRunDefs: { name: string; scheduleNote: string; status: 'RUNNING' | 'SCHEDULED' | 'COMPLETED'; startOffset: number; enrol: number }[] = [
-    { name: 'Spring Puppy Class', scheduleNote: 'Tuesdays · 6:00pm', status: 'RUNNING', startOffset: -14, enrol: 6 },
-    { name: 'Reactive Rover Group', scheduleNote: 'Thursdays · 7:00pm', status: 'SCHEDULED', startOffset: 7, enrol: 5 },
-    { name: 'Foundations Group', scheduleNote: 'Saturdays · 10:00am', status: 'COMPLETED', startOffset: -63, enrol: 7 },
-  ]
-  // Class runs must sit on a GROUP package. Only trainers/behaviourists have
-  // those — walkers, groomers and sitters don't run classes, so skip entirely.
-  const groupPkgs = packages.filter(p => p.isGroup)
-  const activeClassRuns = groupPkgs.length > 0 ? classRunDefs : []
+  // ─── 6. Group classes — built from the classPlan precomputed above, whose
+  // (fixed) session times were already reserved in the schedule guard so the
+  // 1:1 sessions flowed around them. ──────────────────────────────────────────
+  const activeClassRuns = classPlan
   let classEnrolCount = 0
   for (let i = 0; i < activeClassRuns.length; i++) {
-    const def = activeClassRuns[i]
-    const pkg = groupPkgs[i % groupPkgs.length]
-    const base = new Date(now)
-    base.setDate(base.getDate() + def.startOffset)
-    const start = noteToStart(base, def.scheduleNote)
+    const { def, pkg, start, sessions } = activeClassRuns[i]
     const run = await prisma.classRun.create({
       data: { trainerId, isSample: markSample, packageId: pkg.id, name: def.name, scheduleNote: def.scheduleNote, startDate: start, capacity: 8, status: def.status },
     })
-    // Generate the class's shared session series (weekly from the start) so the
-    // class detail page isn't empty — past ones completed, future ones upcoming.
-    const classSessionRows = []
-    for (let s = 0; s < pkg.sessionCount; s++) {
-      const d = new Date(start)
-      d.setDate(d.getDate() + s * Math.max(1, pkg.weeksBetween) * 7)
-      classSessionRows.push({
-        trainerId,
-        classRunId: run.id,
-        sessionIndex: s + 1,
-        title: pkg.sessionCount > 1 ? `${def.name} — session ${s + 1}/${pkg.sessionCount}` : def.name,
-        scheduledAt: d,
-        durationMins: pkg.durationMins,
-        sessionType: pkg.sessionType,
-        status: d.getTime() < now.getTime() ? ('COMPLETED' as const) : ('UPCOMING' as const),
-      })
-    }
+    // The class's shared session series (weekly from the start) so the class
+    // detail page isn't empty — past ones completed, future ones upcoming.
+    const classSessionRows = sessions.map((d, s) => ({
+      trainerId,
+      classRunId: run.id,
+      sessionIndex: s + 1,
+      title: pkg.sessionCount > 1 ? `${def.name} — session ${s + 1}/${pkg.sessionCount}` : def.name,
+      scheduledAt: d,
+      durationMins: pkg.durationMins,
+      sessionType: pkg.sessionType,
+      status: d.getTime() < now.getTime() ? ('COMPLETED' as const) : ('UPCOMING' as const),
+    }))
     await prisma.trainingSession.createMany({ data: classSessionRows })
     // Wrap-around offset so every class gets its full enrolment even when the
     // sandbox only has ~12 clients (the old fixed i*8 slice left later classes
