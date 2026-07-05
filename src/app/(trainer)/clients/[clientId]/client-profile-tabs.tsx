@@ -364,7 +364,7 @@ export function ClientProfileTabs({
             </CardBody>
           </Card>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4">
             {/* Unpaid invoices — the client's new-model Invoice rows (UNPAID /
                 PARTIAL). Only for trainers who can see billing. */}
             {canViewBilling && <ClientUnpaidInvoicesCard clientId={clientId} onViewAll={() => setTab('invoices')} />}

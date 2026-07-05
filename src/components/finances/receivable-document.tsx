@@ -29,11 +29,11 @@ export interface Rcv {
 }
 
 export function receivableBadge(r: { status: string; sentAt: string | null }): { label: string; cls: string } {
-  if (r.status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-slate-100 text-slate-400' }
+  if (r.status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-rose-50 text-rose-600' }
   if (r.status === 'PAID') return { label: 'Paid', cls: 'bg-emerald-100 text-emerald-700' }
   if (r.status === 'PARTIAL') return { label: 'Partially paid', cls: 'bg-amber-100 text-amber-700' }
   if (!r.sentAt) return { label: 'Unsent', cls: 'bg-slate-100 text-slate-500' }
-  return { label: 'Sent', cls: 'bg-amber-100 text-amber-700' }
+  return { label: 'Sent', cls: 'bg-sky-100 text-sky-700' }
 }
 
 // Deep link to an invoice inside the trainer's Xero org.
@@ -53,7 +53,7 @@ export function XeroLink({ xeroInvoiceId, className = '' }: { xeroInvoiceId: str
       className={`inline-flex shrink-0 ${className}`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/logos/xero-icon.webp" alt="View in Xero" className="h-[18px] w-[18px] rounded-full" />
+      <img src="/logos/xero-icon.webp" alt="View in Xero" className="h-6 w-6 rounded-full" />
     </a>
   )
 }

@@ -32,26 +32,45 @@ function useClientReceivables(clientId: string) {
   return { items, loading, reload: load }
 }
 
-// One tappable invoice row (opens the shared ReceivableDocument on click).
-function InvoiceRow({ r, onOpen }: { r: Rcv; onOpen: () => void }) {
-  const b = receivableBadge(r)
+// Invoice table — clickable rows open the shared ReceivableDocument.
+function InvoiceTable({ items, onOpen }: { items: Rcv[]; onOpen: (r: Rcv) => void }) {
   return (
-    <button type="button" onClick={onOpen} className="w-full text-left flex items-center justify-between gap-3 py-2.5 px-2 -mx-2 rounded-lg hover:bg-slate-50">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-slate-900">{r.description ?? 'Invoice'}</p>
-        <p className="text-xs text-slate-400">{fmtDate(r.createdAt)}</p>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <div className="text-right">
-          <p className="text-sm font-semibold tabular-nums text-slate-900">{money(r.amountCents, r.currency)}</p>
-          {r.status === 'PARTIAL' && (
-            <p className="text-[11px] tabular-nums text-amber-600">paid {money(r.amountPaidCents, r.currency)} of {money(r.amountCents, r.currency)}</p>
-          )}
-        </div>
-        {r.xeroInvoiceId && <XeroLink xeroInvoiceId={r.xeroInvoiceId} />}
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${b.cls}`}>{b.label}</span>
-      </div>
-    </button>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
+            <th className="py-2 pr-3 font-medium">Invoice</th>
+            <th className="py-2 px-3 font-medium">Date</th>
+            <th className="py-2 px-3 font-medium text-right">Amount</th>
+            <th className="py-2 px-3 font-medium text-right">Status</th>
+            <th className="py-2 pl-3 font-medium text-right sr-only">Xero</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {items.map(r => {
+            const b = receivableBadge(r)
+            return (
+              <tr key={r.id} onClick={() => onOpen(r)} className="cursor-pointer hover:bg-slate-50">
+                <td className="py-2.5 pr-3 font-medium text-slate-900">{r.description ?? 'Invoice'}</td>
+                <td className="py-2.5 px-3 whitespace-nowrap text-slate-400">{fmtDate(r.createdAt)}</td>
+                <td className="py-2.5 px-3 text-right tabular-nums text-slate-900 whitespace-nowrap">
+                  <span className="font-semibold">{money(r.amountCents, r.currency)}</span>
+                  {r.status === 'PARTIAL' && (
+                    <span className="block text-[11px] text-amber-600">paid {money(r.amountPaidCents, r.currency)} of {money(r.amountCents, r.currency)}</span>
+                  )}
+                </td>
+                <td className="py-2.5 px-3 text-right">
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${b.cls}`}>{b.label}</span>
+                </td>
+                <td className="py-2.5 pl-3 text-right">
+                  {r.xeroInvoiceId && <span onClick={e => e.stopPropagation()} className="inline-flex"><XeroLink xeroInvoiceId={r.xeroInvoiceId} /></span>}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -59,20 +78,34 @@ function InvoiceRow({ r, onOpen }: { r: Rcv; onOpen: () => void }) {
 export function ClientInvoicesTab({ clientId }: { clientId: string }) {
   const { items, loading, reload } = useClientReceivables(clientId)
   const [open, setOpen] = useState<Rcv | null>(null)
+  const [filter, setFilter] = useState<'all' | 'unpaid' | 'paid'>('all')
+
+  const filtered = (items ?? []).filter(r =>
+    filter === 'unpaid' ? (r.status === 'UNPAID' || r.status === 'PARTIAL')
+    : filter === 'paid' ? r.status === 'PAID'
+    : true,
+  )
 
   return (
     <Card>
       <CardBody className="py-3">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="inline-flex rounded-lg bg-slate-100 p-1 text-xs font-semibold">
+            {(['all', 'unpaid', 'paid'] as const).map(f => (
+              <button key={f} type="button" onClick={() => setFilter(f)} className={`rounded-md px-3 py-1.5 capitalize transition-colors ${filter === f ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{f}</button>
+            ))}
+          </div>
+        </div>
         {loading && !items ? (
           <div className="flex items-center gap-2 text-sm text-slate-400 px-2 py-8"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
-        ) : !items || items.length === 0 ? (
+        ) : (items?.length ?? 0) === 0 ? (
           <div className="text-center py-12 text-slate-400">
             <p className="text-sm">No invoices yet. They’re created automatically when you assign a priced package or product.</p>
           </div>
+        ) : filtered.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-400">No {filter} invoices.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-slate-100">
-            {items.map(r => <li key={r.id}><InvoiceRow r={r} onOpen={() => setOpen(r)} /></li>)}
-          </ul>
+          <InvoiceTable items={filtered} onOpen={setOpen} />
         )}
       </CardBody>
       {open && <ReceivableDocument summary={open} onClose={() => setOpen(null)} onSent={reload} />}
@@ -100,9 +133,7 @@ export function ClientUnpaidInvoicesCard({ clientId, onViewAll }: { clientId: st
         ) : openItems.length === 0 ? (
           <p className="text-sm text-slate-400">No unpaid invoices.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-slate-100">
-            {openItems.map(r => <li key={r.id}><InvoiceRow r={r} onOpen={() => setOpen(r)} /></li>)}
-          </ul>
+          <InvoiceTable items={openItems} onOpen={setOpen} />
         )}
       </CardBody>
       {open && <ReceivableDocument summary={open} onClose={() => setOpen(null)} onSent={reload} />}
