@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { z } from 'zod'
 
 const postSchema = z.object({
@@ -56,5 +57,14 @@ export async function POST(
       status: 'PENDING',
     },
   })
+
+  // Best-effort receivable for the assigned product (idempotent, skips unpriced).
+  await createInvoiceForAssignment({
+    trainerId: access.client.trainerId,
+    clientId,
+    sourceType: 'PRODUCT',
+    productId: parsed.data.productId,
+  })
+
   return NextResponse.json(created, { status: 201 })
 }

@@ -337,18 +337,30 @@ export type XeroInvoiceInput = {
   // (important for the Phase 4 payment reconciliation). No tax → NoTax.
   hasTax: boolean
   lines: XeroInvoiceLine[]
+  // When set, UPDATE that existing Xero invoice in place instead of creating a
+  // new one. Xero's POST /Invoices upserts on InvoiceID; an AUTHORISED (unpaid)
+  // invoice's line items can be edited this way. Null/omitted = create.
+  invoiceId?: string | null
 }
 
 /**
- * Create an AUTHORISED accounts-receivable (ACCREC) invoice in the trainer's
- * org and return its InvoiceID. AUTHORISED (not DRAFT) so Phase 4 can apply a
- * payment against it.
+ * Create (or, when `invoiceId` is set, update) an AUTHORISED accounts-receivable
+ * (ACCREC) invoice in the trainer's org and return its InvoiceID. AUTHORISED
+ * (not DRAFT) so Phase 4 can apply a payment against it.
  */
 export async function createXeroInvoice(connection: XeroConnection, input: XeroInvoiceInput): Promise<string> {
+  // Xero requires a DueDate on AUTHORISED invoices. We don't track per-invoice
+  // terms yet, so issue today and default the due date to +14 days.
+  const isoDate = (d: Date) => d.toISOString().slice(0, 10)
+  const issued = new Date()
+  const due = new Date(issued.getTime() + 14 * 24 * 60 * 60 * 1000)
   const body = {
     Type: 'ACCREC',
+    ...(input.invoiceId ? { InvoiceID: input.invoiceId } : {}),
     Contact: { ContactID: input.contactId },
     Status: 'AUTHORISED',
+    Date: isoDate(issued),
+    DueDate: isoDate(due),
     LineAmountTypes: input.hasTax ? 'Inclusive' : 'NoTax',
     Reference: input.reference || undefined,
     LineItems: input.lines.map((l) => ({
@@ -368,6 +380,45 @@ export async function createXeroInvoice(connection: XeroConnection, input: XeroI
   const id = data.Invoices?.[0]?.InvoiceID
   if (!id) throw new Error('Xero invoice create returned no InvoiceID')
   return id
+}
+
+// ─── Inbound: read an invoice's payment state back from Xero ───────────────────
+
+export type XeroInvoiceState = {
+  // Minor units (Xero returns AmountPaid/AmountDue in major units → *100).
+  amountPaidCents: number
+  amountDueCents: number
+  // Xero's own status string, e.g. AUTHORISED | PAID | VOIDED | DELETED.
+  status: string | null
+}
+
+/**
+ * Fetch the current payment state of a Xero invoice. Returns null when the
+ * invoice no longer exists in Xero (404) or the response can't be read, so
+ * callers can no-op rather than clobber local state. Throws only on auth/network
+ * failures the caller may want to retry.
+ */
+export async function fetchXeroInvoiceState(
+  connection: XeroConnection,
+  xeroInvoiceId: string,
+): Promise<XeroInvoiceState | null> {
+  const res = await xeroFetch(connection, `/Invoices/${encodeURIComponent(xeroInvoiceId)}`)
+  if (res.status === 404) return null
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Xero invoice fetch failed (${res.status}): ${text}`)
+  }
+  const data: { Invoices?: Array<{ AmountPaid?: number; AmountDue?: number; Status?: string }> } = await res
+    .json()
+    .catch(() => ({}))
+  const inv = data.Invoices?.[0]
+  if (!inv) return null
+  const toCents = (n: number | undefined) => Math.round((n ?? 0) * 100)
+  return {
+    amountPaidCents: toCents(inv.AmountPaid),
+    amountDueCents: toCents(inv.AmountDue),
+    status: inv.Status ?? null,
+  }
 }
 
 // ─── Phase 4: payments ────────────────────────────────────────────────────────

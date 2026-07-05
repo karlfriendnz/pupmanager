@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { z } from 'zod'
 
 const postSchema = z.object({
@@ -68,6 +69,16 @@ export async function POST(
       status: 'PENDING',
     },
   })
+
+  // Best-effort receivable for the self-requested product (idempotent, skips
+  // unpriced). Never blocks the request.
+  await createInvoiceForAssignment({
+    trainerId: profile.trainerId,
+    clientId: profile.id,
+    sourceType: 'PRODUCT',
+    productId,
+  })
+
   return NextResponse.json(created, { status: 201 })
 }
 

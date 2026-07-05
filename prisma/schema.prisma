@@ -473,6 +473,13 @@ model TrainerProfile {
   // trainer nets the full amount. On by default — trainers can opt out.
   passProcessingFeeToClient Boolean   @default(true)
 
+  // ─── Receivables (payment-method-agnostic invoicing) ────────────────────────
+  // When true, a receivable Invoice raised on a priced package/product
+  // assignment is emailed to the client immediately (sentAt stamped). When
+  // false the Invoice is still created + reconcilable, just left unsent for the
+  // trainer to review and send from Finances. Default off — opt-in.
+  autoSendInvoices          Boolean   @default(false)
+
   // ─── Bulk-email sending domain (Resend) ─────────────────────────────────────
   // To send bulk emails to their clients the trainer must verify a *sending
   // subdomain* of their own domain (e.g. mail.theirbusiness.com) — sending off a
@@ -530,6 +537,7 @@ model TrainerProfile {
   members            TrainerMembership[]        @relation("CompanyMembers")
   addons             TrainerAddon[]
   payments           Payment[]
+  invoices           Invoice[]
   brainDumps         TrainerBrainDump[]
   todos              TrainerTodo[]
   xeroConnection     XeroConnection?
@@ -855,6 +863,11 @@ model ClientProfile {
   // first client" onboarding step, kept distinct from "Create a client".
   invitedAt DateTime?
 
+  // Private, trainer-facing free-text notes about this client (not shown to the
+  // client; distinct from per-session notes). Scoped to the (userId,trainerId)
+  // relationship like everything else on this model.
+  notes String? @db.Text
+
   // Bulk/marketing email opt-out, scoped to THIS trainer relationship (matching
   // the composite (userId, trainerId) model — a person can be opted out for one
   // trainer but not another). Set either by the client clicking Unsubscribe in a
@@ -895,6 +908,7 @@ model ClientProfile {
   buddySessions     SessionBuddy[]
   achievements      ClientAchievement[]
   payments          Payment[]
+  invoices          Invoice[]
   enquiry           Enquiry?
 
   @@unique([userId, trainerId])
@@ -2030,6 +2044,95 @@ model Refund {
 
   @@index([paymentId])
   @@map("refunds")
+}
+
+// ─── Invoices (payment-method-agnostic receivables) ───────────────────────────
+// A trainer's invoice to a client that is NOT tied to Stripe. Lets trainers who
+// bill by bank transfer and/or reconcile in Xero raise and track what a client
+// owes, without any Connect setup. Wholly distinct from the Stripe-only
+// `Payment` model above (which powers card checkout, refunds, Connect payouts):
+// an Invoice is a receivable, created UNPAID the moment a priced package/product
+// is assigned. It can later be linked to a settled Stripe `Payment` via
+// `paymentId` (Phase 2 — Stripe pay-link on send). Idempotency key is
+// (trainerId, clientId, sourceType, sourceId), so an assignment is invoiced once.
+model Invoice {
+  id        String @id @default(cuid())
+  trainerId String
+  clientId  String
+
+  // Money in minor units; currency is ISO 4217 lower-case (matches the
+  // trainer's payoutCurrency at issue time). amountCents is the cached total
+  // (sum of line amounts); amountPaidCents is how much has been settled so far
+  // (kept in step with Xero via inbound reconciliation — supports partials).
+  amountCents     Int
+  amountPaidCents Int    @default(0)
+  currency        String
+
+  // "UNPAID" | "PARTIAL" | "PAID" | "CANCELLED". A plain string (not an enum) so
+  // states can grow without a schema migration. PARTIAL = 0 < paid < total.
+  status String @default("UNPAID")
+
+  // Human label for the invoice ("6-Week Puppy Course").
+  description String?
+
+  // What generated this receivable, for idempotency + back-reference.
+  // sourceType: "PACKAGE" | "PRODUCT" | "MANUAL"; sourceId: the originating
+  // clientPackageId / productId.
+  sourceType String?
+  sourceId   String?
+
+  // When the client was actually emailed/notified about the invoice. Null =
+  // created but not yet sent — still fully reconcilable, just not delivered.
+  // paidAt stamps settlement (Phase 2 reconciliation).
+  sentAt DateTime?
+  paidAt DateTime?
+
+  // Xero mirror. Best-effort push on creation; status/error track the last
+  // attempt for retry + surfacing (same shape as Payment's Xero fields).
+  xeroInvoiceId  String?
+  xeroSyncStatus String? // "SYNCED" | "ERROR" | null (not attempted / not connected)
+  xeroSyncError  String?
+
+  // Soft link to the Stripe `Payment` that settled this by card (Phase 2). A
+  // plain unique column — deliberately NOT a Prisma relation — so the existing
+  // Stripe `Payment` model stays exactly as-is.
+  paymentId String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer TrainerProfile    @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  client  ClientProfile     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  lines   InvoiceLineItem[]
+
+  @@index([trainerId, status])
+  @@index([clientId])
+  @@index([sourceType, sourceId])
+  @@map("invoices")
+}
+
+// A single line on an Invoice. Invoices are multi-line; `Invoice.amountCents` is
+// the cached SUM of every line's `amountCents`, and each line's `amountCents` is
+// the cached `quantity * unitAmountCents`. Keeping both cached means the list,
+// filters, and Xero-total code never have to recompute from children.
+model InvoiceLineItem {
+  id              String   @id @default(cuid())
+  invoiceId       String
+  description     String
+  quantity        Int      @default(1)
+  unitAmountCents Int
+  // Cached line total = quantity * unitAmountCents.
+  amountCents     Int
+  // Optional per-line Xero revenue account. At sync time it falls back to the
+  // invoice's source (package/product) account, then the connection default.
+  xeroAccountCode String?
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_line_items")
 }
 
 // ─── Training Library ─────────────────────────────────────────────────────────

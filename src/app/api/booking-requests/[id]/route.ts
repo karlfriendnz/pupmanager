@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { safeEvaluate } from '@/lib/achievements'
 import { createBookingAssignment } from '@/lib/self-book'
+import { createInvoiceForAssignment } from '@/lib/invoicing'
 
 // PATCH /api/booking-requests/[id] — trainer confirms or declines a
 // pending client self-booking. CONFIRM spawns the ClientPackage +
@@ -74,6 +75,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   })
 
   await safeEvaluate(reqRow.clientId)
+  // Best-effort receivable for the confirmed self-booking (idempotent, skips
+  // unpriced packages, never blocks the confirmation).
+  await createInvoiceForAssignment({ trainerId, clientId: reqRow.clientId, sourceType: 'PACKAGE', clientPackageId: assignmentId })
   await prisma.clientNotification
     .create({
       data: {

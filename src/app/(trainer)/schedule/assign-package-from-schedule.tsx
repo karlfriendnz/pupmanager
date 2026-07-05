@@ -577,20 +577,30 @@ function AssignPackageFromScheduleModalInner({
             </p>
           </div>
 
-          <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
-            <input
-              type="checkbox"
-              checked={markInvoiced}
-              onChange={e => setMarkInvoiced(e.target.checked)}
-              className="h-4 w-4 mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0"
-            />
-            <span className="text-sm text-slate-700 leading-snug">
-              Already invoiced
-              <span className="block text-[11px] text-slate-400 mt-0.5">
-                Tick if you&apos;ve sent the invoice for this package outside PupManager.
-              </span>
-            </span>
-          </label>
+          <div>
+            <p className="text-sm font-medium text-slate-700">Invoicing</p>
+            <div className="mt-2 flex gap-1 rounded-lg bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => setMarkInvoiced(false)}
+                className={`flex-1 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${!markInvoiced ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Create an invoice
+              </button>
+              <button
+                type="button"
+                onClick={() => setMarkInvoiced(true)}
+                className={`flex-1 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${markInvoiced ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Already invoiced
+              </button>
+            </div>
+            {markInvoiced && (
+              <p className="mt-1.5 text-[11px] text-slate-400">
+                You’ve invoiced this outside PupManager (Xero, QuickBooks, cash) — we won’t create one.
+              </p>
+            )}
+          </div>
 
           <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
             <input

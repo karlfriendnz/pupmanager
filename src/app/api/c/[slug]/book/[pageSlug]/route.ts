@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth'
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 import { fetchBookingSlots, isSlotAvailable } from '@/lib/booking-slots'
 import { bookingConfig, materializeBooking } from '@/lib/booking-page'
+import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { generateSessionDates } from '@/lib/self-book'
 import { safeEvaluate } from '@/lib/achievements'
 import { notifyEnquiryTrainer } from '@/lib/notify-enquiry-trainer'
@@ -174,7 +175,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       return NextResponse.json({ ok: true, mode: 'requested' }, { status: 201 })
     }
 
-    await prisma.$transaction(tx =>
+    const clientPackageId = await prisma.$transaction(tx =>
       materializeBooking(tx, {
         trainerId: trainer.id,
         clientId: client.id,
@@ -188,6 +189,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       }),
     )
     await safeEvaluate(client.id)
+    // Best-effort receivable when this booking kicked off a priced package
+    // (single one-off sessions return no clientPackageId and aren't invoiced here).
+    if (clientPackageId) {
+      await createInvoiceForAssignment({ trainerId: trainer.id, clientId: client.id, sourceType: 'PACKAGE', clientPackageId })
+    }
     fireOnBooking(client.user?.email ?? null, client.user?.name ?? 'there', client.dog?.name ?? null)
     return NextResponse.json({ ok: true, mode: 'booked' }, { status: 201 })
   }

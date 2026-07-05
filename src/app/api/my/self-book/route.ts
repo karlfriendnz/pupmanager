@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { safeEvaluate } from '@/lib/achievements'
 import { generateSessionDates, createBookingAssignment } from '@/lib/self-book'
+import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
 import { enforceRateLimit } from '@/lib/rate-limit'
@@ -140,7 +141,7 @@ export async function POST(req: Request) {
   }
 
   // Instant book.
-  await prisma.$transaction(tx =>
+  const assignmentId = await prisma.$transaction(tx =>
     createBookingAssignment(tx, {
       trainerId: ctx.trainerId,
       clientId: ctx.clientId,
@@ -151,5 +152,8 @@ export async function POST(req: Request) {
     }),
   )
   await safeEvaluate(ctx.clientId)
+  // Best-effort receivable for the self-booked package (this free-flow path only;
+  // the paid path above goes through Stripe checkout instead).
+  await createInvoiceForAssignment({ trainerId: ctx.trainerId, clientId: ctx.clientId, sourceType: 'PACKAGE', clientPackageId: assignmentId })
   return NextResponse.json({ ok: true, mode: 'booked' }, { status: 201 })
 }

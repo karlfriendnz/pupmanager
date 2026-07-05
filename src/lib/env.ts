@@ -25,6 +25,11 @@ const schema = z.object({
   // Cron auth — both Vercel cron and Supabase pg_cron send this as Bearer
   CRON_SECRET: z.string().min(16, 'CRON_SECRET must be at least 16 chars (run: openssl rand -hex 32)'),
 
+  // Xero webhook signing key (from the Xero app's "Webhooks" config). Used to
+  // verify the x-xero-signature HMAC on inbound payment events. Optional: when
+  // unset, /api/xero/webhook rejects all events rather than trusting them.
+  XERO_WEBHOOK_KEY: optionalString,
+
   // Email (Resend)
   RESEND_API_KEY: z.string().startsWith('re_', 'RESEND_API_KEY must start with re_'),
   RESEND_FROM_EMAIL: z.string().email(),

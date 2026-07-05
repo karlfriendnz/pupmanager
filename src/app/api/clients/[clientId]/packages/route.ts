@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import { safeEvaluate } from '@/lib/achievements'
 import { notifyClient } from '@/lib/client-notify'
+import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { z } from 'zod'
 
 // Returns the client's active package assignments. Used by the session
@@ -230,6 +231,15 @@ export async function POST(
 
   // FIRST_PACKAGE_ASSIGNED trigger fires here.
   await safeEvaluate(clientId)
+
+  // Raise a payment-method-agnostic receivable for the assignment (best-effort;
+  // skips unpriced packages; idempotent). Emails the client + pushes to Xero
+  // per the trainer's settings. Never blocks the booking. Skipped when the
+  // trainer marked it already-invoiced externally (Xero/QBO/cash) — otherwise
+  // we'd raise a duplicate for something they've already billed.
+  if (!parsed.data.markInvoiced) {
+    await createInvoiceForAssignment({ trainerId, clientId, sourceType: 'PACKAGE', clientPackageId: created.id })
+  }
 
   // Notify the client they've been booked in — unless the trainer opted out or
   // every session is in the past (a history back-fill).
