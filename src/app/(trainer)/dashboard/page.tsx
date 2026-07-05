@@ -21,6 +21,7 @@ import { OnboardingPanel } from './onboarding-panel'
 import { TeamInviteCard } from './team-invite-card'
 import { SampleDataBanner } from './sample-data-banner'
 import { CountryPrompt } from './country-prompt'
+import { XeroAutoReconcile } from './xero-auto-reconcile'
 import { TrialBanner } from '../trial-banner'
 import { initTrainerOnboarding } from '@/lib/onboarding/init'
 import { getOnboardingState } from '@/lib/onboarding/state'
@@ -69,6 +70,8 @@ export default async function DashboardPage({
       payoutCurrency: true, pendingTeamInvites: true, connectChargesEnabled: true,
       subscriptionStatus: true, trialEndsAt: true, stripeSubscriptionId: true,
       user: { select: { email: true } },
+      // Presence gates the on-landing Xero reconciliation kick.
+      xeroConnection: { select: { id: true } },
     },
   })
   const sampleCountP = prisma.clientProfile.count({ where: { trainerId, isSample: true } })
@@ -327,6 +330,8 @@ export default async function DashboardPage({
         {/* iOS/Android only: prompt for a country when we couldn't capture it
             from the IP at signup. Hidden on web and once one is set. */}
         <CountryPrompt hasCountry={!!brandingProfile?.signupCountry} />
+        {/* On-landing Xero reconciliation (throttled, no UI). */}
+        <XeroAutoReconcile xeroConnected={!!brandingProfile?.xeroConnection} />
         {/* Two-column layout on lg+: the existing dashboard widgets fill the
             main column (8/12) while the scratchpad panel (To-do / Brain dump)
             sits in a 4/12 right rail. Stacks full-width below lg. */}
