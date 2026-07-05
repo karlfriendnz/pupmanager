@@ -91,7 +91,7 @@ export function LoginForm({ error, callbackUrl, enabledOAuth }: LoginFormProps) 
               ? <AppleNativeButton callbackUrl={callbackUrl} />
               : <OAuthButtons enabledOAuth={enabledOAuth} callbackUrl={callbackUrl} />}
 
-            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
+            <form method="post" onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
               <Input
                 label="Email address"
                 type="email"
