@@ -1,4 +1,5 @@
 import { redirect, notFound } from 'next/navigation'
+import { PawPrint } from 'lucide-react'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
@@ -246,11 +247,12 @@ export default async function ClientDetailPage({
         />
       )}
 
-      {/* Summary sidebar + tabbed content. On desktop the summary sticks to
-          the left while the trainer scrolls the tabs; on mobile it stacks on
-          top so the dog photo + key facts are the first thing they see. */}
+      {/* Summary sidebar + tabbed content. Desktop: summary sticks to the left,
+          tabs scroll on the right. Mobile: the heavy summary card is hidden (its
+          contact facts live in the Details tab) in favour of a compact header +
+          tabs-at-the-top, so a trainer isn't buried under a full profile card. */}
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <aside className="lg:w-72 lg:flex-shrink-0 xl:w-80 lg:sticky lg:top-8">
+      <aside className="hidden lg:block lg:w-72 lg:flex-shrink-0 xl:w-80 lg:sticky lg:top-8">
         <ClientSummaryCard
           name={client.user.name ?? client.user.email ?? 'Client'}
           status={client.status}
@@ -265,6 +267,25 @@ export default async function ClientDetailPage({
         />
       </aside>
       <div className="min-w-0 flex-1">
+      {/* Compact mobile header — the heavy summary card is desktop-only, so on
+          phones we show just the dog photo + name + status, then the tabs. */}
+      <div className="lg:hidden mb-4 flex items-center gap-3 rounded-2xl bg-white border border-slate-100 p-3">
+        {allDogs[0]?.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={allDogs[0].photoUrl} alt="" className="h-14 w-14 flex-shrink-0 rounded-xl object-cover" />
+        ) : (
+          <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><PawPrint className="h-6 w-6" /></div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h2 className="truncate text-base font-semibold text-slate-900">{client.user.name ?? client.user.email ?? 'Client'}</h2>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${client.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+              {client.status === 'ACTIVE' ? 'Active' : client.status}
+            </span>
+          </div>
+          {allDogs[0] && <p className="truncate text-sm text-slate-500">{allDogs[0].name}{allDogs[0].breed ? ` · ${allDogs[0].breed}` : ''}</p>}
+        </div>
+      </div>
       <ClientProfileTabs
         clientId={client.id}
         canEdit={canEdit}
@@ -344,6 +365,8 @@ export default async function ClientDetailPage({
           distanceFromBase,
         }}
         status={client.status}
+        notes={client.notes}
+        clientAppEnabled={clientAppEnabled}
       />
       </div>
       </div>

@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate, cn, formatSessionTitle } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send } from 'lucide-react'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote } from 'lucide-react'
+import { ClientNotesTab } from './client-notes-tab'
 import { Button } from '@/components/ui/button'
 import { SessionFormReport } from '@/components/session-form-report'
 import { ClientAchievementsPanel } from './client-achievements-panel'
@@ -12,7 +13,7 @@ import { StatusToggle } from './status-toggle'
 import { DogGalleryManager } from './dog-gallery-manager'
 import Link from 'next/link'
 
-type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements' | 'communication'
+type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements' | 'communication' | 'notes'
 
 export interface CommItem {
   id: string
@@ -126,6 +127,10 @@ interface Props {
   communications: CommItem[]
   // Unpaid invoices (PENDING request-payment invoices) for the Overview tab.
   unpaidInvoices: UnpaidInvoice[]
+  // Private trainer-facing notes about the client (Notes tab).
+  notes: string | null
+  // Client app add-on on — gates the Comms tab (no app + no email = no comms).
+  clientAppEnabled: boolean
 }
 
 function groupByCategory<T extends { category: string | null }>(items: T[]) {
@@ -154,6 +159,8 @@ export function ClientProfileTabs({
   status,
   communications,
   unpaidInvoices,
+  notes,
+  clientAppEnabled,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [pendingRequests, setPendingRequests] = useState(initialPendingRequests)
@@ -289,28 +296,33 @@ export function ClientProfileTabs({
     .filter(s => new Date(s.scheduledAt).getTime() < overviewNow)
     .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())[0] ?? null
 
+  // Comms only makes sense if there's a channel: the client app (in-app
+  // messaging) is on, OR the client has an email. No app + no email → hide it.
+  const showComms = clientAppEnabled || !!contact.email
+
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
     { id: 'overview',     label: 'Overview',     icon: Home },
     { id: 'sessions',     label: 'Sessions',     icon: Calendar, badge: sessions.length > 0 ? sessions.length : undefined },
     { id: 'dogs',         label: dogs.length > 1 ? 'Dogs' : 'Dog', icon: PawPrint, badge: dogs.length > 1 ? dogs.length : undefined },
-    { id: 'communication', label: 'Comms', icon: MessageSquare, badge: communications.length > 0 ? communications.length : undefined },
+    ...(showComms ? [{ id: 'communication' as Tab, label: 'Comms', icon: MessageSquare, badge: communications.length > 0 ? communications.length : undefined }] : []),
+    { id: 'notes',        label: 'Notes',        icon: StickyNote },
     { id: 'achievements', label: 'Achievements', icon: Trophy },
     { id: 'details',      label: 'Details',      icon: Info },
   ]
 
   return (
     <>
-      {/* Tab bar — iOS-style icon-on-top, tiny-label-below. Five tabs split
-          the row evenly so each is a comfortable tap target on phones
-          without scrolling. */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-8">
+      {/* Tab bar — iOS-style icon-on-top, tiny-label-below. On desktop the tabs
+          split the row evenly; on mobile there are more than fit a phone width,
+          so they scroll horizontally and the bar sticks to the top as you read. */}
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-6 overflow-x-auto lg:overflow-visible sticky top-2 z-10">
         {tabs.map(t => {
           const Icon = t.icon
           return (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`relative flex-1 flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all duration-150 ${
+              className={`relative flex-none min-w-[62px] lg:flex-1 flex flex-col items-center justify-center gap-0.5 px-1 py-2 rounded-xl transition-all duration-150 ${
                 tab === t.id
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
@@ -717,6 +729,11 @@ export function ClientProfileTabs({
             )
           })}
         </div>
+      )}
+
+      {/* ── Notes ────────────────────────────────────────────────────────── */}
+      {tab === 'notes' && (
+        <ClientNotesTab clientId={clientId} initialNotes={notes} canEdit={canEdit} />
       )}
 
       {/* ── Achievements ─────────────────────────────────────────────────── */}

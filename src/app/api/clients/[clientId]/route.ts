@@ -13,6 +13,8 @@ const schema = z.object({
   // Contact phone, stored on ClientProfile.phone. Empty string clears.
   phone: z.string().trim().max(40).nullable().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  // Private trainer-facing notes about the client. Empty string clears.
+  notes: z.string().max(20000).nullable().optional(),
   // The trainer (TrainerMembership) this client is assigned to. null unassigns.
   assignedMembershipId: z.string().nullable().optional(),
   dog: z.object({
@@ -98,7 +100,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const { name, email, phone, status, dog, assignedMembershipId } = parsed.data
+  const { name, email, phone, status, notes, dog, assignedMembershipId } = parsed.data
   const { client } = access
 
   if (name !== undefined) {
@@ -109,6 +111,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
     await prisma.clientProfile.update({
       where: { id: client.id },
       data: { phone: phone?.trim() || null },
+    })
+  }
+
+  if (notes !== undefined) {
+    await prisma.clientProfile.update({
+      where: { id: client.id },
+      data: { notes: notes?.trim() || null },
     })
   }
 
