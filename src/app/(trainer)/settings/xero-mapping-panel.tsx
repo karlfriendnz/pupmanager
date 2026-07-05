@@ -35,8 +35,10 @@ function XeroLink({ href, label }: { href: string; label: string }) {
 }
 
 type AccountOption = { code: string; name: string }
+// A curated "Accounts you use" entry. `default` marks the one that acts as the
+// fallback income account (persisted to the connection's salesAccountCode).
+type ShortlistEntry = { code: string; name: string; default?: boolean }
 type TaxOption = { taxType: string; name: string }
-type Item = { id: string; name: string; xeroAccountCode: string | null }
 
 type MappingData = {
   options: { revenueAccounts: AccountOption[]; bankAccounts: AccountOption[]; taxRates: TaxOption[] }
@@ -44,9 +46,7 @@ type MappingData = {
     bankAccountCode: string | null
     salesAccountCode: string | null
     taxType: string | null
-    accountShortlist: AccountOption[]
-    products: Item[]
-    packages: Item[]
+    accountShortlist: ShortlistEntry[]
   }
 }
 
@@ -60,10 +60,8 @@ export function XeroMappingPanel() {
 
   // Editable state, hydrated from the fetched mapping.
   const [bank, setBank] = useState('')
-  const [sales, setSales] = useState('')
   const [tax, setTax] = useState('')
-  const [itemCodes, setItemCodes] = useState<Record<string, string>>({})
-  const [shortlist, setShortlist] = useState<AccountOption[]>([])
+  const [shortlist, setShortlist] = useState<ShortlistEntry[]>([])
   const [toAdd, setToAdd] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -84,12 +82,14 @@ export function XeroMappingPanel() {
       const d = json as MappingData
       setData(d)
       setBank(d.mapping.bankAccountCode ?? '')
-      setSales(d.mapping.salesAccountCode ?? '')
       setTax(d.mapping.taxType ?? '')
-      const codes: Record<string, string> = {}
-      for (const p of [...d.mapping.products, ...d.mapping.packages]) codes[p.id] = p.xeroAccountCode ?? ''
-      setItemCodes(codes)
-      setShortlist(d.mapping.accountShortlist ?? [])
+      // Hydrate the shortlist; if no entry is flagged default yet (older data),
+      // mark the one matching the saved salesAccountCode as the default.
+      const list = d.mapping.accountShortlist ?? []
+      const hasFlag = list.some((a) => a.default)
+      setShortlist(
+        hasFlag ? list : list.map((a) => ({ ...a, default: a.code === d.mapping.salesAccountCode })),
+      )
     } catch {
       setError('Couldn’t load Xero accounts.')
     } finally {
@@ -102,10 +102,8 @@ export function XeroMappingPanel() {
     setSaving(true)
     setSaved(false)
     try {
-      const products: Record<string, string> = {}
-      for (const p of data.mapping.products) products[p.id] = itemCodes[p.id] ?? ''
-      const packages: Record<string, string> = {}
-      for (const p of data.mapping.packages) packages[p.id] = itemCodes[p.id] ?? ''
+      // Per-item accounts are set on the items themselves (product/package/class
+      // forms), so the panel never sends products/packages here.
       const bankName = data.options.bankAccounts.find((a) => a.code === bank)?.name ?? null
       const res = await fetch('/api/xero/mapping', {
         method: 'PUT',
@@ -113,11 +111,9 @@ export function XeroMappingPanel() {
         body: JSON.stringify({
           bankAccountCode: bank || null,
           bankAccountName: bankName,
-          salesAccountCode: sales || null,
+          salesAccountCode: shortlist.find((a) => a.default)?.code ?? null,
           taxType: tax || null,
           accountShortlist: shortlist,
-          products,
-          packages,
         }),
       })
       if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 2500) }
@@ -126,32 +122,16 @@ export function XeroMappingPanel() {
     }
   }
 
-  function AccountSelect({ value, onChange, withDefault }: { value: string; onChange: (v: string) => void; withDefault?: boolean }) {
-    return (
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#13B5EA] focus:outline-none focus:ring-1 focus:ring-[#13B5EA]"
-      >
-        {withDefault && <option value="">Use default income account</option>}
-        {!withDefault && <option value="">Select an account…</option>}
-        {data!.options.revenueAccounts.map((a) => (
-          <option key={a.code} value={a.code}>{a.code} · {a.name}</option>
-        ))}
-      </select>
-    )
-  }
-
-  const hasItems = !!data && (data.mapping.packages.length > 0 || data.mapping.products.length > 0)
-
   // "Accounts you use" names must each be non-empty AND unique (they're the
   // labels people pick from on the create forms, so a duplicate is ambiguous).
   const normNames = shortlist.map((a) => a.name.trim().toLowerCase())
   const dupeNames = new Set(normNames.filter((n, i) => n && normNames.indexOf(n) !== i))
   const isDupe = (name: string) => dupeNames.has(name.trim().toLowerCase())
   const shortlistValid = shortlist.every((a) => a.name.trim().length > 0) && dupeNames.size === 0
+  // One curated account must be the default (the fallback income account).
+  const hasDefault = shortlist.some((a) => a.default)
 
-  const complete = !!bank && !!tax && !!sales
+  const complete = !!bank && !!tax && hasDefault
 
   return (
     <div className="mt-5 border-t border-slate-100 pt-5">
@@ -200,14 +180,9 @@ export function XeroMappingPanel() {
             </select>
           </Step>
 
-          <Step n={3} title="Your default income account" required hint="Used for any product, package or class without its own account." visible={!!bank && !!tax}>
-            <div className="max-w-md"><AccountSelect value={sales} onChange={setSales} /></div>
-            <div><XeroLink href={XERO_CHART_OF_ACCOUNTS} label="Manage your chart of accounts in Xero" /></div>
-          </Step>
-
-          <Step n={4} title="Accounts you use" visible={complete} hint="Add the income accounts you sell against and name each one however makes sense to you. You can add the same Xero account more than once under different names — they’re offered when you create a product, package or class.">
+          <Step n={3} title="Accounts you use" visible={!!bank && !!tax} hint="Add the income accounts you sell against and name each one however makes sense to you. Mark one as the default — it’s the fallback for anything without its own account. You can add the same Xero account more than once under different names.">
             {shortlist.length > 0 && (
-              <div className="flex max-w-md flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 {shortlist.map((a, i) => (
                   <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5">
                     <input
@@ -220,6 +195,17 @@ export function XeroMappingPanel() {
                           : 'border-slate-200 focus:border-[#13B5EA] focus:ring-[#13B5EA]'
                       }`}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShortlist((s) => s.map((x, j) => ({ ...x, default: j === i })))}
+                      title="Use this as the default (fallback) income account"
+                      style={{ minHeight: 0, minWidth: 0, height: 24 }}
+                      className={`inline-flex items-center shrink-0 rounded-full px-2.5 text-[11px] font-semibold leading-none transition-colors ${
+                        a.default ? 'bg-[#13B5EA] text-white' : 'text-slate-400 hover:text-[#13B5EA]'
+                      }`}
+                    >
+                      {a.default ? 'Default' : 'Set default'}
+                    </button>
                     <span className="shrink-0 text-xs text-slate-400" title="Xero account code">{a.code}</span>
                     <button
                       type="button"
@@ -233,9 +219,12 @@ export function XeroMappingPanel() {
               </div>
             )}
             {!shortlistValid && shortlist.length > 0 && (
-              <p className="max-w-md text-xs text-rose-500">Give every account a name, and make each name different from the others.</p>
+              <p className="text-xs text-rose-500">Give every account a name, and make each name different from the others.</p>
             )}
-            <div className="flex max-w-md items-center gap-2">
+            {shortlistValid && shortlist.length > 0 && !hasDefault && (
+              <p className="text-xs text-amber-600">Mark one account as the default.</p>
+            )}
+            <div className="flex items-center gap-2">
               <select
                 value={toAdd}
                 onChange={(e) => setToAdd(e.target.value)}
@@ -258,24 +247,8 @@ export function XeroMappingPanel() {
                 Add
               </button>
             </div>
+            <div><XeroLink href={XERO_CHART_OF_ACCOUNTS} label="Manage your chart of accounts in Xero" /></div>
           </Step>
-
-          {complete && hasItems && (
-            <Step n={5} title="Per-item income accounts" hint="Override the account for a specific product or package (optional).">
-              <div className="max-w-md space-y-2">
-                {[...data.mapping.packages, ...data.mapping.products].map((item) => (
-                  <div key={item.id} className="grid grid-cols-1 items-center gap-1.5 sm:grid-cols-[1fr_1.4fr]">
-                    <span className="truncate text-sm text-slate-700">{item.name}</span>
-                    <AccountSelect
-                      value={itemCodes[item.id] ?? ''}
-                      onChange={(v) => setItemCodes((m) => ({ ...m, [item.id]: v }))}
-                      withDefault
-                    />
-                  </div>
-                ))}
-              </div>
-            </Step>
-          )}
 
           {complete && (
             <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-5">

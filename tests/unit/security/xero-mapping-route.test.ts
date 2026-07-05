@@ -70,29 +70,28 @@ describe('GET', () => {
 
   it('returns options + current mapping when connected', async () => {
     asOwner()
-    h.connFindUnique.mockResolvedValue({ id: 'c-1', bankAccountCode: '090', salesAccountCode: '200', taxType: 'OUTPUT2' })
+    h.connFindUnique.mockResolvedValue({ id: 'c-1', bankAccountCode: '090', salesAccountCode: '200', taxType: 'OUTPUT2', accountShortlist: [{ code: '200', name: 'Sales', default: true }] })
     h.fetchMappingOptions.mockResolvedValue({ revenueAccounts: [{ code: '200', name: 'Sales' }], bankAccounts: [], taxRates: [] })
-    h.productFindMany.mockResolvedValue([{ id: 'p-1', name: 'Treats', xeroAccountCode: null }])
-    h.packageFindMany.mockResolvedValue([{ id: 'pk-1', name: 'Puppy Course', xeroAccountCode: '260' }])
 
     const res = await GET()
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.mapping.bankAccountCode).toBe('090')
-    expect(json.mapping.packages[0].xeroAccountCode).toBe('260')
+    expect(json.mapping.salesAccountCode).toBe('200')
+    // Per-item accounts are set on the items now — the mapping no longer returns them.
+    expect(json.mapping.packages).toBeUndefined()
+    expect(json.mapping.accountShortlist[0].name).toBe('Sales')
   })
 })
 
 describe('PUT', () => {
-  it('saves defaults and scopes every per-item update by trainerId', async () => {
+  it('saves the connection-level defaults, scoped by trainerId', async () => {
     asOwner('t-1')
     const res = await PUT(putReq({
       bankAccountCode: '090',
       bankAccountName: 'Business Bank',
       salesAccountCode: '200',
       taxType: 'OUTPUT2',
-      products: { 'p-1': '260' },
-      packages: { 'pk-1': '' }, // empty clears → null
     }))
     expect(res.status).toBe(200)
 
@@ -100,8 +99,9 @@ describe('PUT', () => {
       where: { trainerId: 't-1' },
       data: { bankAccountCode: '090', bankAccountName: 'Business Bank', salesAccountCode: '200', taxType: 'OUTPUT2' },
     })
-    expect(h.productUpdateMany).toHaveBeenCalledWith({ where: { id: 'p-1', trainerId: 't-1' }, data: { xeroAccountCode: '260' } })
-    expect(h.packageUpdateMany).toHaveBeenCalledWith({ where: { id: 'pk-1', trainerId: 't-1' }, data: { xeroAccountCode: null } })
+    // Per-item accounts are set on the items themselves now — never here.
+    expect(h.productUpdateMany).not.toHaveBeenCalled()
+    expect(h.packageUpdateMany).not.toHaveBeenCalled()
   })
 
   it('respects the CSRF guard', async () => {

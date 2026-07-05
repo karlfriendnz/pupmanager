@@ -35,28 +35,16 @@ export async function GET() {
     return NextResponse.json({ error: 'Couldn’t load your Xero accounts. Try reconnecting.' }, { status: 502 })
   }
 
-  const [products, packages] = await Promise.all([
-    prisma.product.findMany({
-      where: { trainerId, active: true },
-      select: { id: true, name: true, xeroAccountCode: true },
-      orderBy: [{ order: 'asc' }, { name: 'asc' }],
-    }),
-    prisma.package.findMany({
-      where: { trainerId },
-      select: { id: true, name: true, xeroAccountCode: true },
-      orderBy: [{ order: 'asc' }, { name: 'asc' }],
-    }),
-  ])
-
+  // Per-item accounts are set on the items themselves (product/package/class
+  // forms) — the mapping panel no longer lists them, so we don't fetch them here
+  // (a trainer could have hundreds).
   return NextResponse.json({
     options,
     mapping: {
       bankAccountCode: connection.bankAccountCode,
       salesAccountCode: connection.salesAccountCode,
       taxType: connection.taxType,
-      accountShortlist: (connection.accountShortlist as { code: string; name: string }[] | null) ?? [],
-      products,
-      packages,
+      accountShortlist: (connection.accountShortlist as { code: string; name: string; default?: boolean }[] | null) ?? [],
     },
   })
 }
@@ -70,9 +58,7 @@ const putSchema = z.object({
   salesAccountCode: code,
   taxType: code,
   // Curated income-account shortlist offered on the create forms.
-  accountShortlist: z.array(z.object({ code: z.string().trim().max(50), name: z.string().trim().max(200) })).max(50).optional(),
-  products: z.record(z.string(), code).default({}),
-  packages: z.record(z.string(), code).default({}),
+  accountShortlist: z.array(z.object({ code: z.string().trim().max(50), name: z.string().trim().max(200), default: z.boolean().optional() })).max(50).optional(),
 })
 
 export async function PUT(req: Request) {
@@ -84,25 +70,16 @@ export async function PUT(req: Request) {
 
   const parsed = putSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
-  const { bankAccountCode, bankAccountName, salesAccountCode, taxType, accountShortlist, products, packages } = parsed.data
+  const { bankAccountCode, bankAccountName, salesAccountCode, taxType, accountShortlist } = parsed.data
 
-  // Per-item updates are scoped by trainerId in the filter so a trainer can only
-  // ever touch their own products/packages (updateMany ignores foreign ids).
-  await prisma.$transaction([
-    prisma.xeroConnection.update({
-      where: { trainerId },
-      data: {
-        bankAccountCode, bankAccountName, salesAccountCode, taxType,
-        ...(accountShortlist ? { accountShortlist } : {}),
-      },
-    }),
-    ...Object.entries(products).map(([id, xeroAccountCode]) =>
-      prisma.product.updateMany({ where: { id, trainerId }, data: { xeroAccountCode } }),
-    ),
-    ...Object.entries(packages).map(([id, xeroAccountCode]) =>
-      prisma.package.updateMany({ where: { id, trainerId }, data: { xeroAccountCode } }),
-    ),
-  ])
+  // Per-item accounts live on the items (set via their own forms), not here.
+  await prisma.xeroConnection.update({
+    where: { trainerId },
+    data: {
+      bankAccountCode, bankAccountName, salesAccountCode, taxType,
+      ...(accountShortlist ? { accountShortlist } : {}),
+    },
+  })
 
   return NextResponse.json({ ok: true })
 }
