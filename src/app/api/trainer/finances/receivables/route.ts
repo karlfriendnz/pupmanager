@@ -8,6 +8,7 @@ import { guardPermission } from '@/lib/membership'
 // required). Separate from /finances/invoices, which lists Stripe pay-link
 // Payments. Guarded by billing.view, scoped to the company.
 const PAGE_SIZE = 20
+const MAX_PAGE_SIZE = 100
 
 export async function GET(req: Request) {
   const ctx = await guardPermission('billing.view')
@@ -16,6 +17,11 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const q = (url.searchParams.get('q') ?? '').trim()
   const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10) || 1)
+  // Optional larger page (the client-profile view pulls a whole client's history
+  // in one request); capped so it can't be abused.
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(url.searchParams.get('pageSize') ?? String(PAGE_SIZE), 10) || PAGE_SIZE))
+  // Optional filter to a single client (their profile's Invoices tab / Overview).
+  const clientId = url.searchParams.get('clientId')?.trim() || null
   // Optional status filter: all | unsent | sent | paid.
   const status = url.searchParams.get('status') ?? 'all'
   const statusFilter: Prisma.InvoiceWhereInput =
@@ -26,6 +32,7 @@ export async function GET(req: Request) {
 
   const where: Prisma.InvoiceWhereInput = {
     trainerId: ctx.companyId,
+    ...(clientId ? { clientId } : {}),
     ...statusFilter,
     ...(q
       ? {
@@ -42,8 +49,8 @@ export async function GET(req: Request) {
     prisma.invoice.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
       select: {
         id: true, description: true, amountCents: true, amountPaidCents: true, currency: true,
         status: true, sentAt: true, paidAt: true, createdAt: true,
@@ -56,9 +63,9 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
     total,
-    totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
     xeroConnected: !!xeroConn,
     items: rows.map(r => ({
       id: r.id,

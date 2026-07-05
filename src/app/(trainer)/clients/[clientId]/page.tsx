@@ -4,6 +4,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { getClientAccess } from '@/lib/trainer-access'
+import { getTrainerContext } from '@/lib/membership'
+import { can } from '@/lib/permissions'
 import { routeDistance } from '@/lib/routing'
 import { formatDate } from '@/lib/utils'
 import { ClientProfileTabs } from './client-profile-tabs'
@@ -112,9 +114,9 @@ export default async function ClientDetailPage({
 
   // Communication records for this client — bulk emails received (with
   // open/click status) + the message/email thread — for the Communication tab.
-  // Plus the client's unpaid invoices (PENDING Payments flagged intent.invoice)
-  // for the Overview tab — same definition the Finances › Invoices list uses.
-  const [broadcastEmails, threadMessages, unpaidInvoices] = await Promise.all([
+  // Billing visibility gates the Invoices tab + the Overview unpaid-invoices card
+  // (both read the new payment-agnostic Invoice model, fetched client-side).
+  const [broadcastEmails, threadMessages, trainerCtx] = await Promise.all([
     prisma.emailBroadcastRecipient.findMany({
       where: { clientProfileId: clientId },
       orderBy: { createdAt: 'desc' },
@@ -127,20 +129,9 @@ export default async function ClientDetailPage({
       take: 50,
       select: { id: true, body: true, senderId: true, createdAt: true, readAt: true },
     }),
-    canEdit
-      ? prisma.payment.findMany({
-          where: {
-            trainerId: access.trainerId,
-            clientId,
-            status: 'PENDING',
-            items: { some: { intent: { path: ['invoice'], equals: true } } },
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-          select: { id: true, description: true, amountTotal: true, currency: true, createdAt: true },
-        })
-      : Promise.resolve([]),
+    getTrainerContext(),
   ])
+  const canViewBilling = !!trainerCtx && can('billing.view', trainerCtx.role, trainerCtx.permissions)
   const communications = [
     ...broadcastEmails.map(e => ({
       id: `b-${e.id}`,
@@ -290,13 +281,7 @@ export default async function ClientDetailPage({
         clientId={client.id}
         canEdit={canEdit}
         communications={communications}
-        unpaidInvoices={unpaidInvoices.map(p => ({
-          id: p.id,
-          description: p.description,
-          amountTotal: p.amountTotal,
-          currency: p.currency,
-          createdAt: p.createdAt.toISOString(),
-        }))}
+        canViewBilling={canViewBilling}
         stats={{
           complianceRate,
           completedTasks,

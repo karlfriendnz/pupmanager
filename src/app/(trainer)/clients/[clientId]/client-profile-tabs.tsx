@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate, cn, formatSessionTitle } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote } from 'lucide-react'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, Receipt } from 'lucide-react'
 import { ClientNotesTab } from './client-notes-tab'
+import { ClientInvoicesTab, ClientUnpaidInvoicesCard } from './client-invoices'
 import { Button } from '@/components/ui/button'
 import { SessionFormReport } from '@/components/session-form-report'
 import { ClientAchievementsPanel } from './client-achievements-panel'
@@ -13,7 +14,7 @@ import { StatusToggle } from './status-toggle'
 import { DogGalleryManager } from './dog-gallery-manager'
 import Link from 'next/link'
 
-type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements' | 'communication' | 'notes'
+type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements' | 'communication' | 'notes' | 'invoices'
 
 export interface CommItem {
   id: string
@@ -95,14 +96,6 @@ interface PendingProductRequest {
   product: { id: string; name: string; kind: 'PHYSICAL' | 'DIGITAL'; imageUrl: string | null }
 }
 
-interface UnpaidInvoice {
-  id: string
-  description: string | null
-  amountTotal: number   // minor units
-  currency: string      // ISO 4217, lower-case
-  createdAt: string     // ISO string
-}
-
 interface Props {
   clientId: string
   canEdit: boolean
@@ -125,8 +118,9 @@ interface Props {
   status: string
   // Communication history (emails received + message thread) for the Comms tab.
   communications: CommItem[]
-  // Unpaid invoices (PENDING request-payment invoices) for the Overview tab.
-  unpaidInvoices: UnpaidInvoice[]
+  // Whether the viewing trainer can see billing — gates the Invoices tab and the
+  // Overview "Unpaid invoices" card (both read the new-model Invoice rows).
+  canViewBilling: boolean
   // Private trainer-facing notes about the client (Notes tab).
   notes: string | null
   // Client app add-on on — gates the Comms tab (no app + no email = no comms).
@@ -158,7 +152,7 @@ export function ClientProfileTabs({
   contact,
   status,
   communications,
-  unpaidInvoices,
+  canViewBilling,
   notes,
   clientAppEnabled,
 }: Props) {
@@ -306,6 +300,7 @@ export function ClientProfileTabs({
     { id: 'dogs',         label: dogs.length > 1 ? 'Dogs' : 'Dog', icon: PawPrint, badge: dogs.length > 1 ? dogs.length : undefined },
     ...(showComms ? [{ id: 'communication' as Tab, label: 'Comms', icon: MessageSquare, badge: communications.length > 0 ? communications.length : undefined }] : []),
     { id: 'notes',        label: 'Notes',        icon: StickyNote },
+    ...(canViewBilling ? [{ id: 'invoices' as Tab, label: 'Invoices', icon: Receipt }] : []),
     { id: 'achievements', label: 'Achievements', icon: Trophy },
     { id: 'details',      label: 'Details',      icon: Info },
   ]
@@ -370,35 +365,9 @@ export function ClientProfileTabs({
           </Card>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {/* Unpaid invoices */}
-            <Card>
-              <CardBody className="py-5">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="text-sm font-semibold text-slate-900">Unpaid invoices</h2>
-                  {unpaidInvoices.length > 0 && (
-                    <Link href="/finances" className="text-xs font-medium text-blue-600 hover:underline">Finances</Link>
-                  )}
-                </div>
-                {unpaidInvoices.length === 0 ? (
-                  <p className="text-sm text-slate-400">No unpaid invoices.</p>
-                ) : (
-                  <ul className="flex flex-col divide-y divide-slate-100">
-                    {unpaidInvoices.map(inv => (
-                      <li key={inv.id} className="flex items-center justify-between gap-3 py-2.5">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-slate-900">{inv.description ?? 'Invoice'}</p>
-                          <p className="text-xs text-slate-400">{formatDate(inv.createdAt)}</p>
-                        </div>
-                        <span className="flex flex-shrink-0 items-center gap-2">
-                          <span className="text-sm font-semibold tabular-nums text-slate-900">{formatMoney(inv.amountTotal, inv.currency)}</span>
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Unpaid</span>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardBody>
-            </Card>
+            {/* Unpaid invoices — the client's new-model Invoice rows (UNPAID /
+                PARTIAL). Only for trainers who can see billing. */}
+            {canViewBilling && <ClientUnpaidInvoicesCard clientId={clientId} onViewAll={() => setTab('invoices')} />}
 
             {/* Latest session */}
             <Card>
@@ -736,6 +705,11 @@ export function ClientProfileTabs({
         <ClientNotesTab clientId={clientId} initialNotes={notes} canEdit={canEdit} />
       )}
 
+      {/* ── Invoices ─────────────────────────────────────────────────────── */}
+      {tab === 'invoices' && canViewBilling && (
+        <ClientInvoicesTab clientId={clientId} />
+      )}
+
       {/* ── Achievements ─────────────────────────────────────────────────── */}
       {tab === 'achievements' && (
         <ClientAchievementsPanel clientId={clientId} canEdit={canEdit} />
@@ -975,17 +949,6 @@ function ProductPickerModal({
       </div>
     </div>
   )
-}
-
-// Format a Payment amount (minor units + ISO currency) for the Overview's
-// unpaid-invoices list. Falls back to a plain "12.00 USD" if the runtime
-// rejects the currency code.
-function formatMoney(minor: number, currency: string) {
-  try {
-    return new Intl.NumberFormat('en-NZ', { style: 'currency', currency: currency.toUpperCase() }).format(minor / 100)
-  } catch {
-    return `${(minor / 100).toFixed(2)} ${currency.toUpperCase()}`
-  }
 }
 
 const STATUS_PILL: Record<SessionStatus, string> = {
