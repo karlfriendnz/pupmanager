@@ -22,6 +22,15 @@ export interface BlackoutRow {
   endDate: string    // YYYY-MM-DD inclusive
 }
 
+// An already-occupied stretch of a trainer's day (an existing booking), in
+// trainer-local minutes-of-day on a specific date. The trainer runs one
+// session at a time, so a proposed start that overlaps any of these is taken.
+export interface BusyInterval {
+  dateStr: string  // YYYY-MM-DD (trainer-local)
+  startMin: number
+  endMin: number
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000
 
 function toDateStr(d: Date): string {
@@ -81,6 +90,95 @@ export function slotAppliesOnDate(slot: AvailabilityRow, dateStr: string, isoDow
 
 export function isBlackoutDate(blackouts: BlackoutRow[], dateStr: string): boolean {
   return blackouts.some(b => b.startDate <= dateStr && dateStr <= b.endDate)
+}
+
+/**
+ * True when a session of `durationMins` starting at `startMin` (minutes past
+ * midnight, trainer-local) on `dateStr` overlaps any existing booking. Standard
+ * half-open interval overlap: startA < endB && startB < endA.
+ */
+export function overlapsBusy(
+  busy: BusyInterval[],
+  dateStr: string,
+  startMin: number,
+  durationMins: number,
+): boolean {
+  const end = startMin + durationMins
+  return busy.some(b => b.dateStr === dateStr && startMin < b.endMin && b.startMin < end)
+}
+
+// ISO day-of-week (1=Mon..7=Sun) for a YYYY-MM-DD string, computed in UTC so
+// it never drifts by the host's local offset.
+function isoDowForDateStr(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const js = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  return js === 0 ? 7 : js
+}
+
+function minsToHM(mins: number): string {
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/**
+ * Every valid start time (as "HH:MM", trainer-local) on `dateStr` at which a
+ * session of `durationMins` still fits fully inside one of the trainer's
+ * availability windows. Windows are walked from their start to
+ * (end − durationMins) in `stepMins` increments. Blackout days yield nothing,
+ * as do windows too short to hold the session. Starts whose session would
+ * overlap an existing booking (`busy`) are dropped — the trainer runs one
+ * session at a time. Results are de-duplicated and sorted — used to populate
+ * the client self-book time picker.
+ */
+export function enumerateStartTimes(
+  slots: AvailabilityRow[],
+  dateStr: string,
+  durationMins: number,
+  blackouts: BlackoutRow[] = [],
+  stepMins = 30,
+  busy: BusyInterval[] = [],
+): string[] {
+  if (durationMins <= 0) return []
+  if (isBlackoutDate(blackouts, dateStr)) return []
+  const isoDow = isoDowForDateStr(dateStr)
+  const out = new Set<number>()
+  for (const slot of slots) {
+    if (!slotAppliesOnDate(slot, dateStr, isoDow)) continue
+    const start = timeToMins(slot.startTime)
+    const last = timeToMins(slot.endTime) - durationMins
+    for (let t = start; t <= last; t += stepMins) {
+      if (overlapsBusy(busy, dateStr, t, durationMins)) continue
+      out.add(t)
+    }
+  }
+  return [...out].sort((a, b) => a - b).map(minsToHM)
+}
+
+/**
+ * Server-side guard: does a session of `durationMins` starting at `startMin`
+ * (minutes past midnight, trainer-local) on `dateStr` sit fully inside an
+ * availability window and outside any blackout? Unlike enumerateStartTimes this
+ * does NOT require the start to fall on the picker's step grid — any instant
+ * genuinely inside a window is accepted; everything else is rejected.
+ */
+export function isTimeWithinAvailability(
+  slots: AvailabilityRow[],
+  dateStr: string,
+  startMin: number,
+  durationMins: number,
+  blackouts: BlackoutRow[] = [],
+): boolean {
+  if (durationMins <= 0) return false
+  if (isBlackoutDate(blackouts, dateStr)) return false
+  const isoDow = isoDowForDateStr(dateStr)
+  const end = startMin + durationMins
+  return slots.some(
+    s =>
+      slotAppliesOnDate(s, dateStr, isoDow) &&
+      startMin >= timeToMins(s.startTime) &&
+      end <= timeToMins(s.endTime),
+  )
 }
 
 export function findNextAvailable(

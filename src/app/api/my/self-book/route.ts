@@ -8,6 +8,9 @@ import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
 import { enforceRateLimit } from '@/lib/rate-limit'
+import { getTrainerAvailabilityForClient } from '@/lib/client-availability'
+import { isTimeWithinAvailability, overlapsBusy } from '@/lib/availability'
+import { utcToZonedDateAndMinutes } from '@/lib/timezone'
 import { env } from '@/lib/env'
 
 // GET  /api/my/self-book  — packages this client may self-book
@@ -69,6 +72,21 @@ export async function POST(req: Request) {
   const start = new Date(parsed.data.startDate)
   if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) {
     return NextResponse.json({ error: 'Pick a start time in the future' }, { status: 400 })
+  }
+
+  // Defense-in-depth: never trust the client's chosen time. Reject any start
+  // that doesn't sit fully inside one of the trainer's published availability
+  // windows (in the trainer's timezone) and outside their blackouts.
+  const avail = await getTrainerAvailabilityForClient(ctx.clientId)
+  if (!avail) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const { dateStr, minuteOfDay } = utcToZonedDateAndMinutes(start, avail.tz)
+  if (!isTimeWithinAvailability(avail.slots, dateStr, minuteOfDay, pkg.durationMins, avail.blackouts)) {
+    return NextResponse.json({ error: "That time isn't available" }, { status: 400 })
+  }
+  // The trainer runs one session at a time — reject a start that collides with
+  // an existing booking (someone may have grabbed it since the picker loaded).
+  if (overlapsBusy(avail.busy, dateStr, minuteOfDay, pkg.durationMins)) {
+    return NextResponse.json({ error: "That time's just been taken" }, { status: 400 })
   }
 
   const dates = generateSessionDates(start, pkg.sessionCount, pkg.weeksBetween)

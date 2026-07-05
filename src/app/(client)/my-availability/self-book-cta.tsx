@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { CalendarPlus, X, Loader2, CheckCircle2 } from 'lucide-react'
 import { openExternal } from '@/lib/external-link'
+import { enumerateStartTimes, type AvailabilityRow, type BlackoutRow, type BusyInterval } from '@/lib/availability'
+import { zonedToUtc, todayInTz } from '@/lib/timezone'
 
 type Pkg = {
   id: string
@@ -16,8 +18,56 @@ type Pkg = {
   selfBookRequiresApproval: boolean
 }
 
+type Availability = {
+  tz: string
+  slots: AvailabilityRow[]
+  blackouts: BlackoutRow[]
+  busy: BusyInterval[]
+}
+
+// How far ahead the picker offers days — matches the my-availability page.
+const DAYS_AHEAD = 28
+// Granularity of offered start times inside each window.
+const STEP_MINS = 30
+
 function price(c: number | null) {
   return c == null ? null : `$${(c / 100).toFixed(c % 100 === 0 ? 0 : 2)}`
+}
+
+function addDayStr(dateStr: string, n: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d + n))
+  const yy = dt.getUTCFullYear()
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getUTCDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function fmtDateLabel(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  // Label the date deterministically from its own calendar value — NOT via
+  // toLocaleDateString, which renders in the VIEWER's timezone and, for a client
+  // in a different tz than the trainer (e.g. NZ), shows the wrong weekday. The
+  // date the option enumerates is trainer-local, so its true weekday is fixed.
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+  return `${WEEKDAY_SHORT[dow]} ${d} ${MONTH_SHORT[m - 1]}`
+}
+
+function fmtTimeLabel(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  const period = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return m === 0 ? `${h12} ${period}` : `${h12}:${String(m).padStart(2, '0')} ${period}`
+}
+
+// The UTC instant for a trainer-local date + "HH:MM".
+function toUtcIso(dateStr: string, hhmm: string, tz: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const [h, min] = hhmm.split(':').map(Number)
+  return zonedToUtc(y, m, d, h, min, tz).toISOString()
 }
 
 export function SelfBookCta() {
@@ -39,21 +89,26 @@ export function SelfBookCta() {
 function SelfBookModal({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true)
   const [packages, setPackages] = useState<Pkg[]>([])
+  const [availability, setAvailability] = useState<Availability | null>(null)
   const [packageId, setPackageId] = useState('')
-  const [startDate, setStartDate] = useState('')
+  const [date, setDate] = useState('')
+  const [time, setTime] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState<'booked' | 'requested' | 'waitlisted' | null>(null)
 
-  // Load self-bookable packages once on mount.
+  // Load self-bookable packages + the trainer's availability once on mount.
   useEffect(() => {
     let cancelled = false
-    fetch('/api/my/self-book')
-      .then(r => (r.ok ? r.json() : []))
-      .then((data: Pkg[]) => {
+    Promise.all([
+      fetch('/api/my/self-book').then(r => (r.ok ? r.json() : [])),
+      fetch('/api/my/self-book/availability').then(r => (r.ok ? r.json() : null)),
+    ])
+      .then(([pkgs, avail]: [Pkg[], Availability | null]) => {
         if (cancelled) return
-        setPackages(data)
-        setPackageId(data[0]?.id ?? '')
+        setPackages(pkgs)
+        setPackageId(pkgs[0]?.id ?? '')
+        setAvailability(avail)
       })
       .catch(() => { if (!cancelled) setError('Could not load packages.') })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -61,12 +116,47 @@ function SelfBookModal({ onClose }: { onClose: () => void }) {
   }, [])
 
   const selected = packages.find(p => p.id === packageId)
+  const duration = selected?.durationMins ?? 0
+
+  // Days in the next four weeks that can hold this package's first session.
+  const availableDates = useMemo(() => {
+    if (!availability || duration <= 0) return []
+    const today = todayInTz(availability.tz)
+    const out: string[] = []
+    for (let i = 0; i < DAYS_AHEAD; i++) {
+      const dateStr = addDayStr(today, i)
+      if (enumerateStartTimes(availability.slots, dateStr, duration, availability.blackouts, STEP_MINS, availability.busy).length > 0) {
+        out.push(dateStr)
+      }
+    }
+    return out
+  }, [availability, duration])
+
+  // Valid start times for the chosen day, dropping any already in the past.
+  const timeOptions = useMemo(() => {
+    if (!availability || !date || duration <= 0) return []
+    const now = Date.now()
+    return enumerateStartTimes(availability.slots, date, duration, availability.blackouts, STEP_MINS, availability.busy)
+      .filter(t => new Date(toUtcIso(date, t, availability.tz)).getTime() > now)
+  }, [availability, date, duration])
+
+  // Keep the date valid as the package (and thus duration/day list) changes.
+  useEffect(() => {
+    if (availableDates.length === 0) { setDate(''); return }
+    if (!availableDates.includes(date)) setDate(availableDates[0])
+  }, [availableDates, date])
+
+  // Keep the time valid as the day (and thus time list) changes.
+  useEffect(() => {
+    if (timeOptions.length === 0) { setTime(''); return }
+    if (!timeOptions.includes(time)) setTime(timeOptions[0])
+  }, [timeOptions, time])
 
   async function book(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!packageId || !startDate) {
-      setError('Pick a package and a start time.')
+    if (!packageId || !date || !time || !availability) {
+      setError('Pick a package and an available time.')
       return
     }
     setSaving(true)
@@ -74,7 +164,7 @@ function SelfBookModal({ onClose }: { onClose: () => void }) {
       const res = await fetch('/api/my/self-book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packageId, startDate: new Date(startDate).toISOString() }),
+        body: JSON.stringify({ packageId, startDate: toUtcIso(date, time, availability.tz) }),
       })
       const b = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -111,6 +201,9 @@ function SelfBookModal({ onClose }: { onClose: () => void }) {
       setSaving(false)
     }
   }
+
+  const noTimesForDay = !!date && timeOptions.length === 0
+  const noDaysAtAll = availableDates.length === 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -201,22 +294,53 @@ function SelfBookModal({ onClose }: { onClose: () => void }) {
                 </p>
               )}
 
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1.5">First session</label>
-                <input
-                  type="datetime-local"
-                  value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Pick a time inside your trainer’s open times shown below. The rest auto-place on the package schedule.
-                </p>
-              </div>
+              {noDaysAtAll ? (
+                <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-3 text-center">
+                  <p className="text-sm text-slate-600">
+                    No open times in your trainer’s calendar over the next four weeks.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700 block mb-1.5">Day</label>
+                    <select
+                      value={date}
+                      onChange={e => setDate(e.target.value)}
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {availableDates.map(d => (
+                        <option key={d} value={d}>{fmtDateLabel(d)}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-700 block mb-1.5">Start time</label>
+                    <select
+                      value={time}
+                      onChange={e => setTime(e.target.value)}
+                      disabled={noTimesForDay}
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      {noTimesForDay ? (
+                        <option value="">No times left this day</option>
+                      ) : (
+                        timeOptions.map(t => (
+                          <option key={t} value={t}>{fmtTimeLabel(t)}</option>
+                        ))
+                      )}
+                    </select>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Only your trainer’s open times are shown. The rest of the package auto-places from here.
+                    </p>
+                  </div>
+                </>
+              )}
 
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || noDaysAtAll || noTimesForDay || !time}
                 className="mt-1 w-full rounded-xl bg-blue-600 text-white text-sm font-medium py-2.5 hover:bg-blue-700 disabled:opacity-50 inline-flex items-center justify-center gap-2"
               >
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}

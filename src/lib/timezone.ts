@@ -47,6 +47,27 @@ export function endOfDayInTz(dateStr: string, tz: string): Date {
   return r
 }
 
+/**
+ * Splits a UTC instant into its wall-clock parts in `tz`: the YYYY-MM-DD date
+ * and the minute-of-day (0..1439). Used to compare a client-chosen booking
+ * instant against a trainer's availability windows (which are stored as
+ * trainer-local HH:MM).
+ */
+export function utcToZonedDateAndMinutes(d: Date, tz: string): { dateStr: string; minuteOfDay: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(d)
+  const got: Record<string, string> = {}
+  for (const p of parts) if (p.type !== 'literal') got[p.type] = p.value
+  return {
+    dateStr: `${got.year}-${got.month}-${got.day}`,
+    minuteOfDay: Number(got.hour) * 60 + Number(got.minute),
+  }
+}
+
 /** Returns YYYY-MM-DD for "today" in the given timezone. */
 export function todayInTz(tz: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {

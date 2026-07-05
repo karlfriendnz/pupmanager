@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
-import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { todayInTz } from '@/lib/timezone'
-import { slotAppliesOnDate, isBlackoutDate, type AvailabilityRow, type BlackoutRow } from '@/lib/availability'
+import { slotAppliesOnDate, isBlackoutDate } from '@/lib/availability'
+import { getTrainerAvailabilityForClient } from '@/lib/client-availability'
 import { Clock } from 'lucide-react'
 import { SelfBookCta } from './self-book-cta'
 import type { Metadata } from 'next'
@@ -34,6 +34,23 @@ function dayOfWeekIso(dateStr: string): number {
   const [y, m, d] = dateStr.split('-').map(Number)
   const js = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
   return js === 0 ? 7 : js
+}
+
+// Date labels are derived deterministically from the trainer-local calendar
+// date (dateStr) — never via toLocaleDateString with a timeZone, which can tip
+// a noon-UTC instant onto the wrong day for far-offset zones (e.g. NZ), making
+// this page disagree with the self-book picker.
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function weekdayShort(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return WEEKDAY_SHORT[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
+}
+
+function dayMonthShort(dateStr: string): string {
+  const [, m, d] = dateStr.split('-').map(Number)
+  return `${d} ${MONTH_SHORT[m - 1]}`
 }
 
 function parseHM(s: string): number {
@@ -74,85 +91,19 @@ export default async function MyAvailabilityPage() {
   const active = await getActiveClient()
   if (!active) redirect('/login')
 
-  const profile = await prisma.clientProfile.findUnique({
-    where: { id: active.clientId },
-    select: {
-      trainerId: true,
-      trainer: {
-        select: {
-          businessName: true,
-          user: { select: { timezone: true } },
-        },
-      },
-    },
-  })
-  if (!profile) redirect('/login')
+  const avail = await getTrainerAvailabilityForClient(active.clientId)
+  if (!avail) redirect('/login')
+  const { businessName, tz, slots, blackouts, busy } = avail
 
-  const tz = profile.trainer.user.timezone
   const today = todayInTz(tz)
   const dates = Array.from({ length: DAYS_AHEAD }, (_, i) => addDayStr(today, i))
-  const lastDate = dates[dates.length - 1]
 
-  // Pad the UTC range by a day on each side so any tz offset still pulls in the
-  // sessions and blackouts that touch our window.
-  const fetchStart = new Date(`${today}T00:00:00Z`)
-  fetchStart.setUTCDate(fetchStart.getUTCDate() - 1)
-  const fetchEnd = new Date(`${lastDate}T23:59:59Z`)
-  fetchEnd.setUTCDate(fetchEnd.getUTCDate() + 1)
-
-  const [rawSlots, rawBlackouts, rawSessions] = await Promise.all([
-    prisma.availabilitySlot.findMany({
-      where: { trainerId: profile.trainerId },
-      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
-    }),
-    prisma.blackoutPeriod.findMany({
-      where: {
-        trainerId: profile.trainerId,
-        endDate: { gte: fetchStart },
-      },
-    }),
-    prisma.trainingSession.findMany({
-      where: {
-        trainerId: profile.trainerId,
-        scheduledAt: { gte: fetchStart, lte: fetchEnd },
-        status: 'UPCOMING',
-      },
-      select: { scheduledAt: true, durationMins: true },
-    }),
-  ])
-
-  const slots: AvailabilityRow[] = rawSlots.map(s => ({
-    id: s.id,
-    dayOfWeek: s.dayOfWeek,
-    date: s.date ? s.date.toISOString().split('T')[0] : null,
-    startTime: s.startTime,
-    endTime: s.endTime,
-    cadenceWeeks: s.cadenceWeeks,
-    firstDate: s.firstDate ? s.firstDate.toISOString().split('T')[0] : null,
-  }))
-
-  const blackouts: BlackoutRow[] = rawBlackouts.map(b => ({
-    startDate: b.startDate.toISOString().split('T')[0],
-    endDate: b.endDate.toISOString().split('T')[0],
-  }))
-
-  // Group existing UPCOMING sessions by their trainer-local date.
+  // Group existing UPCOMING bookings (already trainer-local minute ranges) by day.
   const sessionsByDate = new Map<string, { start: number; end: number }[]>()
-  for (const s of rawSessions) {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz,
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(s.scheduledAt)
-    const got: Record<string, string> = {}
-    for (const p of parts) if (p.type !== 'literal') got[p.type] = p.value
-    const dateStr = `${got.year}-${got.month}-${got.day}`
-    const start = Number(got.hour) * 60 + Number(got.minute)
-    const end = start + s.durationMins
-    const arr = sessionsByDate.get(dateStr) ?? []
-    arr.push({ start, end })
-    sessionsByDate.set(dateStr, arr)
+  for (const b of busy) {
+    const arr = sessionsByDate.get(b.dateStr) ?? []
+    arr.push({ start: b.startMin, end: b.endMin })
+    sessionsByDate.set(b.dateStr, arr)
   }
 
   const days: DayAvailability[] = dates.map(dateStr => {
@@ -194,7 +145,7 @@ export default async function MyAvailabilityPage() {
     <div className="px-5 lg:px-8 pt-6 pb-10 max-w-3xl mx-auto w-full">
       <h1 className="text-2xl font-bold text-slate-900">Availability</h1>
       <p className="text-sm text-slate-500 mt-1">
-        Open times from <span className="font-medium text-slate-700">{profile.trainer.businessName}</span> over the next four weeks.
+        Open times from <span className="font-medium text-slate-700">{businessName}</span> over the next four weeks.
       </p>
 
       <SelfBookCta />
@@ -217,11 +168,11 @@ export default async function MyAvailabilityPage() {
             return (
               <section key={week.weekStart}>
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Week of {formatWeekLabel(week.weekStart, tz)}
+                  Week of {formatWeekLabel(week.weekStart)}
                 </h2>
                 <div className="mt-3 space-y-2">
                   {week.days.map(day => (
-                    <DayRow key={day.dateStr} day={day} tz={tz} />
+                    <DayRow key={day.dateStr} day={day} />
                   ))}
                 </div>
               </section>
@@ -233,17 +184,13 @@ export default async function MyAvailabilityPage() {
   )
 }
 
-function formatWeekLabel(dateStr: string, tz: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  const at = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
-  return at.toLocaleDateString('en-NZ', { timeZone: tz, day: 'numeric', month: 'short' })
+function formatWeekLabel(dateStr: string): string {
+  return dayMonthShort(dateStr)
 }
 
-function DayRow({ day, tz }: { day: DayAvailability; tz: string }) {
-  const [y, m, d] = day.dateStr.split('-').map(Number)
-  const at = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
-  const weekday = at.toLocaleDateString('en-NZ', { timeZone: tz, weekday: 'short' })
-  const dayLabel = at.toLocaleDateString('en-NZ', { timeZone: tz, day: 'numeric', month: 'short' })
+function DayRow({ day }: { day: DayAvailability }) {
+  const weekday = weekdayShort(day.dateStr)
+  const dayLabel = dayMonthShort(day.dateStr)
 
   if (day.blackedOut) {
     return (
