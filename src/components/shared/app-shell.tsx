@@ -188,12 +188,75 @@ interface AppShellProps {
   previewExitHref?: string | null
 }
 
+// How often the nav badge re-checks the unread count (also refetches on window
+// focus / tab-visible and on the `pm:refresh-unread` event a thread fires when
+// it's opened). Cheap: one count query, and only while the tab is visible.
+const UNREAD_POLL_MS = 25_000
+
+// Keeps the messages nav badge fresh WITHOUT a full reload. Seeds from the
+// server-rendered `initial`, adopts a newer server value on navigation (render-
+// time state sync — the endorsed alternative to a set-state-in-effect), then
+// polls the lightweight /api/messages/unread-count while the tab is visible.
+function useLiveUnreadTotal(initial: number, enabled: boolean): number {
+  const [seenInitial, setSeenInitial] = useState(initial)
+  const [count, setCount] = useState(initial)
+  if (initial !== seenInitial) {
+    setSeenInitial(initial)
+    setCount(initial)
+  }
+
+  useEffect(() => {
+    if (!enabled) return
+    let cancelled = false
+    const refetch = async () => {
+      if (document.visibilityState === 'hidden') return
+      try {
+        const res = await fetch('/api/messages/unread-count', { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled && typeof data.count === 'number') setCount(data.count)
+      } catch { /* transient — leave the last known count */ }
+    }
+    const onTrigger = () => { void refetch() }
+    const onVisible = () => { if (document.visibilityState === 'visible') void refetch() }
+    const id = setInterval(refetch, UNREAD_POLL_MS)
+    window.addEventListener('focus', onTrigger)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('pm:refresh-unread', onTrigger)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      window.removeEventListener('focus', onTrigger)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('pm:refresh-unread', onTrigger)
+    }
+  }, [enabled])
+
+  return count
+}
+
 export function AppShell(props: AppShellProps) {
+  const messagesHref = props.role === 'CLIENT' ? '/my-messages' : '/messages'
+  // Only poll when the user actually has messaging (client always; trainer when
+  // the /messages item isn't hidden by role/add-on).
+  const messagesVisible = props.role === 'CLIENT' || !(props.hiddenNavHrefs ?? []).includes('/messages')
+  const liveTotal = useLiveUnreadTotal(props.unreadTotal ?? 0, messagesVisible)
+  // Override the messages badge (and the client Home hint) with the live number.
+  const effectiveCounts = messagesVisible
+    ? {
+        ...props.unreadCounts,
+        [messagesHref]: liveTotal,
+        ...(props.role === 'CLIENT' ? { '/home': liveTotal } : {}),
+      }
+    : props.unreadCounts
+
   return (
     <>
       <VersionGuard />
-      <UnreadBadgeSync total={props.unreadTotal ?? 0} />
-      {props.role === 'CLIENT' ? <ClientShell {...props} /> : <TrainerShell {...props} />}
+      <UnreadBadgeSync total={messagesVisible ? liveTotal : props.unreadTotal ?? 0} />
+      {props.role === 'CLIENT'
+        ? <ClientShell {...props} unreadCounts={effectiveCounts} />
+        : <TrainerShell {...props} unreadCounts={effectiveCounts} />}
     </>
   )
 }

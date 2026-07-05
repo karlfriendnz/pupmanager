@@ -31,6 +31,13 @@ export function MessageThread({
   const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  // Opening the thread marks it read (server-side on load) — nudge the nav badge
+  // to recount so it clears without waiting for the poll interval.
+  useEffect(() => {
+    const t = setTimeout(() => window.dispatchEvent(new Event('pm:refresh-unread')), 1200)
+    return () => clearTimeout(t)
+  }, [clientId])
+
   // ── Email composer (one-off branded email, logged to the thread) ──
   const [emailOpen, setEmailOpen] = useState(false)
   const [templates, setTemplates] = useState<EmailTemplate[] | null>(null)

@@ -16,6 +16,7 @@ import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { STEP_TO_MENU } from '@/lib/onboarding/path-step'
 import { getStreak } from '@/lib/trainer-streak'
 import { isPrivateRelayEmail } from '@/lib/auth-emails'
+import { countUnreadMessages } from '@/lib/unread-messages'
 
 export default async function TrainerLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -187,19 +188,10 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     .filter(s => s.status === 'completed')
     .map(s => s.key)
 
-  // Count messages the trainer hasn't read yet — anything in the
-  // TRAINER_CLIENT channel where the trainer isn't the sender. Powers
-  // the badge on the Messages nav item. Bounded by clientProfile.trainerId
-  // so a trainer never sees counts from another trainer's threads.
+  // Count messages the trainer hasn't read yet — powers the badge on the
+  // Messages nav item. Scoped to their company's threads (see countUnreadMessages).
   const unreadMessageCount = session.user.trainerId
-    ? await prisma.message.count({
-        where: {
-          channel: 'TRAINER_CLIENT',
-          readAt: null,
-          senderId: { not: session.user.id },
-          client: { trainerId: session.user.trainerId },
-        },
-      })
+    ? await countUnreadMessages({ kind: 'trainer', companyId: session.user.trainerId, userId: session.user.id })
     : 0
 
   // Training-day engagement streak for the always-visible sidebar pill.

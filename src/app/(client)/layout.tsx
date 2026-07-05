@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { AppShell } from '@/components/shared/app-shell'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
+import { countUnreadMessages } from '@/lib/unread-messages'
 import { IntakeGate } from './intake-gate'
 import { PreviewBanner } from './preview-banner'
 import { PreviewOnboardingGuide } from './preview-onboarding-guide'
@@ -144,20 +145,12 @@ export default async function ClientLayout({ children }: { children: React.React
     )
   }
 
-  // Count unread messages for this client — anything in their thread
-  // the trainer (or another sender) wrote that the client hasn't seen
-  // yet. Trainer-in-preview gets a 0 because the badge would otherwise
-  // show the actual client's pending messages, which isn't useful.
+  // Count unread messages for this client — anything in their thread the trainer
+  // (or another sender) wrote that they haven't seen yet. Trainer-in-preview gets
+  // a 0 (the badge would otherwise show the real client's pending messages).
   const unreadMessageCount = active.isPreview
     ? 0
-    : await prisma.message.count({
-        where: {
-          channel: 'TRAINER_CLIENT',
-          readAt: null,
-          senderId: { not: clientProfile.userId },
-          clientId: clientProfile.id,
-        },
-      })
+    : await countUnreadMessages({ kind: 'client', clientId: clientProfile.id, userId: clientProfile.userId })
 
   // Per-trainer accent gradient. The trainer's start colour drives --accent
   // (and re-derives the soft/tint/surface shades on this wrapper so they follow

@@ -31,6 +31,13 @@ export function MessageThread({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Opening the thread marks it read (server-side on load) — nudge the nav badge
+  // to recount so it clears without waiting for the poll interval.
+  useEffect(() => {
+    const t = setTimeout(() => window.dispatchEvent(new Event('pm:refresh-unread')), 1200)
+    return () => clearTimeout(t)
+  }, [clientId])
+
   // Real-time subscription via Server-Sent Events. Pulls new messages
   // for this thread as they hit the DB and dedups against the local
   // list (handles the overlap with optimistic inserts from this user).
