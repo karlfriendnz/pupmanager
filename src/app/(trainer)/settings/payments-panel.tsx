@@ -1,6 +1,8 @@
+import { Wallet, ArrowUpRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
-import { isConnectConfigured } from '@/lib/connect'
-import { ConnectButton, AcceptPaymentsToggle, PassFeeToggle } from './payments-actions'
+import { isConnectConfigured, readAccountFlags } from '@/lib/connect'
+import { stripeFor } from '@/lib/stripe'
+import { ConnectButton, AcceptPaymentsToggle, PassFeeToggle, AutoSendInvoicesToggle } from './payments-actions'
 
 // Trainer-facing setup for taking payments from their clients (Stripe Connect
 // Express). Owner-only; rendered as a tab on Settings. Three states: not
@@ -18,13 +20,34 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
       acceptPaymentsEnabled: true,
       passProcessingFeeToClient: true,
       sandboxBilling: true,
+      autoSendInvoices: true,
     },
   })
 
   const sandbox = profile?.sandboxBilling ?? false
   const configured = isConnectConfigured(sandbox)
   const started = !!profile?.connectAccountId
-  const active = !!(profile?.connectChargesEnabled && profile?.connectPayoutsEnabled)
+
+  // Enablement flags are mirrored from Stripe by the account.updated webhook —
+  // but that can be missing locally / delayed in prod, leaving the checklist
+  // stale after a trainer finishes onboarding. So when we have an account that
+  // isn't fully enabled yet, re-sync from Stripe on load (best-effort).
+  let chargesEnabled = profile?.connectChargesEnabled ?? false
+  let payoutsEnabled = profile?.connectPayoutsEnabled ?? false
+  let detailsSubmitted = profile?.connectDetailsSubmitted ?? false
+  if (configured && profile?.connectAccountId && !(chargesEnabled && payoutsEnabled && detailsSubmitted)) {
+    try {
+      const fresh = readAccountFlags(await stripeFor(sandbox).accounts.retrieve(profile.connectAccountId))
+      if (fresh.connectChargesEnabled !== chargesEnabled || fresh.connectPayoutsEnabled !== payoutsEnabled || fresh.connectDetailsSubmitted !== detailsSubmitted) {
+        await prisma.trainerProfile.update({ where: { id: companyId }, data: fresh })
+      }
+      chargesEnabled = fresh.connectChargesEnabled
+      payoutsEnabled = fresh.connectPayoutsEnabled
+      detailsSubmitted = fresh.connectDetailsSubmitted
+    } catch { /* Stripe unreachable — fall back to the cached flags */ }
+  }
+
+  const active = chargesEnabled && payoutsEnabled
 
   return (
     <div className="flex flex-col gap-6">
@@ -53,9 +76,9 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
         ) : !active ? (
           <div className="mt-5 flex flex-col gap-4">
             <ul className="flex flex-col gap-1.5 text-sm">
-              <ChecklistRow done={profile?.connectDetailsSubmitted ?? false} label="Business & identity details" />
-              <ChecklistRow done={profile?.connectChargesEnabled ?? false} label="Able to take payments" />
-              <ChecklistRow done={profile?.connectPayoutsEnabled ?? false} label="Bank account for payouts" />
+              <ChecklistRow done={detailsSubmitted} label="Business & identity details" />
+              <ChecklistRow done={chargesEnabled} label="Able to take payments" />
+              <ChecklistRow done={payoutsEnabled} label="Bank account for payouts" />
             </ul>
             <ConnectButton label="Continue setup" />
           </div>
@@ -84,18 +107,47 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
               </div>
               <PassFeeToggle initial={profile?.passProcessingFeeToClient ?? true} />
             </div>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-slate-600">
-              {profile?.payoutCurrency && (
-                <span>Paid out in <strong className="text-slate-800">{profile.payoutCurrency.toUpperCase()}</strong></span>
-              )}
-              <a href="/api/connect/login-link" className="font-medium hover:underline" style={{ color: 'var(--pm-brand-700)' }}>
-                Open Stripe dashboard →
-              </a>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/stripe.svg" alt="Stripe" className="ml-auto h-6 w-auto opacity-80" />
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600">
+                {profile?.payoutCurrency && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Wallet className="h-4 w-4 text-slate-400" />
+                    Paid out in <strong className="text-slate-800">{profile.payoutCurrency.toUpperCase()}</strong>
+                  </span>
+                )}
+                <a
+                  href="/api/connect/login-link"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                >
+                  Open Stripe dashboard
+                  <ArrowUpRight className="h-4 w-4" />
+                </a>
+              </div>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
+                Powered by
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logos/stripe.webp" alt="Stripe" className="h-[18px] w-auto opacity-90" />
+              </span>
             </div>
           </div>
         )}
+      </div>
+
+      {/* Invoicing — independent of Stripe. Governs whether a receivable raised
+          when a priced package/product is assigned is emailed to the client on
+          purchase, or created for the trainer to review + send from Finances.
+          Relevant even without Stripe (bank-transfer / Xero-only trainers). */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Invoicing</p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+          <div className="max-w-md">
+            <p className="text-sm font-medium text-slate-800">Send invoices automatically</p>
+            <p className="text-xs text-slate-500">
+              Off = create the invoice for you to review and send; On = email it to the client on purchase.
+            </p>
+          </div>
+          <AutoSendInvoicesToggle initial={profile?.autoSendInvoices ?? false} />
+        </div>
       </div>
 
       {/* Transactions + invoices live under Finances. */}

@@ -123,6 +123,51 @@ function ConnectToggle({ initial, field, label }: { initial: boolean; field: 'ac
   )
 }
 
+/**
+ * Toggle `autoSendInvoices` on the trainer profile. Unlike the Connect toggles
+ * this saves via the general trainer-profile PATCH route (the setting is
+ * independent of Stripe — it also governs bank-transfer / Xero-only invoicing).
+ */
+export function AutoSendInvoicesToggle({ initial }: { initial: boolean }) {
+  const router = useRouter()
+  const [on, setOn] = useState(initial)
+  const [saving, setSaving] = useState(false)
+
+  async function toggle() {
+    const next = !on
+    setSaving(true)
+    setOn(next) // optimistic
+    try {
+      const res = await fetch('/api/trainer/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoSendInvoices: next }),
+      })
+      if (!res.ok) setOn(!next) // revert
+      else router.refresh()
+    } catch {
+      setOn(!next)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label="Send invoices automatically"
+      disabled={saving}
+      onClick={toggle}
+      style={{ minHeight: 0 }}
+      className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:opacity-40 ${on ? 'justify-end bg-emerald-500' : 'justify-start bg-slate-300'}`}
+    >
+      <span className="block h-5 w-5 rounded-full bg-white shadow" />
+    </button>
+  )
+}
+
 /** Master switch: only enabled once the account can take charges. */
 export function AcceptPaymentsToggle({ initial }: { initial: boolean }) {
   return <ConnectToggle initial={initial} field="acceptPaymentsEnabled" label="Accept payments" />
