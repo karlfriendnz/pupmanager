@@ -1,5 +1,86 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { conflictMessage } from '@/lib/use-booking-conflicts'
+import { conflictMessage, findDropClashes, clashesToConflictResult, type ExistingSlot } from '@/lib/use-booking-conflicts'
+
+// ── Drag-drop multi-session overlap (the PRE-move confirm gate) ───────────────
+describe('findDropClashes', () => {
+  const at = (iso: string, durationMins = 60, extra: Partial<ExistingSlot> = {}): ExistingSlot => ({
+    id: Math.random().toString(36).slice(2), title: 'S', scheduledAt: iso, durationMins, ...extra,
+  })
+
+  it('flags a direct overlap for the single dragged session', () => {
+    const moved = [{ id: 'drag', scheduledAt: '2026-07-10T09:00:00Z', durationMins: 60 }]
+    const existing = [at('2026-07-10T09:30:00Z', 60, { id: 'other', title: 'Bailey walk' })]
+    const clashes = findDropClashes(moved, existing)
+    expect(clashes.map(c => c.id)).toEqual(['other'])
+  })
+
+  it('fires when the dragged slot is CLEAR but a package follower lands on a clash', () => {
+    // Dragged 9:00 is free; its follower shifts to 11:00 and collides with an existing 11:00.
+    const moved = [
+      { id: 'drag', scheduledAt: '2026-07-10T09:00:00Z', durationMins: 60 },
+      { id: 'follower', scheduledAt: '2026-07-10T11:00:00Z', durationMins: 60 },
+    ]
+    const existing = [
+      at('2026-07-10T09:00:00Z', 60, { id: 'drag' }),        // itself — excluded by caller anyway
+      at('2026-07-10T11:15:00Z', 60, { id: 'clashWithFollower', title: 'Max' }),
+    ].filter(s => s.id !== 'drag')
+    const clashes = findDropClashes(moved, existing)
+    expect(clashes.map(c => c.id)).toEqual(['clashWithFollower'])
+  })
+
+  it('detects a solo-trainer / unassigned overlap (helper is not membership-scoped)', () => {
+    // No membership info anywhere — a pure interval overlap still clashes.
+    const moved = [{ id: 'drag', scheduledAt: '2026-07-10T14:00:00Z', durationMins: 90 }]
+    const existing = [at('2026-07-10T15:00:00Z', 60, { id: 'unassigned', title: 'Own booking' })]
+    expect(findDropClashes(moved, existing)).toHaveLength(1)
+  })
+
+  it('flags a 1:1 dropped onto a group-class time, labelled by the class', () => {
+    const moved = [{ id: 'oneToOne', scheduledAt: '2026-07-10T10:00:00Z', durationMins: 60 }]
+    const existing = [at('2026-07-10T10:15:00Z', 60, { id: 'cls', title: 'Puppy Class', classRunId: 'run-1', label: 'Puppy Class' })]
+    const clashes = findDropClashes(moved, existing)
+    expect(clashes).toHaveLength(1)
+    expect(clashes[0].label).toBe('Puppy Class')
+  })
+
+  it('does NOT clash two occurrences of the SAME class run', () => {
+    const moved = [{ id: 'occ-a', scheduledAt: '2026-07-10T10:00:00Z', durationMins: 60, classRunId: 'run-1' }]
+    const existing = [at('2026-07-10T10:15:00Z', 60, { id: 'occ-b', classRunId: 'run-1' })]
+    expect(findDropClashes(moved, existing)).toHaveLength(0)
+  })
+
+  it('DOES clash a class session against a DIFFERENT class run at the same time', () => {
+    const moved = [{ id: 'occ-a', scheduledAt: '2026-07-10T10:00:00Z', durationMins: 60, classRunId: 'run-1' }]
+    const existing = [at('2026-07-10T10:00:00Z', 60, { id: 'occ-b', classRunId: 'run-2' })]
+    expect(findDropClashes(moved, existing)).toHaveLength(1)
+  })
+
+  it('ignores non-overlapping and self (moved) sessions, and de-dupes', () => {
+    const moved = [
+      { id: 'a', scheduledAt: '2026-07-10T09:00:00Z', durationMins: 60 },
+      { id: 'b', scheduledAt: '2026-07-10T09:30:00Z', durationMins: 60 },
+    ]
+    const existing = [
+      at('2026-07-10T09:15:00Z', 60, { id: 'shared' }), // overlaps BOTH a and b → counted once
+      at('2026-07-10T20:00:00Z', 60, { id: 'far' }),    // no overlap
+      at('2026-07-10T09:00:00Z', 60, { id: 'a' }),      // is a moved id
+    ]
+    expect(findDropClashes(moved, existing).map(c => c.id)).toEqual(['shared'])
+  })
+})
+
+describe('clashesToConflictResult', () => {
+  it('maps clashes + Google busy into the shared ConflictResult shape', () => {
+    const result = clashesToConflictResult(
+      [{ id: 'x', title: 'T', scheduledAt: '2026-07-10T10:00:00Z', durationMins: 60, label: 'Sarah & Bailey' }],
+      [{ startsAt: '2026-07-10T10:00:00Z', endsAt: '2026-07-10T10:30:00Z', title: 'Dentist' }],
+    )
+    expect(result.sessionConflicts[0]).toMatchObject({ id: 'x', label: 'Sarah & Bailey' })
+    expect(result.busyConflicts[0].title).toBe('Dentist')
+    // And it feeds a non-null confirm message (i.e. it WOULD pop the modal).
+    expect(conflictMessage(result)).toContain('Book anyway?')
+  })
+})
 
 // ── Pure message builder (the confirm prompt text) ───────────────────────────
 describe('conflictMessage', () => {

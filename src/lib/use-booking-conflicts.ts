@@ -45,6 +45,83 @@ export function conflictMessage(result: ConflictResult): string | null {
  */
 const EMPTY: ConflictResult = { sessionConflicts: [], busyConflicts: [] }
 
+// ── Drag-drop multi-session overlap ─────────────────────────────────────────
+// A drag-drop can move MORE than the dragged session: a recurring package's
+// followers shift with it. The member-scoped /api/schedule/conflicts check only
+// looks at the dragged session's own slot, so knock-on follower clashes — and a
+// solo trainer's unassigned overlaps — slip through. These pure helpers scan the
+// FULL moved set against the trainer's existing sessions (from /api/schedule/range,
+// which is not membership-narrowed for a viewAll owner) so the drop can pop the
+// same confirm modal for every resulting clash.
+
+/** An interval the drop is about to move. */
+export type DropInterval = {
+  id: string
+  scheduledAt: string
+  durationMins: number
+  /** Present for group-class sessions. Two occurrences of the SAME run don't clash. */
+  classRunId?: string | null
+}
+
+/** An existing session the moved intervals might land on. */
+export type ExistingSlot = {
+  id: string
+  title: string
+  scheduledAt: string
+  durationMins: number
+  label?: string | null
+  classRunId?: string | null
+}
+
+/**
+ * Half-open overlap of the intervals a drag-drop is about to move (the dragged
+ * session PLUS any recurring-package followers) against the trainer's existing,
+ * non-moved sessions. Pure and UNSCOPED by membership, so it catches knock-on
+ * follower clashes and a solo trainer's unassigned overlaps. Two occurrences of
+ * the SAME class run never clash (one shared event, not a double-booking —
+ * mirrors the self-book rule). De-duped by existing-slot id.
+ */
+export function findDropClashes(moved: DropInterval[], existing: ExistingSlot[]): ExistingSlot[] {
+  const movedIds = new Set(moved.map((m) => m.id))
+  const clashes: ExistingSlot[] = []
+  const seen = new Set<string>()
+  for (const m of moved) {
+    const startA = new Date(m.scheduledAt).getTime()
+    if (isNaN(startA) || !m.durationMins) continue
+    const endA = startA + m.durationMins * 60_000
+    for (const s of existing) {
+      if (movedIds.has(s.id) || seen.has(s.id)) continue
+      // Same class run = the same shared event, not a clash.
+      if (m.classRunId && s.classRunId && m.classRunId === s.classRunId) continue
+      const startB = new Date(s.scheduledAt).getTime()
+      if (isNaN(startB)) continue
+      const endB = startB + s.durationMins * 60_000
+      if (startA < endB && startB < endA) {
+        seen.add(s.id)
+        clashes.push(s)
+      }
+    }
+  }
+  return clashes
+}
+
+/** Map drop clashes into the shared ConflictResult shape the modal renders. */
+export function clashesToConflictResult(
+  clashes: ExistingSlot[],
+  busyConflicts: ConflictResult['busyConflicts'] = [],
+): ConflictResult {
+  return {
+    sessionConflicts: clashes.map((s) => ({
+      id: s.id,
+      title: s.title,
+      scheduledAt: s.scheduledAt,
+      durationMins: s.durationMins,
+      label: s.label ?? null,
+    })),
+    busyConflicts,
+  }
+}
+
 /**
  * Fetch conflicts for a proposed slot. The endpoint does a LIVE Google FreeBusy
  * check for exactly this window, so it's accurate at booking time regardless of
@@ -85,5 +162,15 @@ export function useBookingConflicts() {
     return typeof window === 'undefined' || !message ? true : window.confirm(message)
   }, [dialog])
 
-  return { confirmBooking }
+  // Confirm for an ALREADY-computed clash set (e.g. a drag-drop that ran its own
+  // multi-session overlap scan). Same styled-modal + override semantics as
+  // confirmBooking, but skips the fetch. Empty result → proceed silently.
+  const confirmClashes = useCallback(async (result: ConflictResult): Promise<boolean> => {
+    if (conflictMessage(result) === null) return true
+    if (dialog) return dialog.requestConfirm(result)
+    const message = conflictMessage(result)
+    return typeof window === 'undefined' || !message ? true : window.confirm(message)
+  }, [dialog])
+
+  return { confirmBooking, confirmClashes }
 }

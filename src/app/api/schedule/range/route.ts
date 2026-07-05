@@ -34,12 +34,25 @@ export async function GET(req: Request) {
       scheduledAt: true,
       durationMins: true,
       status: true,
+      // classRunId lets a drag-drop overlap scan tell two occurrences of the
+      // SAME group class apart from a genuine double-booking; the relation names
+      // give the confirm modal a human label (client / dog / class / package).
+      classRunId: true,
+      client: { select: { user: { select: { name: true } } } },
+      dog: { select: { name: true } },
+      classRun: { select: { name: true } },
+      clientPackage: { select: { package: { select: { name: true } } } },
     },
     orderBy: { scheduledAt: 'asc' },
   })
 
   return NextResponse.json(sessions.map(s => ({
-    ...s,
+    id: s.id,
+    title: s.title,
     scheduledAt: s.scheduledAt.toISOString(),
+    durationMins: s.durationMins,
+    status: s.status,
+    classRunId: s.classRunId,
+    label: s.client?.user?.name || s.dog?.name || s.classRun?.name || s.clientPackage?.package?.name || null,
   })))
 }

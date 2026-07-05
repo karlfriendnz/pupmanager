@@ -21,7 +21,7 @@ import {
 } from './assign-package-from-schedule'
 import { SlotTypeChooser, type SlotAddType } from './slot-type-chooser'
 import { NewWalkModal } from './new-walk-modal'
-import { useBookingConflicts } from '@/lib/use-booking-conflicts'
+import { useBookingConflicts, findDropClashes, clashesToConflictResult, fetchBookingConflicts, type ExistingSlot } from '@/lib/use-booking-conflicts'
 import { ClassFormModal } from '../classes/class-form-modal'
 import { ScheduleSettings } from './schedule-settings'
 import { ScheduleReport } from './schedule-report'
@@ -2796,7 +2796,7 @@ export function ScheduleView({
   // page — no post-mount fetch flash. Re-seeded when a new week's data arrives.
   const [busyBlocks, setBusyBlocks]     = useState<BusyBlock[]>(initialBusyBlocks)
   const [showAvail, setShowAvail]       = useState(false)
-  const { confirmBooking }              = useBookingConflicts()
+  const { confirmClashes }              = useBookingConflicts()
   const [showReport, setShowReport]     = useState(false)
 
   // The onboarding wizard's "set your hours" step links to /schedule#availability
@@ -2874,7 +2874,6 @@ export function ScheduleView({
   // Surfaced after a drag-drop when the new time(s) overlap an existing
   // session. The drop is allowed (the trainer might be intentionally double-
   // booking) but we flag it so they can reconcile.
-  const [dropWarning, setDropWarning] = useState<{ count: number; sample: { title: string; scheduledAt: string }[] } | null>(null)
 
   // Keep sessions in sync with server data on refresh
   useEffect(() => { setSessions(initialSessions) }, [initialSessions])
@@ -2989,23 +2988,12 @@ export function ScheduleView({
     const dragged = sessions.find(s => s.id === sessionId)
     if (!dragged) return
 
-    // Confirm-to-override BEFORE committing the move if the new time clashes with
-    // the same trainer's other sessions or a Google event. Cancel = snap back
-    // (nothing moved yet — we return before the optimistic update).
-    const proceedDrop = await confirmBooking({
-      startIso: newIso,
-      durationMins: dragged.durationMins,
-      membershipId: dragged.assignedMembershipId,
-      excludeSessionId: sessionId,
-    })
-    if (!proceedDrop) { router.refresh(); return }
-
     const deltaMs = new Date(newIso).getTime() - new Date(dragged.scheduledAt).getTime()
     const propagate = !!dragged.clientPackageId
     // Sessions in the same package, scheduled after the dragged one. Only the
     // ones in the visible week are in memory; the server shifts the rest via
-    // ?scope=following. We track the visible movers so we can warn on
-    // conflicts and update them optimistically.
+    // ?scope=following. We track the visible movers so we can gate on their
+    // resulting clashes and update them optimistically.
     const movers = propagate
       ? sessions.filter(s =>
           s.id !== sessionId &&
@@ -3013,16 +3001,66 @@ export function ScheduleView({
           new Date(s.scheduledAt).getTime() > new Date(dragged.scheduledAt).getTime(),
         )
       : []
-    const movedNewIsos: { id: string; scheduledAt: string; durationMins: number; title: string }[] = [
-      { id: dragged.id, scheduledAt: newIso, durationMins: dragged.durationMins, title: dragged.title },
+    // The full set of intervals this drop moves: the dragged session PLUS any
+    // recurring-package followers. Carries classRunId so two occurrences of the
+    // same group class aren't counted as clashing with each other.
+    const movedNewIsos = [
+      { id: dragged.id, scheduledAt: newIso, durationMins: dragged.durationMins, title: dragged.title, classRunId: dragged.classRunId },
       ...movers.map(s => ({
         id: s.id,
         scheduledAt: new Date(new Date(s.scheduledAt).getTime() + deltaMs).toISOString(),
         durationMins: s.durationMins,
         title: s.title,
+        classRunId: s.classRunId,
       })),
     ]
     const movedIds = new Set(movedNewIsos.map(m => m.id))
+
+    // ── PRE-MOVE conflict gate ────────────────────────────────────────────────
+    // Pop the confirm modal for the SAME clashes a trainer would otherwise only
+    // see as a passive banner AFTER the drop. Two sources, mirroring the editor
+    // (sessions hard, Google soft):
+    //  1. An UNSCOPED session overlap of every moved interval (dragged + package
+    //     followers, and any class session) against existing sessions via
+    //     /api/schedule/range — catches knock-on follower clashes, 1:1↔class
+    //     clashes, AND a solo trainer's unassigned overlaps the member-scoped
+    //     /api/schedule/conflicts check would miss.
+    //  2. A live Google-busy lookup for the dragged slot.
+    // If anything clashes, confirm BEFORE moving; Cancel snaps back (nothing
+    // optimistically moved yet, nothing persisted).
+    const minStart = Math.min(...movedNewIsos.map(m => new Date(m.scheduledAt).getTime()))
+    const maxEnd = Math.max(...movedNewIsos.map(m => new Date(m.scheduledAt).getTime() + m.durationMins * 60 * 1000))
+    const fromIso = new Date(minStart - 12 * 60 * 60 * 1000).toISOString()
+    const toIso = new Date(maxEnd + 60 * 60 * 1000).toISOString()
+
+    let sessionClashes: ExistingSlot[] = []
+    try {
+      const r = await fetch(`/api/schedule/range?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`)
+      if (r.ok) {
+        const rows: ExistingSlot[] = await r.json()
+        sessionClashes = findDropClashes(movedNewIsos, rows.filter(s => !movedIds.has(s.id)))
+      }
+    } catch {
+      // Best-effort — a failed range lookup never blocks the move.
+    }
+
+    // Live Google-busy for the dragged slot (soft), same source the editor uses.
+    let busyConflicts: Awaited<ReturnType<typeof fetchBookingConflicts>>['busyConflicts'] = []
+    try {
+      busyConflicts = (await fetchBookingConflicts({
+        startIso: newIso,
+        durationMins: dragged.durationMins,
+        membershipId: dragged.assignedMembershipId,
+        excludeSessionId: sessionId,
+      })).busyConflicts
+    } catch {
+      // Best-effort.
+    }
+
+    if (sessionClashes.length > 0 || busyConflicts.length > 0) {
+      const proceed = await confirmClashes(clashesToConflictResult(sessionClashes, busyConflicts))
+      if (!proceed) { router.refresh(); return }
+    }
 
     // Optimistic update for every visible session that's moving.
     setSessions(prev => prev.map(s => {
@@ -3043,35 +3081,6 @@ export function ScheduleView({
     // Let the reschedule banner know there are sessions awaiting a client notice.
     window.dispatchEvent(new Event('reschedule-pending-changed'))
 
-    // Conflict detection: fetch existing sessions covering all the moved
-    // intervals and look for overlaps with sessions we didn't ourselves move.
-    const minStart = Math.min(...movedNewIsos.map(m => new Date(m.scheduledAt).getTime()))
-    const maxEnd = Math.max(...movedNewIsos.map(m => new Date(m.scheduledAt).getTime() + m.durationMins * 60 * 1000))
-    const fromIso = new Date(minStart - 60 * 60 * 1000).toISOString()
-    const toIso = new Date(maxEnd + 60 * 60 * 1000).toISOString()
-    try {
-      const r = await fetch(`/api/schedule/range?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`)
-      if (!r.ok) return
-      const rows: { id: string; title: string; scheduledAt: string; durationMins: number }[] = await r.json()
-      const clashes: { title: string; scheduledAt: string }[] = []
-      for (const m of movedNewIsos) {
-        const startA = new Date(m.scheduledAt).getTime()
-        const endA = startA + m.durationMins * 60 * 1000
-        for (const s of rows) {
-          if (movedIds.has(s.id)) continue
-          const startB = new Date(s.scheduledAt).getTime()
-          const endB = startB + s.durationMins * 60 * 1000
-          if (startA < endB && startB < endA) {
-            clashes.push({ title: s.title, scheduledAt: s.scheduledAt })
-          }
-        }
-      }
-      if (clashes.length > 0) {
-        setDropWarning({ count: clashes.length, sample: clashes.slice(0, 3) })
-      }
-    } catch {
-      // Non-critical — silently skip conflict warning if the range query fails.
-    }
     if (propagate) {
       // Followers outside the visible week were also shifted server-side;
       // refresh so the calendar reflects everything next time the trainer
@@ -3321,29 +3330,6 @@ export function ScheduleView({
         </div>
       )}
 
-      {dropWarning && (
-        <div className="px-4 md:px-6">
-          <div className="mb-3 rounded-2xl bg-white ring-1 ring-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] px-4 py-3 flex items-start gap-2.5">
-            <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-slate-900">
-                {dropWarning.count} conflict{dropWarning.count > 1 ? 's' : ''} after drop
-              </p>
-              <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                Overlaps {dropWarning.sample.map(s => `${s.title} (${new Date(s.scheduledAt).toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })})`).join(', ')}
-                {dropWarning.count > dropWarning.sample.length ? ', and more' : ''}.
-              </p>
-            </div>
-            <button
-              onClick={() => setDropWarning(null)}
-              className="p-0.5 text-slate-300 hover:text-slate-500 shrink-0"
-              aria-label="Dismiss"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ── Main content ─────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden px-4 md:px-6 py-4">
