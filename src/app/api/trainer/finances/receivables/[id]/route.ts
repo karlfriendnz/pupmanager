@@ -33,7 +33,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
       trainer: {
         select: {
-          businessName: true, logoUrl: true, publicEmail: true,
+          businessName: true, logoUrl: true, publicEmail: true, website: true,
           addressLine1: true, addressLine2: true, addressCity: true,
           addressRegion: true, addressPostcode: true, addressCountry: true,
         },
@@ -80,6 +80,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       name: b.businessName ?? null,
       logoUrl: b.logoUrl ?? null,
       email: b.publicEmail ?? null,
+      website: b.website ?? null,
       address: businessAddress || null,
     },
   })

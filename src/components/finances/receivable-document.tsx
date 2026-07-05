@@ -67,7 +67,7 @@ export interface RcvDetail {
   xeroInvoiceId: string | null; xeroSyncStatus: 'SYNCED' | 'ERROR' | null; xeroSyncError: string | null
   lines: RcvLine[]
   client: { name: string | null; email: string | null; address: string | null; phone: string | null }
-  business: { name: string | null; logoUrl: string | null; email: string | null; address: string | null }
+  business: { name: string | null; logoUrl: string | null; email: string | null; website: string | null; address: string | null }
 }
 
 // A draft line during edit (string-typed inputs → parsed on save).
@@ -268,6 +268,11 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
                   <p className="text-lg font-bold text-slate-900">{data.business.name ?? 'Your business'}</p>
                   {data.business.address && <p className="mt-1 text-xs text-slate-500 whitespace-pre-line">{data.business.address}</p>}
                   {data.business.email && <p className="text-xs text-slate-500">{data.business.email}</p>}
+                  {data.business.website && (
+                    <a href={data.business.website.startsWith('http') ? data.business.website : `https://${data.business.website}`} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-600 hover:underline">
+                      {data.business.website.replace(/^https?:\/\//, '')}
+                    </a>
+                  )}
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Invoice</p>

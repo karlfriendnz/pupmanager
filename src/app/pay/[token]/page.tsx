@@ -50,7 +50,7 @@ export default async function PayPage({ params, searchParams }: {
       client: { select: { user: { select: { name: true } } } },
       trainer: {
         select: {
-          businessName: true, logoUrl: true, publicEmail: true, acceptPaymentsEnabled: true, connectChargesEnabled: true,
+          businessName: true, logoUrl: true, publicEmail: true, website: true, acceptPaymentsEnabled: true, connectChargesEnabled: true,
         },
       },
     },
@@ -84,6 +84,11 @@ export default async function PayPage({ params, searchParams }: {
             <div>
               <p className="text-base font-bold text-slate-900">{businessName}</p>
               {invoice.trainer.publicEmail && <p className="text-xs text-slate-500">{invoice.trainer.publicEmail}</p>}
+              {invoice.trainer.website && (
+                <a href={invoice.trainer.website.startsWith('http') ? invoice.trainer.website : `https://${invoice.trainer.website}`} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-600 hover:underline">
+                  {invoice.trainer.website.replace(/^https?:\/\//, '')}
+                </a>
+              )}
             </div>
           </div>
 
