@@ -22,6 +22,8 @@ import {
 import { SlotTypeChooser, type SlotAddType } from './slot-type-chooser'
 import { NewWalkModal } from './new-walk-modal'
 import { useBookingConflicts, findDropClashes, clashesToConflictResult, fetchBookingConflicts, type ExistingSlot } from '@/lib/use-booking-conflicts'
+import { previewClashKeys, type PreviewBlock as RequestPreviewBlock } from '@/lib/booking-request-preview'
+import { BookingRequestPreviewBanner } from './booking-request-preview-banner'
 import { ClassFormModal } from '../classes/class-form-modal'
 import { ScheduleSettings } from './schedule-settings'
 import { ScheduleReport } from './schedule-report'
@@ -591,6 +593,55 @@ function SessionBlock({
   )
 }
 
+// ─── Booking-request preview (ghost) block ─────────────────────────────────────
+
+// A proposed session from a pending booking request, painted as a dashed,
+// tinted overlay so the trainer sees exactly where the request's sessions
+// would land before approving. Never a real session — non-interactive
+// (pointer-events pass through to the column so slot-clicks still work).
+// Indigo = matches the request panel; amber when it overlaps an existing
+// session so clashes jump out.
+function PreviewGhostBlock({
+  block,
+  clashes,
+  startHour,
+  pxPerHour,
+}: {
+  block: RequestPreviewBlock
+  clashes: boolean
+  startHour: number
+  pxPerHour: number
+}) {
+  const tz = useContext(SchedTz)
+  const top = sessionTop(block.startIso, tz, startHour, pxPerHour)
+  const height = sessionHeight(block.durationMins, pxPerHour)
+  const tone = clashes
+    ? 'border-amber-500 bg-amber-100/70 text-amber-800'
+    : 'border-indigo-500 bg-indigo-100/70 text-indigo-800'
+  return (
+    <div
+      className={`absolute left-0.5 right-0.5 z-20 rounded-lg border-2 border-dashed px-2 overflow-hidden pointer-events-none ${tone}`}
+      style={{ top, height }}
+      title={`Proposed: ${block.title} · ${fmtTime(block.startIso, tz)}${clashes ? ' · clashes with an existing session' : ''}`}
+    >
+      <div className="flex items-center gap-1 pt-1">
+        <p className="text-[10px] font-semibold leading-tight truncate flex-1">
+          {fmtTime(block.startIso, tz)}
+        </p>
+        {clashes && <AlertTriangle className="h-3 w-3 flex-shrink-0" />}
+      </div>
+      {height > 28 && (
+        <p className="text-[10px] leading-tight truncate opacity-80">{block.title}</p>
+      )}
+      {height > 40 && (
+        <p className="text-[9px] font-semibold uppercase tracking-wide leading-tight opacity-70">
+          Proposed
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ─── Week grid ────────────────────────────────────────────────────────────────
 
 function WeekGrid({
@@ -614,6 +665,8 @@ function WeekGrid({
   searchActive,
   onAdvanceWeek,
   forceFullWeek = false,
+  previewBlocks = [],
+  previewClashes,
 }: {
   weekDays: Date[]
   sessions: Session[]
@@ -622,6 +675,11 @@ function WeekGrid({
   busyBlocks: BusyBlock[]
   today: string
   selectedDate: string
+  // Ghost overlay for a pending booking request being previewed (empty when
+  // not previewing). `previewClashes` holds the keys of blocks that overlap an
+  // existing session, so they render in the warning tone.
+  previewBlocks?: RequestPreviewBlock[]
+  previewClashes?: Set<string>
   onSlotClick: (dateStr: string, time: string) => void
   onSessionClick: (s: Session) => void
   onSessionDrop: (sessionId: string, newIso: string) => void
@@ -1007,6 +1065,19 @@ function WeekGrid({
                     pxPerHour={pxPerHour}
                   />
                 ))}
+
+                {/* Booking-request preview ghosts for this day (dashed overlay). */}
+                {previewBlocks
+                  .filter((b) => ymdInTz(b.startIso, tz) === ds)
+                  .map((b) => (
+                    <PreviewGhostBlock
+                      key={b.key}
+                      block={b}
+                      clashes={previewClashes?.has(b.key) ?? false}
+                      startHour={startHour}
+                      pxPerHour={pxPerHour}
+                    />
+                  ))}
 
                 {/* Sessions that belong to this day */}
                 {daySessions.map((s) => {
@@ -2703,6 +2774,7 @@ export function ScheduleView({
   members = [],
   showHints = false,
   initialBusyBlocks = [],
+  previewRequest = null,
 }: {
   tz: string
   sessions: Session[]
@@ -2736,6 +2808,14 @@ export function ScheduleView({
   // surfaces that exist purely to teach the schedule UI (the Hours
   // pulse dot, etc.) so the screen is quiet for established trainers.
   showHints?: boolean
+  // Set when the trainer clicked a pending booking request to preview its
+  // proposed sessions on the grid. Ghost blocks + an Approve/Decline banner.
+  previewRequest?: {
+    id: string
+    clientName: string
+    packageName: string
+    blocks: RequestPreviewBlock[]
+  } | null
 }) {
   // Mirror the initially-rendered week into local state. Week navigation
   // mutates these without a server round-trip.
@@ -2772,12 +2852,14 @@ export function ScheduleView({
   // device detectors stay in lockstep.
   const [isMobileViewport, setIsMobileViewport] = useState(false)
   useEffect(() => {
-    if (window.innerWidth < 768) setView('day')
+    // Phones default to the day list — but when previewing a booking request
+    // start in the 3-day grid so the ghost blocks are actually visible.
+    if (window.innerWidth < 768) setView(previewRequest ? 'threeDay' : 'day')
     const update = () => setIsMobileViewport(window.innerWidth < 640)
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
-  }, [])
+  }, [previewRequest])
 
   // Resolve the effective visible-hour range for the current device.
   // Mobile overrides fall back to the desktop value when null so a
@@ -3121,6 +3203,15 @@ export function ScheduleView({
 
   const daySessions = sessions.filter(s => ymdInTz(s.scheduledAt, tz) === selectedDate)
 
+  // Booking-request preview: flag proposed times that overlap an existing
+  // session in the currently-loaded week so the ghost blocks + banner warn the
+  // trainer of clashes before they approve. Recomputes as the week's sessions
+  // change (nav / drag).
+  const previewBlocks = previewRequest?.blocks ?? []
+  const previewClashes = previewBlocks.length > 0
+    ? previewClashKeys(previewBlocks, sessions)
+    : new Set<string>()
+
   return (
     <SchedTz.Provider value={tz}>
     <div className="flex flex-col h-full">
@@ -3298,6 +3389,21 @@ export function ScheduleView({
         <RescheduleBanner />
       </div>
 
+      {/* Booking-request preview banner — keeps Approve/Decline reachable while
+          the proposed sessions are painted as ghost blocks on the grid. */}
+      {previewRequest && (
+        <div className="px-4 md:px-6 pt-3">
+          <BookingRequestPreviewBanner
+            requestId={previewRequest.id}
+            clientName={previewRequest.clientName}
+            packageName={previewRequest.packageName}
+            sessionCount={previewBlocks.length}
+            clashCount={previewClashes.size}
+            focusDate={selectedDate}
+          />
+        </div>
+      )}
+
       {/* Mobile-only search field, revealed by the search icon-button above.
           Sits below the header row so the header itself stays one tidy line. */}
       {(searchOpenMobile || search) && (
@@ -3355,6 +3461,8 @@ export function ScheduleView({
             searchActive={searchTokens.length > 0}
             onAdvanceWeek={navigate}
             forceFullWeek={view === 'week'}
+            previewBlocks={previewBlocks}
+            previewClashes={previewClashes}
           />
         ) : (
           <DayList

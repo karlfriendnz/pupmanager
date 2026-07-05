@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
-import { CalendarClock } from 'lucide-react'
+import Link from 'next/link'
+import { CalendarClock, ChevronRight } from 'lucide-react'
 import { BookingRequestActions } from './booking-request-actions'
+import { schedulePreviewHref } from '@/lib/booking-request-preview'
 
 // Trainer dashboard panel: pending client self-booking requests awaiting
 // confirm/decline. Renders nothing when there are none, so it's safe to
@@ -35,17 +37,27 @@ export async function BookingRequestsPanel({ trainerId }: { trainerId: string })
               key={r.id}
               className="flex items-center gap-3 rounded-lg bg-white border border-indigo-100 px-3 py-2.5"
             >
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-900 truncate">
+              {/* Click the request to preview its proposed sessions on the
+                  schedule (ghost overlay) before confirming. */}
+              <Link
+                href={schedulePreviewHref(r.id)}
+                className="group min-w-0 flex-1 -my-2.5 -ml-3 py-2.5 pl-3 pr-1 rounded-l-lg hover:bg-indigo-50/60"
+                title="Preview these sessions on your schedule"
+              >
+                <p className="text-sm font-medium text-slate-900 truncate group-hover:text-indigo-900">
                   {r.client.user.name ?? 'Client'} · {r.package.name}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 flex items-center gap-1">
                   {dates.length} session{dates.length === 1 ? '' : 's'}
                   {first && !Number.isNaN(first.getTime())
                     ? ` · from ${first.toLocaleDateString()} ${first.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
                     : ''}
+                  <span className="inline-flex items-center text-indigo-600 font-medium">
+                    <ChevronRight className="h-3 w-3" />
+                    View on schedule
+                  </span>
                 </p>
-              </div>
+              </Link>
               <BookingRequestActions requestId={r.id} />
             </li>
           )

@@ -9,7 +9,8 @@ import { GoogleCalendarNudge } from './google-calendar-nudge'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { todayInTz, startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
-import { dateParts } from '@/lib/utils'
+import { dateParts, ymdInTz } from '@/lib/utils'
+import { buildPreviewBlocks } from '@/lib/booking-request-preview'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Schedule' }
@@ -58,7 +59,7 @@ function nextWorkingDay(dateStr: string, scheduleDays: number[]): string {
 export default async function SchedulePage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>
+  searchParams: Promise<{ date?: string; previewRequest?: string }>
 }) {
   // Resolve via membership so invited trainers reach their company's schedule.
   const ctx = await getTrainerContext()
@@ -110,7 +111,35 @@ export default async function SchedulePage({
   const configuredDays = Array.isArray(trainerProfile.scheduleDays)
     ? trainerProfile.scheduleDays as number[]
     : [1, 2, 3, 4, 5, 6, 7]
-  const selectedDate = sp.date ?? nextWorkingDay(today, configuredDays)
+
+  // Booking-request preview: a trainer clicked a pending self-booking request
+  // to eyeball its proposed sessions on the grid before approving. Load it
+  // (scoped + PENDING only), build ghost blocks from the proposed dates, and
+  // focus the schedule on the first one. Read-only — no real sessions until
+  // they confirm through the existing approve flow.
+  const previewRow = sp.previewRequest
+    ? await prisma.bookingRequest.findFirst({
+        where: { id: sp.previewRequest, trainerId: trainerProfile.id, status: 'PENDING' },
+        include: {
+          package: { select: { name: true, sessionCount: true, durationMins: true } },
+          client: { select: { user: { select: { name: true } } } },
+        },
+      })
+    : null
+  const previewBlocks = previewRow ? buildPreviewBlocks(previewRow.sessionDates, previewRow.package) : []
+  const previewRequest = previewRow
+    ? {
+        id: previewRow.id,
+        clientName: previewRow.client.user.name ?? 'Client',
+        packageName: previewRow.package.name,
+        blocks: previewBlocks,
+      }
+    : null
+
+  // Focus the first proposed session's day (in the trainer's tz) when previewing
+  // and no explicit date was passed; otherwise the usual next-working-day.
+  const previewFirstDate = previewBlocks.length > 0 ? ymdInTz(previewBlocks[0].startIso, tz) : null
+  const selectedDate = sp.date ?? previewFirstDate ?? nextWorkingDay(today, configuredDays)
 
   const { weekStart, weekEnd } = getWeekBounds(selectedDate, tz)
 
@@ -395,6 +424,7 @@ export default async function SchedulePage({
       customFields={customFields}
       clientExtras={clientExtras}
       showHints={showHints}
+      previewRequest={previewRequest}
     />
     {showGoogleNudge && (
       <GoogleCalendarNudge googleAddonOn={googleAddonOn} forceShow={isDevPreview} />
