@@ -45,15 +45,21 @@ describe('onboarding recommendations', () => {
     expect(MANAGED_ADDON_IDS).not.toContain('leadmagnets')
   })
 
-  it('a mobile role (dog walker) defaults travel=yes → recommends route planner', () => {
+  it('a mobile role (dog walker) defaults to travelling → recommends route planner', () => {
     const answers = defaultAnswers(['walker'])
-    expect(answers.travel).toBe('yes')
+    expect(answers.travel).toEqual(['travel'])
     expect(recommendedAddons(answers).has('routeplanner')).toBe(true)
+  })
+
+  it('travel is multi-select — travelling recommends route planner, not "they come to me"', () => {
+    expect(recommendedAddons({ travel: ['travel'] }).has('routeplanner')).toBe(true)
+    expect(recommendedAddons({ travel: ['travel', 'no'] }).has('routeplanner')).toBe(true)
+    expect(recommendedAddons({ travel: ['no'] }).has('routeplanner')).toBe(false)
   })
 
   it('a studio role (dog trainer) does not recommend route planner', () => {
     const answers = defaultAnswers(['trainer'])
-    expect(answers.travel).toBe('no')
+    expect(answers.travel).toEqual(['no'])
     expect(recommendedAddons(answers).has('routeplanner')).toBe(false)
   })
 

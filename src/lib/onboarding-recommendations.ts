@@ -124,11 +124,11 @@ export const WIZ_QUESTIONS: WizQuestion[] = [
     ],
   },
   {
-    id: 'travel', category: 'Out & about', q: 'Do you travel to your clients?', icon: 'car', multi: false,
+    id: 'travel', category: 'Out & about', q: 'Where do you see your clients?', icon: 'car', multi: true,
     roles: ['walker', 'petsitter', 'groomer'],
     options: [
-      { id: 'yes', label: 'Yes, I travel to them', addons: ['routeplanner'] },
-      { id: 'no', label: 'No, they come to me', addons: [] },
+      { id: 'travel', label: 'I travel to them', addons: ['routeplanner'] },
+      { id: 'no', label: 'They come to me', addons: [] },
     ],
   },
   {
@@ -206,7 +206,7 @@ export function defaultAnswers(roles: string[]): WizAnswers {
     invoice: 'manual',
     payments: [],
     team: 'solo',
-    travel: mobile ? 'yes' : 'no',
+    travel: mobile ? ['travel'] : ['no'],
     sell: groomer ? 'yes' : 'no',
     reward: coach ? 'yes' : 'no',
     notes: 'yes',
