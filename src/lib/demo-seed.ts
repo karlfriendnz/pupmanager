@@ -203,19 +203,41 @@ type PackageDef = {
   // classes, so their group offerings (e.g. group walks) are NOT flagged isGroup.
   isGroup?: boolean
   capacity?: number
+  // ─── Client-bookable flags (drive the demo's booking surfaces) ────────────
+  // clientSelfBook: 1:1 packages a client can book from their availability tab.
+  // selfBookRequiresApproval: true = creates a pending BookingRequest, false =
+  // books instantly. requirePayment: per-item pay-to-book override (null =
+  // inherit the trainer default; only bites when the trainer can take cards).
+  clientSelfBook?: boolean
+  selfBookRequiresApproval?: boolean
+  requirePayment?: boolean | null
+  // Group-class enrolment flags: waitlist when full, rolling drop-ins, and
+  // exposure on the public embed surface.
+  allowWaitlist?: boolean
+  allowDropIn?: boolean
+  dropInPriceCents?: number
+  publicEnrollment?: boolean
 }
 
 // Persona-specific sample package sets. The "Explore with sample data" flow
 // picks the set(s) matching the trainer's onboarding roles so a dog walker
 // doesn't land in a training-class demo.
+// Booking flags are deliberately spread so every client-facing booking path is
+// demo-able out of the box:
+//   • Puppy Foundations — FREE group class → instant self-enrol (no payment).
+//   • Reactive Rover — priced group class → the pay-to-enrol path.
+//   • Virtual Coaching — FREE 1:1 → instant self-book (no approval, no payment).
+//   • Loose-Leash Bootcamp — priced 1:1, require-payment → pay-to-book.
+//   • Confident Adolescent — priced 1:1, require-approval → booking request.
+//   • Anxious Dog Programme — priced 1:1, require-payment OFF → book now, pay later.
 const TRAINER_PACKAGES: PackageDef[] = [
-  { name: 'Puppy Foundations',     description: '4 sessions covering recall, sit, drop and loose-leash basics.', sessionCount: 4, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 38000, color: 'blue', isGroup: true, capacity: 8 },
-  { name: 'Reactive Rover',        description: '6-session behaviour plan for leash-reactive dogs.',              sessionCount: 6, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 72000, color: 'amber', isGroup: true, capacity: 6 },
-  { name: 'Loose-Leash Bootcamp',  description: 'Three intensive walks focused on polite leash skills.',           sessionCount: 3, weeksBetween: 1, durationMins: 45, sessionType: 'IN_PERSON', priceCents: 28500, color: 'emerald' },
-  { name: 'Virtual Coaching',      description: 'Weekly Zoom check-ins for owners working through a plan.',        sessionCount: 4, weeksBetween: 1, durationMins: 30, sessionType: 'VIRTUAL',   priceCents: 22000, color: 'cyan' },
-  { name: 'Confident Adolescent',  description: '8-week programme for dogs aged 6–18 months.',                     sessionCount: 8, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 96000, color: 'purple' },
-  { name: 'Drop-In Class',         description: 'Single ad-hoc class — useful for tune-ups or specific skills.',   sessionCount: 1, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 9000,  color: 'rose', isGroup: true, capacity: 12 },
-  { name: 'Anxious Dog Programme', description: '6 sessions building confidence in fearful or anxious dogs.',       sessionCount: 6, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 78000, color: 'teal' },
+  { name: 'Puppy Foundations',     description: '4 sessions covering recall, sit, drop and loose-leash basics.', sessionCount: 4, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: null,  color: 'blue', isGroup: true, capacity: 8, allowWaitlist: true, publicEnrollment: true },
+  { name: 'Reactive Rover',        description: '6-session behaviour plan for leash-reactive dogs.',              sessionCount: 6, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 72000, color: 'amber', isGroup: true, capacity: 6, allowWaitlist: true, publicEnrollment: true },
+  { name: 'Loose-Leash Bootcamp',  description: 'Three intensive walks focused on polite leash skills.',           sessionCount: 3, weeksBetween: 1, durationMins: 45, sessionType: 'IN_PERSON', priceCents: 28500, color: 'emerald', clientSelfBook: true, selfBookRequiresApproval: false, requirePayment: true },
+  { name: 'Virtual Coaching',      description: 'A free intro Zoom for owners deciding on a training plan.',        sessionCount: 1, weeksBetween: 1, durationMins: 30, sessionType: 'VIRTUAL',   priceCents: null,  color: 'cyan', clientSelfBook: true, selfBookRequiresApproval: false },
+  { name: 'Confident Adolescent',  description: '8-week programme for dogs aged 6–18 months.',                     sessionCount: 8, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 96000, color: 'purple', clientSelfBook: true, selfBookRequiresApproval: true },
+  { name: 'Drop-In Class',         description: 'Single ad-hoc class — useful for tune-ups or specific skills.',   sessionCount: 1, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 9000,  color: 'rose', isGroup: true, capacity: 12, allowDropIn: true, dropInPriceCents: 9000 },
+  { name: 'Anxious Dog Programme', description: '6 sessions building confidence in fearful or anxious dogs.',       sessionCount: 6, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 78000, color: 'teal', clientSelfBook: true, selfBookRequiresApproval: false, requirePayment: false },
   { name: 'Trick Title Prep',      description: 'Fun 5-session course toward a Novice Trick Dog title.',            sessionCount: 5, weeksBetween: 1, durationMins: 45, sessionType: 'IN_PERSON', priceCents: 47500, color: 'pink' },
 ]
 
@@ -765,6 +787,13 @@ export async function seedDemoData(
         color: p.color,
         isGroup: p.isGroup ?? false,
         capacity: p.capacity ?? null,
+        clientSelfBook: p.clientSelfBook ?? false,
+        selfBookRequiresApproval: p.selfBookRequiresApproval ?? true,
+        requirePayment: p.requirePayment ?? null,
+        allowWaitlist: p.allowWaitlist ?? false,
+        allowDropIn: p.allowDropIn ?? false,
+        dropInPriceCents: p.dropInPriceCents ?? null,
+        publicEnrollment: p.publicEnrollment ?? false,
         order: i,
       },
     }),
