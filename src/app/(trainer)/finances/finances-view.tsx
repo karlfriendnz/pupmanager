@@ -192,7 +192,7 @@ function InvoicesTab() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-        <div className="flex-1"><SearchBar value={q} onChange={onSearch} placeholder="Search invoices by item or client…" /></div>
+        <div className="flex-1"><SearchBar value={q} onChange={onSearch} placeholder="Search pay links…" /></div>
         <div className="inline-flex self-start rounded-xl bg-slate-100 p-1 text-xs font-semibold">
           {(['all', 'unpaid', 'paid'] as const).map(f => (
             <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-lg capitalize transition-colors ${filter === f ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{f}</button>
