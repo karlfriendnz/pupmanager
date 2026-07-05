@@ -4,7 +4,7 @@
 // ghost/preview overlay so they can eyeball placement and clashes. Nothing
 // here creates real sessions — it's read-only until the trainer approves
 // through the existing /api/booking-requests/[id] flow.
-import { sessionTitle } from './self-book'
+import { sessionTitle } from './session-title'
 
 /** One proposed session, positioned on the grid like a real block. */
 export interface PreviewBlock {

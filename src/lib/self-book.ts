@@ -21,11 +21,10 @@ export function isSelfBookable(pkg: { clientSelfBook: boolean }): boolean {
  * Session titles match the trainer-assign flow exactly so self-booked
  * sessions read identically on the calendar.
  */
-export function sessionTitle(name: string, sessionCount: number, i: number): string {
-  if (sessionCount === 1) return name
-  if (sessionCount > 1) return `${name} — session ${i + 1}/${sessionCount}`
-  return `${name} — session ${i + 1}`
-}
+// Imported from the prisma-free module (so client/preview code can use it too)
+// and re-exported for existing importers of it from here.
+import { sessionTitle } from './session-title'
+export { sessionTitle }
 
 /**
  * Create the ClientPackage + its TrainingSession series inside a
