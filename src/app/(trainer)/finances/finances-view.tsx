@@ -270,21 +270,33 @@ function InvoicesTab() {
 // ── Full-screen detail views ───────────────────────────────────────────────
 
 function DetailShell({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
-  // z-[80] so a detail view sits ABOVE the list modal (z-[70]) it opens from.
+  // Centered modal dialog: backdrop + Esc/click-out to close + body scroll-lock.
+  // z-[80] so a detail sits ABOVE the list modal (z-[70]) it opens from.
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col bg-white">
-      <div className="flex items-center gap-2 px-3 sm:px-5 min-h-[3.5rem] border-b border-slate-100 flex-shrink-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-        <button type="button" onClick={onClose} aria-label="Close" className="p-2 -ml-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><X className="h-5 w-5" /></button>
-        <p className="flex-1 min-w-0 truncate text-sm font-semibold text-slate-900">{title}</p>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-lg px-5 sm:px-6 py-6">{children}</div>
-      </div>
-      {footer && (
-        <div className="border-t border-slate-100 flex-shrink-0 bg-white" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          <div className="mx-auto w-full max-w-lg px-6 py-3.5">{footer}</div>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} aria-hidden />
+      <div role="dialog" aria-modal="true" className="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center gap-2 px-4 sm:px-5 min-h-[3.5rem] border-b border-slate-100 flex-shrink-0">
+          <p className="flex-1 min-w-0 truncate text-sm font-semibold text-slate-900">{title}</p>
+          <button type="button" onClick={onClose} aria-label="Close" className="p-2 -mr-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><X className="h-5 w-5" /></button>
         </div>
-      )}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-5 sm:px-6 py-6">{children}</div>
+        </div>
+        {footer && (
+          <div className="border-t border-slate-100 flex-shrink-0 bg-white">
+            <div className="px-6 py-3.5">{footer}</div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
