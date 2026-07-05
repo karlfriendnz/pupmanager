@@ -91,10 +91,26 @@ export async function POST(req: Request) {
 
   const dates = generateSessionDates(start, pkg.sessionCount, pkg.weeksBetween)
 
-  // Paid packages: when the package has a price and the trainer takes payments,
-  // the booking is pay-to-confirm — we don't create calendar rows now; the
-  // connect webhook does that once the payment succeeds. Payment is the gate,
-  // so this path supersedes the approval flow below.
+  // Approval-required packages are REQUEST-FIRST: never charge up front. A
+  // booking request is created; the invoice/payment only happens when the trainer
+  // APPROVES it (booking-requests/[id] → createInvoiceForAssignment). This must
+  // come before the paid path so an approval-required package is never a
+  // pay-to-book.
+  if (pkg.selfBookRequiresApproval) {
+    await prisma.bookingRequest.create({
+      data: {
+        trainerId: ctx.trainerId,
+        clientId: ctx.clientId,
+        packageId: pkg.id,
+        dogId: ctx.dogId,
+        sessionDates: dates.map(d => d.toISOString()),
+      },
+    })
+    return NextResponse.json({ ok: true, mode: 'requested' }, { status: 201 })
+  }
+
+  // Paid packages (instant, no approval needed): pay-to-confirm — we don't create
+  // calendar rows now; the connect webhook does that once the payment succeeds.
   const price = pkg.specialPriceCents ?? pkg.priceCents
   if (price && price > 0) {
     const trainer = await prisma.trainerProfile.findUnique({
