@@ -25,13 +25,19 @@ export function getClientIp(req: Request): string {
  * post-increment count. A single upsert resets the window when it has expired.
  */
 async function hit(key: string, windowMs: number): Promise<{ count: number; resetAt: Date }> {
-  const reset = new Date(Date.now() + windowMs)
+  // Compare the window against a JS-supplied `now` (same serialization as the
+  // stored value) rather than Postgres `now()`. `resetAt` is a timezone-naive
+  // `timestamp`, so comparing it to `now()` (timestamptz) reinterprets it in the
+  // DB session's timezone — on a non-UTC DB the window looks perpetually expired,
+  // resetting the count to 1 every hit and never tripping the limit.
+  const now = new Date()
+  const reset = new Date(now.getTime() + windowMs)
   const rows = await prisma.$queryRaw<{ count: number; resetAt: Date }[]>`
     INSERT INTO "rate_limits" ("key", "count", "resetAt")
     VALUES (${key}, 1, ${reset})
     ON CONFLICT ("key") DO UPDATE SET
-      "count"   = CASE WHEN "rate_limits"."resetAt" < now() THEN 1        ELSE "rate_limits"."count" + 1 END,
-      "resetAt" = CASE WHEN "rate_limits"."resetAt" < now() THEN ${reset} ELSE "rate_limits"."resetAt"     END
+      "count"   = CASE WHEN "rate_limits"."resetAt" < ${now} THEN 1        ELSE "rate_limits"."count" + 1 END,
+      "resetAt" = CASE WHEN "rate_limits"."resetAt" < ${now} THEN ${reset} ELSE "rate_limits"."resetAt"     END
     RETURNING "count", "resetAt"
   `
   const row = rows[0]
