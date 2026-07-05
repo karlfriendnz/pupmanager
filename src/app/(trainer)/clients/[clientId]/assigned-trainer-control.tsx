@@ -45,16 +45,16 @@ export function AssignedTrainerControl({
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-      <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
-        <UserCog className="h-4 w-4 text-slate-400" /> Assigned trainer
+    <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+      <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <UserCog className="h-3.5 w-3.5" /> Managed by
       </span>
       <select
         data-testid="assigned-trainer-select"
         value={value}
         onChange={(e) => change(e.target.value)}
         disabled={saving}
-        className="h-10 min-w-48 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+        className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
       >
         <option value="">Unassigned</option>
         {members.map((m) => (

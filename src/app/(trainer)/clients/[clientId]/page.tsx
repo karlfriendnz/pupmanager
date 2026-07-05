@@ -226,18 +226,6 @@ export default async function ClientDetailPage({
         </div>
       )}
 
-      {teamMembers.length > 1 && (
-        <AssignedTrainerControl
-          clientId={client.id}
-          initialMembershipId={client.assignedMembershipId}
-          members={teamMembers.map(m => ({
-            id: m.id,
-            name: m.user.name ?? m.user.email,
-            role: m.role,
-          }))}
-        />
-      )}
-
       {/* Summary sidebar + tabbed content. Desktop: summary sticks to the left,
           tabs scroll on the right. Mobile: the heavy summary card is hidden (its
           contact facts live in the Details tab) in favour of a compact header +
@@ -256,6 +244,19 @@ export default async function ClientDetailPage({
           distanceFromBase={distanceFromBase}
           sessionCount={trainingSessions.length}
         />
+        {teamMembers.length > 1 && (
+          <div className="mt-4">
+            <AssignedTrainerControl
+              clientId={client.id}
+              initialMembershipId={client.assignedMembershipId}
+              members={teamMembers.map(m => ({
+                id: m.id,
+                name: m.user.name ?? m.user.email,
+                role: m.role,
+              }))}
+            />
+          </div>
+        )}
       </aside>
       <div className="min-w-0 flex-1">
       {/* Compact mobile header — the heavy summary card is desktop-only, so on
