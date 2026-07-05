@@ -17,6 +17,7 @@ export function AddonNudge({
   body,
   ctaLabel,
   ctaHref,
+  onCta,
   image,
   icon,
   forceShow = false,
@@ -28,6 +29,9 @@ export function AddonNudge({
   body: string
   ctaLabel: string
   ctaHref: string
+  /** When set, the CTA runs this instead of navigating to ctaHref — e.g. to
+   *  open a promo/connect modal in place. */
+  onCta?: () => void
   /** Hero photo that bleeds into the gradient header (same art as the add-on card). */
   image?: { src: string; objectPosition?: string; translateX?: string }
   /** A brand glyph, shown in a floating white tile on the header (e.g. Google). */
@@ -65,7 +69,7 @@ export function AddonNudge({
       // px-3 gutters) so it reads as the last item in the left panel, without
       // actually living inside the shell. Desktop-only — the sidebar doesn't
       // exist on mobile (bottom tab bar there).
-      className="hidden md:block fixed bottom-4 left-2 z-40 w-[248px]"
+      className="hidden md:block fixed bottom-4 left-2 z-40 w-[238px]"
       style={{ animation: `${leaving ? 'pmNudgeOut .2s ease-in both' : 'pmNudgeIn .5s cubic-bezier(.22,1,.36,1) both'}` }}
     >
       <style>{`
@@ -77,7 +81,7 @@ export function AddonNudge({
         {/* Gradient header with the hero photo bleeding in on the right under a
             teal fade — mirrors the Add-ons page card. */}
         <div
-          className="relative h-[96px] overflow-hidden text-white"
+          className="relative h-[76px] overflow-hidden text-white"
           style={{ backgroundImage: 'linear-gradient(135deg, #2A9DA9, #1F818C)' }}
         >
           {image && (
@@ -96,10 +100,10 @@ export function AddonNudge({
           <div
             aria-hidden
             className="absolute inset-0"
-            style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, #1F818C 44%, rgba(31,129,140,0) 100%)' }}
+            style={{ backgroundImage: 'linear-gradient(90deg, #1F818C 0%, #1F818C 52%, rgba(31,129,140,0) 100%)' }}
           />
 
-          <div className="relative z-10 flex h-full w-[64%] flex-col justify-center gap-1.5 px-4">
+          <div className="relative z-10 flex h-full w-[72%] flex-col justify-center gap-1.5 px-4">
             {eyebrow && (
               <span className="inline-flex w-fit items-center rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider backdrop-blur-sm">
                 {eyebrow}
@@ -116,17 +120,28 @@ export function AddonNudge({
         </div>
 
         {/* Body: blurb + CTA */}
-        <div className="p-4">
+        <div className="p-4 pb-2">
           <p className="text-[13px] leading-snug text-slate-500">{body}</p>
           <div className="mt-3.5">
-            <Link
-              href={ctaHref}
-              onClick={dismiss}
-              className="group inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-teal-500 to-teal-600 px-3 py-1.5 text-[13px] font-semibold text-white shadow-sm shadow-teal-600/30 transition-all hover:from-teal-500 hover:to-teal-700 hover:shadow-md hover:shadow-teal-600/40 active:scale-[0.98]"
-            >
-              {ctaLabel}
-              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-            </Link>
+            {onCta ? (
+              <button
+                type="button"
+                onClick={onCta}
+                className="group inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-teal-500 to-teal-600 px-3 py-1.5 text-[13px] font-semibold text-white shadow-sm shadow-teal-600/30 transition-all hover:from-teal-500 hover:to-teal-700 hover:shadow-md hover:shadow-teal-600/40 active:scale-[0.98]"
+              >
+                {ctaLabel}
+                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+              </button>
+            ) : (
+              <Link
+                href={ctaHref}
+                onClick={dismiss}
+                className="group inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-teal-500 to-teal-600 px-3 py-1.5 text-[13px] font-semibold text-white shadow-sm shadow-teal-600/30 transition-all hover:from-teal-500 hover:to-teal-700 hover:shadow-md hover:shadow-teal-600/40 active:scale-[0.98]"
+              >
+                {ctaLabel}
+                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            )}
             <button
               type="button"
               onClick={dismiss}

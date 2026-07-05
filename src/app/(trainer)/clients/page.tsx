@@ -199,7 +199,7 @@ export default async function ClientsPage({
   // Nudge: promote bulk client email (Marketing) when it isn't switched on.
   const isDevPreview = process.env.NODE_ENV === 'development'
   const marketingNudge = addonNudge('marketing')
-  const showMarketingNudge = (!(await hasAddon(trainerId, 'marketing')) || isDevPreview) && !!marketingNudge
+  const showMarketingNudge = !(await hasAddon(trainerId, 'marketing')) && !!marketingNudge
 
   return (
     <>

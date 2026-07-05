@@ -61,7 +61,7 @@ export const NUDGE_COPY: Record<string, { title: string; body: string; ctaLabel:
 // on the Add-ons page where they can toggle on.
 const CTA_HREF: Record<string, string> = {
   xero: '/settings?tab=xero',
-  googlecalendar: '/settings?tab=googlecalendar',
+  googlecalendar: '/add-ons',
   payments: '/settings?tab=payments',
 }
 

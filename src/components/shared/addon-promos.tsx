@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { FeaturePromoCard, FeaturePromoModal, PROMO_ICON, type PromoStep } from '@/components/shared/feature-promo'
 import { EnableAddonButton } from '@/components/shared/enable-addon-button'
+import { GoogleCalendarConnectCta } from '@/components/shared/google-calendar-connect-cta'
 import { Button } from '@/components/ui/button'
 import { addonById, currencyMeta, isCurrencyCode } from '@/lib/pricing'
 
@@ -41,7 +42,6 @@ const PROMOS: Record<string, Cfg> = {
     title: 'Reach more clients',
     description: 'Email all your clients in one go.',
     image: { src: '/marketing-promo-v1.jpg', objectPosition: 'center 40%', translateX: '30%' },
-    badge: chip('Email opened'),
     steps: [
       { icon: <Users className={I} />, label: 'Pick clients' },
       { icon: <PenLine className={I} />, label: 'Compose' },
@@ -65,7 +65,6 @@ const PROMOS: Record<string, Cfg> = {
     title: 'Sell to your clients',
     description: 'An in-app shop for the extras they already ask for.',
     image: { src: '/promo-shop-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
-    badge: chip('New sale'),
     steps: [
       { icon: <Tag className={I} />, label: 'List items' },
       { icon: <ShoppingBag className={I} />, label: 'Client buys' },
@@ -77,7 +76,6 @@ const PROMOS: Record<string, Cfg> = {
     title: 'Plan your day',
     description: 'The most efficient route between visits — and record the distance.',
     image: { src: '/promo-routeplanner-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
-    badge: chip('18 min saved'),
     steps: [
       { icon: <MapPin className={I} />, label: 'Your visits' },
       { icon: <Route className={I} />, label: 'Best route' },
@@ -89,7 +87,6 @@ const PROMOS: Record<string, Cfg> = {
     title: 'On your Google Calendar',
     description: 'Your sessions, classes and blocked-out time — synced to Google.',
     image: { src: '/promo-timesheets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
-    badge: chip('Synced'),
     steps: [
       { icon: <CalendarDays className={I} />, label: 'Connect Google' },
       { icon: <Clock className={I} />, label: 'Sessions & classes' },
@@ -136,7 +133,6 @@ const PROMOS: Record<string, Cfg> = {
     title: 'Your admin co-pilot',
     description: 'Turn rough notes into client-ready plans and updates.',
     image: { src: '/promo-ai-v1.jpg', objectPosition: 'center 38%', translateX: '28%' },
-    badge: chip('Draft ready'),
     steps: [
       { icon: <NotebookPen className={I} />, label: 'Rough notes' },
       { icon: <Sparkles className={I} />, label: 'AI drafts' },
@@ -207,6 +203,17 @@ function priceNote(addonId: string, currency: string): ReactNode {
   return <>Just <span className="font-semibold text-slate-700">{price}</span> · cancel anytime.</>
 }
 
+// Brand logo shown in the promo header's white tile (add-ons with a real logo).
+function logoFor(addonId: string): ReactNode {
+  const LOGOS: Record<string, string> = {
+    googlecalendar: '/logos/google-calendar.webp',
+  }
+  const src = LOGOS[addonId]
+  if (!src) return undefined
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="" className="h-7 w-7 object-contain" />
+}
+
 function ctaFor(addonId: string): ReactNode {
   const def = addonById(addonId)
   if (def?.comingSoon) {
@@ -216,17 +223,24 @@ function ctaFor(addonId: string): ReactNode {
       </div>
     )
   }
+  // Google Calendar has no settings page — connect AND disconnect live in this
+  // popup via a connection-aware CTA.
+  if (addonId === 'googlecalendar') return <GoogleCalendarConnectCta />
+  // Xero still has its own settings tab — enable + jump to connect from here.
+  if (addonId === 'xero') {
+    return <EnableAddonButton itemId={addonId} label="Connect Xero" connectHref="/api/xero/connect" />
+  }
   return <EnableAddonButton itemId={addonId} label={`Turn on ${def?.name ?? 'this add-on'}`} />
 }
 
 export function AddonPromoCard({ addonId, currency = 'NZD', onClose, cta }: { addonId: string; currency?: string; onClose: () => void; cta?: ReactNode }) {
   const cfg = PROMOS[addonId]
   if (!cfg) return null
-  return <FeaturePromoCard {...cfg} eyebrow={addonById(addonId)?.name} priceNote={priceNote(addonId, currency)} cta={cta ?? ctaFor(addonId)} onSkip={onClose} />
+  return <FeaturePromoCard {...cfg} eyebrow={addonById(addonId)?.name} logo={logoFor(addonId)} priceNote={priceNote(addonId, currency)} cta={cta ?? ctaFor(addonId)} onSkip={onClose} />
 }
 
 export function AddonPromoModal({ addonId, currency = 'NZD', onClose, cta }: { addonId: string; currency?: string; onClose: () => void; cta?: ReactNode }) {
   const cfg = PROMOS[addonId]
   if (!cfg) return null
-  return <FeaturePromoModal {...cfg} eyebrow={addonById(addonId)?.name} priceNote={priceNote(addonId, currency)} cta={cta ?? ctaFor(addonId)} onSkip={onClose} onClose={onClose} />
+  return <FeaturePromoModal {...cfg} eyebrow={addonById(addonId)?.name} logo={logoFor(addonId)} priceNote={priceNote(addonId, currency)} cta={cta ?? ctaFor(addonId)} onSkip={onClose} onClose={onClose} />
 }

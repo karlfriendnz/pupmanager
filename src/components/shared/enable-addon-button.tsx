@@ -8,8 +8,12 @@ import { Button } from '@/components/ui/button'
  * Turns an add-on on via /api/addons, then refreshes. Paid add-ons that need a
  * subscription first bounce the trainer to /billing/setup. Used as the CTA in a
  * FeaturePromo for non-Stripe add-ons (e.g. Marketing).
+ *
+ * `connectHref` — for add-ons that also need connecting (Google Calendar, Xero):
+ * once enabled, navigate straight there (e.g. the OAuth start) so the trainer
+ * connects from the popup instead of hunting for it in Settings.
  */
-export function EnableAddonButton({ itemId, label, onEnabled }: { itemId: string; label: string; onEnabled?: () => void }) {
+export function EnableAddonButton({ itemId, label, onEnabled, connectHref }: { itemId: string; label: string; onEnabled?: () => void; connectHref?: string }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,6 +38,9 @@ export function EnableAddonButton({ itemId, label, onEnabled }: { itemId: string
         return
       }
       onEnabled?.()
+      // Enabled OK — if this add-on also needs connecting, go straight there
+      // (full navigation so the server sees the now-enabled add-on).
+      if (connectHref) { window.location.href = connectHref; return }
       router.refresh()
     } catch {
       setError('Could not turn this on.')

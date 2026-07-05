@@ -7,8 +7,9 @@ import { useRouter } from 'next/navigation'
 // Add-ons not listed just re-open their promo (which offers the on/off toggle).
 const MANAGE_HREF: Record<string, string> = {
   xero: '/settings?tab=xero',
-  googlecalendar: '/settings?tab=googlecalendar',
   payments: '/settings?tab=payments',
+  // Google Calendar has no settings page — its card opens the promo popup, which
+  // handles connect AND disconnect inline.
 }
 // Add-ons that ALWAYS route to their config page (never a toggle) — e.g.
 // Payments, which is enabled by connecting Stripe, not flipping a switch.

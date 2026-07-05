@@ -59,7 +59,7 @@ export default async function EnquiriesPage({
   // fielding enquiries, unless they've already switched it on.
   const isDevPreview = process.env.NODE_ENV === 'development'
   const leadMagnetNudge = addonNudge('leadmagnets')
-  const showLeadMagnetNudge = (!(await hasAddon(trainerId, 'leadmagnets')) || isDevPreview) && !!leadMagnetNudge
+  const showLeadMagnetNudge = !(await hasAddon(trainerId, 'leadmagnets')) && !!leadMagnetNudge
 
   return (
     <>

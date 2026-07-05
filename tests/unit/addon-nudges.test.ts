@@ -37,7 +37,8 @@ describe('addon nudge registry', () => {
 
   it('routes connect-based add-ons to their Settings tab, others to /add-ons', () => {
     expect(nudgeCtaHref('payments')).toBe('/settings?tab=payments')
-    expect(nudgeCtaHref('googlecalendar')).toBe('/settings?tab=googlecalendar')
+    // Google Calendar no longer has a settings tab — it's managed in the add-on popup.
+    expect(nudgeCtaHref('googlecalendar')).toBe('/add-ons')
     expect(nudgeCtaHref('xero')).toBe('/settings?tab=xero')
     expect(nudgeCtaHref('marketing')).toBe('/add-ons')
     expect(nudgeCtaHref('leadmagnets')).toBe('/add-ons')

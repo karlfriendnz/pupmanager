@@ -1,8 +1,32 @@
 import { type ReactNode } from 'react'
-import { Mail, Download, CreditCard, Route, Trophy, ShoppingBag, Clock, Calculator } from 'lucide-react'
-import { GoogleGlyph } from './addon-nudge'
+import { Mail, Download, Route, Trophy, ShoppingBag, Clock } from 'lucide-react'
 import { addonPromoImage } from '@/lib/addon-promo-images'
 import { NUDGE_COPY, nudgeCtaHref } from '@/lib/addon-nudges'
+
+// A real brand logo image in the nudge's white badge tile (square marks only).
+function Logo({ src, alt, className }: { src: string; alt: string; className: string }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={alt} className={`${className} object-contain`} />
+}
+
+// Square brand marks for Stripe + Xero (their supplied assets are wide
+// wordmarks; these are the app-icon-style square glyphs to match Google's).
+function StripeGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden focusable="false">
+      <rect width="32" height="32" rx="7" fill="#635BFF" />
+      <path fill="#fff" d="M14.6 13c0-.86.7-1.19 1.86-1.19 1.66 0 3.76.5 5.42 1.4V8.13a14.4 14.4 0 0 0-5.42-1c-4.43 0-7.38 2.32-7.38 6.2 0 6.04 8.32 5.08 8.32 7.68 0 1.02-.88 1.35-2.1 1.35-1.82 0-4.14-.75-5.98-1.76v4.9a15.2 15.2 0 0 0 5.98 1.25c4.54 0 7.66-2.24 7.66-6.17 0-6.52-8.36-5.36-8.36-7.78Z" />
+    </svg>
+  )
+}
+function XeroGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden focusable="false">
+      <circle cx="16" cy="16" r="16" fill="#13B5EA" />
+      <path d="M11 11.5 21 20.5M21 11.5 11 20.5" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
+  )
+}
 
 // Presentational half of the add-on nudge registry: it layers icons + hero art
 // onto the React-free copy/selection logic in `@/lib/addon-nudges` (which is
@@ -26,15 +50,15 @@ export interface AddonNudgeContent {
 }
 
 const ICON: Record<string, ReactNode> = {
-  googlecalendar: <GoogleGlyph className="h-5 w-5" />,
+  googlecalendar: <Logo src="/logos/google-calendar.webp" alt="Google Calendar" className="h-6 w-6" />,
+  payments: <StripeGlyph className="h-6 w-6" />,
+  xero: <XeroGlyph className="h-6 w-6" />,
   marketing: <Mail className="h-5 w-5 text-teal-600" />,
   leadmagnets: <Download className="h-5 w-5 text-teal-600" />,
-  payments: <CreditCard className="h-5 w-5 text-teal-600" />,
   routeplanner: <Route className="h-5 w-5 text-teal-600" />,
   achievements: <Trophy className="h-5 w-5 text-teal-600" />,
   shop: <ShoppingBag className="h-5 w-5 text-teal-600" />,
   timesheets: <Clock className="h-5 w-5 text-teal-600" />,
-  xero: <Calculator className="h-5 w-5 text-teal-600" />,
 }
 
 /** The nudge content for an add-on, or null if we don't promote it. */

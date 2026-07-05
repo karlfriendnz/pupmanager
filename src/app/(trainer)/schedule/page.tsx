@@ -5,7 +5,7 @@ import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { allowedSlotTypes } from '@/lib/service-offerings'
 import { ScheduleView } from './schedule-view'
-import { AddonNudge, GoogleGlyph } from '@/components/shared/addon-nudge'
+import { GoogleCalendarNudge } from './google-calendar-nudge'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { todayInTz, startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
@@ -340,7 +340,9 @@ export default async function SchedulePage({
   // On local dev, always surface it (even when connected/dismissed) so it's
   // easy to preview. In prod it only shows when this member hasn't connected.
   const isDevPreview = process.env.NODE_ENV === 'development'
-  const showGoogleNudge = !googleConn || isDevPreview
+  // Only nudge while NOT connected — connecting hides it (dev included; the old
+  // `|| isDevPreview` forced it on even after connecting, which was confusing).
+  const showGoogleNudge = !googleConn
 
   return (
     <>
@@ -395,16 +397,7 @@ export default async function SchedulePage({
       showHints={showHints}
     />
     {showGoogleNudge && (
-      <AddonNudge
-        id="schedule-google-calendar"
-        title="Sync your Google Calendar"
-        body="See your sessions in Google Calendar and get a heads-up before you double-book."
-        ctaLabel={googleAddonOn ? 'Connect Google Calendar' : 'Set it up'}
-        ctaHref={googleAddonOn ? '/settings?tab=googlecalendar' : '/add-ons'}
-        image={{ src: '/promo-timesheets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' }}
-        icon={<GoogleGlyph className="h-5 w-5" />}
-        forceShow={isDevPreview}
-      />
+      <GoogleCalendarNudge googleAddonOn={googleAddonOn} forceShow={isDevPreview} />
     )}
     </>
   )

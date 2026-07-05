@@ -24,7 +24,9 @@ export default async function FinancesPage() {
   })
   const isDevPreview = process.env.NODE_ENV === 'development'
   const paymentsNudge = addonNudge('payments')
-  const showPaymentsNudge = (!profile?.connectChargesEnabled || isDevPreview) && !!paymentsNudge
+  // Only nudge while payments aren't connected — connecting hides it (dev too;
+  // the old `|| isDevPreview` forced it on even after setup).
+  const showPaymentsNudge = !profile?.connectChargesEnabled && !!paymentsNudge
 
   return (
     <>
