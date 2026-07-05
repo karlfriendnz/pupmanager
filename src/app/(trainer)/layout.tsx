@@ -33,6 +33,11 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       where: { id: session.user.id },
       select: { email: true, emailVerified: true, _count: { select: { accounts: true } } },
     })
+    // Stale session: the cookie is valid but its user no longer exists (e.g. a
+    // dev DB reset, or a deleted account). Force a clean re-login via /logout
+    // instead of rendering the app and letting every auth'd request 401 with a
+    // cryptic "Unauthorised".
+    if (!u) redirect('/logout')
     // Apple "Hide My Email" users (native OR web-OAuth — the latter HAS an
     // account row, so the unverified check below misses them) must swap their
     // private-relay address for a real, deliverable one. Hold them on the

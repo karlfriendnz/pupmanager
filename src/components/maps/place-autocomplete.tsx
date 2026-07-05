@@ -15,12 +15,16 @@ export function PlaceAutocomplete({
   onSelect,
   placeholder = 'Search address…',
   bias,
+  region,
   initialValue = '',
 }: {
   onSelect: (r: PlaceResult) => void
   placeholder?: string
   // Centre to bias results toward (the trainer's home city/base).
   bias?: { lat: number; lng: number } | null
+  // ISO country code to restrict results to (e.g. "NZ"). Defaults to the
+  // browser locale's country so results are local instead of worldwide.
+  region?: string
   // Pre-fill the box with an existing address that the user can edit.
   initialValue?: string
 }) {
@@ -48,6 +52,10 @@ export function PlaceAutocomplete({
         if (!tokenRef.current) tokenRef.current = new places.AutocompleteSessionToken()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const req: any = { input: value, sessionToken: tokenRef.current }
+        // Keep results local: restrict to the given country, else the browser
+        // locale's country (e.g. "en-NZ" → "nz"). Avoids worldwide noise.
+        const cc = (region ?? (typeof navigator !== 'undefined' ? navigator.language.split('-')[1] : '') ?? '').toLowerCase()
+        if (cc) req.includedRegionCodes = [cc]
         if (bias) req.locationBias = { center: { lat: bias.lat, lng: bias.lng }, radius: 30000 }
         const { suggestions: result } = await places.AutocompleteSuggestion.fetchAutocompleteSuggestions(req)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
