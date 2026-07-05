@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { UserPlus, X, Loader2 } from 'lucide-react'
 import { BreedSelect } from '@/components/shared/breed-select'
+import { ModalPortal } from '@/components/shared/modal-portal'
 import type { ResolvedFieldConfig, ClientFieldKey } from '@/lib/client-fields'
 
 type QuickCustomField = {
@@ -73,7 +74,9 @@ export function QuickAddContact() {
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setError(body.error ?? 'Could not add contact.'); return }
       close()
-      router.refresh()
+      // Go straight to the new client's profile (fall back to a list refresh).
+      if (body.clientId) router.push(`/clients/${body.clientId}`)
+      else router.refresh()
     } finally { setBusy(false) }
   }
 
@@ -87,6 +90,7 @@ export function QuickAddContact() {
       </Button>
 
       {open && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30 p-0 sm:p-4" onClick={close}>
           <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[90dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 sticky top-0 bg-white">
@@ -134,6 +138,7 @@ export function QuickAddContact() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   )

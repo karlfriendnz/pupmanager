@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
+import { ModalPortal } from '@/components/shared/modal-portal'
 import { Share2, X } from 'lucide-react'
 
 const schema = z.object({
@@ -84,6 +85,7 @@ export function ShareClientModal({
       )}
 
       {open && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6">
             <div className="flex items-center justify-between mb-4">
@@ -161,6 +163,7 @@ export function ShareClientModal({
             )}
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   )

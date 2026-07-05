@@ -113,7 +113,7 @@ export function CreateClientForm({
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setError(body.error ?? 'Could not create client.'); return }
       setDone(true)
-      setTimeout(() => router.push('/clients'), 1200)
+      setTimeout(() => router.push(body.clientId ? `/clients/${body.clientId}` : '/clients'), 1200)
     } finally { setBusy(false) }
   }
 

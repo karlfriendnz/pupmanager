@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { Package as PackageIcon, X, AlertTriangle } from 'lucide-react'
+import { ModalPortal } from '@/components/shared/modal-portal'
 import { findNextAvailable, type AvailabilityRow } from '@/lib/availability'
 
 interface PkgOption {
@@ -183,6 +184,7 @@ function AssignModal({
   }
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
       <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -381,6 +383,7 @@ function AssignModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 

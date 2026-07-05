@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { ShareClientModal } from './share-client-modal'
 import { AssignPackageButton } from './assign-package-modal'
+import { ModalPortal } from '@/components/shared/modal-portal'
 import { useIsNative } from '@/lib/native'
 
 interface PkgOption {
@@ -276,6 +277,7 @@ export function ClientActionsMenu({
           (same mechanism either way, different framing for the
           trainer's mental model). */}
       {activeModal === 'reinvite' && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
           onClick={() => reinvite.kind !== 'sending' && setActiveModal(null)}
@@ -334,12 +336,14 @@ export function ClientActionsMenu({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* Delete confirm — stays in the menu's own component because
           it's small, destructive, and should look in-place rather
           than punt to a full-screen modal. */}
       {activeModal === 'delete' && (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
           onClick={() => !deleteBusy && setActiveModal(null)}
@@ -391,6 +395,7 @@ export function ClientActionsMenu({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   )
