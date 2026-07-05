@@ -14,7 +14,7 @@ import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, CalendarDays, Columns3, List,
-  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, BarChart2,
+  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, BarChart2, Users, Check,
 } from 'lucide-react'
 import {
   AssignPackageFromScheduleModal,
@@ -29,6 +29,7 @@ import { ScheduleSettings } from './schedule-settings'
 import { ScheduleReport } from './schedule-report'
 import { SessionFormReport } from '@/components/session-form-report'
 import { SessionRowCard } from '@/components/shared/session-row-card'
+import { filterSessionsByMember, resolveMemberFilter, MEMBER_EVERYONE, MEMBER_UNASSIGNED } from '@/lib/schedule-member-filter'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,7 @@ interface TeamMemberOption {
   id: string // TrainerMembership.id
   name: string
   role: string
+  title?: string | null
 }
 
 // Static class map for package-coloured blocks (Tailwind purges dynamic
@@ -2753,6 +2755,99 @@ interface PkgOption {
   sessionType: 'IN_PERSON' | 'VIRTUAL'
 }
 
+// Staff-member switcher — an app-style dropdown (not a bare <select>) sitting
+// in the schedule header. Lets a whole-company viewer narrow the calendar to
+// one member, the unassigned pile, or everyone. Purely a view filter; see
+// visibleSessions in ScheduleView.
+function MemberSwitcher({
+  members,
+  value,
+  hasUnassigned,
+  onChange,
+}: {
+  members: TeamMemberOption[]
+  value: string
+  hasUnassigned: boolean
+  onChange: (next: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const selected = members.find(m => m.id === value)
+  const label =
+    value === MEMBER_EVERYONE ? 'Everyone' :
+    value === MEMBER_UNASSIGNED ? 'Unassigned' :
+    selected?.name ?? 'Everyone'
+
+  const options: { id: string; label: string; sub?: string }[] = [
+    { id: MEMBER_EVERYONE, label: 'Everyone' },
+    ...members.map(m => ({
+      id: m.id,
+      label: m.name + (m.role === 'OWNER' ? ' (owner)' : ''),
+      sub: m.title ?? undefined,
+    })),
+    ...(hasUnassigned ? [{ id: MEMBER_UNASSIGNED, label: 'Unassigned' }] : []),
+  ]
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => setOpen(o => !o)}
+        title="Filter schedule by staff member"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <Users className="h-4 w-4" />
+        <span className="hidden sm:inline max-w-[8rem] truncate">{label}</span>
+      </Button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Filter by staff member"
+          className="absolute right-0 z-40 mt-1 w-56 max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl"
+        >
+          {options.map(opt => {
+            const active = opt.id === value
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => { onChange(opt.id); setOpen(false) }}
+                className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
+                  active ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{opt.label}</span>
+                  {opt.sub && <span className="block truncate text-[11px] text-slate-400">{opt.sub}</span>}
+                </span>
+                {active && <Check className="h-4 w-4 flex-shrink-0" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ScheduleView({
   tz,
   sessions: initialSessions,
@@ -2772,6 +2867,8 @@ export function ScheduleView({
   customFields,
   clientExtras: initialClientExtras,
   members = [],
+  canViewAllSchedule = false,
+  initialMember = null,
   showHints = false,
   initialBusyBlocks = [],
   previewRequest = null,
@@ -2804,6 +2901,15 @@ export function ScheduleView({
   // Trainers in this business. Empty / single-member businesses hide the
   // assigned-trainer picker entirely.
   members?: TeamMemberOption[]
+  // True only for users who can see the whole company's schedule (owner /
+  // schedule.viewAll). Gates the staff-member switcher — restricted staff are
+  // already server-scoped to their own sessions, so they must not get a
+  // switcher implying they can view others.
+  canViewAllSchedule?: boolean
+  // The staff-member filter to start on, read from the ?member= URL param.
+  // null / 'everyone' shows all; 'unassigned' shows unassigned sessions; a
+  // membership id shows that member's. Ignored unless canViewAllSchedule.
+  initialMember?: string | null
   // True only while the trainer is still in the onboarding wizard. Gates
   // surfaces that exist purely to teach the schedule UI (the Hours
   // pulse dot, etc.) so the screen is quiet for established trainers.
@@ -2872,6 +2978,18 @@ export function ScheduleView({
     : scheduleEndHour
 
   const [sessions, setSessions]         = useState(initialSessions)
+  // ── Staff-member switcher ────────────────────────────────────────────────
+  // Whole-company viewers can narrow the calendar to one member (or the
+  // unassigned pile). A pure client-side view filter over the already-loaded
+  // sessions — the conflict/availability logic below deliberately keeps using
+  // the unfiltered `sessions` set (whole-company clash checks). Seeded from the
+  // ?member= URL param; unknown ids collapse to "everyone".
+  const memberIds = members.map(m => m.id)
+  const [memberFilter, setMemberFilter] = useState(() =>
+    canViewAllSchedule
+      ? resolveMemberFilter(initialMember, memberIds, initialSessions.some(s => s.assignedMembershipId == null))
+      : MEMBER_EVERYONE,
+  )
   const [availSlots, setAvailSlots]     = useState(initialAvailSlots)
   const [blackouts, setBlackouts]       = useState<Blackout[]>([])
   // Seeded from the server (SSR) so the grey "busy" strips are painted with the
@@ -2985,6 +3103,31 @@ export function ScheduleView({
   // and update the URL via history.replaceState so deep-links still work.
   // Spam-clicks: each call increments navSeq and only the latest response
   // wins, so an in-flight slow fetch can't clobber a newer click.
+  // Build a /schedule URL preserving the current query (date, member,
+  // previewRequest, …) with the given overrides applied. Passing
+  // member=MEMBER_EVERYONE drops the param entirely so the default URL stays
+  // clean. Used for both week nav and switcher changes so neither clobbers the
+  // other's param.
+  function scheduleUrlWith(overrides: { date?: string; member?: string }): string {
+    const params = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search)
+      : new URLSearchParams()
+    if (overrides.date !== undefined) params.set('date', overrides.date)
+    if (overrides.member !== undefined) {
+      if (overrides.member === MEMBER_EVERYONE) params.delete('member')
+      else params.set('member', overrides.member)
+    }
+    const qs = params.toString()
+    return qs ? `/schedule?${qs}` : '/schedule'
+  }
+
+  function handleMemberChange(next: string) {
+    setMemberFilter(next)
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', scheduleUrlWith({ member: next }))
+    }
+  }
+
   const navSeq = useRef(0)
   async function navigate(delta: number) {
     let nextDateStr: string
@@ -3001,13 +3144,13 @@ export function ScheduleView({
     setNavigatingWeek(true)
     setSelectedDate(nextDateStr)
     if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', `/schedule?date=${nextDateStr}`)
+      window.history.replaceState(null, '', scheduleUrlWith({ date: nextDateStr }))
     }
     try {
       const res = await fetch(`/api/schedule/week?date=${nextDateStr}`)
       if (seq !== navSeq.current) return  // a newer click took over
       if (!res.ok) {
-        router.push(`/schedule?date=${nextDateStr}`)
+        router.push(scheduleUrlWith({ date: nextDateStr }))
         return
       }
       const body = await res.json()
@@ -3015,7 +3158,7 @@ export function ScheduleView({
       setSessions(body.sessions ?? [])
       setClientExtras(body.clientExtras ?? {})
     } catch {
-      if (seq === navSeq.current) router.push(`/schedule?date=${nextDateStr}`)
+      if (seq === navSeq.current) router.push(scheduleUrlWith({ date: nextDateStr }))
     } finally {
       if (seq === navSeq.current) setNavigatingWeek(false)
     }
@@ -3201,7 +3344,18 @@ export function ScheduleView({
     setAvailSlots(prev => prev.filter(s => s.id !== id))
   }
 
-  const daySessions = sessions.filter(s => ymdInTz(s.scheduledAt, tz) === selectedDate)
+  // Staff-member switcher: is the control shown, and which sessions survive it.
+  // Only whole-company viewers with a real team see the switcher. The filter is
+  // purely visual — every render path (week grid, 3-day grid, day list, and the
+  // grid's per-day counts) consumes `visibleSessions`, while drag-drop, drop
+  // conflict checks and the booking-request preview keep using whole-company
+  // `sessions` so clashes are never hidden by the view filter.
+  const showMemberSwitcher = canViewAllSchedule && members.length > 1
+  const hasUnassignedSessions = sessions.some(s => s.assignedMembershipId == null)
+  const visibleSessions = showMemberSwitcher
+    ? filterSessionsByMember(sessions, memberFilter)
+    : sessions
+  const daySessions = visibleSessions.filter(s => ymdInTz(s.scheduledAt, tz) === selectedDate)
 
   // Booking-request preview: flag proposed times that overlap an existing
   // session in the currently-loaded week so the ghost blocks + banner warn the
@@ -3325,6 +3479,17 @@ export function ScheduleView({
             </span>
           ))}
 
+          {/* Staff-member switcher — only for whole-company viewers with a
+              team. Filters the calendar to one member / the unassigned pile. */}
+          {showMemberSwitcher && (
+            <MemberSwitcher
+              members={members}
+              value={memberFilter}
+              hasUnassigned={hasUnassignedSessions}
+              onChange={handleMemberChange}
+            />
+          )}
+
           <Button variant="secondary" size="sm" onClick={() => setShowReport(true)} title="Weekly report" aria-label="Weekly report">
             <BarChart2 className="h-4 w-4" /> <span className="hidden sm:inline">Reports</span>
           </Button>
@@ -3442,7 +3607,7 @@ export function ScheduleView({
         {view === 'week' || view === 'threeDay' ? (
           <WeekGrid
             weekDays={weekDays}
-            sessions={sessions}
+            sessions={visibleSessions}
             availSlots={availSlots}
             blackouts={blackouts}
             busyBlocks={busyBlocks}

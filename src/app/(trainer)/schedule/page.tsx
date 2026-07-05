@@ -59,13 +59,18 @@ function nextWorkingDay(dateStr: string, scheduleDays: number[]): string {
 export default async function SchedulePage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; previewRequest?: string }>
+  searchParams: Promise<{ date?: string; previewRequest?: string; member?: string }>
 }) {
   // Resolve via membership so invited trainers reach their company's schedule.
   const ctx = await getTrainerContext()
   if (!ctx) redirect('/login')
   // Staff without schedule.viewAll only see their own assigned sessions.
   const memberScope = scopeForMember(ctx, 'schedule.viewAll')
+  // An empty scope fragment means this user sees the whole company's schedule
+  // (owner / manager / anyone granted schedule.viewAll) — the only people who
+  // get the staff-member switcher. Restricted staff are already server-scoped
+  // to their own sessions, so no switcher is offered to them.
+  const canViewAllSchedule = Object.keys(memberScope).length === 0
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
@@ -386,7 +391,10 @@ export default async function SchedulePage({
         id: m.id,
         name: m.user.name ?? m.user.email,
         role: m.role,
+        title: m.title,
       }))}
+      canViewAllSchedule={canViewAllSchedule}
+      initialMember={canViewAllSchedule ? (sp.member ?? null) : null}
       initialBusyBlocks={busyBlocks.map(b => ({ startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString(), title: b.title }))}
       availabilitySlots={availabilitySlots.map(s => ({
         ...s,
