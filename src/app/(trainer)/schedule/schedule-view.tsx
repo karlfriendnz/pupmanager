@@ -3025,6 +3025,11 @@ export function ScheduleView({
   // 20% opacity until the search is cleared.
   const [search, setSearch] = useState('')
   const [searchOpenMobile, setSearchOpenMobile] = useState(false)
+  // Tablet+ slide-out search: a collapsed icon that grows into a field (mirrors
+  // the global top-bar search), keeping the schedule header uncluttered.
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchRef = useRef<HTMLFormElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const searchTokens = search.trim().toLocaleLowerCase('en-NZ').split(/\s+/).filter(Boolean)
   function sessionMatchesSearch(s: Session): boolean {
     if (searchTokens.length === 0) return true
@@ -3040,6 +3045,20 @@ export function ScheduleView({
     return searchTokens.every(t => haystack.includes(t))
   }
   const matchedIds = new Set(sessions.filter(sessionMatchesSearch).map(s => s.id))
+
+  // Focus the slide-out search when it opens; close on outside-click / Escape
+  // (only when empty, so a typed query isn't lost).
+  useEffect(() => { if (searchOpen) searchInputRef.current?.focus() }, [searchOpen])
+  useEffect(() => {
+    if (!searchOpen) return
+    function onDown(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node) && !search.trim()) setSearchOpen(false)
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && !search.trim()) setSearchOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [searchOpen, search])
   // Lazy-load blackouts the first time the schedule mounts so the calendar
   // can grey out holiday days. Cheap query (small per-trainer table).
   useEffect(() => {
@@ -3433,36 +3452,58 @@ export function ScheduleView({
           </button>
         </div>
 
-        {/* Tablet+ inline search field (phones get a search-icon button
-            inside the action cluster below — keeps the header to one row). */}
-        <div className="hidden sm:block sm:relative sm:w-56 lg:w-64 sm:ml-auto">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input
-            type="search"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search sessions…"
-            className="w-full h-8 pl-9 pr-7 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {searchTokens.length > 0 && (
-            <span className="absolute right-7 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 tabular-nums">
-              {matchedIds.size}
-            </span>
-          )}
-          {search && (
-            <button
-              onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600"
-              aria-label="Clear search"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-
         {/* Action cluster — left-aligned and full-width on phones (its own
-            row underneath the date nav), inline & tight on tablet+. */}
-        <div className="flex items-center gap-1.5 w-full sm:w-auto sm:flex-shrink-0 justify-start sm:justify-end">
+            row underneath the date nav); tablet+ it's right-aligned (ml-auto)
+            and hosts the slide-out search first, so opening the search grows the
+            cluster leftward into the gap rather than wrapping to a new row. */}
+        <div className="flex items-center gap-1.5 w-full sm:w-auto sm:ml-auto sm:flex-shrink-0 justify-start sm:justify-end">
+          {/* Tablet+ slide-out search — collapsed icon that grows into a field
+              on click (mirrors the global top-bar search). Phones use the
+              icon-button + drawer below. */}
+          <form
+            ref={searchRef}
+            onSubmit={e => e.preventDefault()}
+            className={`hidden sm:flex items-center rounded-lg overflow-hidden transition-[width] duration-200 ${
+              searchOpen ? 'w-52 lg:w-60 border border-slate-200 bg-white shadow-sm' : 'w-8'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setSearchOpen(o => !o)}
+              aria-label="Search sessions"
+              className={`h-8 w-8 shrink-0 grid place-items-center rounded-lg transition-colors ${
+                search || searchOpen ? 'text-blue-600' : 'text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            {searchOpen && (
+              <>
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search sessions…"
+                  className="flex-1 min-w-0 h-8 bg-transparent text-sm focus:outline-none"
+                />
+                {searchTokens.length > 0 && (
+                  <span className="px-1 shrink-0 text-[10px] text-slate-400 tabular-nums">{matchedIds.size}</span>
+                )}
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="px-1.5 shrink-0 text-slate-400 hover:text-slate-600"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </>
+            )}
+          </form>
+
           {/* Mobile-only search trigger — sits alongside the other action
               icons so the header reads as a single button row. */}
           <button
