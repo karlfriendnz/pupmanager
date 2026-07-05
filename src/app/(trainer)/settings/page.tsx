@@ -13,9 +13,9 @@ import { ActivityPanel } from './activity-panel'
 import { AddonsTab } from './addons-tab'
 import { IntegrationTab } from './integration-tab'
 import { XeroTab } from './xero-tab'
-import { GoogleCalendarTab } from './google-calendar-tab'
 import { hasAddon } from '@/lib/billing'
 import { FormsManager } from '../forms/forms-manager'
+import { CustomFieldsManager } from './custom-fields-manager'
 import type { Question } from '../forms/session/session-forms-manager'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
@@ -32,8 +32,6 @@ export default async function TrainerSettingsPage() {
   const canManageForms = can('forms.manage', ctx.role, ctx.permissions)
   // The Xero tab only exists when the (free) Xero add-on is enabled.
   const xeroEnabled = canEditSettings && (await hasAddon(ctx.companyId, 'xero'))
-  // Same gating for the (free) Google Calendar add-on.
-  const googleCalendarEnabled = canEditSettings && (await hasAddon(ctx.companyId, 'googlecalendar'))
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
@@ -90,7 +88,6 @@ export default async function TrainerSettingsPage() {
         team={<TeamPanel />}
         payments={ctx.role === 'OWNER' ? <PaymentsPanel companyId={ctx.companyId} /> : undefined}
         xero={xeroEnabled ? <XeroTab companyId={ctx.companyId} /> : undefined}
-        googlecalendar={googleCalendarEnabled ? <GoogleCalendarTab /> : undefined}
         billing={ctx.role === 'OWNER' ? (
           <>
             <BillingPanel companyId={ctx.companyId} />
@@ -98,6 +95,13 @@ export default async function TrainerSettingsPage() {
           </>
         ) : undefined}
         activity={ctx.role === 'OWNER' ? <ActivityPanel companyId={ctx.companyId} /> : undefined}
+        customfields={!canManageForms ? undefined :
+          <CustomFieldsManager
+            initialFields={intakeFields}
+            initialSectionOrder={[]}
+            initialSystemFieldSections={{}}
+          />
+        }
         forms={!canManageForms ? undefined :
           <FormsManager
             initialSessionForms={sessionForms.map(f => ({

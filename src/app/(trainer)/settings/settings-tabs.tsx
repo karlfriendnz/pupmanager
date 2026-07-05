@@ -2,19 +2,19 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, CalendarDays } from 'lucide-react'
+import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, Tags } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 
 const ALL_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'forms', label: 'Forms', icon: Pencil },
+  { id: 'customfields', label: 'Custom fields', icon: Tags },
   { id: 'integration', label: 'Integrations', icon: Globe },
   { id: 'addons', label: 'Add-ons', icon: Puzzle },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'payments', label: 'Payments', icon: Wallet },
   { id: 'xero', label: 'Xero', icon: Landmark },
-  { id: 'googlecalendar', label: 'Google Calendar', icon: CalendarDays },
   { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'activity', label: 'Activity', icon: ShieldCheck },
 ] as const
@@ -25,12 +25,12 @@ export function SettingsTabs({
   profile,
   notifications,
   forms,
+  customfields,
   integration,
   addons,
   team,
   payments,
   xero,
-  googlecalendar,
   billing,
   activity,
 }: {
@@ -40,17 +40,17 @@ export function SettingsTabs({
   profile?: React.ReactNode
   notifications: React.ReactNode
   forms?: React.ReactNode
+  customfields?: React.ReactNode
   integration?: React.ReactNode
   addons?: React.ReactNode
   team?: React.ReactNode
   payments?: React.ReactNode
   xero?: React.ReactNode
-  googlecalendar?: React.ReactNode
   billing?: React.ReactNode
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, integration, addons, team, payments, xero, googlecalendar, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, customfields, integration, addons, team, payments, xero, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -145,12 +145,12 @@ export function SettingsTabs({
         {profile != null && <div className={tab === 'profile' ? 'max-w-2xl' : 'hidden'}>{profile}</div>}
         <div className={tab === 'notifications' ? 'max-w-2xl' : 'hidden'}>{notifications}</div>
         {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}
+        {customfields != null && <div className={tab === 'customfields' ? '' : 'hidden'}>{customfields}</div>}
         {integration != null && <div className={tab === 'integration' ? '' : 'hidden'}>{integration}</div>}
         {addons != null && <div className={tab === 'addons' ? '' : 'hidden'}>{addons}</div>}
         {team != null && <div className={tab === 'team' ? 'max-w-2xl' : 'hidden'}>{team}</div>}
         {payments != null && <div className={tab === 'payments' ? 'max-w-2xl' : 'hidden'}>{payments}</div>}
         {xero != null && <div className={tab === 'xero' ? 'max-w-2xl' : 'hidden'}>{xero}</div>}
-        {googlecalendar != null && <div className={tab === 'googlecalendar' ? 'max-w-2xl' : 'hidden'}>{googlecalendar}</div>}
         {billing != null && !native && <div className={tab === 'billing' ? 'max-w-2xl' : 'hidden'}>{billing}</div>}
         {activity != null && <div className={tab === 'activity' ? '' : 'hidden'}>{activity}</div>}
       </div>
