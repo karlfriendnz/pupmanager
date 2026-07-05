@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Receipt, ArrowLeftRight, FileText, Search, Loader2, ChevronLeft, ChevronRight, X, Copy, Check, Send, RotateCcw } from 'lucide-react'
+import { ArrowLeftRight, FileText, Search, Loader2, ChevronLeft, ChevronRight, X, Send, RotateCcw } from 'lucide-react'
 import { money, fmtDate, receivableBadge, XeroLink, ReceivableDocument, type Rcv } from '@/components/finances/receivable-document'
 
 interface Page<T> { page: number; totalPages: number; total: number; items: T[]; xeroConnected?: boolean }
@@ -175,98 +175,6 @@ function TransactionsTab() {
   )
 }
 
-interface Inv { id: string; description: string | null; clientName: string | null; amountTotal: number; currency: string; status: string; paidAt: string | null; createdAt: string; xeroSyncStatus: 'NOT_SYNCED' | 'SYNCED' | 'ERROR'; xeroSyncError: string | null }
-
-function invoiceBadge(status: string): { label: string; cls: string } {
-  if (status === 'PENDING') return { label: 'Unpaid', cls: 'bg-amber-100 text-amber-700' }
-  if (status === 'REFUNDED') return { label: 'Refunded', cls: 'bg-slate-100 text-slate-500' }
-  if (status === 'PARTIALLY_REFUNDED') return { label: 'Part refund', cls: 'bg-amber-100 text-amber-700' }
-  if (status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-slate-100 text-slate-400' }
-  return { label: 'Paid', cls: 'bg-emerald-100 text-emerald-700' }
-}
-
-function InvoicesTab() {
-  const [filter, setFilter] = useState<'all' | 'unpaid' | 'paid'>('all')
-  const { q, data, loading, onSearch, goTo } = useFinanceList<Inv>('/api/trainer/finances/invoices', `status=${filter}`)
-  const [open, setOpen] = useState<Inv | null>(null)
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-        <div className="flex-1"><SearchBar value={q} onChange={onSearch} placeholder="Search pay links…" /></div>
-        <div className="inline-flex self-start rounded-xl bg-slate-100 p-1 text-xs font-semibold">
-          {(['all', 'unpaid', 'paid'] as const).map(f => (
-            <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-lg capitalize transition-colors ${filter === f ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{f}</button>
-          ))}
-        </div>
-      </div>
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-        {loading && !data ? (
-          <div className="flex items-center gap-2 text-sm text-slate-400 px-5 py-8"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
-        ) : !data || data.items.length === 0 ? (
-          <p className="text-sm text-slate-400 px-5 py-8">{q ? 'No invoices match your search.' : 'No invoices yet. Send one from a client’s profile.'}</p>
-        ) : (
-          <>
-            {/* Mobile: stacked cards */}
-            <div className="md:hidden divide-y divide-slate-100">
-              {data.items.map(i => {
-                const b = invoiceBadge(i.status)
-                return (
-                  <button key={i.id} type="button" onClick={() => setOpen(i)} className="w-full text-left p-4 active:bg-slate-50">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-medium text-slate-900 truncate">{i.description ?? '—'}</p>
-                        <p className="text-xs text-slate-400 truncate">{[i.clientName, `issued ${fmtDate(i.createdAt)}`].filter(Boolean).join(' · ')}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-semibold text-slate-900 tabular-nums">{money(i.amountTotal, i.currency)}</p>
-                        <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${b.cls}`}>{b.label}</span>
-                      </div>
-                    </div>
-                    {i.paidAt && <p className="mt-1.5 text-xs text-slate-400">Paid {fmtDate(i.paidAt)}</p>}
-                  </button>
-                )
-              })}
-            </div>
-            {/* Desktop: table */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase text-slate-400">
-                    <th className="px-4 pt-4 pb-2 font-medium">Issued</th>
-                    <th className="px-4 pt-4 pb-2 font-medium">For</th>
-                    <th className="px-4 pt-4 pb-2 font-medium text-right">Amount</th>
-                    <th className="px-4 pt-4 pb-2 font-medium">Paid on</th>
-                    <th className="px-4 pt-4 pb-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map(i => {
-                    const b = invoiceBadge(i.status)
-                    return (
-                      <tr key={i.id} onClick={() => setOpen(i)} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50/70">
-                        <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(i.createdAt)}</td>
-                        <td className="px-4 py-2.5 text-slate-700">
-                          <span className="block">{i.description ?? '—'}</span>
-                          {i.clientName && <span className="text-xs text-slate-400">{i.clientName}</span>}
-                        </td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 whitespace-nowrap">{money(i.amountTotal, i.currency)}</td>
-                        <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{i.paidAt ? fmtDate(i.paidAt) : '—'}</td>
-                        <td className="px-4 py-2.5"><div className="flex items-center justify-between gap-2"><span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span><ChevronRight className="h-4 w-4 text-slate-300" /></div></td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </div>
-      {data && <Pager page={data.page} totalPages={data.totalPages} total={data.total} onGo={goTo} loading={loading} />}
-      {open && <InvoiceDetail inv={open} xeroConnected={!!data?.xeroConnected} onClose={() => setOpen(null)} />}
-    </div>
-  )
-}
-
 // ── Full-screen detail views ───────────────────────────────────────────────
 
 function DetailShell({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
@@ -352,92 +260,6 @@ function TransactionDetail({ tx, onClose, onChanged }: { tx: Tx; onClose: () => 
         <DetailRow label="Net to you" value={money(net, tx.currency)} strong />
       </div>
       {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
-    </DetailShell>
-  )
-}
-
-function InvoiceDetail({ inv, xeroConnected, onClose }: { inv: Inv; xeroConnected: boolean; onClose: () => void }) {
-  const b = invoiceBadge(inv.status)
-  const unpaid = inv.status === 'PENDING'
-  const [copied, setCopied] = useState(false)
-  const [resending, setResending] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
-  // Local Xero sync state so a retry reflects immediately without a full reload.
-  const [xero, setXero] = useState<{ status: Inv['xeroSyncStatus']; error: string | null }>({ status: inv.xeroSyncStatus, error: inv.xeroSyncError })
-  const [retrying, setRetrying] = useState(false)
-  const payLink = typeof window !== 'undefined' ? `${window.location.origin}/my/pay/${inv.id}` : ''
-
-  async function copy() {
-    try { await navigator.clipboard.writeText(payLink); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ }
-  }
-  async function resend() {
-    setResending(true); setMsg(null)
-    try {
-      const res = await fetch(`/api/trainer/finances/invoices/${inv.id}/resend`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-      setMsg(res.ok ? 'Reminder sent to the client.' : 'Could not resend — try again.')
-    } catch { setMsg('Could not resend — try again.') } finally { setResending(false) }
-  }
-  async function retryXero() {
-    setRetrying(true)
-    try {
-      const res = await fetch('/api/xero/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentId: inv.id }) })
-      const json = await res.json().catch(() => ({}))
-      setXero(res.ok && json.ok ? { status: 'SYNCED', error: null } : { status: 'ERROR', error: json.error ?? 'Sync failed — try again.' })
-    } catch { setXero({ status: 'ERROR', error: 'Sync failed — try again.' }) } finally { setRetrying(false) }
-  }
-
-  return (
-    <DetailShell
-      title="Invoice"
-      onClose={onClose}
-      footer={unpaid ? (
-        <div className="flex gap-2">
-          <button type="button" onClick={copy} className="flex-1 inline-flex items-center justify-center gap-1.5 h-11 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-semibold">
-            {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : 'Copy pay link'}
-          </button>
-          <button type="button" onClick={resend} disabled={resending} className="flex-1 inline-flex items-center justify-center gap-1.5 h-11 rounded-xl bg-accent hover:bg-accent-strong text-white text-sm font-semibold disabled:opacity-60">
-            {resending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {resending ? 'Sending…' : 'Resend'}
-          </button>
-        </div>
-      ) : undefined}
-    >
-      <div className="text-center">
-        <p className="text-3xl font-bold text-slate-900 tabular-nums">{money(inv.amountTotal, inv.currency)}</p>
-        <span className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${b.cls}`}>{b.label}</span>
-      </div>
-      <div className="mt-6">
-        <DetailRow label="For" value={inv.description ?? '—'} />
-        {inv.clientName && <DetailRow label="Client" value={inv.clientName} />}
-        <DetailRow label="Issued" value={fmtDate(inv.createdAt)} />
-        <DetailRow label="Paid on" value={inv.paidAt ? fmtDate(inv.paidAt) : '—'} />
-      </div>
-      {unpaid && (
-        <div className="mt-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Payment link</p>
-          <p className="mt-1 text-xs text-slate-400 break-all">{payLink}</p>
-        </div>
-      )}
-      {xeroConnected && (
-        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Xero</span>
-            {xero.status === 'SYNCED' ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600"><Check className="h-3.5 w-3.5" /> Synced</span>
-            ) : xero.status === 'ERROR' ? (
-              <span className="text-xs font-medium text-rose-600">Sync failed</span>
-            ) : (
-              <span className="text-xs font-medium text-slate-400">Not synced yet</span>
-            )}
-          </div>
-          {xero.status === 'ERROR' && xero.error && <p className="mt-1.5 text-xs text-rose-500">{xero.error}</p>}
-          {xero.status !== 'SYNCED' && (
-            <button type="button" onClick={retryXero} disabled={retrying} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-              {retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}{retrying ? 'Syncing…' : 'Retry Xero sync'}
-            </button>
-          )}
-        </div>
-      )}
-      {msg && <p className="mt-3 text-sm text-slate-600">{msg}</p>}
     </DetailShell>
   )
 }
@@ -602,7 +424,6 @@ function ReceivablesTab() {
 
 const TABS = [
   { id: 'receivables', label: 'Invoices', icon: FileText },
-  { id: 'invoices', label: 'Pay links', icon: Receipt },
   { id: 'transactions', label: 'Transactions', icon: ArrowLeftRight },
 ] as const
 type TabId = typeof TABS[number]['id']
@@ -634,7 +455,6 @@ export function FinancesView() {
       </div>
       <div className={tab === 'receivables' ? '' : 'hidden'}><ReceivablesTab /></div>
       <div className={tab === 'transactions' ? '' : 'hidden'}><TransactionsTab /></div>
-      <div className={tab === 'invoices' ? '' : 'hidden'}><InvoicesTab /></div>
     </div>
   )
 }

@@ -5,11 +5,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   MoreVertical, Pencil, Eye, Send, Package as PackageIcon,
-  Share2, Trash2, X, Loader2, Check, AlertCircle, CreditCard,
+  Share2, Trash2, X, Loader2, Check, AlertCircle,
 } from 'lucide-react'
 import { ShareClientModal } from './share-client-modal'
 import { AssignPackageButton } from './assign-package-modal'
-import { RequestPaymentModal } from './request-payment-modal'
 import { useIsNative } from '@/lib/native'
 
 interface PkgOption {
@@ -72,7 +71,7 @@ interface Props {
 // ShareClientModal / AssignPackageButton render based on that value.
 // Re-invite has its own inline status (sending → sent → idle) so it
 // never blocks the menu.
-type ModalKind = null | 'assign' | 'share' | 'delete' | 'reinvite' | 'invoice'
+type ModalKind = null | 'assign' | 'share' | 'delete' | 'reinvite'
 type ReinviteState =
   | { kind: 'idle' }
   | { kind: 'sending' }
@@ -217,11 +216,6 @@ export function ClientActionsMenu({
             label="Assign package"
             onClick={() => { setMenuOpen(false); setActiveModal('assign') }}
           />
-          <MenuButton
-            icon={<CreditCard className="h-4 w-4 text-slate-400" />}
-            label="Request payment"
-            onClick={() => { setMenuOpen(false); setActiveModal('invoice') }}
-          />
           {isPrimaryTrainer && (
             <MenuButton
               icon={<Share2 className="h-4 w-4 text-slate-400" />}
@@ -275,13 +269,6 @@ export function ClientActionsMenu({
         open={activeModal === 'share'}
         onOpenChange={v => setActiveModal(v ? 'share' : null)}
       />
-      <RequestPaymentModal
-        clientId={clientId}
-        clientName={clientName}
-        open={activeModal === 'invoice'}
-        onOpenChange={v => setActiveModal(v ? 'invoice' : null)}
-      />
-
       {/* Re-invite confirm — surfaces the recipient email so the
           trainer can spot a typo before triggering an outbound send.
           Copy adapts based on whether the client has activated yet:

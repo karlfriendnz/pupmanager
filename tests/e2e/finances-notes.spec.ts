@@ -43,8 +43,8 @@ test.describe('finances — owner UAT', () => {
     await login(page, SEED.owner.email, SEED.owner.password)
     const tx = await page.request.get('/api/trainer/finances/transactions')
     expect(tx.status(), 'owner reading own transactions').toBe(200)
-    const inv = await page.request.get('/api/trainer/finances/invoices')
-    expect(inv.status(), 'owner reading own invoices').toBe(200)
+    const inv = await page.request.get('/api/trainer/finances/receivables')
+    expect(inv.status(), 'owner reading own receivables').toBe(200)
   })
 })
 

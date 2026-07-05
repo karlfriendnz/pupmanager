@@ -759,16 +759,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: 'request-payment',
-    title: 'Ask a client to pay',
+    title: 'Get a client to pay an invoice',
     category: 'Getting paid',
-    keywords: ['request payment', 'invoice', 'charge', 'collect', 'pay', 'package', 'session'],
-    summary: 'Send a client a request to pay for a package, session or product.',
+    keywords: ['request payment', 'invoice', 'charge', 'collect', 'pay', 'pay link', 'package', 'session'],
+    summary: 'Send a client their invoice with a secure pay-by-card link.',
     steps: [
-      'Make sure payments are set up first (Settings → Payments).',
-      'Click "Clients" on the left and open the client.',
-      'Choose the request-payment option on their profile.',
-      'Pick what they\'re paying for and the amount.',
-      'Send it — the client can pay by card inside PupManager.',
+      'Assign a priced package or product — an invoice is created for the client automatically.',
+      'Open Finances → Invoices (or the client\'s Invoices tab) and open the invoice.',
+      'Hit "Send" to email it, or "Copy pay link" to share the link yourself.',
+      'The client opens the link and pays by card — no login needed. (Set up payments first in Settings → Payments.)',
     ],
   },
   {
