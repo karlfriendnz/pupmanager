@@ -55,6 +55,8 @@ const createSchema = z.object({
   imageUrl: z.string().url().nullable().optional(),
   // TrainerMembership ids (of this company) to assign as the class's trainers.
   assignedMembershipIds: z.array(z.string()).optional(),
+  // Tri-state "require payment to enrol": null = inherit trainer default.
+  requirePayment: z.boolean().nullable().optional(),
   // Legacy: run off an existing group package.
   packageId: z.string().min(1).optional(),
 })
@@ -107,6 +109,7 @@ export async function POST(req: Request) {
       defaultSessionFormId: d.defaultSessionFormId ?? null,
       imageUrl: d.imageUrl ?? null,
       assignedMembershipIds: d.assignedMembershipIds,
+      requirePayment: d.requirePayment ?? null,
     })
     return NextResponse.json({ ok: true, ...run }, { status: 201 })
   } catch (err) {

@@ -479,6 +479,11 @@ model TrainerProfile {
   // false the Invoice is still created + reconcilable, just left unsent for the
   // trainer to review and send from Finances. Default off — opt-in.
   autoSendInvoices          Boolean   @default(false)
+  // Default for the per-item "require payment to book" control (packages,
+  // classes, products). true preserves the historical behaviour — a priced item
+  // + payments switched on means pay-to-book. A trainer can flip this to false
+  // to make "book now, pay later" the default, and override per item.
+  defaultRequirePayment     Boolean   @default(true)
 
   // ─── Bulk-email sending domain (Resend) ─────────────────────────────────────
   // To send bulk emails to their clients the trainer must verify a *sending
@@ -1195,6 +1200,11 @@ model Product {
   // Xero revenue account code this product's invoice lines post to. Null = fall
   // back to the connection's default sales account (XeroConnection.salesAccountCode).
   xeroAccountCode String?
+  // Per-item "require payment to book" override. null = inherit the trainer's
+  // defaultRequirePayment; true = pay up front (Stripe); false = buy now, pay
+  // later (raise an invoice, no upfront charge). Only bites when the trainer CAN
+  // take cards — a payments-off trainer always invoices.
+  requirePayment  Boolean?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1291,6 +1301,10 @@ model Package {
   // Xero revenue account code this package's invoice lines post to. Null = fall
   // back to the connection's default sales account (XeroConnection.salesAccountCode).
   xeroAccountCode          String?
+  // Per-item "require payment to book" override. null = inherit the trainer's
+  // defaultRequirePayment; true = pay up front (Stripe); false = book now, pay
+  // later (raise an invoice). Only bites when the trainer CAN take cards.
+  requirePayment           Boolean?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1375,6 +1389,10 @@ model ClassRun {
   capacity     Int? // per-run override of Package.capacity
   imageUrl     String? // optional cover image (Vercel Blob URL)
   status       ClassRunStatus @default(SCHEDULED)
+  // Per-class "require payment to enrol" override. null = inherit the trainer's
+  // defaultRequirePayment; true = pay up front (Stripe); false = enrol now, pay
+  // later (raise an invoice). Only bites when the trainer CAN take cards.
+  requirePayment Boolean?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

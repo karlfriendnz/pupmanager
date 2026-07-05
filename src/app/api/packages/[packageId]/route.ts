@@ -25,6 +25,8 @@ const updateSchema = z.object({
   clientSelfBook: z.boolean().optional(),
   selfBookRequiresApproval: z.boolean().optional(),
   xeroAccountCode: z.string().max(50).nullable().optional(),
+  // Tri-state "require payment to book": null = inherit trainer default.
+  requirePayment: z.boolean().nullable().optional(),
 })
 
 async function ownPackage(packageId: string, trainerId: string) {

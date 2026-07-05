@@ -52,6 +52,7 @@ export default async function PackagesPage({
         publicEnrollment: p.publicEnrollment,
         clientSelfBook: p.clientSelfBook,
         selfBookRequiresApproval: p.selfBookRequiresApproval,
+        requirePayment: p.requirePayment,
         assignments: p._count.assignments,
       }))}
       connectName={connect ?? null}

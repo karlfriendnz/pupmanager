@@ -15,6 +15,8 @@ const createSchema = z.object({
   featured: z.boolean().optional(),
   active: z.boolean().optional(),
   xeroAccountCode: z.string().max(50).optional().nullable(),
+  // Tri-state "require payment to buy": null = inherit trainer default.
+  requirePayment: z.boolean().nullable().optional(),
 })
 
 export async function GET() {
@@ -60,6 +62,7 @@ export async function POST(req: Request) {
       category: parsed.data.category?.trim() || null,
       featured: parsed.data.featured ?? false,
       xeroAccountCode: parsed.data.xeroAccountCode || null,
+      requirePayment: parsed.data.requirePayment ?? null,
       active: parsed.data.active ?? true,
     },
   })

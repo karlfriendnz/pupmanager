@@ -41,6 +41,7 @@ export default async function ProductsPage() {
           featured: p.featured,
           active: p.active,
           xeroAccountCode: p.xeroAccountCode,
+          requirePayment: p.requirePayment,
         }))}
       />
       </div>

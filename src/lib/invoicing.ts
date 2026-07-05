@@ -3,6 +3,7 @@ import { sendEmail } from './email'
 import { sendPush } from './push'
 import { ensureClientXeroContact } from './xero-sync'
 import { createXeroInvoice, fetchXeroInvoiceState, createXeroPayment } from './xero'
+import { dropInPriceCents } from './class-runs'
 import { env } from './env'
 
 // Payment-method-agnostic receivables. When a *priced* package or product is
@@ -25,10 +26,11 @@ function money(minor: number, currency: string): string {
 export interface AssignmentInvoiceInput {
   trainerId: string
   clientId: string
-  sourceType: 'PACKAGE' | 'PRODUCT'
+  sourceType: 'PACKAGE' | 'PRODUCT' | 'CLASS_ENROLLMENT'
   // Exactly one of these, matching sourceType. Also the idempotency sourceId.
   clientPackageId?: string
   productId?: string
+  classEnrollmentId?: string
 }
 
 /**
@@ -42,7 +44,10 @@ export interface AssignmentInvoiceInput {
  */
 export async function createInvoiceForAssignment(input: AssignmentInvoiceInput): Promise<string | null> {
   try {
-    const sourceId = input.sourceType === 'PACKAGE' ? input.clientPackageId : input.productId
+    const sourceId =
+      input.sourceType === 'PACKAGE' ? input.clientPackageId
+      : input.sourceType === 'CLASS_ENROLLMENT' ? input.classEnrollmentId
+      : input.productId
     if (!sourceId) return null
 
     // Resolve the amount + label. (The per-source Xero account code is resolved
@@ -58,6 +63,28 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       if (!cp) return null
       amountCents = cp.package.specialPriceCents ?? cp.package.priceCents
       description = cp.package.name
+    } else if (input.sourceType === 'CLASS_ENROLLMENT') {
+      // A class enrolment prices off the run's backing group package: a FULL seat
+      // is the package (special) price; a DROP_IN pays per remaining session from
+      // where it joined.
+      const enr = await prisma.classEnrollment.findFirst({
+        where: { id: sourceId, clientId: input.clientId },
+        select: {
+          type: true, joinedAtIndex: true,
+          classRun: {
+            select: {
+              name: true,
+              package: { select: { priceCents: true, specialPriceCents: true, dropInPriceCents: true, sessionCount: true } },
+            },
+          },
+        },
+      })
+      if (!enr) return null
+      const pkg = enr.classRun.package
+      amountCents = enr.type === 'DROP_IN'
+        ? dropInPriceCents({ dropInPriceCents: pkg.dropInPriceCents, sessionCount: pkg.sessionCount, joinedAtIndex: enr.joinedAtIndex ?? 1 })
+        : (pkg.specialPriceCents ?? pkg.priceCents)
+      description = enr.classRun.name
     } else {
       const product = await prisma.product.findFirst({
         where: { id: sourceId, trainerId: input.trainerId },
@@ -260,6 +287,12 @@ async function pushReceivableToXero(invoiceId: string, updateExisting: boolean):
         select: { xeroAccountCode: true },
       })
       sourceCode = product?.xeroAccountCode ?? null
+    } else if (invoice.sourceType === 'CLASS_ENROLLMENT' && invoice.sourceId) {
+      const enr = await prisma.classEnrollment.findUnique({
+        where: { id: invoice.sourceId },
+        select: { classRun: { select: { package: { select: { xeroAccountCode: true } } } } },
+      })
+      sourceCode = enr?.classRun?.package?.xeroAccountCode ?? null
     }
 
     // Fall back to a single synthetic line if (unexpectedly) the invoice has no

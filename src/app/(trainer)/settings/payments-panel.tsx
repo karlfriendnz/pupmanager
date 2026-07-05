@@ -2,7 +2,7 @@ import { Wallet, ArrowUpRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import { isConnectConfigured, readAccountFlags } from '@/lib/connect'
 import { stripeFor } from '@/lib/stripe'
-import { ConnectButton, AcceptPaymentsToggle, PassFeeToggle, AutoSendInvoicesToggle } from './payments-actions'
+import { ConnectButton, AcceptPaymentsToggle, PassFeeToggle, AutoSendInvoicesToggle, DefaultRequirePaymentToggle } from './payments-actions'
 
 // Trainer-facing setup for taking payments from their clients (Stripe Connect
 // Express). Owner-only; rendered as a tab on Settings. Three states: not
@@ -21,6 +21,7 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
       passProcessingFeeToClient: true,
       sandboxBilling: true,
       autoSendInvoices: true,
+      defaultRequirePayment: true,
     },
   })
 
@@ -106,6 +107,18 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
                 </p>
               </div>
               <PassFeeToggle initial={profile?.passProcessingFeeToClient ?? true} />
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+              <div className="max-w-md">
+                <p className="text-sm font-medium text-slate-800">Require payment to book by default</p>
+                <p className="text-xs text-slate-500">
+                  {profile?.defaultRequirePayment
+                    ? 'Clients pay up front to confirm a priced package, class or shop item.'
+                    : 'Clients can book now and pay later — an invoice is raised instead of an upfront charge.'}{' '}
+                  Each package, class and product can override this from its own form.
+                </p>
+              </div>
+              <DefaultRequirePaymentToggle initial={profile?.defaultRequirePayment ?? true} />
             </div>
             <div className="mt-1 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600">

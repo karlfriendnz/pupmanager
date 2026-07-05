@@ -31,6 +31,9 @@ const schema = z.object({
   clientSelfBook: z.boolean().optional(),
   selfBookRequiresApproval: z.boolean().optional(),
   xeroAccountCode: z.string().max(50).nullable().optional(),
+  // Tri-state "require payment to book": null = inherit the trainer default,
+  // true = pay up front, false = book now / pay later.
+  requirePayment: z.boolean().nullable().optional(),
 })
 
 export async function GET() {
@@ -92,6 +95,7 @@ export async function POST(req: Request) {
       clientSelfBook: parsed.data.clientSelfBook ?? false,
       selfBookRequiresApproval: parsed.data.selfBookRequiresApproval ?? true,
       xeroAccountCode: parsed.data.xeroAccountCode || null,
+      requirePayment: parsed.data.requirePayment ?? null,
       order: nextOrder,
     },
   })

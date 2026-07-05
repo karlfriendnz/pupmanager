@@ -117,8 +117,8 @@ describe('POST /api/my/products/[productId]/buy — authz + tenant + amount-trus
   it('charges the SERVER-SIDE product price and IGNORES any amount in the request body', async () => {
     h.getActiveClient.mockResolvedValue({ clientId: 'c1', isPreview: false })
     h.clientFindUnique.mockResolvedValue({ id: 'c1', trainerId: 't1' })
-    h.productFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', active: true, name: 'Leash', kind: 'PHYSICAL', priceCents: 5000 })
-    h.trainerFindUnique.mockResolvedValue({ acceptPaymentsEnabled: true, connectChargesEnabled: true, connectAccountId: 'acct_1', payoutCurrency: 'nzd', sandboxBilling: true })
+    h.productFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', active: true, name: 'Leash', kind: 'PHYSICAL', priceCents: 5000, requirePayment: null })
+    h.trainerFindUnique.mockResolvedValue({ acceptPaymentsEnabled: true, connectChargesEnabled: true, connectAccountId: 'acct_1', payoutCurrency: 'nzd', sandboxBilling: true, defaultRequirePayment: true })
 
     // Attacker tries to pay 1 cent (and tamper trainerId/connectAccountId).
     const res = await POST(buyReq({ priceCents: 1, unitAmount: 1, amount: 1, trainerId: 'OTHER', connectAccountId: 'acct_evil' }), params('p1'))

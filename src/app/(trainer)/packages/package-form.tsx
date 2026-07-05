@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { XeroAccountField } from '@/components/shared/xero-account-field'
+import { RequirePaymentField } from '@/components/shared/require-payment-field'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
@@ -49,6 +50,7 @@ export interface PkgRow {
   clientSelfBook?: boolean
   selfBookRequiresApproval?: boolean
   xeroAccountCode?: string | null
+  requirePayment?: boolean | null
   assignments: number
 }
 
@@ -123,6 +125,7 @@ export function PackageForm({
   const [xeroActive, setXeroActive] = useState(false)
   const [clientSelfBook, setClientSelfBook] = useState<boolean>(existing?.clientSelfBook ?? false)
   const [selfBookRequiresApproval, setSelfBookRequiresApproval] = useState<boolean>(existing?.selfBookRequiresApproval ?? true)
+  const [requirePayment, setRequirePayment] = useState<boolean | null>(existing?.requirePayment ?? null)
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: existing
@@ -172,6 +175,7 @@ export function PackageForm({
         clientSelfBook,
         selfBookRequiresApproval,
         xeroAccountCode: xeroAccountCode || null,
+        requirePayment,
       }),
     })
     if (!res.ok) { setError('Failed to save.'); return }
@@ -199,6 +203,7 @@ export function PackageForm({
         clientSelfBook: saved.clientSelfBook ?? false,
         selfBookRequiresApproval: saved.selfBookRequiresApproval ?? true,
         xeroAccountCode: saved.xeroAccountCode ?? null,
+        requirePayment: saved.requirePayment ?? null,
         assignments: existing?.assignments ?? 0,
       },
       !existing
@@ -280,6 +285,11 @@ export function PackageForm({
           to the right account. Renders nothing when Xero isn't set up. */}
       <div className="md:col-span-2">
         <XeroAccountField value={xeroAccountCode} onChange={setXeroAccountCode} required onActiveChange={setXeroActive} />
+      </div>
+
+      {/* Whether clients must pay up front to book this package. */}
+      <div className="md:col-span-2">
+        <RequirePaymentField value={requirePayment} onChange={setRequirePayment} />
       </div>
 
       <div className="md:col-span-2">

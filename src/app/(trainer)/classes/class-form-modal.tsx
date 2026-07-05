@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { X } from 'lucide-react'
 import { ImageUploadButton } from '@/components/image-uploader'
+import { RequirePaymentField } from '@/components/shared/require-payment-field'
 
 export type TeamMemberOption = {
   id: string
@@ -28,6 +29,7 @@ export type ClassInitial = {
   defaultSessionFormId?: string | null
   imageUrl?: string | null
   assignedMembershipIds?: string[]
+  requirePayment?: boolean | null
 }
 
 // ISO → the `YYYY-MM-DDTHH:mm` a datetime-local input expects, in local time.
@@ -76,6 +78,7 @@ export function ClassFormModal({
   const [scheduleNote, setScheduleNote] = useState(initial?.scheduleNote ?? '')
   const [defaultFormId, setDefaultFormId] = useState(initial?.defaultSessionFormId ?? '')
   const [imageUrl, setImageUrl] = useState<string | null>(initial?.imageUrl ?? null)
+  const [requirePayment, setRequirePayment] = useState<boolean | null>(initial?.requirePayment ?? null)
   const [assignedIds, setAssignedIds] = useState<string[]>(initial?.assignedMembershipIds ?? [])
   const [forms, setForms] = useState<{ id: string; name: string }[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -136,6 +139,7 @@ export function ClassFormModal({
         scheduleNote: scheduleNote.trim() || null,
         defaultSessionFormId: defaultFormId || null,
         imageUrl: imageUrl || null,
+        requirePayment,
         // Only send assignments when the picker is in play, so we don't clobber
         // existing rows for a solo company that never sees the selector.
         ...(showTrainerPicker && { assignedMembershipIds: assignedIds }),
@@ -226,6 +230,8 @@ export function ClassFormModal({
               <input type="number" min={1} value={capacity} onChange={e => setCapacity(e.target.value)} placeholder="Unlimited" className={fieldCls} />
             </div>
           </div>
+
+          <RequirePaymentField value={requirePayment} onChange={setRequirePayment} />
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form <span className="text-slate-400">(optional)</span></label>

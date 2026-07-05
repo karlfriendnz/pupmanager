@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
+import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { resolveRequirePayment } from '@/lib/require-payment'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { env } from '@/lib/env'
 
@@ -35,7 +37,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
 
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true, trainerId: true, active: true, name: true, kind: true, priceCents: true },
+    select: { id: true, trainerId: true, active: true, name: true, kind: true, priceCents: true, requirePayment: true },
   })
   if (!product || product.trainerId !== profile.trainerId || !product.active) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -60,10 +62,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
       connectAccountId: true,
       payoutCurrency: true,
       sandboxBilling: true,
+      defaultRequirePayment: true,
     },
   })
   if (!trainer?.acceptPaymentsEnabled || !trainer.connectChargesEnabled || !trainer.connectAccountId) {
+    // Payments off — unchanged: the client uses the /request (pay-later) route.
     return NextResponse.json({ error: 'This trainer isn’t taking payments yet.' }, { status: 409 })
+  }
+
+  // Payments ON but this product resolves to "don't require payment" — book now,
+  // pay later: create a PENDING request (idempotent) and raise a receivable
+  // instead of charging a card. Mirrors the /request route.
+  if (!resolveRequirePayment(product.requirePayment, trainer.defaultRequirePayment)) {
+    const existing = await prisma.productRequest.findFirst({
+      where: { clientId: profile.id, productId: product.id, status: 'PENDING' },
+      select: { id: true },
+    })
+    if (!existing) {
+      await prisma.productRequest.create({
+        data: { clientId: profile.id, productId: product.id, status: 'PENDING' },
+      })
+    }
+    await createInvoiceForAssignment({
+      trainerId: profile.trainerId,
+      clientId: profile.id,
+      sourceType: 'PRODUCT',
+      productId: product.id,
+    })
+    return NextResponse.json({ ok: true, mode: 'requested' })
   }
 
   const sandbox = trainer.sandboxBilling

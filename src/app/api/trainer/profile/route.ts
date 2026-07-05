@@ -19,6 +19,10 @@ const patchSchema = z.object({
   // When on, a receivable raised on a priced assignment is emailed to the client
   // immediately; off = created for the trainer to review + send from Finances.
   autoSendInvoices: z.boolean().optional(),
+  // Default for the per-item "require payment to book" control. On = a priced
+  // item + payments enabled means the client pays up front; off = book now, pay
+  // later by default (each item can still override).
+  defaultRequirePayment: z.boolean().optional(),
   // Onboarding personas that describe what the business offers. Drives which
   // schedule "add" options appear. Loose string ids (validated against the
   // known persona list would couple this route to the wizard) — unknown ids are

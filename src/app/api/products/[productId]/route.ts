@@ -16,6 +16,8 @@ const patchSchema = z.object({
   xeroAccountCode: z.string().max(50).nullable().optional(),
   active: z.boolean().optional(),
   order: z.number().int().optional(),
+  // Tri-state "require payment to buy": null = inherit trainer default.
+  requirePayment: z.boolean().nullable().optional(),
 })
 
 async function ownsProduct(productId: string, trainerId: string) {
@@ -61,6 +63,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ produc
       ...(data.xeroAccountCode !== undefined && { xeroAccountCode: data.xeroAccountCode || null }),
       ...(data.active !== undefined && { active: data.active }),
       ...(data.order !== undefined && { order: data.order }),
+      ...(data.requirePayment !== undefined && { requirePayment: data.requirePayment }),
     },
   })
   return NextResponse.json(product)

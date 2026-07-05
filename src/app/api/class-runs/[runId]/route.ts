@@ -96,6 +96,8 @@ const patchSchema = z.object({
   defaultSessionFormId: z.string().nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
   assignedMembershipIds: z.array(z.string()).optional(),
+  // Tri-state "require payment to enrol": null = inherit trainer default.
+  requirePayment: z.boolean().nullable().optional(),
 })
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ runId: string }> }) {
@@ -137,6 +139,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
         defaultSessionFormId: d.defaultSessionFormId,
         imageUrl: d.imageUrl,
         assignedMembershipIds: d.assignedMembershipIds,
+        requirePayment: d.requirePayment,
       })
       // Only a genuine time change regenerates sessions — notify clients then.
       if (result.scheduleChanged) {
@@ -169,6 +172,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
       ...(d.name !== undefined && { name: d.name }),
       ...(d.scheduleNote !== undefined && { scheduleNote: d.scheduleNote }),
       ...(d.capacity !== undefined && { capacity: d.capacity }),
+      ...(d.requirePayment !== undefined && { requirePayment: d.requirePayment }),
     },
   })
   // Notify enrolled clients when a class is newly cancelled.

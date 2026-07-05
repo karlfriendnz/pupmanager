@@ -196,6 +196,8 @@ export async function createClassWithPackage(args: {
   imageUrl?: string | null
   // TrainerMembership ids (of this company) to assign as the class's trainers.
   assignedMembershipIds?: string[]
+  // Tri-state "require payment to enrol": null = inherit trainer default.
+  requirePayment?: boolean | null
 }): Promise<{ id: string; sessionCount: number }> {
   const count = args.sessionCount > 0 ? args.sessionCount : 1
   const dates = generateSessionDates(args.startDate, count, args.weeksBetween)
@@ -226,6 +228,7 @@ export async function createClassWithPackage(args: {
         startDate: args.startDate,
         capacity: args.capacity ?? null,
         imageUrl: args.imageUrl ?? null,
+        requirePayment: args.requirePayment ?? null,
       },
     })
     await tx.trainingSession.createMany({
@@ -267,6 +270,8 @@ export async function updateClass(args: {
   imageUrl?: string | null
   // TrainerMembership ids to assign; undefined leaves assignments untouched.
   assignedMembershipIds?: string[]
+  // Tri-state "require payment to enrol"; undefined leaves it untouched.
+  requirePayment?: boolean | null
 }): Promise<{ scheduleChanged: boolean }> {
   const run = await prisma.classRun.findFirst({
     where: { id: args.runId, trainerId: args.trainerId },
@@ -316,6 +321,7 @@ export async function updateClass(args: {
         capacity: args.capacity,
         startDate: args.startDate,
         ...(args.imageUrl !== undefined && { imageUrl: args.imageUrl }),
+        ...(args.requirePayment !== undefined && { requirePayment: args.requirePayment }),
       },
     })
 

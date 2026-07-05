@@ -7,6 +7,8 @@ import {
 } from '@/lib/class-runs'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
+import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { resolveRequirePayment } from '@/lib/require-payment'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { env } from '@/lib/env'
 
@@ -91,40 +93,52 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     allowWaitlist: run.package.allowWaitlist,
   })
 
+  // Whether a priced ENROLLED seat should be charged up front. Only meaningful
+  // when the trainer can take cards — resolved below inside that guard.
+  let payLater = false
   if (price && price > 0 && seatDecision === 'ENROLLED') {
     const trainer = await prisma.trainerProfile.findUnique({
       where: { id: profile.trainerId },
-      select: { acceptPaymentsEnabled: true, connectChargesEnabled: true, connectAccountId: true, payoutCurrency: true, sandboxBilling: true },
+      select: { acceptPaymentsEnabled: true, connectChargesEnabled: true, connectAccountId: true, payoutCurrency: true, sandboxBilling: true, defaultRequirePayment: true },
     })
     if (!trainer?.acceptPaymentsEnabled || !trainer.connectChargesEnabled || !trainer.connectAccountId) {
+      // Payments off — unchanged.
       return NextResponse.json({ error: 'This class needs payment, which your trainer hasn’t enabled yet.' }, { status: 409 })
     }
+    // Require-payment off for this class → enrol now, invoice later (fall through
+    // to the enrolment below instead of Stripe checkout).
+    if (!resolveRequirePayment(run.requirePayment, trainer.defaultRequirePayment)) {
+      payLater = true
+    }
     const sandbox = trainer.sandboxBilling
-    if (!isConnectConfigured(sandbox)) {
+    if (!payLater && !isConnectConfigured(sandbox)) {
       return NextResponse.json({ error: 'Payments are not configured yet' }, { status: 503 })
     }
-    const classesUrl = `${env.NEXT_PUBLIC_APP_URL}/my-classes`
-    const { url } = await createConnectCheckout({
-      sandbox,
-      trainerId: profile.trainerId,
-      connectAccountId: trainer.connectAccountId,
-      clientId: profile.id,
-      currency: trainer.payoutCurrency ?? 'nzd',
-      description: `${run.name}${type === 'DROP_IN' ? ' (drop-in)' : ''}`,
-      lines: [
-        {
-          kind: 'CLASS_ENROLLMENT',
-          description: `${run.name}${type === 'DROP_IN' ? ' (drop-in)' : ''}`,
-          unitAmount: price,
-          quantity: 1,
-          intent: { classRunId: runId, type, dogId: dogId ?? null },
-        },
-      ],
-      successUrl: `${classesUrl}?enrol=success`,
-      cancelUrl: `${classesUrl}?enrol=cancelled`,
-    })
-    if (!url) return NextResponse.json({ error: 'Could not start checkout' }, { status: 502 })
-    return NextResponse.json({ ok: true, mode: 'payment', url }, { status: 201 })
+    if (!payLater) {
+      const classesUrl = `${env.NEXT_PUBLIC_APP_URL}/my-classes`
+      const { url } = await createConnectCheckout({
+        sandbox,
+        trainerId: profile.trainerId,
+        connectAccountId: trainer.connectAccountId,
+        clientId: profile.id,
+        currency: trainer.payoutCurrency ?? 'nzd',
+        description: `${run.name}${type === 'DROP_IN' ? ' (drop-in)' : ''}`,
+        lines: [
+          {
+            kind: 'CLASS_ENROLLMENT',
+            description: `${run.name}${type === 'DROP_IN' ? ' (drop-in)' : ''}`,
+            unitAmount: price,
+            quantity: 1,
+            intent: { classRunId: runId, type, dogId: dogId ?? null },
+          },
+        ],
+        successUrl: `${classesUrl}?enrol=success`,
+        cancelUrl: `${classesUrl}?enrol=cancelled`,
+      })
+      if (!url) return NextResponse.json({ error: 'Could not start checkout' }, { status: 502 })
+      return NextResponse.json({ ok: true, mode: 'payment', url }, { status: 201 })
+    }
+    // payLater: fall through to the enrolment below, then raise a receivable.
   }
 
   // A priced class with no seat free can't be paid for — fall through to a free
@@ -133,9 +147,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     return NextResponse.json({ error: 'This class is full.' }, { status: 409 })
   }
 
-  // Free (or waitlist) enrolment — straight in.
+  // Free (or waitlist) enrolment — straight in. A priced pay-later enrolment
+  // (require-payment off) also lands here: we enrol, then raise a receivable.
   try {
     const result = await enrollInRun({ classRunId: runId, clientId: profile.id, dogId: dogId ?? null, type, source: 'SELF_SERVE' })
+    if (payLater && result.status === 'ENROLLED') {
+      await prisma.classEnrollment.update({ where: { id: result.enrollmentId }, data: { invoicedAt: new Date() } }).catch(() => {})
+      await createInvoiceForAssignment({
+        trainerId: profile.trainerId,
+        clientId: profile.id,
+        sourceType: 'CLASS_ENROLLMENT',
+        classEnrollmentId: result.enrollmentId,
+      })
+    }
     return NextResponse.json({ ok: true, mode: result.status === 'WAITLISTED' ? 'waitlisted' : 'enrolled' }, { status: 201 })
   } catch (err) {
     if (err instanceof ClassError) {

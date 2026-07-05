@@ -80,6 +80,7 @@ export default async function ClassRunPage({
         defaultSessionFormId: run.package.defaultSessionFormId,
         hasAttendance: attendanceCount > 0,
         imageUrl: run.imageUrl,
+        requirePayment: run.requirePayment,
         assignedMembershipIds: run.assignedTrainers.map(a => a.membershipId),
         assignedTrainers: run.assignedTrainers.map(a => ({
           membershipId: a.membershipId,

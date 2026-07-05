@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { XeroAccountField } from '@/components/shared/xero-account-field'
+import { RequirePaymentField } from '@/components/shared/require-payment-field'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
@@ -28,6 +29,7 @@ interface Product {
   featured: boolean
   active: boolean
   xeroAccountCode: string | null
+  requirePayment: boolean | null
 }
 
 const EMPTY_DRAFT: Omit<Product, 'id'> = {
@@ -40,6 +42,7 @@ const EMPTY_DRAFT: Omit<Product, 'id'> = {
   category: null,
   featured: false,
   xeroAccountCode: null,
+  requirePayment: null,
   active: true,
 }
 
@@ -278,6 +281,7 @@ function ProductEditor({
       featured: draft.featured,
       active: draft.active,
       xeroAccountCode: draft.xeroAccountCode,
+      requirePayment: draft.requirePayment,
     }
 
     try {
@@ -306,6 +310,7 @@ function ProductEditor({
         featured: body.featured,
         active: body.active,
         xeroAccountCode: body.xeroAccountCode ?? null,
+        requirePayment: body.requirePayment ?? null,
       })
     } finally {
       setSaving(false)
@@ -479,6 +484,12 @@ function ProductEditor({
           <XeroAccountField
             value={draft.xeroAccountCode ?? ''}
             onChange={(v) => update('xeroAccountCode', v || null)}
+          />
+
+          {/* Whether clients must pay up front, or can request now and pay later. */}
+          <RequirePaymentField
+            value={draft.requirePayment}
+            onChange={(v) => update('requirePayment', v)}
           />
 
           {/* Toggles */}

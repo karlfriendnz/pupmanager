@@ -5,6 +5,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { safeEvaluate } from '@/lib/achievements'
 import { generateSessionDates, createBookingAssignment } from '@/lib/self-book'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { resolveRequirePayment } from '@/lib/require-payment'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
 import { enforceRateLimit } from '@/lib/rate-limit'
@@ -121,9 +122,16 @@ export async function POST(req: Request) {
         connectAccountId: true,
         payoutCurrency: true,
         sandboxBilling: true,
+        defaultRequirePayment: true,
       },
     })
-    if (trainer?.acceptPaymentsEnabled && trainer.connectChargesEnabled && trainer.connectAccountId) {
+    // Only take the pay-to-book branch when the trainer can take cards AND this
+    // package resolves to require-payment. Otherwise fall through to instant-book
+    // + a receivable (book now, pay later).
+    if (
+      trainer?.acceptPaymentsEnabled && trainer.connectChargesEnabled && trainer.connectAccountId &&
+      resolveRequirePayment(pkg.requirePayment, trainer.defaultRequirePayment)
+    ) {
       const sandbox = trainer.sandboxBilling
       if (!isConnectConfigured(sandbox)) {
         return NextResponse.json({ error: 'Payments are not configured yet' }, { status: 503 })
@@ -161,20 +169,7 @@ export async function POST(req: Request) {
     // Trainer hasn't enabled payments — fall through to the normal flow.
   }
 
-  if (pkg.selfBookRequiresApproval) {
-    await prisma.bookingRequest.create({
-      data: {
-        trainerId: ctx.trainerId,
-        clientId: ctx.clientId,
-        packageId: pkg.id,
-        dogId: ctx.dogId,
-        sessionDates: dates.map(d => d.toISOString()),
-      },
-    })
-    return NextResponse.json({ ok: true, mode: 'requested' }, { status: 201 })
-  }
-
-  // Instant book.
+  // Instant book (free package, or payments off / not-required — book now, pay later).
   const assignmentId = await prisma.$transaction(tx =>
     createBookingAssignment(tx, {
       trainerId: ctx.trainerId,

@@ -33,6 +33,7 @@ type Run = {
   defaultSessionFormId: string | null
   hasAttendance: boolean
   imageUrl: string | null
+  requirePayment: boolean | null
   assignedMembershipIds: string[]
   assignedTrainers: AssignedTrainer[]
 }
@@ -366,6 +367,7 @@ export function RunDetail({
             defaultSessionFormId: run.defaultSessionFormId,
             imageUrl: run.imageUrl,
             assignedMembershipIds: run.assignedMembershipIds,
+            requirePayment: run.requirePayment,
           }}
           onClose={() => setEditing(false)}
           onSaved={() => {
