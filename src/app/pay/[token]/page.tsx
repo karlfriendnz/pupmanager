@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { PayButton } from './pay-button'
+import { PaymentConfirm } from './payment-confirm'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Pay invoice', robots: { index: false, follow: false } }
@@ -142,8 +143,13 @@ export default async function PayPage({ params, searchParams }: {
               <p className="rounded-xl bg-emerald-50 px-4 py-3 text-center text-sm font-medium text-emerald-700">This invoice is paid in full. Thank you!</p>
             ) : paid ? (
               // Returned from Stripe with ?paid=1 but the webhook hasn't settled
-              // yet — reassure rather than showing a stale "pay" button.
-              <p className="rounded-xl bg-emerald-50 px-4 py-3 text-center text-sm font-medium text-emerald-700">Thanks! We’re confirming your payment — this can take a moment.</p>
+              // yet — auto-confirm by polling the status endpoint (no manual refresh).
+              <PaymentConfirm
+                token={invoice.payToken!}
+                currency={cur}
+                amountCents={invoice.amountCents}
+                initialAmountPaidCents={invoice.amountPaidCents}
+              />
             ) : payable && canTakeCard ? (
               <PayButton token={invoice.payToken!} label={`Pay ${money(balance, cur)}`} />
             ) : (
