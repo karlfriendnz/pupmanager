@@ -28,6 +28,7 @@ import {
   ensureXeroContact,
   createXeroInvoice,
   createXeroPayment,
+  fetchXeroInvoiceState,
 } from '@/lib/xero'
 
 type Conn = Parameters<typeof getValidAccessToken>[0]
@@ -280,6 +281,63 @@ describe('createXeroInvoice', () => {
     expect(line.TaxType).toBe('OUTPUT2')
   })
 
+  it('stamps a Date and a DueDate (+14 days) on the AUTHORISED invoice', async () => {
+    let sentBody: Record<string, unknown> = {}
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: { body?: string }) => {
+      sentBody = JSON.parse(String(init?.body))
+      return Promise.resolve({ ok: true, json: async () => ({ Invoices: [{ InvoiceID: 'INV-D' }] }) })
+    }))
+    await createXeroInvoice(fresh, { contactId: 'C-1', hasTax: false, lines: [{ description: 'x', quantity: 1, unitAmountMinor: 100, accountCode: '200' }] })
+
+    // Both are YYYY-MM-DD strings; DueDate is 14 days after Date.
+    const date = new Date(String(sentBody.Date) + 'T00:00:00Z')
+    const due = new Date(String(sentBody.DueDate) + 'T00:00:00Z')
+    expect(String(sentBody.Date)).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(Math.round((due.getTime() - date.getTime()) / 86_400_000)).toBe(14)
+  })
+
+  it('maps EVERY line into LineItems (multi-line)', async () => {
+    let sentBody: Record<string, unknown> = {}
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: { body?: string }) => {
+      sentBody = JSON.parse(String(init?.body))
+      return Promise.resolve({ ok: true, json: async () => ({ Invoices: [{ InvoiceID: 'INV-M' }] }) })
+    }))
+    await createXeroInvoice(fresh, {
+      contactId: 'C-1', hasTax: false,
+      lines: [
+        { description: 'Course', quantity: 1, unitAmountMinor: 12500, accountCode: '200' },
+        { description: 'Treats', quantity: 2, unitAmountMinor: 1250, accountCode: '215' },
+      ],
+    })
+    const items = sentBody.LineItems as Array<Record<string, unknown>>
+    expect(items).toHaveLength(2)
+    expect(items[0]).toMatchObject({ Description: 'Course', Quantity: 1, UnitAmount: 125, AccountCode: '200' })
+    expect(items[1]).toMatchObject({ Description: 'Treats', Quantity: 2, UnitAmount: 12.5, AccountCode: '215' })
+  })
+
+  it('updates in place — includes InvoiceID in the body when invoiceId is set', async () => {
+    let sentBody: Record<string, unknown> = {}
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: { body?: string }) => {
+      sentBody = JSON.parse(String(init?.body))
+      return Promise.resolve({ ok: true, json: async () => ({ Invoices: [{ InvoiceID: 'XINV-EXIST' }] }) })
+    }))
+    await createXeroInvoice(fresh, {
+      invoiceId: 'XINV-EXIST', contactId: 'C-1', hasTax: false,
+      lines: [{ description: 'x', quantity: 1, unitAmountMinor: 100, accountCode: '200' }],
+    })
+    expect(sentBody.InvoiceID).toBe('XINV-EXIST')
+  })
+
+  it('does NOT include an InvoiceID when creating fresh', async () => {
+    let sentBody: Record<string, unknown> = {}
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: { body?: string }) => {
+      sentBody = JSON.parse(String(init?.body))
+      return Promise.resolve({ ok: true, json: async () => ({ Invoices: [{ InvoiceID: 'INV-F' }] }) })
+    }))
+    await createXeroInvoice(fresh, { contactId: 'C-1', hasTax: false, lines: [{ description: 'x', quantity: 1, unitAmountMinor: 100, accountCode: '200' }] })
+    expect(sentBody).not.toHaveProperty('InvoiceID')
+  })
+
   it('uses NoTax and omits TaxType when the trainer has no tax rate', async () => {
     let sentBody: Record<string, unknown> = {}
     vi.stubGlobal('fetch', vi.fn((url: string, init?: { body?: string }) => {
@@ -333,5 +391,39 @@ describe('createXeroPayment', () => {
     await expect(
       createXeroPayment(fresh, { invoiceId: 'INV-1', accountCode: '090', amountMinor: 100, date: new Date() }),
     ).rejects.toThrow(/Xero payment create failed/)
+  })
+})
+
+describe('fetchXeroInvoiceState', () => {
+  const fresh = conn({ accessToken: 'tok', accessTokenExpiresAt: new Date(Date.now() + 10 * 60 * 1000) })
+
+  it('reads AmountPaid/AmountDue (major → minor *100) + status', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      expect(String(url)).toContain('/Invoices/XINV-1')
+      return Promise.resolve({ ok: true, json: async () => ({ Invoices: [{ AmountPaid: 150, AmountDue: 230, Status: 'AUTHORISED' }] }) })
+    }))
+    const state = await fetchXeroInvoiceState(fresh, 'XINV-1')
+    expect(state).toEqual({ amountPaidCents: 15000, amountDueCents: 23000, status: 'AUTHORISED' })
+  })
+
+  it('rounds fractional major-unit amounts to whole cents', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: async () => ({ Invoices: [{ AmountPaid: 12.5, AmountDue: 0, Status: 'PAID' }] }) })))
+    const state = await fetchXeroInvoiceState(fresh, 'XINV-1')
+    expect(state).toMatchObject({ amountPaidCents: 1250, amountDueCents: 0, status: 'PAID' })
+  })
+
+  it('returns null on a 404 (invoice deleted in Xero)', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ status: 404, ok: false })))
+    expect(await fetchXeroInvoiceState(fresh, 'GONE')).toBeNull()
+  })
+
+  it('returns null when Xero returns no invoice', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: async () => ({ Invoices: [] }) })))
+    expect(await fetchXeroInvoiceState(fresh, 'XINV-1')).toBeNull()
+  })
+
+  it('throws on a non-404 error so the caller can retry/surface', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 500, text: async () => 'server error' })))
+    await expect(fetchXeroInvoiceState(fresh, 'XINV-1')).rejects.toThrow(/Xero invoice fetch failed/)
   })
 })

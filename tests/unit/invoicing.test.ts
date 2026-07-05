@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   productFindUnique: vi.fn(),
   invoiceFindFirst: vi.fn(),
   invoiceFindUnique: vi.fn(),
+  invoiceFindMany: vi.fn(),
   invoiceCreate: vi.fn(),
   invoiceUpdate: vi.fn(),
   trainerFindUnique: vi.fn(),
@@ -31,7 +32,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     clientPackage: { findFirst: h.clientPackageFindFirst, findUnique: h.clientPackageFindUnique },
     product: { findFirst: h.productFindFirst, findUnique: h.productFindUnique },
-    invoice: { findFirst: h.invoiceFindFirst, findUnique: h.invoiceFindUnique, create: h.invoiceCreate, update: h.invoiceUpdate },
+    invoice: { findFirst: h.invoiceFindFirst, findUnique: h.invoiceFindUnique, findMany: h.invoiceFindMany, create: h.invoiceCreate, update: h.invoiceUpdate },
     trainerProfile: { findUnique: h.trainerFindUnique },
     clientProfile: { findUnique: h.clientProfileFindUnique },
     notification: { create: h.notificationCreate },
@@ -43,7 +44,14 @@ vi.mock('@/lib/xero-sync', () => ({ ensureClientXeroContact: h.ensureClientXeroC
 vi.mock('@/lib/xero', () => ({ createXeroInvoice: h.createXeroInvoice, fetchXeroInvoiceState: h.fetchXeroInvoiceState }))
 vi.mock('@/lib/env', () => ({ env: { NEXT_PUBLIC_APP_URL: 'https://app.test' } }))
 
-import { createInvoiceForAssignment, applyPaidAmount, reconcileXeroPayment } from '@/lib/invoicing'
+import {
+  createInvoiceForAssignment,
+  applyPaidAmount,
+  reconcileXeroPayment,
+  reconcileTrainerXeroPayments,
+  reconcileAllXeroPayments,
+  sendReceivable,
+} from '@/lib/invoicing'
 
 const PKG = { name: 'Puppy Course', priceCents: 12500, specialPriceCents: null, xeroAccountCode: null }
 
@@ -257,5 +265,127 @@ describe('reconcileXeroPayment', () => {
     const r = await reconcileXeroPayment('inv-1')
     expect(r.ok).toBe(false)
     expect(h.fetchXeroInvoiceState).not.toHaveBeenCalled()
+  })
+
+  it('skips CANCELLED invoices without hitting Xero', async () => {
+    seedInvoice({ status: 'CANCELLED' })
+    const r = await reconcileXeroPayment('inv-1')
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('cancelled')
+    expect(h.fetchXeroInvoiceState).not.toHaveBeenCalled()
+    expect(h.invoiceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('skips sandbox/demo trainers (prod guard) without touching Xero', async () => {
+    // vitest runs with NODE_ENV=test, so the dev bypass is off → sandbox is skipped.
+    seedInvoice({ trainer: { sandboxBilling: true, xeroConnection: { id: 'xc-1', tenantId: 't' } } })
+    const r = await reconcileXeroPayment('inv-1')
+    expect(r.error).toBe('sandbox')
+    expect(h.fetchXeroInvoiceState).not.toHaveBeenCalled()
+  })
+
+  it('no-ops when the trainer is not connected', async () => {
+    seedInvoice({ trainer: { sandboxBilling: false, xeroConnection: null } })
+    const r = await reconcileXeroPayment('inv-1')
+    expect(r.error).toBe('not connected')
+    expect(h.fetchXeroInvoiceState).not.toHaveBeenCalled()
+  })
+
+  it('is a no-op when the invoice no longer exists in Xero (fetch → null)', async () => {
+    seedInvoice()
+    h.fetchXeroInvoiceState.mockResolvedValue(null)
+    const r = await reconcileXeroPayment('inv-1')
+    expect(r).toMatchObject({ ok: true, changed: false })
+    expect(h.invoiceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('best-effort: a Xero error records ERROR status and never throws', async () => {
+    seedInvoice()
+    h.fetchXeroInvoiceState.mockRejectedValue(new Error('429 rate limited'))
+    const r = await reconcileXeroPayment('inv-1')
+    expect(r.ok).toBe(false)
+    expect(h.invoiceUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'inv-1' }, data: expect.objectContaining({ xeroSyncStatus: 'ERROR' }) }),
+    )
+  })
+
+  it('preserves the original paidAt when settling an invoice that already had one', async () => {
+    const original = new Date('2026-06-01T00:00:00Z')
+    seedInvoice({ status: 'PARTIAL', amountPaidCents: 15000, paidAt: original })
+    h.fetchXeroInvoiceState.mockResolvedValue({ amountPaidCents: 38000, amountDueCents: 0, status: 'PAID' })
+    await reconcileXeroPayment('inv-1')
+    expect(h.invoiceUpdate.mock.calls[0][0].data.paidAt).toBe(original)
+  })
+})
+
+describe('reconcileTrainerXeroPayments', () => {
+  it('scopes to the trainer’s still-open synced invoices and counts changes', async () => {
+    h.invoiceFindMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }])
+    // Each reconcile loads the invoice + Xero state → both flip UNPAID → PARTIAL.
+    h.invoiceFindUnique.mockResolvedValue({
+      id: 'a', amountCents: 38000, amountPaidCents: 0, status: 'UNPAID', paidAt: null, xeroInvoiceId: 'XINV',
+      trainer: { sandboxBilling: false, xeroConnection: { id: 'xc-1', tenantId: 't' } },
+    })
+    h.fetchXeroInvoiceState.mockResolvedValue({ amountPaidCents: 15000, amountDueCents: 23000, status: 'AUTHORISED' })
+
+    const res = await reconcileTrainerXeroPayments('t-1')
+    expect(res).toEqual({ checked: 2, updated: 2 })
+    const where = h.invoiceFindMany.mock.calls[0][0].where
+    expect(where).toMatchObject({ trainerId: 't-1', xeroInvoiceId: { not: null }, status: { in: ['UNPAID', 'PARTIAL'] } })
+    expect(h.invoiceFindMany.mock.calls[0][0].orderBy).toEqual({ createdAt: 'asc' })
+  })
+
+  it('reports 0 updated when nothing changed', async () => {
+    h.invoiceFindMany.mockResolvedValue([{ id: 'a' }])
+    h.invoiceFindUnique.mockResolvedValue({
+      id: 'a', amountCents: 38000, amountPaidCents: 15000, status: 'PARTIAL', paidAt: null, xeroInvoiceId: 'XINV',
+      trainer: { sandboxBilling: false, xeroConnection: { id: 'xc-1', tenantId: 't' } },
+    })
+    h.fetchXeroInvoiceState.mockResolvedValue({ amountPaidCents: 15000, amountDueCents: 23000, status: 'AUTHORISED' })
+    expect(await reconcileTrainerXeroPayments('t-1')).toEqual({ checked: 1, updated: 0 })
+  })
+})
+
+describe('reconcileAllXeroPayments', () => {
+  it('scopes to all still-open synced invoices (no trainerId filter)', async () => {
+    h.invoiceFindMany.mockResolvedValue([])
+    const res = await reconcileAllXeroPayments()
+    expect(res).toEqual({ checked: 0, updated: 0 })
+    const where = h.invoiceFindMany.mock.calls[0][0].where
+    expect(where).toEqual({ xeroInvoiceId: { not: null }, status: { in: ['UNPAID', 'PARTIAL'] } })
+    expect(where).not.toHaveProperty('trainerId')
+  })
+})
+
+describe('sendReceivable', () => {
+  function seedSendable(over: Record<string, unknown> = {}) {
+    h.invoiceFindFirst.mockResolvedValue({
+      id: 'inv-1', clientId: 'cp-1', description: 'Puppy Course', amountCents: 12500, currency: 'nzd', status: 'UNPAID',
+      trainer: { businessName: 'Pawsome' },
+      ...over,
+    })
+  }
+
+  it('scopes the lookup by (id, trainerId), stamps sentAt and notifies the client', async () => {
+    seedSendable()
+    const ok = await sendReceivable('inv-1', 't-1')
+    expect(ok).toBe(true)
+    expect(h.invoiceFindFirst.mock.calls[0][0].where).toEqual({ id: 'inv-1', trainerId: 't-1' })
+    expect(h.invoiceUpdate.mock.calls[0][0]).toMatchObject({ where: { id: 'inv-1' } })
+    expect(h.invoiceUpdate.mock.calls[0][0].data.sentAt).toBeInstanceOf(Date)
+    expect(h.notificationCreate).toHaveBeenCalledTimes(1)
+    expect(h.sendEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns false (no send) for a CANCELLED invoice', async () => {
+    seedSendable({ status: 'CANCELLED' })
+    expect(await sendReceivable('inv-1', 't-1')).toBe(false)
+    expect(h.invoiceUpdate).not.toHaveBeenCalled()
+  })
+
+  it('returns false when the invoice is not the trainer’s (findFirst null)', async () => {
+    h.invoiceFindFirst.mockResolvedValue(null)
+    expect(await sendReceivable('inv-1', 't-1')).toBe(false)
+    expect(h.invoiceUpdate).not.toHaveBeenCalled()
   })
 })

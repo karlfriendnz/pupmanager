@@ -27,7 +27,7 @@ export default async function globalSetup() {
   ;(globalThis as unknown as { __E2E_PG__?: EmbeddedPostgres }).__E2E_PG__ = pg
 
   console.log('[e2e] embedded postgres up — pushing schema…')
-  execSync('npx prisma db push --skip-generate --accept-data-loss', {
+  execSync('npx prisma db push --accept-data-loss', {
     stdio: 'inherit',
     env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL, DIRECT_URL: TEST_DATABASE_URL },
   })
@@ -69,6 +69,14 @@ export default async function globalSetup() {
     })
     await prisma.trainerAddon.create({
       data: { trainerId: profile.id, itemId: 'marketing', active: true },
+    })
+    // Timesheets add-on is free but off-by-default (no defaultOn) — the /timesheets
+    // page redirects to add-ons without it, so enable it for the timesheets specs.
+    await prisma.billingItem.create({
+      data: { id: 'timesheets', kind: 'ADDON', name: 'Timesheets', description: 'Staff timesheets', priceMonthly: 0, sortOrder: 4, isActive: true },
+    })
+    await prisma.trainerAddon.create({
+      data: { trainerId: profile.id, itemId: 'timesheets', active: true },
     })
 
     // An accepted MANAGER + STAFF member (with passwords) so permission specs
@@ -150,6 +158,41 @@ export default async function globalSetup() {
     })
     await prisma.package.create({
       data: { id: SEED.businessB.packageId, trainerId: bProfile.id, name: 'Rival Package', sessionCount: 4, weeksBetween: 1 },
+    })
+
+    // ─── Invoicing fixtures (see SEED.invoicing) ─────────────────────────────
+    const INV = SEED.invoicing
+    // A PRICED Business A package — assigning it (without "already invoiced")
+    // raises a receivable via createInvoiceForAssignment.
+    await prisma.package.create({
+      data: { id: INV.pricedPackageId, trainerId: profile.id, name: 'Priced Puppy Course', sessionCount: 4, weeksBetween: 1, priceCents: 38000 },
+    })
+    // A PARTIAL invoice on the assigned client — $150 paid of $380.
+    await prisma.invoice.create({
+      data: {
+        id: INV.partialInvoiceId, trainerId: profile.id, clientId: SEED.assignedClientId,
+        amountCents: 38000, amountPaidCents: 15000, currency: 'nzd', status: 'PARTIAL',
+        description: 'Half-Paid Course', sourceType: 'MANUAL', sentAt: new Date(),
+        lines: { create: [{ description: 'Half-Paid Course', quantity: 1, unitAmountCents: 38000, amountCents: 38000, sortOrder: 0 }] },
+      },
+    })
+    // An editable UNPAID invoice on the assigned client — one $200 line.
+    await prisma.invoice.create({
+      data: {
+        id: INV.editableInvoiceId, trainerId: profile.id, clientId: SEED.assignedClientId,
+        amountCents: 20000, amountPaidCents: 0, currency: 'nzd', status: 'UNPAID',
+        description: 'Editable Invoice', sourceType: 'MANUAL',
+        lines: { create: [{ description: 'Consult', quantity: 1, unitAmountCents: 20000, amountCents: 20000, sortOrder: 0 }] },
+      },
+    })
+    // A Business B invoice — the cross-tenant guard target.
+    await prisma.invoice.create({
+      data: {
+        id: INV.businessBInvoiceId, trainerId: bProfile.id, clientId: SEED.businessB.clientId,
+        amountCents: 5000, amountPaidCents: 0, currency: 'nzd', status: 'UNPAID',
+        description: 'Rival Invoice', sourceType: 'MANUAL',
+        lines: { create: [{ description: 'Rival Item', quantity: 1, unitAmountCents: 5000, amountCents: 5000, sortOrder: 0 }] },
+      },
     })
 
     console.log('[e2e] seed complete')

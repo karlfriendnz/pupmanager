@@ -38,6 +38,20 @@ export const SEED = {
     clientId: 'e2ebclient00000000000000',
     packageId: 'e2ebpackage0000000000000',
   },
+  // ─── Invoicing / Xero fixtures (Business A unless noted) ───────────────────
+  // Fixed-id rows the invoicing.spec.ts asserts against. Seeded in global-setup.
+  invoicing: {
+    // A PRICED package on Business A, so assigning it raises a receivable.
+    pricedPackageId: 'e2epricedpkg000000000000x',
+    // A PARTIAL invoice (amountPaidCents seeded) on Business A's assignedClient —
+    // drives the "paid $X of $Y" / "Partially paid" UI assertions.
+    partialInvoiceId: 'e2epartialinv00000000000x',
+    // An editable UNPAID invoice on Business A's assignedClient — the edit spec
+    // opens it, changes a line, and asserts the total updates.
+    editableInvoiceId: 'e2eeditableinv00000000000',
+    // A Business B invoice — the cross-tenant guard target (A must 404 on it).
+    businessBInvoiceId: 'e2ebinvoice0000000000000x',
+  },
   // Emails we invite trainers at during the multi-trainer spec.
   invitees: [
     { name: 'Manny Manager', email: 'manny@e2e.test', role: 'MANAGER' as const },
