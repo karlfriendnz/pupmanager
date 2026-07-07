@@ -91,6 +91,7 @@ export default async function AdminTrainersPage({
 
       <TrainersTable
         q={q}
+        desktop="table"
         statuses={current.statuses}
         deactivated={current.inactive ? 'only' : 'exclude'}
         internal={current.ours ? 'only' : current.inactive ? 'all' : 'exclude'}

@@ -2,12 +2,15 @@ import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import type { SubscriptionStatus } from '@/generated/prisma'
 import { ChevronRight } from 'lucide-react'
+import { TrainerRow } from './trainer-row'
 
 // The canonical trainers list — used on the dedicated Trainers page and on the
 // admin dashboard so the two never drift apart. Rendered as app-style stacked
-// cards (matching the dashboard's "Latest signups" list) rather than a wide
-// table; each card taps through to that trainer's full view. Detail + all
-// actions live on the full view (/admin/trainers/[id]).
+// cards (matching the dashboard's "Latest signups" list); each card taps
+// through to that trainer's full view. Detail + all actions live on the full
+// view (/admin/trainers/[id]). With `desktop="table"` the cards are
+// mobile-only and md+ gets a classic slim table instead (the Trainers page);
+// the default keeps cards everywhere (the dashboard).
 //
 // `q` filters by name/email (empty = no filter); `statuses` keeps only those
 // subscription statuses (undefined = all); `limit` caps the rows; `onlyNonPaying`
@@ -22,6 +25,7 @@ export async function TrainersTable({
   onlyNonPaying = false,
   deactivated = 'exclude',
   internal = 'exclude',
+  desktop = 'cards',
 }: {
   q?: string
   statuses?: SubscriptionStatus[]
@@ -29,6 +33,7 @@ export async function TrainersTable({
   onlyNonPaying?: boolean
   deactivated?: 'exclude' | 'only' | 'all'
   internal?: 'exclude' | 'only' | 'all'
+  desktop?: 'cards' | 'table'
 }) {
   const and: Array<Record<string, unknown>> = []
   if (q) and.push({ OR: [
@@ -75,7 +80,7 @@ export async function TrainersTable({
     )
   }
 
-  return (
+  const cards = (
     <ul className="rounded-2xl border border-slate-700 bg-slate-800 divide-y divide-slate-700/60">
       {trainers.map(t => {
         const p = t.trainerProfile!
@@ -116,6 +121,46 @@ export async function TrainersTable({
         )
       })}
     </ul>
+  )
+
+  if (desktop === 'cards') return cards
+
+  return (
+    <>
+      <div className="md:hidden">{cards}</div>
+      <div className="hidden md:block bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
+        <table className="w-full text-sm [&_td]:align-middle">
+          <thead>
+            <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
+              <th className="text-left px-4 py-3">Business</th>
+              <th className="text-left px-4 py-3">Plan</th>
+              <th className="text-left px-4 py-3">Clients</th>
+              <th className="text-left px-4 py-3">Joined</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {trainers.map(t => (
+              <TrainerRow key={t.id} trainer={{
+                id: t.id,
+                name: t.name,
+                email: t.email,
+                businessName: t.trainerProfile?.businessName ?? null,
+                subscriptionPlanName: t.trainerProfile?.subscriptionPlan?.name ?? null,
+                subscriptionStatus: t.trainerProfile?.subscriptionStatus ?? null,
+                gracePeriodUntil: t.trainerProfile?.gracePeriodUntil ?? null,
+                isInternal: t.trainerProfile?.isInternal ?? false,
+                signupCountry: t.trainerProfile?.signupCountry ?? null,
+                flag: flagEmoji(t.trainerProfile?.signupCountry ?? null),
+                clientCount: t.trainerProfile?._count?.clients ?? 0,
+                deactivatedAt: t.deactivatedAt ?? null,
+                createdAt: t.createdAt,
+              }} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
 
