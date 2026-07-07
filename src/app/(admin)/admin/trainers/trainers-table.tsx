@@ -2,15 +2,15 @@ import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import type { SubscriptionStatus } from '@/generated/prisma'
 import { ChevronRight } from 'lucide-react'
+import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { TrainerRow } from './trainer-row'
 
-// The canonical trainers list — used on the dedicated Trainers page and on the
-// admin dashboard so the two never drift apart. Rendered as app-style stacked
-// cards (matching the dashboard's "Latest signups" list); each card taps
-// through to that trainer's full view. Detail + all actions live on the full
-// view (/admin/trainers/[id]). With `desktop="table"` the cards are
-// mobile-only and md+ gets a classic slim table instead (the Trainers page);
-// the default keeps cards everywhere (the dashboard).
+// The canonical trainers table — used on the dedicated Trainers page and on the
+// admin dashboard so the two never drift apart. Desktop (md+) renders the full
+// at-a-glance table (name/business/country/plan/clients/onboarding/emails/
+// joined/last seen/trial ends + inline actions); phones get the same rows as
+// stacked cards that tap through to the trainer's full view
+// (/admin/trainers/[id]).
 //
 // `q` filters by name/email (empty = no filter); `statuses` keeps only those
 // subscription statuses (undefined = all); `limit` caps the rows; `onlyNonPaying`
@@ -25,7 +25,6 @@ export async function TrainersTable({
   onlyNonPaying = false,
   deactivated = 'exclude',
   internal = 'exclude',
-  desktop = 'cards',
 }: {
   q?: string
   statuses?: SubscriptionStatus[]
@@ -33,7 +32,6 @@ export async function TrainersTable({
   onlyNonPaying?: boolean
   deactivated?: 'exclude' | 'only' | 'all'
   internal?: 'exclude' | 'only' | 'all'
-  desktop?: 'cards' | 'table'
 }) {
   const and: Array<Record<string, unknown>> = []
   if (q) and.push({ OR: [
@@ -60,13 +58,18 @@ export async function TrainersTable({
     include: {
       trainerProfile: {
         select: {
+          id: true,
           businessName: true,
           subscriptionStatus: true,
+          trialEndsAt: true,
           isInternal: true,
           signupCountry: true,
           gracePeriodUntil: true,
+          seatCount: true,
           subscriptionPlan: { select: { name: true } },
-          _count: { select: { clients: true } },
+          _count: { select: { clients: true, members: true } },
+          // Count of onboarding emails actually sent to this trainer.
+          onboardingProgress: { select: { _count: { select: { emails: true } } } },
         },
       },
     },
@@ -79,6 +82,33 @@ export async function TrainersTable({
       </div>
     )
   }
+
+  // "Sample data" flag per trainer — same signal the trainer app uses to know a
+  // brand-new account is still on the first-run preview records: any remaining
+  // ClientProfile with isSample=true (see (trainer)/layout.tsx + dashboard).
+  // One groupBy keeps it to a single extra query for the whole page.
+  const profileIds = trainers
+    .map(t => t.trainerProfile?.id)
+    .filter((id): id is string => Boolean(id))
+  const sampleGroups = profileIds.length
+    ? await prisma.clientProfile.groupBy({
+        by: ['trainerId'],
+        where: { trainerId: { in: profileIds }, isSample: true },
+        _count: { _all: true },
+      })
+    : []
+  const sampleByTrainer = new Map(sampleGroups.map(g => [g.trainerId, g._count._all]))
+
+  // Onboarding progress per trainer — use the same live-derived completion the
+  // dashboard checklist uses (a step counts as done when the underlying action
+  // is done OR it was explicitly marked), not just the raw step-progress rows.
+  const onboarding = await Promise.all(
+    trainers.map(async t => {
+      if (!t.trainerProfile?.id) return { completed: 0, total: 0 }
+      const fab = await getOnboardingFabState(t.trainerProfile.id)
+      return { completed: fab.steps.filter(s => s.status === 'completed').length, total: fab.totalSteps }
+    }),
+  )
 
   const cards = (
     <ul className="rounded-2xl border border-slate-700 bg-slate-800 divide-y divide-slate-700/60">
@@ -123,42 +153,60 @@ export async function TrainersTable({
     </ul>
   )
 
-  if (desktop === 'cards') return cards
-
   return (
     <>
       <div className="md:hidden">{cards}</div>
       <div className="hidden md:block bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-        <table className="w-full text-sm [&_td]:align-middle">
-          <thead>
-            <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
-              <th className="text-left px-4 py-3">Business</th>
-              <th className="text-left px-4 py-3">Plan</th>
-              <th className="text-left px-4 py-3">Clients</th>
-              <th className="text-left px-4 py-3">Joined</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {trainers.map(t => (
-              <TrainerRow key={t.id} trainer={{
-                id: t.id,
-                name: t.name,
-                email: t.email,
-                businessName: t.trainerProfile?.businessName ?? null,
-                subscriptionPlanName: t.trainerProfile?.subscriptionPlan?.name ?? null,
-                subscriptionStatus: t.trainerProfile?.subscriptionStatus ?? null,
-                gracePeriodUntil: t.trainerProfile?.gracePeriodUntil ?? null,
-                isInternal: t.trainerProfile?.isInternal ?? false,
-                signupCountry: t.trainerProfile?.signupCountry ?? null,
-                flag: flagEmoji(t.trainerProfile?.signupCountry ?? null),
-                clientCount: t.trainerProfile?._count?.clients ?? 0,
-                deactivatedAt: t.deactivatedAt ?? null,
-                createdAt: t.createdAt,
-              }} />
-            ))}
-          </tbody>
-        </table>
+        {/* overflow-x-auto + min-w keeps the 10 columns readable on a narrow
+            desktop window instead of squashing into an unreadable mess. */}
+        <div className="overflow-x-auto">
+          {/* [&_td]:align-middle — table cells default to baseline alignment,
+              which left the action icons sitting on the text baseline; middle
+              keeps every column (and the icon row) vertically centered. */}
+          <table className="w-full min-w-[900px] text-sm [&_td]:align-middle">
+            <thead>
+              <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
+                <th className="text-left px-4 py-3">Name</th>
+                <th className="text-left px-4 py-3">Business</th>
+                <th className="text-left px-4 py-3">Country</th>
+                <th className="text-left px-4 py-3">Plan</th>
+                <th className="text-left px-4 py-3">Clients</th>
+                <th className="text-left px-4 py-3">Onboarding</th>
+                <th className="text-left px-4 py-3">Emails</th>
+                <th className="text-left px-4 py-3">Joined</th>
+                <th className="text-left px-4 py-3">Last seen</th>
+                <th className="text-left px-4 py-3">Trial ends</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {trainers.map((t, i) => (
+                <TrainerRow key={t.id} trainer={{
+                  id: t.id,
+                  name: t.name,
+                  email: t.email,
+                  businessName: t.trainerProfile?.businessName ?? null,
+                  subscriptionPlanName: t.trainerProfile?.subscriptionPlan?.name ?? null,
+                  subscriptionStatus: t.trainerProfile?.subscriptionStatus ?? null,
+                  trialEndsAt: t.trainerProfile?.trialEndsAt ?? null,
+                  isInternal: t.trainerProfile?.isInternal ?? false,
+                  signupCountry: t.trainerProfile?.signupCountry ?? null,
+                  clientCount: t.trainerProfile?._count?.clients ?? 0,
+                  sampleClientCount: t.trainerProfile?.id ? (sampleByTrainer.get(t.trainerProfile.id) ?? 0) : 0,
+                  onboardingCompleted: onboarding[i].completed,
+                  onboardingTotal: onboarding[i].total,
+                  onboardingEmails: t.trainerProfile?.onboardingProgress?._count?.emails ?? 0,
+                  gracePeriodUntil: t.trainerProfile?.gracePeriodUntil ?? null,
+                  seatCount: t.trainerProfile?.seatCount ?? 1,
+                  seatsUsed: t.trainerProfile?._count?.members ?? 0,
+                  deactivatedAt: t.deactivatedAt ?? null,
+                  createdAt: t.createdAt,
+                  lastLoginAt: t.lastLoginAt ?? null,
+                }} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </>
   )
