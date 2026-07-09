@@ -70,9 +70,9 @@ export const DRIP_ACTIVATION = new Date('2026-06-07T00:00:00+12:00')
 // Addresses that should never receive onboarding/trial emails (test/junk accounts).
 export const SUPPRESSED_RECIPIENTS = new Set(['t9rc8rb5j8@privaterelay.appleid.com'])
 
-// Replies to onboarding/trial emails go to the shared support inbox (the From
-// still carries the founder's voice for warmth — see FOUNDER_NAME below).
-const SUPPORT_REPLY_TO = 'info@pupmanager.com'
+// Replies to onboarding/trial emails go to Brooke (the From still carries the
+// founder's voice for warmth — see FOUNDER_NAME below).
+const SUPPORT_REPLY_TO = 'brooke@pupmanager.com'
 const FOUNDER_NAME: Record<string, string> = { karl: 'Karl', brooke: 'Brooke' }
 
 type Trigger = {
