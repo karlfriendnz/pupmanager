@@ -50,6 +50,7 @@ export default async function EditPackagePage({
             sessionCount: pkg.sessionCount,
             weeksBetween: pkg.weeksBetween,
             durationMins: pkg.durationMins,
+            bufferMins: pkg.bufferMins,
             sessionType: pkg.sessionType,
             priceCents: pkg.priceCents,
             specialPriceCents: pkg.specialPriceCents,

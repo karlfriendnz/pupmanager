@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { XeroAccountField } from '@/components/shared/xero-account-field'
 import { RequirePaymentField } from '@/components/shared/require-payment-field'
+import { BufferField } from '@/components/shared/buffer-field'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
@@ -33,6 +34,9 @@ export interface PkgRow {
   sessionCount: number
   weeksBetween: number
   durationMins: number
+  // "Gap before the next session" — optional so older loaders that don't select
+  // it still satisfy the type; the form defaults it to 0.
+  bufferMins?: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
   priceCents: number | null
   specialPriceCents: number | null
@@ -111,6 +115,8 @@ export function PackageForm({
   const [color, setColor] = useState<PackageColor | null>(existing?.color ?? null)
   const [defaultSessionFormId, setDefaultSessionFormId] = useState<string | null>(existing?.defaultSessionFormId ?? null)
   const [requireSessionNotes, setRequireSessionNotes] = useState<boolean>(existing?.requireSessionNotes ?? true)
+  // Turnaround gap blocked out after each session of this package.
+  const [bufferMins, setBufferMins] = useState<number>(existing?.bufferMins ?? 0)
   // Group-class config — extra state (not RHF fields).
   const [isGroup, setIsGroup] = useState<boolean>(existing?.isGroup ?? false)
   const [capacity, setCapacity] = useState<string>(
@@ -163,6 +169,7 @@ export function PackageForm({
         description: values.description || null,
         priceCents: dollarsToCents(price),
         specialPriceCents: dollarsToCents(specialPrice),
+        bufferMins,
         color,
         defaultSessionFormId,
         requireSessionNotes,
@@ -188,6 +195,7 @@ export function PackageForm({
         sessionCount: saved.sessionCount,
         weeksBetween: saved.weeksBetween,
         durationMins: saved.durationMins,
+        bufferMins: saved.bufferMins ?? 0,
         sessionType: saved.sessionType,
         priceCents: saved.priceCents ?? null,
         specialPriceCents: saved.specialPriceCents ?? null,
@@ -249,6 +257,10 @@ export function PackageForm({
         error={errors.durationMins?.message}
         {...register('durationMins', { valueAsNumber: true })}
       />
+
+      {/* Turnaround gap after each session — travel, clean-up, reset. Blocked
+          out on the calendar so nothing can be booked into it. */}
+      <BufferField id="package-buffer" value={bufferMins} onChange={setBufferMins} />
 
       <div>
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Session type</label>

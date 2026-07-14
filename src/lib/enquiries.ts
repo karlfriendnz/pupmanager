@@ -67,7 +67,7 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
   let booked:
     | {
         slotAt: Date
-        pkg: { id: string; name: string; sessionCount: number; weeksBetween: number; durationMins: number; sessionType: import('@/generated/prisma').SessionType } | null
+        pkg: { id: string; name: string; sessionCount: number; weeksBetween: number; durationMins: number; bufferMins: number; sessionType: import('@/generated/prisma').SessionType } | null
         duration: number
         sessionType: import('@/generated/prisma').SessionType
         title: string
@@ -77,7 +77,9 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
     const pkg = enquiry.bookedPackageId
       ? await prisma.package.findFirst({
           where: { id: enquiry.bookedPackageId, trainerId: enquiry.trainerId },
-          select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, sessionType: true },
+          // bufferMins: an accepted prospect's series books with the same
+          // turnaround gap as any other booking of this package.
+          select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true },
         })
       : null
     const page = enquiry.bookedPageId

@@ -38,6 +38,7 @@ export default async function PackagesPage({
         sessionCount: p.sessionCount,
         weeksBetween: p.weeksBetween,
         durationMins: p.durationMins,
+        bufferMins: p.bufferMins,
         sessionType: p.sessionType,
         priceCents: p.priceCents,
         specialPriceCents: p.specialPriceCents,

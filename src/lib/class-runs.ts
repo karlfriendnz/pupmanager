@@ -7,6 +7,7 @@
 // The 1:1 ClientPackage path is entirely separate and untouched.
 import { prisma } from './prisma'
 import type { Prisma, PrismaClient } from '@/generated/prisma'
+import { effectiveBufferMins, normalizeBufferMins } from './buffer'
 
 // Re-exported so server code can keep importing it from here; the flag
 // itself lives in the client-safe feature-flags module.
@@ -136,6 +137,9 @@ export async function createClassRun(args: {
   startDate: Date
   scheduleNote?: string | null
   capacity?: number | null
+  // Per-run override of the package's "gap before the next session".
+  // undefined/null = inherit the package's bufferMins.
+  bufferMins?: number | null
 }): Promise<{ id: string; sessionCount: number }> {
   const pkg = await prisma.package.findFirst({
     where: { id: args.packageId, trainerId: args.trainerId, isGroup: true },
@@ -143,6 +147,7 @@ export async function createClassRun(args: {
   if (!pkg) throw new ClassError('PACKAGE_NOT_FOUND', 'Group package not found')
 
   const dates = generateSessionDates(args.startDate, pkg.sessionCount, pkg.weeksBetween)
+  const buffer = effectiveBufferMins(args.bufferMins, pkg.bufferMins)
 
   return prisma.$transaction(async (tx) => {
     const run = await tx.classRun.create({
@@ -153,6 +158,7 @@ export async function createClassRun(args: {
         scheduleNote: args.scheduleNote ?? null,
         startDate: args.startDate,
         capacity: args.capacity ?? null,
+        bufferMins: args.bufferMins ?? null,
       },
     })
     await tx.trainingSession.createMany({
@@ -166,6 +172,7 @@ export async function createClassRun(args: {
             : args.name,
         scheduledAt: d,
         durationMins: pkg.durationMins,
+        bufferMins: buffer,
         sessionType: pkg.sessionType,
       })),
     })
@@ -187,6 +194,9 @@ export async function createClassWithPackage(args: {
   sessionCount: number
   weeksBetween: number
   durationMins: number
+  // "Gap before the next session" — travel / clean-up / reset. Stored on the
+  // backing package AND snapshotted onto each created session.
+  bufferMins?: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
   priceCents?: number | null
   capacity?: number | null
@@ -201,6 +211,7 @@ export async function createClassWithPackage(args: {
 }): Promise<{ id: string; sessionCount: number }> {
   const count = args.sessionCount > 0 ? args.sessionCount : 1
   const dates = generateSessionDates(args.startDate, count, args.weeksBetween)
+  const buffer = normalizeBufferMins(args.bufferMins)
 
   return prisma.$transaction(async (tx) => {
     const pkg = await tx.package.create({
@@ -210,6 +221,7 @@ export async function createClassWithPackage(args: {
         sessionCount: count,
         weeksBetween: args.weeksBetween,
         durationMins: args.durationMins,
+        bufferMins: buffer,
         sessionType: args.sessionType,
         priceCents: args.priceCents ?? null,
         isGroup: true,
@@ -239,6 +251,7 @@ export async function createClassWithPackage(args: {
         title: count > 1 ? `${args.name} — session ${i + 1}/${count}` : args.name,
         scheduledAt: d,
         durationMins: args.durationMins,
+        bufferMins: buffer,
         sessionType: args.sessionType,
       })),
     })
@@ -262,6 +275,8 @@ export async function updateClass(args: {
   capacity: number | null
   priceCents: number | null
   durationMins: number
+  // "Gap before the next session"; undefined leaves it untouched.
+  bufferMins?: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
   startDate: Date
   sessionCount: number
@@ -299,6 +314,14 @@ export async function updateClass(args: {
     }
   }
 
+  // The gap the class's sessions should now carry. A class edited through the
+  // form always writes the buffer onto its backing package, so the run-level
+  // override stays null and the two can never drift.
+  const buffer =
+    args.bufferMins !== undefined
+      ? normalizeBufferMins(args.bufferMins)
+      : effectiveBufferMins(run.bufferMins, run.package.bufferMins)
+
   await prisma.$transaction(async (tx) => {
     await tx.package.update({
       where: { id: run.packageId },
@@ -310,6 +333,7 @@ export async function updateClass(args: {
         capacity: args.capacity,
         sessionCount: args.sessionCount,
         weeksBetween: args.weeksBetween,
+        ...(args.bufferMins !== undefined && { bufferMins: buffer }),
         ...(args.defaultSessionFormId !== undefined && { defaultSessionFormId: args.defaultSessionFormId }),
       },
     })
@@ -320,6 +344,7 @@ export async function updateClass(args: {
         scheduleNote: args.scheduleNote,
         capacity: args.capacity,
         startDate: args.startDate,
+        ...(args.bufferMins !== undefined && { bufferMins: buffer }),
         ...(args.imageUrl !== undefined && { imageUrl: args.imageUrl }),
         ...(args.requirePayment !== undefined && { requirePayment: args.requirePayment }),
       },
@@ -338,11 +363,14 @@ export async function updateClass(args: {
           title: args.sessionCount > 1 ? `${args.name} — session ${i + 1}/${args.sessionCount}` : args.name,
           scheduledAt: d,
           durationMins: args.durationMins,
+          bufferMins: buffer,
           sessionType: args.sessionType,
         })),
       })
     } else {
-      // Schedule unchanged — propagate name/duration/format to existing sessions.
+      // Schedule unchanged — propagate name/duration/buffer/format to existing
+      // sessions. A class is one shared event the trainer is editing head-on, so
+      // (unlike a 1:1 package) changing its gap here is meant to apply to it.
       for (const s of run.sessions) {
         const idx = s.sessionIndex ?? 1
         await tx.trainingSession.update({
@@ -350,6 +378,7 @@ export async function updateClass(args: {
           data: {
             title: args.sessionCount > 1 ? `${args.name} — session ${idx}/${args.sessionCount}` : args.name,
             durationMins: args.durationMins,
+            ...(args.bufferMins !== undefined && { bufferMins: buffer }),
             sessionType: args.sessionType,
           },
         })

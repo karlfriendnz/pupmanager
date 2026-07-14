@@ -62,6 +62,9 @@ export function bookingConfig(
     availEndTime?: string | null
   },
   tz: string,
+  // Turnaround gap the booked session will carry — the page's package's
+  // bufferMins. Omit (or 0) for a single-session page with no package.
+  slotBufferMins = 0,
 ): BookingPageConfig {
   // The page's own availability window applies only when both times are set.
   const days = Array.isArray(page.availDays) ? (page.availDays as number[]).filter(d => d >= 1 && d <= 7) : []
@@ -76,6 +79,7 @@ export function bookingConfig(
     slotLengthMins: page.slotLengthMins,
     slotIntervalMins: page.slotIntervalMins,
     minNoticeHours: page.minNoticeHours,
+    slotBufferMins,
     availability,
   }
 }
@@ -87,7 +91,7 @@ interface MaterializeArgs {
   slotAt: Date
   // The package this booking kicks off, if the page offers one. Null = single
   // one-off session of `singleDurationMins`/`singleSessionType`.
-  pkg: { id: string; name: string; sessionCount: number; weeksBetween: number; durationMins: number; sessionType: SessionType } | null
+  pkg: { id: string; name: string; sessionCount: number; weeksBetween: number; durationMins: number; bufferMins?: number; sessionType: SessionType } | null
   singleDurationMins: number
   singleSessionType: SessionType
   singleTitle: string

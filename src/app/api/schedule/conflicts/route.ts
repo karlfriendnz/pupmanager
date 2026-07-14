@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { fetchCalendarEvents } from '@/lib/google-calendar'
 import { busyOverlaps } from '@/lib/google-calendar-sync'
+import { normalizeBufferMins, occupiedEndMs } from '@/lib/buffer'
 
 // Shared booking-conflict check used by every create/reschedule surface. Returns
 // what the ASSIGNED member (the person who'll run the session) already has over
@@ -13,7 +14,14 @@ import { busyOverlaps } from '@/lib/google-calendar-sync'
 // Tenant-scoped to the caller's company. Best-effort: any failure returns empty
 // arrays (200) so a booking is never blocked by a conflict-lookup error.
 //
+// A session's occupied window includes the turnaround BUFFER it was booked with
+// (travel / clean-up): [scheduledAt, +durationMins +bufferMins). Buffers count on
+// both sides — the proposed booking's own buffer (?bufferMins=) extends its end
+// too, so it can't be wedged in right before an existing session either. Google
+// busy blocks have no buffer, so they're still compared against the raw window.
+//
 // Query: ?start=ISO&end=ISO&membershipId=<assignee|omit for unassigned/owner>
+//        &bufferMins=<the proposed session's turnaround gap, default 0>
 //        &excludeSessionId=<the session being rescheduled, so it doesn't self-clash>
 export async function GET(req: Request) {
   const ctx = await getTrainerContext()
@@ -26,6 +34,10 @@ export async function GET(req: Request) {
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
       return NextResponse.json({ sessionConflicts: [], busyConflicts: [] })
     }
+    // The proposed session's own trailing buffer, appended to `end` for the
+    // session-vs-session comparison only.
+    const proposedBuffer = normalizeBufferMins(Number(searchParams.get('bufferMins') ?? 0))
+    const bufferedEnd = new Date(end.getTime() + proposedBuffer * 60_000)
     const excludeSessionId = searchParams.get('excludeSessionId') || undefined
     const rawMembership = searchParams.get('membershipId')
 
@@ -61,12 +73,12 @@ export async function GET(req: Request) {
     const candidates = await prisma.trainingSession.findMany({
       where: {
         trainerId: ctx.companyId,
-        scheduledAt: { gte: windowStart, lt: end },
+        scheduledAt: { gte: windowStart, lt: bufferedEnd },
         ...assignedFilter,
         ...(excludeSessionId ? { id: { not: excludeSessionId } } : {}),
       },
       select: {
-        id: true, title: true, scheduledAt: true, durationMins: true,
+        id: true, title: true, scheduledAt: true, durationMins: true, bufferMins: true,
         client: { select: { user: { select: { name: true } } } },
         dog: { select: { name: true } },
         classRun: { select: { name: true } },
@@ -77,13 +89,21 @@ export async function GET(req: Request) {
     })
 
     const sessionConflicts = candidates
-      .filter((s) => busyOverlaps(start, end, s.scheduledAt, new Date(s.scheduledAt.getTime() + s.durationMins * 60_000)))
+      .filter((s) =>
+        busyOverlaps(
+          start,
+          bufferedEnd,
+          s.scheduledAt,
+          new Date(occupiedEndMs(s.scheduledAt.getTime(), s.durationMins, s.bufferMins)),
+        ),
+      )
       .slice(0, 20)
       .map((s) => ({
         id: s.id,
         title: s.title,
         scheduledAt: s.scheduledAt.toISOString(),
         durationMins: s.durationMins,
+        bufferMins: s.bufferMins,
         label: s.client?.user?.name || s.dog?.name || s.classRun?.name || s.clientPackage?.package?.name || null,
       }))
 

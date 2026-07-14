@@ -26,7 +26,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const reqRow = await prisma.bookingRequest.findFirst({
     where: { id, trainerId, status: 'PENDING' },
     include: {
-      package: { select: { name: true, sessionCount: true, durationMins: true, sessionType: true } },
+      // bufferMins rides along so a trainer-confirmed request books with the
+      // package's turnaround gap, exactly like an instant book.
+      package: { select: { name: true, sessionCount: true, durationMins: true, bufferMins: true, sessionType: true } },
     },
   })
   if (!reqRow) return NextResponse.json({ error: 'Not found' }, { status: 404 })

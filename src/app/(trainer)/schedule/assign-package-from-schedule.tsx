@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { Package as PackageIcon, X, AlertTriangle, ChevronDown, Check, Search, Plus } from 'lucide-react'
 import { findNextAvailable, type AvailabilityRow } from '@/lib/availability'
+import { occupiedEndMs } from '@/lib/buffer'
 import { createQuickClient } from '@/lib/quick-client'
 
 interface ClientOption {
@@ -21,6 +22,9 @@ interface PkgOption {
   sessionCount: number
   weeksBetween: number
   durationMins: number
+  // Turnaround gap booked after each session of this package — occupied time,
+  // so a proposal that lands in it clashes.
+  bufferMins: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
 }
 
@@ -320,7 +324,7 @@ function AssignPackageFromScheduleModalInner({
   // Conflict detection: pull existing sessions in the proposal range and
   // flag any proposal whose interval overlaps. Refetches when the date
   // range covered by proposals changes.
-  const [existing, setExisting] = useState<{ id: string; title: string; scheduledAt: string; durationMins: number }[]>([])
+  const [existing, setExisting] = useState<{ id: string; title: string; scheduledAt: string; durationMins: number; bufferMins?: number }[]>([])
   // Google Calendar busy blocks over the same range, so the screen "already
   // knows" about a Google event at a proposed time — not just PupManager sessions.
   // Seeded from the schedule's already-loaded busy blocks so a clash shows the
@@ -329,7 +333,7 @@ function AssignPackageFromScheduleModalInner({
   const placed = proposals.map(p => p.at).filter((d): d is Date => d !== null)
   const rangeFromIso = placed.length > 0 ? new Date(placed[0].getTime() - 60 * 60 * 1000).toISOString() : null
   const rangeToIso = placed.length > 0
-    ? new Date(placed[placed.length - 1].getTime() + pkg.durationMins * 60 * 1000 + 60 * 60 * 1000).toISOString()
+    ? new Date(occupiedEndMs(placed[placed.length - 1].getTime(), pkg.durationMins, pkg.bufferMins) + 60 * 60 * 1000).toISOString()
     : null
   useEffect(() => {
     if (!rangeFromIso || !rangeToIso) { setExisting([]); return } // keep the seeded busy
@@ -350,10 +354,13 @@ function AssignPackageFromScheduleModalInner({
 
   function conflictFor(at: Date): { title: string; scheduledAt: string } | null {
     const startA = at.getTime()
-    const endA = startA + pkg.durationMins * 60 * 1000
+    // Both sides count their turnaround buffer as occupied time: this package's
+    // gap can't run into an existing session, and an existing session's gap
+    // can't be booked into. (Google events have no buffer — raw window below.)
+    const endA = occupiedEndMs(startA, pkg.durationMins, pkg.bufferMins)
     for (const s of existing) {
       const startB = new Date(s.scheduledAt).getTime()
-      const endB = startB + s.durationMins * 60 * 1000
+      const endB = occupiedEndMs(startB, s.durationMins, s.bufferMins)
       if (startA < endB && startB < endA) return { title: s.title, scheduledAt: s.scheduledAt }
     }
     // Then the trainer's own Google Calendar events (named when we have the title).

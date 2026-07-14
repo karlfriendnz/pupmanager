@@ -33,6 +33,9 @@ export async function GET(req: Request) {
       title: true,
       scheduledAt: true,
       durationMins: true,
+      // The turnaround gap the session was booked with — part of the window a
+      // drag-drop must not land in.
+      bufferMins: true,
       status: true,
       // The assigned member drives the per-person double-booking gate: a drag-drop
       // only flags a clash against sessions run by the SAME person (null = owner).
@@ -54,6 +57,7 @@ export async function GET(req: Request) {
     title: s.title,
     scheduledAt: s.scheduledAt.toISOString(),
     durationMins: s.durationMins,
+    bufferMins: s.bufferMins,
     status: s.status,
     assignedMembershipId: s.assignedMembershipId,
     classRunId: s.classRunId,

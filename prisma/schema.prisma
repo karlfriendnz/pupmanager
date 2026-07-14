@@ -1068,6 +1068,13 @@ model TrainingSession {
   description          String?       @db.Text
   scheduledAt          DateTime
   durationMins         Int           @default(60)
+  // Turnaround gap this session was BOOKED with (travel / clean-up / reset),
+  // snapshotted from the ClassRun override → its Package → 0 at creation time.
+  // Held on the session (not read through the package) because there is no
+  // endsAt: every clash/availability check already has the session row, and a
+  // later edit to the package must not silently move bookings that are already
+  // in the diary. Occupied window = [scheduledAt, +durationMins +bufferMins).
+  bufferMins           Int           @default(0)
   sessionType          SessionType   @default(IN_PERSON)
   status               SessionStatus @default(UPCOMING)
   // Whether the trainer has invoiced this session (Xero/QBO/manual). Tracked
@@ -1260,6 +1267,10 @@ model Package {
   sessionCount             Int         @default(3)
   weeksBetween             Int         @default(2) // gap between sessions, in weeks
   durationMins             Int         @default(60) // default duration applied to created sessions
+  // Turnaround gap AFTER each session of this package — travel, clean-up, reset.
+  // Nothing may be booked into it: a session's occupied window is
+  // [scheduledAt, scheduledAt + durationMins + bufferMins). 0 = back-to-back.
+  bufferMins               Int         @default(0)
   sessionType              SessionType @default(IN_PERSON)
   // Prices in cents to avoid float precision issues. specialPriceCents is an
   // optional discounted price the trainer can offer for promotions, etc.
@@ -1387,6 +1398,9 @@ model ClassRun {
   scheduleNote String? // human cadence, e.g. "Tuesdays 6:00pm"
   startDate    DateTime
   capacity     Int? // per-run override of Package.capacity
+  // Per-run override of Package.bufferMins (the gap before the next session).
+  // NULL = inherit the package's value — same tri-state shape as `capacity`.
+  bufferMins   Int?
   imageUrl     String? // optional cover image (Vercel Blob URL)
   status       ClassRunStatus @default(SCHEDULED)
   // Per-class "require payment to enrol" override. null = inherit the trainer's

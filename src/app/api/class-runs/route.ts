@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { createClassRun, createClassWithPackage, ClassError } from '@/lib/class-runs'
+import { MAX_BUFFER_MINS } from '@/lib/buffer'
 
 // GET  /api/class-runs        — every run for the trainer (+ enrolled count)
 // POST /api/class-runs        — create a run + its shared session series
@@ -48,6 +49,8 @@ const createSchema = z.object({
   sessionCount: z.number().int().min(1).max(52).optional(),
   weeksBetween: z.number().int().min(1).max(8).optional(),
   durationMins: z.number().int().min(5).max(600).optional(),
+  // "Gap before the next session" — travel / clean-up time after each class.
+  bufferMins: z.number().int().min(0).max(MAX_BUFFER_MINS).optional(),
   sessionType: z.enum(['IN_PERSON', 'VIRTUAL']).optional(),
   priceCents: z.number().int().min(0).max(10_000_00).nullable().optional(),
   color: z.string().max(20).nullable().optional(),
@@ -86,6 +89,8 @@ export async function POST(req: Request) {
       const run = await createClassRun({
         trainerId, packageId: d.packageId, name: d.name, startDate,
         scheduleNote: d.scheduleNote ?? null, capacity: d.capacity ?? null,
+        // undefined → inherit the group package's own gap.
+        bufferMins: d.bufferMins ?? null,
       })
       return NextResponse.json({ ok: true, ...run }, { status: 201 })
     }
@@ -101,6 +106,7 @@ export async function POST(req: Request) {
       sessionCount: d.sessionCount,
       weeksBetween: d.weeksBetween ?? 1,
       durationMins: d.durationMins,
+      bufferMins: d.bufferMins ?? 0,
       sessionType: d.sessionType,
       priceCents: d.priceCents ?? null,
       capacity: d.capacity ?? null,

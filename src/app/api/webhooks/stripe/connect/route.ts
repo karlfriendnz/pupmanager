@@ -398,11 +398,13 @@ async function fulfilScheduledBooking(
   const slotAt = new Date(intent.slotIso)
   if (Number.isNaN(slotAt.getTime())) return none
 
-  let pkg: { id: string; name: string; sessionCount: number; weeksBetween: number; durationMins: number; sessionType: SessionType } | null = null
+  // bufferMins comes along so a PAID booking gets the same turnaround gap a free
+  // one does (the sessions snapshot it at creation).
+  let pkg: { id: string; name: string; sessionCount: number; weeksBetween: number; durationMins: number; bufferMins: number; sessionType: SessionType } | null = null
   if (intent.packageId) {
     const p = await tx.package.findUnique({
       where: { id: intent.packageId },
-      select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, sessionType: true },
+      select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true },
     })
     if (p) pkg = p
   }

@@ -27,6 +27,8 @@ type Run = {
   allowWaitlist: boolean
   priceCents: number | null
   durationMins: number
+  // "Gap before the next session" — turnaround time blocked after each class.
+  bufferMins: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
   weeksBetween: number
   sessionCount: number
@@ -368,6 +370,7 @@ export function RunDetail({
             weeksBetween: run.weeksBetween,
             sessionCount: run.sessionCount,
             durationMins: run.durationMins,
+            bufferMins: run.bufferMins,
             sessionType: run.sessionType,
             priceCents: run.priceCents,
             capacity: run.capacity,

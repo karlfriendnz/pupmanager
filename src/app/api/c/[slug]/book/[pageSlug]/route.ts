@@ -46,7 +46,7 @@ async function loadPackage(trainerId: string, packageId: string | null) {
   if (!packageId) return null
   return prisma.package.findFirst({
     where: { id: packageId, trainerId },
-    select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, sessionType: true, priceCents: true, specialPriceCents: true },
+    select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true, priceCents: true, specialPriceCents: true },
   })
 }
 
@@ -55,7 +55,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const ctx = await loadEnabledPage(slug, pageSlug)
   if (!ctx) return NextResponse.json({ error: 'Booking not available' }, { status: 404 })
 
-  const days = await fetchBookingSlots(ctx.trainer.id, bookingConfig(ctx.page, ctx.trainer.user.timezone))
+  // The page's package (if any) carries the turnaround buffer the booked session
+  // will occupy — it has to be known here or the picker would offer slots that
+  // the POST re-validation then rejects.
+  const gPkg = await loadPackage(ctx.trainer.id, ctx.page.packageId)
+  const days = await fetchBookingSlots(
+    ctx.trainer.id,
+    bookingConfig(ctx.page, ctx.trainer.user.timezone, gPkg?.bufferMins ?? 0),
+  )
   return NextResponse.json({ days })
 }
 
@@ -84,12 +91,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const slotAt = new Date(parsed.data.slotIso)
   if (Number.isNaN(slotAt.getTime())) return NextResponse.json({ error: 'Invalid slot' }, { status: 400 })
 
-  const cfg = bookingConfig(page, tz)
+  // Load the package first: its turnaround buffer is part of what the slot
+  // occupies, so the re-validation below has to know about it.
+  const pkg = await loadPackage(trainer.id, page.packageId)
+
+  const cfg = bookingConfig(page, tz, pkg?.bufferMins ?? 0)
   if (!(await isSlotAvailable(trainer.id, cfg, slotAt.toISOString()))) {
     return NextResponse.json({ error: 'That time was just taken — pick another.', code: 'SLOT_TAKEN' }, { status: 409 })
   }
-
-  const pkg = await loadPackage(trainer.id, page.packageId)
 
   const session = await auth()
   const client = session?.user?.id

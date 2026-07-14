@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { MAX_BUFFER_MINS } from '@/lib/buffer'
 
 const schema = z.object({
   name: z.string().min(1),
@@ -11,6 +12,9 @@ const schema = z.object({
   sessionCount: z.number().int().min(0).max(52),
   weeksBetween: z.number().int().min(0).max(52),
   durationMins: z.number().int().min(15).max(480),
+  // "Gap before the next session" — turnaround/travel time blocked out after
+  // each session of this package. 0 = back-to-back.
+  bufferMins: z.number().int().min(0).max(MAX_BUFFER_MINS).optional(),
   sessionType: z.enum(['IN_PERSON', 'VIRTUAL']).optional(),
   // Prices stored in cents. Accept 0 (free) up to a sane upper bound.
   priceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
@@ -80,6 +84,7 @@ export async function POST(req: Request) {
       sessionCount: parsed.data.sessionCount,
       weeksBetween: parsed.data.weeksBetween,
       durationMins: parsed.data.durationMins,
+      bufferMins: parsed.data.bufferMins ?? 0,
       sessionType: parsed.data.sessionType ?? 'IN_PERSON',
       priceCents: parsed.data.priceCents ?? null,
       specialPriceCents: parsed.data.specialPriceCents ?? null,

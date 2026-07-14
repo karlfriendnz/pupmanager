@@ -29,6 +29,9 @@ export interface BusyInterval {
   dateStr: string  // YYYY-MM-DD (trainer-local)
   startMin: number
   endMin: number
+  // Turnaround gap hanging off the END of this booking (travel / clean-up).
+  // Nothing may start before endMin + bufferMins. Absent/0 = back-to-back.
+  bufferMins?: number
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -96,15 +99,24 @@ export function isBlackoutDate(blackouts: BlackoutRow[], dateStr: string): boole
  * True when a session of `durationMins` starting at `startMin` (minutes past
  * midnight, trainer-local) on `dateStr` overlaps any existing booking. Standard
  * half-open interval overlap: startA < endB && startB < endA.
+ *
+ * Buffers extend BOTH sides: an existing booking blocks until its endMin +
+ * its own bufferMins, and the proposed session blocks until its end + its own
+ * `bufferMins` (so it can't be wedged in immediately before an existing one —
+ * its turnaround would run into it). Starting at the exact minute a buffer
+ * ends is allowed; a minute earlier is not.
  */
 export function overlapsBusy(
   busy: BusyInterval[],
   dateStr: string,
   startMin: number,
   durationMins: number,
+  bufferMins = 0,
 ): boolean {
-  const end = startMin + durationMins
-  return busy.some(b => b.dateStr === dateStr && startMin < b.endMin && b.startMin < end)
+  const end = startMin + durationMins + Math.max(0, bufferMins)
+  return busy.some(
+    b => b.dateStr === dateStr && startMin < b.endMin + Math.max(0, b.bufferMins ?? 0) && b.startMin < end,
+  )
 }
 
 // ISO day-of-week (1=Mon..7=Sun) for a YYYY-MM-DD string, computed in UTC so
@@ -130,6 +142,12 @@ function minsToHM(mins: number): string {
  * overlap an existing booking (`busy`) are dropped — the trainer runs one
  * session at a time. Results are de-duplicated and sorted — used to populate
  * the client self-book time picker.
+ *
+ * `bufferMins` is the turnaround gap the proposed session carries (from its
+ * package). It never has to fit inside the availability window — it's the
+ * trainer's own reset time, not client-facing — but it DOES block the slot
+ * from butting up against an existing booking, and existing bookings' buffers
+ * block it back.
  */
 export function enumerateStartTimes(
   slots: AvailabilityRow[],
@@ -138,6 +156,7 @@ export function enumerateStartTimes(
   blackouts: BlackoutRow[] = [],
   stepMins = 30,
   busy: BusyInterval[] = [],
+  bufferMins = 0,
 ): string[] {
   if (durationMins <= 0) return []
   if (isBlackoutDate(blackouts, dateStr)) return []
@@ -148,7 +167,7 @@ export function enumerateStartTimes(
     const start = timeToMins(slot.startTime)
     const last = timeToMins(slot.endTime) - durationMins
     for (let t = start; t <= last; t += stepMins) {
-      if (overlapsBusy(busy, dateStr, t, durationMins)) continue
+      if (overlapsBusy(busy, dateStr, t, durationMins, bufferMins)) continue
       out.add(t)
     }
   }

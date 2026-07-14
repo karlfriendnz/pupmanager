@@ -31,7 +31,7 @@ export async function extendOngoingPackages(trainerId: string): Promise<void> {
       sessions: {
         orderBy: { scheduledAt: 'desc' },
         take: 1,
-        select: { id: true, scheduledAt: true, dogId: true, clientId: true, assignedMembershipId: true },
+        select: { id: true, scheduledAt: true, dogId: true, clientId: true, assignedMembershipId: true, bufferMins: true },
       },
     },
   })
@@ -51,6 +51,7 @@ export async function extendOngoingPackages(trainerId: string): Promise<void> {
       title: string
       scheduledAt: Date
       durationMins: number
+      bufferMins: number
       sessionType: typeof a.package.sessionType
     }[] = []
 
@@ -72,6 +73,9 @@ export async function extendOngoingPackages(trainerId: string): Promise<void> {
         title: `${a.package.name} — session`,
         scheduledAt: next,
         durationMins: a.package.durationMins,
+        // Continue the series with the gap it was BOOKED with (the anchor
+        // session's), not whatever the package says today.
+        bufferMins: last.bufferMins,
         sessionType: a.package.sessionType,
       })
       cursor = next

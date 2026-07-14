@@ -2,9 +2,10 @@
 
 import { useCallback } from 'react'
 import { useBookingConflictDialog } from '@/components/schedule/booking-conflict-dialog'
+import { normalizeBufferMins, occupiedEndMs } from '@/lib/buffer'
 
 export type ConflictResult = {
-  sessionConflicts: { id: string; title: string; scheduledAt: string; durationMins: number; label: string | null }[]
+  sessionConflicts: { id: string; title: string; scheduledAt: string; durationMins: number; bufferMins?: number; label: string | null }[]
   busyConflicts: { startsAt: string; endsAt: string; title?: string | null }[]
 }
 
@@ -12,6 +13,8 @@ export type ConflictCheckOpts = {
   /** Proposed start, ISO string. */
   startIso: string
   durationMins: number
+  /** Turnaround gap the proposed session carries (travel / clean-up). Default 0. */
+  bufferMins?: number
   /** The assignee the session will be run by; omit/undefined = unassigned (owner). */
   membershipId?: string | null
   /** When rescheduling, the session being moved (so it doesn't clash with itself). */
@@ -59,6 +62,8 @@ export type DropInterval = {
   id: string
   scheduledAt: string
   durationMins: number
+  /** Turnaround gap booked after this session — part of what it occupies. */
+  bufferMins?: number | null
   /** Present for group-class sessions. Two occurrences of the SAME run don't clash. */
   classRunId?: string | null
   /** The member who runs this session (null = unassigned → resolves to owner).
@@ -72,6 +77,8 @@ export type ExistingSlot = {
   title: string
   scheduledAt: string
   durationMins: number
+  /** Turnaround gap booked after this session — part of what it occupies. */
+  bufferMins?: number | null
   label?: string | null
   classRunId?: string | null
   /** The member who runs this session (null = unassigned → resolves to owner). */
@@ -110,7 +117,10 @@ export function findDropClashes(
   for (const m of moved) {
     const startA = new Date(m.scheduledAt).getTime()
     if (isNaN(startA) || !m.durationMins) continue
-    const endA = startA + m.durationMins * 60_000
+    // Each session occupies its duration PLUS its turnaround buffer, so a drop
+    // that lands inside an existing session's clean-up gap (or would run its own
+    // gap into one) is a clash.
+    const endA = occupiedEndMs(startA, m.durationMins, m.bufferMins)
     const runnerA = runner(m.assignedMembershipId)
     for (const s of existing) {
       if (movedIds.has(s.id) || seen.has(s.id)) continue
@@ -120,7 +130,7 @@ export function findDropClashes(
       if (m.classRunId && s.classRunId && m.classRunId === s.classRunId) continue
       const startB = new Date(s.scheduledAt).getTime()
       if (isNaN(startB)) continue
-      const endB = startB + s.durationMins * 60_000
+      const endB = occupiedEndMs(startB, s.durationMins, s.bufferMins)
       if (startA < endB && startB < endA) {
         seen.add(s.id)
         clashes.push(s)
@@ -141,6 +151,7 @@ export function clashesToConflictResult(
       title: s.title,
       scheduledAt: s.scheduledAt,
       durationMins: s.durationMins,
+      bufferMins: normalizeBufferMins(s.bufferMins),
       label: s.label ?? null,
     })),
     busyConflicts,
@@ -160,6 +171,10 @@ export async function fetchBookingConflicts(opts: ConflictCheckOpts): Promise<Co
     if (isNaN(start.getTime()) || !opts.durationMins) return EMPTY
     const end = new Date(start.getTime() + opts.durationMins * 60_000)
     const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() })
+    // The proposed session's own turnaround gap — the server extends the window
+    // by it, so a booking can't be squeezed in right before an existing one.
+    const buffer = normalizeBufferMins(opts.bufferMins)
+    if (buffer > 0) params.set('bufferMins', String(buffer))
     if (opts.membershipId) params.set('membershipId', opts.membershipId)
     if (opts.excludeSessionId) params.set('excludeSessionId', opts.excludeSessionId)
 

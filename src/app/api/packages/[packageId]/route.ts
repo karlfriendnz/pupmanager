@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { MAX_BUFFER_MINS } from '@/lib/buffer'
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -10,6 +11,9 @@ const updateSchema = z.object({
   sessionCount: z.number().int().min(0).max(52).optional(),
   weeksBetween: z.number().int().min(0).max(52).optional(),
   durationMins: z.number().int().min(15).max(480).optional(),
+  // "Gap before the next session". Only ever applies to sessions booked FROM
+  // NOW ON — existing sessions keep the buffer they were booked with.
+  bufferMins: z.number().int().min(0).max(MAX_BUFFER_MINS).optional(),
   sessionType: z.enum(['IN_PERSON', 'VIRTUAL']).optional(),
   priceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   specialPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),

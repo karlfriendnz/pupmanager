@@ -65,10 +65,15 @@ interface GenerateArgs {
   slotLengthMins: number
   slotIntervalMins: number
   minNoticeHours: number
+  /** Turnaround gap the booked session will carry (from its package/page). */
+  slotBufferMins?: number
   slots: AvailabilityRow[]
   blackouts: BlackoutRow[]
-  /** Existing busy ranges keyed by trainer-local YYYY-MM-DD (minutes). */
-  busyByDate: Map<string, { start: number; end: number }[]>
+  /**
+   * Existing busy ranges keyed by trainer-local YYYY-MM-DD (minutes). `buffer`
+   * is that booking's own turnaround gap — nothing may start before end+buffer.
+   */
+  busyByDate: Map<string, { start: number; end: number; buffer?: number }[]>
   now: Date
 }
 
@@ -76,6 +81,7 @@ interface GenerateArgs {
 export function generateBookingSlots(args: GenerateArgs): DaySlots[] {
   const length = Math.max(1, args.slotLengthMins)
   const interval = Math.max(1, args.slotIntervalMins)
+  const buffer = Math.max(0, args.slotBufferMins ?? 0)
   const earliest = new Date(args.now.getTime() + args.minNoticeHours * 60 * 60 * 1000)
 
   const out: DaySlots[] = []
@@ -101,9 +107,13 @@ export function generateBookingSlots(args: GenerateArgs): DaySlots[] {
 
     const daySlots: BookingSlot[] = []
     for (const s of [...starts].sort((a, b) => a - b)) {
-      const end = s + length
-      // Drop if it collides with an existing session.
-      if (busy.some(b => b.start < end && s < b.end)) continue
+      // Buffers extend the occupied window on BOTH sides: this slot can't run
+      // its own turnaround into an existing booking, and an existing booking's
+      // turnaround blocks the slot. Half-open — starting exactly when a buffer
+      // ends is fine.
+      const end = s + length + buffer
+      // Drop if it collides with an existing session (or its buffer).
+      if (busy.some(b => b.start < end && s < b.end + Math.max(0, b.buffer ?? 0))) continue
       const utc = zonedToUtc(y, mo, d, Math.floor(s / 60), s % 60, args.tz)
       if (utc.getTime() < earliest.getTime()) continue
       daySlots.push({ iso: utc.toISOString(), dateStr, startMin: s, label: fmt12(s) })
@@ -120,6 +130,10 @@ export interface BookingPageConfig {
   slotLengthMins: number
   slotIntervalMins: number
   minNoticeHours: number
+  // Turnaround gap the booked session carries — the page's package's bufferMins
+  // (0 for a single-session page). Blocks the slot from butting up against the
+  // next booking.
+  slotBufferMins?: number
   // When set, the page defines its own weekly availability window and slots are
   // built from it directly. When null, the trainer's global AvailabilitySlots
   // are used instead.
@@ -158,7 +172,7 @@ export async function fetchBookingSlots(
     }),
     prisma.trainingSession.findMany({
       where: { trainerId, scheduledAt: { gte: fetchStart, lte: fetchEnd }, status: 'UPCOMING' },
-      select: { scheduledAt: true, durationMins: true },
+      select: { scheduledAt: true, durationMins: true, bufferMins: true },
     }),
   ])
 
@@ -190,7 +204,9 @@ export async function fetchBookingSlots(
   }))
 
   // Group existing UPCOMING sessions by trainer-local date for collision tests.
-  const busyByDate = new Map<string, { start: number; end: number }[]>()
+  // Each carries the turnaround buffer it was booked with, so a slot can't be
+  // offered inside another session's clean-up/travel gap.
+  const busyByDate = new Map<string, { start: number; end: number; buffer?: number }[]>()
   for (const s of rawSessions) {
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: cfg.tz,
@@ -202,7 +218,7 @@ export async function fetchBookingSlots(
     const dateStr = `${got.year}-${got.month}-${got.day}`
     const start = Number(got.hour) * 60 + Number(got.minute)
     const arr = busyByDate.get(dateStr) ?? []
-    arr.push({ start, end: start + s.durationMins })
+    arr.push({ start, end: start + s.durationMins, buffer: s.bufferMins })
     busyByDate.set(dateStr, arr)
   }
 
@@ -213,6 +229,7 @@ export async function fetchBookingSlots(
     slotLengthMins: cfg.slotLengthMins,
     slotIntervalMins: cfg.slotIntervalMins,
     minNoticeHours: cfg.minNoticeHours,
+    slotBufferMins: cfg.slotBufferMins,
     slots,
     blackouts,
     busyByDate,

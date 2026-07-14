@@ -60,11 +60,13 @@ export default async function PublicBookingPage({
   const pkg = page.packageId
     ? await prisma.package.findFirst({
         where: { id: page.packageId, trainerId: trainer.id },
-        select: { name: true, sessionCount: true, weeksBetween: true, durationMins: true },
+        select: { name: true, sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true },
       })
     : null
 
-  const days = page.enabled ? await fetchBookingSlots(trainer.id, bookingConfig(page, trainer.user.timezone)) : []
+  const days = page.enabled
+    ? await fetchBookingSlots(trainer.id, bookingConfig(page, trainer.user.timezone, pkg?.bufferMins ?? 0))
+    : []
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/40 px-4 py-10 sm:py-16">

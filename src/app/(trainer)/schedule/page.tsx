@@ -422,6 +422,7 @@ export default async function SchedulePage({
         sessionCount: p.sessionCount,
         weeksBetween: p.weeksBetween,
         durationMins: p.durationMins,
+        bufferMins: p.bufferMins,
         sessionType: p.sessionType,
       }))}
       selectedDate={selectedDate}

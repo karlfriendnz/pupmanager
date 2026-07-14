@@ -7,6 +7,7 @@
 import { prisma } from './prisma'
 import type { Prisma } from '@/generated/prisma'
 import { generateSessionDates } from './class-runs'
+import { normalizeBufferMins } from './buffer'
 
 export { generateSessionDates }
 
@@ -38,7 +39,9 @@ export async function createBookingAssignment(
     clientId: string
     packageId: string
     dogId: string | null
-    pkg: { name: string; sessionCount: number; durationMins: number; sessionType: 'IN_PERSON' | 'VIRTUAL' }
+    // bufferMins is optional so older callers still typecheck; it defaults to 0
+    // (back-to-back), which is what an unbuffered package means anyway.
+    pkg: { name: string; sessionCount: number; durationMins: number; bufferMins?: number; sessionType: 'IN_PERSON' | 'VIRTUAL' }
     sessionDates: Date[]
     // The booking page this assignment came from, if any — stamped on each
     // session so BEFORE/AFTER booking automations can target them.
@@ -82,6 +85,9 @@ export async function createBookingAssignment(
       title: sessionTitle(args.pkg.name, args.pkg.sessionCount, i),
       scheduledAt: d,
       durationMins: args.pkg.durationMins,
+      // Snapshot the package's turnaround gap onto the session — later edits to
+      // the package must not move what's already in the diary.
+      bufferMins: normalizeBufferMins(args.pkg.bufferMins),
       sessionType: args.pkg.sessionType,
     })),
   })

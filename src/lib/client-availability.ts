@@ -66,7 +66,7 @@ export async function getTrainerAvailabilityForClient(clientId: string): Promise
         scheduledAt: { gte: fetchStart, lte: fetchEnd },
         status: 'UPCOMING',
       },
-      select: { scheduledAt: true, durationMins: true },
+      select: { scheduledAt: true, durationMins: true, bufferMins: true },
     }),
   ])
 
@@ -85,13 +85,20 @@ export async function getTrainerAvailabilityForClient(clientId: string): Promise
     endDate: b.endDate.toISOString().split('T')[0],
   }))
 
-  // Each UPCOMING session → a trainer-local minute range on the day it starts.
+  // Each UPCOMING session → a trainer-local minute range on the day it starts,
+  // carrying the turnaround buffer it was booked with so the client's picker
+  // can't offer a slot inside another session's clean-up/travel gap.
   // (Google Calendar busy blocks are intentionally excluded: trainer-side treats
   // them as a soft, never-blocking warning, and the client availability page
   // only ever subtracts real sessions — keep the two in lockstep.)
   const busy: BusyInterval[] = rawSessions.map(s => {
     const { dateStr, minuteOfDay } = utcToZonedDateAndMinutes(s.scheduledAt, tz)
-    return { dateStr, startMin: minuteOfDay, endMin: minuteOfDay + s.durationMins }
+    return {
+      dateStr,
+      startMin: minuteOfDay,
+      endMin: minuteOfDay + s.durationMins,
+      bufferMins: s.bufferMins,
+    }
   })
 
   return {

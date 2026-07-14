@@ -19,6 +19,7 @@ export type PackageInfo = {
   sessionCount: number
   weeksBetween: number
   durationMins: number
+  bufferMins: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
   isGroup: boolean
   requireSessionNotes: boolean
@@ -156,6 +157,7 @@ function DetailsTab({ pkg }: { pkg: PackageInfo }) {
             <Detail label="Sessions" value={pkg.sessionCount === 0 ? 'Ongoing' : String(pkg.sessionCount)} />
             <Detail label="Spacing" value={pkg.weeksBetween === 0 ? 'No spacing' : `Every ${pkg.weeksBetween} week${pkg.weeksBetween > 1 ? 's' : ''}`} />
             <Detail label="Length" value={`${pkg.durationMins} min`} />
+            <Detail label="Gap after" value={pkg.bufferMins > 0 ? `${pkg.bufferMins} min` : 'None'} />
             <Detail label="Format" value={pkg.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'} />
             <Detail label="Price" value={formatPrice(pkg.priceCents)} />
             {pkg.specialPriceCents != null && (

@@ -36,7 +36,7 @@ export async function GET() {
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
     select: {
       id: true, name: true, description: true, sessionCount: true,
-      weeksBetween: true, durationMins: true, sessionType: true,
+      weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true,
       priceCents: true, selfBookRequiresApproval: true,
     },
   })
@@ -86,7 +86,9 @@ export async function POST(req: Request) {
   }
   // The trainer runs one session at a time — reject a start that collides with
   // an existing booking (someone may have grabbed it since the picker loaded).
-  if (overlapsBusy(avail.busy, dateStr, minuteOfDay, pkg.durationMins)) {
+  // Buffers count on both sides: this package's own turnaround gap, and the gap
+  // hanging off each existing booking.
+  if (overlapsBusy(avail.busy, dateStr, minuteOfDay, pkg.durationMins, pkg.bufferMins)) {
     return NextResponse.json({ error: "That time's just been taken" }, { status: 400 })
   }
 

@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { updateClass, ClassError } from '@/lib/class-runs'
+import { MAX_BUFFER_MINS } from '@/lib/buffer'
 import { notifyClient } from '@/lib/client-notify'
 
 async function ownRun(runId: string, trainerId: string) {
@@ -89,6 +90,8 @@ const patchSchema = z.object({
   capacity: z.number().int().min(1).max(1000).nullable().optional(),
   priceCents: z.number().int().min(0).max(10_000_00).nullable().optional(),
   durationMins: z.number().int().min(5).max(600).optional(),
+  // "Gap before the next session" — travel / clean-up time after each class.
+  bufferMins: z.number().int().min(0).max(MAX_BUFFER_MINS).optional(),
   sessionType: z.enum(['IN_PERSON', 'VIRTUAL']).optional(),
   startDate: z.string().min(1).optional(),
   sessionCount: z.number().int().min(1).max(52).optional(),
@@ -132,6 +135,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
         capacity: d.capacity ?? null,
         priceCents: d.priceCents ?? null,
         durationMins: d.durationMins,
+        bufferMins: d.bufferMins,
         sessionType: d.sessionType,
         startDate,
         sessionCount: d.sessionCount,

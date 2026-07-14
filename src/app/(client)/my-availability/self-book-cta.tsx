@@ -13,6 +13,9 @@ type Pkg = {
   sessionCount: number
   weeksBetween: number
   durationMins: number
+  // Turnaround gap booked after each session — keeps the picker from offering
+  // a time that would run into (or out of) another booking's buffer.
+  bufferMins?: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
   priceCents: number | null
   selfBookRequiresApproval: boolean
@@ -117,6 +120,7 @@ function SelfBookModal({ onClose }: { onClose: () => void }) {
 
   const selected = packages.find(p => p.id === packageId)
   const duration = selected?.durationMins ?? 0
+  const buffer = selected?.bufferMins ?? 0
 
   // Days in the next four weeks that can hold this package's first session.
   const availableDates = useMemo(() => {
@@ -125,20 +129,20 @@ function SelfBookModal({ onClose }: { onClose: () => void }) {
     const out: string[] = []
     for (let i = 0; i < DAYS_AHEAD; i++) {
       const dateStr = addDayStr(today, i)
-      if (enumerateStartTimes(availability.slots, dateStr, duration, availability.blackouts, STEP_MINS, availability.busy).length > 0) {
+      if (enumerateStartTimes(availability.slots, dateStr, duration, availability.blackouts, STEP_MINS, availability.busy, buffer).length > 0) {
         out.push(dateStr)
       }
     }
     return out
-  }, [availability, duration])
+  }, [availability, duration, buffer])
 
   // Valid start times for the chosen day, dropping any already in the past.
   const timeOptions = useMemo(() => {
     if (!availability || !date || duration <= 0) return []
     const now = Date.now()
-    return enumerateStartTimes(availability.slots, date, duration, availability.blackouts, STEP_MINS, availability.busy)
+    return enumerateStartTimes(availability.slots, date, duration, availability.blackouts, STEP_MINS, availability.busy, buffer)
       .filter(t => new Date(toUtcIso(date, t, availability.tz)).getTime() > now)
-  }, [availability, date, duration])
+  }, [availability, date, duration, buffer])
 
   // Keep the date valid as the package (and thus duration/day list) changes.
   useEffect(() => {

@@ -70,6 +70,7 @@ export default async function PackagePage({
         sessionCount: pkg.sessionCount,
         weeksBetween: pkg.weeksBetween,
         durationMins: pkg.durationMins,
+        bufferMins: pkg.bufferMins,
         sessionType: pkg.sessionType,
         isGroup: pkg.isGroup,
         requireSessionNotes: pkg.requireSessionNotes,

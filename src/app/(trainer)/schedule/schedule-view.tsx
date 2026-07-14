@@ -22,6 +22,7 @@ import {
 import { SlotTypeChooser, type SlotAddType } from './slot-type-chooser'
 import { NewWalkModal } from './new-walk-modal'
 import { useBookingConflicts, findDropClashes, clashesToConflictResult, fetchBookingConflicts, type ExistingSlot } from '@/lib/use-booking-conflicts'
+import { occupiedEndMs } from '@/lib/buffer'
 import { previewClashKeys, type PreviewBlock as RequestPreviewBlock } from '@/lib/booking-request-preview'
 import { BookingRequestPreviewBanner } from './booking-request-preview-banner'
 import { ClassFormModal } from '../classes/class-form-modal'
@@ -84,6 +85,10 @@ interface Session {
   title: string
   scheduledAt: string
   durationMins: number
+  // "Gap before the next session" the session was booked with — travel /
+  // clean-up. Rendered as a hatched continuation of this session's block and
+  // treated as occupied time by every clash check.
+  bufferMins: number
   sessionType: string
   status: SessionStatus
   location: string | null
@@ -254,6 +259,21 @@ function sessionTop(iso: string, tz: string, startHour = DEFAULT_START_HOUR, pxP
 
 function sessionHeight(durationMins: number, pxPerHour = PX_PER_HOUR): number {
   return Math.max((durationMins / 60) * pxPerHour, 24)
+}
+
+// The buffer strip is a true-to-scale continuation of the session block (NOT
+// clamped to a 24px minimum like the block is) — it has to line up with the
+// real time it occupies on the grid.
+function bufferHeight(bufferMins: number, pxPerHour = PX_PER_HOUR): number {
+  return Math.max(0, (bufferMins / 60) * pxPerHour)
+}
+
+// Human label for the strip: "30 min buffer" / "1h buffer" / "1h 30m buffer".
+function bufferLabel(mins: number): string {
+  if (mins < 60) return `${mins} min buffer`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m === 0 ? `${h}h buffer` : `${h}h ${m}m buffer`
 }
 
 // ─── Availability strip ───────────────────────────────────────────────────────
@@ -525,9 +545,49 @@ function SessionBlock({
   const buddyHover   = 'hover:bg-orange-600'
   const buddyFaded   = 'bg-orange-300'
 
+  // ── Turnaround buffer ───────────────────────────────────────────────────────
+  // The gap this session was booked with, drawn as a hatched, muted CONTINUATION
+  // of the block: same column, same colour family, flush under it, its bottom
+  // corners rounded (the block's are squared off when a buffer is present) so the
+  // two read as one event. Never clickable — it isn't a separate booking, it's
+  // this session's travel/clean-up time, and it's the reason nothing else can be
+  // booked into that slot.
+  const buffer = Math.max(0, session.bufferMins ?? 0)
+  const bufH = bufferHeight(buffer, pxPerHour)
+  const showBuffer = buffer > 0 && bufH > 0
+  const bufferBg = isBuddyWalk ? buddyFaded : blockFadedBg
+
   return (
+    <>
+    {showBuffer && (
+      <div
+        aria-hidden
+        data-testid="session-buffer"
+        data-session-id={session.id}
+        data-buffer-mins={buffer}
+        className={`absolute left-0.5 right-0.5 rounded-b-lg overflow-hidden pointer-events-none select-none z-[9] opacity-70 ${bufferBg} ${
+          faded || isDragging ? 'opacity-40' : ''
+        }`}
+        style={{
+          top: top + height,
+          height: bufH,
+          // Diagonal hatching = "held, not bookable" (distinct from a real block).
+          backgroundImage:
+            'repeating-linear-gradient(45deg, rgba(255,255,255,0.55) 0 4px, rgba(255,255,255,0) 4px 8px)',
+        }}
+        title={`${bufferLabel(buffer)} — travel / clean-up after ${session.title}. Nothing can be booked into it.`}
+      >
+        {bufH >= 13 && (
+          <p className="px-2 pt-0.5 text-[9px] font-semibold leading-tight text-white/90 truncate">
+            {bufferLabel(buffer)}
+          </p>
+        )}
+      </div>
+    )}
     <div
-      className={`absolute left-0.5 right-0.5 rounded-lg px-2 overflow-hidden select-none touch-none z-10 transition-shadow ${
+      data-testid="session-block"
+      data-session-id={session.id}
+      className={`absolute left-0.5 right-0.5 rounded-lg ${showBuffer ? 'rounded-b-none' : ''} px-2 overflow-hidden select-none touch-none z-10 transition-shadow ${
         isDragging
           ? `${isBuddyWalk ? buddyBg : blockBg} shadow-2xl opacity-90 cursor-grabbing z-20`
           : faded
@@ -592,6 +652,7 @@ function SessionBlock({
         })
       })()}
     </div>
+    </>
   )
 }
 
@@ -1893,6 +1954,9 @@ function SessionModal({
     const proceed = await confirmBooking({
       startIso: iso,
       durationMins: draftDuration,
+      // The session keeps the turnaround gap it was booked with; a reschedule
+      // has to carry it into the clash check.
+      bufferMins: session.bufferMins,
       membershipId: session.assignedMembershipId,
       excludeSessionId: session.id,
     })
@@ -2752,6 +2816,9 @@ interface PkgOption {
   sessionCount: number
   weeksBetween: number
   durationMins: number
+  // Turnaround gap booked after each session — passed through to the assign
+  // modal so its clash preview accounts for it.
+  bufferMins: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
 }
 
@@ -3259,11 +3326,12 @@ export function ScheduleView({
     // recurring-package followers. Carries classRunId so two occurrences of the
     // same group class aren't counted as clashing with each other.
     const movedNewIsos = [
-      { id: dragged.id, scheduledAt: newIso, durationMins: dragged.durationMins, title: dragged.title, classRunId: dragged.classRunId, assignedMembershipId: dragged.assignedMembershipId },
+      { id: dragged.id, scheduledAt: newIso, durationMins: dragged.durationMins, bufferMins: dragged.bufferMins, title: dragged.title, classRunId: dragged.classRunId, assignedMembershipId: dragged.assignedMembershipId },
       ...movers.map(s => ({
         id: s.id,
         scheduledAt: new Date(new Date(s.scheduledAt).getTime() + deltaMs).toISOString(),
         durationMins: s.durationMins,
+        bufferMins: s.bufferMins,
         title: s.title,
         classRunId: s.classRunId,
         assignedMembershipId: s.assignedMembershipId,
@@ -3285,7 +3353,9 @@ export function ScheduleView({
     // If anything clashes, confirm BEFORE moving; Cancel snaps back (nothing
     // optimistically moved yet, nothing persisted).
     const minStart = Math.min(...movedNewIsos.map(m => new Date(m.scheduledAt).getTime()))
-    const maxEnd = Math.max(...movedNewIsos.map(m => new Date(m.scheduledAt).getTime() + m.durationMins * 60 * 1000))
+    // Occupied end includes each moved session's turnaround buffer, so the range
+    // we fetch definitely covers everything the drop could now collide with.
+    const maxEnd = Math.max(...movedNewIsos.map(m => occupiedEndMs(new Date(m.scheduledAt).getTime(), m.durationMins, m.bufferMins)))
     const fromIso = new Date(minStart - 12 * 60 * 60 * 1000).toISOString()
     const toIso = new Date(maxEnd + 60 * 60 * 1000).toISOString()
 
@@ -3309,6 +3379,7 @@ export function ScheduleView({
       busyConflicts = (await fetchBookingConflicts({
         startIso: newIso,
         durationMins: dragged.durationMins,
+        bufferMins: dragged.bufferMins,
         membershipId: dragged.assignedMembershipId,
         excludeSessionId: sessionId,
       })).busyConflicts

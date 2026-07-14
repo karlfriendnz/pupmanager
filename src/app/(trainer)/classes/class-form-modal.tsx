@@ -8,6 +8,7 @@ import { Alert } from '@/components/ui/alert'
 import { X } from 'lucide-react'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { RequirePaymentField } from '@/components/shared/require-payment-field'
+import { BufferField } from '@/components/shared/buffer-field'
 
 export type TeamMemberOption = {
   id: string
@@ -22,6 +23,7 @@ export type ClassInitial = {
   weeksBetween?: number
   sessionCount?: number
   durationMins?: number
+  bufferMins?: number
   sessionType?: 'IN_PERSON' | 'VIRTUAL'
   priceCents?: number | null
   capacity?: number | null
@@ -72,6 +74,7 @@ export function ClassFormModal({
   const [weeksBetween, setWeeksBetween] = useState(String(initial?.weeksBetween ?? 1))
   const [sessionCount, setSessionCount] = useState(String(initial?.sessionCount ?? 6))
   const [durationMins, setDurationMins] = useState(String(initial?.durationMins ?? 60))
+  const [bufferMins, setBufferMins] = useState<number>(initial?.bufferMins ?? 0)
   const [sessionType, setSessionType] = useState<'IN_PERSON' | 'VIRTUAL'>(initial?.sessionType ?? 'IN_PERSON')
   const [price, setPrice] = useState(initial?.priceCents != null ? String(initial.priceCents / 100) : '')
   const [capacity, setCapacity] = useState(initial?.capacity != null ? String(initial.capacity) : '')
@@ -121,6 +124,8 @@ export function ClassFormModal({
       const proceed = await confirmBooking({
         startIso: new Date(startDate).toISOString(),
         durationMins: Math.max(5, Math.floor(Number(durationMins) || 60)),
+        // The class's turnaround gap is part of what it occupies.
+        bufferMins,
         membershipId: firstAssignee,
       })
       if (!proceed) return
@@ -133,6 +138,7 @@ export function ClassFormModal({
         sessionCount: Math.max(1, Math.floor(Number(sessionCount) || 1)),
         weeksBetween: Math.max(1, Math.floor(Number(weeksBetween) || 1)),
         durationMins: Math.max(5, Math.floor(Number(durationMins) || 60)),
+        bufferMins,
         sessionType,
         priceCents: price.trim() ? Math.round(Number(price) * 100) : null,
         capacity: capacity.trim() ? Math.max(1, Math.floor(Number(capacity))) : null,
@@ -219,6 +225,15 @@ export function ClassFormModal({
               </select>
             </div>
           </div>
+
+          {/* Turnaround gap — blocked out after each class so nothing can be
+              booked into your pack-down / travel time. */}
+          <BufferField
+            id="class-buffer"
+            value={bufferMins}
+            onChange={setBufferMins}
+            help="Time you need after each class — travel, pack-down, a breather. Nothing can be booked into it."
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <div>

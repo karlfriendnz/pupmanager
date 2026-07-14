@@ -238,6 +238,9 @@ export async function POST(
           : `${pkg.name} — session ${i + 1}`,
         scheduledAt: d,
         durationMins: pkg.durationMins,
+        // Snapshot the package's turnaround gap. Editing the package later must
+        // not silently re-block time around bookings already in the diary.
+        bufferMins: pkg.bufferMins,
         sessionType: pkg.sessionType,
         // If the trainer ticked "already invoiced" on the package, each
         // child session inherits invoicedAt — independent of status so
