@@ -1,22 +1,34 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 import { TabIntro } from './tab-intro'
 
+// Settings is the only left menu on screen in here (the app's own sidebar is
+// hidden), so it wears the same clothes: identical row shape, active state,
+// icon size and section headers as the main nav — see app-shell.tsx.
+type Section = 'account' | 'business' | 'money' | 'system'
+
+const SECTION_LABEL: Record<Section, string | null> = {
+  account: null,
+  business: 'Business',
+  money: 'Money',
+  system: null,
+}
+
 const ALL_TABS = [
-  { id: 'profile', label: 'Profile', icon: User },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'addons', label: 'Add-ons', icon: Puzzle },
-  { id: 'forms', label: 'Fields & forms', icon: Pencil },
-  { id: 'integration', label: 'Connect Website', icon: Globe },
-  { id: 'team', label: 'Team', icon: Users },
-  { id: 'payments', label: 'Payments', icon: Wallet },
-  { id: 'xero', label: 'Xero', icon: Landmark },
-  { id: 'billing', label: 'Billing', icon: CreditCard },
-  { id: 'activity', label: 'Activity', icon: ShieldCheck },
+  { id: 'profile', label: 'Profile', icon: User, section: 'account' },
+  { id: 'notifications', label: 'Notifications', icon: Bell, section: 'account' },
+  { id: 'addons', label: 'Add-ons', icon: Puzzle, section: 'business' },
+  { id: 'forms', label: 'Fields & forms', icon: Pencil, section: 'business' },
+  { id: 'integration', label: 'Connect Website', icon: Globe, section: 'business' },
+  { id: 'team', label: 'Team', icon: Users, section: 'business' },
+  { id: 'payments', label: 'Payments', icon: Wallet, section: 'money' },
+  { id: 'xero', label: 'Xero', icon: Landmark, section: 'money' },
+  { id: 'billing', label: 'Billing', icon: CreditCard, section: 'money' },
+  { id: 'activity', label: 'Activity', icon: ShieldCheck, section: 'system' },
 ] as const
 
 type TabId = typeof ALL_TABS[number]['id']
@@ -108,30 +120,40 @@ export function SettingsTabs({
 
   return (
     <div className="flex flex-col md:flex-row md:gap-8">
-      {/* Tab rail — vertical on md+, a horizontal scroll row on mobile. */}
-      <nav className="md:w-56 md:flex-shrink-0">
-        <div className="flex md:flex-col gap-1 overflow-x-auto overflow-y-hidden -mx-4 px-4 md:mx-0 md:px-0 border-b border-slate-200 md:border-b-0 mb-6 md:mb-0 md:sticky md:top-4">
-          {tabs.map(t => {
+      {/* Tab rail — the app's left menu, wearing the same clothes. Vertical on
+          md+, a horizontal scroll row on mobile (where the real nav is a bottom
+          bar, so there's nothing to match). */}
+      <nav className="md:w-64 md:flex-shrink-0">
+        <div className="flex md:flex-col gap-1 overflow-x-auto overflow-y-hidden -mx-4 px-4 md:mx-0 md:px-3 md:py-4 border-b border-slate-200 md:border-b-0 md:border-r md:border-slate-100 md:bg-white md:rounded-2xl mb-6 md:mb-0 md:sticky md:top-4">
+          {tabs.map((t, idx, arr) => {
             const Icon = t.icon
             const active = tab === t.id
+            const sectionChanged = idx === 0 || arr[idx - 1].section !== t.section
+            const header = sectionChanged ? SECTION_LABEL[t.section] : null
             return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => selectTab(t.id)}
-                className={`relative shrink-0 md:shrink flex items-center gap-2 px-4 md:px-3 py-2.5 text-sm font-medium whitespace-nowrap rounded-xl transition-colors ${
-                  active
-                    ? 'text-blue-600 md:bg-blue-50'
-                    : 'text-slate-500 hover:text-slate-700 md:hover:bg-slate-50'
-                }`}
-              >
-                <Icon className="h-4 w-4 flex-shrink-0" />
-                {t.label}
-                {/* Underline on mobile, left bar on the desktop rail. */}
-                {active && (
-                  <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-blue-600 rounded-full md:hidden" />
+              <Fragment key={t.id}>
+                {header && (
+                  <p className="hidden md:block px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    {header}
+                  </p>
                 )}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => selectTab(t.id)}
+                  className={`relative shrink-0 md:shrink flex items-center gap-3 px-3 py-2.5 text-sm font-medium whitespace-nowrap rounded-xl transition-colors ${
+                    active
+                      ? 'text-blue-700 md:bg-blue-50'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                >
+                  <Icon className="h-5 w-5 flex-shrink-0" />
+                  {t.label}
+                  {/* Underline on mobile, where rows sit in a scroll strip. */}
+                  {active && (
+                    <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-blue-600 rounded-full md:hidden" />
+                  )}
+                </button>
+              </Fragment>
             )
           })}
         </div>

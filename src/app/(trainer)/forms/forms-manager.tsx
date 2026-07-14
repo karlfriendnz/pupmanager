@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import type { FormRow as SessionFormRow } from './session/session-forms-manager'
+import { SessionFormBuilderModal } from './session/session-form-builder-modal'
 import { CustomFieldsManager } from '../settings/custom-fields-manager'
 import { FieldPacksWizard } from '../settings/field-packs-wizard'
 
@@ -673,6 +674,10 @@ export function FormsManager({
   }
   const [isPublished, setIsPublished] = useState(intakeFormPublished)
   const [togglingPublished, setTogglingPublished] = useState(false)
+  // New session forms are built in the two-pane builder modal; editing an
+  // existing one still opens the full editor page (intro/closing/background
+  // copy lives there).
+  const [builderOpen, setBuilderOpen] = useState(false)
 
   async function togglePublished() {
     setTogglingPublished(true)
@@ -699,6 +704,19 @@ export function FormsManager({
     <div className="flex flex-col gap-5">
       {wizardOpen && (
         <FieldPacksWizard roles={businessRoles} onClose={() => setWizardOpen(false)} />
+      )}
+
+      {builderOpen && (
+        <SessionFormBuilderModal
+          customFields={intakeCustomFields.map(f => ({
+            id: f.id,
+            label: f.label,
+            type: f.type,
+            appliesTo: f.appliesTo,
+            category: f.category,
+          }))}
+          onClose={() => setBuilderOpen(false)}
+        />
       )}
 
       <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 w-fit">
@@ -739,7 +757,7 @@ export function FormsManager({
       {/* ── Forms ────────────────────────────────────────────────────────── */}
       <section className={`flex-col gap-3 ${view === 'forms' ? 'flex' : 'hidden'}`}>
         <div className="flex justify-end">
-          <Button size="sm" onClick={() => router.push('/forms/session/new')}>
+          <Button size="sm" onClick={() => setBuilderOpen(true)}>
             <Plus className="h-4 w-4" />
             New session form
           </Button>

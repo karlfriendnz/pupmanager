@@ -7,28 +7,18 @@ import { Alert } from '@/components/ui/alert'
 import { Plus, Trash2, GripVertical, ChevronUp, ChevronDown, Link2 } from 'lucide-react'
 import { ImageUploadButton } from '@/components/image-uploader'
 
-export type QuestionType = 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5' | 'DROPDOWN' | 'RADIO' | 'CHECKBOX' | 'CUSTOM_FIELD'
-
-// Choice questions (dropdown / multiple choice / checkboxes) carry their own
-// option list. The other built-in types take free-form input.
-export type ChoiceType = 'DROPDOWN' | 'RADIO' | 'CHECKBOX'
-const CHOICE_TYPES: ChoiceType[] = ['DROPDOWN', 'RADIO', 'CHECKBOX']
-export function isChoiceType(t: string): t is ChoiceType {
-  return (CHOICE_TYPES as string[]).includes(t)
-}
-
-export type Question =
-  | { id: string; type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'; label: string; required: boolean; isPrivate?: boolean }
-  | { id: string; type: ChoiceType; label: string; required: boolean; isPrivate?: boolean; options: string[] }
-  | { id: string; type: 'CUSTOM_FIELD'; customFieldId: string; required: boolean; isPrivate?: boolean }
-
-export interface CustomFieldOption {
-  id: string
-  label: string
-  type: 'TEXT' | 'NUMBER' | 'DROPDOWN'
-  appliesTo: 'OWNER' | 'DOG'
-  category: string | null
-}
+// The question model + its pure helpers now live in @/lib/session-form-builder
+// (shared with the new two-pane builder modal, and unit-tested there).
+// Re-exported here so existing importers keep working.
+export {
+  isChoiceType,
+  type ChoiceType,
+  type CustomFieldOption,
+  type Question,
+  type QuestionType,
+} from '@/lib/session-form-builder'
+import { isChoiceType } from '@/lib/session-form-builder'
+import type { CustomFieldOption, Question, QuestionType } from '@/lib/session-form-builder'
 
 export interface FormRow {
   id: string

@@ -65,7 +65,10 @@ test.describe('phone visibility — owner happy path', () => {
 test.describe('add-ons — nav reacts without a reload', () => {
   test('turning Group classes off hides the Classes nav item immediately', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto('/settings?tab=addons')
+    // The standalone add-ons page, not Settings → Add-ons: Settings hides the
+    // app's left menu (it has its own rail), so there'd be no nav there to watch.
+    // Same grid, same toggle, and the sidebar is on screen to prove the point.
+    await page.goto('/add-ons')
 
     // Group classes is free + default-on, so the nav link starts visible.
     const classesNav = page.getByRole('link', { name: 'Classes', exact: true })
