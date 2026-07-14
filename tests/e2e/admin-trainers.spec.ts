@@ -4,6 +4,11 @@ import { SEED } from './test-db'
 // /admin/trainers must list one row per COMPANY (account owners), not every
 // individual trainer. Invited team members are TRAINER users with no profile of
 // their own and must NOT appear as separate rows.
+//
+// The page renders BOTH layouts and hides one by breakpoint — mobile cards
+// (md:hidden) come first in the DOM, then the desktop table (hidden md:block).
+// So `.first()` on a plain text match grabs the hidden card at desktop width.
+// Every locator here filters to what's actually visible.
 
 async function loginAdmin(page: Page) {
   await page.goto('/login')
@@ -21,8 +26,8 @@ test.describe('admin /admin/trainers — companies, not individual trainers', ()
     await expect(page.getByRole('heading', { name: 'Businesses' })).toBeVisible()
 
     // Both companies appear (the owner's business + business B).
-    await expect(page.getByText(SEED.owner.businessName).first()).toBeVisible()
-    await expect(page.getByText(SEED.businessB.businessName).first()).toBeVisible()
+    await expect(page.getByText(SEED.owner.businessName).locator('visible=true').first()).toBeVisible()
+    await expect(page.getByText(SEED.businessB.businessName).locator('visible=true').first()).toBeVisible()
 
     // Invited members (no company of their own) are NOT separate rows.
     await expect(page.getByText(SEED.manager.name)).toHaveCount(0)
@@ -33,8 +38,14 @@ test.describe('admin /admin/trainers — companies, not individual trainers', ()
     await loginAdmin(page)
     await page.goto('/admin/trainers')
 
-    // Each row's business name links into that trainer's full view.
-    await page.getByRole('link', { name: SEED.owner.businessName }).first().click()
+    // Each row links into that trainer's full view. The desktop table links the
+    // OWNER'S NAME while the mobile card links the business name, so match on the
+    // href rather than the label — the destination is what this test is about.
+    await page
+      .locator('table a[href^="/admin/trainers/"]')
+      .filter({ hasText: SEED.owner.name })
+      .first()
+      .click()
     await page.waitForURL(/\/admin\/trainers\/.+/, { timeout: 30_000 })
 
     // The full view shows the business as a heading plus the controls that used
