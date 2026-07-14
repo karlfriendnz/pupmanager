@@ -94,31 +94,41 @@ describe('platformFeeAmount — our margin on a client payment', () => {
   })
 })
 
-describe('estimateProcessingSurcharge — grossed-up card fee passed to the client', () => {
-  // The contract: surcharge is added on top so that, after Stripe takes its
-  // per-currency fee on the GROSSED-UP total, the trainer nets the original
-  // amount. We assert the exact integer-cent outputs AND prove the net works out.
+describe('estimateProcessingSurcharge — the client covers BOTH fees', () => {
+  // The contract, in Karl's words: the trainer always nets what the thing costs;
+  // Stripe's fee AND our margin go on top. So the gross-up rate must be
+  // Stripe's rate + our margin — both are taken from the grossed-up total.
 
-  it('NZD $100.00 → 394c surcharge (matches the shipped Stripe-verified figure)', () => {
-    expect(estimateProcessingSurcharge(10_000, 'nzd')).toBe(394)
+  it('nets the trainer EXACTLY the item price, in every currency', () => {
+    // [amount, currency, Stripe's domestic rate, Stripe's fixed fee, our margin]
+    const cases: Array<[number, string, number, number, number]> = [
+      [10_000, 'nzd', 265, 30, 85],
+      [10_000, 'aud', 170, 30, 180],
+      [5_000, 'gbp', 150, 20, 200],
+      [10_000, 'usd', 290, 30, 60],
+      [25_000, 'cad', 290, 30, 60],
+    ]
+    for (const [amount, currency, stripeBps, fixed, ourBps] of cases) {
+      const surcharge = estimateProcessingSurcharge(amount, currency)
+      const clientPays = amount + surcharge
+      const stripeFee = Math.round(clientPays * (stripeBps / 10_000)) + fixed
+      const ourFee = platformFeeAmount(clientPays, currency)
+      const trainerNets = clientPays - stripeFee - ourFee
+      // Within a cent of the item price — rounding slack only, no leakage.
+      expect(Math.abs(trainerNets - amount), `${currency} netted ${trainerNets} for ${amount}`)
+        .toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('covers our margin too — a surcharge that only paid Stripe would short the trainer', () => {
+    // AUD is the case that was broken: it grossed up at 2.7% while the true cost
+    // is Stripe 1.7% + our 1.8% = 3.5%, so the trainer lost 0.8% of every payment.
+    const stripeOnly = Math.round((10_000 + 30) / (1 - 0.017)) - 10_000
+    expect(estimateProcessingSurcharge(10_000, 'aud')).toBeGreaterThan(stripeOnly)
   })
 
   it('is case-insensitive on currency', () => {
-    expect(estimateProcessingSurcharge(10_000, 'NZD')).toBe(394)
-  })
-
-  it('per-currency rates produce distinct surcharges', () => {
-    expect(estimateProcessingSurcharge(10_000, 'aud')).toBe(Math.round((10_000 * 0.027 + 30) / (1 - 0.027)))
-    expect(estimateProcessingSurcharge(5_000, 'gbp')).toBe(149) // 2.5% + 20c grossed up
-    expect(estimateProcessingSurcharge(5_000, 'eur')).toBe(149) // same rate as gbp
-    expect(estimateProcessingSurcharge(10_000, 'usd')).toBe(437) // 3.9% + 30c
-    expect(estimateProcessingSurcharge(10_000, 'cad')).toBe(437)
-  })
-
-  it('uses the default rate (3.9% + 50c) for an unknown currency', () => {
-    // zar isn't in SURCHARGE_RATES → SURCHARGE_DEFAULT { bps:390, fixed:50 }
-    expect(estimateProcessingSurcharge(10_000, 'zar')).toBe(458)
-    expect(estimateProcessingSurcharge(10_000, 'sgd')).toBe(458)
+    expect(estimateProcessingSurcharge(10_000, 'NZD')).toBe(estimateProcessingSurcharge(10_000, 'nzd'))
   })
 
   it('returns 0 for zero / negative amounts (no surcharge on a free item)', () => {
@@ -127,26 +137,9 @@ describe('estimateProcessingSurcharge — grossed-up card fee passed to the clie
   })
 
   it('still charges at least the fixed fee on tiny amounts', () => {
-    // 1c NZD: (1*0.035 + 30) / (1-0.035) = 30.035/0.965 ≈ 31.1 → 31
-    expect(estimateProcessingSurcharge(1, 'nzd')).toBe(31)
-  })
-
-  it('grosses up so the trainer nets the original amount after the real Stripe fee', () => {
-    // Simulate Stripe taking the SAME per-currency rate on the grossed-up total.
-    const cases: Array<[number, string, number, number]> = [
-      [10_000, 'nzd', 350, 30],
-      [10_000, 'usd', 390, 30],
-      [5_000, 'gbp', 250, 20],
-      [25_000, 'aud', 270, 30],
-    ]
-    for (const [amount, currency, bps, fixed] of cases) {
-      const surcharge = estimateProcessingSurcharge(amount, currency)
-      const grossTotal = amount + surcharge
-      const stripeFee = Math.round(grossTotal * (bps / 10_000) + fixed)
-      const net = grossTotal - stripeFee
-      // Net should land on the original amount within a cent of rounding slack.
-      expect(Math.abs(net - amount)).toBeLessThanOrEqual(1)
-    }
+    // The 30c fixed fee dominates a $1 sale — the client pays $1.35 so the
+    // trainer still receives $1.00. Brutal proportionally, but correct.
+    expect(estimateProcessingSurcharge(100, 'nzd')).toBe(35)
   })
 })
 

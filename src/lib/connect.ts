@@ -103,32 +103,58 @@ export function isConnectConfigured(sandbox = false): boolean {
   return isStripeConfigured(sandbox)
 }
 
-// Estimated card processing fee, by payout currency, used to surcharge the
-// client when a trainer opts to pass the fee on rather than absorb it. These
-// mirror the platform processing-fee pricing set in the Stripe Dashboard
-// (domestic-card assumption — a foreign card may differ slightly, in which case
-// the trainer over/under-recovers by a few cents). { bps, fixed (minor units) }.
-const SURCHARGE_RATES: Record<string, { bps: number; fixed: number }> = {
-  nzd: { bps: 350, fixed: 30 },
-  aud: { bps: 270, fixed: 30 },
-  gbp: { bps: 250, fixed: 20 },
-  eur: { bps: 250, fixed: 20 },
-  usd: { bps: 390, fixed: 30 },
-  cad: { bps: 390, fixed: 30 },
+/**
+ * What STRIPE charges the trainer on a domestic card, per payout currency.
+ * { bps, fixed (minor units) }. Checked against Stripe's rate card, July 2026 —
+ * NZ/AU/UK verified; US/CA are the published rate; ZA unverified (see below).
+ */
+const STRIPE_BASE_RATES: Record<string, { bps: number; fixed: number }> = {
+  nzd: { bps: 265, fixed: 30 },
+  aud: { bps: 170, fixed: 30 },
+  gbp: { bps: 150, fixed: 20 },
+  eur: { bps: 150, fixed: 20 },
+  usd: { bps: 290, fixed: 30 },
+  cad: { bps: 290, fixed: 30 },
+  zar: { bps: 290, fixed: 50 },
 }
-const SURCHARGE_DEFAULT = { bps: 390, fixed: 50 }
+const STRIPE_BASE_DEFAULT = { bps: 290, fixed: 50 }
 
 /**
- * Surcharge (minor units) to add on top of `amount` so that, after Stripe takes
- * its fee on the grossed-up total, the trainer nets the original `amount`.
- * Solves surcharge = (amount·r + fixed) / (1 − r) for the per-currency rate.
+ * The fee the CLIENT is surcharged when the trainer passes card costs on. It has
+ * to cover BOTH fees that come out of the payment — Stripe's AND ours — or the
+ * trainer doesn't net the price of the thing they sold.
+ *
+ * These two tables used to be written by hand and had drifted apart: AUD grossed
+ * up at 2.7% while the real cost was Stripe 1.7% + our 1.8% = 3.5%, so every
+ * Australian trainer quietly lost 0.8% of every payment. USD grossed up at 3.9%
+ * against a true 3.5%, overcharging the client. Deriving the surcharge from the
+ * fees it exists to cover means they can't disagree again.
+ */
+function surchargeRate(currency: string): { bps: number; fixed: number } {
+  const cur = currency.toLowerCase()
+  const base = STRIPE_BASE_RATES[cur] ?? STRIPE_BASE_DEFAULT
+  return { bps: base.bps + platformFeeBps(cur), fixed: base.fixed }
+}
+
+/**
+ * Surcharge (minor units) added on top of `amount` so that — after BOTH Stripe's
+ * fee and our application fee come out of the grossed-up total — the trainer
+ * nets exactly `amount`, the price of the thing they sold.
+ *
+ * Solves T − stripeFee(T) − ourFee(T) = amount for T, where both fees are taken
+ * on the gross:  T = (amount + fixed) / (1 − r),  surcharge = T − amount.
+ *
+ * Assumes a DOMESTIC card. Stripe charges more on an overseas card (~3.5% in
+ * most of our markets), so a trainer paid from abroad still under-recovers by a
+ * little — the fee is fixed when the checkout is created, before the card is
+ * known, so it can't be exact for both.
  */
 export function estimateProcessingSurcharge(amount: number, currency: string): number {
   if (amount <= 0) return 0
-  const { bps, fixed } = SURCHARGE_RATES[currency.toLowerCase()] ?? SURCHARGE_DEFAULT
+  const { bps, fixed } = surchargeRate(currency)
   const r = bps / 10_000
   if (r >= 1) return 0
-  return Math.round((amount * r + fixed) / (1 - r))
+  return Math.round((amount + fixed) / (1 - r)) - amount
 }
 
 export interface CreateExpressAccountInput {
