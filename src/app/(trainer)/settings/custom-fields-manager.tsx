@@ -23,6 +23,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Plus, Trash2, Pencil, Check, X, GripVertical } from 'lucide-react'
+import { usedOnLabel } from '@/lib/field-usage'
 
 type FieldType = 'TEXT' | 'NUMBER' | 'DROPDOWN'
 type AppliesTo = 'OWNER' | 'DOG'
@@ -32,6 +33,8 @@ type CustomField = {
   label: string
   type: FieldType
   required: boolean
+  /** Also collected on the quick-add contact form. */
+  inQuickAdd?: boolean
   options: string[]
   category: string | null
   appliesTo: AppliesTo
@@ -261,6 +264,29 @@ export function CustomFieldsManager({
 
   // ─── Field CRUD ──────────────────────────────────────────────────────────
 
+  // Required / Quick-add flip straight from the row — that's the answer to
+  // "how do I get this field onto that form", right where the field is defined.
+  async function toggleFieldFlag(field: CustomField, flag: 'required' | 'inQuickAdd', value: boolean) {
+    setFields(prev => prev.map(f => f.id === field.id ? { ...f, [flag]: value } : f))
+    setSavingFieldId(field.id)
+    try {
+      const res = await fetch(`/api/custom-fields/${field.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [flag]: value }),
+      })
+      if (!res.ok) {
+        setFields(prev => prev.map(f => f.id === field.id ? field : f)) // revert
+        setError('Could not save that change. Please try again.')
+      }
+    } catch {
+      setFields(prev => prev.map(f => f.id === field.id ? field : f))
+      setError('Could not save that change. Please try again.')
+    } finally {
+      setSavingFieldId(null)
+    }
+  }
+
   async function persistFieldUpdate(fieldId: string, patch: Partial<Pick<CustomField, 'category'>> & { order?: number }) {
     const current = fields.find(f => f.id === fieldId)
     if (!current) return
@@ -436,6 +462,7 @@ export function CustomFieldsManager({
                   onDelete={section.isOrphan ? undefined : () => handleDeleteSection(section.name)}
                   onAddField={() => setAddingInSection(section.id)}
                   onEditField={setEditingId}
+                  onToggleFlag={toggleFieldFlag}
                   onCancelEdit={() => setEditingId(null)}
                   onFieldSaved={(saved, isNew) => {
                     setFields(prev => isNew ? [...prev, saved] : prev.map(f => f.id === saved.id ? saved : f))
@@ -463,6 +490,7 @@ export function CustomFieldsManager({
                       onDelete={() => handleDeleteSection(section.name)}
                       onAddField={() => setAddingInSection(section.id)}
                       onEditField={setEditingId}
+                      onToggleFlag={toggleFieldFlag}
                       onCancelEdit={() => setEditingId(null)}
                       onFieldSaved={(saved, isNew) => {
                         setFields(prev => isNew ? [...prev, saved] : prev.map(f => f.id === saved.id ? saved : f))
@@ -610,6 +638,7 @@ function SectionDroppable({
   onDelete,
   onAddField,
   onEditField,
+  onToggleFlag,
   onCancelEdit,
   onFieldSaved,
   onFieldDeleted,
@@ -627,6 +656,7 @@ function SectionDroppable({
   onDelete?: () => void
   onAddField: () => void
   onEditField: (id: string) => void
+  onToggleFlag: (field: CustomField, flag: 'required' | 'inQuickAdd', value: boolean) => void
   onCancelEdit: () => void
   onFieldSaved: (saved: CustomField, isNew: boolean) => void
   onFieldDeleted: (id: string) => void
@@ -736,6 +766,7 @@ function SectionDroppable({
                   key={field.id}
                   field={field}
                   onEdit={() => onEditField(field.id)}
+                  onToggleFlag={(flag, value) => onToggleFlag(field, flag, value)}
                   isSaving={savingFieldId === field.id}
                 />
               )
@@ -759,10 +790,12 @@ function SectionDroppable({
 function SortableFieldRow({
   field,
   onEdit,
+  onToggleFlag,
   isSaving,
 }: {
   field: CustomField
   onEdit: () => void
+  onToggleFlag: (flag: 'required' | 'inQuickAdd', value: boolean) => void
   isSaving: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id })
@@ -800,20 +833,58 @@ function SortableFieldRow({
           {field.isSystem
             ? 'System field · always required'
             : `${TYPE_LABELS[field.type]} · ${field.appliesTo === 'DOG' ? 'Per dog' : 'Per owner'}`}
+          <span className="mx-1.5 text-slate-300">·</span>
+          <span className="text-slate-500">
+            Shows on {usedOnLabel({
+              kind: field.isSystem ? 'CORE' : 'CUSTOM',
+              required: field.required,
+              quickAdd: !!field.inQuickAdd,
+            })}
+          </span>
           {isSaving && <span className="ml-2 text-blue-500">Saving…</span>}
         </p>
       </div>
       {!field.isSystem && (
-        <button
-          type="button"
-          onClick={onEdit}
-          className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-          aria-label="Edit field"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <FlagPill
+            label="Required"
+            on={field.required}
+            onClick={() => onToggleFlag('required', !field.required)}
+          />
+          <FlagPill
+            label="Quick add"
+            on={!!field.inQuickAdd}
+            onClick={() => onToggleFlag('inQuickAdd', !field.inQuickAdd)}
+          />
+          <button
+            type="button"
+            onClick={onEdit}
+            className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+            aria-label="Edit field"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        </div>
       )}
     </div>
+  )
+}
+
+// A row-level on/off pill. Pressed = the field is on that form.
+function FlagPill({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      className={`hidden sm:inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+        on
+          ? 'border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100'
+          : 'border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+      }`}
+    >
+      {label}
+    </button>
   )
 }
 
@@ -853,6 +924,7 @@ function FieldEditor({
   const [label, setLabel] = useState(initial?.label ?? '')
   const [type, setType] = useState<FieldType>(initial?.type ?? 'TEXT')
   const [required, setRequired] = useState(initial?.required ?? false)
+  const [inQuickAdd, setInQuickAdd] = useState(initial?.inQuickAdd ?? false)
   const [appliesTo, setAppliesTo] = useState<AppliesTo>(initial?.appliesTo ?? 'OWNER')
   const [options, setOptions] = useState<string[]>(initial?.options ?? [])
   const [optionInput, setOptionInput] = useState('')
@@ -883,6 +955,7 @@ function FieldEditor({
       label: label.trim(),
       type,
       required,
+      inQuickAdd,
       options: type === 'DROPDOWN' ? options : [],
       category: presetCategory,
       appliesTo,
@@ -901,6 +974,7 @@ function FieldEditor({
       label: saved.label,
       type: saved.type as FieldType,
       required: saved.required,
+      inQuickAdd: !!saved.inQuickAdd,
       options: Array.isArray(saved.options) ? saved.options as string[] : [],
       category: saved.category ?? null,
       appliesTo: (saved.appliesTo ?? 'OWNER') as AppliesTo,
@@ -977,15 +1051,29 @@ function FieldEditor({
         </div>
       )}
 
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={required}
-          onChange={e => setRequired(e.target.checked)}
-          className="h-4 w-4 rounded border-slate-300 text-blue-600"
-        />
-        Required field
-      </label>
+      <div className="flex flex-col gap-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={required}
+            onChange={e => setRequired(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-blue-600"
+          />
+          Required field
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={inQuickAdd}
+            onChange={e => setInQuickAdd(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-blue-600"
+          />
+          Also ask on the quick-add contact form
+        </label>
+        <p className="text-xs text-slate-500">
+          Shows on {usedOnLabel({ kind: 'CUSTOM', required, quickAdd: inQuickAdd })}.
+        </p>
+      </div>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
 

@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import {
   Plus, Copy, Check, Trash2, Pencil, ExternalLink,
   Globe, ToggleLeft, ToggleRight, Code2, FileText,
-  ClipboardList, UserCog, Table2,
+  ClipboardList,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import type { FormRow as SessionFormRow } from './session/session-forms-manager'
 import { CustomFieldsManager } from '../settings/custom-fields-manager'
+import { ClientFieldsConfig } from '../settings/client-fields-config'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -618,76 +619,141 @@ function CustomFieldToggleRow({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-type FormType = 'INTAKE' | 'EMBED' | 'SESSION' | 'CLIENT_FIELDS' | 'CAPTURE_MAP'
+type FormType = 'INTAKE' | 'EMBED' | 'SESSION'
 
 const TYPE_BADGE: Record<FormType, { label: string; cls: string; Icon: typeof Globe }> = {
   INTAKE: { label: 'Intake', cls: 'bg-amber-100 text-amber-700', Icon: ClipboardList },
   EMBED: { label: 'Embed', cls: 'bg-blue-100 text-blue-700', Icon: Globe },
   SESSION: { label: 'Session', cls: 'bg-violet-100 text-violet-700', Icon: FileText },
-  CLIENT_FIELDS: { label: 'Client fields', cls: 'bg-teal-100 text-teal-700', Icon: UserCog },
-  CAPTURE_MAP: { label: 'Overview', cls: 'bg-slate-100 text-slate-600', Icon: Table2 },
 }
-
 export function FormsManager({
   initialSessionForms,
   intakeCustomFields,
   intakeFormPublished,
+  intakeSectionOrder,
+  intakeSystemFieldSections,
 }: {
   initialSessionForms: SessionFormRow[]
   intakeCustomFields: IntakeCustomField[]
   intakeFormPublished: boolean
+  intakeSectionOrder: { name: string; description: string | null }[]
+  intakeSystemFieldSections: Partial<Record<'name' | 'email' | 'phone', string | null>>
 }) {
   const router = useRouter()
-  // Forms list is read-only here — actual edits live on dedicated routes.
-  // Embed (lead-capture) forms now live on the Website tab.
   const sessionForms = initialSessionForms
+  const [isPublished, setIsPublished] = useState(intakeFormPublished)
+  const [togglingPublished, setTogglingPublished] = useState(false)
 
-  const intakeFieldCount = intakeCustomFields.length
+  async function togglePublished() {
+    setTogglingPublished(true)
+    try {
+      const res = await fetch('/api/trainer/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intakeFormPublished: !isPublished }),
+      })
+      if (res.ok) {
+        setIsPublished(v => !v)
+        // The layout's onboarding FAB reads server-rendered state — without
+        // this it keeps nagging "publish the intake form" after you have.
+        router.refresh()
+      }
+    } finally {
+      setTogglingPublished(false)
+    }
+  }
+
+  const intakeFieldCount = intakeCustomFields.length + 3 // + name/email/phone
 
   return (
-    <>
-      <div className="flex flex-col items-start gap-3 mb-4">
-        <p className="text-sm text-slate-500">
-          Intake gates new clients and session forms record reports. Lead-capture embed forms now live on the Website tab.
-        </p>
-        <Button size="sm" onClick={() => router.push('/forms/session/new')}>
-          <Plus className="h-4 w-4" />
-          New session form
-        </Button>
-      </div>
+    <div className="flex flex-col gap-8">
+      {/* ── Fields ───────────────────────────────────────────────────────── */}
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">Fields</h2>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Everything you track about a client and their dog. Each field says which forms it
+            shows on — use <strong>Required</strong> and <strong>Quick add</strong> on a row to
+            change that.
+          </p>
+        </div>
 
-      <div className="flex flex-col gap-3">
-        {/* Intake form (singleton). Published state is now an explicit flag
-            on TrainerProfile — toggled from inside the intake editor. */}
-        <FormRowCard
-          type="INTAKE"
-          title="Intake form"
-          description="The first form a client fills in when accepted. You can also fill it on their behalf from a client's edit page."
-          meta={`${intakeFieldCount} field${intakeFieldCount === 1 ? '' : 's'} configured`}
-          published={intakeFormPublished}
-          onEdit={() => router.push('/forms/intake')}
-        />
+        <div className="bg-white border border-slate-200 rounded-2xl p-5">
+          <CustomFieldsManager
+            initialFields={intakeCustomFields}
+            initialSectionOrder={intakeSectionOrder}
+            initialSystemFieldSections={intakeSystemFieldSections}
+            showSystemFields
+          />
+        </div>
 
-        {/* Per-company config for what's captured when CREATING a client
-            (full create form + quick-add contact) — its own page. */}
-        <FormRowCard
-          type="CLIENT_FIELDS"
-          title="Client capture fields"
-          description="Choose which fields are required when creating a client, and which appear on the quick-add contact form."
-          meta="Used by the New client + Quick add forms"
-          onEdit={() => router.push('/forms/client-fields')}
-        />
+        {/* Built-in client/dog details (address, dog name, breed, …) — real
+            columns, so they're configured rather than created. */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-5">
+          <ClientFieldsConfig />
+        </div>
+      </section>
 
-        {/* Read-only matrix: every field × every client form. */}
-        <FormRowCard
-          type="CAPTURE_MAP"
-          title="What each form captures"
-          description="See every field down the side and every form across the top — at a glance, what's captured and required where."
-          meta="Overview of Intake · New client · Quick add"
-          onEdit={() => router.push('/forms/capture-overview')}
-        />
+      {/* ── Forms ────────────────────────────────────────────────────────── */}
+      <section className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Forms</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Where those fields get asked. Session forms are separate — they carry their own
+              questions for writing up a session.
+            </p>
+          </div>
+          <Button size="sm" onClick={() => router.push('/forms/session/new')}>
+            <Plus className="h-4 w-4" />
+            New session form
+          </Button>
+        </div>
 
-        {/* Session forms */}
+        {/* Intake form — a view of the fields above, not a separate question set. */}
+        <div className="bg-white rounded-2xl border border-slate-200">
+          <div className="flex items-center gap-4 p-4">
+            <TypeBadgeIcon type="INTAKE" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-semibold text-slate-900 truncate">Intake form</p>
+                <TypeBadge type="INTAKE" />
+                <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+                  isPublished ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {isPublished ? 'Published' : 'Draft'}
+                </span>
+              </div>
+              <p className="text-sm text-slate-400 mt-0.5">
+                The first form a client fills in once you accept them. It asks for every field above.
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                {intakeFieldCount} field{intakeFieldCount === 1 ? '' : 's'}
+              </p>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <a
+                href="/forms/intake/preview"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Preview
+              </a>
+              <button
+                type="button"
+                onClick={togglePublished}
+                disabled={togglingPublished}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-100 disabled:opacity-50"
+              >
+                {isPublished ? 'Unpublish' : 'Publish'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Session forms — their own questions, unrelated to the field library. */}
         {sessionForms.map(f => (
           <div key={f.id} className="bg-white rounded-2xl border border-slate-200">
             <div className="flex items-center gap-4 p-4">
@@ -708,20 +774,18 @@ export function FormsManager({
                   {f.responses > 0 && <><span>·</span><span className="text-blue-600">{f.responses} filled</span></>}
                 </div>
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <button onClick={() => router.push(`/forms/session/${f.id}`)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit form">
-                  <Pencil className="h-4 w-4" />{/* Delete moved into the editor page. */}
-                </button>
-              </div>
+              <button
+                onClick={() => router.push(`/forms/session/${f.id}`)}
+                className="p-2 text-slate-400 hover:text-blue-600 transition-colors flex-shrink-0"
+                title="Edit form"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
             </div>
           </div>
         ))}
-      </div>
-
-      {/* Editor modals replaced by dedicated routes:
-          /forms/session/new + /forms/session/[formId]
-          /forms/intake (embed forms live on the Website tab) */}
-    </>
+      </section>
+    </div>
   )
 }
 
@@ -740,138 +804,6 @@ function TypeBadgeIcon({ type }: { type: FormType }) {
   return (
     <div className={`flex h-10 w-10 items-center justify-center rounded-xl flex-shrink-0 ${meta.cls}`}>
       <Icon className="h-5 w-5" />
-    </div>
-  )
-}
-
-function FormRowCard({
-  type,
-  title,
-  description,
-  meta,
-  published,
-  onEdit,
-}: {
-  type: FormType
-  title: string
-  description: string
-  meta: string
-  published?: boolean
-  onEdit: () => void
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200">
-      <div className="flex items-center gap-4 p-4">
-        <TypeBadgeIcon type={type} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-slate-900 truncate">{title}</p>
-            <TypeBadge type={type} />
-            {published !== undefined && (
-              <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                published ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-              }`}>
-                {published ? 'Published' : 'Draft'}
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-slate-400 mt-0.5">{description}</p>
-          <p className="text-xs text-slate-400 mt-1">{meta}</p>
-        </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button onClick={onEdit} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Edit">
-            <Pencil className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Page-style intake form editor. Wraps CustomFieldsManager with the page
-// chrome the route page provides (back link / heading). The "Done" button
-// just navigates back to the forms list.
-export function IntakeFormEditor({
-  initialFields,
-  initialSectionOrder,
-  initialPublished,
-  initialSystemFieldSections,
-}: {
-  initialFields: IntakeCustomField[]
-  initialSectionOrder: { name: string; description: string | null }[]
-  initialPublished: boolean
-  initialSystemFieldSections: Partial<Record<'name' | 'email' | 'phone', string | null>>
-}) {
-  const router = useRouter()
-  const [isPublished, setIsPublished] = useState(initialPublished)
-  const [togglingPublished, setTogglingPublished] = useState(false)
-
-  async function togglePublished() {
-    setTogglingPublished(true)
-    try {
-      const res = await fetch('/api/trainer/profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intakeFormPublished: !isPublished }),
-      })
-      if (res.ok) {
-        setIsPublished(v => !v)
-        // The trainer layout's FAB reads server-rendered onboarding state.
-        // Without this, the FAB keeps showing "What to do — publish the
-        // intake form" even after the toggle flips, because the layout
-        // never re-fetches.
-        router.refresh()
-      }
-    } finally {
-      setTogglingPublished(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Action bar — publish toggle + preview link. */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-2 flex-wrap">
-        <button
-          type="button"
-          onClick={togglePublished}
-          disabled={togglingPublished}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-100 disabled:opacity-50"
-          title={isPublished ? 'Unpublish' : 'Publish'}
-        >
-          <span className={`h-2 w-2 rounded-full ${isPublished ? 'bg-green-500' : 'bg-amber-400'}`} />
-          <span className={isPublished ? 'text-green-700' : 'text-amber-700'}>
-            {isPublished ? 'Published' : 'Draft'}
-          </span>
-        </button>
-        <span className="text-xs text-slate-400">Click to {isPublished ? 'unpublish' : 'publish'}</span>
-        <a
-          href="/forms/intake/preview"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          Preview form
-        </a>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-2xl p-5">
-        <p className="text-sm text-slate-500 mb-4">
-          Fields here gate new clients on first login and appear on each client&apos;s edit page.
-          Group fields into sections to walk clients through one section at a time.
-        </p>
-        <CustomFieldsManager
-          initialFields={initialFields}
-          initialSectionOrder={initialSectionOrder}
-          initialSystemFieldSections={initialSystemFieldSections}
-          showSystemFields
-        />
-      </div>
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => { router.push('/settings?tab=forms'); router.refresh() }}>
-          Done
-        </Button>
-      </div>
     </div>
   )
 }

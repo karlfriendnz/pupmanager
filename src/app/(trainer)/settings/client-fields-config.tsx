@@ -4,23 +4,20 @@ import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { CLIENT_FIELDS, type ClientFieldKey, type ResolvedFieldConfig } from '@/lib/client-fields'
 
-type QuickCustomField = {
-  id: string; label: string; required: boolean; inQuickAdd: boolean; appliesTo: 'OWNER' | 'DOG'
-}
-
-// Per-company config for what's captured when creating a client. Two switches
-// per field: "Required" (on the full create form) and "Quick-add" (shown in +
-// required for the quick-add contact form). Lives inside the intake builder.
+// The built-in client/dog details (name, phone, address, dog name, breed, …).
+// They back real columns, so they're configured rather than created: "Required"
+// (on the full create-client form) and "Quick-add" (shown on + required by the
+// quick-add contact form). Custom fields carry the same two switches inline on
+// their own rows in the field list above, so they aren't repeated here.
 export function ClientFieldsConfig() {
   const [config, setConfig] = useState<ResolvedFieldConfig | null>(null)
-  const [custom, setCustom] = useState<QuickCustomField[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/clients/field-config')
       .then(r => r.json())
-      .then(d => { setConfig(d.config); setCustom(d.customFields ?? []) })
+      .then(d => setConfig(d.config))
       .catch(() => setError('Could not load field settings.'))
   }, [])
 
@@ -41,17 +38,6 @@ export function ClientFieldsConfig() {
     saveBuiltins({ ...config, [key]: { ...config[key], [prop]: value } })
   }
 
-  async function toggleCustomQuick(id: string, value: boolean) {
-    setCustom(prev => prev.map(f => f.id === id ? { ...f, inQuickAdd: value } : f))
-    setSaving(true); setError(null)
-    try {
-      const res = await fetch(`/api/custom-fields/${id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inQuickAdd: value }),
-      })
-      if (!res.ok) setError('Save failed.')
-    } finally { setSaving(false) }
-  }
 
   if (error && !config) return <p className="text-sm text-red-600">{error}</p>
   if (!config) return <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
@@ -67,8 +53,8 @@ export function ClientFieldsConfig() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-slate-800">Client capture fields</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Choose what&apos;s required when creating a client, and what shows on the quick-add form.</p>
+          <h3 className="text-sm font-semibold text-slate-800">Client &amp; dog details</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Built-in fields, asked when you create a client. Choose which are required, and which show on quick-add.</p>
         </div>
         {saving && <span className="text-xs text-slate-400 inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Saving</span>}
       </div>
@@ -89,17 +75,7 @@ export function ClientFieldsConfig() {
             </span>
           </div>
         ))}
-        {custom.map(f => (
-          <div key={f.id} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-4 py-2.5 border-t border-slate-100">
-            <span className="text-sm text-slate-700">{f.label}<span className="ml-1.5 text-[10px] text-slate-400">{f.appliesTo === 'DOG' ? 'dog · custom' : 'custom'}</span></span>
-            <span className="w-20 flex justify-center text-[11px] text-slate-400">{f.required ? 'Yes' : '—'}</span>
-            <span className="w-20 flex justify-center">
-              <Toggle on={f.inQuickAdd} onChange={v => toggleCustomQuick(f.id, v)} label="" />
-            </span>
-          </div>
-        ))}
       </div>
-      <p className="text-[11px] text-slate-400">Custom-field &ldquo;Required&rdquo; is set on each field above in the form builder; here you choose whether it appears on quick-add.</p>
     </div>
   )
 }

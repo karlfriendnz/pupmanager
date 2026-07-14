@@ -90,10 +90,16 @@ test.describe('add-ons — nav reacts without a reload', () => {
   })
 })
 
-test.describe('custom fields — owner happy path', () => {
-  test('owner creates a custom field without picking a section first', async ({ page }) => {
+test.describe('fields & forms — owner happy path', () => {
+  test('owner creates a field, sees where it shows up, and puts it on quick-add', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto('/settings?tab=customfields')
+    await page.goto('/settings?tab=forms')
+
+    // Fields and the forms that use them are one screen now.
+    await expect(page.getByRole('heading', { name: 'Fields', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Forms', exact: true })).toBeVisible()
+    await expect(page.getByText('Intake form', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Client & dog details' })).toBeVisible()
 
     // The toolbar "Add field" opens the editor in the no-section bucket — no
     // section needs to exist for this to work.
@@ -117,6 +123,20 @@ test.describe('custom fields — owner happy path', () => {
       .filter({ has: page.getByRole('button', { name: 'Edit field' }) })
       .last()
     await expect(row).toBeVisible()
+
+    // The row says where the field is asked, and the pill puts it on quick-add.
+    await expect(row.getByText('Shows on Intake · New client')).toBeVisible()
+    const quickAdd = row.getByRole('button', { name: 'Quick add' })
+    await expect(quickAdd).toHaveAttribute('aria-pressed', 'false')
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/custom-fields/') && r.request().method() === 'PATCH'),
+      quickAdd.click(),
+    ])
+    await expect(row.getByText('Shows on Intake · New client · Quick add')).toBeVisible()
+
+    // The flag persists — it's a real save, not just an optimistic flip.
+    await page.reload()
+    await expect(row.getByRole('button', { name: 'Quick add' })).toHaveAttribute('aria-pressed', 'true')
 
     // Clean up so the field count doesn't leak into other specs.
     await row.getByRole('button', { name: 'Edit field' }).click()

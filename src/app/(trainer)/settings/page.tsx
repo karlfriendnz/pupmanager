@@ -15,7 +15,6 @@ import { IntegrationTab } from './integration-tab'
 import { XeroTab } from './xero-tab'
 import { hasAddon } from '@/lib/billing'
 import { FormsManager } from '../forms/forms-manager'
-import { CustomFieldsManager } from './custom-fields-manager'
 import type { Question } from '../forms/session/session-forms-manager'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
@@ -35,7 +34,7 @@ export default async function TrainerSettingsPage() {
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
-    select: { id: true, businessName: true, phone: true, showPhoneToClients: true, signupCountry: true, publicEmail: true, logoUrl: true, dashboardBgUrl: true, inviteTemplate: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true, intakeSectionOrder: true, intakeFormPublished: true, baseAddress: true, baseLat: true, baseLng: true, businessRoles: true },
+    select: { id: true, businessName: true, phone: true, showPhoneToClients: true, signupCountry: true, publicEmail: true, logoUrl: true, dashboardBgUrl: true, inviteTemplate: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true, intakeSectionOrder: true, intakeSystemFieldSections: true, intakeFormPublished: true, baseAddress: true, baseLat: true, baseLng: true, businessRoles: true },
   })
 
   const user = await prisma.user.findUnique({
@@ -67,11 +66,23 @@ export default async function TrainerSettingsPage() {
     label: f.label,
     type: f.type as 'TEXT' | 'NUMBER' | 'DROPDOWN',
     required: f.required,
+    inQuickAdd: f.inQuickAdd,
     options: Array.isArray(f.options) ? f.options as string[] : [],
     category: f.category ?? null,
     appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
     order: f.order,
   }))
+
+  // intakeSectionOrder may be the new shape ({name, description?}[]) or the
+  // legacy plain string[] — normalise for the field editor.
+  const rawSectionOrder = Array.isArray(trainerProfile.intakeSectionOrder) ? trainerProfile.intakeSectionOrder : []
+  const intakeSectionOrder = rawSectionOrder.map(entry =>
+    typeof entry === 'string'
+      ? { name: entry, description: null }
+      : { name: (entry as { name: string }).name, description: (entry as { description?: string | null }).description ?? null }
+  )
+  const intakeSystemFieldSections =
+    (trainerProfile.intakeSystemFieldSections as Partial<Record<'name' | 'email' | 'phone', string | null>> | null) ?? {}
 
   return (
     <>
@@ -95,13 +106,6 @@ export default async function TrainerSettingsPage() {
           </>
         ) : undefined}
         activity={ctx.role === 'OWNER' ? <ActivityPanel companyId={ctx.companyId} /> : undefined}
-        customfields={!canManageForms ? undefined :
-          <CustomFieldsManager
-            initialFields={intakeFields}
-            initialSectionOrder={[]}
-            initialSystemFieldSections={{}}
-          />
-        }
         forms={!canManageForms ? undefined :
           <FormsManager
             initialSessionForms={sessionForms.map(f => ({
@@ -118,6 +122,8 @@ export default async function TrainerSettingsPage() {
             }))}
             intakeCustomFields={intakeFields}
             intakeFormPublished={trainerProfile.intakeFormPublished}
+            intakeSectionOrder={intakeSectionOrder}
+            intakeSystemFieldSections={intakeSystemFieldSections}
           />
         }
       />
