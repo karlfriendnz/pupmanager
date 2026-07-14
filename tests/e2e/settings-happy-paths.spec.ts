@@ -90,6 +90,53 @@ test.describe('add-ons — nav reacts without a reload', () => {
   })
 })
 
+test.describe('starter field packs — owner happy path', () => {
+  test('owner picks a suggested field and it becomes a real field in its section', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/settings?tab=forms')
+
+    await page.getByRole('button', { name: 'Suggest fields' }).click()
+    await expect(
+      page.getByRole('heading', { name: /What do you want to capture about your clients/ }),
+    ).toBeVisible()
+
+    // Start from nothing selected, then pick exactly one field so this spec
+    // doesn't dump a pile of fields into the shared seeded DB. A pack whose
+    // fields are only partly ticked shows "All" — click that first, so every
+    // pack ends up on "None".
+    const packToggles = await page.getByRole('button', { name: /^(All|None)$/ }).all()
+    for (const toggle of packToggles) {
+      if ((await toggle.textContent())?.trim() === 'All') await toggle.click()
+      await toggle.click()
+    }
+    await expect(page.getByText('0 fields selected')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Vet clinic' }).click()
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/custom-fields/packs') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: 'Add 1 field' }).click(),
+    ])
+
+    // It lands as a real field, in the section its pack belongs to.
+    await page.reload()
+    await expect(page.getByRole('heading', { name: /About your dog/ })).toBeVisible({ timeout: 10_000 })
+    const row = page
+      .locator('div')
+      .filter({ has: page.getByText('Vet clinic', { exact: true }) })
+      .filter({ has: page.getByRole('button', { name: 'Edit field' }) })
+      .last()
+    await expect(row.getByText('Shows on Intake · New client')).toBeVisible()
+
+    // Clean up so the field count doesn't leak into other specs.
+    await row.getByRole('button', { name: 'Edit field' }).click()
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/custom-fields/') && r.request().method() === 'DELETE'),
+      page.getByRole('button', { name: 'Confirm' }).click(),
+    ])
+  })
+})
+
 test.describe('fields & forms — owner happy path', () => {
   test('owner creates a field, sees where it shows up, and puts it on quick-add', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
@@ -109,7 +156,7 @@ test.describe('fields & forms — owner happy path', () => {
     await page.getByPlaceholder("e.g. Dog's breed").fill(label)
     const [resp] = await Promise.all([
       page.waitForResponse(r => r.url().includes('/api/custom-fields') && r.request().method() === 'POST'),
-      page.getByRole('button', { name: 'Add field', exact: true }).last().click(),
+      page.getByRole('button', { name: 'Create field' }).click(),
     ])
     expect(resp.ok()).toBeTruthy()
 
@@ -140,7 +187,7 @@ test.describe('fields & forms — owner happy path', () => {
 
     // Clean up so the field count doesn't leak into other specs.
     await row.getByRole('button', { name: 'Edit field' }).click()
-    await page.getByRole('button', { name: 'Delete' }).click()
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
     await Promise.all([
       page.waitForResponse(r => r.url().includes('/api/custom-fields/') && r.request().method() === 'DELETE'),
       page.getByRole('button', { name: 'Confirm' }).click(),

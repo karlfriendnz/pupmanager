@@ -124,6 +124,7 @@ export default async function TrainerSettingsPage() {
             intakeFormPublished={trainerProfile.intakeFormPublished}
             intakeSectionOrder={intakeSectionOrder}
             intakeSystemFieldSections={intakeSystemFieldSections}
+            businessRoles={Array.isArray(trainerProfile.businessRoles) ? trainerProfile.businessRoles as string[] : []}
           />
         }
       />

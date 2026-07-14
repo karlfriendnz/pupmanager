@@ -1097,7 +1097,7 @@ function FieldEditor({
         <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
         <Button size="sm" loading={saving} onClick={save}>
           <Check className="h-3.5 w-3.5" />
-          {initial ? 'Save' : 'Add field'}
+          {initial ? 'Save' : 'Create field'}
         </Button>
       </div>
     </div>

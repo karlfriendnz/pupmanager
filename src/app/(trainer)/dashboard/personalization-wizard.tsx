@@ -778,8 +778,8 @@ export function PersonalizationWizard({
                       <Sparkles className="h-5 w-5" />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-slate-800">Start fresh</span>
-                      <span className="block text-[13px] text-slate-500 mt-0.5 leading-relaxed">Go straight to your empty dashboard and set up your real clients and packages.</span>
+                      <span className="block text-sm font-semibold text-slate-800">Set up my real business</span>
+                      <span className="block text-[13px] text-slate-500 mt-0.5 leading-relaxed">Start by choosing what you want to capture about your clients and their dogs — we&apos;ll suggest the usual ones for the work you do.</span>
                     </span>
                   </button>
                 </div>

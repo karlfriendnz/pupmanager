@@ -171,6 +171,11 @@ export function OnboardingPanel({ state, branding, impersonating = false }: { st
             fetch('/api/onboarding/tour/start', { method: 'POST' }),
             fetch('/api/onboarding/welcome/dismiss', { method: 'POST' }),
           ])
+          // Straight from "who are you" into "what do you capture about your
+          // clients" — the starter-field step opens on arrival, so they never
+          // meet an empty field list. It's skippable, and only auto-opens when
+          // they have no fields yet.
+          router.push('/settings?tab=forms&setup=fields')
           router.refresh()
         }}
       />

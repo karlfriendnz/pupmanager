@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import {
-  Plus, Copy, Check, Trash2, Pencil, ExternalLink,
+  Plus, Copy, Check, Trash2, Pencil, ExternalLink, Sparkles,
   Globe, ToggleLeft, ToggleRight, Code2, FileText,
   ClipboardList,
 } from 'lucide-react'
@@ -12,6 +13,7 @@ import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import type { FormRow as SessionFormRow } from './session/session-forms-manager'
 import { CustomFieldsManager } from '../settings/custom-fields-manager'
 import { ClientFieldsConfig } from '../settings/client-fields-config'
+import { FieldPacksWizard } from '../settings/field-packs-wizard'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -632,15 +634,25 @@ export function FormsManager({
   intakeFormPublished,
   intakeSectionOrder,
   intakeSystemFieldSections,
+  businessRoles,
 }: {
   initialSessionForms: SessionFormRow[]
   intakeCustomFields: IntakeCustomField[]
   intakeFormPublished: boolean
   intakeSectionOrder: { name: string; description: string | null }[]
   intakeSystemFieldSections: Partial<Record<'name' | 'email' | 'phone', string | null>>
+  /** Roles picked during onboarding — pre-select the right starter packs. */
+  businessRoles: string[]
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const sessionForms = initialSessionForms
+  // Opens straight after onboarding (?setup=fields), and any time from the
+  // "Suggest fields" button. Never auto-opens for a trainer who already has
+  // fields — they've been through this.
+  const [wizardOpen, setWizardOpen] = useState(
+    () => searchParams.get('setup') === 'fields' && intakeCustomFields.length === 0
+  )
   const [isPublished, setIsPublished] = useState(intakeFormPublished)
   const [togglingPublished, setTogglingPublished] = useState(false)
 
@@ -667,15 +679,25 @@ export function FormsManager({
 
   return (
     <div className="flex flex-col gap-8">
+      {wizardOpen && (
+        <FieldPacksWizard roles={businessRoles} onClose={() => setWizardOpen(false)} />
+      )}
+
       {/* ── Fields ───────────────────────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-slate-900">Fields</h2>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Everything you track about a client and their dog. Each field says which forms it
-            shows on — use <strong>Required</strong> and <strong>Quick add</strong> on a row to
-            change that.
-          </p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Fields</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Everything you track about a client and their dog. Each field says which forms it
+              shows on — use <strong>Required</strong> and <strong>Quick add</strong> on a row to
+              change that.
+            </p>
+          </div>
+          <Button size="sm" variant="secondary" onClick={() => setWizardOpen(true)}>
+            <Sparkles className="h-4 w-4" />
+            Suggest fields
+          </Button>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5">
