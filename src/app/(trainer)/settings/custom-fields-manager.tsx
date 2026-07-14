@@ -101,7 +101,13 @@ interface SectionView {
   isOrphan: boolean
 }
 
-function buildSections(fields: CustomField[], sectionOrder: SectionMeta[]): SectionView[] {
+export function buildSections(
+  fields: CustomField[],
+  sectionOrder: SectionMeta[],
+  // Keep the orphan bucket on screen even when it's empty — used while the
+  // trainer is adding a field that doesn't belong to any section yet.
+  forceOrphan = false
+): SectionView[] {
   // Sort fields within their section by `order` so reorders show up immediately
   // even before the page is refetched.
   const sortByOrder = (a: CustomField, b: CustomField) => a.order - b.order
@@ -114,7 +120,7 @@ function buildSections(fields: CustomField[], sectionOrder: SectionMeta[]): Sect
     fields: fields.filter(f => f.category === s.name).sort(sortByOrder),
     isOrphan: false,
   }))
-  if (orphans.length === 0) return named
+  if (orphans.length === 0 && !forceOrphan) return named
   return [
     { id: ORPHAN_BUCKET_ID, name: 'Fields without a section', description: null, fields: orphans, isOrphan: true },
     ...named,
@@ -163,7 +169,10 @@ export function CustomFieldsManager({
   // Combine system + custom rows for section placement. Sorting
   // (system first via their negative order) happens inside buildSections.
   const allFields = useMemo(() => [...systemRows, ...fields], [systemRows, fields])
-  const sections = useMemo(() => buildSections(allFields, sectionOrder), [allFields, sectionOrder])
+  const sections = useMemo(
+    () => buildSections(allFields, sectionOrder, addingInSection === ORPHAN_BUCKET_ID),
+    [allFields, sectionOrder, addingInSection]
+  )
   const activeField = activeId ? allFields.find(f => f.id === activeId) ?? null : null
   // Section ids in their current order — used as the SortableContext items
   // for section-level drag, and to detect whether a drag is a section drag
@@ -376,10 +385,23 @@ export function CustomFieldsManager({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-slate-500">Drag fields between sections. Sections show clients one screen at a time.</p>
-        <Button size="sm" variant="secondary" onClick={() => setCreatingSection(true)} disabled={creatingSection}>
-          <Plus className="h-3.5 w-3.5" />
-          Create section
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Add a field without picking a section first — it lands in the
+              "Fields without a section" bucket and can be dragged in later. */}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setAddingInSection(ORPHAN_BUCKET_ID)}
+            disabled={addingInSection === ORPHAN_BUCKET_ID}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add field
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => setCreatingSection(true)} disabled={creatingSection}>
+            <Plus className="h-3.5 w-3.5" />
+            Create section
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -396,7 +418,8 @@ export function CustomFieldsManager({
           {sections.length === 0 && (
             <Card>
               <CardBody className="py-8 text-center text-slate-400 text-sm">
-                No sections yet. Click <strong>Create section</strong> to add one.
+                Nothing here yet. Click <strong>Add field</strong> to create a field, or{' '}
+                <strong>Create section</strong> to group fields into a screen.
               </CardBody>
             </Card>
           )}
@@ -658,12 +681,10 @@ function SectionDroppable({
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {!section.isOrphan && (
-              <Button size="sm" variant="ghost" onClick={onAddField}>
-                <Plus className="h-3.5 w-3.5" />
-                Add field
-              </Button>
-            )}
+            <Button size="sm" variant="ghost" onClick={onAddField}>
+              <Plus className="h-3.5 w-3.5" />
+              Add field
+            </Button>
             {onStartEditMeta && (
               <button
                 type="button"
