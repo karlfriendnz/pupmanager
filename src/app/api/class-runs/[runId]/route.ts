@@ -182,9 +182,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
   return NextResponse.json({ ok: true, status: run.status })
 }
 
-// DELETE = cancel. We never hard-delete a run with history; we mark it
-// CANCELLED so past attendance/sessions stay intact. A run that never
-// took an enrolment can be removed outright.
+// DELETE = delete. The class, its sessions, its enrolments and their
+// attendance all go, in one transaction. (It used to soft-cancel any run that
+// had ever taken an enrolment, which read to trainers as "delete does
+// nothing" — the class and its sessions stayed on the schedule.) Enrolled
+// clients are told the class is cancelled BEFORE the rows go, since the
+// notification needs the enrolments to still exist. Payment history survives:
+// PaymentItem.classEnrollmentId / trainingSessionId are SetNull.
 export async function DELETE(_req: Request, { params }: { params: Promise<{ runId: string }> }) {
   const guard = await guardPermission('classes.manage')
   if (guard instanceof NextResponse) return guard
@@ -196,18 +200,35 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ runI
   if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { runId } = await params
+  // Tenant guard: only a run owned by THIS company can be deleted.
   const run = await prisma.classRun.findFirst({
     where: { id: runId, trainerId },
-    include: { _count: { select: { enrollments: true } } },
+    select: { id: true, name: true },
   })
   if (!run) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  if (run._count.enrollments === 0) {
-    // Sessions cascade via classRunId FK.
-    await prisma.classRun.delete({ where: { id: runId } })
-    return NextResponse.json({ ok: true, deleted: true })
+  // Best-effort — a flaky email/push must not block the delete.
+  try {
+    await notifyRunClients({
+      runId, trainerId, planName: run.name,
+      detail: 'This class has been cancelled', link: '/my-sessions',
+    })
+  } catch (err) {
+    console.error('[class-runs] delete: notifying clients failed', err)
   }
-  await prisma.classRun.update({ where: { id: runId }, data: { status: 'CANCELLED' } })
-  await notifyRunClients({ runId, trainerId, planName: run.name, detail: 'This class has been cancelled', link: '/my-sessions' })
-  return NextResponse.json({ ok: true, cancelled: true })
+
+  try {
+    await prisma.$transaction([
+      // Sessions/enrolments cascade off the run at the FK level, but delete
+      // the sessions explicitly (scoped to the tenant) so the intent is
+      // enforced here, not just by the DB.
+      prisma.trainingSession.deleteMany({ where: { classRunId: runId, trainerId } }),
+      prisma.classRun.delete({ where: { id: runId } }),
+    ])
+  } catch (err) {
+    console.error('[class-runs] delete failed', err)
+    return NextResponse.json({ error: 'Could not delete this class. Please try again.' }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, deleted: true })
 }

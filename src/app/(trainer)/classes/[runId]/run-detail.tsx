@@ -89,13 +89,21 @@ export function RunDetail({
   async function handleDelete() {
     setError(null)
     setDeleting(true)
-    const res = await fetch(`/api/class-runs/${run.id}`, { method: 'DELETE' })
-    if (res.ok) {
-      router.push('/classes')
-      router.refresh()
-      return
+    try {
+      const res = await fetch(`/api/class-runs/${run.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        // refresh() first so the /classes list re-renders without the run —
+        // pushing alone can serve the cached (stale) server render.
+        router.refresh()
+        router.push('/classes')
+        return
+      }
+      const body = await res.json().catch(() => null)
+      const msg = typeof body?.error === 'string' ? body.error : null
+      setError(msg ?? 'Could not delete this class — try again.')
+    } catch {
+      setError('Could not delete this class — check your connection and try again.')
     }
-    setError('Could not delete this class — try again.')
     setDeleting(false)
     setConfirmingDelete(false)
   }
