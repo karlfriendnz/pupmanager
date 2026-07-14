@@ -61,3 +61,69 @@ test.describe('phone visibility — owner happy path', () => {
     ])
   })
 })
+
+test.describe('add-ons — nav reacts without a reload', () => {
+  test('turning Group classes off hides the Classes nav item immediately', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/settings?tab=addons')
+
+    // Group classes is free + default-on, so the nav link starts visible.
+    const classesNav = page.getByRole('link', { name: 'Classes', exact: true })
+    await expect(classesNav).toBeVisible()
+
+    await page.getByRole('button', { name: /Group classes/ }).first().click()
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/addons') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: 'Turn off Group classes' }).click(),
+    ])
+
+    // No page.reload() here — that's the regression this guards.
+    await expect(classesNav).toBeHidden({ timeout: 10_000 })
+
+    // Turn it back on so the nav state doesn't leak into other specs.
+    await page.getByRole('button', { name: /Group classes/ }).first().click()
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/addons') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: 'Turn on Group classes' }).click(),
+    ])
+    await expect(classesNav).toBeVisible({ timeout: 10_000 })
+  })
+})
+
+test.describe('custom fields — owner happy path', () => {
+  test('owner creates a custom field without picking a section first', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/settings?tab=customfields')
+
+    // The toolbar "Add field" opens the editor in the no-section bucket — no
+    // section needs to exist for this to work.
+    await page.getByRole('button', { name: 'Add field', exact: true }).first().click()
+
+    const label = `Microchip ${Date.now()}`
+    await page.getByPlaceholder("e.g. Dog's breed").fill(label)
+    const [resp] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/custom-fields') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: 'Add field', exact: true }).last().click(),
+    ])
+    expect(resp.ok()).toBeTruthy()
+
+    // It lands in the "Fields without a section" bucket and survives a reload.
+    await page.reload()
+    await expect(page.getByText('Fields without a section')).toBeVisible({ timeout: 10_000 })
+    // Innermost div holding both the label and its pencil = the field row.
+    const row = page
+      .locator('div')
+      .filter({ has: page.getByText(label, { exact: true }) })
+      .filter({ has: page.getByRole('button', { name: 'Edit field' }) })
+      .last()
+    await expect(row).toBeVisible()
+
+    // Clean up so the field count doesn't leak into other specs.
+    await row.getByRole('button', { name: 'Edit field' }).click()
+    await page.getByRole('button', { name: 'Delete' }).click()
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/custom-fields/') && r.request().method() === 'DELETE'),
+      page.getByRole('button', { name: 'Confirm' }).click(),
+    ])
+  })
+})

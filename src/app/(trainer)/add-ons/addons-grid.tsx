@@ -76,6 +76,10 @@ export function AddonsGrid({
         return
       }
       setLearnMore(null) // success → close the popup
+      // The card flips optimistically, but nav entries and every other
+      // hasAddon-gated surface are server-rendered in the trainer layout —
+      // without this they keep the old on/off state until a hard reload.
+      router.refresh()
       // Just enabled an add-on that needs setup (connect Xero / Google) → take
       // them straight to its setup page.
       if (next && MANAGE_HREF[card.id]) { router.push(MANAGE_HREF[card.id]); return }

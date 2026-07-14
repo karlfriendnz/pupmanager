@@ -78,6 +78,12 @@ export default async function globalSetup() {
     await prisma.trainerAddon.create({
       data: { trainerId: profile.id, itemId: 'timesheets', active: true },
     })
+    // Group classes is free + default-on (no TrainerAddon row = enabled), but
+    // toggling it writes a TrainerAddon whose itemId is an FK to BillingItem —
+    // without this row the toggle 500s on the constraint.
+    await prisma.billingItem.create({
+      data: { id: 'classes', kind: 'ADDON', name: 'Group classes', description: 'Class cohorts and enrolments', priceMonthly: 0, sortOrder: 5, isActive: true },
+    })
 
     // An accepted MANAGER + STAFF member (with passwords) so permission specs
     // can sign in as them. Members have a membership, no TrainerProfile.
