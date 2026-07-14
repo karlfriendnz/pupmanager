@@ -57,8 +57,9 @@ describe('createPaymentRecord — server-computed totals + surcharge line', () =
     expect(created[1].description).toBe('Card processing fee')
     expect(created[1].unitAmount).toBe(394)
     expect(created[1].intent).toEqual({ surcharge: true })
-    // direct charge ⇒ no application fee by default (PLATFORM_FEE_BPS 0)
-    expect(data.applicationFeeAmount).toBe(0)
+    // Our margin is stamped on the record at creation: 0.85% (NZD) of the
+    // grossed-up 10394 = 88c. It used to be 0 here — that WAS the bug.
+    expect(data.applicationFeeAmount).toBe(88)
     // record stamps the connected account + currency + PENDING status
     expect(data.connectAccountId).toBe('acct_1')
     expect(data.currency).toBe('nzd')
@@ -123,10 +124,10 @@ describe('mintCheckoutSession — direct charge on the connected account', () =>
     expect(h.stripeFor).not.toHaveBeenCalled()
   })
 
-  it('mints a DIRECT charge on the connected account (Stripe-Account header, no app fee/transfer)', async () => {
+  it('mints a DIRECT charge and sends our margin as the application fee', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'cs_1', url: 'https://checkout/cs_1' })
     h.stripeFor.mockReturnValue({ checkout: { sessions: { create } } })
-    h.paymentFindUnique.mockResolvedValue({ id: 'pay_1', status: 'PENDING', sandbox: false, trainerId: 't1', connectAccountId: 'acct_dest', currency: 'nzd', items: [{ quantity: 1, unitAmount: 5000, description: 'Leash' }] })
+    h.paymentFindUnique.mockResolvedValue({ id: 'pay_1', status: 'PENDING', sandbox: false, trainerId: 't1', connectAccountId: 'acct_dest', currency: 'nzd', applicationFeeAmount: 43, items: [{ quantity: 1, unitAmount: 5000, description: 'Leash' }] })
 
     const url = await mintCheckoutSession('pay_1', { successUrl: 's', cancelUrl: 'c' })
     expect(url).toBe('https://checkout/cs_1')
@@ -134,11 +135,23 @@ describe('mintCheckoutSession — direct charge on the connected account', () =>
     const [sessionArg, opts] = create.mock.calls[0]
     // Direct charge: second arg carries the Stripe-Account header.
     expect(opts).toEqual({ stripeAccount: 'acct_dest' })
-    // No application fee or transfer on a direct charge.
-    expect(sessionArg.payment_intent_data).not.toHaveProperty('application_fee_amount')
+    // Our cut, as stored on the Payment row. Omitting this is how we shipped
+    // 0% margin on every payment — the regression this test exists to catch.
+    expect(sessionArg.payment_intent_data.application_fee_amount).toBe(43)
+    // Direct charge, so the trainer is merchant of record — never a transfer.
     expect(sessionArg).not.toHaveProperty('transfer_data')
     // Line items rebuilt from stored PaymentItems at the stored unit amount.
     expect(sessionArg.line_items[0].price_data.unit_amount).toBe(5000)
     expect(sessionArg.line_items[0].price_data.currency).toBe('nzd')
+  })
+
+  it('omits the application fee entirely when we take nothing (Stripe rejects a 0 fee)', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'cs_1', url: 'https://checkout/cs_1' })
+    h.stripeFor.mockReturnValue({ checkout: { sessions: { create } } })
+    h.paymentFindUnique.mockResolvedValue({ id: 'pay_1', status: 'PENDING', sandbox: false, trainerId: 't1', connectAccountId: 'acct_dest', currency: 'zar', applicationFeeAmount: 0, items: [{ quantity: 1, unitAmount: 5000, description: 'Leash' }] })
+
+    await mintCheckoutSession('pay_1', { successUrl: 's', cancelUrl: 'c' })
+    const [sessionArg] = create.mock.calls[0]
+    expect(sessionArg.payment_intent_data).not.toHaveProperty('application_fee_amount')
   })
 })

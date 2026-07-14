@@ -39,18 +39,63 @@ export function currencyForCountry(country?: string | null): string {
   return COUNTRY_CURRENCY[country.toUpperCase()] ?? 'nzd'
 }
 
-/** Platform fee in basis points (env-configured; 500 = 5%). */
-export function platformFeeBps(): number {
-  return env.PLATFORM_FEE_BPS
+/**
+ * OUR MARGIN on a client→trainer payment, in basis points of the gross.
+ *
+ * These are DIRECT charges: the trainer is merchant of record and pays Stripe's
+ * processing fee themselves. Our cut rides on top as an `application_fee_amount`,
+ * which Stripe transfers to the platform automatically.
+ *
+ * pupmanager.com/pricing advertises client payments at "3.5% + $0.30 /payment",
+ * so the margin is that headline minus what Stripe actually charges the trainer
+ * in their country — and the trainer's all-in cost lands on the advertised rate:
+ *
+ *   currency  Stripe domestic      our margin   trainer pays
+ *   nzd       2.65% + $0.30   ✓    0.85%        3.50% + $0.30
+ *   aud       1.70% + A$0.30  ✓    1.80%        3.50% + A$0.30
+ *   gbp       1.50% + 20p     ✓    2.00%        3.50% + 20p
+ *   usd       2.90% + $0.30   ~    0.60%        3.50% + $0.30
+ *   cad       2.90% + C$0.30  ~    0.60%        3.50% + C$0.30
+ *   zar       unverified      ✗    0%           Stripe's rate only
+ *
+ * ✓ = checked against Stripe's live rate card (July 2026). ~ = the widely
+ * published rate, not re-verified. ✗ = we take NOTHING rather than risk
+ * charging a trainer more than the pricing page promises. Confirm the rate,
+ * then set the margin.
+ *
+ * We take no fixed component: Stripe's fixed fee already equals the advertised
+ * one, and a fixed markup would quietly overcharge on small payments.
+ *
+ * INTERNATIONAL CARDS: Stripe charges ~3.5% on those, so a trainer paid with an
+ * overseas card pays our margin on top of the advertised rate. The application
+ * fee is fixed when the checkout is created — before the card is known — so it
+ * cannot vary by card type.
+ */
+const PLATFORM_MARKUP_BPS: Record<string, number> = {
+  nzd: 85,
+  aud: 180,
+  gbp: 200,
+  usd: 60,
+  cad: 60,
+  zar: 0,
+}
+/** Unknown currency → take nothing. Never overcharge on a rate we haven't checked. */
+const PLATFORM_MARKUP_DEFAULT = 0
+
+/** Our margin in basis points for a payout currency. PLATFORM_FEE_BPS overrides. */
+export function platformFeeBps(currency: string): number {
+  if (env.PLATFORM_FEE_BPS > 0) return env.PLATFORM_FEE_BPS
+  return PLATFORM_MARKUP_BPS[currency.toLowerCase()] ?? PLATFORM_MARKUP_DEFAULT
 }
 
 /**
- * Platform fee (minor units) for a gross amount (minor units). This is the
- * `application_fee_amount` we hand Stripe on the destination charge — Stripe
- * deducts it and pays the trainer the remainder.
+ * Our cut (minor units) of a gross amount (minor units) — the
+ * `application_fee_amount` handed to Stripe on the direct charge. Stripe pays it
+ * to the platform and settles the remainder, less its own fee, to the trainer.
  */
-export function platformFeeAmount(amountTotal: number): number {
-  return Math.round((amountTotal * platformFeeBps()) / 10_000)
+export function platformFeeAmount(amountTotal: number, currency: string): number {
+  if (amountTotal <= 0) return 0
+  return Math.round((amountTotal * platformFeeBps(currency)) / 10_000)
 }
 
 /** Is client→trainer payment configured for this mode? Same keys as Flow A. */

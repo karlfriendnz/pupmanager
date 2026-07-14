@@ -10,9 +10,11 @@ import { recordAudit, auditRequestMeta } from '@/lib/audit'
 // Refund a client→trainer payment. Owner-only. The charge is a DIRECT charge on
 // the trainer's connected account, so the refund is issued in that account's
 // context (Stripe-Account header) and comes out of the trainer's balance.
-// There's no transfer or application_fee to reverse — our cut was the
-// platform processing-fee markup, which Stripe keeps. Records a Refund row, and
-// lets the charge.refunded webhook reconcile amountRefunded + status.
+// Our margin (the application fee on the charge) is reversed in proportion via
+// refund_application_fee, so the platform doesn't keep its cut on a sale that
+// didn't happen — otherwise the trainer would fund it out of their own balance.
+// Records a Refund row, and lets the charge.refunded webhook reconcile
+// amountRefunded + status.
 
 const schema = z.object({
   // Minor units. Omit for a full refund of the remaining amount.
@@ -84,6 +86,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       {
         payment_intent: payment.stripePaymentIntentId,
         amount,
+        // Give our margin back too, in proportion to the amount refunded.
+        // Without this the platform keeps its cut on a refunded payment and the
+        // TRAINER eats it out of their own balance — they'd be out of pocket for
+        // a sale that never happened.
+        refund_application_fee: true,
       },
       {
         // Direct charge — issue the refund on the trainer's connected account.

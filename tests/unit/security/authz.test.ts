@@ -36,13 +36,13 @@ describe('team permission-grant escalation guard', () => {
 
 describe('platform fee is server-derived and bounded', () => {
   it('computes the configured basis points', () => {
-    expect(platformFeeBps()).toBe(500)
-    expect(platformFeeAmount(10000)).toBe(500) // 5% of $100.00
+    expect(platformFeeBps('nzd')).toBe(500)
+    expect(platformFeeAmount(10000, 'nzd')).toBe(500) // 5% of $100.00
   })
 
   it('never exceeds the charged amount and is never negative', () => {
     for (const amt of [0, 1, 99, 100, 12345, 9_999_99]) {
-      const fee = platformFeeAmount(amt)
+      const fee = platformFeeAmount(amt, 'nzd')
       expect(fee).toBeGreaterThanOrEqual(0)
       expect(fee).toBeLessThanOrEqual(amt)
     }

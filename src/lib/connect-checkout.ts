@@ -83,7 +83,7 @@ export async function createPaymentRecord(input: CreatePaymentRecordInput): Prom
   }
 
   const amountTotal = lines.reduce((sum, l) => sum + l.unitAmount * (l.quantity ?? 1), 0)
-  const applicationFeeAmount = platformFeeAmount(amountTotal)
+  const applicationFeeAmount = platformFeeAmount(amountTotal, input.currency)
 
   const payment = await prisma.payment.create({
     data: {
@@ -137,8 +137,14 @@ export async function mintCheckoutSession(
   const stripe = stripeFor(payment.sandbox)
   // The Stripe-Account header makes this a DIRECT charge on the trainer's
   // connected account: the trainer is merchant of record and pays Stripe's
-  // (platform-priced) processing fee; our markup is collected by Stripe, so we
-  // set no application_fee or transfer here.
+  // processing fee. Our margin rides on top as application_fee_amount, which
+  // Stripe transfers to the platform automatically.
+  //
+  // This used to be omitted, on the belief that Dashboard "platform pricing"
+  // collected our cut. It doesn't: those pricing tools only apply to direct
+  // charges when the PLATFORM is billed for fees (and is on IC+), which isn't
+  // our setup — so we were taking 0% on every payment. The fee is computed and
+  // stored on the Payment row at creation; send the same number.
   const session = await stripe.checkout.sessions.create(
     {
       mode: 'payment',
@@ -153,6 +159,11 @@ export async function mintCheckoutSession(
       payment_intent_data: {
         // Merge extra keys (e.g. invoiceId) but never let them clobber paymentId.
         metadata: { ...extraMetadata, paymentId: payment.id },
+        // 0 would be rejected by Stripe — omit the key entirely when we take
+        // nothing (a currency whose margin we haven't confirmed).
+        ...(payment.applicationFeeAmount > 0
+          ? { application_fee_amount: payment.applicationFeeAmount }
+          : {}),
       },
       client_reference_id: payment.id,
       metadata: { ...extraMetadata, paymentId: payment.id, trainerId: payment.trainerId },

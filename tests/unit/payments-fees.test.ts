@@ -49,28 +49,48 @@ describe('currencyForCountry — payout currency defaulting', () => {
   })
 })
 
-describe('platformFeeAmount — application_fee (legacy, default 0)', () => {
-  it('is 0 by default (direct charges take no application fee)', () => {
-    expect(platformFeeBps()).toBe(0)
-    expect(platformFeeAmount(10_000)).toBe(0)
-    expect(platformFeeAmount(0)).toBe(0)
+describe('platformFeeAmount — our margin on a client payment', () => {
+  // pupmanager.com/pricing advertises "3.5% + $0.30 /payment". These are direct
+  // charges, so the trainer pays Stripe's rate; our cut is the gap up to 3.5%.
+  it('takes the advertised spread over Stripe in each supported currency', () => {
+    expect(platformFeeBps('nzd')).toBe(85)   // Stripe NZ 2.65% → 3.50%
+    expect(platformFeeBps('aud')).toBe(180)  // Stripe AU 1.70% → 3.50%
+    expect(platformFeeBps('gbp')).toBe(200)  // Stripe UK 1.50% → 3.50%
+    expect(platformFeeBps('usd')).toBe(60)
+    expect(platformFeeBps('cad')).toBe(60)
   })
 
-  it('computes basis-point fee with banker-free rounding when a markup is configured', () => {
+  it('is case-insensitive about the currency', () => {
+    expect(platformFeeBps('NZD')).toBe(85)
+    expect(platformFeeAmount(10_000, 'NZD')).toBe(85)
+  })
+
+  it('takes NOTHING for a currency whose Stripe rate we have not confirmed', () => {
+    // Better to earn 0 than to charge a trainer more than the pricing page promises.
+    expect(platformFeeBps('zar')).toBe(0)
+    expect(platformFeeAmount(10_000, 'zar')).toBe(0)
+    expect(platformFeeBps('jpy')).toBe(0)
+    expect(platformFeeAmount(10_000, 'jpy')).toBe(0)
+  })
+
+  it('charges the margin on the gross, in minor units', () => {
+    expect(platformFeeAmount(10_000, 'nzd')).toBe(85)   // 0.85% of $100.00 = 85c
+    expect(platformFeeAmount(5_000, 'aud')).toBe(90)    // 1.80% of $50.00 = 90c
+    expect(platformFeeAmount(10_000, 'gbp')).toBe(200)  // 2.00% of £100.00 = £2
+  })
+
+  it('rounds to the nearest cent and never goes negative', () => {
+    expect(platformFeeAmount(10_394, 'nzd')).toBe(88)   // 0.85% of 10394 = 88.3 → 88
+    expect(platformFeeAmount(1, 'nzd')).toBe(0)         // rounds to nothing
+    expect(platformFeeAmount(0, 'nzd')).toBe(0)
+    expect(platformFeeAmount(-500, 'nzd')).toBe(0)
+  })
+
+  it('PLATFORM_FEE_BPS overrides every currency when set', () => {
     h.env.PLATFORM_FEE_BPS = 500 // 5%
-    expect(platformFeeBps()).toBe(500)
-    expect(platformFeeAmount(10_000)).toBe(500) // 5% of $100.00
-    // 5% of 10394 = 519.7 → rounds to 520
-    expect(platformFeeAmount(10_394)).toBe(520)
-    // 5% of 1 = 0.05 → rounds to 0
-    expect(platformFeeAmount(1)).toBe(0)
-    // 5% of 10 = 0.5 → rounds to 1 (Math.round)
-    expect(platformFeeAmount(10)).toBe(1)
-  })
-
-  it('handles a zero total', () => {
-    h.env.PLATFORM_FEE_BPS = 500
-    expect(platformFeeAmount(0)).toBe(0)
+    expect(platformFeeBps('nzd')).toBe(500)
+    expect(platformFeeBps('zar')).toBe(500)
+    expect(platformFeeAmount(10_000, 'nzd')).toBe(500)
   })
 })
 
