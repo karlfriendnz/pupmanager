@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { estimateProcessingSurcharge } from '@/lib/connect'
 import { PayButton } from './pay-button'
 import { PaymentConfirm } from './payment-confirm'
 import type { Metadata } from 'next'
@@ -52,6 +53,7 @@ export default async function PayPage({ params, searchParams }: {
       trainer: {
         select: {
           businessName: true, logoUrl: true, publicEmail: true, website: true, acceptPaymentsEnabled: true, connectChargesEnabled: true,
+          passProcessingFeeToClient: true,
         },
       },
     },
@@ -69,6 +71,13 @@ export default async function PayPage({ params, searchParams }: {
   const payable = !isPaid && (invoice.status === 'UNPAID' || invoice.status === 'PARTIAL')
   const canTakeCard = !!(invoice.trainer.acceptPaymentsEnabled && invoice.trainer.connectChargesEnabled)
   const cur = invoice.currency
+  // If the trainer passes the card fee on, the CHECKOUT adds a surcharge line —
+  // so show it here too. Otherwise the client agrees to $1.00, lands on Stripe
+  // and is asked for $1.04: a price that moved after they committed.
+  const surcharge = canTakeCard && invoice.trainer.passProcessingFeeToClient
+    ? estimateProcessingSurcharge(balance, cur)
+    : 0
+  const payableTotal = balance + surcharge
   const businessName = invoice.trainer.businessName ?? 'Your trainer'
 
   return (
@@ -134,7 +143,13 @@ export default async function PayPage({ params, searchParams }: {
             {invoice.amountPaidCents > 0 && (
               <div className="flex justify-between gap-12 text-sm w-full max-w-[240px]"><span className="text-slate-500">Amount paid</span><span className="tabular-nums text-emerald-600">− {money(invoice.amountPaidCents, cur)}</span></div>
             )}
-            <div className="flex justify-between gap-12 text-base font-bold w-full max-w-[240px] border-t border-slate-200 pt-1.5"><span className="text-slate-900">Balance due</span><span className="tabular-nums text-slate-900">{money(balance, cur)}</span></div>
+            {surcharge > 0 && (
+              <div className="flex justify-between gap-12 text-sm w-full max-w-[240px]"><span className="text-slate-500">Card processing fee</span><span className="tabular-nums text-slate-700">{money(surcharge, cur)}</span></div>
+            )}
+            <div className="flex justify-between gap-12 text-base font-bold w-full max-w-[240px] border-t border-slate-200 pt-1.5"><span className="text-slate-900">{surcharge > 0 ? 'Total to pay' : 'Balance due'}</span><span className="tabular-nums text-slate-900">{money(payableTotal, cur)}</span></div>
+            {surcharge > 0 && (
+              <p className="text-[11px] text-slate-400 max-w-[240px] text-right leading-snug">Paying by card adds a processing fee.</p>
+            )}
           </div>
 
           {/* Action */}
@@ -151,7 +166,9 @@ export default async function PayPage({ params, searchParams }: {
                 initialAmountPaidCents={invoice.amountPaidCents}
               />
             ) : payable && canTakeCard ? (
-              <PayButton token={invoice.payToken!} label={`Pay ${money(balance, cur)}`} />
+              // Quotes what the card is actually charged: balance + surcharge
+              // when the trainer passes the card fee on.
+              <PayButton token={invoice.payToken!} label={`Pay ${money(payableTotal, cur)}`} />
             ) : (
               <p className="rounded-xl bg-slate-50 px-4 py-3 text-center text-sm text-slate-500">
                 Online card payment isn’t available for this invoice. Please contact {businessName} to arrange payment.

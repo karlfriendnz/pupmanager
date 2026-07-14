@@ -2,6 +2,7 @@ import { after } from 'next/server'
 import { prisma } from './prisma'
 import { sendEmail } from './email'
 import { sendPush } from './push'
+import { estimateProcessingSurcharge } from './connect'
 import { ensureClientXeroContact } from './xero-sync'
 import { createXeroInvoice, fetchXeroInvoiceState, createXeroPayment } from './xero'
 import { dropInPriceCents } from './class-runs'
@@ -197,9 +198,25 @@ export async function notifyClientOfInvoice(args: {
   })
   if (!client) return
 
+  // If the trainer passes the card fee on, the pay page and Stripe both charge
+  // invoice + surcharge — so the email must quote the same number. Otherwise a
+  // client reads "$50", clicks through, and is asked for $51.85.
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: args.trainerId },
+    select: { passProcessingFeeToClient: true, acceptPaymentsEnabled: true, connectChargesEnabled: true },
+  })
+  const canTakeCard = !!(trainer?.acceptPaymentsEnabled && trainer?.connectChargesEnabled)
+  const surcharge = canTakeCard && trainer?.passProcessingFeeToClient
+    ? estimateProcessingSurcharge(args.amountCents, args.currency)
+    : 0
+
   const amountStr = money(args.amountCents, args.currency)
+  const cardTotalStr = surcharge > 0 ? money(args.amountCents + surcharge, args.currency) : null
+  const feeStr = surcharge > 0 ? money(surcharge, args.currency) : null
   const title = `New invoice: ${amountStr}`
-  const body = `${args.businessName} has sent you an invoice for ${amountStr} — ${args.description}.`
+  const body = `${args.businessName} has sent you an invoice for ${amountStr} — ${args.description}.${
+    cardTotalStr ? ` Paying by card adds a ${feeStr} processing fee — ${cardTotalStr} in total.` : ''
+  }`
   // The public pay page is the destination; fall back to the app home only if a
   // (legacy) invoice somehow has no token.
   const payLink = args.payToken ? `${env.NEXT_PUBLIC_APP_URL}/pay/${args.payToken}` : `${env.NEXT_PUBLIC_APP_URL}/my`
@@ -212,7 +229,7 @@ export async function notifyClientOfInvoice(args: {
     await sendEmail({
       to: client.user.email,
       subject: `${args.businessName}: new invoice`,
-      html: invoiceEmail(args.businessName, args.description, amountStr, args.payToken ? payLink : null),
+      html: invoiceEmail(args.businessName, args.description, amountStr, args.payToken ? payLink : null, feeStr, cardTotalStr),
       text: `${body}${args.payToken ? `\n\nPay now: ${payLink}` : ''}`,
     }).catch(() => {})
   }
@@ -622,11 +639,25 @@ export async function sendReceivable(invoiceId: string, trainerId: string): Prom
   return true
 }
 
-function invoiceEmail(business: string, description: string, amount: string, payLink: string | null): string {
+function invoiceEmail(
+  business: string,
+  description: string,
+  amount: string,
+  payLink: string | null,
+  fee: string | null,
+  cardTotal: string | null,
+): string {
+  // The button quotes what the card is actually charged, so the amount here, on
+  // the pay page and on Stripe's page are all the same number.
+  const payLabel = cardTotal ? `Pay ${cardTotal}` : 'Pay now'
+  const feeNote = fee && cardTotal
+    ? `<p style="margin:10px 0 0;font-size:12px;color:#94a3b8">Includes a ${fee} card processing fee.</p>`
+    : ''
   const cta = payLink
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 0"><tr><td>
-        <a href="${payLink}" style="display:inline-block;background:${ACCENT};color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 22px;border-radius:10px">Pay now</a>
+        <a href="${payLink}" style="display:inline-block;background:${ACCENT};color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 22px;border-radius:10px">${payLabel}</a>
       </td></tr></table>
+      ${feeNote}
       <p style="margin:14px 0 0;font-size:12px;color:#94a3b8">Secure card payment — no account needed.</p>`
     : `<p style="margin:16px 0 0;font-size:12px;color:#94a3b8">${business} will let you know how to pay. Please get in touch if you have any questions.</p>`
   return `<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
