@@ -119,16 +119,17 @@ test.describe('starter field packs — owner happy path', () => {
 
     // It lands as a real field, in the section its pack belongs to.
     await page.reload()
-    await expect(page.getByRole('heading', { name: /About your dog/ })).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText(/About your dog/).first()).toBeVisible({ timeout: 10_000 })
     const row = page
       .locator('div')
       .filter({ has: page.getByText('Vet clinic', { exact: true }) })
-      .filter({ has: page.getByRole('button', { name: 'Edit field' }) })
+      .filter({ has: page.getByRole('button', { name: 'Edit field Vet clinic' }) })
       .last()
-    await expect(row.getByText('Shows on Intake · New client')).toBeVisible()
+    // Custom fields are asked on intake; the Required column starts unticked.
+    await expect(row.getByRole('checkbox', { name: 'Required — Vet clinic' })).not.toBeChecked()
 
     // Clean up so the field count doesn't leak into other specs.
-    await row.getByRole('button', { name: 'Edit field' }).click()
+    await row.getByRole('button', { name: 'Edit field Vet clinic' }).click()
     await page.getByRole('button', { name: 'Delete', exact: true }).click()
     await Promise.all([
       page.waitForResponse(r => r.url().includes('/api/custom-fields/') && r.request().method() === 'DELETE'),
@@ -146,7 +147,7 @@ test.describe('fields & forms — owner happy path', () => {
     await expect(page.getByRole('heading', { name: 'Fields', exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Forms', exact: true })).toBeVisible()
     await expect(page.getByText('Intake form', { exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Client & dog details' })).toBeVisible()
+    await expect(page.getByText(/Client & dog details/).first()).toBeVisible()
 
     // The toolbar "Add field" opens the editor in the no-section bucket — no
     // section needs to exist for this to work.
@@ -160,33 +161,31 @@ test.describe('fields & forms — owner happy path', () => {
     ])
     expect(resp.ok()).toBeTruthy()
 
-    // It lands in the "Fields without a section" bucket and survives a reload.
+    // It lands in the ungrouped bucket and survives a reload.
     await page.reload()
-    await expect(page.getByText('Fields without a section')).toBeVisible({ timeout: 10_000 })
-    // Innermost div holding both the label and its pencil = the field row.
+    await expect(page.getByText(/Ungrouped/).first()).toBeVisible({ timeout: 10_000 })
     const row = page
       .locator('div')
       .filter({ has: page.getByText(label, { exact: true }) })
-      .filter({ has: page.getByRole('button', { name: 'Edit field' }) })
+      .filter({ has: page.getByRole('button', { name: `Edit field ${label}` }) })
       .last()
     await expect(row).toBeVisible()
 
-    // The row says where the field is asked, and the pill puts it on quick-add.
-    await expect(row.getByText('Shows on Intake · New client')).toBeVisible()
-    const quickAdd = row.getByRole('button', { name: 'Quick add' })
-    await expect(quickAdd).toHaveAttribute('aria-pressed', 'false')
+    // The columns say where the field is asked: on intake (read-only, it's a
+    // custom field), and quick-add is a tick you control.
+    const quickAdd = row.getByRole('checkbox', { name: `Quick add — ${label}` })
+    await expect(quickAdd).not.toBeChecked()
     await Promise.all([
       page.waitForResponse(r => r.url().includes('/api/custom-fields/') && r.request().method() === 'PATCH'),
-      quickAdd.click(),
+      quickAdd.check(),
     ])
-    await expect(row.getByText('Shows on Intake · New client · Quick add')).toBeVisible()
 
     // The flag persists — it's a real save, not just an optimistic flip.
     await page.reload()
-    await expect(row.getByRole('button', { name: 'Quick add' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(row.getByRole('checkbox', { name: `Quick add — ${label}` })).toBeChecked()
 
     // Clean up so the field count doesn't leak into other specs.
-    await row.getByRole('button', { name: 'Edit field' }).click()
+    await row.getByRole('button', { name: `Edit field ${label}` }).click()
     await page.getByRole('button', { name: 'Delete', exact: true }).click()
     await Promise.all([
       page.waitForResponse(r => r.url().includes('/api/custom-fields/') && r.request().method() === 'DELETE'),

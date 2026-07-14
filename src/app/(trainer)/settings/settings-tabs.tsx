@@ -8,9 +8,9 @@ import { useIsNative } from '@/lib/native'
 const ALL_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'addons', label: 'Add-ons', icon: Puzzle },
   { id: 'forms', label: 'Fields & forms', icon: Pencil },
   { id: 'integration', label: 'Connect Website', icon: Globe },
-  { id: 'addons', label: 'Add-ons', icon: Puzzle },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'payments', label: 'Payments', icon: Wallet },
   { id: 'xero', label: 'Xero', icon: Landmark },

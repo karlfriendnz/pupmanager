@@ -12,7 +12,6 @@ import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import type { FormRow as SessionFormRow } from './session/session-forms-manager'
 import { CustomFieldsManager } from '../settings/custom-fields-manager'
-import { ClientFieldsConfig } from '../settings/client-fields-config'
 import { FieldPacksWizard } from '../settings/field-packs-wizard'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -689,9 +688,8 @@ export function FormsManager({
           <div>
             <h2 className="text-base font-semibold text-slate-900">Fields</h2>
             <p className="text-sm text-slate-500 mt-0.5">
-              Everything you track about a client and their dog. Each field says which forms it
-              shows on — use <strong>Required</strong> and <strong>Quick add</strong> on a row to
-              change that.
+              Everything you track about a client and their dog. The columns say where each one
+              gets asked.
             </p>
           </div>
           <Button size="sm" variant="secondary" onClick={() => setWizardOpen(true)}>
@@ -700,19 +698,13 @@ export function FormsManager({
           </Button>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-5">
+        <div>
           <CustomFieldsManager
             initialFields={intakeCustomFields}
             initialSectionOrder={intakeSectionOrder}
             initialSystemFieldSections={intakeSystemFieldSections}
             showSystemFields
           />
-        </div>
-
-        {/* Built-in client/dog details (address, dog name, breed, …) — real
-            columns, so they're configured rather than created. */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5">
-          <ClientFieldsConfig />
         </div>
       </section>
 
@@ -734,7 +726,7 @@ export function FormsManager({
 
         {/* Intake form — a view of the fields above, not a separate question set. */}
         <div className="bg-white rounded-2xl border border-slate-200">
-          <div className="flex items-center gap-4 p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4">
             <TypeBadgeIcon type="INTAKE" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -753,7 +745,7 @@ export function FormsManager({
                 {intakeFieldCount} field{intakeFieldCount === 1 ? '' : 's'}
               </p>
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="flex items-center gap-1 flex-shrink-0 sm:ml-auto">
               <a
                 href="/forms/intake/preview"
                 target="_blank"
@@ -778,7 +770,7 @@ export function FormsManager({
         {/* Session forms — their own questions, unrelated to the field library. */}
         {sessionForms.map(f => (
           <div key={f.id} className="bg-white rounded-2xl border border-slate-200">
-            <div className="flex items-center gap-4 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4">
               <TypeBadgeIcon type="SESSION" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">

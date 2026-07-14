@@ -23,7 +23,8 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Plus, Trash2, Pencil, Check, X, GripVertical } from 'lucide-react'
-import { usedOnLabel } from '@/lib/field-usage'
+import { fieldUsage, type FieldUsage } from '@/lib/field-usage'
+import { CLIENT_FIELDS, type ClientFieldKey, type ResolvedFieldConfig } from '@/lib/client-fields'
 
 type FieldType = 'TEXT' | 'NUMBER' | 'DROPDOWN'
 type AppliesTo = 'OWNER' | 'DOG'
@@ -167,6 +168,58 @@ export function CustomFieldsManager({
   const [error, setError] = useState<string | null>(null)
   const [creatingSection, setCreatingSection] = useState(false)
   const [editingSectionName, setEditingSectionName] = useState<string | null>(null)
+  // The built-in client/dog details (address, dog name, breed, …). They back
+  // real columns, so they're configured, not created — but they're the same
+  // kind of thing to a trainer, so they live in the same list.
+  const [builtInConfig, setBuiltInConfig] = useState<ResolvedFieldConfig | null>(null)
+  const [savingBuiltinKey, setSavingBuiltinKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    let live = true
+    fetch('/api/clients/field-config')
+      .then(r => r.json())
+      .then(d => { if (live) setBuiltInConfig(d.config ?? null) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [])
+
+  // Name/email/phone already appear as the pinned system rows on the intake
+  // form, so they'd be duplicated here.
+  const CORE_KEYS: ClientFieldKey[] = ['name', 'email', 'phone']
+  const builtIns = builtInConfig
+    ? CLIENT_FIELDS.filter(f => !CORE_KEYS.includes(f.key)).map(f => ({
+        key: f.key,
+        label: f.label,
+        scope: f.scope,
+        alwaysRequired: !!f.alwaysRequired,
+        required: builtInConfig[f.key].required,
+        quickAdd: builtInConfig[f.key].quickAdd,
+      }))
+    : []
+
+  async function toggleBuiltin(key: ClientFieldKey, flag: 'required' | 'quickAdd', value: boolean) {
+    if (!builtInConfig) return
+    const previous = builtInConfig
+    const next = { ...builtInConfig, [key]: { ...builtInConfig[key], [flag]: value } }
+    setBuiltInConfig(next)
+    setSavingBuiltinKey(key)
+    try {
+      const res = await fetch('/api/trainer/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientFieldConfig: next }),
+      })
+      if (!res.ok) {
+        setBuiltInConfig(previous)
+        setError('Could not save that change. Please try again.')
+      }
+    } catch {
+      setBuiltInConfig(previous)
+      setError('Could not save that change. Please try again.')
+    } finally {
+      setSavingBuiltinKey(null)
+    }
+  }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   // Combine system + custom rows for section placement. Sorting
@@ -407,13 +460,16 @@ export function CustomFieldsManager({
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
+  // One list, not three. Sections group the rows; the columns on the right say
+  // where each field is asked, so the answer is read off a header once instead
+  // of being restated on all 11 rows.
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-slate-500">Drag fields between sections. Sections show clients one screen at a time.</p>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs text-slate-500">
+          Drag to reorder or move between sections. Clients see one section per screen.
+        </p>
         <div className="flex items-center gap-2 shrink-0">
-          {/* Add a field without picking a section first — it lands in the
-              "Fields without a section" bucket and can be dragged in later. */}
           <Button
             size="sm"
             variant="secondary"
@@ -440,68 +496,55 @@ export function CustomFieldsManager({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex flex-col gap-3">
-          {sections.length === 0 && (
-            <Card>
-              <CardBody className="py-8 text-center text-slate-400 text-sm">
-                Nothing here yet. Click <strong>Add field</strong> to create a field, or{' '}
-                <strong>Create section</strong> to group fields into a screen.
-              </CardBody>
-            </Card>
+        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+          {/* Column headers — the "where is this asked" legend, stated once. */}
+          <div className="hidden sm:grid grid-cols-[1fr_5rem_5.5rem_5.5rem_2rem] gap-2 items-center px-4 py-2 bg-slate-50 border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <span>Field</span>
+            <span className="text-center">Intake</span>
+            <span className="text-center">Quick add</span>
+            <span className="text-center">Required</span>
+            <span />
+          </div>
+
+          {sections.length === 0 && builtIns.length === 0 && (
+            <p className="px-4 py-8 text-center text-sm text-slate-400">
+              Nothing here yet — <strong>Suggest fields</strong> is the quickest start.
+            </p>
           )}
 
           <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
             {sections.map(section => {
-              const droppable = (
-                <SectionDroppable
-                  section={section}
-                  isEditingMeta={editingSectionName === section.name}
-                  onStartEditMeta={section.isOrphan ? undefined : () => setEditingSectionName(section.name)}
-                  onCancelEditMeta={() => setEditingSectionName(null)}
-                  onSubmitEditMeta={(name, desc) => handleEditSection(section.name, name, desc)}
-                  onDelete={section.isOrphan ? undefined : () => handleDeleteSection(section.name)}
-                  onAddField={() => setAddingInSection(section.id)}
-                  onEditField={setEditingId}
-                  onToggleFlag={toggleFieldFlag}
-                  onCancelEdit={() => setEditingId(null)}
-                  onFieldSaved={(saved, isNew) => {
-                    setFields(prev => isNew ? [...prev, saved] : prev.map(f => f.id === saved.id ? saved : f))
-                    setEditingId(null)
-                    setAddingInSection(null)
-                  }}
-                  onFieldDeleted={(id) => setFields(prev => prev.filter(f => f.id !== id))}
-                  editingId={editingId}
-                  addingHere={addingInSection === section.id}
-                  onCancelAdd={() => setAddingInSection(null)}
-                  savingFieldId={savingFieldId}
-                />
-              )
-              // Orphan section can't be reordered — it floats to the top.
-              if (section.isOrphan) return <div key={section.id}>{droppable}</div>
+              const common = {
+                section,
+                isEditingMeta: editingSectionName === section.name,
+                onCancelEditMeta: () => setEditingSectionName(null),
+                onSubmitEditMeta: (name: string, desc: string) => handleEditSection(section.name, name, desc),
+                onAddField: () => setAddingInSection(section.id),
+                onEditField: setEditingId,
+                onToggleFlag: toggleFieldFlag,
+                onCancelEdit: () => setEditingId(null),
+                onFieldSaved: (saved: CustomField, isNew: boolean) => {
+                  setFields(prev => isNew ? [...prev, saved] : prev.map(f => f.id === saved.id ? saved : f))
+                  setEditingId(null)
+                  setAddingInSection(null)
+                },
+                onFieldDeleted: (id: string) => setFields(prev => prev.filter(f => f.id !== id)),
+                editingId,
+                addingHere: addingInSection === section.id,
+                onCancelAdd: () => setAddingInSection(null),
+                savingFieldId,
+              }
+              // The ungrouped bucket floats at the top and can't be reordered.
+              if (section.isOrphan) {
+                return <SectionGroup key={section.id} {...common} />
+              }
               return (
                 <SortableSection key={section.id} id={section.id}>
                   {(handleProps) => (
-                    <SectionDroppable
-                      section={section}
-                      isEditingMeta={editingSectionName === section.name}
+                    <SectionGroup
+                      {...common}
                       onStartEditMeta={() => setEditingSectionName(section.name)}
-                      onCancelEditMeta={() => setEditingSectionName(null)}
-                      onSubmitEditMeta={(name, desc) => handleEditSection(section.name, name, desc)}
                       onDelete={() => handleDeleteSection(section.name)}
-                      onAddField={() => setAddingInSection(section.id)}
-                      onEditField={setEditingId}
-                      onToggleFlag={toggleFieldFlag}
-                      onCancelEdit={() => setEditingId(null)}
-                      onFieldSaved={(saved, isNew) => {
-                        setFields(prev => isNew ? [...prev, saved] : prev.map(f => f.id === saved.id ? saved : f))
-                        setEditingId(null)
-                        setAddingInSection(null)
-                      }}
-                      onFieldDeleted={(id) => setFields(prev => prev.filter(f => f.id !== id))}
-                      editingId={editingId}
-                      addingHere={addingInSection === section.id}
-                      onCancelAdd={() => setAddingInSection(null)}
-                      savingFieldId={savingFieldId}
                       dragHandleProps={handleProps}
                     />
                   )}
@@ -510,13 +553,40 @@ export function CustomFieldsManager({
             })}
           </SortableContext>
 
+          {/* Built-in client/dog details — same rows, same columns, so there's
+              one way to read a field. They back real columns, so they can't be
+              renamed, deleted or dragged onto the intake form. */}
+          {builtIns.length > 0 && (
+            <div>
+              <GroupHeader
+                title="Client & dog details"
+                count={builtIns.length}
+                hint="Built-in — asked when you create a client"
+              />
+              {builtIns.map(b => (
+                <FieldRow
+                  key={b.key}
+                  label={b.label}
+                  meta={b.scope === 'DOG' ? 'Built-in · Per dog' : 'Built-in · Per owner'}
+                  usage={fieldUsage({ kind: 'DETAIL', required: b.required, quickAdd: b.quickAdd })}
+                  required={b.required}
+                  quickAdd={b.quickAdd}
+                  requiredLocked={b.alwaysRequired}
+                  saving={savingBuiltinKey === b.key}
+                  onToggle={(flag, value) => toggleBuiltin(b.key, flag, value)}
+                />
+              ))}
+            </div>
+          )}
+
           {creatingSection && (
-            <SectionMetaForm
-              ringClass="ring-2 ring-blue-300 ring-offset-1"
-              submitLabel="Add"
-              onSubmit={handleSubmitNewSection}
-              onCancel={() => { setCreatingSection(false); setError(null) }}
-            />
+            <div className="border-t border-slate-100 p-3">
+              <SectionMetaForm
+                submitLabel="Add section"
+                onSubmit={handleSubmitNewSection}
+                onCancel={() => { setCreatingSection(false); setError(null) }}
+              />
+            </div>
           )}
         </div>
 
@@ -525,6 +595,12 @@ export function CustomFieldsManager({
           {activeSection && <SectionDragPreview section={activeSection} />}
         </DragOverlay>
       </DndContext>
+
+      <p className="text-xs text-slate-400">
+        Every field is asked on the <strong>New client</strong>{' '}form. The columns choose whether
+        it&apos;s also on your <strong>intake form</strong> and on <strong>quick add</strong>, and
+        whether it has to be filled in.
+      </p>
     </div>
   )
 }
@@ -535,14 +611,12 @@ function SectionMetaForm({
   initialName = '',
   initialDescription = '',
   submitLabel,
-  ringClass,
   onSubmit,
   onCancel,
 }: {
   initialName?: string
   initialDescription?: string
   submitLabel: string
-  ringClass?: string
   onSubmit: (name: string, description: string) => void
   onCancel: () => void
 }) {
@@ -558,50 +632,37 @@ function SectionMetaForm({
   }
 
   return (
-    <Card className={ringClass}>
-      <CardBody className="py-3 flex flex-col gap-2">
-        <input
-          ref={inputRef}
-          type="text"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          onKeyDown={handleEnter}
-          placeholder="Section name (e.g. About you)"
-          className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <textarea
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          onKeyDown={handleEnter}
-          placeholder="Description (optional) — shown to clients above this section"
-          rows={2}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-        />
-        <div className="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-            aria-label="Cancel"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <Button size="sm" onClick={() => onSubmit(name, description)}>
-            <Check className="h-3.5 w-3.5" />
-            {submitLabel}
-          </Button>
-        </div>
-      </CardBody>
-    </Card>
+    <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 flex flex-col gap-2">
+      <input
+        ref={inputRef}
+        type="text"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onKeyDown={handleEnter}
+        placeholder="Section name (e.g. About you)"
+        className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      <textarea
+        value={description}
+        onChange={e => setDescription(e.target.value)}
+        onKeyDown={handleEnter}
+        placeholder="Description (optional) — shown to clients above this section"
+        rows={2}
+        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+      />
+      <div className="flex items-center justify-end gap-2">
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+        <Button size="sm" onClick={() => onSubmit(name, description)}>
+          <Check className="h-3.5 w-3.5" />
+          {submitLabel}
+        </Button>
+      </div>
+    </div>
   )
 }
 
 // ─── Section (sortable wrapper) ─────────────────────────────────────────────
 
-// Provides the section-level useSortable hook. The section card itself owns
-// its layout and renders the activator (drag handle) inside its header — we
-// pass the handle props down via render-prop so the handle stays visually
-// part of the header without duplicating the section's whole markup here.
 type SectionHandleProps = {
   attributes: ReturnType<typeof useSortable>['attributes']
   listeners: ReturnType<typeof useSortable>['listeners']
@@ -627,9 +688,92 @@ function SortableSection({
   )
 }
 
+// ─── Group header (shared by sections + the built-in group) ─────────────────
+
+function GroupHeader({
+  title,
+  count,
+  hint,
+  description,
+  dragHandleProps,
+  onAddField,
+  onStartEditMeta,
+  onDelete,
+}: {
+  title: string
+  count: number
+  hint?: string
+  description?: string | null
+  dragHandleProps?: SectionHandleProps
+  onAddField?: () => void
+  onStartEditMeta?: () => void
+  onDelete?: () => void
+}) {
+  return (
+    <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50/60 border-t border-slate-200">
+      {dragHandleProps ? (
+        <button
+          type="button"
+          {...dragHandleProps.attributes}
+          {...dragHandleProps.listeners}
+          className="-ml-1.5 p-1 rounded text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing"
+          aria-label="Drag section"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      ) : (
+        <span className="-ml-1.5 w-6" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-slate-800 truncate">
+          {title}
+          <span className="ml-2 text-xs font-normal text-slate-400">{count}</span>
+          {hint && <span className="ml-2 text-xs font-normal text-slate-400">· {hint}</span>}
+        </p>
+        {description && <p className="text-xs text-slate-400 leading-snug">{description}</p>}
+      </div>
+      <div className="flex items-center gap-0.5 shrink-0">
+        {onAddField && (
+          <button
+            type="button"
+            onClick={onAddField}
+            className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+            title="Add a field to this section"
+            aria-label={`Add field to ${title}`}
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        )}
+        {onStartEditMeta && (
+          <button
+            type="button"
+            onClick={onStartEditMeta}
+            className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+            title="Edit section"
+            aria-label={`Edit ${title}`}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50"
+            title="Delete section"
+            aria-label={`Delete ${title}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Section (drop target) ──────────────────────────────────────────────────
 
-function SectionDroppable({
+function SectionGroup({
   section,
   isEditingMeta,
   onStartEditMeta,
@@ -664,128 +808,248 @@ function SectionDroppable({
   addingHere: boolean
   onCancelAdd: () => void
   savingFieldId: string | null
-  /** When provided, renders a grip handle in the section header that
-   *  activates section-level drag. Orphan sections receive no handle. */
   dragHandleProps?: SectionHandleProps
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: section.id })
 
-  // While editing meta, show the form in place of the header.
   if (isEditingMeta && onSubmitEditMeta && onCancelEditMeta) {
     return (
-      <SectionMetaForm
-        initialName={section.name}
-        initialDescription={section.description ?? ''}
-        submitLabel="Save"
-        ringClass="ring-2 ring-blue-300 ring-offset-1"
-        onSubmit={onSubmitEditMeta}
-        onCancel={onCancelEditMeta}
-      />
+      <div className="border-t border-slate-200 p-3">
+        <SectionMetaForm
+          initialName={section.name}
+          initialDescription={section.description ?? ''}
+          submitLabel="Save"
+          onSubmit={onSubmitEditMeta}
+          onCancel={onCancelEditMeta}
+        />
+      </div>
     )
   }
 
   return (
-    <Card className={isOver ? 'ring-2 ring-blue-400 ring-offset-1' : ''}>
-      <CardBody className="py-4">
-        <div className="flex items-start justify-between gap-2 mb-3">
-          {dragHandleProps && (
-            <button
-              type="button"
-              {...dragHandleProps.attributes}
-              {...dragHandleProps.listeners}
-              className="mt-0.5 -ml-1 p-1 rounded text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing"
-              aria-label="Drag section"
-            >
-              <GripVertical className="h-4 w-4" />
-            </button>
-          )}
-          <div className="min-w-0 flex-1">
-            <h3 className={`text-sm font-semibold ${section.isOrphan ? 'text-amber-700' : 'text-slate-900'}`}>
-              {section.name}
-              <span className="ml-2 text-xs font-normal text-slate-400">
-                {section.fields.length} {section.fields.length === 1 ? 'field' : 'fields'}
-              </span>
-            </h3>
-            {section.description && (
-              <p className="text-xs text-slate-500 mt-0.5 leading-snug">{section.description}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button size="sm" variant="ghost" onClick={onAddField}>
-              <Plus className="h-3.5 w-3.5" />
-              Add field
-            </Button>
-            {onStartEditMeta && (
-              <button
-                type="button"
-                onClick={onStartEditMeta}
-                className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                title="Edit section"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-            )}
-            {onDelete && (
-              <button
-                type="button"
-                onClick={onDelete}
-                className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                title="Delete section"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </div>
+    <div className={isOver ? 'bg-blue-50/40' : ''}>
+      <GroupHeader
+        title={section.isOrphan ? 'Ungrouped' : section.name}
+        count={section.fields.length}
+        hint={section.isOrphan ? 'not on a section screen yet' : undefined}
+        description={section.description}
+        dragHandleProps={dragHandleProps}
+        onAddField={onAddField}
+        onStartEditMeta={onStartEditMeta}
+        onDelete={onDelete}
+      />
 
-        <div ref={setNodeRef} className="flex flex-col gap-2 min-h-[44px]">
-          {section.fields.length === 0 && !addingHere && (
-            <p className="text-xs text-slate-400 italic px-2 py-3">
-              Drop fields here, or click <strong>Add field</strong>.
-            </p>
-          )}
-          <SortableContext items={section.fields.map(f => f.id)} strategy={verticalListSortingStrategy}>
-            {section.fields.map(field => {
-              // System rows can't enter the FieldEditor — they're
-              // pinned to fixed labels/types/required-state. Render
-              // them via SortableFieldRow regardless of editingId.
-              if (!field.isSystem && editingId === field.id) {
-                return (
+      <div ref={setNodeRef} className="min-h-[8px]">
+        {section.fields.length === 0 && !addingHere && (
+          <p className="px-4 py-3 text-xs text-slate-400 italic">Drop fields here, or use +.</p>
+        )}
+        <SortableContext items={section.fields.map(f => f.id)} strategy={verticalListSortingStrategy}>
+          {section.fields.map(field => {
+            if (!field.isSystem && editingId === field.id) {
+              return (
+                <div key={field.id} className="border-t border-slate-100 p-3">
                   <FieldEditor
-                    key={field.id}
                     initial={field}
                     presetCategory={section.isOrphan ? null : section.name}
                     onCancel={onCancelEdit}
                     onSaved={(saved) => onFieldSaved(saved, false)}
                     onDeleted={() => onFieldDeleted(field.id)}
                   />
-                )
-              }
-              return (
-                <SortableFieldRow
-                  key={field.id}
-                  field={field}
-                  onEdit={() => onEditField(field.id)}
-                  onToggleFlag={(flag, value) => onToggleFlag(field, flag, value)}
-                  isSaving={savingFieldId === field.id}
-                />
+                </div>
               )
-            })}
-          </SortableContext>
-          {addingHere && (
+            }
+            return (
+              <SortableFieldRow
+                key={field.id}
+                field={field}
+                onEdit={() => onEditField(field.id)}
+                onToggleFlag={(flag, value) => onToggleFlag(field, flag, value)}
+                isSaving={savingFieldId === field.id}
+              />
+            )
+          })}
+        </SortableContext>
+        {addingHere && (
+          <div className="border-t border-slate-100 p-3">
             <FieldEditor
               presetCategory={section.isOrphan ? null : section.name}
               onCancel={onCancelAdd}
               onSaved={(saved) => onFieldSaved(saved, true)}
             />
-          )}
-        </div>
-      </CardBody>
-    </Card>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
-// ─── Field row (draggable) ───────────────────────────────────────────────────
+// ─── Field row ───────────────────────────────────────────────────────────────
+
+// The one row used by every field — custom, system and built-in — so a trainer
+// only has to learn to read a field once.
+function FieldRow({
+  label,
+  meta,
+  usage,
+  required,
+  quickAdd,
+  requiredLocked,
+  quickAddLocked,
+  saving,
+  onToggle,
+  onEdit,
+  dragHandle,
+  style,
+  innerRef,
+}: {
+  label: string
+  meta: string
+  usage: FieldUsage
+  required: boolean
+  quickAdd: boolean
+  requiredLocked?: boolean
+  quickAddLocked?: boolean
+  saving?: boolean
+  onToggle?: (flag: 'required' | 'quickAdd', value: boolean) => void
+  onEdit?: () => void
+  dragHandle?: React.ReactNode
+  style?: React.CSSProperties
+  innerRef?: (node: HTMLElement | null) => void
+}) {
+  return (
+    <div
+      ref={innerRef}
+      style={style}
+      className="flex sm:grid sm:grid-cols-[1fr_5rem_5.5rem_5.5rem_2rem] gap-2 items-center px-4 py-2.5 border-t border-slate-100 hover:bg-slate-50/60"
+    >
+      <div className="flex items-start sm:items-center gap-2 min-w-0 flex-1">
+        {dragHandle ?? <span className="w-4 shrink-0" />}
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-900 truncate">
+            {label}
+            {required && <span className="text-red-500 ml-1">*</span>}
+          </p>
+          <p className="text-xs text-slate-400 truncate">
+            {meta}
+            {saving && <span className="ml-2 text-blue-500">Saving…</span>}
+          </p>
+          {/* No column headers to read on a phone, so the row carries its own
+              labels rather than a pair of naked checkboxes. */}
+          <div className="sm:hidden mt-1.5 flex items-center gap-3 text-xs text-slate-500">
+            <span className="inline-flex items-center gap-1 text-slate-400">
+              {usage.intake
+                ? <><Check className="h-3.5 w-3.5 text-teal-600" /> Intake</>
+                : <>— Not on intake</>}
+            </span>
+            <MobileToggle
+              label={`Quick add — ${label}`}
+              text="Quick add"
+              on={quickAdd}
+              disabled={quickAddLocked || !onToggle}
+              onChange={v => onToggle?.('quickAdd', v)}
+            />
+            <MobileToggle
+              label={`Required — ${label}`}
+              text="Required"
+              on={required}
+              disabled={requiredLocked || !onToggle}
+              onChange={v => onToggle?.('required', v)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Intake is decided by what kind of field it is, so it reads, not clicks. */}
+      <span className="hidden sm:flex justify-center">
+        {usage.intake
+          ? <Check className="h-4 w-4 text-teal-600" aria-label="On the intake form" />
+          : <span className="text-slate-300" aria-label="Not on the intake form">—</span>}
+      </span>
+
+      <span className="hidden sm:flex justify-center">
+        <ToggleCell
+          label={`Quick add — ${label}`}
+          on={quickAdd}
+          disabled={quickAddLocked || !onToggle}
+          onChange={v => onToggle?.('quickAdd', v)}
+        />
+      </span>
+      <span className="hidden sm:flex justify-center">
+        <ToggleCell
+          label={`Required — ${label}`}
+          on={required}
+          disabled={requiredLocked || !onToggle}
+          onChange={v => onToggle?.('required', v)}
+        />
+      </span>
+
+      <span className="flex justify-end shrink-0">
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+            aria-label={`Edit field ${label}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        )}
+      </span>
+    </div>
+  )
+}
+
+function ToggleCell({
+  label,
+  on,
+  disabled,
+  onChange,
+}: {
+  label: string
+  on: boolean
+  disabled?: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <input
+      type="checkbox"
+      checked={on}
+      disabled={disabled}
+      aria-label={label}
+      onChange={e => onChange(e.target.checked)}
+      className="h-4 w-4 rounded border-slate-300 accent-[var(--accent)] disabled:opacity-40"
+    />
+  )
+}
+
+// Phone-sized rows carry their own labels — same control, stated in words.
+function MobileToggle({
+  label,
+  text,
+  on,
+  disabled,
+  onChange,
+}: {
+  label: string
+  text: string
+  on: boolean
+  disabled?: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <label className={`inline-flex items-center gap-1 ${disabled ? 'opacity-40' : ''}`}>
+      <input
+        type="checkbox"
+        checked={on}
+        disabled={disabled}
+        aria-label={label}
+        onChange={e => onChange(e.target.checked)}
+        className="h-3.5 w-3.5 rounded border-slate-300 accent-[var(--accent)]"
+      />
+      {text}
+    </label>
+  )
+}
 
 function SortableFieldRow({
   field,
@@ -806,85 +1070,40 @@ function SortableFieldRow({
   }
 
   return (
-    <div
-      ref={setNodeRef}
+    <FieldRow
+      innerRef={setNodeRef}
       style={style}
-      className={
-        field.isSystem
-          ? 'flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 hover:border-slate-300 transition-colors'
-          : 'flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition-colors'
+      label={field.label}
+      meta={field.isSystem
+        ? 'System · always asked'
+        : `${TYPE_LABELS[field.type]} · ${field.appliesTo === 'DOG' ? 'Per dog' : 'Per owner'}`}
+      usage={fieldUsage({
+        kind: field.isSystem ? 'CORE' : 'CUSTOM',
+        required: field.required,
+        quickAdd: !!field.inQuickAdd,
+      })}
+      required={field.required}
+      quickAdd={!!field.inQuickAdd}
+      // System fields back real columns — they're always asked and always required.
+      requiredLocked={field.isSystem}
+      quickAddLocked={field.isSystem}
+      saving={isSaving}
+      onToggle={field.isSystem
+        ? undefined
+        : (flag, value) => onToggleFlag(flag === 'quickAdd' ? 'inQuickAdd' : 'required', value)}
+      onEdit={field.isSystem ? undefined : onEdit}
+      dragHandle={
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing"
+          aria-label="Drag field"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
       }
-    >
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing"
-        aria-label="Drag field"
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-900 truncate">
-          {field.label}
-          {field.required && <span className="text-red-500 ml-1">*</span>}
-        </p>
-        <p className="text-xs text-slate-400">
-          {field.isSystem
-            ? 'System field · always required'
-            : `${TYPE_LABELS[field.type]} · ${field.appliesTo === 'DOG' ? 'Per dog' : 'Per owner'}`}
-          <span className="mx-1.5 text-slate-300">·</span>
-          <span className="text-slate-500">
-            Shows on {usedOnLabel({
-              kind: field.isSystem ? 'CORE' : 'CUSTOM',
-              required: field.required,
-              quickAdd: !!field.inQuickAdd,
-            })}
-          </span>
-          {isSaving && <span className="ml-2 text-blue-500">Saving…</span>}
-        </p>
-      </div>
-      {!field.isSystem && (
-        <div className="flex items-center gap-1 shrink-0">
-          <FlagPill
-            label="Required"
-            on={field.required}
-            onClick={() => onToggleFlag('required', !field.required)}
-          />
-          <FlagPill
-            label="Quick add"
-            on={!!field.inQuickAdd}
-            onClick={() => onToggleFlag('inQuickAdd', !field.inQuickAdd)}
-          />
-          <button
-            type="button"
-            onClick={onEdit}
-            className="grid h-8 w-8 min-h-0 min-w-0 place-items-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-            aria-label="Edit field"
-          >
-            <Pencil className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// A row-level on/off pill. Pressed = the field is on that form.
-function FlagPill({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={on}
-      className={`hidden sm:inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-        on
-          ? 'border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100'
-          : 'border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-      }`}
-    >
-      {label}
-    </button>
+    />
   )
 }
 
@@ -1071,7 +1290,8 @@ function FieldEditor({
           Also ask on the quick-add contact form
         </label>
         <p className="text-xs text-slate-500">
-          Shows on {usedOnLabel({ kind: 'CUSTOM', required, quickAdd: inQuickAdd })}.
+          Asked on your intake form and the new-client form
+          {inQuickAdd ? ', and on quick add' : ''}.
         </p>
       </div>
 
