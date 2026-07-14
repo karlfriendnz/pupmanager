@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { isConnectConfigured, isLivePaymentsAllowed } from '@/lib/connect'
+import { isConnectConfigured } from '@/lib/connect'
 import { hasAddon } from '@/lib/billing'
 import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
@@ -47,8 +47,7 @@ export default async function ClassesPage() {
   const sandbox = trainer?.sandboxBilling ?? false
   const promptConnect =
     !trainer?.connectChargesEnabled &&
-    isConnectConfigured(sandbox) &&
-    isLivePaymentsAllowed(trainerId, sandbox)
+    isConnectConfigured(sandbox)
 
   return (
     <ClassesView

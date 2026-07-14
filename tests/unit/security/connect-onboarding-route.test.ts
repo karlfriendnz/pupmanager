@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// The CONNECT_LIVE_ALLOWLIST gate as enforced at the ONBOARDING chokepoint:
+// The ONBOARDING chokepoint for Connect. The old CONNECT_LIVE_ALLOWLIST rollout
+// gate is GONE — payments are open to every trainer, and Stripe's own onboarding
+// (charges_enabled) is the only thing standing between a trainer and taking
+// money. What still has to hold: auth, owner-only, and Stripe being configured.
 // POST /api/connect/account. A non-allowlisted LIVE trainer must be refused a
 // payout account (403) so no real trainer can start transacting during the soft
 // launch; sandbox (demo) trainers always pass. (The pure predicate is unit-
@@ -12,7 +15,6 @@ const h = vi.hoisted(() => ({
   trainerFindUnique: vi.fn(),
   trainerUpdate: vi.fn(),
   isConnectConfigured: vi.fn(),
-  isLivePaymentsAllowed: vi.fn(),
   createExpressAccount: vi.fn(),
   createOnboardingLink: vi.fn(),
   currencyForCountry: vi.fn(() => 'nzd'),
@@ -28,7 +30,6 @@ vi.mock('@/lib/connect', () => ({
   createOnboardingLink: h.createOnboardingLink,
   currencyForCountry: h.currencyForCountry,
   isConnectConfigured: h.isConnectConfigured,
-  isLivePaymentsAllowed: h.isLivePaymentsAllowed,
 }))
 vi.mock('@/lib/prisma', () => ({
   prisma: { trainerProfile: { findUnique: h.trainerFindUnique, update: h.trainerUpdate } },
@@ -57,33 +58,21 @@ describe('POST /api/connect/account — live allowlist onboarding gate', () => {
     expect(h.createExpressAccount).not.toHaveBeenCalled()
   })
 
-  it('403 for a non-allowlisted LIVE trainer (no account created)', async () => {
+  it('an ordinary LIVE trainer can onboard — no allowlist stands in the way', async () => {
     h.getTrainerContext.mockResolvedValue({ userId: 'u1', companyId: 't1', membershipId: 'm1', role: 'OWNER', permissions: {} })
     h.trainerFindUnique.mockResolvedValue({ connectAccountId: null, sandboxBilling: false, payoutCurrency: null, signupCountry: 'NZ', addressCountry: null, businessName: 'X', user: { email: 'a@b.c' } })
-    h.isLivePaymentsAllowed.mockReturnValue(false)
-    const res = await POST(req())
-    expect(res.status).toBe(403)
-    expect(h.isLivePaymentsAllowed).toHaveBeenCalledWith('t1', false)
-    expect(h.createExpressAccount).not.toHaveBeenCalled()
-  })
-
-  it('sandbox (demo) trainer is always allowed to onboard', async () => {
-    h.getTrainerContext.mockResolvedValue({ userId: 'u1', companyId: 't1', membershipId: 'm1', role: 'OWNER', permissions: {} })
-    h.trainerFindUnique.mockResolvedValue({ connectAccountId: null, sandboxBilling: true, payoutCurrency: null, signupCountry: 'NZ', addressCountry: null, businessName: 'X', user: { email: 'a@b.c' } })
-    h.isLivePaymentsAllowed.mockReturnValue(true)
-    const res = await POST(req())
-    expect(res.status).toBe(200)
-    expect(h.isLivePaymentsAllowed).toHaveBeenCalledWith('t1', true)
-    expect(h.createExpressAccount).toHaveBeenCalledTimes(1)
-  })
-
-  it('allowlisted LIVE trainer is allowed and gets an onboarding link', async () => {
-    h.getTrainerContext.mockResolvedValue({ userId: 'u1', companyId: 't1', membershipId: 'm1', role: 'OWNER', permissions: {} })
-    h.trainerFindUnique.mockResolvedValue({ connectAccountId: null, sandboxBilling: false, payoutCurrency: null, signupCountry: 'NZ', addressCountry: null, businessName: 'X', user: { email: 'a@b.c' } })
-    h.isLivePaymentsAllowed.mockReturnValue(true)
     const res = await POST(req())
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.url).toBe('https://connect.stripe.test/onboard')
+    expect(h.createExpressAccount).toHaveBeenCalledTimes(1)
+  })
+
+  it('sandbox (demo) trainer can onboard too', async () => {
+    h.getTrainerContext.mockResolvedValue({ userId: 'u1', companyId: 't1', membershipId: 'm1', role: 'OWNER', permissions: {} })
+    h.trainerFindUnique.mockResolvedValue({ connectAccountId: null, sandboxBilling: true, payoutCurrency: null, signupCountry: 'NZ', addressCountry: null, businessName: 'X', user: { email: 'a@b.c' } })
+    const res = await POST(req())
+    expect(res.status).toBe(200)
+    expect(h.createExpressAccount).toHaveBeenCalledTimes(1)
   })
 })

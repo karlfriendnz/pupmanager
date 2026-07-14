@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // The fee/markup/payout math is the money centerpiece. We import the real
 // functions from @/lib/connect and assert their actual outputs. env.ts is
-// mocked so PLATFORM_FEE_BPS / CONNECT_LIVE_ALLOWLIST are deterministic and we
+// mocked so PLATFORM_FEE_BPS is deterministic and we
 // never touch process.env or a real Stripe key. './stripe' is mocked so the
 // module graph never instantiates a Stripe client at import time.
 
 const h = vi.hoisted(() => ({
-  env: { PLATFORM_FEE_BPS: 0, CONNECT_LIVE_ALLOWLIST: undefined as string | undefined },
+  env: { PLATFORM_FEE_BPS: 0 },
 }))
 
 vi.mock('@/lib/env', () => ({ env: h.env }))
@@ -21,12 +21,10 @@ import {
   platformFeeBps,
   platformFeeAmount,
   estimateProcessingSurcharge,
-  isLivePaymentsAllowed,
 } from '@/lib/connect'
 
 beforeEach(() => {
   h.env.PLATFORM_FEE_BPS = 0
-  h.env.CONNECT_LIVE_ALLOWLIST = undefined
 })
 
 describe('currencyForCountry — payout currency defaulting', () => {
@@ -132,39 +130,3 @@ describe('estimateProcessingSurcharge — grossed-up card fee passed to the clie
   })
 })
 
-describe('isLivePaymentsAllowed — CONNECT_LIVE_ALLOWLIST rollout gate', () => {
-  it('sandbox (test-mode) trainers always pass, regardless of allowlist', () => {
-    h.env.CONNECT_LIVE_ALLOWLIST = undefined
-    expect(isLivePaymentsAllowed('anyone', true)).toBe(true)
-    h.env.CONNECT_LIVE_ALLOWLIST = ''
-    expect(isLivePaymentsAllowed('anyone', true)).toBe(true)
-  })
-
-  it('empty allowlist ⇒ NO live trainer is allowed (production starts locked)', () => {
-    h.env.CONNECT_LIVE_ALLOWLIST = undefined
-    expect(isLivePaymentsAllowed('trainer-1', false)).toBe(false)
-    h.env.CONNECT_LIVE_ALLOWLIST = ''
-    expect(isLivePaymentsAllowed('trainer-1', false)).toBe(false)
-  })
-
-  it('only allowlisted trainer ids may take live charges', () => {
-    h.env.CONNECT_LIVE_ALLOWLIST = 'trainer-1,trainer-2'
-    expect(isLivePaymentsAllowed('trainer-1', false)).toBe(true)
-    expect(isLivePaymentsAllowed('trainer-2', false)).toBe(true)
-    expect(isLivePaymentsAllowed('trainer-3', false)).toBe(false)
-  })
-
-  it('tolerates whitespace and trailing commas in the allowlist', () => {
-    h.env.CONNECT_LIVE_ALLOWLIST = '  trainer-1 , , trainer-2,'
-    expect(isLivePaymentsAllowed('trainer-1', false)).toBe(true)
-    expect(isLivePaymentsAllowed('trainer-2', false)).toBe(true)
-    expect(isLivePaymentsAllowed('', false)).toBe(false) // empty entries filtered out
-  })
-
-  it('does not substring-match a partial id (no prefix bypass)', () => {
-    h.env.CONNECT_LIVE_ALLOWLIST = 'trainer-100'
-    expect(isLivePaymentsAllowed('trainer-1', false)).toBe(false)
-    expect(isLivePaymentsAllowed('trainer-10', false)).toBe(false)
-    expect(isLivePaymentsAllowed('trainer-100', false)).toBe(true)
-  })
-})

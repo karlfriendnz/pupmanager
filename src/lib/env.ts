@@ -89,7 +89,6 @@ const schema = z.object({
   // ids that are allowed to onboard a live Connect account and take live charges.
   // Empty (default) = NO live trainer can connect or charge — only sandbox
   // (the demo) works. Widen this as we trust the flow, then remove the gate.
-  CONNECT_LIVE_ALLOWLIST: optionalString,
   // Legacy in-app application fee, in basis points. Client→trainer charges are
   // now DIRECT charges where our cut comes from the platform processing-fee
   // markup configured in the Stripe Dashboard (Connect → platform pricing), not

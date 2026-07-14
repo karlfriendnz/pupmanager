@@ -12,8 +12,7 @@ const h = vi.hoisted(() => ({
   paymentFindUnique: vi.fn(),
   paymentUpdate: vi.fn(),
   stripeFor: vi.fn(),
-  isLivePaymentsAllowed: vi.fn(),
-  env: { PLATFORM_FEE_BPS: 0, CONNECT_LIVE_ALLOWLIST: undefined as string | undefined },
+  env: { PLATFORM_FEE_BPS: 0 },
 }))
 
 vi.mock('@/lib/env', () => ({ env: h.env }))
@@ -21,7 +20,7 @@ vi.mock('@/lib/stripe', () => ({ stripeFor: h.stripeFor, isStripeConfigured: vi.
 // Real fee math; only the mint gate predicate is stubbed.
 vi.mock('@/lib/connect', async () => {
   const actual = await vi.importActual<typeof import('@/lib/connect')>('@/lib/connect')
-  return { ...actual, isLivePaymentsAllowed: h.isLivePaymentsAllowed }
+  return { ...actual }
 })
 vi.mock('@/lib/prisma', () => ({
   prisma: {
@@ -38,7 +37,6 @@ beforeEach(() => {
   h.paymentFindUnique.mockReset()
   h.paymentUpdate.mockReset().mockResolvedValue({})
   h.stripeFor.mockReset()
-  h.isLivePaymentsAllowed.mockReset().mockReturnValue(true)
   h.env.PLATFORM_FEE_BPS = 0
 })
 
@@ -101,7 +99,7 @@ describe('createPaymentRecord — server-computed totals + surcharge line', () =
   })
 })
 
-describe('mintCheckoutSession — live-allowlist gate + direct charge', () => {
+describe('mintCheckoutSession — direct charge on the connected account', () => {
   it('returns null for a non-PENDING payment (idempotency guard)', async () => {
     h.paymentFindUnique.mockResolvedValue({ id: 'pay_1', status: 'PAID', sandbox: false, trainerId: 't1', connectAccountId: 'acct', currency: 'nzd', items: [] })
     const url = await mintCheckoutSession('pay_1', { successUrl: 's', cancelUrl: 'c' })
@@ -116,17 +114,16 @@ describe('mintCheckoutSession — live-allowlist gate + direct charge', () => {
     expect(h.stripeFor).not.toHaveBeenCalled()
   })
 
-  it('refuses to mint a LIVE checkout for a non-allowlisted trainer (money chokepoint)', async () => {
-    h.isLivePaymentsAllowed.mockReturnValue(false)
-    h.paymentFindUnique.mockResolvedValue({ id: 'pay_1', status: 'PENDING', sandbox: false, trainerId: 't-notlisted', connectAccountId: 'acct', currency: 'nzd', items: [{ quantity: 1, unitAmount: 5000, description: 'x' }] })
+  // The rollout allowlist is gone: an ordinary live trainer mints a real
+  // checkout. The remaining money chokepoint is having a Connect account at all.
+  it('refuses to mint when the trainer has no connected account', async () => {
+    h.paymentFindUnique.mockResolvedValue({ id: 'pay_1', status: 'PENDING', sandbox: false, trainerId: 't1', connectAccountId: null, currency: 'nzd', items: [{ quantity: 1, unitAmount: 5000, description: 'x' }] })
     const url = await mintCheckoutSession('pay_1', { successUrl: 's', cancelUrl: 'c' })
     expect(url).toBeNull()
-    expect(h.isLivePaymentsAllowed).toHaveBeenCalledWith('t-notlisted', false)
     expect(h.stripeFor).not.toHaveBeenCalled()
   })
 
   it('mints a DIRECT charge on the connected account (Stripe-Account header, no app fee/transfer)', async () => {
-    h.isLivePaymentsAllowed.mockReturnValue(true)
     const create = vi.fn().mockResolvedValue({ id: 'cs_1', url: 'https://checkout/cs_1' })
     h.stripeFor.mockReturnValue({ checkout: { sessions: { create } } })
     h.paymentFindUnique.mockResolvedValue({ id: 'pay_1', status: 'PENDING', sandbox: false, trainerId: 't1', connectAccountId: 'acct_dest', currency: 'nzd', items: [{ quantity: 1, unitAmount: 5000, description: 'Leash' }] })

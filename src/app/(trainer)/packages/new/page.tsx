@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { isConnectConfigured, isLivePaymentsAllowed } from '@/lib/connect'
+import { isConnectConfigured } from '@/lib/connect'
 import { PageHeader } from '@/components/shared/page-header'
 import { NewPackageForm } from './new-package-form'
 import type { Metadata } from 'next'
@@ -33,8 +33,7 @@ export default async function NewPackagePage() {
   const sandbox = trainer?.sandboxBilling ?? false
   const promptConnect =
     !trainer?.connectChargesEnabled &&
-    isConnectConfigured(sandbox) &&
-    isLivePaymentsAllowed(trainerId, sandbox)
+    isConnectConfigured(sandbox)
 
   return (
     <>

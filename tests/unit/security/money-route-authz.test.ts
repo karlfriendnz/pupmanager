@@ -19,7 +19,6 @@ const h = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
   isStripeConfigured: vi.fn(() => true),
   isConnectConfigured: vi.fn(() => true),
-  isLivePaymentsAllowed: vi.fn(() => true),
   recordAudit: vi.fn(),
 }))
 
@@ -38,7 +37,7 @@ vi.mock('@/lib/stripe', () => ({ stripeFor: vi.fn(), isStripeConfigured: h.isStr
 vi.mock('@/lib/connect', () => ({
   createExpressAccount: vi.fn(), createOnboardingLink: vi.fn(),
   currencyForCountry: vi.fn(() => 'NZD'),
-  isConnectConfigured: h.isConnectConfigured, isLivePaymentsAllowed: h.isLivePaymentsAllowed,
+  isConnectConfigured: h.isConnectConfigured,
 }))
 vi.mock('@/lib/audit', () => ({ recordAudit: h.recordAudit, auditRequestMeta: () => ({}) }))
 

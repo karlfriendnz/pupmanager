@@ -8,7 +8,7 @@ import { env } from '@/lib/env'
 // PUBLIC (no-login) checkout for the invoice pay page (/pay/<token>). Mints a
 // Stripe Checkout Session as a DIRECT charge on the invoice's trainer's Connect
 // account — the same Flow-B path products/packages use (mintCheckoutSession
-// inherits the CONNECT_LIVE_ALLOWLIST gate). The amount is ALWAYS recomputed
+// only mints when the trainer's Connect account can actually charge). The amount is ALWAYS recomputed
 // server-side from the invoice; no client-supplied amount is ever trusted.
 export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
   // Unauthenticated + money → rate-limit by IP (mirrors the public form limiter).

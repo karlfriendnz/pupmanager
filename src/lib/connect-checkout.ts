@@ -1,7 +1,7 @@
 import type { Prisma } from '@/generated/prisma'
 import { prisma } from './prisma'
 import { stripeFor } from './stripe'
-import { platformFeeAmount, estimateProcessingSurcharge, isLivePaymentsAllowed } from './connect'
+import { platformFeeAmount, estimateProcessingSurcharge } from './connect'
 
 // Builds a hosted Stripe Checkout Session for a client→trainer payment as a
 // *direct charge* on the trainer's connected account (created with the
@@ -129,11 +129,10 @@ export async function mintCheckoutSession(
     include: { items: true },
   })
   if (!payment || payment.status !== 'PENDING') return null
-
-  // Rollout gate — refuse to mint a LIVE checkout for a trainer who isn't
-  // allowlisted yet. Sandbox (demo) always passes. Belt-and-braces with the
-  // onboarding gate: even a pre-existing live account can't take a charge.
-  if (!isLivePaymentsAllowed(payment.trainerId, payment.sandbox)) return null
+  // No connected account, no charge. This is the money chokepoint now that the
+  // rollout allowlist is gone: a trainer who hasn't finished Stripe onboarding
+  // has no account to charge on, and we must not call Stripe without one.
+  if (!payment.connectAccountId) return null
 
   const stripe = stripeFor(payment.sandbox)
   // The Stripe-Account header makes this a DIRECT charge on the trainer's
