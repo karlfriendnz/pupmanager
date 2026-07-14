@@ -1,6 +1,6 @@
 import { Wallet, ArrowUpRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
-import { isConnectConfigured, readAccountFlags } from '@/lib/connect'
+import { isConnectConfigured, isLivePaymentsAllowed, readAccountFlags } from '@/lib/connect'
 import { stripeFor } from '@/lib/stripe'
 import { ConnectButton, AcceptPaymentsToggle, PassFeeToggle, AutoSendInvoicesToggle, DefaultRequirePaymentToggle } from './payments-actions'
 
@@ -27,6 +27,12 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
 
   const sandbox = profile?.sandboxBilling ?? false
   const configured = isConnectConfigured(sandbox)
+  // Live payments are still fenced to an allowlist while we soft-launch. The
+  // panel used to check only isConnectConfigured, so a trainer outside the
+  // allowlist got a working-looking "Set up payments" button that 403'd on
+  // click — a deliberate rollout fence presenting as a fault. Ask the same
+  // question the API asks, and say so plainly.
+  const allowed = isLivePaymentsAllowed(companyId, sandbox)
   const started = !!profile?.connectAccountId
 
   // Enablement flags are mirrored from Stripe by the account.updated webhook —
@@ -66,9 +72,10 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
           {started && !active && <StatusPill label="Setup in progress" />}
         </div>
 
-        {!configured ? (
+        {!configured || (!allowed && !started) ? (
           <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
-            Payments aren’t switched on for your account yet. Check back shortly.
+            We&apos;re rolling client payments out to trainers in batches, and your account
+            isn&apos;t switched on yet. Email us and we&apos;ll move you up the list.
           </p>
         ) : !started ? (
           <div className="mt-5">
