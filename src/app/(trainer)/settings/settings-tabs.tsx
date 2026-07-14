@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
+import { TabIntro } from './tab-intro'
 
 const ALL_TABS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -139,6 +140,8 @@ export function SettingsTabs({
       {/* Content. Single-column forms get a readable cap (max-w-2xl); wide
           master-detail panels (Forms, Email templates) use the full width. */}
       <div className="min-w-0 flex-1">
+        {/* What this tab is for, and how to get it working — every tab, same shape. */}
+        <TabIntro tab={tab} />
         {profile != null && <div className={tab === 'profile' ? 'max-w-2xl' : 'hidden'}>{profile}</div>}
         <div className={tab === 'notifications' ? 'max-w-2xl' : 'hidden'}>{notifications}</div>
         {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}

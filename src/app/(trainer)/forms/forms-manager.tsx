@@ -719,14 +719,7 @@ export function FormsManager({
 
       {/* ── Fields ───────────────────────────────────────────────────────── */}
       <section className={`flex-col gap-3 ${view === 'fields' ? 'flex' : 'hidden'}`}>
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Fields</h2>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Everything you track about a client and their dog. The columns say where each one
-              gets asked.
-            </p>
-          </div>
+        <div className="flex justify-end">
           <Button size="sm" variant="secondary" onClick={() => setWizardOpen(true)}>
             <Sparkles className="h-4 w-4" />
             Suggest fields
@@ -745,14 +738,7 @@ export function FormsManager({
 
       {/* ── Forms ────────────────────────────────────────────────────────── */}
       <section className={`flex-col gap-3 ${view === 'forms' ? 'flex' : 'hidden'}`}>
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Forms</h2>
-            <p className="text-sm text-slate-500 mt-0.5">
-              The intake form asks for the fields you set up. Session forms are separate — they
-              carry their own questions for writing up a session.
-            </p>
-          </div>
+        <div className="flex justify-end">
           <Button size="sm" onClick={() => router.push('/forms/session/new')}>
             <Plus className="h-4 w-4" />
             New session form

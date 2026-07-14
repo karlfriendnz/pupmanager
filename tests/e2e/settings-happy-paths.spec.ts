@@ -147,9 +147,12 @@ test.describe('fields & forms — owner happy path', () => {
     // Forms opens first, so the forms list isn't buried under the field editor.
     await expect(page.getByText('Intake form', { exact: true })).toBeVisible()
 
+    // Every settings tab leads with what it's for and how to set it up.
+    await expect(page.getByRole('heading', { name: 'Fields & forms' })).toBeVisible()
+    await expect(page.getByText(/Fields are what you track about a client/)).toBeVisible()
+
     // Fields live on the second sub-tab.
     await page.getByRole('button', { name: 'fields', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Fields', exact: true })).toBeVisible()
     await expect(page.getByText(/Client & dog details/).first()).toBeVisible()
 
     // The toolbar "Add field" opens the editor in the no-section bucket — no
