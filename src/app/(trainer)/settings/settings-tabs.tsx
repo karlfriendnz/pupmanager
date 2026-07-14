@@ -10,7 +10,7 @@ const ALL_TABS = [
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'forms', label: 'Forms', icon: Pencil },
   { id: 'customfields', label: 'Custom fields', icon: Tags },
-  { id: 'integration', label: 'Integrations', icon: Globe },
+  { id: 'integration', label: 'Connect Website', icon: Globe },
   { id: 'addons', label: 'Add-ons', icon: Puzzle },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'payments', label: 'Payments', icon: Wallet },
