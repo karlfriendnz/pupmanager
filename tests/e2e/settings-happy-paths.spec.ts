@@ -94,6 +94,7 @@ test.describe('starter field packs — owner happy path', () => {
   test('owner picks a suggested field and it becomes a real field in its section', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/settings?tab=forms')
+    await page.getByRole('button', { name: 'fields', exact: true }).click()
 
     await page.getByRole('button', { name: 'Suggest fields' }).click()
     await expect(
@@ -143,10 +144,12 @@ test.describe('fields & forms — owner happy path', () => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/settings?tab=forms')
 
-    // Fields and the forms that use them are one screen now.
-    await expect(page.getByRole('heading', { name: 'Fields', exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Forms', exact: true })).toBeVisible()
+    // Forms opens first, so the forms list isn't buried under the field editor.
     await expect(page.getByText('Intake form', { exact: true })).toBeVisible()
+
+    // Fields live on the second sub-tab.
+    await page.getByRole('button', { name: 'fields', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Fields', exact: true })).toBeVisible()
     await expect(page.getByText(/Client & dog details/).first()).toBeVisible()
 
     // The toolbar "Add field" opens the editor in the no-section bucket — no

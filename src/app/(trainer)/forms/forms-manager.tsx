@@ -652,6 +652,25 @@ export function FormsManager({
   const [wizardOpen, setWizardOpen] = useState(
     () => searchParams.get('setup') === 'fields' && intakeCustomFields.length === 0
   )
+  // Forms and Fields are each a screenful, so they're tabs rather than one long
+  // scroll — the forms list used to sit below the whole field editor, off-screen.
+  // Arriving from onboarding (?setup=fields) starts on Fields, where the wizard is.
+  const [view, setView] = useState<'forms' | 'fields'>(() => {
+    if (searchParams.get('view') === 'fields') return 'fields'
+    if (searchParams.get('view') === 'forms') return 'forms'
+    return searchParams.get('setup') === 'fields' ? 'fields' : 'forms'
+  })
+
+  // Keep the sub-tab in the URL so a reload (or a link you send yourself) comes
+  // back to the tab you were on, rather than bouncing to Forms mid-edit.
+  function selectView(next: 'forms' | 'fields') {
+    setView(next)
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('view', next)
+      history.replaceState(null, '', `${url.pathname}${url.search}`)
+    }
+  }
   const [isPublished, setIsPublished] = useState(intakeFormPublished)
   const [togglingPublished, setTogglingPublished] = useState(false)
 
@@ -677,13 +696,29 @@ export function FormsManager({
   const intakeFieldCount = intakeCustomFields.length + 3 // + name/email/phone
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-5">
       {wizardOpen && (
         <FieldPacksWizard roles={businessRoles} onClose={() => setWizardOpen(false)} />
       )}
 
+      <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 w-fit">
+        {(['forms', 'fields'] as const).map(v => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => selectView(v)}
+            aria-pressed={view === v}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${
+              view === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+
       {/* ── Fields ───────────────────────────────────────────────────────── */}
-      <section className="flex flex-col gap-3">
+      <section className={`flex-col gap-3 ${view === 'fields' ? 'flex' : 'hidden'}`}>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Fields</h2>
@@ -709,13 +744,13 @@ export function FormsManager({
       </section>
 
       {/* ── Forms ────────────────────────────────────────────────────────── */}
-      <section className="flex flex-col gap-3">
+      <section className={`flex-col gap-3 ${view === 'forms' ? 'flex' : 'hidden'}`}>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Forms</h2>
             <p className="text-sm text-slate-500 mt-0.5">
-              Where those fields get asked. Session forms are separate — they carry their own
-              questions for writing up a session.
+              The intake form asks for the fields you set up. Session forms are separate — they
+              carry their own questions for writing up a session.
             </p>
           </div>
           <Button size="sm" onClick={() => router.push('/forms/session/new')}>
@@ -739,7 +774,7 @@ export function FormsManager({
                 </span>
               </div>
               <p className="text-sm text-slate-400 mt-0.5">
-                The first form a client fills in once you accept them. It asks for every field above.
+                The first form a client fills in once you accept them. It asks for every field you set up.
               </p>
               <p className="text-xs text-slate-400 mt-1">
                 {intakeFieldCount} field{intakeFieldCount === 1 ? '' : 's'}
