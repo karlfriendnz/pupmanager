@@ -571,6 +571,10 @@ model LinkPage {
   trainer     TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   headline    String?
   bio         String? @db.Text
+  // DEPRECATED — the fixed built-in toggles + itemOrder + buttonStyles below are
+  // no longer read or written. Every button (incl. booking/website/contact) is
+  // now a per-row LinkPageButton with its own type/order/style. Columns are kept
+  // to match the DB (no destructive migration); do NOT reintroduce reads/writes.
   showBooking Boolean @default(true)
   showWebsite Boolean @default(true)
   showContact Boolean @default(true)
@@ -597,13 +601,30 @@ model LinkPage {
   @@map("link_pages")
 }
 
-// A single custom link button on a LinkPage. Ordered by `order` (ascending).
+// A single "smart link" button on a LinkPage. Ordered by `order` (ascending).
+// Every button — booking, lead magnet, get-in-touch form, client sign-in,
+// website, email, call, or a raw custom URL — is one row here. `type` decides
+// how the href is resolved at render time (see src/lib/link-page.ts); `targetId`
+// carries the type-specific reference (booking-page slug, lead-magnet slug, or
+// embed-form id). Only CUSTOM stores a raw `url`. Per-button styling lives on the
+// row (imageUrl / bgColor / textColor), replacing the old LinkPage.buttonStyles.
 model LinkPageButton {
   id         String @id @default(cuid())
   linkPageId String
   linkPage   LinkPage @relation(fields: [linkPageId], references: [id], onDelete: Cascade)
+  // One of: CUSTOM | BOOKING | LEADMAGNET | FORM | SIGNIN | WEBSITE | EMAIL | CALL.
+  type       String @default("CUSTOM")
   label      String
-  url        String
+  // Only CUSTOM stores a raw http(s) url; all other types resolve their href
+  // from the trainer's data, so this is null for them.
+  url        String?
+  // Type-specific target: BOOKING → booking-page slug (null = booking home),
+  // LEADMAGNET → magnet slug, FORM → embed-form id. Null for the rest.
+  targetId   String?
+  // Per-button style overrides (each falls back to the page-level styling).
+  imageUrl   String?
+  bgColor    String?
+  textColor  String?
   order      Int    @default(0)
   createdAt  DateTime @default(now())
 

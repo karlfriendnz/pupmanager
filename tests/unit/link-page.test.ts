@@ -9,10 +9,26 @@ import {
   safeExternalUrl,
   isHttpUrl,
   isLinkPageFontId,
+  isLinkButtonType,
   linkPageFontStack,
   LINK_PAGE_FONTS,
+  LINK_BUTTON_TYPES,
+  type LinkButtonRow,
 } from '@/lib/link-page'
 import { addonById, isFreeAddon, isSellableAddon, isAddonId } from '@/lib/pricing'
+
+const TRAINER = {
+  slug: 'jess',
+  website: 'jessdogs.com',
+  publicEmail: 'hi@jessdogs.com',
+  phone: '021 555 0000',
+  showPhoneToClients: true,
+}
+
+// Small helper to build a config from just the ordered rows.
+function cfg(links: LinkButtonRow[]) {
+  return { headline: null, bio: null, instagram: null, facebook: null, tiktok: null, links }
+}
 
 describe('link-page helpers', () => {
   it('safeExternalUrl assumes https for a bare domain and rejects non-http(s)', () => {
@@ -30,6 +46,12 @@ describe('link-page helpers', () => {
     expect(isHttpUrl('not a url')).toBe(false)
   })
 
+  it('isLinkButtonType recognises the enum members only', () => {
+    for (const t of LINK_BUTTON_TYPES) expect(isLinkButtonType(t)).toBe(true)
+    expect(isLinkButtonType('NOPE')).toBe(false)
+    expect(isLinkButtonType(null)).toBe(false)
+  })
+
   it('socialUrl normalises handles and passes through full URLs', () => {
     expect(socialUrl('instagram', '@jess')).toBe('https://instagram.com/jess')
     expect(socialUrl('facebook', 'jessdogs')).toBe('https://facebook.com/jessdogs')
@@ -39,89 +61,120 @@ describe('link-page helpers', () => {
     expect(socialUrl('instagram', null)).toBeNull()
   })
 
-  it('buildLinkButtons: empty itemOrder → default Book → custom → website → email → call, icons, phone gate (socials excluded)', () => {
+  it('buildLinkButtons resolves each type to the right href + icon + external flag', () => {
     const buttons = buildLinkButtons(
-      {
-        headline: null,
-        bio: null,
-        showBooking: true,
-        showWebsite: true,
-        showContact: true,
-        instagram: '@jess',
-        facebook: null,
-        tiktok: null,
-        links: [{ id: 'g1', label: 'Guide', url: 'guide.com' }],
-        itemOrder: [], // no saved order → renders exactly as it always has
-      },
-      {
-        slug: 'jess',
-        website: 'jessdogs.com',
-        publicEmail: 'hi@jessdogs.com',
-        phone: '021 555 0000',
-        showPhoneToClients: true,
-      },
+      cfg([
+        { id: 'b0', type: 'BOOKING', label: 'Book' },
+        { id: 'b1', type: 'BOOKING', label: 'Puppy class', targetId: 'puppy-class' },
+        { id: 'l1', type: 'LEADMAGNET', label: 'Free guide', targetId: 'puppy-guide' },
+        { id: 'f1', type: 'FORM', label: 'Get in touch', targetId: 'form-123' },
+        { id: 's1', type: 'SIGNIN', label: 'Client login' },
+        { id: 'w1', type: 'WEBSITE', label: 'Website' },
+        { id: 'e1', type: 'EMAIL', label: 'Email us' },
+        { id: 'c1', type: 'CALL', label: 'Call us' },
+        { id: 'u1', type: 'CUSTOM', label: 'My blog', url: 'blog.com' },
+      ]),
+      TRAINER,
     )
-    // Socials are NOT in the main button list any more.
-    expect(buttons.map((b) => b.key)).toEqual(['book', 'custom:g1', 'website', 'email', 'call'])
-    expect(buttons.some((b) => b.key === 'instagram')).toBe(false)
-    expect(buttons[0].href).toBe('/c/jess/book')
-    expect(buttons.find((b) => b.key === 'custom:g1')!.href).toBe('https://guide.com/')
-    expect(buttons.find((b) => b.key === 'call')!.href).toBe('tel:0215550000')
-    // Every main button carries a leading icon id.
-    expect(buttons.find((b) => b.key === 'book')!.icon).toBe('calendar')
-    expect(buttons.find((b) => b.key === 'custom:g1')!.icon).toBe('link')
-    expect(buttons.find((b) => b.key === 'website')!.icon).toBe('globe')
-    expect(buttons.find((b) => b.key === 'email')!.icon).toBe('mail')
-    expect(buttons.find((b) => b.key === 'call')!.icon).toBe('phone')
-    // Custom + website are external; book/email/call are not.
-    expect(buttons.find((b) => b.key === 'website')!.external).toBe(true)
-    expect(buttons.find((b) => b.key === 'email')!.external).toBe(false)
+    const by = (k: string) => buttons.find((b) => b.key === k)!
+    expect(by('b0').href).toBe('/c/jess/book')
+    expect(by('b0').icon).toBe('calendar')
+    expect(by('b0').external).toBe(false)
+    expect(by('b1').href).toBe('/c/jess/book/puppy-class')
+    expect(by('l1').href).toBe('/c/jess/free/puppy-guide')
+    expect(by('l1').icon).toBe('gift')
+    expect(by('f1').href).toBe('/form/form-123')
+    expect(by('f1').icon).toBe('message')
+    expect(by('s1').href).toBe('/c/jess')
+    expect(by('s1').icon).toBe('login')
+    expect(by('w1').href).toBe('https://jessdogs.com/')
+    expect(by('w1').icon).toBe('globe')
+    expect(by('w1').external).toBe(true)
+    expect(by('e1').href).toBe('mailto:hi@jessdogs.com')
+    expect(by('e1').icon).toBe('mail')
+    expect(by('c1').href).toBe('tel:0215550000')
+    expect(by('c1').icon).toBe('phone')
+    expect(by('u1').href).toBe('https://blog.com/')
+    expect(by('u1').icon).toBe('link')
+    expect(by('u1').external).toBe(true)
   })
 
-  it('buildLinkButtons respects itemOrder — website first, contact expands to email+call in place, then book, then custom', () => {
+  it('buildLinkButtons preserves the row order (order IS the array index)', () => {
     const buttons = buildLinkButtons(
-      {
-        headline: null,
-        bio: null,
-        showBooking: true,
-        showWebsite: true,
-        showContact: true,
-        instagram: null,
-        facebook: null,
-        tiktok: null,
-        links: [{ id: 'g1', label: 'Guide', url: 'guide.com' }],
-        itemOrder: ['website', 'contact', 'book', 'custom:g1'],
-      },
-      {
-        slug: 'jess',
-        website: 'jessdogs.com',
-        publicEmail: 'hi@jessdogs.com',
-        phone: '021 555 0000',
-        showPhoneToClients: true,
-      },
+      cfg([
+        { id: 'w', type: 'WEBSITE', label: 'Website' },
+        { id: 'e', type: 'EMAIL', label: 'Email us' },
+        { id: 'b', type: 'BOOKING', label: 'Book' },
+        { id: 'u', type: 'CUSTOM', label: 'Blog', url: 'blog.com' },
+      ]),
+      TRAINER,
     )
-    // 'contact' expands to email then call, in the position it was ordered.
-    expect(buttons.map((b) => b.key)).toEqual(['website', 'email', 'call', 'book', 'custom:g1'])
+    expect(buttons.map((b) => b.key)).toEqual(['w', 'e', 'b', 'u'])
   })
 
-  it('buildLinkButtons ignores stale/unknown custom keys and appends new candidates in default order', () => {
+  it('buildLinkButtons skips rows that cannot resolve (missing target / profile field / gate)', () => {
     const buttons = buildLinkButtons(
-      {
-        headline: null,
-        bio: null,
-        showBooking: true,
-        showWebsite: false,
-        showContact: false,
-        instagram: null,
-        facebook: null,
-        tiktok: null,
-        links: [{ id: 'g1', label: 'Guide', url: 'guide.com' }],
-        // 'custom:gone' no longer exists (skipped); g1 isn't listed → appended after.
-        itemOrder: ['custom:gone', 'book'],
-      },
-      { slug: 'jess', website: null, publicEmail: null, phone: null, showPhoneToClients: false },
+      cfg([
+        { id: 'l', type: 'LEADMAGNET', label: 'Guide' }, // no targetId → skipped
+        { id: 'f', type: 'FORM', label: 'Form' }, // no targetId → skipped
+        { id: 'w', type: 'WEBSITE', label: 'Website' }, // no website → skipped
+        { id: 'e', type: 'EMAIL', label: 'Email' }, // no publicEmail → skipped
+        { id: 'c', type: 'CALL', label: 'Call' }, // showPhoneToClients false → skipped
+        { id: 'u', type: 'CUSTOM', label: 'Bad', url: 'javascript:alert(1)' }, // unsafe → skipped
+        { id: 'g', type: 'CUSTOM', label: 'Good', url: 'good.com' },
+      ]),
+      { slug: 'jess', website: null, publicEmail: null, phone: '021 555 0000', showPhoneToClients: false },
     )
-    expect(buttons.map((b) => b.key)).toEqual(['book', 'custom:g1'])
+    expect(buttons.map((b) => b.key)).toEqual(['g'])
+  })
+
+  it('buildLinkButtons never exposes an unflagged phone', () => {
+    const buttons = buildLinkButtons(
+      cfg([{ id: 'c', type: 'CALL', label: 'Call us' }]),
+      { slug: 'jess', website: null, publicEmail: null, phone: '021 555 0000', showPhoneToClients: false },
+    )
+    expect(buttons).toEqual([])
+  })
+
+  it('buildLinkButtons skips a row with a blank label', () => {
+    const buttons = buildLinkButtons(
+      cfg([
+        { id: 'e', type: 'EMAIL', label: '   ' },
+        { id: 'w', type: 'WEBSITE', label: 'Website' },
+      ]),
+      TRAINER,
+    )
+    expect(buttons.map((b) => b.key)).toEqual(['w'])
+  })
+
+  it('buildLinkButtons attaches the row per-button style (image/bg/text), dropping bad values', () => {
+    const buttons = buildLinkButtons(
+      cfg([
+        {
+          id: 'b',
+          type: 'BOOKING',
+          label: 'Book',
+          imageUrl: 'https://img.test/a.png',
+          bgColor: '#ff0000',
+          textColor: '#000000',
+        },
+        { id: 'w', type: 'WEBSITE', label: 'Website', bgColor: 'red', textColor: '#zz0' }, // all bad → no style
+        { id: 'e', type: 'EMAIL', label: 'Email' }, // none set → no style
+      ]),
+      TRAINER,
+    )
+    const by = (k: string) => buttons.find((b) => b.key === k)!
+    expect(by('b').style).toEqual({ imageUrl: 'https://img.test/a.png', bgColor: '#ff0000', textColor: '#000000' })
+    expect(by('w').style).toBeUndefined()
+    expect(by('e').style).toBeUndefined()
+  })
+
+  it('buildLinkButtons keys default to row index when a row has no id', () => {
+    const buttons = buildLinkButtons(
+      { headline: null, bio: null, instagram: null, facebook: null, tiktok: null, links: [{ type: 'EMAIL', label: 'Email us' }] },
+      TRAINER,
+    )
+    expect(buttons[0].key).toBe('row-0')
   })
 
   it('buildSocialLinks returns the icon-row entries (platform + href), not buttons', () => {
@@ -130,120 +183,17 @@ describe('link-page helpers', () => {
       { platform: 'instagram', href: 'https://instagram.com/jess' },
       { platform: 'facebook', href: 'https://facebook.com/jessdogs' },
     ])
-    // Nothing set → empty list.
     expect(buildSocialLinks({ instagram: null, facebook: null, tiktok: null })).toEqual([])
   })
 
   it('validates font ids and resolves their CSS stacks', () => {
     expect(isLinkPageFontId('default')).toBe(true)
     expect(isLinkPageFontId('rounded')).toBe(true)
-    expect(isLinkPageFontId('serif')).toBe(true)
-    expect(isLinkPageFontId('mono')).toBe(true)
     expect(isLinkPageFontId('comic-sans')).toBe(false)
     expect(isLinkPageFontId(null)).toBe(false)
-    // Default stack for null / unknown; known id resolves to its own stack.
     expect(linkPageFontStack(null)).toBe(LINK_PAGE_FONTS[0].stack)
     expect(linkPageFontStack('nope')).toBe(LINK_PAGE_FONTS[0].stack)
     expect(linkPageFontStack('rounded')).toBe('var(--font-baloo)')
-  })
-
-  it('never exposes an unflagged phone, and honours the on/off toggles', () => {
-    const buttons = buildLinkButtons(
-      {
-        headline: null,
-        bio: null,
-        showBooking: false,
-        showWebsite: false,
-        showContact: true,
-        instagram: null,
-        facebook: null,
-        tiktok: null,
-        links: [],
-        itemOrder: [],
-      },
-      {
-        slug: 'jess',
-        website: 'jessdogs.com',
-        publicEmail: 'hi@jessdogs.com',
-        phone: '021 555 0000',
-        showPhoneToClients: false, // not shared → no Call button
-      },
-    )
-    // No book (off), no website (off), only Email (phone withheld).
-    expect(buttons.map((b) => b.key)).toEqual(['email'])
-  })
-
-  it('drops custom links with a non-http(s) url or empty label', () => {
-    const buttons = buildLinkButtons(
-      {
-        headline: null, bio: null, showBooking: false, showWebsite: false, showContact: false,
-        instagram: null, facebook: null, tiktok: null,
-        links: [
-          { id: 'b1', label: 'Bad', url: 'javascript:alert(1)' },
-          { id: 'e1', label: '', url: 'ok.com' },
-          { id: 'g1', label: 'Good', url: 'good.com' },
-        ],
-        itemOrder: [],
-      },
-      { slug: 'jess', website: null, publicEmail: null, phone: null, showPhoneToClients: false },
-    )
-    expect(buttons.map((b) => b.label)).toEqual(['Good'])
-  })
-
-  it('buildLinkButtons attaches resolved per-button style; contact styles BOTH email + call', () => {
-    const buttons = buildLinkButtons(
-      {
-        headline: null, bio: null, showBooking: true, showWebsite: true, showContact: true,
-        instagram: null, facebook: null, tiktok: null,
-        links: [{ id: 'g1', label: 'Guide', url: 'guide.com' }],
-        itemOrder: [],
-        buttonStyles: {
-          book: { bgColor: '#ff0000', textColor: '#000000', font: 'rounded', imageUrl: 'https://img.test/a.png' },
-          'custom:g1': { bgColor: '#00ff00' },
-          contact: { bgColor: '#0000ff' },
-          website: {}, // empty entry → no style
-        },
-      },
-      { slug: 'jess', website: 'jessdogs.com', publicEmail: 'hi@jessdogs.com', phone: '021 555 0000', showPhoneToClients: true },
-    )
-    const byKey = (k: string) => buttons.find((b) => b.key === k)!
-    expect(byKey('book').style).toEqual({ bgColor: '#ff0000', textColor: '#000000', font: 'rounded', imageUrl: 'https://img.test/a.png' })
-    expect(byKey('custom:g1').style).toEqual({ bgColor: '#00ff00' })
-    // The single 'contact' entry styles both expanded buttons.
-    expect(byKey('email').style).toEqual({ bgColor: '#0000ff' })
-    expect(byKey('call').style).toEqual({ bgColor: '#0000ff' })
-    // An empty entry leaves the button with no style (inherits the page).
-    expect(byKey('website').style).toBeUndefined()
-  })
-
-  it('buildLinkButtons drops invalid colour / font / url from a style, keeping only clean fields', () => {
-    const buttons = buildLinkButtons(
-      {
-        headline: null, bio: null, showBooking: true, showWebsite: false, showContact: false,
-        instagram: null, facebook: null, tiktok: null,
-        links: [], itemOrder: [],
-        buttonStyles: {
-          // All four invalid → the whole entry drops (no style).
-          website: { bgColor: 'red', textColor: '#zz0', font: 'comic-sans', imageUrl: 'javascript:alert(1)' },
-          // Mixed → only the valid fields survive.
-          book: { bgColor: '#abc', textColor: 'notacolor', font: 'rounded', imageUrl: 'nope::' },
-        },
-      },
-      { slug: 'jess', website: null, publicEmail: null, phone: null, showPhoneToClients: false },
-    )
-    expect(buttons.find((b) => b.key === 'book')!.style).toEqual({ bgColor: '#abc', font: 'rounded' })
-  })
-
-  it('buildLinkButtons leaves every button style undefined when buttonStyles is null/absent', () => {
-    const buttons = buildLinkButtons(
-      {
-        headline: null, bio: null, showBooking: true, showWebsite: false, showContact: false,
-        instagram: null, facebook: null, tiktok: null,
-        links: [], itemOrder: [], buttonStyles: null,
-      },
-      { slug: 'jess', website: null, publicEmail: null, phone: null, showPhoneToClients: false },
-    )
-    expect(buttons.every((b) => b.style === undefined)).toBe(true)
   })
 })
 
@@ -257,15 +207,13 @@ describe('instagram add-on registration', () => {
   })
 })
 
-// ── PATCH route: validation + link replacement ──────────────────────────────
+// ── PATCH route: validation + button replacement ────────────────────────────
 const h = vi.hoisted(() => ({
   guardPermission: vi.fn(),
   requireSameOrigin: vi.fn((): Response | null => null),
   upsert: vi.fn(),
-  update: vi.fn(),
   deleteMany: vi.fn(),
   createMany: vi.fn(),
-  findMany: vi.fn(),
   findUnique: vi.fn(),
 }))
 
@@ -273,12 +221,12 @@ vi.mock('@/lib/membership', () => ({ guardPermission: h.guardPermission }))
 vi.mock('@/lib/csrf', () => ({ requireSameOrigin: h.requireSameOrigin }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    linkPage: { findUnique: h.findUnique, upsert: h.upsert, update: h.update },
-    linkPageButton: { deleteMany: h.deleteMany, createMany: h.createMany, findMany: h.findMany },
+    linkPage: { findUnique: h.findUnique, upsert: h.upsert },
+    linkPageButton: { deleteMany: h.deleteMany, createMany: h.createMany },
     $transaction: (fn: (tx: unknown) => unknown) =>
       fn({
-        linkPage: { upsert: h.upsert, findUnique: h.findUnique, update: h.update },
-        linkPageButton: { deleteMany: h.deleteMany, createMany: h.createMany, findMany: h.findMany },
+        linkPage: { upsert: h.upsert, findUnique: h.findUnique },
+        linkPageButton: { deleteMany: h.deleteMany, createMany: h.createMany },
       }),
   },
 }))
@@ -300,64 +248,53 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.requireSameOrigin.mockReturnValue(null)
   h.upsert.mockResolvedValue({ id: 'lp-1', trainerId: 't-1' })
-  h.update.mockResolvedValue({ id: 'lp-1', trainerId: 't-1' })
   h.deleteMany.mockResolvedValue({ count: 0 })
   h.createMany.mockResolvedValue({ count: 0 })
-  h.findMany.mockResolvedValue([])
   h.findUnique.mockResolvedValue({ id: 'lp-1', trainerId: 't-1', links: [] })
 })
 
 describe('PATCH /api/trainer/link-page', () => {
-  it('replaces the link set and assigns order by array index', async () => {
+  it('replaces the button set, assigns order by index, and persists every field', async () => {
     asOwner('t-1')
     const res = await PATCH(patchReq({
-      showBooking: true,
-      links: [
-        { label: 'First', url: 'first.com' },
-        { label: 'Second', url: 'https://second.com' },
+      buttons: [
+        { type: 'BOOKING', label: 'Book', targetId: 'puppy-class', bgColor: '#112233' },
+        { type: 'CUSTOM', label: 'Blog', url: 'blog.com', imageUrl: 'https://img.test/x.png' },
+        { type: 'EMAIL', label: 'Email us' },
       ],
     }))
     expect(res.status).toBe(200)
-    // Whole set replaced under the caller's link page.
     expect(h.deleteMany).toHaveBeenCalledWith({ where: { linkPageId: 'lp-1' } })
     expect(h.createMany).toHaveBeenCalledWith({
       data: [
-        { linkPageId: 'lp-1', label: 'First', url: 'https://first.com/', order: 0 },
-        { linkPageId: 'lp-1', label: 'Second', url: 'https://second.com/', order: 1 },
+        {
+          linkPageId: 'lp-1', type: 'BOOKING', label: 'Book', url: null, targetId: 'puppy-class',
+          imageUrl: null, bgColor: '#112233', textColor: null, order: 0,
+        },
+        {
+          linkPageId: 'lp-1', type: 'CUSTOM', label: 'Blog', url: 'https://blog.com/', targetId: null,
+          imageUrl: 'https://img.test/x.png', bgColor: null, textColor: null, order: 1,
+        },
+        {
+          linkPageId: 'lp-1', type: 'EMAIL', label: 'Email us', url: null, targetId: null,
+          imageUrl: null, bgColor: null, textColor: null, order: 2,
+        },
       ],
     })
   })
 
-  it('accepts itemOrder and reconciles custom:* placeholder keys to the freshly-created link ids', async () => {
+  it('drops url for non-CUSTOM types and targetId for types that do not address a target', async () => {
     asOwner('t-1')
-    // The replaced links come back (ordered by `order`) with their new server ids.
-    h.findMany.mockResolvedValue([{ id: 'srv-A' }, { id: 'srv-B' }])
     const res = await PATCH(patchReq({
-      links: [
-        { label: 'First', url: 'first.com' },
-        { label: 'Second', url: 'second.com' },
+      buttons: [
+        // A stray url/targetId on a SIGNIN button is ignored on write.
+        { type: 'SIGNIN', label: 'Login', url: 'https://evil.test', targetId: 'nope' },
       ],
-      // custom keys carry client placeholders and appear in the same order as links.
-      itemOrder: ['website', 'custom:new-0', 'book', 'custom:new-1', 'contact'],
     }))
     expect(res.status).toBe(200)
-    // Built-ins pass through; each custom placeholder maps to the Nth new id.
-    expect(h.update).toHaveBeenCalledWith({
-      where: { id: 'lp-1' },
-      data: { itemOrder: ['website', 'custom:srv-A', 'book', 'custom:srv-B', 'contact'] },
-    })
-  })
-
-  it('stores itemOrder verbatim on the config row when links are not being replaced', async () => {
-    asOwner('t-1')
-    const res = await PATCH(patchReq({ itemOrder: ['contact', 'book', 'website'] }))
-    expect(res.status).toBe(200)
-    // No link replacement → no reconciling update, order saved as-is.
-    expect(h.deleteMany).not.toHaveBeenCalled()
-    expect(h.update).not.toHaveBeenCalled()
-    const call = h.upsert.mock.calls[0][0]
-    expect(call.update.itemOrder).toEqual(['contact', 'book', 'website'])
-    expect(call.create.itemOrder).toEqual(['contact', 'book', 'website'])
+    const data = h.createMany.mock.calls[0][0].data
+    expect(data[0].url).toBeNull()
+    expect(data[0].targetId).toBeNull()
   })
 
   it('accepts the styling fields (font, backgroundUrl, socialsLabel) and normalises them', async () => {
@@ -370,7 +307,6 @@ describe('PATCH /api/trainer/link-page', () => {
     expect(res.status).toBe(200)
     const call = h.upsert.mock.calls[0][0]
     expect(call.update.font).toBe('rounded')
-    // bare domain → https, trimmed heading kept.
     expect(call.update.backgroundUrl).toBe('https://cdn.example.com/bg.jpg')
     expect(call.update.socialsLabel).toBe('Connect with us')
   })
@@ -385,72 +321,55 @@ describe('PATCH /api/trainer/link-page', () => {
     expect(call.update.socialsLabel).toBeNull()
   })
 
-  it('accepts buttonStyles and reconciles custom:* style keys alongside itemOrder', async () => {
+  it('does not touch the button set when `buttons` is absent', async () => {
     asOwner('t-1')
-    // Replaced links come back (ordered by `order`) with their new server ids.
-    h.findMany.mockResolvedValue([{ id: 'srv-A' }, { id: 'srv-B' }])
-    const res = await PATCH(patchReq({
-      links: [
-        { label: 'First', url: 'first.com' },
-        { label: 'Second', url: 'second.com' },
-      ],
-      itemOrder: ['website', 'custom:new-0', 'book', 'custom:new-1', 'contact'],
-      buttonStyles: {
-        book: { bgColor: '#112233' },
-        'custom:new-0': { textColor: '#ffffff', font: 'rounded' },
-        'custom:new-1': { imageUrl: 'https://img.test/x.png' },
-        contact: { bgColor: '#000000' },
-      },
-    }))
+    const res = await PATCH(patchReq({ headline: 'Hi' }))
     expect(res.status).toBe(200)
-    // itemOrder AND buttonStyles keys both remapped placeholder → new id in one update.
-    expect(h.update).toHaveBeenCalledWith({
-      where: { id: 'lp-1' },
-      data: {
-        itemOrder: ['website', 'custom:srv-A', 'book', 'custom:srv-B', 'contact'],
-        buttonStyles: {
-          book: { bgColor: '#112233' },
-          'custom:srv-A': { textColor: '#ffffff', font: 'rounded' },
-          'custom:srv-B': { imageUrl: 'https://img.test/x.png' },
-          contact: { bgColor: '#000000' },
-        },
-      },
-    })
+    expect(h.deleteMany).not.toHaveBeenCalled()
+    expect(h.createMany).not.toHaveBeenCalled()
   })
 
-  it('stores buttonStyles verbatim on the config row when links are not being replaced', async () => {
+  it('clears all buttons when given an empty array', async () => {
     asOwner('t-1')
-    const res = await PATCH(patchReq({ buttonStyles: { book: { bgColor: '#123456' } } }))
+    const res = await PATCH(patchReq({ buttons: [] }))
     expect(res.status).toBe(200)
-    expect(h.update).not.toHaveBeenCalled()
-    const call = h.upsert.mock.calls[0][0]
-    expect(call.update.buttonStyles).toEqual({ book: { bgColor: '#123456' } })
-    expect(call.create.buttonStyles).toEqual({ book: { bgColor: '#123456' } })
+    expect(h.deleteMany).toHaveBeenCalledWith({ where: { linkPageId: 'lp-1' } })
+    expect(h.createMany).not.toHaveBeenCalled()
   })
 
-  it('strips empty button-style entries and drops blank sub-fields', async () => {
+  it('rejects an unknown button type with 400', async () => {
     asOwner('t-1')
-    const res = await PATCH(patchReq({
-      buttonStyles: {
-        book: { bgColor: '#abcdef', textColor: '', font: '' }, // only bgColor survives
-        website: {}, // empty → stripped entirely
-      },
-    }))
-    expect(res.status).toBe(200)
-    const call = h.upsert.mock.calls[0][0]
-    expect(call.update.buttonStyles).toEqual({ book: { bgColor: '#abcdef' } })
-  })
-
-  it('rejects an invalid button-style colour with 400', async () => {
-    asOwner('t-1')
-    const res = await PATCH(patchReq({ buttonStyles: { book: { bgColor: 'red' } } }))
+    const res = await PATCH(patchReq({ buttons: [{ type: 'WAT', label: 'x' }] }))
     expect(res.status).toBe(400)
     expect(h.upsert).not.toHaveBeenCalled()
   })
 
-  it('rejects an unknown button-style font id with 400', async () => {
+  it('rejects a CUSTOM button without a valid http(s) url with 400', async () => {
     asOwner('t-1')
-    const res = await PATCH(patchReq({ buttonStyles: { book: { font: 'comic-sans' } } }))
+    const bad = await PATCH(patchReq({ buttons: [{ type: 'CUSTOM', label: 'Bad', url: 'javascript:alert(1)' }] }))
+    expect(bad.status).toBe(400)
+    const missing = await PATCH(patchReq({ buttons: [{ type: 'CUSTOM', label: 'Bad' }] }))
+    expect(missing.status).toBe(400)
+    expect(h.upsert).not.toHaveBeenCalled()
+  })
+
+  it('rejects a blank button label with 400', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({ buttons: [{ type: 'EMAIL', label: '   ' }] }))
+    expect(res.status).toBe(400)
+    expect(h.upsert).not.toHaveBeenCalled()
+  })
+
+  it('rejects an invalid button colour with 400', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({ buttons: [{ type: 'EMAIL', label: 'Email', bgColor: 'red' }] }))
+    expect(res.status).toBe(400)
+    expect(h.upsert).not.toHaveBeenCalled()
+  })
+
+  it('rejects a non-http(s) button imageUrl with 400', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({ buttons: [{ type: 'EMAIL', label: 'Email', imageUrl: 'javascript:alert(1)' }] }))
     expect(res.status).toBe(400)
     expect(h.upsert).not.toHaveBeenCalled()
   })
@@ -462,26 +381,28 @@ describe('PATCH /api/trainer/link-page', () => {
     expect(h.upsert).not.toHaveBeenCalled()
   })
 
-  it('rejects a non-http(s) link url with 400', async () => {
-    asOwner()
-    const res = await PATCH(patchReq({ links: [{ label: 'Bad', url: 'javascript:alert(1)' }] }))
-    expect(res.status).toBe(400)
-    expect(h.upsert).not.toHaveBeenCalled()
-  })
-
   it('blocks a cross-site (CSRF) request', async () => {
     asOwner()
     h.requireSameOrigin.mockReturnValue(NextResponse.json({ error: 'no' }, { status: 403 }))
-    const res = await PATCH(patchReq({ showBooking: false }))
+    const res = await PATCH(patchReq({ buttons: [] }))
     expect(res.status).toBe(403)
     expect(h.upsert).not.toHaveBeenCalled()
   })
 
   it('401s when the permission guard fails', async () => {
     h.guardPermission.mockResolvedValue(NextResponse.json({ error: 'Unauthorised' }, { status: 401 }))
-    const res = await PATCH(patchReq({ showBooking: false }))
+    const res = await PATCH(patchReq({ buttons: [] }))
     expect(res.status).toBe(401)
     expect(h.upsert).not.toHaveBeenCalled()
+  })
+
+  it('is tenant-scoped: upserts under the caller and ignores a smuggled trainerId', async () => {
+    asOwner('me')
+    await PATCH(patchReq({ trainerId: 'victim', linkPageId: 'lp-victim', buttons: [] }))
+    const call = h.upsert.mock.calls[0][0]
+    expect(call.where).toEqual({ trainerId: 'me' })
+    expect(call.create.trainerId).toBe('me')
+    expect(JSON.stringify(call)).not.toContain('victim')
   })
 })
 

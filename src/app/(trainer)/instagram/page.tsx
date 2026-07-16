@@ -6,7 +6,7 @@ import { hasAddon } from '@/lib/billing'
 import { ensureTrainerSlug } from '@/lib/slug'
 import { env } from '@/lib/env'
 import { PageHeader } from '@/components/shared/page-header'
-import type { ButtonStyle } from '@/lib/link-page'
+import type { LinkButtonType } from '@/lib/link-page'
 import { InstagramEditor } from './instagram-editor'
 
 export const metadata: Metadata = { title: 'Instagram link' }
@@ -47,6 +47,29 @@ export default async function InstagramPage() {
     })
   }
 
+  // Lists the "Add link" modal pickers need: the trainer's booking pages,
+  // active get-in-touch forms, and (only when the add-on is on) lead magnets.
+  const hasLeadMagnets = await hasAddon(ctx.companyId, 'leadmagnets')
+  const [bookingPages, embedForms, leadMagnets] = await Promise.all([
+    prisma.bookingPage.findMany({
+      where: { trainerId: ctx.companyId },
+      select: { slug: true, name: true, headline: true },
+      orderBy: { order: 'asc' },
+    }),
+    prisma.embedForm.findMany({
+      where: { trainerId: ctx.companyId, isActive: true },
+      select: { id: true, title: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    hasLeadMagnets
+      ? prisma.leadMagnet.findMany({
+          where: { trainerId: ctx.companyId },
+          select: { slug: true, title: true },
+          orderBy: { createdAt: 'asc' },
+        })
+      : Promise.resolve([]),
+  ])
+
   const accent =
     trainer.emailAccentColor && HEX.test(trainer.emailAccentColor)
       ? trainer.emailAccentColor
@@ -71,21 +94,33 @@ export default async function InstagramPage() {
             phone: trainer.phone,
             showPhoneToClients: trainer.showPhoneToClients,
           }}
+          pickers={{
+            bookingPages: bookingPages.map((b) => ({
+              slug: b.slug,
+              name: b.headline?.trim() || b.name,
+            })),
+            leadMagnets: leadMagnets.map((m) => ({ slug: m.slug, title: m.title })),
+            embedForms: embedForms.map((f) => ({ id: f.id, title: f.title })),
+          }}
           initial={{
             headline: linkPage.headline,
             bio: linkPage.bio,
-            showBooking: linkPage.showBooking,
-            showWebsite: linkPage.showWebsite,
-            showContact: linkPage.showContact,
             instagram: linkPage.instagram,
             facebook: linkPage.facebook,
             tiktok: linkPage.tiktok,
             socialsLabel: linkPage.socialsLabel,
             font: linkPage.font,
             backgroundUrl: linkPage.backgroundUrl,
-            links: linkPage.links.map((l) => ({ id: l.id, label: l.label, url: l.url })),
-            itemOrder: linkPage.itemOrder,
-            buttonStyles: (linkPage.buttonStyles as Record<string, ButtonStyle> | null) ?? null,
+            buttons: linkPage.links.map((l) => ({
+              id: l.id,
+              type: l.type as LinkButtonType,
+              label: l.label,
+              url: l.url,
+              targetId: l.targetId,
+              imageUrl: l.imageUrl,
+              bgColor: l.bgColor,
+              textColor: l.textColor,
+            })),
           }}
         />
       </div>

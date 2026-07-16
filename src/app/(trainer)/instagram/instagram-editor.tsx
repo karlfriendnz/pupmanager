@@ -16,16 +16,37 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Plus, Trash2, Copy, Check, ExternalLink, ImagePlus, Loader2, Palette } from 'lucide-react'
+import {
+  GripVertical,
+  Plus,
+  Trash2,
+  Copy,
+  Check,
+  ExternalLink,
+  ImagePlus,
+  Loader2,
+  Palette,
+  Pencil,
+  X,
+  Calendar,
+  Gift,
+  MessageSquare,
+  LogIn,
+  Globe,
+  Mail,
+  Phone,
+  Link2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   buildLinkButtons,
   buildSocialLinks,
-  normalizeButtonStyle,
   LINK_PAGE_FONTS,
   linkPageFontStack,
+  safeExternalUrl,
   type ButtonStyle,
+  type LinkButtonType,
 } from '@/lib/link-page'
 import { compressImageFile } from '@/lib/compress-image'
 import { LinkPageView } from '../../l/[slug]/link-page-view'
@@ -41,119 +62,171 @@ interface Brand {
   showPhoneToClients: boolean
 }
 
-interface EditLink {
+// The lists the "Add link" modal offers as targets.
+interface Pickers {
+  bookingPages: { slug: string; name: string }[]
+  leadMagnets: { slug: string; title: string }[]
+  embedForms: { id: string; title: string }[]
+}
+
+// One editable smart-link row. `url` is only meaningful for CUSTOM; `targetId`
+// carries the booking-page slug / lead-magnet slug / embed-form id; the style
+// fields are the per-button overrides.
+interface EditButton {
   id: string
+  type: LinkButtonType
   label: string
   url: string
+  targetId: string | null
+  imageUrl?: string
+  bgColor?: string
+  textColor?: string
 }
 
 interface Initial {
   headline: string | null
   bio: string | null
-  showBooking: boolean
-  showWebsite: boolean
-  showContact: boolean
   instagram: string | null
   facebook: string | null
   tiktok: string | null
   socialsLabel: string | null
   font: string | null
   backgroundUrl: string | null
-  links: EditLink[]
-  itemOrder: string[]
-  buttonStyles: Record<string, ButtonStyle> | null
+  buttons: {
+    id: string
+    type: LinkButtonType
+    label: string
+    url: string | null
+    targetId: string | null
+    imageUrl: string | null
+    bgColor: string | null
+    textColor: string | null
+  }[]
 }
 
 // Stable-ish local id for a freshly-added row (dnd keys need to be stable).
 let tempSeq = 0
 const nextTempId = () => `new-${tempSeq++}`
 
-// Build the FULL on-screen order: every item present exactly once, honouring the
-// saved order and appending anything missing (new links, first load) in the
-// legacy default order (book → customs → website → contact). Stale keys drop.
-function resolveItemOrder(order: string[], linkIds: string[]): string[] {
-  const all = ['book', ...linkIds.map((id) => `custom:${id}`), 'website', 'contact']
-  const allSet = new Set(all)
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const k of order) {
-    if (allSet.has(k) && !seen.has(k)) {
-      result.push(k)
-      seen.add(k)
-    }
-  }
-  for (const k of all) {
-    if (!seen.has(k)) {
-      result.push(k)
-      seen.add(k)
-    }
-  }
-  return result
+// ── Per-type metadata: chip icon, display name, and default label ────────────
+const TYPE_META: Record<LinkButtonType, { name: string; Icon: typeof Calendar; defaultLabel: string }> = {
+  BOOKING: { name: 'Booking page', Icon: Calendar, defaultLabel: 'Book a session' },
+  LEADMAGNET: { name: 'Lead magnet', Icon: Gift, defaultLabel: 'Free download' },
+  FORM: { name: 'Get-in-touch form', Icon: MessageSquare, defaultLabel: 'Get in touch' },
+  SIGNIN: { name: 'Client sign-in', Icon: LogIn, defaultLabel: 'Client login' },
+  WEBSITE: { name: 'Website', Icon: Globe, defaultLabel: 'Visit our website' },
+  EMAIL: { name: 'Email', Icon: Mail, defaultLabel: 'Email us' },
+  CALL: { name: 'Call', Icon: Phone, defaultLabel: 'Call us' },
+  CUSTOM: { name: 'Custom link', Icon: Link2, defaultLabel: '' },
+}
+
+// The order types are offered in the picker.
+const TYPE_ORDER: LinkButtonType[] = ['BOOKING', 'LEADMAGNET', 'FORM', 'SIGNIN', 'WEBSITE', 'EMAIL', 'CALL', 'CUSTOM']
+
+// Convert a stored ButtonStyle-ish set of row fields into a ButtonStyle object.
+function rowStyle(b: EditButton): ButtonStyle | undefined {
+  const out: ButtonStyle = {}
+  if (b.imageUrl) out.imageUrl = b.imageUrl
+  if (b.bgColor) out.bgColor = b.bgColor
+  if (b.textColor) out.textColor = b.textColor
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 export function InstagramEditor({
   publicUrl,
   brand,
+  pickers,
   initial,
 }: {
   publicUrl: string | null
   brand: Brand
+  pickers: Pickers
   initial: Initial
 }) {
   const [headline, setHeadline] = useState(initial.headline ?? '')
   const [bio, setBio] = useState(initial.bio ?? '')
-  const [showBooking, setShowBooking] = useState(initial.showBooking)
-  const [showWebsite, setShowWebsite] = useState(initial.showWebsite)
-  const [showContact, setShowContact] = useState(initial.showContact)
   const [instagram, setInstagram] = useState(initial.instagram ?? '')
   const [facebook, setFacebook] = useState(initial.facebook ?? '')
   const [tiktok, setTiktok] = useState(initial.tiktok ?? '')
   const [socialsLabel, setSocialsLabel] = useState(initial.socialsLabel ?? '')
   const [font, setFont] = useState(initial.font ?? 'default')
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(initial.backgroundUrl)
-  const [links, setLinks] = useState<EditLink[]>(initial.links)
-  // Global item order (keys: 'book' | 'website' | 'contact' | 'custom:<id>').
-  const [order, setOrder] = useState<string[]>(initial.itemOrder ?? [])
-  // Per-button style overrides, keyed by the same button keys as `order`.
-  // Normalised on load so only clean values survive.
-  const [styles, setStyles] = useState<Record<string, ButtonStyle>>(() => {
-    const src = initial.buttonStyles ?? {}
-    const out: Record<string, ButtonStyle> = {}
-    for (const [k, v] of Object.entries(src)) {
-      const clean = normalizeButtonStyle(v)
-      if (clean) out[k] = clean
-    }
-    return out
-  })
+  const [buttons, setButtons] = useState<EditButton[]>(() =>
+    initial.buttons.map((b) => ({
+      id: b.id,
+      type: b.type,
+      label: b.label,
+      url: b.url ?? '',
+      targetId: b.targetId,
+      imageUrl: b.imageUrl ?? undefined,
+      bgColor: b.bgColor ?? undefined,
+      textColor: b.textColor ?? undefined,
+    })),
+  )
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [uploadingBg, setUploadingBg] = useState(false)
-  const [uploadingStyleKey, setUploadingStyleKey] = useState<string | null>(null)
+  const [uploadingStyleId, setUploadingStyleId] = useState<string | null>(null)
   const bgInputRef = useRef<HTMLInputElement>(null)
 
-  // Merge a patch into one button's style; sub-fields set to undefined/'' clear,
-  // and an entry that ends up empty is dropped so the button cleanly inherits.
-  function updateStyle(key: string, patch: Partial<ButtonStyle>) {
-    setStyles((prev) => {
-      const next: ButtonStyle = { ...(prev[key] ?? {}) }
-      for (const [field, value] of Object.entries(patch) as [keyof ButtonStyle, string | undefined][]) {
-        if (value === undefined || value === '') delete next[field]
-        else next[field] = value
-      }
-      const out = { ...prev }
-      if (Object.keys(next).length === 0) delete out[key]
-      else out[key] = next
-      return out
-    })
+  // Modal state: which row is being added/edited.
+  const [modalOpen, setModalOpen] = useState(false)
+
+  function markDirty() {
     setSaved(false)
   }
 
-  async function uploadButtonImage(key: string, file: File) {
+  // Which types can be added right now (missing profile fields / no lead magnets
+  // are offered but disabled, with a hint).
+  function typeDisabledReason(type: LinkButtonType): string | null {
+    switch (type) {
+      case 'WEBSITE':
+        return brand.website ? null : 'Add a website in Settings first'
+      case 'EMAIL':
+        return brand.publicEmail ? null : 'Add a public email in Settings first'
+      case 'CALL':
+        return brand.showPhoneToClients && brand.phone ? null : 'Share your phone with clients in Settings first'
+      case 'LEADMAGNET':
+        return pickers.leadMagnets.length > 0 ? null : 'Create a lead magnet first'
+      case 'FORM':
+        return pickers.embedForms.length > 0 ? null : 'Create a get-in-touch form first'
+      default:
+        return null
+    }
+  }
+
+  // Update one row by id.
+  function updateButton(id: string, patch: Partial<EditButton>) {
+    setButtons((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)))
+    markDirty()
+  }
+  function removeButton(id: string) {
+    setButtons((prev) => prev.filter((b) => b.id !== id))
+    markDirty()
+  }
+
+  // Merge a style patch into a row; empty values clear the field.
+  function updateStyle(id: string, patch: Partial<ButtonStyle>) {
+    setButtons((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b
+        const next = { ...b }
+        for (const [field, value] of Object.entries(patch) as [keyof ButtonStyle, string | undefined][]) {
+          if (value === undefined || value === '') next[field] = undefined
+          else next[field] = value
+        }
+        return next
+      }),
+    )
+    markDirty()
+  }
+
+  async function uploadButtonImage(id: string, file: File) {
     setError(null)
-    setUploadingStyleKey(key)
+    setUploadingStyleId(id)
     try {
       const toSend = await compressImageFile(file)
       const fd = new FormData()
@@ -165,51 +238,74 @@ export function InstagramEditor({
         setError(typeof body.error === 'string' ? body.error : 'Upload failed')
         return
       }
-      updateStyle(key, { imageUrl: body.url })
+      updateStyle(id, { imageUrl: body.url })
     } catch {
       setError('Upload failed. Please try again.')
     } finally {
-      setUploadingStyleKey(null)
+      setUploadingStyleId(null)
     }
   }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
-  // The full ordered list of items shown in (and dragged within) the single stack.
-  const resolvedOrder = useMemo(() => resolveItemOrder(order, links.map((l) => l.id)), [order, links])
-
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    const items = resolvedOrder
-    const oldIndex = items.indexOf(String(active.id))
-    const newIndex = items.indexOf(String(over.id))
-    if (oldIndex === -1 || newIndex === -1) return
-    // Materialise the moved order (all items now explicit) so it round-trips.
-    setOrder(arrayMove(items, oldIndex, newIndex))
-    setSaved(false)
+    setButtons((prev) => {
+      const oldIndex = prev.findIndex((b) => b.id === active.id)
+      const newIndex = prev.findIndex((b) => b.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return prev
+      return arrayMove(prev, oldIndex, newIndex)
+    })
+    markDirty()
   }
 
-  function updateLink(id: string, patch: Partial<EditLink>) {
-    setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)))
-    setSaved(false)
+  // ── Modal: add a new row, or edit an existing one ──────────────────────────
+  const [draft, setDraft] = useState<EditButton | null>(null)
+  const [modalStep, setModalStep] = useState<'type' | 'props'>('type')
+
+  function openAdd() {
+    setDraft(null)
+    setModalStep('type')
+    setModalOpen(true)
   }
-  function addLink() {
-    const id = nextTempId()
-    setLinks((prev) => [...prev, { id, label: '', url: '' }])
-    setOrder((prev) => [...resolveItemOrder(prev, links.map((l) => l.id)), `custom:${id}`])
-    setSaved(false)
+  function openEdit(b: EditButton) {
+    setDraft({ ...b })
+    setModalStep('props')
+    setModalOpen(true)
   }
-  function removeLink(id: string) {
-    setLinks((prev) => prev.filter((l) => l.id !== id))
-    setOrder((prev) => prev.filter((k) => k !== `custom:${id}`))
-    setStyles((prev) => {
-      if (!(`custom:${id}` in prev)) return prev
-      const out = { ...prev }
-      delete out[`custom:${id}`]
-      return out
+  function closeModal() {
+    setModalOpen(false)
+    setDraft(null)
+  }
+
+  // Build a fresh draft for a chosen type, with sensible defaults.
+  function chooseType(type: LinkButtonType) {
+    const meta = TYPE_META[type]
+    let targetId: string | null = null
+    let label = meta.defaultLabel
+    if (type === 'LEADMAGNET' && pickers.leadMagnets[0]) {
+      targetId = pickers.leadMagnets[0].slug
+      label = pickers.leadMagnets[0].title
+    } else if (type === 'FORM' && pickers.embedForms[0]) {
+      targetId = pickers.embedForms[0].id
+    }
+    setDraft({ id: nextTempId(), type, label, url: '', targetId })
+    setModalStep('props')
+  }
+
+  function confirmModal() {
+    if (!draft) return
+    const label = draft.label.trim()
+    if (!label) return
+    if (draft.type === 'CUSTOM' && safeExternalUrl(draft.url) === null) return
+    setButtons((prev) => {
+      const exists = prev.some((b) => b.id === draft.id)
+      const row: EditButton = { ...draft, label }
+      return exists ? prev.map((b) => (b.id === draft.id ? row : b)) : [...prev, row]
     })
-    setSaved(false)
+    markDirty()
+    closeModal()
   }
 
   async function uploadBackground(file: File) {
@@ -227,7 +323,7 @@ export function InstagramEditor({
         return
       }
       setBackgroundUrl(body.url)
-      setSaved(false)
+      markDirty()
     } catch {
       setError('Upload failed. Please try again.')
     } finally {
@@ -242,15 +338,19 @@ export function InstagramEditor({
         {
           headline: headline || null,
           bio: bio || null,
-          showBooking,
-          showWebsite,
-          showContact,
           instagram: instagram || null,
           facebook: facebook || null,
           tiktok: tiktok || null,
-          links: links.map((l) => ({ id: l.id, label: l.label, url: l.url })),
-          itemOrder: order,
-          buttonStyles: styles,
+          links: buttons.map((b) => ({
+            id: b.id,
+            type: b.type,
+            label: b.label,
+            url: b.url,
+            targetId: b.targetId,
+            imageUrl: b.imageUrl,
+            bgColor: b.bgColor,
+            textColor: b.textColor,
+          })),
         },
         {
           slug: brand.slug,
@@ -260,10 +360,9 @@ export function InstagramEditor({
           showPhoneToClients: brand.showPhoneToClients,
         },
       ),
-    [headline, bio, showBooking, showWebsite, showContact, instagram, facebook, tiktok, links, order, styles, brand],
+    [headline, bio, instagram, facebook, tiktok, buttons, brand],
   )
 
-  // Preview socials — the icon row, computed like the public page.
   const previewSocials = useMemo(
     () => buildSocialLinks({ instagram: instagram || null, facebook: facebook || null, tiktok: tiktok || null }),
     [instagram, facebook, tiktok],
@@ -273,27 +372,18 @@ export function InstagramEditor({
     setSaving(true)
     setError(null)
     try {
-      // Persist links in the GLOBAL on-screen order (not the raw `links` array),
-      // keeping only complete rows. itemOrder's custom keys are then in the same
-      // order as the links payload, so the server can map placeholder ids → real
-      // ids by position and the arrangement round-trips exactly.
-      const resolved = resolveItemOrder(order, links.map((l) => l.id))
-      const linkById = new Map(links.map((l) => [l.id, l]))
-      const savedLinks = resolved
-        .filter((k) => k.startsWith('custom:'))
-        .map((k) => linkById.get(k.slice('custom:'.length)))
-        .filter((l): l is EditLink => !!l && l.label.trim() !== '' && l.url.trim() !== '')
-      const savedIds = new Set(savedLinks.map((l) => l.id))
-      const itemOrder = resolved.filter(
-        (k) => !k.startsWith('custom:') || savedIds.has(k.slice('custom:'.length)),
-      )
-      // Send styles only for surviving buttons (built-ins + saved customs). The
-      // custom keys still carry the CURRENT link ids, in the same order as the
-      // links payload, so the server reconciles them to the new ids on save.
-      const buttonStyles: Record<string, ButtonStyle> = {}
-      for (const [k, v] of Object.entries(styles)) {
-        if (!k.startsWith('custom:') || savedIds.has(k.slice('custom:'.length))) buttonStyles[k] = v
-      }
+      // Keep only complete rows: a label, and (for CUSTOM) a valid url.
+      const payloadButtons = buttons
+        .filter((b) => b.label.trim() !== '' && (b.type !== 'CUSTOM' || safeExternalUrl(b.url) !== null))
+        .map((b) => ({
+          type: b.type,
+          label: b.label.trim(),
+          url: b.type === 'CUSTOM' ? b.url.trim() : undefined,
+          targetId: b.targetId ?? undefined,
+          imageUrl: b.imageUrl || undefined,
+          bgColor: b.bgColor || undefined,
+          textColor: b.textColor || undefined,
+        }))
 
       const res = await fetch('/api/trainer/link-page', {
         method: 'PATCH',
@@ -301,18 +391,13 @@ export function InstagramEditor({
         body: JSON.stringify({
           headline: headline.trim() || null,
           bio: bio.trim() || null,
-          showBooking,
-          showWebsite,
-          showContact,
           instagram: instagram.trim() || null,
           facebook: facebook.trim() || null,
           tiktok: tiktok.trim() || null,
           socialsLabel: socialsLabel.trim() || null,
           font,
           backgroundUrl: backgroundUrl || null,
-          links: savedLinks.map((l) => ({ label: l.label.trim(), url: l.url.trim() })),
-          itemOrder,
-          buttonStyles,
+          buttons: payloadButtons,
         }),
       })
       if (!res.ok) {
@@ -381,7 +466,7 @@ export function InstagramEditor({
               placeholder="Positive, force-free dog training"
               onChange={(e) => {
                 setHeadline(e.target.value)
-                setSaved(false)
+                markDirty()
               }}
             />
             <div className="flex flex-col gap-1.5">
@@ -394,7 +479,7 @@ export function InstagramEditor({
                 placeholder="A friendly line about what you do."
                 onChange={(e) => {
                   setBio(e.target.value)
-                  setSaved(false)
+                  markDirty()
                 }}
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -427,7 +512,7 @@ export function InstagramEditor({
                 {backgroundUrl && (
                   <button
                     type="button"
-                    onClick={() => { setBackgroundUrl(null); setSaved(false) }}
+                    onClick={() => { setBackgroundUrl(null); markDirty() }}
                     className="text-xs text-slate-400 hover:text-rose-600"
                   >
                     Remove
@@ -456,7 +541,7 @@ export function InstagramEditor({
                 <button
                   key={f.id}
                   type="button"
-                  onClick={() => { setFont(f.id); setSaved(false) }}
+                  onClick={() => { setFont(f.id); markDirty() }}
                   style={{ fontFamily: linkPageFontStack(f.id) }}
                   className={`rounded-xl border px-3 py-2 text-sm transition-colors ${
                     font === f.id
@@ -471,84 +556,40 @@ export function InstagramEditor({
           </div>
         </section>
 
-        {/* Buttons & links — one reorderable stack (built-ins + custom links) */}
+        {/* Buttons & links — one reorderable stack of smart links */}
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Buttons &amp; links</h2>
-              <p className="text-xs text-slate-500">Drag to reorder. Toggle the built-in buttons on or off.</p>
+              <p className="text-xs text-slate-500">Drag to reorder. Tap a row to edit, or the paintbrush to style it.</p>
             </div>
-            <Button type="button" variant="secondary" size="sm" onClick={addLink} disabled={links.length >= 20}>
+            <Button type="button" variant="secondary" size="sm" onClick={openAdd} disabled={buttons.length >= 30}>
               <Plus className="h-4 w-4" />
               Add link
             </Button>
           </div>
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={resolvedOrder} strategy={verticalListSortingStrategy}>
+            <SortableContext items={buttons.map((b) => b.id)} strategy={verticalListSortingStrategy}>
               <div className="flex flex-col gap-2">
-                {resolvedOrder.map((key) => {
-                  const styleProps = {
-                    accent: brand.accent,
-                    buttonStyle: styles[key],
-                    styleUploading: uploadingStyleKey === key,
-                    onStyleChange: (patch: Partial<ButtonStyle>) => updateStyle(key, patch),
-                    onStyleUpload: (file: File) => uploadButtonImage(key, file),
-                  }
-                  if (key === 'book') {
-                    return (
-                      <SortableBuiltinRow
-                        key="book"
-                        sortableId="book"
-                        label="Book a session"
-                        hint="Links to your booking page"
-                        checked={showBooking}
-                        onChange={(v) => { setShowBooking(v); setSaved(false) }}
-                        {...styleProps}
-                      />
-                    )
-                  }
-                  if (key === 'website') {
-                    return (
-                      <SortableBuiltinRow
-                        key="website"
-                        sortableId="website"
-                        label="Website"
-                        hint={brand.website ? brand.website : 'Add a website in Settings to use this'}
-                        checked={showWebsite}
-                        onChange={(v) => { setShowWebsite(v); setSaved(false) }}
-                        disabled={!brand.website}
-                        {...styleProps}
-                      />
-                    )
-                  }
-                  if (key === 'contact') {
-                    return (
-                      <SortableBuiltinRow
-                        key="contact"
-                        sortableId="contact"
-                        label="Contact"
-                        hint="Email and, if shared, call buttons"
-                        checked={showContact}
-                        onChange={(v) => { setShowContact(v); setSaved(false) }}
-                        {...styleProps}
-                      />
-                    )
-                  }
-                  const id = key.slice('custom:'.length)
-                  const link = links.find((l) => l.id === id)
-                  if (!link) return null
-                  return (
-                    <SortableLinkRow
-                      key={key}
-                      sortableId={key}
-                      link={link}
-                      onChange={(patch) => updateLink(link.id, patch)}
-                      onRemove={() => removeLink(link.id)}
-                      {...styleProps}
-                    />
-                  )
-                })}
+                {buttons.map((b) => (
+                  <SortableButtonRow
+                    key={b.id}
+                    button={b}
+                    subtitle={rowSubtitle(b, brand, pickers)}
+                    accent={brand.accent}
+                    styleUploading={uploadingStyleId === b.id}
+                    onEdit={() => openEdit(b)}
+                    onRemove={() => removeButton(b.id)}
+                    onStyleChange={(patch) => updateStyle(b.id, patch)}
+                    onStyleUpload={(file) => uploadButtonImage(b.id, file)}
+                  />
+                ))}
+                {buttons.length === 0 && (
+                  <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-400">
+                    No buttons yet — add your first link.
+                  </p>
+                )}
               </div>
             </SortableContext>
           </DndContext>
@@ -564,11 +605,11 @@ export function InstagramEditor({
               value={socialsLabel}
               maxLength={40}
               placeholder="Connect with us"
-              onChange={(e) => { setSocialsLabel(e.target.value); setSaved(false) }}
+              onChange={(e) => { setSocialsLabel(e.target.value); markDirty() }}
             />
-            <Input label="Instagram" value={instagram} placeholder="@yourhandle" onChange={(e) => { setInstagram(e.target.value); setSaved(false) }} />
-            <Input label="Facebook" value={facebook} placeholder="yourpage" onChange={(e) => { setFacebook(e.target.value); setSaved(false) }} />
-            <Input label="TikTok" value={tiktok} placeholder="@yourhandle" onChange={(e) => { setTiktok(e.target.value); setSaved(false) }} />
+            <Input label="Instagram" value={instagram} placeholder="@yourhandle" onChange={(e) => { setInstagram(e.target.value); markDirty() }} />
+            <Input label="Facebook" value={facebook} placeholder="yourpage" onChange={(e) => { setFacebook(e.target.value); markDirty() }} />
+            <Input label="TikTok" value={tiktok} placeholder="@yourhandle" onChange={(e) => { setTiktok(e.target.value); markDirty() }} />
           </div>
         </section>
 
@@ -598,21 +639,137 @@ export function InstagramEditor({
           />
         </div>
       </div>
+
+      {/* ── Add / edit modal ──────────────────────────────────────────── */}
+      {modalOpen && (
+        <AddLinkModal
+          brand={brand}
+          pickers={pickers}
+          step={modalStep}
+          draft={draft}
+          typeDisabledReason={typeDisabledReason}
+          onChooseType={chooseType}
+          onBack={() => setModalStep('type')}
+          onDraftChange={(patch) => setDraft((d) => (d ? { ...d, ...patch } : d))}
+          onConfirm={confirmModal}
+          onClose={closeModal}
+        />
+      )}
     </div>
   )
 }
 
-// Props shared by every sortable row for the per-button style panel.
-interface StyleRowProps {
-  accent: string
-  buttonStyle?: ButtonStyle
-  styleUploading: boolean
-  onStyleChange: (patch: Partial<ButtonStyle>) => void
-  onStyleUpload: (file: File) => void
+// A one-line subtitle for a row: its type name + resolved target where useful.
+function rowSubtitle(b: EditButton, brand: Brand, pickers: Pickers): string {
+  const name = TYPE_META[b.type].name
+  switch (b.type) {
+    case 'BOOKING': {
+      const page = b.targetId ? pickers.bookingPages.find((p) => p.slug === b.targetId) : null
+      return page ? `${name} · ${page.name}` : `${name} · booking home`
+    }
+    case 'LEADMAGNET': {
+      const m = pickers.leadMagnets.find((x) => x.slug === b.targetId)
+      return m ? `${name} · ${m.title}` : name
+    }
+    case 'FORM': {
+      const f = pickers.embedForms.find((x) => x.id === b.targetId)
+      return f ? `${name} · ${f.title}` : name
+    }
+    case 'CUSTOM':
+      return b.url || name
+    case 'WEBSITE':
+      return brand.website || name
+    case 'EMAIL':
+      return brand.publicEmail || name
+    default:
+      return name
+  }
 }
 
-// A small paintbrush toggle that opens/closes a row's style panel. Shows a filled
-// state when the button already carries any override.
+// ── A single sortable row: drag handle + type chip/label + customise + edit + delete ──
+function SortableButtonRow({
+  button,
+  subtitle,
+  accent,
+  styleUploading,
+  onEdit,
+  onRemove,
+  onStyleChange,
+  onStyleUpload,
+}: {
+  button: EditButton
+  subtitle: string
+  accent: string
+  styleUploading: boolean
+  onEdit: () => void
+  onRemove: () => void
+  onStyleChange: (patch: Partial<ButtonStyle>) => void
+  onStyleUpload: (file: File) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: button.id })
+  const [open, setOpen] = useState(false)
+  const style = {
+    transform: transform ? CSS.Transform.toString(transform) : undefined,
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+  const bStyle = rowStyle(button)
+  const hasStyle = !!bStyle
+  const Icon = TYPE_META[button.type].Icon
+
+  return (
+    <div ref={setNodeRef} style={style} className="rounded-xl border border-slate-200 bg-white p-2">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label="Drag to reorder"
+          className="cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1 py-1">
+          <p className="truncate text-sm font-medium text-slate-900">{button.label || 'Untitled'}</p>
+          <p className="truncate text-xs text-slate-500">{subtitle}</p>
+        </div>
+        <CustomiseToggle open={open} active={hasStyle} onClick={() => setOpen((o) => !o)} />
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label="Edit link"
+          style={{ minHeight: 0 }}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Delete link"
+          style={{ minHeight: 0 }}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+      {open && (
+        <ButtonStylePanel
+          buttonStyle={bStyle}
+          accent={accent}
+          uploading={styleUploading}
+          onChange={onStyleChange}
+          onUpload={onStyleUpload}
+        />
+      )}
+    </div>
+  )
+}
+
+// A small paintbrush toggle that opens/closes a row's style panel.
 function CustomiseToggle({ open, active, onClick }: { open: boolean; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -632,163 +789,198 @@ function CustomiseToggle({ open, active, onClick }: { open: boolean; active: boo
   )
 }
 
-// A built-in button row (Book / Website / Contact) inside the sortable stack:
-// drag handle + label/hint + a Customise toggle + the canonical on/off switch.
-function SortableBuiltinRow({
-  sortableId,
-  label,
-  hint,
-  checked,
-  onChange,
-  accent,
-  disabled,
-  buttonStyle,
-  styleUploading,
-  onStyleChange,
-  onStyleUpload,
+// ── The "Add link" modal: pick a type (step 1), then set its properties (step 2). ──
+function AddLinkModal({
+  brand,
+  pickers,
+  step,
+  draft,
+  typeDisabledReason,
+  onChooseType,
+  onBack,
+  onDraftChange,
+  onConfirm,
+  onClose,
 }: {
-  sortableId: string
-  label: string
-  hint?: string
-  checked: boolean
-  onChange: (v: boolean) => void
-  disabled?: boolean
-} & StyleRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId })
-  const [open, setOpen] = useState(false)
-  const style = {
-    transform: transform ? CSS.Transform.toString(transform) : undefined,
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
-  const hasStyle = !!buttonStyle && Object.keys(buttonStyle).length > 0
+  brand: Brand
+  pickers: Pickers
+  step: 'type' | 'props'
+  draft: EditButton | null
+  typeDisabledReason: (t: LinkButtonType) => string | null
+  onChooseType: (t: LinkButtonType) => void
+  onBack: () => void
+  onDraftChange: (patch: Partial<EditButton>) => void
+  onConfirm: () => void
+  onClose: () => void
+}) {
+  const isEditing = step === 'props' && draft !== null
+  const confirmDisabled =
+    !draft ||
+    draft.label.trim() === '' ||
+    (draft.type === 'CUSTOM' && safeExternalUrl(draft.url) === null) ||
+    (draft.type === 'LEADMAGNET' && !draft.targetId) ||
+    (draft.type === 'FORM' && !draft.targetId)
 
   return (
-    <div ref={setNodeRef} style={style} className="rounded-xl border border-slate-200 bg-white p-2">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          aria-label="Drag to reorder"
-          className="cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
-        <div className="min-w-0 flex-1 py-1">
-          <p className="text-sm font-medium text-slate-900">{label}</p>
-          {hint && <p className="truncate text-xs text-slate-500">{hint}</p>}
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-slate-900">
+            {step === 'type' ? 'Add a link' : `${TYPE_META[draft!.type].name}`}
+          </h3>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ minHeight: 0 }} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100">
+            <X className="h-4 w-4" />
+          </button>
         </div>
-        <CustomiseToggle open={open} active={hasStyle} onClick={() => setOpen((o) => !o)} />
-        <button
-          type="button"
-          role="switch"
-          aria-checked={checked}
-          aria-label={label}
-          disabled={disabled}
-          onClick={() => onChange(!checked)}
-          // minHeight inline: the app's global `button { min-height:44px }` is
-          // unlayered, so it beats Tailwind's layered min-h-* by cascade layer.
-          style={{ minHeight: 0, ...(checked && !disabled ? { background: accent } : {}) }}
-          className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:opacity-40 ${checked && !disabled ? 'justify-end' : 'justify-start bg-slate-300'}`}
-        >
-          <span className="block h-5 w-5 rounded-full bg-white shadow" />
-        </button>
+
+        {step === 'type' ? (
+          <div className="grid grid-cols-2 gap-2">
+            {TYPE_ORDER.map((type) => {
+              const meta = TYPE_META[type]
+              const disabled = typeDisabledReason(type) !== null
+              const reason = typeDisabledReason(type)
+              const Icon = meta.Icon
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onChooseType(type)}
+                  style={{ minHeight: 0 }}
+                  className={`flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition-colors ${
+                    disabled
+                      ? 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                  <span className="text-sm font-medium">{meta.name}</span>
+                  {disabled && reason && <span className="text-[11px] leading-tight text-slate-400">{reason}</span>}
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          draft && (
+            <div className="flex flex-col gap-4">
+              {/* Type-specific target selectors */}
+              {draft.type === 'BOOKING' && (
+                <SelectField
+                  label="Booking page"
+                  value={draft.targetId ?? ''}
+                  onChange={(v) => onDraftChange({ targetId: v === '' ? null : v })}
+                  options={[
+                    { value: '', label: 'All bookings (booking home)' },
+                    ...pickers.bookingPages.map((p) => ({ value: p.slug, label: p.name })),
+                  ]}
+                />
+              )}
+              {draft.type === 'LEADMAGNET' && (
+                <SelectField
+                  label="Lead magnet"
+                  value={draft.targetId ?? ''}
+                  onChange={(v) => onDraftChange({ targetId: v === '' ? null : v })}
+                  options={pickers.leadMagnets.map((m) => ({ value: m.slug, label: m.title }))}
+                />
+              )}
+              {draft.type === 'FORM' && (
+                <SelectField
+                  label="Form"
+                  value={draft.targetId ?? ''}
+                  onChange={(v) => onDraftChange({ targetId: v === '' ? null : v })}
+                  options={pickers.embedForms.map((f) => ({ value: f.id, label: f.title }))}
+                />
+              )}
+
+              <Input
+                label="Button label"
+                value={draft.label}
+                maxLength={60}
+                placeholder="Button label"
+                onChange={(e) => onDraftChange({ label: e.target.value })}
+              />
+
+              {draft.type === 'CUSTOM' && (
+                <Input
+                  label="URL"
+                  value={draft.url}
+                  maxLength={500}
+                  placeholder="https://…"
+                  inputMode="url"
+                  onChange={(e) => onDraftChange({ url: e.target.value })}
+                />
+              )}
+
+              {draft.type === 'WEBSITE' && (
+                <p className="text-xs text-slate-500">Links to your website: {brand.website}</p>
+              )}
+              {draft.type === 'EMAIL' && (
+                <p className="text-xs text-slate-500">Opens an email to {brand.publicEmail}</p>
+              )}
+              {draft.type === 'CALL' && (
+                <p className="text-xs text-slate-500">Calls {brand.phone}</p>
+              )}
+              {draft.type === 'SIGNIN' && (
+                <p className="text-xs text-slate-500">Sends clients to your branded login page.</p>
+              )}
+
+              <div className="mt-1 flex items-center justify-between">
+                {!isEditing ? (
+                  <button type="button" onClick={onBack} className="text-sm font-medium text-slate-500 hover:text-slate-900">
+                    ← Change type
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <Button type="button" onClick={onConfirm} disabled={confirmDisabled}>
+                  {isEditing ? 'Save' : 'Add'}
+                </Button>
+              </div>
+            </div>
+          )
+        )}
       </div>
-      {open && (
-        <ButtonStylePanel
-          buttonStyle={buttonStyle}
-          accent={accent}
-          uploading={styleUploading}
-          onChange={onStyleChange}
-          onUpload={onStyleUpload}
-        />
-      )}
     </div>
   )
 }
 
-function SortableLinkRow({
-  sortableId,
-  link,
+// A simple labelled native select.
+function SelectField({
+  label,
+  value,
+  options,
   onChange,
-  onRemove,
-  accent,
-  buttonStyle,
-  styleUploading,
-  onStyleChange,
-  onStyleUpload,
 }: {
-  sortableId: string
-  link: EditLink
-  onChange: (patch: Partial<EditLink>) => void
-  onRemove: () => void
-} & StyleRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId })
-  const [open, setOpen] = useState(false)
-  const style = {
-    transform: transform ? CSS.Transform.toString(transform) : undefined,
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
-  const hasStyle = !!buttonStyle && Object.keys(buttonStyle).length > 0
-
+  label: string
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (v: string) => void
+}) {
   return (
-    <div ref={setNodeRef} style={style} className="rounded-xl border border-slate-200 bg-white p-2">
-      <div className="flex items-start gap-2">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          aria-label="Drag to reorder"
-          className="mt-3 cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
-        <div className="flex flex-1 flex-col gap-2">
-          <Input
-            value={link.label}
-            maxLength={60}
-            placeholder="Button label (e.g. Free puppy guide)"
-            onChange={(e) => onChange({ label: e.target.value })}
-          />
-          <Input
-            value={link.url}
-            maxLength={500}
-            placeholder="https://…"
-            inputMode="url"
-            onChange={(e) => onChange({ url: e.target.value })}
-          />
-        </div>
-        <div className="mt-1 flex flex-col items-center gap-1">
-          <CustomiseToggle open={open} active={hasStyle} onClick={() => setOpen((o) => !o)} />
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label="Delete link"
-            style={{ minHeight: 0 }}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-      {open && (
-        <ButtonStylePanel
-          buttonStyle={buttonStyle}
-          accent={accent}
-          uploading={styleUploading}
-          onChange={onStyleChange}
-          onUpload={onStyleUpload}
-        />
-      )}
+    <div className="flex flex-col gap-1.5">
+      <label className="text-sm font-medium text-slate-700">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        {options.length === 0 && <option value="">None available</option>}
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
     </div>
   )
 }
 
 // The inline style editor shown when a row's Customise toggle is open: image
-// upload + preview + remove, background/text colour pickers (each clearable to
-// the page default), and a font picker (clearable to "inherit page font").
+// upload + preview + remove, and background/text colour pickers (each clearable
+// to the page default).
 function ButtonStylePanel({
   buttonStyle,
   accent,
@@ -807,7 +999,6 @@ function ButtonStylePanel({
 
   return (
     <div className="mt-2 flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50/70 p-3">
-      {/* Image + colours on one row */}
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
         <div className="flex items-center gap-2">
           <div
@@ -851,14 +1042,11 @@ function ButtonStylePanel({
           }}
         />
       </div>
-
     </div>
   )
 }
 
-// A colour swatch input that clears back to the page default. `type=color` can't
-// display "unset", so when nothing is set we show the page fallback in the swatch
-// (a neutral if the fallback is a CSS var) and label the state "Default".
+// A colour swatch input that clears back to the page default.
 function ColorField({
   label,
   value,

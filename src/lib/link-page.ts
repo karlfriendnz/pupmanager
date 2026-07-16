@@ -2,31 +2,68 @@
 // public page (server) and the in-app editor preview (client) so what a trainer
 // previews is exactly what a visitor sees. No server-only imports here.
 
+/**
+ * The kind of a smart-link row. Each type resolves its href differently at
+ * render time (see resolveButtonHref):
+ *  - CUSTOM      → a raw http(s) url the trainer typed
+ *  - BOOKING     → /c/<slug>/book  (+ /<targetId> for a specific booking page)
+ *  - LEADMAGNET  → /c/<slug>/free/<targetId>
+ *  - FORM        → /form/<targetId>  (embed form id)
+ *  - SIGNIN      → /c/<slug>  (branded client login)
+ *  - WEBSITE     → the trainer's website
+ *  - EMAIL       → mailto:<publicEmail>
+ *  - CALL        → tel:<phone>  (only when showPhoneToClients)
+ */
+export type LinkButtonType =
+  | 'CUSTOM'
+  | 'BOOKING'
+  | 'LEADMAGNET'
+  | 'FORM'
+  | 'SIGNIN'
+  | 'WEBSITE'
+  | 'EMAIL'
+  | 'CALL'
+
+export const LINK_BUTTON_TYPES: readonly LinkButtonType[] = [
+  'CUSTOM',
+  'BOOKING',
+  'LEADMAGNET',
+  'FORM',
+  'SIGNIN',
+  'WEBSITE',
+  'EMAIL',
+  'CALL',
+] as const
+
+export function isLinkButtonType(value: unknown): value is LinkButtonType {
+  return typeof value === 'string' && (LINK_BUTTON_TYPES as readonly string[]).includes(value)
+}
+
+/**
+ * One ordered smart-link row (mirrors a LinkPageButton). `url` is only used by
+ * CUSTOM; `targetId` carries the type-specific reference (booking-page slug,
+ * lead-magnet slug, or embed-form id); imageUrl/bgColor/textColor are the
+ * per-button style. `id` is optional (used only as a stable render key).
+ */
+export interface LinkButtonRow {
+  id?: string
+  type: LinkButtonType
+  label: string
+  url?: string | null
+  targetId?: string | null
+  imageUrl?: string | null
+  bgColor?: string | null
+  textColor?: string | null
+}
+
 export interface LinkPageConfig {
   headline: string | null
   bio: string | null
-  showBooking: boolean
-  showWebsite: boolean
-  showContact: boolean
   instagram: string | null
   facebook: string | null
   tiktok: string | null
-  links: { id: string; label: string; url: string }[]
-  /**
-   * Global order across ALL buttons. Keys: 'book' | 'website' | 'contact' |
-   * 'custom:<link id>'. 'contact' expands to the email button then the call
-   * button (both adjacent, still gated on availability). An empty array = the
-   * legacy default order, so old pages render exactly as before.
-   */
-  itemOrder: string[]
-  /**
-   * Per-button style overrides, keyed by the SAME button keys as `itemOrder`
-   * ('book' | 'website' | 'contact' | 'custom:<id>'). Each entry can set any of
-   * imageUrl / bgColor / textColor / font; anything absent falls back to the
-   * page-level styling. 'contact' styles BOTH the email and call buttons. Null /
-   * undefined = no overrides (every button inherits the page defaults).
-   */
-  buttonStyles?: Record<string, ButtonStyle> | null
+  /** The ordered smart-link rows. Order IS the array order (row index). */
+  links: LinkButtonRow[]
 }
 
 /** A per-button style override. Every field is optional; absent ⇒ inherit page. */
@@ -34,7 +71,6 @@ export interface ButtonStyle {
   imageUrl?: string
   bgColor?: string
   textColor?: string
-  font?: string
 }
 
 // ── Font choice ──────────────────────────────────────────────────────────────
@@ -77,7 +113,15 @@ export interface LinkPageTrainer {
 }
 
 /** Leading-icon id for a main button; mapped to a lucide icon in the view. */
-export type LinkButtonIcon = 'calendar' | 'link' | 'globe' | 'mail' | 'phone'
+export type LinkButtonIcon =
+  | 'calendar'
+  | 'link'
+  | 'globe'
+  | 'mail'
+  | 'phone'
+  | 'login'
+  | 'gift'
+  | 'message'
 
 // A single rendered button on the public page.
 export interface LinkButton {
@@ -101,8 +145,8 @@ export const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 /**
  * Defensively normalise a raw per-button style entry to a clean ButtonStyle, or
- * undefined when nothing valid remains. Only passes through hex-looking colours,
- * a known LINK_PAGE_FONTS id, and a safe http(s) imageUrl — anything else drops.
+ * undefined when nothing valid remains. Only passes through hex-looking colours
+ * and a safe http(s) imageUrl — anything else drops.
  */
 export function normalizeButtonStyle(raw: unknown): ButtonStyle | undefined {
   if (!raw || typeof raw !== 'object') return undefined
@@ -110,7 +154,6 @@ export function normalizeButtonStyle(raw: unknown): ButtonStyle | undefined {
   const out: ButtonStyle = {}
   if (typeof r.bgColor === 'string' && HEX_COLOR.test(r.bgColor.trim())) out.bgColor = r.bgColor.trim()
   if (typeof r.textColor === 'string' && HEX_COLOR.test(r.textColor.trim())) out.textColor = r.textColor.trim()
-  if (typeof r.font === 'string' && isLinkPageFontId(r.font.trim())) out.font = r.font.trim()
   if (typeof r.imageUrl === 'string') {
     const safe = safeExternalUrl(r.imageUrl)
     if (safe) out.imageUrl = safe
@@ -177,85 +220,91 @@ export function socialUrl(kind: 'instagram' | 'facebook' | 'tiktok', value: stri
   return SOCIAL_BASE[kind] + handle
 }
 
+/** The resolved href + presentation for a smart-link row, or null if unusable. */
+interface ResolvedButton {
+  href: string
+  icon: LinkButtonIcon
+  external: boolean
+}
+
 /**
- * Build the ordered list of MAIN buttons the public page renders, from the
- * trainer's branding + their link-page config. The ORDER is driven by
- * `cfg.itemOrder` (keys: 'book' | 'website' | 'contact' | 'custom:<id>'); any
- * available button whose key isn't listed there is appended AFTER, in the legacy
- * default order (Book → custom links → Website → Email → Call) — so a page with
- * an empty itemOrder renders exactly as it always has. 'contact' expands to the
- * Email button then the Call button (adjacent). Socials are NOT included here —
- * they render as their own icon row (see buildSocialLinks). A phone is only ever
- * exposed when showPhoneToClients is true.
+ * Resolve one smart-link row to its href + icon + external flag, honouring every
+ * gate (a valid target/profile field must exist). Returns null when the row
+ * can't resolve to a usable link so the caller can skip it.
+ */
+function resolveButton(row: LinkButtonRow, trainer: LinkPageTrainer): ResolvedButton | null {
+  const slug = (trainer.slug ?? '').trim()
+  const targetId = (row.targetId ?? '').trim()
+  switch (row.type) {
+    case 'CUSTOM': {
+      const href = safeExternalUrl(row.url)
+      return href ? { href, icon: 'link', external: true } : null
+    }
+    case 'BOOKING': {
+      if (!slug) return null
+      const href = targetId ? `/c/${slug}/book/${targetId}` : `/c/${slug}/book`
+      return { href, icon: 'calendar', external: false }
+    }
+    case 'LEADMAGNET': {
+      if (!slug || !targetId) return null
+      return { href: `/c/${slug}/free/${targetId}`, icon: 'gift', external: false }
+    }
+    case 'FORM': {
+      if (!targetId) return null
+      return { href: `/form/${targetId}`, icon: 'message', external: false }
+    }
+    case 'SIGNIN': {
+      if (!slug) return null
+      return { href: `/c/${slug}`, icon: 'login', external: false }
+    }
+    case 'WEBSITE': {
+      const href = safeExternalUrl(trainer.website)
+      return href ? { href, icon: 'globe', external: true } : null
+    }
+    case 'EMAIL': {
+      const email = (trainer.publicEmail ?? '').trim()
+      return email ? { href: `mailto:${email}`, icon: 'mail', external: false } : null
+    }
+    case 'CALL': {
+      const phone = (trainer.phone ?? '').trim()
+      if (!trainer.showPhoneToClients || !phone) return null
+      return { href: `tel:${phone.replace(/\s+/g, '')}`, icon: 'phone', external: false }
+    }
+    default:
+      return null
+  }
+}
+
+/**
+ * Build the ordered list of MAIN buttons the public page renders from the
+ * trainer's ORDERED smart-link rows. Each row resolves its own href by `type`
+ * (see resolveButton); a row that can't resolve (missing target/profile field,
+ * blank label, or an unsafe custom url) is skipped. The row's own imageUrl /
+ * bgColor / textColor become the per-button style. Socials are NOT included here
+ * — they render as their own icon row (see buildSocialLinks). A phone is only
+ * ever exposed when showPhoneToClients is true.
  */
 export function buildLinkButtons(cfg: LinkPageConfig, trainer: LinkPageTrainer): LinkButton[] {
-  // Each order-key maps to the button(s) it emits. Only AVAILABLE buttons are
-  // added as candidates (toggled on + valid target), so gating is unchanged.
-  const candidates = new Map<string, LinkButton[]>()
-  const defaultOrder: string[] = []
-  const addCandidate = (key: string, buttons: LinkButton[]) => {
-    candidates.set(key, buttons)
-    defaultOrder.push(key)
-  }
-
-  if (cfg.showBooking) {
-    addCandidate('book', [{ key: 'book', label: 'Book a session', href: `/c/${trainer.slug}/book`, icon: 'calendar', external: false }])
-  }
-
-  cfg.links.forEach((l) => {
-    const label = l.label.trim()
-    const href = safeExternalUrl(l.url)
-    if (label && href) {
-      const key = `custom:${l.id}`
-      addCandidate(key, [{ key, label, href, icon: 'link', external: true }])
-    }
-  })
-
-  if (cfg.showWebsite) {
-    const href = safeExternalUrl(trainer.website)
-    if (href) addCandidate('website', [{ key: 'website', label: 'Visit our website', href, icon: 'globe', external: true }])
-  }
-
-  if (cfg.showContact) {
-    const contact: LinkButton[] = []
-    const email = (trainer.publicEmail ?? '').trim()
-    if (email) contact.push({ key: 'email', label: 'Email us', href: `mailto:${email}`, icon: 'mail', external: false })
-    const phone = (trainer.phone ?? '').trim()
-    if (trainer.showPhoneToClients && phone) {
-      contact.push({ key: 'call', label: 'Call us', href: `tel:${phone.replace(/\s+/g, '')}`, icon: 'phone', external: false })
-    }
-    if (contact.length > 0) addCandidate('contact', contact)
-  }
-
   const out: LinkButton[] = []
-  const emitted = new Set<string>()
-  // First, everything the trainer explicitly ordered (stale/unknown keys skipped).
-  for (const key of cfg.itemOrder) {
-    const buttons = candidates.get(key)
-    if (buttons && !emitted.has(key)) {
-      out.push(...buttons)
-      emitted.add(key)
-    }
-  }
-  // Then any remaining candidate (new/unsaved) in the legacy default order.
-  for (const key of defaultOrder) {
-    if (!emitted.has(key)) {
-      out.push(...candidates.get(key)!)
-      emitted.add(key)
-    }
-  }
-
-  // Attach resolved per-button style overrides. The email/call buttons both read
-  // from the 'contact' entry (they're one row in the editor); everything else
-  // reads from its own key. Only clean values survive; no entry ⇒ no style.
-  const styles = cfg.buttonStyles
-  if (styles && typeof styles === 'object') {
-    for (const b of out) {
-      const styleKey = b.key === 'email' || b.key === 'call' ? 'contact' : b.key
-      const resolved = normalizeButtonStyle(styles[styleKey])
-      if (resolved) b.style = resolved
-    }
-  }
+  cfg.links.forEach((row, i) => {
+    const label = (row.label ?? '').trim()
+    if (!label) return
+    const resolved = resolveButton(row, trainer)
+    if (!resolved) return
+    const style = normalizeButtonStyle({
+      imageUrl: row.imageUrl ?? undefined,
+      bgColor: row.bgColor ?? undefined,
+      textColor: row.textColor ?? undefined,
+    })
+    out.push({
+      key: row.id ?? `row-${i}`,
+      label,
+      href: resolved.href,
+      icon: resolved.icon,
+      external: resolved.external,
+      ...(style ? { style } : {}),
+    })
+  })
   return out
 }
 

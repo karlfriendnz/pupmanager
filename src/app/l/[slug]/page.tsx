@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
-import { buildLinkButtons, buildSocialLinks } from '@/lib/link-page'
+import { buildLinkButtons, buildSocialLinks, type LinkButtonType } from '@/lib/link-page'
 import { LinkPageView } from './link-page-view'
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -80,14 +80,19 @@ export default async function LinkInBioPage({
     {
       headline: lp.headline,
       bio: lp.bio,
-      showBooking: lp.showBooking,
-      showWebsite: lp.showWebsite,
-      showContact: lp.showContact,
       instagram: lp.instagram,
       facebook: lp.facebook,
       tiktok: lp.tiktok,
-      links: lp.links.map((l) => ({ id: l.id, label: l.label, url: l.url })),
-      itemOrder: lp.itemOrder,
+      links: lp.links.map((l) => ({
+        id: l.id,
+        type: l.type as LinkButtonType,
+        label: l.label,
+        url: l.url,
+        targetId: l.targetId,
+        imageUrl: l.imageUrl,
+        bgColor: l.bgColor,
+        textColor: l.textColor,
+      })),
     },
     {
       slug,

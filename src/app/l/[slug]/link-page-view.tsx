@@ -1,4 +1,4 @@
-import { Calendar, Link2, Globe, Mail, Phone } from 'lucide-react'
+import { Calendar, Link2, Globe, Mail, Phone, LogIn, Gift, MessageSquare } from 'lucide-react'
 import type { LinkButton, LinkButtonIcon, SocialLink } from '@/lib/link-page'
 import { linkPageFontStack } from '@/lib/link-page'
 
@@ -35,6 +35,9 @@ const BUTTON_ICONS: Record<LinkButtonIcon, typeof Calendar> = {
   globe: Globe,
   mail: Mail,
   phone: Phone,
+  login: LogIn,
+  gift: Gift,
+  message: MessageSquare,
 }
 
 // ── Brand glyphs ─────────────────────────────────────────────────────────────
@@ -140,7 +143,6 @@ export function LinkPageView({
             const bg = b.style?.bgColor ?? accent
             const btnStyle: React.CSSProperties = { background: bg }
             if (b.style?.textColor) btnStyle.color = b.style.textColor
-            if (b.style?.font) btnStyle.fontFamily = linkPageFontStack(b.style.font)
             const inner = (
               <>
                 {b.style?.imageUrl ? (
