@@ -9,7 +9,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import type { ButtonStyle } from '@/lib/link-page'
 import { InstagramEditor } from './instagram-editor'
 
-export const metadata: Metadata = { title: 'Link in bio' }
+export const metadata: Metadata = { title: 'Instagram link' }
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 const DEFAULT_ACCENT = 'var(--pm-brand-600)'
@@ -57,7 +57,7 @@ export default async function InstagramPage() {
 
   return (
     <>
-      <PageHeader title="Link in bio" />
+      <PageHeader title="Instagram link" />
       <div className="p-4 md:p-8">
         <InstagramEditor
           publicUrl={publicUrl}

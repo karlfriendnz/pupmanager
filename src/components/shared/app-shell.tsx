@@ -51,7 +51,7 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/enquiries',    label: 'Enquiries',    icon: Inbox,           section: 'clients', child: true },
   { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'clients', child: true },
   { href: '/lead-magnets', label: 'Lead magnets', icon: Download,        section: 'clients', child: true },
-  { href: '/instagram',    label: 'Link in bio',  icon: Link2,           section: 'clients', child: true },
+  { href: '/instagram',    label: 'Instagram link', icon: Link2,         section: 'clients', child: true },
   { href: '/email-templates', label: 'Email templates', icon: Mail,       section: 'clients', child: true },
 
   { href: '/packages',     label: '1:1 Packages', icon: Package,         section: 'programs' },
