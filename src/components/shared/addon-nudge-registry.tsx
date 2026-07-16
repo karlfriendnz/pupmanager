@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
-import { Mail, Download, Route, Trophy, ShoppingBag, Clock } from 'lucide-react'
+import { Mail, Download, Route, Trophy, ShoppingBag, Clock, ListChecks } from 'lucide-react'
+import { InstagramIcon } from '@/components/icons/instagram-icon'
 import { addonPromoImage } from '@/lib/addon-promo-images'
 import { NUDGE_COPY, nudgeCtaHref } from '@/lib/addon-nudges'
 
@@ -59,6 +60,8 @@ const ICON: Record<string, ReactNode> = {
   achievements: <Trophy className="h-5 w-5 text-teal-600" />,
   shop: <ShoppingBag className="h-5 w-5 text-teal-600" />,
   timesheets: <Clock className="h-5 w-5 text-teal-600" />,
+  todos: <ListChecks className="h-5 w-5 text-teal-600" />,
+  instagram: <InstagramIcon className="h-5 w-5 text-teal-600" />,
 }
 
 /** The nudge content for an add-on, or null if we don't promote it. */

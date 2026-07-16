@@ -26,6 +26,10 @@ export const ADDON_PROMO_IMAGES: Record<string, PromoImage> = {
   // Connect-based add-ons without a bespoke promo image — sensible reuse.
   payments: { src: '/promo-shop-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
   xero: { src: '/promo-timesheets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
+  // Instagram has no bespoke art yet; the marketing photo is the closest fit
+  // (both are about reaching owners). The brand glyph in the badge tile carries
+  // the identity — swap this for real art when we have it.
+  instagram: { src: '/marketing-promo-v1.jpg', objectPosition: 'center 40%', translateX: '30%' },
 }
 
 /** The hero image config for an add-on, or null if we don't have one. */

@@ -6,7 +6,7 @@ import {
   eligibleNudgeAddonIds,
   pickNudgeAddonId,
 } from '@/lib/addon-nudges'
-import { addonById } from '@/lib/pricing'
+import { addonById, ADDONS } from '@/lib/pricing'
 
 // The add-on nudges promote a related add-on on relevant trainer pages and
 // rotate on the dashboard. These tests cover the registry integrity and the
@@ -24,6 +24,24 @@ describe('addon nudge registry', () => {
 
   it('never includes the coming-soon AI add-on', () => {
     expect(PROMOTABLE_ADDON_IDS).not.toContain('ai')
+  })
+
+  it('promotes every add-on a trainer has to opt into, and only those', () => {
+    // An add-on without `defaultOn` is off until the trainer explicitly enables
+    // it (see hasAddon), so with no nudge it's invisible to anyone who never
+    // opens Settings → Add-ons — free ones included. `defaultOn` cores are
+    // already on and coming-soon ones can't be enabled, so both are excluded.
+    // This is the invariant: adding an opt-in add-on without copy fails here.
+    const needsNudge = ADDONS.filter((a) => !a.defaultOn && !a.comingSoon).map((a) => a.id)
+    expect([...PROMOTABLE_ADDON_IDS].sort()).toEqual([...needsNudge].sort())
+  })
+
+  it('promotes the free-but-opt-in add-ons (todos, instagram)', () => {
+    expect(PROMOTABLE_ADDON_IDS).toContain('todos')
+    expect(PROMOTABLE_ADDON_IDS).toContain('instagram')
+    // Toggle-based, so the CTA lands on the Add-ons page rather than a tab.
+    expect(nudgeCtaHref('todos')).toBe('/add-ons')
+    expect(nudgeCtaHref('instagram')).toBe('/add-ons')
   })
 
   it('has complete copy (title, body, cta) for every promotable id', () => {

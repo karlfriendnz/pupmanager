@@ -19,6 +19,11 @@ export const NUDGE_COPY: Record<string, { title: string; body: string; ctaLabel:
     body: 'Offer a free download behind a branded sign-up form and grow your mailing list on autopilot.',
     ctaLabel: 'Set up Lead magnets',
   },
+  instagram: {
+    title: 'Turn your Instagram bio into bookings',
+    body: 'One shareable link with your logo, a Book button and everything you point followers at.',
+    ctaLabel: 'Set up Instagram link',
+  },
   payments: {
     title: 'Get paid in the app',
     body: 'Take card payments for sessions and invoices — connect Stripe and settle straight to your bank.',
@@ -43,6 +48,11 @@ export const NUDGE_COPY: Record<string, { title: string; body: string; ctaLabel:
     title: 'Track your team’s hours',
     body: 'Turn worked time across sessions and admin into payroll-ready totals.',
     ctaLabel: 'Set up Timesheets',
+  },
+  todos: {
+    title: 'Nothing slips between sessions',
+    body: 'A to-do list and brain-dump on your dashboard — get it out of your head before it’s lost.',
+    ctaLabel: 'Set up To-dos',
   },
   googlecalendar: {
     title: 'Sync your Google Calendar',
