@@ -152,6 +152,21 @@ export function can(permission: PermissionKey, role: CompanyRole, overrides?: Pe
   return resolvePermissions(role, overrides)[permission]
 }
 
+/**
+ * Given an actor who holds `team.manage`, may they manage a member of
+ * `targetRole`? Role hierarchy on top of the permission:
+ *   • the OWNER is untouchable by anyone (their access is fixed);
+ *   • a MANAGER may only manage STAFF — never another MANAGER or the owner;
+ *   • the OWNER may manage everyone below them (MANAGER + STAFF).
+ * `team.manage` itself is checked separately via can()/requirePermission().
+ */
+export function canManageMemberRole(actorRole: CompanyRole, targetRole: CompanyRole): boolean {
+  if (targetRole === 'OWNER') return false
+  if (actorRole === 'OWNER') return true
+  if (actorRole === 'MANAGER') return targetRole === 'STAFF'
+  return false
+}
+
 /** Coerce the loosely-typed JSON column into a PermissionMap. */
 export function asPermissionMap(json: unknown): PermissionMap {
   if (!json || typeof json !== 'object') return {}

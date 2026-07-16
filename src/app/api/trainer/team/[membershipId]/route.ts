@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { requirePermission, PermissionError } from '@/lib/membership'
-import { asPermissionMap, can, type PermissionKey } from '@/lib/permissions'
+import { asPermissionMap, can, canManageMemberRole, type PermissionKey } from '@/lib/permissions'
 import { requireSameOrigin } from '@/lib/csrf'
 import { recordAudit, auditRequestMeta } from '@/lib/audit'
 
@@ -40,6 +40,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ member
   if (!member) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
   if (member.role === 'OWNER') {
     return NextResponse.json({ error: 'The owner’s access can’t be changed.' }, { status: 400 })
+  }
+  // A MANAGER may only manage STAFF — not another MANAGER. Only the OWNER can
+  // manage managers. (team.manage was already checked above.)
+  if (!canManageMemberRole(ctx.role, member.role)) {
+    return NextResponse.json({ error: 'Only the owner can manage another manager.' }, { status: 403 })
   }
 
   const parsed = patchSchema.safeParse(await req.json())
@@ -99,6 +104,10 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ membe
   })
   if (!m || m.companyId !== ctx.companyId) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
   if (m.role === 'OWNER') return NextResponse.json({ error: 'The owner can’t be removed.' }, { status: 400 })
+  // Same hierarchy as PATCH: a MANAGER can't remove another MANAGER.
+  if (!canManageMemberRole(ctx.role, m.role)) {
+    return NextResponse.json({ error: 'Only the owner can remove another manager.' }, { status: 403 })
+  }
 
   if (!m.acceptedAt) {
     // Pending invite — tear down the placeholder user too (cascades the

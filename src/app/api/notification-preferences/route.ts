@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
-import { can } from '@/lib/permissions'
+import { can, canManageMemberRole } from '@/lib/permissions'
 import { NOTIFICATION_TYPES } from '@/lib/notification-types'
 import type { NotificationType, NotificationChannel } from '@/generated/prisma'
 
@@ -56,8 +56,9 @@ async function resolveTarget(sessionUserId: string, targetUserId: string | null 
   })
   if (!target) return { ok: false, status: 403 }
 
-  // Mirror team-panel / the PATCH route: the OWNER's settings can't be edited.
-  if (target.role === 'OWNER') return { ok: false, status: 403 }
+  // Mirror team-panel / the PATCH route's role hierarchy: the OWNER is
+  // untouchable, and a MANAGER may only manage STAFF (never another MANAGER).
+  if (!canManageMemberRole(ctx.role, target.role)) return { ok: false, status: 403 }
 
   // Act as the target, scoped to the SHARED company (the actor's), never input.
   return { ok: true, userId: targetUserId, companyId: ctx.companyId }

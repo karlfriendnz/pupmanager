@@ -143,6 +143,21 @@ describe('notification-preferences target — authorisation failures write nothi
     expectNothingWritten()
   })
 
+  it('a MANAGER targeting another MANAGER → 403 (only the owner manages managers)', async () => {
+    h.getTrainerContext.mockResolvedValue(manager)
+    h.membershipFindUnique.mockResolvedValue({ role: 'MANAGER' })
+    const res = await PUT(putReq({ type: 'NEW_MESSAGE', channel: 'EMAIL', enabled: true, targetUserId: 'other-manager' }))
+    expect(res.status).toBe(403)
+    expectNothingWritten()
+  })
+
+  it('an OWNER targeting a MANAGER → allowed', async () => {
+    h.getTrainerContext.mockResolvedValue(owner)
+    h.membershipFindUnique.mockResolvedValue({ role: 'MANAGER' })
+    const res = await PUT(putReq({ type: 'NEW_MESSAGE', channel: 'EMAIL', enabled: true, targetUserId: 'a-manager' }))
+    expect(res.status).toBe(200)
+  })
+
   it('a non-trainer session (no context) targeting anyone → 403', async () => {
     h.getTrainerContext.mockResolvedValue(null)
     const res = await PUT(putReq({ type: 'NEW_MESSAGE', channel: 'EMAIL', enabled: true, targetUserId: 'member' }))

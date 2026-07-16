@@ -155,7 +155,9 @@ export function TeamPanel() {
 
       <div className="flex flex-col divide-y divide-slate-100 rounded-2xl border border-slate-100">
         {data.members.map((m) => (
-          <MemberRow key={m.id} member={m} canManage={data.canManage} onChanged={load} />
+          // actorIsOwner lets MemberRow apply the role hierarchy: a non-owner
+          // manager can edit staff only, never another manager.
+          <MemberRow key={m.id} member={m} canManage={data.canManage} actorIsOwner={data.isOwner} onChanged={load} />
         ))}
       </div>
     </div>
@@ -365,7 +367,7 @@ function InviteForm({ onInvited, seatsLeft }: { onInvited: () => void; seatsLeft
   )
 }
 
-function MemberRow({ member, canManage, onChanged }: { member: Member; canManage: boolean; onChanged: () => void }) {
+function MemberRow({ member, canManage, actorIsOwner, onChanged }: { member: Member; canManage: boolean; actorIsOwner: boolean; onChanged: () => void }) {
   const [editing, setEditing] = useState(false)
   const [role, setRole] = useState<Exclude<Role, 'OWNER'>>(member.role === 'OWNER' ? 'MANAGER' : member.role)
   const [title, setTitle] = useState(member.title ?? '')
@@ -375,7 +377,8 @@ function MemberRow({ member, canManage, onChanged }: { member: Member; canManage
   const [error, setError] = useState<string | null>(null)
 
   const effective = useMemo(() => resolvePermissions(role, overrides), [role, overrides])
-  const editable = canManage && !member.isOwner
+  // Owner is untouchable; a non-owner manager can only edit staff.
+  const editable = canManage && !member.isOwner && (actorIsOwner || member.role === 'STAFF')
 
   async function save() {
     setSaving(true); setError(null)
