@@ -42,8 +42,21 @@ Use ruflo selectively, not by default:
 
 For non-trivial tasks:
 ```bash
-npx @claude-flow/cli@latest memory search --query "[keywords]" --namespace patterns
-npx @claude-flow/cli@latest hooks route --task "[description]"
+npx -y ruflo@latest memory search -q "[descriptive phrase]" -n pupmanager-architecture --threshold 0.2
+npx -y ruflo@latest hooks route --task "[description]"
 ```
+
+Querying the memory (verified 2026-07-17):
+
+- The package is `ruflo`, **not** `@claude-flow/cli` (renamed; currently 3.32.0).
+- There is **no `patterns` namespace**. The real ones are `pupmanager-` + one of:
+  `architecture`, `app`, `data`, `marketing`, `marketing-audit`, `mobile`, `ops`, `conventions`.
+  Search is namespace-scoped and defaults to an empty `default` — always pass `-n`.
+- **Use a descriptive multi-word query.** The entries are long documents, so a single
+  generic word ("architecture") scores below any useful threshold and returns nothing —
+  it looks like an empty store but isn't. "tech stack dependencies versions" hits fine.
+- `--threshold` defaults to 0.7; drop it to ~0.1–0.2 to widen recall. Only `-t semantic`
+  (the default) returns anything — `-t keyword` and `-t hybrid` come back empty.
+- Store writes to `cwd/.swarm/memory.db`, so run these from the repo root.
 
 For genuine multi-file work, spawn a single Agent (Explore for research, coder/system-architect for implementation) — full swarms (4+ named agents) are overkill for solo work on this codebase.
