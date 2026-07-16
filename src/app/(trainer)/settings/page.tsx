@@ -29,6 +29,19 @@ export default async function TrainerSettingsPage() {
 
   const canEditSettings = can('settings.edit', ctx.role, ctx.permissions)
   const canManageForms = can('forms.manage', ctx.role, ctx.permissions)
+  const canManageTeam = can('team.manage', ctx.role, ctx.permissions)
+
+  // Members whose notification prefs this actor may edit — same rule the team
+  // panel / PATCH route enforce: within the company, not the OWNER, not
+  // yourself. Only resolved when the actor can manage the team; otherwise the
+  // notifications panel stays self-only. The API re-authorises every write.
+  const manageableMembers = canManageTeam
+    ? (await prisma.trainerMembership.findMany({
+        where: { companyId: ctx.companyId, role: { not: 'OWNER' }, userId: { not: ctx.userId } },
+        select: { userId: true, role: true, user: { select: { name: true, email: true } } },
+        orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
+      })).map(m => ({ userId: m.userId, name: m.user.name || m.user.email, role: m.role }))
+    : []
   // The Xero tab only exists when the (free) Xero add-on is enabled.
   const xeroEnabled = canEditSettings && (await hasAddon(ctx.companyId, 'xero'))
 
@@ -93,7 +106,7 @@ export default async function TrainerSettingsPage() {
         profile={canEditSettings ? (
           <TrainerSettingsForm user={user} profile={trainerProfile} />
         ) : undefined}
-        notifications={<NotificationsPanel />}
+        notifications={<NotificationsPanel manageableMembers={manageableMembers} />}
         integration={can('settings.edit', ctx.role, ctx.permissions) ? <IntegrationTab companyId={ctx.companyId} /> : undefined}
         addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
         team={<TeamPanel />}

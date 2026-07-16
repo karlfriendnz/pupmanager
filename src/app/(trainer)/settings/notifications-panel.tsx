@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useTransition, Fragment } from 'react'
+import { useCallback, useEffect, useRef, useState, useTransition, Fragment } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { Loader2, Bell, Mail, Smartphone, Send } from 'lucide-react'
@@ -21,8 +21,18 @@ interface PrefRow {
   customBody: string | null
 }
 
+// A team member the signed-in owner/manager is allowed to manage (resolved
+// server-side in settings/page.tsx — same rule team-panel uses: not the owner,
+// not yourself). Empty/undefined → the panel is self-only, exactly as before.
+export interface ManageableMember {
+  userId: string
+  name: string
+  role: string
+}
+
 const MINUTES_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180]
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => h)
+const roleLabel = (role: string) => role.charAt(0) + role.slice(1).toLowerCase()
 const TRAINER_TYPES = Object.values(NOTIFICATION_TYPES).filter(m => m.audience !== 'client')
 const CHANNELS: { id: Channel; label: string; Icon: typeof Bell }[] = [
   { id: 'IN_APP', label: 'In-app', Icon: Bell },
@@ -30,13 +40,18 @@ const CHANNELS: { id: Channel; label: string; Icon: typeof Bell }[] = [
   { id: 'EMAIL', label: 'Email', Icon: Mail },
 ]
 
-export function NotificationsPanel() {
+export function NotificationsPanel({ manageableMembers = [] }: { manageableMembers?: ManageableMember[] }) {
   const [rows, setRows] = useState<PrefRow[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
+  // null = the signed-in user ("Me"); otherwise a manageable member's userId.
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
+  const editingMember = manageableMembers.find(m => m.userId === editingUserId) ?? null
 
-  useEffect(() => {
-    fetch('/api/notification-preferences')
+  const load = useCallback((userId: string | null) => {
+    setRows(null); setLoadError(null); setExpanded(null)
+    const qs = userId ? `?userId=${encodeURIComponent(userId)}` : ''
+    fetch(`/api/notification-preferences${qs}`)
       .then(async r => {
         const text = await r.text()
         try { return JSON.parse(text) } catch { throw new Error(`HTTP ${r.status} — non-JSON body: ${text.slice(0, 200) || '(empty)'}`) }
@@ -44,6 +59,8 @@ export function NotificationsPanel() {
       .then(d => { if (d.error) throw new Error(d.error); setRows(d.preferences) })
       .catch(e => setLoadError(e.message ?? 'Failed to load'))
   }, [])
+
+  useEffect(() => { load(editingUserId) }, [editingUserId, load])
 
   const updateLocal = (type: NotificationType, channel: Channel, patch: Partial<PrefRow>) =>
     setRows(prev => prev?.map(r => r.type === type && r.channel === channel ? { ...r, ...patch } : r) ?? null)
@@ -56,7 +73,7 @@ export function NotificationsPanel() {
     updateLocal(type, channel, patch)
     await fetch('/api/notification-preferences', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...cur, ...patch, type, channel }),
+      body: JSON.stringify({ ...cur, ...patch, type, channel, targetUserId: editingUserId ?? undefined }),
     }).catch(() => {})
   }
 
@@ -70,6 +87,28 @@ export function NotificationsPanel() {
   return (
     <section className="flex flex-col gap-6 md:max-w-2xl">
       <p className="text-sm text-slate-500 leading-snug">In-app shows in your notifications bell and as a pop-up toast. Phone sends a push to your device; Email lands in your inbox.</p>
+
+      {/* Owners/managers can tune a team member's prefs. Hidden entirely when
+          there's no one manageable (self-only, exactly as before). */}
+      {manageableMembers.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="notify-editing-for" className="text-sm font-medium text-slate-600">Editing for</label>
+          <select
+            id="notify-editing-for"
+            value={editingUserId ?? ''}
+            onChange={(e) => setEditingUserId(e.target.value || null)}
+            className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-900"
+          >
+            <option value="">Me</option>
+            {manageableMembers.map(m => (
+              <option key={m.userId} value={m.userId}>{m.name} — {roleLabel(m.role)}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      {editingMember && (
+        <Alert variant="info">You&apos;re editing {editingMember.name}&apos;s notifications — changes save to their account.</Alert>
+      )}
 
       {loadError && <Alert variant="error">Couldn&apos;t load preferences: {loadError}</Alert>}
       {!loadError && !rows && <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}
@@ -136,7 +175,7 @@ export function NotificationsPanel() {
                             {CHANNELS.filter(c => supports(meta.type, c.id)).map(c => {
                               const r = rowOf(meta.type, c.id)
                               if (!r) return null
-                              return <PrefRowEditor key={c.id} meta={meta} row={r} onLocalChange={(patch) => updateLocal(meta.type as NotificationType, c.id, patch)} />
+                              return <PrefRowEditor key={c.id} meta={meta} row={r} targetUserId={editingUserId ?? undefined} onLocalChange={(patch) => updateLocal(meta.type as NotificationType, c.id, patch)} />
                             })}
                           </div>
                         </td>
@@ -156,10 +195,12 @@ export function NotificationsPanel() {
 function PrefRowEditor({
   meta,
   row,
+  targetUserId,
   onLocalChange,
 }: {
   meta: typeof NOTIFICATION_TYPES[NotificationType]
   row: PrefRow
+  targetUserId?: string
   onLocalChange: (patch: Partial<PrefRow>) => void
 }) {
   const [saving, startSaving] = useTransition()
@@ -177,7 +218,7 @@ function PrefRowEditor({
     startSaving(async () => {
       setError(null)
       try {
-        const r = await fetch('/api/notification-preferences', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...row, ...patch }) })
+        const r = await fetch('/api/notification-preferences', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...row, ...patch, targetUserId }) })
         const data = await r.json()
         if (!data.ok) throw new Error(data.error ?? 'Save failed')
         setSavedAt(Date.now())
