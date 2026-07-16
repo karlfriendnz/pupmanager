@@ -97,7 +97,12 @@ describe('PUT', () => {
 
     expect(h.connUpdate).toHaveBeenCalledWith({
       where: { trainerId: 't-1' },
-      data: { bankAccountCode: '090', bankAccountName: 'Business Bank', salesAccountCode: '200', taxType: 'OUTPUT2' },
+      // The route also persists the Stripe clearing-model account fields
+      // (clearing/fee/surcharge). Unset in this payload, they normalise to null.
+      data: {
+        bankAccountCode: '090', bankAccountName: 'Business Bank', salesAccountCode: '200', taxType: 'OUTPUT2',
+        clearingAccountCode: null, clearingAccountName: null, feeAccountCode: null, surchargeAccountCode: null,
+      },
     })
     // Per-item accounts are set on the items themselves now — never here.
     expect(h.productUpdateMany).not.toHaveBeenCalled()

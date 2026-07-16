@@ -44,6 +44,10 @@ export async function GET() {
       bankAccountCode: connection.bankAccountCode,
       salesAccountCode: connection.salesAccountCode,
       taxType: connection.taxType,
+      // Stripe clearing model — see src/lib/xero-clearing.ts.
+      clearingAccountCode: connection.clearingAccountCode,
+      feeAccountCode: connection.feeAccountCode,
+      surchargeAccountCode: connection.surchargeAccountCode,
       accountShortlist: (connection.accountShortlist as { code: string; name: string; default?: boolean }[] | null) ?? [],
     },
   })
@@ -57,6 +61,13 @@ const putSchema = z.object({
   bankAccountName: z.string().trim().max(200).nullish().transform((v) => v || null),
   salesAccountCode: code,
   taxType: code,
+  // Stripe clearing model (src/lib/xero-clearing.ts): the gross card payment
+  // lands in the clearing account, both fees are expensed out of it, and a
+  // client-paid surcharge is booked to the surcharge income account.
+  clearingAccountCode: code,
+  clearingAccountName: z.string().trim().max(200).nullish().transform((v) => v || null),
+  feeAccountCode: code,
+  surchargeAccountCode: code,
   // Curated income-account shortlist offered on the create forms.
   accountShortlist: z.array(z.object({ code: z.string().trim().max(50), name: z.string().trim().max(200), default: z.boolean().optional() })).max(50).optional(),
 })
@@ -70,13 +81,30 @@ export async function PUT(req: Request) {
 
   const parsed = putSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
-  const { bankAccountCode, bankAccountName, salesAccountCode, taxType, accountShortlist } = parsed.data
+  const {
+    bankAccountCode, bankAccountName, salesAccountCode, taxType,
+    clearingAccountCode, clearingAccountName, feeAccountCode, surchargeAccountCode,
+    accountShortlist,
+  } = parsed.data
+
+  // The clearing account exists precisely BECAUSE Stripe's payout isn't the
+  // invoice amount. Point it at the real bank account and every payment posts
+  // the gross to the bank and takes the fees back out of it — the exact broken
+  // reconciliation this replaces. Reject it rather than save a mapping that
+  // can't work.
+  if (clearingAccountCode && bankAccountCode && clearingAccountCode === bankAccountCode) {
+    return NextResponse.json(
+      { error: 'Your Stripe clearing account must be different from the bank account your payouts land in.' },
+      { status: 400 },
+    )
+  }
 
   // Per-item accounts live on the items (set via their own forms), not here.
   await prisma.xeroConnection.update({
     where: { trainerId },
     data: {
       bankAccountCode, bankAccountName, salesAccountCode, taxType,
+      clearingAccountCode, clearingAccountName, feeAccountCode, surchargeAccountCode,
       ...(accountShortlist ? { accountShortlist } : {}),
     },
   })

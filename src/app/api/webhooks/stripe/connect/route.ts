@@ -4,13 +4,13 @@ import type { Prisma, SessionType } from '@/generated/prisma'
 import { prisma } from '@/lib/prisma'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
-import { readAccountFlags } from '@/lib/connect'
+import { readAccountFlags, stripeProcessingFeeFrom } from '@/lib/connect'
 import { materializeBooking } from '@/lib/booking-page'
 import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automations'
 import { enrollInRun } from '@/lib/class-runs'
 import { sendEmail } from '@/lib/email'
 import { syncPaymentToXero } from '@/lib/xero-sync'
-import { settleInvoiceFromPayment } from '@/lib/invoicing'
+import { settleInvoiceFromPayment, syncReceivablePaymentToXero } from '@/lib/invoicing'
 
 // Shape of PaymentItem.intent for a scheduled booking (PACKAGE / SESSION),
 // captured at checkout time and replayed here to create the calendar rows.
@@ -189,7 +189,10 @@ async function markPaidAndFulfil(
 
   const stripeChargeId = charge?.id ?? null
   const bt = charge?.balance_transaction as Stripe.BalanceTransaction | null
-  const stripeFeeAmount = bt?.fee ?? null
+  // Stripe's processing fee ONLY — the balance transaction's `fee` also contains
+  // our application fee on a direct charge, and counting that twice would both
+  // overstate the trainer's costs and unbalance the Xero clearing account.
+  const stripeFeeAmount = stripeProcessingFeeFrom(bt)
 
   // Post-commit side effects (emails) — collected inside the tx, run after it
   // commits so a flaky email can never roll back a paid booking.
@@ -454,18 +457,19 @@ async function backfillCardFee(charge: Stripe.Charge, sandbox: boolean, eventAcc
   const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id ?? null
   const payment = await prisma.payment.findFirst({
     where: { OR: [{ stripeChargeId: charge.id }, ...(piId ? [{ stripePaymentIntentId: piId }] : [])] },
-    select: { id: true, stripeFeeAmount: true },
+    select: { id: true, status: true, clientId: true, stripeFeeAmount: true },
   })
   if (!payment || payment.stripeFeeAmount != null) return
 
   // balance_transaction may be an id (unexpanded) — fetch it for the fee. It
   // lives on the connected account (direct charge), so read it with that header.
-  // This fee is the platform-priced rate the trainer paid (Stripe's cost + our
-  // markup) — i.e. their true cost of taking the payment.
+  // stripeProcessingFeeFrom strips our application fee back out: on a direct
+  // charge the connected account's balance transaction bundles Stripe's fee AND
+  // the application fee into `fee`, and we must record ONLY Stripe's here.
   let fee: number | null = null
   const bt = charge.balance_transaction
   if (bt && typeof bt === 'object') {
-    fee = bt.fee ?? null
+    fee = stripeProcessingFeeFrom(bt)
   } else if (typeof bt === 'string') {
     try {
       const tx = await stripeFor(sandbox).balanceTransactions.retrieve(
@@ -473,7 +477,7 @@ async function backfillCardFee(charge: Stripe.Charge, sandbox: boolean, eventAcc
         undefined,
         eventAccount ? { stripeAccount: eventAccount } : undefined,
       )
-      fee = tx.fee ?? null
+      fee = stripeProcessingFeeFrom(tx)
     } catch { /* not yet available — a later charge.updated will retry */ }
   }
   if (fee == null) return
@@ -482,6 +486,23 @@ async function backfillCardFee(charge: Stripe.Charge, sandbox: boolean, eventAcc
     where: { id: payment.id },
     data: { stripeFeeAmount: fee, stripeChargeId: charge.id },
   })
+
+  // The Xero clearing model can't post a payment until Stripe's fee is known —
+  // it refuses to guess — so fulfilment usually DEFERS the sync and lands here.
+  // Now that the fee exists, run it. Best-effort: never throws, so a Xero
+  // problem can't 500 the webhook and start a Stripe retry loop.
+  if (payment.status !== 'PAID' || !payment.clientId) return
+  const receivable = await prisma.invoice.findFirst({
+    where: { paymentId: payment.id },
+    select: { id: true },
+  })
+  if (receivable) {
+    await syncReceivablePaymentToXero(receivable.id, payment.id)
+      .catch((e) => console.error('[connect webhook] deferred xero receivable sync failed', payment.id, e))
+  } else {
+    await syncPaymentToXero(payment.id)
+      .catch((e) => console.error('[connect webhook] deferred xero payment sync failed', payment.id, e))
+  }
 }
 
 // Reconcile a Payment's refunded amount + status from the authoritative charge

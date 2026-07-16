@@ -157,6 +157,37 @@ export function estimateProcessingSurcharge(amount: number, currency: string): n
   return Math.round((amount + fixed) / (1 - r)) - amount
 }
 
+/**
+ * STRIPE'S PROCESSING FEE ALONE (minor units) from a charge's balance
+ * transaction — deliberately EXCLUDING our application fee.
+ *
+ * On a direct charge that carries an `application_fee_amount`, Stripe debits the
+ * connected account for BOTH its processing fee and the application fee, and the
+ * connected account's balance transaction reports them together: `fee` is the
+ * total, and `fee_details` breaks it out as `stripe_fee` + `application_fee`.
+ *
+ * Reading `bt.fee` straight into Payment.stripeFeeAmount (what we used to do)
+ * therefore double-counts our cut — the trainer's earnings breakdown subtracted
+ * the application fee twice, and the Xero clearing account would never balance.
+ * Summing the non-application_fee details gives Stripe's fee on its own, and is
+ * correct whether or not Stripe folds the application fee into `fee`.
+ */
+export function stripeProcessingFeeFrom(bt: {
+  fee?: number | null
+  fee_details?: Array<{ type?: string | null; amount?: number | null }> | null
+} | null | undefined): number | null {
+  if (!bt) return null
+  const details = bt.fee_details
+  if (details && details.length) {
+    return details
+      .filter((d) => d.type !== 'application_fee')
+      .reduce((sum, d) => sum + (d.amount ?? 0), 0)
+  }
+  // No breakdown available — `fee` is all we have. (Stripe always returns
+  // fee_details on a settled balance transaction, so this is the empty/edge case.)
+  return bt.fee ?? null
+}
+
 export interface CreateExpressAccountInput {
   sandbox: boolean
   trainerId: string

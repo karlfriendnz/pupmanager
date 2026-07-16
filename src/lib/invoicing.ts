@@ -4,7 +4,8 @@ import { sendEmail } from './email'
 import { sendPush } from './push'
 import { estimateProcessingSurcharge } from './connect'
 import { ensureClientXeroContact } from './xero-sync'
-import { createXeroInvoice, fetchXeroInvoiceState, createXeroPayment } from './xero'
+import { postPaymentThroughClearing, isSurchargeItem } from './xero-clearing'
+import { createXeroInvoice, fetchXeroInvoiceState } from './xero'
 import { dropInPriceCents } from './class-runs'
 import { env } from './env'
 
@@ -512,7 +513,7 @@ export async function settleInvoiceFromPayment(invoiceId: string, paymentId: str
     // The client paid the invoice balance PLUS an optional card surcharge line;
     // only the base (non-surcharge) lines count toward the invoice.
     const basePaid = payment.items
-      .filter((i) => !(i.intent && typeof i.intent === 'object' && (i.intent as Record<string, unknown>).surcharge === true))
+      .filter((i) => !isSurchargeItem(i))
       .reduce((sum, i) => sum + i.unitAmount * i.quantity, 0)
     if (basePaid <= 0) return
 
@@ -537,8 +538,9 @@ export async function settleInvoiceFromPayment(invoiceId: string, paymentId: str
       description: invoice.description,
     }).catch((e) => console.error('[invoicing] trainer payment notify failed', invoice.id, e))
 
-    // Record the payment against the Xero invoice (best-effort).
-    await syncReceivablePaymentToXero(invoice.id, basePaid, payment.paidAt ?? new Date())
+    // Record the payment against the Xero invoice, through the Stripe clearing
+    // account (best-effort).
+    await syncReceivablePaymentToXero(invoice.id, paymentId)
       .catch((e) => console.error('[invoicing] xero payment push failed', invoice.id, e))
   } catch (err) {
     console.error('[invoicing] settleInvoiceFromPayment failed', invoiceId, paymentId, err)
@@ -568,23 +570,40 @@ async function notifyTrainerOfPayment(args: {
 }
 
 /**
- * Record a settled card payment against the invoice's Xero invoice (marking it
- * paid in Xero). Lazily creates the Xero ACCREC invoice first if it wasn't
- * synced. Best-effort — never throws; records SYNCED / ERROR. No-op when the
- * trainer isn't connected, or (in prod) is a sandbox/demo trainer.
+ * Record a settled card payment against the receivable's Xero invoice, through
+ * the trainer's STRIPE CLEARING account (see xero-clearing.ts).
+ *
+ * This used to post the invoice amount straight into the trainer's BANK account,
+ * which only ever matched the bank feed by luck: Stripe deducts its processing
+ * fee AND our application fee before paying out, so when the trainer ABSORBED
+ * the card fee the bank received $144.25 while Xero claimed $150.00 — wrong every
+ * single time — and the two fees were never recorded as expenses at all.
+ *
+ * Now the payment settles the invoice against the clearing account and the fees
+ * are expensed out of it, so Stripe's payout reconciles in the bank feed exactly.
+ *
+ * Lazily creates the Xero ACCREC invoice first if it wasn't synced. Best-effort —
+ * never throws; records SYNCED / ERROR. No-op when the trainer isn't connected,
+ * or (in prod) is a sandbox/demo trainer. Idempotent via the Payment's leg ids,
+ * so a webhook re-delivery never double-posts.
  */
-export async function syncReceivablePaymentToXero(invoiceId: string, amountMinor: number, date: Date): Promise<void> {
+export async function syncReceivablePaymentToXero(invoiceId: string, paymentId: string): Promise<void> {
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
-    select: { id: true, xeroInvoiceId: true, trainer: { select: { sandboxBilling: true, xeroConnection: true } } },
+    select: {
+      id: true, clientId: true, xeroInvoiceId: true,
+      trainer: { select: { sandboxBilling: true, xeroConnection: true } },
+    },
   })
   if (!invoice) return
   if (invoice.trainer.sandboxBilling && process.env.NODE_ENV !== 'development') return // sandbox bypass
   const connection = invoice.trainer.xeroConnection
   if (!connection) return
-  if (amountMinor <= 0) return
 
   try {
+    const contactId = await ensureClientXeroContact(invoice.clientId)
+    if (!contactId) throw new Error('Could not resolve the client’s Xero contact.')
+
     // Ensure the ACCREC invoice exists in Xero before applying a payment to it.
     let xeroInvoiceId = invoice.xeroInvoiceId
     if (!xeroInvoiceId) {
@@ -592,21 +611,31 @@ export async function syncReceivablePaymentToXero(invoiceId: string, amountMinor
       if (!r.ok || !r.xeroInvoiceId) return
       xeroInvoiceId = r.xeroInvoiceId
     }
-    if (!connection.bankAccountCode) {
-      throw new Error('No Xero bank account is set. Choose one in Settings → Integrations.')
-    }
-    await createXeroPayment(connection, {
-      invoiceId: xeroInvoiceId,
-      accountCode: connection.bankAccountCode,
-      amountMinor,
-      date,
-      reference: invoice.id,
+
+    // Anchor the Payment to the same Xero invoice, so its clearing legs (and
+    // their idempotency ids) all hang off one row regardless of which path ran.
+    await prisma.payment.update({ where: { id: paymentId }, data: { xeroInvoiceId } }).catch(() => {})
+
+    const posted = await postPaymentThroughClearing({
+      connection,
+      paymentId,
+      xeroInvoiceId,
+      clientContactId: contactId,
     })
+    if (posted.pending) {
+      // Stripe's fee isn't known yet — nothing has been posted. Leave the
+      // invoice unsynced; the charge.updated webhook retries once it lands.
+      console.info('[invoicing] xero payment sync deferred — awaiting Stripe fee', invoiceId)
+      return
+    }
+
     await prisma.invoice.update({ where: { id: invoice.id }, data: { xeroSyncStatus: 'SYNCED', xeroSyncError: null } }).catch(() => {})
+    await prisma.payment.update({ where: { id: paymentId }, data: { xeroSyncStatus: 'SYNCED', xeroSyncError: null } }).catch(() => {})
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Xero payment push failed'
     console.error('[invoicing] syncReceivablePaymentToXero failed', invoiceId, err)
     await prisma.invoice.update({ where: { id: invoice.id }, data: { xeroSyncStatus: 'ERROR', xeroSyncError: error } }).catch(() => {})
+    await prisma.payment.update({ where: { id: paymentId }, data: { xeroSyncStatus: 'ERROR', xeroSyncError: error } }).catch(() => {})
   }
 }
 

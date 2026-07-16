@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import { ensureXeroContact, createXeroInvoice, createXeroPayment } from '@/lib/xero'
+import { ensureXeroContact, createXeroInvoice } from '@/lib/xero'
+import { postPaymentThroughClearing, isSurchargeItem } from '@/lib/xero-clearing'
 
 // Higher-level Xero sync orchestrators that load app data, call the low-level
 // client in @/lib/xero, and persist the resulting Xero ids back. Phase 3's
@@ -67,7 +68,7 @@ export async function syncInvoiceToXero(paymentId: string): Promise<InvoiceSyncR
       xeroInvoiceId: true,
       items: {
         select: {
-          description: true, unitAmount: true, quantity: true,
+          description: true, unitAmount: true, quantity: true, intent: true,
           productId: true, clientPackageId: true,
         },
       },
@@ -87,10 +88,19 @@ export async function syncInvoiceToXero(paymentId: string): Promise<InvoiceSyncR
     const contactId = await ensureClientXeroContact(payment.clientId)
     if (!contactId) throw new Error('Could not resolve the client’s Xero contact.')
 
+    // The invoice states what was SOLD. The client-paid card surcharge is not
+    // part of that — it's booked as income straight into the Stripe clearing
+    // account at settlement (see xero-clearing.ts), which is also what keeps the
+    // invoice total equal to the payment we apply against it. Including it here
+    // (as we used to) told Xero the trainer had sold $155.75 of training and
+    // banked all of it, when $5.75 was a fee recovery and Stripe kept $5.75.
+    const saleItems = payment.items.filter((i) => !isSurchargeItem(i))
+    if (!saleItems.length) throw new Error('This payment has nothing to invoice.')
+
     // Resolve each line's revenue account: the product/package's own code, else
     // the connection's default sales account.
-    const productIds = payment.items.map((i) => i.productId).filter((v): v is string => !!v)
-    const packageAssignmentIds = payment.items.map((i) => i.clientPackageId).filter((v): v is string => !!v)
+    const productIds = saleItems.map((i) => i.productId).filter((v): v is string => !!v)
+    const packageAssignmentIds = saleItems.map((i) => i.clientPackageId).filter((v): v is string => !!v)
     const [products, clientPackages] = await Promise.all([
       productIds.length
         ? prisma.product.findMany({ where: { id: { in: productIds } }, select: { id: true, xeroAccountCode: true } })
@@ -103,7 +113,7 @@ export async function syncInvoiceToXero(paymentId: string): Promise<InvoiceSyncR
     const packageCode = new Map(clientPackages.map((cp) => [cp.id, cp.package?.xeroAccountCode ?? null]))
     const fallback = connection.salesAccountCode
 
-    const lines = payment.items.map((item) => {
+    const lines = saleItems.map((item) => {
       const code =
         (item.productId && productCode.get(item.productId)) ||
         (item.clientPackageId && packageCode.get(item.clientPackageId)) ||
@@ -142,39 +152,55 @@ export async function syncInvoiceToXero(paymentId: string): Promise<InvoiceSyncR
   }
 }
 
-export type PaymentSyncResult = { ok: boolean; xeroPaymentId?: string; error?: string }
+export type PaymentSyncResult = { ok: boolean; xeroPaymentId?: string; pending?: boolean; error?: string }
 
 /**
- * Record a settled Payment against its Xero invoice (into the trainer's chosen
- * bank account), marking it PAID/reconciled in Xero. Ensures the invoice exists
- * first — this is where checkout-initiated payments that skipped the trainer-
- * invoice path get their invoice created lazily (so abandoned checkouts, which
- * never reach PAID, never hit Xero).
+ * Reconcile a settled Payment into Xero through the trainer's STRIPE CLEARING
+ * account (see xero-clearing.ts for the model and a worked example): the payment
+ * settles the ACCREC invoice against clearing — NOT the bank — and Stripe's fee,
+ * our fee, and any client-paid surcharge are posted against clearing too, so the
+ * balance left there is exactly what Stripe pays into the bank.
  *
- * Idempotent (existing xeroPaymentId → no-op) and best-effort (never throws;
- * records SYNCED / ERROR). No-op when the trainer isn't connected.
+ * Ensures the invoice exists first — this is where checkout-initiated payments
+ * that skipped the trainer-invoice path get their invoice created lazily (so
+ * abandoned checkouts, which never reach PAID, never hit Xero).
+ *
+ * Idempotent (each posted leg's Xero id is the guard, so a webhook re-delivery
+ * re-posts nothing) and best-effort (never throws; records SYNCED / ERROR). A
+ * no-op when the trainer isn't connected. Leaves the payment UNSYNCED and
+ * retriable — not ERRORed — while Stripe's fee is still unknown.
  */
 export async function syncPaymentToXero(paymentId: string): Promise<PaymentSyncResult> {
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
     select: {
       id: true,
+      clientId: true,
       sandbox: true,
       xeroInvoiceId: true,
       xeroPaymentId: true,
-      paidAt: true,
-      items: { select: { unitAmount: true, quantity: true } },
+      xeroFeeTxnId: true,
+      xeroPlatformFeeTxnId: true,
       trainer: { select: { xeroConnection: true } },
     },
   })
   if (!payment) return { ok: false, error: 'payment not found' }
   if (payment.sandbox) return { ok: false, error: 'sandbox' }
-  if (payment.xeroPaymentId) return { ok: true, xeroPaymentId: payment.xeroPaymentId }
+  // Fully reconciled already — the invoice payment AND both fee expenses exist.
+  // (xeroPaymentId alone is no longer enough: a run that posted the payment then
+  // failed on a fee must be able to resume and finish the clearing entries.)
+  if (payment.xeroPaymentId && payment.xeroFeeTxnId && payment.xeroPlatformFeeTxnId) {
+    return { ok: true, xeroPaymentId: payment.xeroPaymentId }
+  }
 
   const connection = payment.trainer.xeroConnection
   if (!connection) return { ok: false, error: 'not connected' }
 
   try {
+    if (!payment.clientId) throw new Error('This payment has no client to attach in Xero.')
+    const contactId = await ensureClientXeroContact(payment.clientId)
+    if (!contactId) throw new Error('Could not resolve the client’s Xero contact.')
+
     // Ensure the invoice exists (lazy-create for checkout-initiated payments).
     let invoiceId = payment.xeroInvoiceId
     if (!invoiceId) {
@@ -183,28 +209,21 @@ export async function syncPaymentToXero(paymentId: string): Promise<PaymentSyncR
       invoiceId = inv.invoiceId
     }
 
-    if (!connection.bankAccountCode) {
-      throw new Error('No Xero bank account is set. Choose one in Settings → Integrations.')
-    }
-
-    // Settle exactly the invoice total (sum of line items) — a client-paid
-    // processing surcharge isn't part of the trainer's invoice, so applying
-    // amountTotal would overpay the invoice and Xero would reject it.
-    const amountMinor = payment.items.reduce((sum, i) => sum + i.unitAmount * i.quantity, 0)
-
-    const xeroPaymentId = await createXeroPayment(connection, {
-      invoiceId,
-      accountCode: connection.bankAccountCode,
-      amountMinor,
-      date: payment.paidAt ?? new Date(),
-      reference: payment.id,
+    const posted = await postPaymentThroughClearing({
+      connection,
+      paymentId: payment.id,
+      xeroInvoiceId: invoiceId,
+      clientContactId: contactId,
     })
+    // Stripe hasn't reported its fee yet — post NOTHING rather than guess. The
+    // charge.updated webhook re-runs this the moment the fee lands.
+    if (posted.pending) return { ok: false, pending: true, error: posted.error }
 
     await prisma.payment.update({
       where: { id: payment.id },
-      data: { xeroPaymentId, xeroSyncStatus: 'SYNCED', xeroSyncError: null },
+      data: { xeroSyncStatus: 'SYNCED', xeroSyncError: null },
     })
-    return { ok: true, xeroPaymentId }
+    return { ok: true, xeroPaymentId: posted.xeroPaymentId }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Xero payment sync failed'
     console.error('[xero] syncPaymentToXero failed', paymentId, err)

@@ -23,11 +23,17 @@ export const XERO_API_BASE = 'https://api.xero.com/api.xro/2.0'
 //   accounting.invoices   → create ACCREC invoices (Phase 3)
 //   accounting.payments   → apply payments to invoices (Phase 4)
 //   accounting.settings.read → chart of accounts + tax rates (Phase 1 mapping)
+//   accounting.banktransactions → spend/receive money on the Stripe CLEARING
+//     account (the Stripe + PupManager fee expenses, and a client-paid card
+//     surcharge). Without it the clearing model can't post and the trainer's
+//     bank feed never reconciles. NOTE: adding a scope means already-connected
+//     trainers must re-authorise before these calls will work.
 const SCOPES = [
   'offline_access',
   'accounting.contacts',
   'accounting.invoices',
   'accounting.payments',
+  'accounting.banktransactions',
   'accounting.settings.read',
 ].join(' ')
 
@@ -200,9 +206,13 @@ export type XeroAccountOption = { code: string; name: string }
 export type XeroTaxOption = { taxType: string; name: string }
 export type XeroMappingOptions = {
   // Revenue accounts an invoice line can post to (the per-product + default
-  // sales pickers). Bank accounts a client payment can be recorded against.
+  // sales pickers, and the card-surcharge income account). Bank accounts feed
+  // BOTH the real bank picker and the Stripe clearing picker — a Xero clearing
+  // account must be Type=BANK for bank transactions to post against it. Expense
+  // accounts feed the Stripe/PupManager fee picker.
   revenueAccounts: XeroAccountOption[]
   bankAccounts: XeroAccountOption[]
+  expenseAccounts: XeroAccountOption[]
   taxRates: XeroTaxOption[]
 }
 
@@ -244,11 +254,18 @@ export async function fetchMappingOptions(connection: XeroConnection): Promise<X
     .map((a) => ({ code: a.Code!, name: a.Name! }))
     .sort(byName)
 
+  // Where the Stripe + PupManager fees are expensed. Class=EXPENSE covers both
+  // EXPENSE and OVERHEADS account types.
+  const expenseAccounts = accounts
+    .filter((a) => active(a) && a.Class === 'EXPENSE')
+    .map((a) => ({ code: a.Code!, name: a.Name! }))
+    .sort(byName)
+
   const taxRates = (taxRes.TaxRates ?? [])
     .filter((t) => t.Status === 'ACTIVE' && t.CanApplyToRevenue && !!t.TaxType && !!t.Name)
     .map((t) => ({ taxType: t.TaxType!, name: t.Name! }))
 
-  return { revenueAccounts, bankAccounts, taxRates }
+  return { revenueAccounts, bankAccounts, expenseAccounts, taxRates }
 }
 
 // ─── Phase 2: contacts ────────────────────────────────────────────────────────
@@ -317,6 +334,85 @@ export async function ensureXeroContact(connection: XeroConnection, input: XeroC
   }
 
   throw new Error(`Xero contact ensure failed for "${input.name}"`)
+}
+
+/**
+ * Find-or-create a Xero Contact by NAME alone — for the fee counterparties
+ * ("Stripe", "PupManager") that every clearing-account expense is booked
+ * against. Xero requires a Contact on a bank transaction, and contact names are
+ * unique in an org, so name is a safe idempotent key here (unlike clients, who
+ * are matched on email).
+ */
+export async function ensureXeroContactByName(connection: XeroConnection, name: string): Promise<string> {
+  const existing = await findContactId(connection, whereEquals('Name', name))
+  if (existing) return existing
+
+  const created = await createContact(connection, name, { name })
+  if (created) return created
+
+  // Lost a create race (name is unique) — re-read.
+  const afterRace = await findContactId(connection, whereEquals('Name', name))
+  if (afterRace) return afterRace
+
+  throw new Error(`Xero contact ensure failed for "${name}"`)
+}
+
+// ─── Bank transactions (the Stripe clearing account's SPEND / RECEIVE legs) ────
+
+export type XeroBankTransactionInput = {
+  // SPEND = money out of the account (Stripe's fee, our fee).
+  // RECEIVE = money into it (a client-paid card surcharge — income).
+  type: 'SPEND' | 'RECEIVE'
+  contactId: string
+  // The account the money moves through — the Stripe CLEARING account. Xero
+  // requires this to be an account of Type=BANK.
+  bankAccountCode: string
+  // The account the other side of the entry is coded to (expense or revenue).
+  accountCode: string
+  description: string
+  amountMinor: number // cents — converted to Xero's major-unit decimal
+  date: Date
+  reference?: string | null
+}
+
+/**
+ * Create a bank transaction (spend/receive money) on the given bank account and
+ * return its BankTransactionID.
+ *
+ * Booked NoTax deliberately: guessing the GST/VAT treatment of Stripe's fees
+ * across NZ/AU/UK/US/CA/ZA would put a wrong number on a trainer's tax return,
+ * which is worse than putting none there. Their accountant can code the tax on
+ * these two lines if their jurisdiction allows a claim.
+ */
+export async function createXeroBankTransaction(
+  connection: XeroConnection,
+  input: XeroBankTransactionInput,
+): Promise<string> {
+  const body = {
+    Type: input.type,
+    Contact: { ContactID: input.contactId },
+    BankAccount: { Code: input.bankAccountCode },
+    Date: ymd(input.date),
+    Reference: input.reference || undefined,
+    LineAmountTypes: 'NoTax',
+    LineItems: [
+      {
+        Description: input.description,
+        Quantity: 1,
+        UnitAmount: Number((input.amountMinor / 100).toFixed(2)),
+        AccountCode: input.accountCode,
+      },
+    ],
+  }
+  const res = await xeroFetch(connection, '/BankTransactions', { method: 'POST', body: JSON.stringify(body) })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`Xero bank transaction create failed (${res.status}): ${text}`)
+  }
+  const data: { BankTransactions?: Array<{ BankTransactionID?: string }> } = await res.json()
+  const id = data.BankTransactions?.[0]?.BankTransactionID
+  if (!id) throw new Error('Xero bank transaction create returned no BankTransactionID')
+  return id
 }
 
 // ─── Phase 3: invoices ────────────────────────────────────────────────────────

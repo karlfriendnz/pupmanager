@@ -41,13 +41,39 @@ type ShortlistEntry = { code: string; name: string; default?: boolean }
 type TaxOption = { taxType: string; name: string }
 
 type MappingData = {
-  options: { revenueAccounts: AccountOption[]; bankAccounts: AccountOption[]; taxRates: TaxOption[] }
+  options: {
+    revenueAccounts: AccountOption[]
+    bankAccounts: AccountOption[]
+    expenseAccounts: AccountOption[]
+    taxRates: TaxOption[]
+  }
   mapping: {
     bankAccountCode: string | null
     salesAccountCode: string | null
     taxType: string | null
+    clearingAccountCode: string | null
+    feeAccountCode: string | null
+    surchargeAccountCode: string | null
     accountShortlist: ShortlistEntry[]
   }
+}
+
+// A labelled account <select>. Used by every picker below.
+function AccountSelect({
+  value, onChange, options, placeholder,
+}: { value: string; onChange: (v: string) => void; options: AccountOption[]; placeholder: string }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full max-w-md rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#13B5EA] focus:outline-none focus:ring-1 focus:ring-[#13B5EA]"
+    >
+      <option value="">{placeholder}</option>
+      {options.map((a) => (
+        <option key={a.code} value={a.code}>{a.code} · {a.name}</option>
+      ))}
+    </select>
+  )
 }
 
 // Settings → Integrations: the account + tax mapping a trainer sets once after
@@ -61,6 +87,12 @@ export function XeroMappingPanel() {
   // Editable state, hydrated from the fetched mapping.
   const [bank, setBank] = useState('')
   const [tax, setTax] = useState('')
+  // Stripe clearing model: the gross card payment lands in `clearing`, both fees
+  // are expensed to `feeAccount`, and a client-paid card surcharge is income to
+  // `surchargeAccount` (optional — falls back to the default income account).
+  const [clearing, setClearing] = useState('')
+  const [feeAccount, setFeeAccount] = useState('')
+  const [surchargeAccount, setSurchargeAccount] = useState('')
   const [shortlist, setShortlist] = useState<ShortlistEntry[]>([])
   const [toAdd, setToAdd] = useState('')
   const [saving, setSaving] = useState(false)
@@ -83,6 +115,9 @@ export function XeroMappingPanel() {
       setData(d)
       setBank(d.mapping.bankAccountCode ?? '')
       setTax(d.mapping.taxType ?? '')
+      setClearing(d.mapping.clearingAccountCode ?? '')
+      setFeeAccount(d.mapping.feeAccountCode ?? '')
+      setSurchargeAccount(d.mapping.surchargeAccountCode ?? '')
       // Hydrate the shortlist; if no entry is flagged default yet (older data),
       // mark the one matching the saved salesAccountCode as the default.
       const list = d.mapping.accountShortlist ?? []
@@ -105,6 +140,7 @@ export function XeroMappingPanel() {
       // Per-item accounts are set on the items themselves (product/package/class
       // forms), so the panel never sends products/packages here.
       const bankName = data.options.bankAccounts.find((a) => a.code === bank)?.name ?? null
+      const clearingName = data.options.bankAccounts.find((a) => a.code === clearing)?.name ?? null
       const res = await fetch('/api/xero/mapping', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -113,10 +149,20 @@ export function XeroMappingPanel() {
           bankAccountName: bankName,
           salesAccountCode: shortlist.find((a) => a.default)?.code ?? null,
           taxType: tax || null,
+          clearingAccountCode: clearing || null,
+          clearingAccountName: clearingName,
+          feeAccountCode: feeAccount || null,
+          surchargeAccountCode: surchargeAccount || null,
           accountShortlist: shortlist,
         }),
       })
-      if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 2500) }
+      if (res.ok) {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2500)
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setError(json.error ?? 'Couldn’t save your Xero setup.')
+      }
     } finally {
       setSaving(false)
     }
@@ -131,7 +177,12 @@ export function XeroMappingPanel() {
   // One curated account must be the default (the fallback income account).
   const hasDefault = shortlist.some((a) => a.default)
 
-  const complete = !!bank && !!tax && hasDefault
+  // Clearing MUST be a different account from the bank — pointing it at the bank
+  // reintroduces the exact mismatch it exists to fix (gross posted to the bank,
+  // fees taken back out of it).
+  const clearingIsBank = !!clearing && clearing === bank
+
+  const complete = !!bank && !!clearing && !clearingIsBank && !!feeAccount && !!tax && hasDefault
 
   return (
     <div className="mt-5 border-t border-slate-100 pt-5">
@@ -147,27 +198,58 @@ export function XeroMappingPanel() {
 
       {data && !loading && (
         <div className="mt-5 space-y-6">
-          <Step n={1} title="Where client payments land" required>
+          <Step n={1} title="Your real bank account" required hint="The account Stripe pays your money out into — the one with the bank feed in Xero.">
             {data.options.bankAccounts.length === 0 ? (
               <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
                 You don’t have a bank account in Xero yet. Add one in Xero, then reload this page.
               </p>
             ) : (
-              <select
-                value={bank}
-                onChange={(e) => setBank(e.target.value)}
-                className="w-full max-w-md rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#13B5EA] focus:outline-none focus:ring-1 focus:ring-[#13B5EA]"
-              >
-                <option value="">Select a bank account…</option>
-                {data.options.bankAccounts.map((a) => (
-                  <option key={a.code} value={a.code}>{a.code} · {a.name}</option>
-                ))}
-              </select>
+              <AccountSelect value={bank} onChange={setBank} options={data.options.bankAccounts} placeholder="Select a bank account…" />
             )}
             <div><XeroLink href={XERO_BANK_ACCOUNTS} label="Add or manage bank accounts in Xero" /></div>
           </Step>
 
-          <Step n={2} title="Your default tax rate" required visible={!!bank}>
+          <Step n={2} title="Your Stripe clearing account" required visible={!!bank}>
+            <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-900">
+              Stripe doesn’t pay the full invoice into your bank — it takes its fee first. If a client pays a $150 invoice,
+              about $145 turns up in your bank, so a payment recorded as $150 straight to your bank account will never
+              match your bank feed.
+              <br /><br />
+              A <strong>clearing account</strong> fixes that. We record the payment there in full, then record Stripe’s fee
+              and PupManager’s fee coming out of it. What’s left is exactly what Stripe pays you — so when the payout hits
+              your bank feed, it matches to the cent, and both fees land in your books as expenses you can claim.
+              <br /><br />
+              In Xero, add a new <strong>bank account</strong> called something like “Stripe Clearing” (Xero → Add Bank Account →
+              choose the manual option), then pick it below.
+            </p>
+            <AccountSelect value={clearing} onChange={setClearing} options={data.options.bankAccounts} placeholder="Select your Stripe clearing account…" />
+            {clearingIsBank && (
+              <p className="text-xs text-rose-600">
+                This has to be a different account from your real bank account — otherwise nothing is fixed. Add a separate
+                “Stripe Clearing” bank account in Xero.
+              </p>
+            )}
+            <div><XeroLink href={XERO_BANK_ACCOUNTS} label="Add a clearing account in Xero" /></div>
+          </Step>
+
+          <Step
+            n={3}
+            title="Where card fees are recorded"
+            required
+            visible={!!bank && !!clearing && !clearingIsBank}
+            hint="The expense account for Stripe’s processing fee and PupManager’s fee. Most trainers use something like “Bank Fees” or “Merchant Fees”."
+          >
+            {data.options.expenseAccounts.length === 0 ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+                You don’t have an expense account in Xero yet. Add one (e.g. “Merchant Fees”), then reload this page.
+              </p>
+            ) : (
+              <AccountSelect value={feeAccount} onChange={setFeeAccount} options={data.options.expenseAccounts} placeholder="Select an expense account…" />
+            )}
+            <div><XeroLink href={XERO_CHART_OF_ACCOUNTS} label="Manage your chart of accounts in Xero" /></div>
+          </Step>
+
+          <Step n={4} title="Your default tax rate" required visible={!!bank && !!clearing && !clearingIsBank && !!feeAccount}>
             <select
               value={tax}
               onChange={(e) => setTax(e.target.value)}
@@ -180,7 +262,7 @@ export function XeroMappingPanel() {
             </select>
           </Step>
 
-          <Step n={3} title="Accounts you use" visible={!!bank && !!tax} hint="Add the income accounts you sell against and name each one however makes sense to you. Mark one as the default — it’s the fallback for anything without its own account. You can add the same Xero account more than once under different names.">
+          <Step n={5} title="Accounts you use" visible={!!bank && !!clearing && !clearingIsBank && !!feeAccount && !!tax} hint="Add the income accounts you sell against and name each one however makes sense to you. Mark one as the default — it’s the fallback for anything without its own account. You can add the same Xero account more than once under different names.">
             {shortlist.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 {shortlist.map((a, i) => (
@@ -248,6 +330,20 @@ export function XeroMappingPanel() {
               </button>
             </div>
             <div><XeroLink href={XERO_CHART_OF_ACCOUNTS} label="Manage your chart of accounts in Xero" /></div>
+          </Step>
+
+          <Step
+            n={6}
+            title="Card surcharge income"
+            visible={!!bank && !!clearing && !clearingIsBank && !!feeAccount && !!tax && hasDefault}
+            hint="Optional. If you pass the card fee on to clients, that surcharge is income you received — pick the account it should be recorded as. Leave it blank to use your default income account."
+          >
+            <AccountSelect
+              value={surchargeAccount}
+              onChange={setSurchargeAccount}
+              options={data.options.revenueAccounts}
+              placeholder="Use my default income account"
+            />
           </Step>
 
           {complete && (

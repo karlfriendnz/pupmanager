@@ -36,6 +36,8 @@ const h = vi.hoisted(() => ({
   ensureXeroContact: vi.fn(),
   createXeroInvoice: vi.fn(),
   createXeroPayment: vi.fn(),
+  createXeroBankTransaction: vi.fn(),
+  ensureXeroContactByName: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -63,6 +65,8 @@ vi.mock('@/lib/xero', () => ({
   ensureXeroContact: h.ensureXeroContact,
   createXeroInvoice: h.createXeroInvoice,
   createXeroPayment: h.createXeroPayment,
+  createXeroBankTransaction: h.createXeroBankTransaction,
+  ensureXeroContactByName: h.ensureXeroContactByName,
 }))
 
 import {
@@ -157,7 +161,15 @@ describe('Xero — idempotency, un-reconcile, overpay & abuse', () => {
     h.productFindMany.mockResolvedValue([])
     h.clientPackageFindMany.mockResolvedValue([])
     h.clientProfileFindUnique.mockResolvedValue({ id: 'cp', xeroContactId: 'C-1' })
+    // The payment sync now delegates the money movement to the REAL clearing
+    // module (postPaymentThroughClearing), which drives these low-level fns.
+    h.createXeroPayment.mockResolvedValue('PAY-NEW')
+    h.createXeroBankTransaction.mockResolvedValue('BT-NEW')
+    h.ensureXeroContactByName.mockResolvedValue('C-XERO')
   })
+
+  // A fully-mapped connection: real bank 090, Stripe clearing 091, fees to 404.
+  const mappedConn = { ...xeroConn, clearingAccountCode: '091', feeAccountCode: '404' }
 
   it('NEVER creates a second invoice for an already-synced payment (double-submit / retry storm)', async () => {
     h.paymentFindUnique.mockResolvedValue({ id: 'p1', clientId: 'cp', sandbox: false, xeroInvoiceId: 'INV-EXISTING', items: [], trainer: { xeroConnection: xeroConn } })
@@ -167,22 +179,39 @@ describe('Xero — idempotency, un-reconcile, overpay & abuse', () => {
   })
 
   it('NEVER records a second payment for an already-reconciled payment', async () => {
-    h.paymentFindUnique.mockResolvedValue({ id: 'p1', sandbox: false, xeroInvoiceId: 'INV-1', xeroPaymentId: 'PAY-EXISTING', paidAt: new Date(), items: [{ unitAmount: 5000, quantity: 1 }], trainer: { xeroConnection: xeroConn } })
+    // Fully reconciled now means ALL THREE ids: the payment AND both fee legs.
+    // (xeroPaymentId alone must NOT short-circuit — a run that posted the payment
+    // then died on a fee has to resume and finish the clearing entries.)
+    h.paymentFindUnique.mockResolvedValue({ id: 'p1', sandbox: false, xeroInvoiceId: 'INV-1', xeroPaymentId: 'PAY-EXISTING', xeroFeeTxnId: 'BT-STRIPE', xeroPlatformFeeTxnId: 'BT-PUP', paidAt: new Date(), items: [{ unitAmount: 5000, quantity: 1 }], trainer: { xeroConnection: mappedConn } })
     const r = await syncPaymentToXero('p1')
     expect(r).toEqual({ ok: true, xeroPaymentId: 'PAY-EXISTING' })
     expect(h.createXeroPayment).not.toHaveBeenCalled()
+    expect(h.createXeroBankTransaction).not.toHaveBeenCalled()
   })
 
   it('settles EXACTLY the invoice line total — a client processing surcharge can never overpay Xero', async () => {
+    // Sale lines 10000 + 2500 = 12500, PLUS a client-paid card surcharge on top.
+    // The payment applied to the Xero invoice must be the 12500 SALE total, never
+    // the gross the client's card was charged — Xero rejects an overpaid invoice,
+    // and the surcharge rides in separately as income into the clearing account.
     h.paymentFindUnique.mockResolvedValue({
-      id: 'p1', sandbox: false, xeroInvoiceId: 'INV-1', xeroPaymentId: null, paidAt: new Date('2026-07-01T00:00:00Z'),
-      // Two lines summing to 12500 — even if amountTotal (with surcharge) were larger.
-      items: [{ unitAmount: 10000, quantity: 1 }, { unitAmount: 2500, quantity: 1 }],
-      trainer: { xeroConnection: xeroConn },
+      id: 'p1', clientId: 'cp', sandbox: false, xeroInvoiceId: 'INV-1',
+      xeroPaymentId: null, xeroSurchargeTxnId: null, xeroFeeTxnId: null, xeroPlatformFeeTxnId: null,
+      paidAt: new Date('2026-07-01T00:00:00Z'),
+      amountTotal: 13075, applicationFeeAmount: 132, stripeFeeAmount: 443,
+      items: [
+        { unitAmount: 10000, quantity: 1 },
+        { unitAmount: 2500, quantity: 1 },
+        { unitAmount: 575, quantity: 1, intent: { surcharge: true } }, // client-paid card fee
+      ],
+      trainer: { xeroConnection: mappedConn },
     })
-    h.createXeroPayment.mockResolvedValue('PAY-NEW')
-    await syncPaymentToXero('p1')
+    const r = await syncPaymentToXero('p1')
+    expect(r.ok).toBe(true)
+    // Delegated through the real clearing layer — the invoice is settled for
+    // exactly the 12500 sale total, NOT the 13075 gross.
     expect(h.createXeroPayment.mock.calls[0][1].amountMinor).toBe(12500)
+    expect(h.createXeroPayment.mock.calls[0][1].accountCode).toBe('091') // clearing, not bank
   })
 
   it('a disconnected trainer never leaks money into a stale Xero org (no-op, stays NOT_SYNCED)', async () => {
