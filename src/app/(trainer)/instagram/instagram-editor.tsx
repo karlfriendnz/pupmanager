@@ -804,41 +804,41 @@ function ButtonStylePanel({
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const s = buttonStyle ?? {}
-  const chip = (active: boolean) =>
-    `rounded-lg border px-2.5 py-1 text-xs transition-colors ${
-      active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-    }`
 
   return (
     <div className="mt-2 flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50/70 p-3">
-      {/* Image */}
-      <div className="flex items-center gap-3">
-        <div
-          className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white bg-cover bg-center"
-          style={s.imageUrl ? { backgroundImage: `url(${s.imageUrl})` } : undefined}
-        >
-          {!s.imageUrl && (
-            <div className="flex h-full w-full items-center justify-center">
-              <ImagePlus className="h-4 w-4 text-slate-400" />
-            </div>
-          )}
-        </div>
+      {/* Image + colours on one row */}
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
         <div className="flex items-center gap-2">
-          <Button type="button" variant="ghost" size="sm" disabled={uploading} onClick={() => fileRef.current?.click()}>
-            {uploading ? (
-              <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Uploading…</>
-            ) : s.imageUrl ? 'Replace image' : 'Add image'}
-          </Button>
-          {s.imageUrl && (
-            <button
-              type="button"
-              onClick={() => onChange({ imageUrl: undefined })}
-              className="text-xs text-slate-400 hover:text-rose-600"
-            >
-              Remove
-            </button>
-          )}
+          <div
+            className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white bg-cover bg-center"
+            style={s.imageUrl ? { backgroundImage: `url(${s.imageUrl})` } : undefined}
+          >
+            {!s.imageUrl && (
+              <div className="flex h-full w-full items-center justify-center">
+                <ImagePlus className="h-4 w-4 text-slate-400" />
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" disabled={uploading} onClick={() => fileRef.current?.click()}>
+              {uploading ? (
+                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Uploading…</>
+              ) : s.imageUrl ? 'Replace image' : 'Add image'}
+            </Button>
+            {s.imageUrl && (
+              <button
+                type="button"
+                onClick={() => onChange({ imageUrl: undefined })}
+                className="text-xs text-slate-400 hover:text-rose-600"
+              >
+                Remove
+              </button>
+            )}
+          </div>
         </div>
+        <ColorField label="Background" value={s.bgColor} fallback={accent} onChange={(v) => onChange({ bgColor: v })} />
+        <ColorField label="Text" value={s.textColor} fallback="#ffffff" onChange={(v) => onChange({ textColor: v })} />
         <input
           ref={fileRef}
           type="file"
@@ -852,32 +852,6 @@ function ButtonStylePanel({
         />
       </div>
 
-      {/* Colours */}
-      <div className="flex flex-wrap gap-5">
-        <ColorField label="Background" value={s.bgColor} fallback={accent} onChange={(v) => onChange({ bgColor: v })} />
-        <ColorField label="Text" value={s.textColor} fallback="#ffffff" onChange={(v) => onChange({ textColor: v })} />
-      </div>
-
-      {/* Font */}
-      <div>
-        <p className="mb-1.5 text-xs font-medium text-slate-700">Font</p>
-        <div className="flex flex-wrap gap-1.5">
-          <button type="button" onClick={() => onChange({ font: undefined })} className={chip(!s.font)}>
-            Inherit
-          </button>
-          {LINK_PAGE_FONTS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => onChange({ font: f.id })}
-              style={{ fontFamily: linkPageFontStack(f.id) }}
-              className={chip(s.font === f.id)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   )
 }
