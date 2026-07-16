@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
-import { Search, HelpCircle, Settings, LogOut, ChevronDown, Flame } from 'lucide-react'
+import { Search, HelpCircle, Settings, LogOut, ChevronDown, Flame, Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { signOutWithPush } from '@/lib/sign-out'
 import { OrgSwitcher } from './org-switcher'
@@ -28,12 +28,14 @@ export function TopBarControls({
   orgs = [],
   activeCompanyId = null,
   streak = null,
+  notifCount = 0,
 }: {
   userName?: string | null
   userEmail?: string | null
   orgs?: Org[]
   activeCompanyId?: string | null
   streak?: { current: number } | null
+  notifCount?: number
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -141,6 +143,21 @@ export function TopBarControls({
           </>
         )}
       </form>
+
+      {/* Notifications bell — the in-app feed, with a live unread badge. */}
+      <Link
+        href="/notifications"
+        title="Notifications"
+        aria-label={notifCount > 0 ? `Notifications (${notifCount} unread)` : 'Notifications'}
+        className="relative h-9 w-9 grid place-items-center rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+      >
+        <Bell className="h-[18px] w-[18px]" />
+        {notifCount > 0 && (
+          <span className="absolute top-0.5 right-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white tabular-nums ring-2 ring-white">
+            {notifCount > 9 ? '9+' : notifCount}
+          </span>
+        )}
+      </Link>
 
       {/* Settings cog — moved out of the sidebar into the top-bar action row,
           sitting between search and the account control. */}

@@ -12,7 +12,7 @@ import {
   MoreHorizontal, X, Inbox, GraduationCap,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone, Lock, ClipboardList,
-  Download, Receipt, Bell,
+  Download, Receipt,
   type LucideIcon,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
@@ -40,7 +40,6 @@ type NavItem = { href: string; label: string; icon: LucideIcon; section: NavSect
 
 const TRAINER_NAV: NavItem[] = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, section: 'overview' },
-  { href: '/notifications', label: 'Notifications', icon: Bell,          section: 'overview' },
 
   { href: '/clients',      label: 'Clients',      icon: Users,           section: 'clients' },
   { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
@@ -637,6 +636,7 @@ function TrainerTopBar({
   orgs,
   activeCompanyId,
   streak,
+  notifCount = 0,
 }: {
   collapsed: boolean
   onToggle: () => void
@@ -648,6 +648,7 @@ function TrainerTopBar({
   orgs?: { id: string; name: string; role: string }[]
   activeCompanyId?: string | null
   streak?: { current: number } | null
+  notifCount?: number
 }) {
   const title = usePageTitle() ?? fallbackTitle
   return (
@@ -686,7 +687,7 @@ function TrainerTopBar({
       <div id="pm-topbar-actions" className="mr-2 flex items-center gap-1.5 empty:hidden" />
       {/* Right-hand controls. */}
       <div className="pr-3 lg:pr-5">
-        <TopBarControls userName={userName} userEmail={userEmail} orgs={orgs} activeCompanyId={activeCompanyId} streak={streak} />
+        <TopBarControls userName={userName} userEmail={userEmail} orgs={orgs} activeCompanyId={activeCompanyId} streak={streak} notifCount={notifCount} />
       </div>
     </header>
   )
@@ -821,6 +822,7 @@ function TrainerShell({
         orgs={orgs}
         activeCompanyId={activeCompanyId}
         streak={streak}
+        notifCount={unreadCounts['/notifications'] ?? 0}
       />
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
