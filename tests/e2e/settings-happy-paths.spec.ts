@@ -62,33 +62,31 @@ test.describe('phone visibility — owner happy path', () => {
   })
 })
 
-test.describe('add-ons — nav reacts without a reload', () => {
-  test('turning Group classes off hides the Classes nav item immediately', async ({ page }) => {
+test.describe('add-ons — the main nav reflects a toggled add-on', () => {
+  test('turning Group classes off hides the Classes nav item', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    // The standalone add-ons page, not Settings → Add-ons: Settings hides the
-    // app's left menu (it has its own rail), so there'd be no nav there to watch.
-    // Same grid, same toggle, and the sidebar is on screen to prove the point.
-    await page.goto('/add-ons')
-
-    // Group classes is free + default-on, so the nav link starts visible.
+    // Group classes is free + default-on, so the sidebar link starts visible on
+    // the dashboard (a main-nav page).
     const classesNav = page.getByRole('link', { name: 'Classes', exact: true })
     await expect(classesNav).toBeVisible()
 
-    await page.getByRole('button', { name: /Group classes/ }).first().click()
-    await Promise.all([
-      page.waitForResponse(r => r.url().includes('/api/addons') && r.request().method() === 'POST'),
-      page.getByRole('button', { name: 'Turn off Group classes' }).click(),
-    ])
+    // Add-ons live inside Settings now (Settings has its own rail, hiding the
+    // main nav) — toggle Group classes off there, then check the main nav.
+    async function toggleClasses(off: boolean) {
+      await page.goto('/settings?tab=addons')
+      await page.getByRole('button', { name: /Group classes/ }).first().click()
+      await Promise.all([
+        page.waitForResponse(r => r.url().includes('/api/addons') && r.request().method() === 'POST'),
+        page.getByRole('button', { name: off ? 'Turn off Group classes' : 'Turn on Group classes' }).click(),
+      ])
+      await page.goto('/dashboard')
+    }
 
-    // No page.reload() here — that's the regression this guards.
+    await toggleClasses(true)
     await expect(classesNav).toBeHidden({ timeout: 10_000 })
 
     // Turn it back on so the nav state doesn't leak into other specs.
-    await page.getByRole('button', { name: /Group classes/ }).first().click()
-    await Promise.all([
-      page.waitForResponse(r => r.url().includes('/api/addons') && r.request().method() === 'POST'),
-      page.getByRole('button', { name: 'Turn on Group classes' }).click(),
-    ])
+    await toggleClasses(false)
     await expect(classesNav).toBeVisible({ timeout: 10_000 })
   })
 })
