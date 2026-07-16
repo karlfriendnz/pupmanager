@@ -6,6 +6,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { PageHeader } from '@/components/shared/page-header'
 import { resolveCancellationFeeCents } from '@/lib/cancellation'
 import { CancelSessionButton } from './cancel-session-button'
+import { LeaveClassButton } from './leave-class-button'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Sessions' }
@@ -22,6 +23,7 @@ type Row = {
   status: string
   isClass: boolean
   className: string | null
+  classRunId: string | null
 }
 
 function formatDateTime(d: Date) {
@@ -64,6 +66,7 @@ export default async function MySessionsPage() {
       select: {
         classRun: {
           select: {
+            id: true,
             name: true,
             sessions: { select: { id: true, title: true, scheduledAt: true, durationMins: true, sessionType: true, location: true, status: true } },
           },
@@ -73,8 +76,8 @@ export default async function MySessionsPage() {
   ])
 
   const rows: Row[] = [
-    ...oneToOne.map(s => ({ ...s, isClass: false, className: null })),
-    ...enrollments.flatMap(e => e.classRun.sessions.map(s => ({ ...s, isClass: true, className: e.classRun.name }))),
+    ...oneToOne.map(s => ({ ...s, isClass: false, className: null, classRunId: null })),
+    ...enrollments.flatMap(e => e.classRun.sessions.map(s => ({ ...s, isClass: true, className: e.classRun.name, classRunId: e.classRun.id }))),
   ]
 
   const upcoming = rows
@@ -88,6 +91,18 @@ export default async function MySessionsPage() {
   const titleOf = (s: Row) => (s.isClass ? s.className ?? s.title : s.title)
   const hasAny = upcoming.length > 0 || past.length > 0
   const [next, ...restUpcoming] = upcoming
+
+  // "Leave class" withdraws the whole enrolment, so show it just ONCE per class —
+  // on its soonest upcoming session. `upcoming` is sorted ascending, so the first
+  // row seen for a run is its earliest. Maps that session id → its run id.
+  const leaveClassAt = new Map<string, string>()
+  const seenRuns = new Set<string>()
+  for (const s of upcoming) {
+    if (s.isClass && s.classRunId && !seenRuns.has(s.classRunId)) {
+      seenRuns.add(s.classRunId)
+      leaveClassAt.set(s.id, s.classRunId)
+    }
+  }
 
   return (
     <>
@@ -119,13 +134,19 @@ export default async function MySessionsPage() {
                     {next.sessionType === 'IN_PERSON' && next.location && <><span className="opacity-50">·</span><MapPin className="h-4 w-4 opacity-80" /> <span className="truncate">{next.location}</span></>}
                     {next.sessionType === 'VIRTUAL' && <><span className="opacity-50">·</span><Video className="h-4 w-4 opacity-80" /> Virtual</>}
                   </div>
-                  {!next.isClass && (
+                  {!next.isClass ? (
                     <div className="mt-3 border-t border-white/15 pt-2.5">
                       <span className="[&_button]:!text-white/90 [&_button:hover]:!text-white">
                         <CancelSessionButton sessionId={next.id} title={titleOf(next)} feeCents={feeFor(next.scheduledAt)} currency={currency} />
                       </span>
                     </div>
-                  )}
+                  ) : leaveClassAt.has(next.id) ? (
+                    <div className="mt-3 border-t border-white/15 pt-2.5">
+                      <span className="[&_button]:!text-white/90 [&_button:hover]:!text-white">
+                        <LeaveClassButton runId={leaveClassAt.get(next.id)!} className={titleOf(next)} feeCents={feeFor(next.scheduledAt)} currency={currency} />
+                      </span>
+                    </div>
+                  ) : null}
                 </Link>
               )}
               {restUpcoming.length > 0 && (
@@ -139,7 +160,11 @@ export default async function MySessionsPage() {
                         </p>
                         <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(s.scheduledAt)} · {s.durationMins} min</p>
                       </div>
-                      {!s.isClass && <CancelSessionButton sessionId={s.id} title={titleOf(s)} feeCents={feeFor(s.scheduledAt)} currency={currency} />}
+                      {!s.isClass ? (
+                        <CancelSessionButton sessionId={s.id} title={titleOf(s)} feeCents={feeFor(s.scheduledAt)} currency={currency} />
+                      ) : leaveClassAt.has(s.id) ? (
+                        <LeaveClassButton runId={leaveClassAt.get(s.id)!} className={titleOf(s)} feeCents={feeFor(s.scheduledAt)} currency={currency} />
+                      ) : null}
                       <ChevronRight className="h-4 w-4 text-slate-300 flex-shrink-0" />
                     </Link>
                   ))}
