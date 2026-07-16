@@ -28,6 +28,7 @@ export interface WizardClass {
   scheduleNote: string | null
   packageName: string
   nextSessionAt: string | null
+  sessions: { at: string; durationMins: number; title: string }[]
   seatsLeft: number | null
   fullPriceCents: number | null
   allowDropIn: boolean
@@ -259,7 +260,7 @@ export function BookingWizard(props: {
     const copy: Record<DoneMode, { title: string; sub: string }> = {
       booked: { title: "You're booked in! 🎉", sub: `Your sessions with ${businessName} are on the calendar — see them in your Sessions tab.` },
       requested: { title: 'Request sent', sub: `${businessName} will confirm the time and you'll get a notification.` },
-      enrolled: { title: "You're enrolled! 🎉", sub: `See ${cls?.name ?? 'the class'} in your Classes tab.` },
+      enrolled: { title: "You're enrolled! 🎉", sub: `See ${cls?.name ?? 'the class'} in your Sessions tab.` },
       waitlisted: { title: "You're on the waitlist", sub: `${businessName} will be in touch the moment a spot opens up.` },
     }
     return (
@@ -391,6 +392,7 @@ export function BookingWizard(props: {
           date={date}
           time={time}
           currency={currency}
+          acceptPayments={acceptPayments}
           classType={classType}
           dogName={dogs.find(d => d.id === dogId)?.name ?? null}
           saving={saving}
@@ -562,7 +564,6 @@ function ClassOptionsStep({ cls, currency, acceptPayments, dogs, dogId, onDog, c
 }) {
   const isFull = cls.seatsLeft === 0
   const paidButNoPayments = !!cls.fullPriceCents && !acceptPayments
-  const nextAt = fmtNextSession(cls.nextSessionAt)
   const full = price(cls.fullPriceCents, currency)
   const drop = price(cls.dropInPerSessionCents, currency)
 
@@ -572,9 +573,28 @@ function ClassOptionsStep({ cls, currency, acceptPayments, dogs, dogId, onDog, c
 
       <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 flex flex-col gap-2.5 text-sm">
         {cls.scheduleNote && <Row icon={<CalendarDays className="h-4 w-4" />} text={cls.scheduleNote} />}
-        {nextAt && <Row icon={<Clock className="h-4 w-4" />} text={`Starts ${nextAt}`} />}
         {cls.seatsLeft != null && <Row icon={<Users className="h-4 w-4" />} text={isFull ? (cls.allowWaitlist ? 'Full — join the waitlist' : 'Full') : `${cls.seatsLeft} spot${cls.seatsLeft === 1 ? '' : 's'} left`} />}
       </div>
+
+      {cls.sessions.length > 0 && (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
+            Session schedule <span className="text-slate-300">· {cls.sessions.length}</span>
+          </p>
+          <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
+            {cls.sessions.map((s, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-t border-slate-100 first:border-t-0">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-soft text-accent text-xs font-bold shrink-0 tabular-nums">{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-800">{fmtNextSession(s.at)}</p>
+                  {s.title && <p className="text-xs text-slate-400 truncate">{s.title}</p>}
+                </div>
+                <span className="text-xs text-slate-400 shrink-0">{s.durationMins} min</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {dogs.length > 1 && (
         <div>
@@ -632,11 +652,12 @@ function TypeCard({ active, onClick, title, sub }: { active: boolean; onClick: (
 
 /* ============================ step 3 · confirm ============================ */
 
-function ConfirmStep({ selection, date, time, currency, classType, dogName, saving, error, onConfirm }: {
+function ConfirmStep({ selection, date, time, currency, acceptPayments, classType, dogName, saving, error, onConfirm }: {
   selection: Selection
   date: string
   time: string
   currency: string | null
+  acceptPayments: boolean
   classType: 'FULL' | 'DROP_IN'
   dogName: string | null
   saving: boolean
@@ -652,10 +673,15 @@ function ConfirmStep({ selection, date, time, currency, classType, dogName, savi
   const needsApproval = isSession && pkg!.selfBookRequiresApproval
   const priceLabel = price(priceCents, currency)
 
+  // Whether confirming will pop the card box (Stripe Checkout). Only when it's an
+  // instant (auto-approve) priced booking AND the trainer takes cards. Otherwise
+  // it books now and the trainer invoices later — no payment box.
+  const willCharge = !!priceCents && acceptPayments && !needsApproval && !isFull
+
   let ctaText: string
-  if (isSession) ctaText = needsApproval ? 'Request booking' : priceLabel ? `Pay ${priceLabel} & book` : 'Confirm booking'
+  if (isSession) ctaText = needsApproval ? 'Request booking' : willCharge ? `Pay ${priceLabel} & book` : 'Confirm booking'
   else if (isFull) ctaText = 'Join waitlist'
-  else ctaText = priceLabel ? `Pay ${priceLabel} & join` : 'Confirm & join'
+  else ctaText = willCharge ? `Pay ${priceLabel} & join` : 'Confirm & join'
 
   return (
     <div className="flex flex-col gap-5">

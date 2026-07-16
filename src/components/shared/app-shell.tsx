@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Users, Calendar, Layers, Package,
   MessageSquare, Settings, HelpCircle, User, Trophy,
-  Home, LogOut, ShoppingBag,
+  Home, LogOut, ShoppingBag, CalendarPlus,
   MoreHorizontal, X, Inbox, GraduationCap,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone, Lock, ClipboardList,
@@ -88,14 +88,14 @@ const TRAINER_MOBILE_PRIMARY_HREFS = new Set([
 // Mobile bottom tabs (4 primary + a Menu hamburger added in the shell).
 const CLIENT_TABS = [
   { href: '/home', label: 'Home', icon: Home },
+  { href: '/my-availability', label: 'Book', icon: CalendarPlus },
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
-  { href: '/my-classes', label: 'Classes', icon: GraduationCap },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
 ]
 // Everything a client can reach — the full-screen menu (mobile).
 const CLIENT_MENU = [
+  { href: '/my-availability', label: 'Book', icon: CalendarPlus },
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
-  { href: '/my-classes', label: 'Classes', icon: GraduationCap },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-shop', label: 'Shop', icon: ShoppingBag },
   { href: '/my-invoices', label: 'Invoices', icon: Receipt },

@@ -128,7 +128,7 @@ export default async function MyAvailabilityPage() {
     selfBookRequiresApproval: p.selfBookRequiresApproval,
   }))
 
-  // Open group classes the client can join themselves (mirrors /my-classes).
+  // Open group classes the client can join themselves.
   const enrolled = await prisma.classEnrollment.findMany({
     where: { clientId: active.clientId, status: { in: ['ENROLLED', 'WAITLISTED', 'COMPLETED'] } },
     select: { classRunId: true },
@@ -146,7 +146,7 @@ export default async function MyAvailabilityPage() {
     include: {
       package: { select: { name: true, priceCents: true, specialPriceCents: true, allowDropIn: true, dropInPriceCents: true, capacity: true, allowWaitlist: true } },
       enrollments: { where: { status: 'ENROLLED' }, select: { id: true } },
-      sessions: { where: { scheduledAt: { gte: now } }, orderBy: { scheduledAt: 'asc' }, take: 1, select: { scheduledAt: true } },
+      sessions: { where: { scheduledAt: { gte: now } }, orderBy: { scheduledAt: 'asc' }, select: { scheduledAt: true, durationMins: true, title: true } },
     },
   })
   const classes: WizardClass[] = openRuns.map(r => {
@@ -157,6 +157,7 @@ export default async function MyAvailabilityPage() {
       scheduleNote: r.scheduleNote,
       packageName: r.package.name,
       nextSessionAt: r.sessions[0]?.scheduledAt.toISOString() ?? null,
+      sessions: r.sessions.map(s => ({ at: s.scheduledAt.toISOString(), durationMins: s.durationMins, title: s.title })),
       seatsLeft: cap === null ? null : Math.max(0, cap - r.enrollments.length),
       fullPriceCents: r.package.specialPriceCents ?? r.package.priceCents,
       allowDropIn: r.package.allowDropIn,
