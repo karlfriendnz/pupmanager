@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation'
-import { after } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
@@ -113,16 +112,21 @@ export default async function MessagesPage({
       }
       threadMessages = loadedThread
 
-      // Mark unread as read AFTER the response — it's the "I opened this"
-      // signal for next time, so it never needs to block the render.
+      // Mark unread as read BEFORE returning. This is the "I opened this"
+      // signal, and the thread nudges the nav badge to recount ~1.2s later
+      // (pm:refresh-unread). Deferring the write with after() ran it AFTER the
+      // response flushed, so on a slow function the recount read the still-unread
+      // rows and the badge stayed lit until the next 25s poll. The client page
+      // awaits the same write for exactly this reason — one indexed updateMany,
+      // negligible render cost.
       const unreadIds = threadMessages
         .filter(m => m.senderId !== session.user.id)
         .map(m => m.id)
       if (unreadIds.length > 0) {
-        after(() => prisma.message.updateMany({
+        await prisma.message.updateMany({
           where: { id: { in: unreadIds }, readAt: null },
           data: { readAt: new Date() },
-        }).catch(() => {}))
+        })
       }
     }
   }
