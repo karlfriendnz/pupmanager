@@ -34,6 +34,8 @@ export function LeaveClassButton({
       const res = await fetch(`/api/my/classes/${runId}/cancel`, { method: 'POST' })
       if (res.ok) {
         setOpen(false)
+        // Land on the sessions list (refresh re-fetches it without the class).
+        router.push('/my-sessions')
         router.refresh()
       } else {
         const b = await res.json().catch(() => ({}))
