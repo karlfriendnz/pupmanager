@@ -145,12 +145,18 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       businessName: true,
       logoUrl: true,
       iconUrl: true,
+      payoutCurrency: true,
       subscriptionStatus: true,
       trialEndsAt: true,
       stripeSubscriptionId: true,
       gracePeriodUntil: true,
     },
   })
+
+  // The top bar's "+" offers "New sale" only when the instant-sale add-on is on
+  // AND this member may raise one. Presentation only — POST
+  // /api/trainer/finances/receivables re-checks both.
+  const canSell = enabledAddons.has('pos') && !!ctx && can('billing.view', ctx.role, ctx.permissions)
 
   // Hard paywall: no pay, no access. A trainer whose free trial has lapsed
   // without a subscription (or whose subscription has gone) can't use the
@@ -231,6 +237,8 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       unreadTotal={unreadMessageCount + unreadNotifications}
       hiddenNavHrefs={hiddenNavHrefs}
       addonLockedHrefs={addonLockedHrefs}
+      canSell={canSell}
+      currency={tp?.payoutCurrency ?? 'nzd'}
       orgs={orgs}
       activeCompanyId={session.user.trainerId ?? null}
     >

@@ -21,6 +21,7 @@ import { UnreadBadgeSync } from './unread-badge-sync'
 import { VersionGuard } from './version-guard'
 import { NotificationToaster } from './notification-toaster'
 import { TopBarControls } from './top-bar-controls'
+import { FloatingCreateButton } from './floating-create-button'
 import { PageTitleProvider, usePageTitle } from './page-title'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
@@ -159,6 +160,14 @@ interface AppShellProps {
    * layout (server) each navigation. Omitted for the client shell.
    */
   streak?: { current: number } | null
+  /**
+   * Whether the top bar's "+" offers "New sale" — the instant-sale add-on is
+   * on and this member may raise one. Computed in the trainer layout (server);
+   * the API re-checks both, so this only governs whether the option is shown.
+   */
+  canSell?: boolean
+  /** Trainer's payout currency, for money shown in the sale composer. */
+  currency?: string
   /**
    * Trainer nav hrefs to hide for this user, based on their company role +
    * permissions (computed in the trainer layout). Owners/managers see
@@ -644,6 +653,8 @@ function TrainerTopBar({
   orgs,
   activeCompanyId,
   streak,
+  canSell = false,
+  currency = 'nzd',
   notifCount = 0,
 }: {
   collapsed: boolean
@@ -657,6 +668,8 @@ function TrainerTopBar({
   orgs?: { id: string; name: string; role: string }[]
   activeCompanyId?: string | null
   streak?: { current: number } | null
+  canSell?: boolean
+  currency?: string
   notifCount?: number
 }) {
   const title = usePageTitle() ?? fallbackTitle
@@ -718,6 +731,8 @@ function TrainerShell({
   completedStepKeys = [],
   unreadCounts = {},
   streak,
+  canSell = false,
+  currency = 'nzd',
   hiddenNavHrefs = [],
   addonLockedHrefs = [],
   orgs = [],
@@ -838,6 +853,8 @@ function TrainerShell({
         orgs={orgs}
         activeCompanyId={activeCompanyId}
         streak={streak}
+        canSell={canSell}
+        currency={currency}
         notifCount={unreadCounts['/notifications'] ?? 0}
       />
 
@@ -1061,6 +1078,11 @@ function TrainerShell({
           nav, and per-page sticky bars (e.g. session detail) own their
           own safe-area-inset-top. Pages without a sticky bar fall back
           to the <main> safe-area pad below. */}
+
+      {/* Mobile "+" — the phone counterpart to the desktop control bar's, which
+          is hidden below md. Dashboard only, so it never covers another page's
+          primary action. */}
+      {pathname === '/dashboard' && <FloatingCreateButton canSell={canSell} currency={currency} />}
 
       {/* Mobile bottom tab bar — 4 primary destinations + More */}
       <nav

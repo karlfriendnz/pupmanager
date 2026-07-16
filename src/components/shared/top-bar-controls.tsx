@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
-import { Search, HelpCircle, Settings, LogOut, ChevronDown, Flame, Bell } from 'lucide-react'
+import { Search, HelpCircle, Settings, LogOut, ChevronDown, Flame, Bell, Plus, UserPlus, Receipt } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { signOutWithPush } from '@/lib/sign-out'
 import { OrgSwitcher } from './org-switcher'
+import { SaleComposer } from './sale-composer'
 
 type Org = { id: string; name: string; role: string }
 type Scope = 'all' | 'client' | 'breed' | 'dog'
@@ -33,6 +34,8 @@ export function TopBarControls({
   activeCompanyId = null,
   streak = null,
   notifCount = 0,
+  canSell = false,
+  currency = 'nzd',
 }: {
   userName?: string | null
   userEmail?: string | null
@@ -40,34 +43,41 @@ export function TopBarControls({
   activeCompanyId?: string | null
   streak?: { current: number } | null
   notifCount?: number
+  /** Instant-sale add-on on AND the member may raise a sale — hides "New sale". */
+  canSell?: boolean
+  currency?: string
 }) {
   const router = useRouter()
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+  const [saleOpen, setSaleOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<Scope>('all')
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const addRef = useRef<HTMLDivElement | null>(null)
   const searchRef = useRef<HTMLFormElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   // Close menus when the route changes — adjust state during render.
   const [lastPath, setLastPath] = useState(pathname)
-  if (pathname !== lastPath) { setLastPath(pathname); setMenuOpen(false); setSearchOpen(false) }
+  if (pathname !== lastPath) { setLastPath(pathname); setMenuOpen(false); setSearchOpen(false); setAddOpen(false) }
 
   // Outside-click / Escape closes the account menu and the (empty) search.
   useEffect(() => {
-    if (!menuOpen && !searchOpen) return
+    if (!menuOpen && !searchOpen && !addOpen) return
     function onPointer(ev: MouseEvent | TouchEvent) {
       const t = ev.target as Node
       if (menuRef.current && !menuRef.current.contains(t)) setMenuOpen(false)
+      if (addRef.current && !addRef.current.contains(t)) setAddOpen(false)
       if (searchRef.current && !searchRef.current.contains(t) && !query.trim()) setSearchOpen(false)
     }
-    function onKey(ev: KeyboardEvent) { if (ev.key === 'Escape') { setMenuOpen(false); setSearchOpen(false) } }
+    function onKey(ev: KeyboardEvent) { if (ev.key === 'Escape') { setMenuOpen(false); setSearchOpen(false); setAddOpen(false) } }
     document.addEventListener('mousedown', onPointer)
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('mousedown', onPointer); document.removeEventListener('keydown', onKey) }
-  }, [menuOpen, searchOpen, query])
+  }, [menuOpen, searchOpen, addOpen, query])
 
   // Focus the input as it slides open.
   useEffect(() => { if (searchOpen) inputRef.current?.focus() }, [searchOpen])
@@ -87,6 +97,48 @@ export function TopBarControls({
     // The right-hand control cluster of the global top bar (TrainerShell owns
     // the bar chrome). Streak, search, settings cog, account, help.
     <div className="flex items-center gap-1">
+      {/* Create — the one place to start a new thing from anywhere in the app.
+          A brand-filled circle so it reads as the primary action among the
+          ghost circles beside it. */}
+      <div ref={addRef} className="relative">
+        <button
+          onClick={() => setAddOpen((v) => !v)}
+          title="Create"
+          aria-haspopup="menu"
+          aria-expanded={addOpen}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--pm-brand-600)] text-white shadow-sm transition-colors hover:bg-[var(--pm-brand-700)]"
+        >
+          <Plus className="h-[18px] w-[18px]" />
+        </button>
+        {addOpen && (
+          <div
+            role="menu"
+            className="absolute right-0 mt-2 w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
+          >
+            <button
+              role="menuitem"
+              onClick={() => { setAddOpen(false); router.push('/clients?new=1') }}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              <UserPlus className="h-4 w-4 text-slate-400" />
+              New client
+            </button>
+            {canSell && (
+              <button
+                role="menuitem"
+                onClick={() => { setAddOpen(false); setSaleOpen(true) }}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                <Receipt className="h-4 w-4 text-slate-400" />
+                New sale
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <SaleComposer open={saleOpen} onClose={() => setSaleOpen(false)} currency={currency} />
+
       {/* Streak — a plain ghost circle until there's a streak, then an orange
           pill with the count. Matches the search/help circles when idle. */}
       {SHOW_STREAK && streak && (

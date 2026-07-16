@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { UserPlus, X, Loader2 } from 'lucide-react'
 import { BreedSelect } from '@/components/shared/breed-select'
@@ -32,7 +32,11 @@ const QUICK_FIELDS: { key: ClientFieldKey; label: string; type: 'text' | 'email'
 // surfaces in the list to complete later.
 export function QuickAddContact() {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const searchParams = useSearchParams()
+  // The top bar's "+ → New client" lands here with ?new=1 (the form lives on
+  // this page, not the shell), so open straight into it rather than making them
+  // hunt for the button they just pressed.
+  const [open, setOpen] = useState(searchParams.get('new') === '1')
   const [cfg, setCfg] = useState<FieldConfigResponse | null>(null)
   const [values, setValues] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -44,7 +48,15 @@ export function QuickAddContact() {
     }
   }, [open, cfg])
 
-  function close() { setOpen(false); setValues({}); setError(null) }
+  function close() {
+    setOpen(false); setValues({}); setError(null)
+    // Drop ?new=1 so the form doesn't spring back open on a later remount.
+    if (typeof window !== 'undefined' && searchParams.get('new')) {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('new')
+      history.replaceState(null, '', `${url.pathname}${url.search}`)
+    }
+  }
 
   const builtinShown = cfg ? QUICK_FIELDS.filter(f => cfg.config[f.key]?.quickAdd) : []
   const customShown = cfg ? cfg.customFields.filter(f => f.inQuickAdd) : []
