@@ -67,10 +67,14 @@ export function BrandPreview({
 
           {/* logo + business name */}
           <div className="relative flex items-center gap-2 px-4 mt-2">
-            <div className="h-8 w-8 rounded-xl overflow-hidden flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ring-1 ring-white/50" style={{ background: accent }}>
+            <div
+              className={`h-8 w-8 rounded-xl overflow-hidden flex items-center justify-center text-xs font-bold text-white flex-shrink-0${iconUrl ? '' : ' ring-1 ring-white/50'}`}
+              style={iconUrl ? undefined : { background: accent }}
+            >
               {iconUrl
+                // Uploaded icon: render clean (often transparent) — no coloured box.
                 // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={iconUrl} alt="" className="h-full w-full object-cover" />
+                ? <img src={iconUrl} alt="" className="h-full w-full object-contain" />
                 : logoUrl
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={logoUrl} alt="" className="h-full w-full object-contain bg-white/90 p-0.5" />

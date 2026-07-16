@@ -666,7 +666,9 @@ function TrainerTopBar({
             with the org name beside it when expanded. */}
         {trainerIcon ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={trainerIcon} alt={businessName ?? 'Icon'} className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100 shrink-0" />
+          // Icon is a square brand mark (often transparent) — render it clean,
+          // no white box / ring behind it.
+          <img src={trainerIcon} alt={businessName ?? 'Icon'} className="h-8 w-8 rounded-lg object-contain shrink-0" />
         ) : trainerLogo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100 shrink-0" />
