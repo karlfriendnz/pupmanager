@@ -559,9 +559,6 @@ export function InstagramEditor({
           <h2 className="mb-3 text-sm font-semibold text-slate-900">Social links</h2>
           <p className="mb-3 text-xs text-slate-500">Handle or full URL — we&rsquo;ll link it up.</p>
           <div className="flex flex-col gap-4">
-            <Input label="Instagram" value={instagram} placeholder="@yourhandle" onChange={(e) => { setInstagram(e.target.value); setSaved(false) }} />
-            <Input label="Facebook" value={facebook} placeholder="yourpage" onChange={(e) => { setFacebook(e.target.value); setSaved(false) }} />
-            <Input label="TikTok" value={tiktok} placeholder="@yourhandle" onChange={(e) => { setTiktok(e.target.value); setSaved(false) }} />
             <Input
               label="Section heading"
               value={socialsLabel}
@@ -569,6 +566,9 @@ export function InstagramEditor({
               placeholder="Connect with us"
               onChange={(e) => { setSocialsLabel(e.target.value); setSaved(false) }}
             />
+            <Input label="Instagram" value={instagram} placeholder="@yourhandle" onChange={(e) => { setInstagram(e.target.value); setSaved(false) }} />
+            <Input label="Facebook" value={facebook} placeholder="yourpage" onChange={(e) => { setFacebook(e.target.value); setSaved(false) }} />
+            <Input label="TikTok" value={tiktok} placeholder="@yourhandle" onChange={(e) => { setTiktok(e.target.value); setSaved(false) }} />
           </div>
         </section>
 
