@@ -14,6 +14,7 @@ const PUBLIC_PATHS = [
   '/api/form',   // public form submission API
   '/unsubscribe', // public bulk-email unsubscribe (HMAC-token gated inside)
   '/c/',         // public per-trainer branded client login (/c/<slug>) — trailing slash so it can't match /clients
+  '/l/',         // public per-trainer "link in bio" page (/l/<slug>) — trailing slash so it can't match /login/logout/library
   '/pay/',       // public no-login invoice pay page (/pay/<payToken>) — trailing slash
   '/api/pay/',   // public invoice checkout API (rate-limited, token-gated inside)
 
@@ -31,7 +32,7 @@ const PUBLIC_PATHS = [
 const TRAINER_PATHS = [
   '/dashboard', '/clients', '/schedule', '/templates', '/library',
   '/progress', '/messages', '/ai-tools', '/settings', '/help',
-  '/packages', '/products', '/notifications',
+  '/packages', '/products', '/notifications', '/instagram',
 ]
 
 // Client-only route prefixes. The client feed is /my-notifications (matching the

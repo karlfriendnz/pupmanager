@@ -27,6 +27,8 @@ const DETAILS: Record<string, string> = {
     'Plan the most efficient run between your home visits. See drive-time and distance from your base to each client — and from one visit to the next — and order your day to cut the kilometres. Distance-from-base appears on every client profile.',
   leadmagnets:
     'Grow your audience with a free download. Upload a guide or checklist, get a branded sign-up page, and every prospect who fills the form is emailed the file and added to your mailing list — ready for the Marketing add-on. Embed it on your own website and each copy carries a “Powered by PupManager” link back to us.',
+  instagram:
+    'Give your Instagram bio one link that does everything. Your “link in bio” page carries your logo and brand colour, then stacks the buttons that matter — Book a session, your website, your socials, call or email — in whatever order you like. Add as many custom links as you want, drag them into place, and share the tidy pupmanager.com/l/you address. It’s free, it’s live the moment you turn it on, and it’s built phone-first because that’s where your followers tap it.',
 }
 
 // "Coming soon" cards not modelled in pricing.ts at all. (Add-ons that ARE in

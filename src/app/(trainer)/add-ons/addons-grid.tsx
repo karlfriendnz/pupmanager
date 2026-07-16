@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 const MANAGE_HREF: Record<string, string> = {
   xero: '/settings?tab=xero',
   payments: '/settings?tab=payments',
+  instagram: '/instagram',
   // Google Calendar has no settings page — its card opens the promo popup, which
   // handles connect AND disconnect inline.
 }

@@ -124,6 +124,9 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   if (!enabledAddons.has('library')) hiddenNavHrefs.push('/templates')
   // No client app → no client↔trainer messaging.
   if (!enabledAddons.has('clientapp')) hiddenNavHrefs.push('/messages')
+  // "Link in bio" is a free, off-by-default add-on — its nav entry only appears
+  // once the trainer switches Instagram on (enable-to-reveal).
+  if (!enabledAddons.has('instagram')) hiddenNavHrefs.push('/instagram')
 
   // Organisations this user belongs to (their own + any they're a team member
   // at). Powers the sidebar org switcher when there's more than one.

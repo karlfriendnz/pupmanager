@@ -555,8 +555,47 @@ model TrainerProfile {
   brainDumps         TrainerBrainDump[]
   todos              TrainerTodo[]
   xeroConnection     XeroConnection?
+  linkPage           LinkPage?
 
   @@map("trainer_profiles")
+}
+
+// ─── Instagram "link in bio" add-on ───────────────────────────────────────────
+// A customizable Linktree-style PUBLIC page for a trainer, served at /l/<slug>.
+// One row per trainer (created on first visit to the editor). The buttons the
+// public page renders come from the trainer's branding + these config flags +
+// the ordered LinkPageButton rows.
+model LinkPage {
+  id          String  @id @default(cuid())
+  trainerId   String  @unique
+  trainer     TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  headline    String?
+  bio         String? @db.Text
+  showBooking Boolean @default(true)
+  showWebsite Boolean @default(true)
+  showContact Boolean @default(true)
+  instagram   String? // handle or full URL
+  facebook    String?
+  tiktok      String?
+  links       LinkPageButton[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("link_pages")
+}
+
+// A single custom link button on a LinkPage. Ordered by `order` (ascending).
+model LinkPageButton {
+  id         String @id @default(cuid())
+  linkPageId String
+  linkPage   LinkPage @relation(fields: [linkPageId], references: [id], onDelete: Cascade)
+  label      String
+  url        String
+  order      Int    @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([linkPageId])
+  @@map("link_page_buttons")
 }
 
 // ─── Xero accounting integration ──────────────────────────────────────────────
