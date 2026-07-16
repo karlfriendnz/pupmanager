@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { notifyTrainer } from '@/lib/trainer-notify'
 import { z } from 'zod'
 
 const postSchema = z.object({
@@ -12,7 +13,7 @@ const postSchema = z.object({
 async function verifyProductOwnership(productId: string, trainerId: string) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true, trainerId: true, active: true },
+    select: { id: true, trainerId: true, active: true, name: true },
   })
   if (!product || product.trainerId !== trainerId || !product.active) return null
   return product
@@ -27,9 +28,17 @@ async function resolveActingClient() {
   if (!active) return null
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
-    select: { id: true, trainerId: true },
+    select: {
+      id: true, trainerId: true,
+      // Names + trainer routing for the "shop order" notification.
+      user: { select: { name: true } },
+      dog: { select: { name: true } },
+      trainer: { select: { user: { select: { id: true } } } },
+      assignedTrainer: { select: { user: { select: { id: true } } } },
+    },
   })
-  return profile
+  // isPreview: a trainer previewing the client app must NOT notify themselves.
+  return profile ? { ...profile, isPreview: active.isPreview } : null
 }
 
 export async function POST(
@@ -78,6 +87,19 @@ export async function POST(
     sourceType: 'PRODUCT',
     productId,
   })
+
+  // Tell the trainer a client requested a product (skip trainer-in-preview so a
+  // trainer walking the shop doesn't notify themselves).
+  const trainerUserId = profile.assignedTrainer?.user?.id ?? profile.trainer?.user?.id ?? null
+  if (trainerUserId && !profile.isPreview) {
+    await notifyTrainer(
+      trainerUserId,
+      'CLIENT_SHOP_ORDER',
+      { clientName: profile.user?.name ?? 'A client', dogName: profile.dog?.name ?? '', detail: `requested “${product.name}”` },
+      `/clients/${profile.id}`,
+      profile.trainerId,
+    )
+  }
 
   return NextResponse.json(created, { status: 201 })
 }

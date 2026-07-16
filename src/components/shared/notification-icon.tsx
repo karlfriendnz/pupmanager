@@ -1,6 +1,7 @@
 import {
   Bell, Dumbbell, CheckCircle2, MessageSquare, Inbox, UserPlus, Calendar, CalendarDays,
-  FileText, Clock, Flame, ClipboardList, CalendarClock, Trophy, type LucideIcon,
+  FileText, Clock, Flame, ClipboardList, CalendarClock, CalendarX, ShoppingBag, Trophy,
+  type LucideIcon,
 } from 'lucide-react'
 
 // One icon per NotificationType, shared by the realtime toast and the
@@ -10,6 +11,9 @@ const NOTIFICATION_ICONS: Record<string, LucideIcon> = {
   // Trainer-facing
   CLIENT_LOGGED_TRAINING: Dumbbell,
   CLIENT_COMPLETED_TASKS: CheckCircle2,
+  CLIENT_BOOKED_SESSION: Calendar,
+  CLIENT_CANCELLED_SESSION: CalendarX,
+  CLIENT_SHOP_ORDER: ShoppingBag,
   NEW_MESSAGE: MessageSquare,
   NEW_ENQUIRY: Inbox,
   ENQUIRY_FOLLOWUP_REMINDER: Clock,

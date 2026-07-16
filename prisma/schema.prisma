@@ -159,6 +159,9 @@ enum NotificationType {
   NEW_CLIENT_INVITE_ACCEPTED // a client used the invite link to sign up
   CLIENT_COMPLETED_TASKS // a client completed all of today's tasks
   CLIENT_LOGGED_TRAINING // a client logged a practice against a homework task
+  CLIENT_BOOKED_SESSION // a client self-booked a session or enrolled in a class
+  CLIENT_CANCELLED_SESSION // a client cancelled a booking or enrolment
+  CLIENT_SHOP_ORDER // a client bought or requested a shop product
   NEW_MESSAGE // a new in-app message landed
   NEW_ENQUIRY // a public form (embed or intake) submission landed
   ENQUIRY_FOLLOWUP_REMINDER // a NEW enquiry has gone unanswered — nudges at 6/18/24/36h

@@ -10,6 +10,7 @@ import { isConnectConfigured } from '@/lib/connect'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { resolveRequirePayment } from '@/lib/require-payment'
 import { enforceRateLimit } from '@/lib/rate-limit'
+import { notifyTrainer } from '@/lib/trainer-notify'
 import { env } from '@/lib/env'
 
 // Client self-enrolment into a group class run. Free classes (or trainers not
@@ -28,9 +29,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
 
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
-    select: { id: true, trainerId: true, dogId: true, dogs: { select: { id: true } } },
+    select: {
+      id: true, trainerId: true, dogId: true, dogs: { select: { id: true } },
+      // Names + trainer routing for the "client booked" notification.
+      user: { select: { name: true } },
+      dog: { select: { name: true } },
+      trainer: { select: { user: { select: { id: true } } } },
+      assignedTrainer: { select: { user: { select: { id: true } } } },
+    },
   })
   if (!profile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  const trainerUserId = profile.assignedTrainer?.user?.id ?? profile.trainer?.user?.id ?? null
 
   const limited = await enforceRateLimit({ key: `enroll:${profile.id}`, limit: 12, windowMs: 10 * 60_000 })
   if (limited) return limited
@@ -159,6 +168,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
         sourceType: 'CLASS_ENROLLMENT',
         classEnrollmentId: result.enrollmentId,
       })
+    }
+    // Tell the trainer their client just enrolled (or joined the waitlist).
+    if (trainerUserId) {
+      const detail = `${run.name}${type === 'DROP_IN' ? ' (drop-in)' : ''}${result.status === 'WAITLISTED' ? ' (waitlist)' : ''}`
+      await notifyTrainer(
+        trainerUserId,
+        'CLIENT_BOOKED_SESSION',
+        { clientName: profile.user?.name ?? 'A client', dogName: profile.dog?.name ?? '', detail },
+        `/classes/${runId}`,
+        profile.trainerId,
+      )
     }
     return NextResponse.json({ ok: true, mode: result.status === 'WAITLISTED' ? 'waitlisted' : 'enrolled' }, { status: 201 })
   } catch (err) {

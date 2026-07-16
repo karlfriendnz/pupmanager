@@ -6,6 +6,7 @@ import { isConnectConfigured } from '@/lib/connect'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { resolveRequirePayment } from '@/lib/require-payment'
 import { enforceRateLimit } from '@/lib/rate-limit'
+import { notifyTrainer } from '@/lib/trainer-notify'
 import { env } from '@/lib/env'
 
 // Buy a shop product (Flow B, Phase 2). The sibling /request route stays for
@@ -17,7 +18,14 @@ async function resolveActingClient() {
   if (!active) return null
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
-    select: { id: true, trainerId: true },
+    select: {
+      id: true, trainerId: true,
+      // Names + trainer routing for the "shop order" notification.
+      user: { select: { name: true } },
+      dog: { select: { name: true } },
+      trainer: { select: { user: { select: { id: true } } } },
+      assignedTrainer: { select: { user: { select: { id: true } } } },
+    },
   })
   return profile ? { ...profile, isPreview: active.isPreview } : null
 }
@@ -89,6 +97,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
       sourceType: 'PRODUCT',
       productId: product.id,
     })
+    // Tell the trainer their client bought this item (book-now-pay-later path).
+    // The card-checkout path below finishes in the connect webhook, so it isn't
+    // notified here — that completion lives outside this route.
+    const trainerUserId = profile.assignedTrainer?.user?.id ?? profile.trainer?.user?.id ?? null
+    if (trainerUserId) {
+      await notifyTrainer(
+        trainerUserId,
+        'CLIENT_SHOP_ORDER',
+        { clientName: profile.user?.name ?? 'A client', dogName: profile.dog?.name ?? '', detail: `bought “${product.name}”` },
+        `/clients/${profile.id}`,
+        profile.trainerId,
+      )
+    }
     return NextResponse.json({ ok: true, mode: 'requested' })
   }
 

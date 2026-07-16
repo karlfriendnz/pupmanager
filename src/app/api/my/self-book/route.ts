@@ -12,6 +12,7 @@ import { enforceRateLimit } from '@/lib/rate-limit'
 import { getTrainerAvailabilityForClient } from '@/lib/client-availability'
 import { isTimeWithinAvailability, overlapsBusy } from '@/lib/availability'
 import { utcToZonedDateAndMinutes } from '@/lib/timezone'
+import { notifyTrainer } from '@/lib/trainer-notify'
 import { env } from '@/lib/env'
 
 // GET  /api/my/self-book  — packages this client may self-book
@@ -21,10 +22,30 @@ async function clientCtx() {
   if (!active) return null
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
-    select: { id: true, trainerId: true, dogId: true },
+    select: {
+      id: true, trainerId: true, dogId: true,
+      // Trainer routing + names for the "client booked" notification (assigned
+      // member first, else the business owner — same shape as the logs route).
+      user: { select: { name: true } },
+      dog: { select: { name: true } },
+      trainer: { select: { user: { select: { id: true } } } },
+      assignedTrainer: { select: { user: { select: { id: true } } } },
+    },
   })
   if (!profile) return null
-  return { ...active, trainerId: profile.trainerId, dogId: profile.dogId }
+  return {
+    ...active,
+    trainerId: profile.trainerId,
+    dogId: profile.dogId,
+    clientName: profile.user?.name ?? 'A client',
+    dogName: profile.dog?.name ?? '',
+    trainerUserId: profile.assignedTrainer?.user?.id ?? profile.trainer?.user?.id ?? null,
+  }
+}
+
+// Short human date for a notification detail, e.g. "Thu 17 Jul".
+function shortDate(d: Date): string {
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).format(d)
 }
 
 export async function GET() {
@@ -109,6 +130,15 @@ export async function POST(req: Request) {
         sessionDates: dates.map(d => d.toISOString()),
       },
     })
+    if (ctx.trainerUserId) {
+      await notifyTrainer(
+        ctx.trainerUserId,
+        'CLIENT_BOOKED_SESSION',
+        { clientName: ctx.clientName, dogName: ctx.dogName, detail: `${pkg.name} on ${shortDate(start)}` },
+        '/schedule',
+        ctx.trainerId,
+      )
+    }
     return NextResponse.json({ ok: true, mode: 'requested' }, { status: 201 })
   }
 
@@ -186,5 +216,14 @@ export async function POST(req: Request) {
   // Best-effort receivable for the self-booked package (this free-flow path only;
   // the paid path above goes through Stripe checkout instead).
   await createInvoiceForAssignment({ trainerId: ctx.trainerId, clientId: ctx.clientId, sourceType: 'PACKAGE', clientPackageId: assignmentId })
+  if (ctx.trainerUserId) {
+    await notifyTrainer(
+      ctx.trainerUserId,
+      'CLIENT_BOOKED_SESSION',
+      { clientName: ctx.clientName, dogName: ctx.dogName, detail: `${pkg.name} on ${shortDate(start)}` },
+      '/schedule',
+      ctx.trainerId,
+    )
+  }
   return NextResponse.json({ ok: true, mode: 'booked' }, { status: 201 })
 }
