@@ -152,13 +152,13 @@ export function TrainerSettingsForm({
       {/* Business details */}
       <AccordionItem title="Business details" subtitle="Your name, business name and contact info" defaultOpen>
         {businessMsg && <Alert variant={businessMsg === 'Saved!' ? 'success' : 'error'} className="mb-3">{businessMsg}</Alert>}
-        <form onSubmit={businessForm.handleSubmit(saveBusiness)} className="flex flex-col gap-4">
+        <form onSubmit={businessForm.handleSubmit(saveBusiness)} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input label="Your name *" error={businessForm.formState.errors.name?.message} {...businessForm.register('name')} />
           <Input label="Email address *" type="email" disabled error={businessForm.formState.errors.email?.message} {...businessForm.register('email')} />
           <Input label="Business name *" error={businessForm.formState.errors.businessName?.message} {...businessForm.register('businessName')} />
           <Input label="Phone number *" type="tel" error={businessForm.formState.errors.phone?.message} {...businessForm.register('phone')} />
 
-          <label className="flex items-start gap-2 text-sm text-slate-600 -mt-1">
+          <label className="flex items-start gap-2 text-sm text-slate-600 sm:col-span-2">
             <input
               type="checkbox"
               className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -167,15 +167,19 @@ export function TrainerSettingsForm({
             <span>Show my phone number to clients (on the in-app Help page and &ldquo;Call&rdquo; button). Leave unticked to keep it private.</span>
           </label>
 
-          <Input
-            label="Business email"
-            type="email"
-            hint="Shown to clients as your business contact. Separate from your sign-in email above. Leave blank to skip."
-            error={businessForm.formState.errors.publicEmail?.message}
-            {...businessForm.register('publicEmail')}
-          />
+          <div className="sm:col-span-2">
+            <Input
+              label="Business email"
+              type="email"
+              hint="Shown to clients as your business contact. Separate from your sign-in email above. Leave blank to skip."
+              error={businessForm.formState.errors.publicEmail?.message}
+              {...businessForm.register('publicEmail')}
+            />
+          </div>
 
-          <BaseLocationSetting initialBase={{ address: profile.baseAddress, lat: profile.baseLat, lng: profile.baseLng }} />
+          <div className="sm:col-span-2">
+            <BaseLocationSetting initialBase={{ address: profile.baseAddress, lat: profile.baseLat, lng: profile.baseLng }} />
+          </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">Country</label>
@@ -193,7 +197,7 @@ export function TrainerSettingsForm({
             </select>
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
             <label className="text-sm font-medium text-slate-700">What your business offers</label>
             <p className="text-xs text-slate-500">Tailors the app to you — e.g. the schedule only offers group walks or classes if you run them.</p>
             <div className="mt-1 flex flex-wrap gap-2">
@@ -215,7 +219,7 @@ export function TrainerSettingsForm({
             </div>
           </div>
 
-          <Button type="submit" size="sm" className="self-start" loading={businessForm.formState.isSubmitting}>Save business details</Button>
+          <Button type="submit" size="sm" className="self-start sm:col-span-2" loading={businessForm.formState.isSubmitting}>Save business details</Button>
         </form>
       </AccordionItem>
 
