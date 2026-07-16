@@ -79,6 +79,9 @@ export default async function InstagramPage() {
             instagram: linkPage.instagram,
             facebook: linkPage.facebook,
             tiktok: linkPage.tiktok,
+            socialsLabel: linkPage.socialsLabel,
+            font: linkPage.font,
+            backgroundUrl: linkPage.backgroundUrl,
             links: linkPage.links.map((l) => ({ id: l.id, label: l.label, url: l.url })),
           }}
         />

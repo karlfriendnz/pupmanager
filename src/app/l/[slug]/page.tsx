@@ -2,21 +2,21 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
-import { buildLinkButtons } from '@/lib/link-page'
+import { buildLinkButtons, buildSocialLinks } from '@/lib/link-page'
 import { LinkPageView } from './link-page-view'
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 const DEFAULT_ACCENT = 'var(--pm-brand-600)'
 
-function PoweredBy() {
+function PoweredBy({ onDark = false }: { onDark?: boolean }) {
   return (
-    <p className="pb-8 text-center text-[11px] uppercase tracking-wide text-slate-400">
+    <p className={`pb-8 text-center text-[11px] uppercase tracking-wide ${onDark ? 'text-white/70' : 'text-slate-400'}`}>
       Powered by{' '}
       <a
         href="https://pupmanager.com"
         target="_blank"
         rel="noopener noreferrer"
-        className="font-semibold text-slate-500 hover:underline"
+        className={`font-semibold hover:underline ${onDark ? 'text-white/90' : 'text-slate-500'}`}
       >
         PupManager
       </a>
@@ -96,9 +96,15 @@ export default async function LinkInBioPage({
       showPhoneToClients: trainer.showPhoneToClients,
     },
   )
+  const socials = buildSocialLinks({
+    instagram: lp.instagram,
+    facebook: lp.facebook,
+    tiktok: lp.tiktok,
+  })
+  const onDark = Boolean(lp.backgroundUrl)
 
   return (
-    <main className="flex min-h-screen flex-col bg-slate-50">
+    <main className={`flex min-h-screen flex-col ${onDark ? 'bg-slate-900' : 'bg-slate-50'}`}>
       <div className="flex-1">
         <LinkPageView
           businessName={trainer.businessName || 'Your trainer'}
@@ -106,10 +112,14 @@ export default async function LinkInBioPage({
           headline={lp.headline}
           bio={lp.bio}
           buttons={buttons}
+          socials={socials}
+          socialsLabel={lp.socialsLabel}
+          backgroundUrl={lp.backgroundUrl}
+          font={lp.font}
           accent={accent}
         />
       </div>
-      <PoweredBy />
+      <PoweredBy onDark={onDark} />
     </main>
   )
 }

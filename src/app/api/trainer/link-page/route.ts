@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
 import { requireSameOrigin } from '@/lib/csrf'
-import { safeExternalUrl } from '@/lib/link-page'
+import { safeExternalUrl, isLinkPageFontId } from '@/lib/link-page'
 
 // GET/PATCH the current trainer's "link in bio" config (Instagram add-on).
 // The public page lives at /l/<slug>; this is the owner-facing editor's API.
@@ -34,6 +34,32 @@ const linkSchema = z.object({
     .refine((v): v is string => v !== null, 'Links must be a valid web address'),
 })
 
+// A stored font id, or empty/null → null (use the default font).
+const fontField = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((v) => {
+    if (v === undefined) return undefined
+    const t = (v ?? '').trim()
+    return t === '' ? null : t
+  })
+  .refine((v) => v === undefined || v === null || isLinkPageFontId(v), 'Unknown font')
+
+// A background image URL, or empty/null → null. Must be a safe http(s) URL.
+const backgroundField = z
+  .string()
+  .max(2000)
+  .nullable()
+  .optional()
+  .transform((v) => {
+    if (v === undefined) return undefined
+    const t = (v ?? '').trim()
+    return t === '' ? null : t
+  })
+  .refine((v) => v === undefined || v === null || safeExternalUrl(v) !== null, 'Invalid background URL')
+  .transform((v) => (typeof v === 'string' ? safeExternalUrl(v) : v))
+
 const patchSchema = z.object({
   headline: nullableText(80),
   bio: nullableText(300),
@@ -43,6 +69,9 @@ const patchSchema = z.object({
   instagram: nullableText(200),
   facebook: nullableText(200),
   tiktok: nullableText(200),
+  socialsLabel: nullableText(40),
+  font: fontField,
+  backgroundUrl: backgroundField,
   links: z.array(linkSchema).max(20).optional(),
 })
 

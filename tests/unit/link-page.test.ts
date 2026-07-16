@@ -2,7 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 
 // ── Pure helpers ────────────────────────────────────────────────────────────
-import { buildLinkButtons, socialUrl, safeExternalUrl, isHttpUrl } from '@/lib/link-page'
+import {
+  buildLinkButtons,
+  buildSocialLinks,
+  socialUrl,
+  safeExternalUrl,
+  isHttpUrl,
+  isLinkPageFontId,
+  linkPageFontStack,
+  LINK_PAGE_FONTS,
+} from '@/lib/link-page'
 import { addonById, isFreeAddon, isSellableAddon, isAddonId } from '@/lib/pricing'
 
 describe('link-page helpers', () => {
@@ -30,7 +39,7 @@ describe('link-page helpers', () => {
     expect(socialUrl('instagram', null)).toBeNull()
   })
 
-  it('buildLinkButtons orders Book → custom → website → socials → contact and gates phone', () => {
+  it('buildLinkButtons orders Book → custom → website → contact, tags icons, and gates phone (socials excluded)', () => {
     const buttons = buildLinkButtons(
       {
         headline: null,
@@ -51,13 +60,44 @@ describe('link-page helpers', () => {
         showPhoneToClients: true,
       },
     )
-    expect(buttons.map((b) => b.key)).toEqual(['book', 'link-0', 'website', 'instagram', 'email', 'call'])
+    // Socials are NOT in the main button list any more.
+    expect(buttons.map((b) => b.key)).toEqual(['book', 'link-0', 'website', 'email', 'call'])
+    expect(buttons.some((b) => b.key === 'instagram')).toBe(false)
     expect(buttons[0].href).toBe('/c/jess/book')
     expect(buttons.find((b) => b.key === 'link-0')!.href).toBe('https://guide.com/')
     expect(buttons.find((b) => b.key === 'call')!.href).toBe('tel:0215550000')
-    // Custom + website + social are external; book/email/call are not.
+    // Every main button carries a leading icon id.
+    expect(buttons.find((b) => b.key === 'book')!.icon).toBe('calendar')
+    expect(buttons.find((b) => b.key === 'link-0')!.icon).toBe('link')
+    expect(buttons.find((b) => b.key === 'website')!.icon).toBe('globe')
+    expect(buttons.find((b) => b.key === 'email')!.icon).toBe('mail')
+    expect(buttons.find((b) => b.key === 'call')!.icon).toBe('phone')
+    // Custom + website are external; book/email/call are not.
     expect(buttons.find((b) => b.key === 'website')!.external).toBe(true)
     expect(buttons.find((b) => b.key === 'email')!.external).toBe(false)
+  })
+
+  it('buildSocialLinks returns the icon-row entries (platform + href), not buttons', () => {
+    const socials = buildSocialLinks({ instagram: '@jess', facebook: 'jessdogs', tiktok: null })
+    expect(socials).toEqual([
+      { platform: 'instagram', href: 'https://instagram.com/jess' },
+      { platform: 'facebook', href: 'https://facebook.com/jessdogs' },
+    ])
+    // Nothing set → empty list.
+    expect(buildSocialLinks({ instagram: null, facebook: null, tiktok: null })).toEqual([])
+  })
+
+  it('validates font ids and resolves their CSS stacks', () => {
+    expect(isLinkPageFontId('default')).toBe(true)
+    expect(isLinkPageFontId('rounded')).toBe(true)
+    expect(isLinkPageFontId('serif')).toBe(true)
+    expect(isLinkPageFontId('mono')).toBe(true)
+    expect(isLinkPageFontId('comic-sans')).toBe(false)
+    expect(isLinkPageFontId(null)).toBe(false)
+    // Default stack for null / unknown; known id resolves to its own stack.
+    expect(linkPageFontStack(null)).toBe(LINK_PAGE_FONTS[0].stack)
+    expect(linkPageFontStack('nope')).toBe(LINK_PAGE_FONTS[0].stack)
+    expect(linkPageFontStack('rounded')).toBe('var(--font-baloo)')
   })
 
   it('never exposes an unflagged phone, and honours the on/off toggles', () => {
@@ -177,6 +217,38 @@ describe('PATCH /api/trainer/link-page', () => {
         { linkPageId: 'lp-1', label: 'Second', url: 'https://second.com/', order: 1 },
       ],
     })
+  })
+
+  it('accepts the styling fields (font, backgroundUrl, socialsLabel) and normalises them', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({
+      font: 'rounded',
+      backgroundUrl: 'cdn.example.com/bg.jpg',
+      socialsLabel: '  Connect with us  ',
+    }))
+    expect(res.status).toBe(200)
+    const call = h.upsert.mock.calls[0][0]
+    expect(call.update.font).toBe('rounded')
+    // bare domain → https, trimmed heading kept.
+    expect(call.update.backgroundUrl).toBe('https://cdn.example.com/bg.jpg')
+    expect(call.update.socialsLabel).toBe('Connect with us')
+  })
+
+  it('empties the styling fields to null when blank', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({ font: '', backgroundUrl: '', socialsLabel: '   ' }))
+    expect(res.status).toBe(200)
+    const call = h.upsert.mock.calls[0][0]
+    expect(call.update.font).toBeNull()
+    expect(call.update.backgroundUrl).toBeNull()
+    expect(call.update.socialsLabel).toBeNull()
+  })
+
+  it('rejects an unknown font id with 400', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({ font: 'comic-sans' }))
+    expect(res.status).toBe(400)
+    expect(h.upsert).not.toHaveBeenCalled()
   })
 
   it('rejects a non-http(s) link url with 400', async () => {

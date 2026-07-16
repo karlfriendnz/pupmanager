@@ -577,6 +577,9 @@ model LinkPage {
   instagram   String? // handle or full URL
   facebook    String?
   tiktok      String?
+  socialsLabel String? // heading above the social icon row, e.g. "Connect with us"
+  backgroundUrl String? // full-cover background image (Vercel Blob URL)
+  font        String? // font id from LINK_PAGE_FONTS; null = default
   links       LinkPageButton[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

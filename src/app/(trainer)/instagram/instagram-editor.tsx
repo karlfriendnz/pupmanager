@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -16,10 +16,11 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Plus, Trash2, Copy, Check, ExternalLink } from 'lucide-react'
+import { GripVertical, Plus, Trash2, Copy, Check, ExternalLink, ImagePlus, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { buildLinkButtons } from '@/lib/link-page'
+import { buildLinkButtons, buildSocialLinks, LINK_PAGE_FONTS, linkPageFontStack } from '@/lib/link-page'
+import { compressImageFile } from '@/lib/compress-image'
 import { LinkPageView } from '../../l/[slug]/link-page-view'
 
 interface Brand {
@@ -48,6 +49,9 @@ interface Initial {
   instagram: string | null
   facebook: string | null
   tiktok: string | null
+  socialsLabel: string | null
+  font: string | null
+  backgroundUrl: string | null
   links: EditLink[]
 }
 
@@ -72,12 +76,17 @@ export function InstagramEditor({
   const [instagram, setInstagram] = useState(initial.instagram ?? '')
   const [facebook, setFacebook] = useState(initial.facebook ?? '')
   const [tiktok, setTiktok] = useState(initial.tiktok ?? '')
+  const [socialsLabel, setSocialsLabel] = useState(initial.socialsLabel ?? '')
+  const [font, setFont] = useState(initial.font ?? 'default')
+  const [backgroundUrl, setBackgroundUrl] = useState<string | null>(initial.backgroundUrl)
   const [links, setLinks] = useState<EditLink[]>(initial.links)
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [uploadingBg, setUploadingBg] = useState(false)
+  const bgInputRef = useRef<HTMLInputElement>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -106,6 +115,29 @@ export function InstagramEditor({
     setSaved(false)
   }
 
+  async function uploadBackground(file: File) {
+    setError(null)
+    setUploadingBg(true)
+    try {
+      const toSend = await compressImageFile(file)
+      const fd = new FormData()
+      fd.append('file', toSend)
+      fd.append('kind', 'background')
+      const res = await fetch('/api/trainer/branding-image', { method: 'POST', body: fd })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(typeof body.error === 'string' ? body.error : 'Upload failed')
+        return
+      }
+      setBackgroundUrl(body.url)
+      setSaved(false)
+    } catch {
+      setError('Upload failed. Please try again.')
+    } finally {
+      setUploadingBg(false)
+    }
+  }
+
   // Preview buttons — computed exactly like the public page so preview == reality.
   const previewButtons = useMemo(
     () =>
@@ -132,6 +164,12 @@ export function InstagramEditor({
     [headline, bio, showBooking, showWebsite, showContact, instagram, facebook, tiktok, links, brand],
   )
 
+  // Preview socials — the icon row, computed like the public page.
+  const previewSocials = useMemo(
+    () => buildSocialLinks({ instagram: instagram || null, facebook: facebook || null, tiktok: tiktok || null }),
+    [instagram, facebook, tiktok],
+  )
+
   async function save() {
     setSaving(true)
     setError(null)
@@ -148,6 +186,9 @@ export function InstagramEditor({
           instagram: instagram.trim() || null,
           facebook: facebook.trim() || null,
           tiktok: tiktok.trim() || null,
+          socialsLabel: socialsLabel.trim() || null,
+          font,
+          backgroundUrl: backgroundUrl || null,
           // Send only rows that actually have a label + url; keep display order.
           links: links
             .filter((l) => l.label.trim() && l.url.trim())
@@ -241,6 +282,75 @@ export function InstagramEditor({
           </div>
         </section>
 
+        {/* Appearance — background + font */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-semibold text-slate-900">Appearance</h2>
+
+          {/* Background image */}
+          <div className="flex items-center gap-3">
+            <div
+              className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 bg-cover bg-center"
+              style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}
+            >
+              {!backgroundUrl && (
+                <div className="flex h-full w-full items-center justify-center">
+                  <ImagePlus className="h-5 w-5 text-slate-400" />
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-slate-900">Background image</p>
+              <div className="flex items-center gap-3">
+                <Button type="button" variant="ghost" size="sm" onClick={() => bgInputRef.current?.click()} disabled={uploadingBg}>
+                  {uploadingBg ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Uploading…</> : backgroundUrl ? 'Replace' : 'Upload'}
+                </Button>
+                {backgroundUrl && (
+                  <button
+                    type="button"
+                    onClick={() => { setBackgroundUrl(null); setSaved(false) }}
+                    className="text-xs text-slate-400 hover:text-rose-600"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+            <input
+              ref={bgInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) uploadBackground(f)
+                e.target.value = ''
+              }}
+            />
+          </div>
+
+          {/* Font picker */}
+          <div className="mt-4">
+            <p className="mb-2 text-sm font-medium text-slate-900">Font</p>
+            <div className="flex flex-wrap gap-2">
+              {LINK_PAGE_FONTS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => { setFont(f.id); setSaved(false) }}
+                  style={{ fontFamily: linkPageFontStack(f.id) }}
+                  className={`rounded-xl border px-3 py-2 text-sm transition-colors ${
+                    font === f.id
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* Built-in buttons */}
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="mb-1 text-sm font-semibold text-slate-900">Buttons</h2>
@@ -260,6 +370,13 @@ export function InstagramEditor({
             <Input label="Instagram" value={instagram} placeholder="@yourhandle" onChange={(e) => { setInstagram(e.target.value); setSaved(false) }} />
             <Input label="Facebook" value={facebook} placeholder="yourpage" onChange={(e) => { setFacebook(e.target.value); setSaved(false) }} />
             <Input label="TikTok" value={tiktok} placeholder="@yourhandle" onChange={(e) => { setTiktok(e.target.value); setSaved(false) }} />
+            <Input
+              label="Section heading"
+              value={socialsLabel}
+              maxLength={40}
+              placeholder="Connect with us"
+              onChange={(e) => { setSocialsLabel(e.target.value); setSaved(false) }}
+            />
           </div>
         </section>
 
@@ -316,6 +433,10 @@ export function InstagramEditor({
             headline={headline || null}
             bio={bio || null}
             buttons={previewButtons}
+            socials={previewSocials}
+            socialsLabel={socialsLabel || null}
+            backgroundUrl={backgroundUrl}
+            font={font}
             accent={brand.accent}
             interactive={false}
           />
@@ -353,13 +474,12 @@ function Toggle({
         aria-label={label}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className="relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-40"
-        style={{ background: checked && !disabled ? accent : '#cbd5e1' }}
+        // minHeight inline: the app's global `button { min-height:44px }` is
+        // unlayered, so it beats Tailwind's layered min-h-* by cascade layer.
+        style={{ minHeight: 0, ...(checked && !disabled ? { background: accent } : {}) }}
+        className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:opacity-40 ${checked && !disabled ? 'justify-end' : 'justify-start bg-slate-300'}`}
       >
-        <span
-          className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
-          style={{ transform: checked ? 'translateX(22px)' : 'translateX(2px)' }}
-        />
+        <span className="block h-5 w-5 rounded-full bg-white shadow" />
       </button>
     </div>
   )
