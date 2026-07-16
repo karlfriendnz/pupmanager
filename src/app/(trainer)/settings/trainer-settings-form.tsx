@@ -148,7 +148,10 @@ export function TrainerSettingsForm({
   }
 
   return (
-    <Accordion>
+    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      {/* Left column — the business details form */}
+      <div className="min-w-0 lg:flex-1">
+        <Accordion>
       {/* Business details */}
       <AccordionItem title="Business details" subtitle="Your name, business name and contact info" defaultOpen>
         {businessMsg && <Alert variant={businessMsg === 'Saved!' ? 'success' : 'error'} className="mb-3">{businessMsg}</Alert>}
@@ -222,10 +225,15 @@ export function TrainerSettingsForm({
           <Button type="submit" size="sm" className="self-start sm:col-span-2" loading={businessForm.formState.isSubmitting}>Save business details</Button>
         </form>
       </AccordionItem>
+        </Accordion>
+      </div>
 
+      {/* Right column — branding/design */}
+      <div className="min-w-0 lg:flex-1">
+        <Accordion>
       {/* Design */}
-      <AccordionItem title="Design" subtitle="Logo, dashboard background and brand colours">
-        <div className="flex flex-col gap-6 lg:flex-row">
+      <AccordionItem title="Design" subtitle="Logo, dashboard background and brand colours" defaultOpen>
+        <div className="flex flex-col gap-6">
         <div className="min-w-0 flex-1">
         {designMsg && <Alert variant={designMsg === 'Saved!' ? 'success' : 'error'} className="mb-3">{designMsg}</Alert>}
         <form onSubmit={designForm.handleSubmit(saveDesign)} className="flex flex-col gap-4">
@@ -388,8 +396,8 @@ export function TrainerSettingsForm({
           <Button type="submit" size="sm" className="self-start" loading={designForm.formState.isSubmitting}>Save design</Button>
         </form>
         </div>
-        <div className="hidden lg:block lg:w-[228px] lg:flex-shrink-0">
-          <div className="lg:sticky lg:top-4">
+        <div className="hidden lg:block">
+          <div className="w-[228px] mx-auto">
             <BrandPreview
               businessName={businessForm.watch('businessName')}
               logoUrl={logoUrl || ''}
@@ -402,6 +410,8 @@ export function TrainerSettingsForm({
         </div>
         </div>
       </AccordionItem>
-    </Accordion>
+        </Accordion>
+      </div>
+    </div>
   )
 }

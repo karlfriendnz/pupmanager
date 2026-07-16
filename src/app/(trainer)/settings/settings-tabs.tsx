@@ -176,7 +176,7 @@ export function SettingsTabs({
       <div className="min-w-0 flex-1 md:ml-64">
         {/* What this tab is for, and how to get it working — every tab, same shape. */}
         <TabIntro tab={tab} />
-        {profile != null && <div className={tab === 'profile' ? 'max-w-2xl' : 'hidden'}>{profile}</div>}
+        {profile != null && <div className={tab === 'profile' ? 'max-w-6xl' : 'hidden'}>{profile}</div>}
         <div className={tab === 'notifications' ? 'max-w-2xl' : 'hidden'}>{notifications}</div>
         {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}
         {integration != null && <div className={tab === 'integration' ? '' : 'hidden'}>{integration}</div>}
