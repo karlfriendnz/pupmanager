@@ -3,6 +3,7 @@
 // logo/initial, gradient CTA, "Sent with PupManager" footer) but with team copy.
 
 import { escapeHtml } from '@/lib/enquiries'
+import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 
 interface TeamInviteArgs {
   inviteeName: string
@@ -18,7 +19,7 @@ const VALID_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 export function renderTeamInviteEmail(args: TeamInviteArgs): { subject: string; text: string; html: string } {
   const { inviteeName, businessName, inviterName, roleLabel, inviteUrl, logoUrl } = args
-  const accentColor = args.accentColor && VALID_HEX.test(args.accentColor) ? args.accentColor : '#7c3aed'
+  const accentColor = args.accentColor && VALID_HEX.test(args.accentColor) ? args.accentColor : DEFAULT_BRAND_COLOR
   const bgColor = '#F8FAFC'
 
   const safeBusiness = escapeHtml(businessName)

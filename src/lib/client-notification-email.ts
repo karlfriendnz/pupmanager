@@ -3,8 +3,9 @@
 // every outbound email carries the trainer's logo, accent and business name.
 
 import { escapeHtml } from './enquiries'
+import { DEFAULT_BRAND_COLOR } from './brand'
 
-const DEFAULT_ACCENT = '#0d9488' // PupManager teal
+const DEFAULT_ACCENT = DEFAULT_BRAND_COLOR // PupManager teal
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 export interface ClientNotificationEmailArgs {

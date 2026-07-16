@@ -17,6 +17,7 @@
 // branding.
 
 import { escapeHtml } from './enquiries'
+import { DEFAULT_BRAND_COLOR } from './brand'
 
 export interface LoginLinkTrainer {
   businessName: string
@@ -41,7 +42,7 @@ export interface RenderedLoginLink {
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com'
-const DEFAULT_ACCENT = '#7c3aed'
+const DEFAULT_ACCENT = DEFAULT_BRAND_COLOR
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 export function renderLoginLinkEmail({ url, recipientName, trainer }: LoginLinkEmailArgs): RenderedLoginLink {

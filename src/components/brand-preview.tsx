@@ -8,36 +8,32 @@ import {
   CalendarPlus,
 } from 'lucide-react'
 
+import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
+
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
-const DEFAULT_GRADIENT_START = '#2a9da9'
-const DEFAULT_GRADIENT_END = '#1f818c'
 // A friendly sample pup so the preview reads as the real, photo-forward client
 // home rather than an empty mockup. Local asset → no external load to fail.
 const SAMPLE_DOG = '/sample-dog.jpg'
 
 // Phone mockup of the client app, used to live-preview a trainer's branding
-// (logo + accent gradient). Mirrors the real (client)/home screen: a dog-photo
+// (logo + brand colour). Mirrors the real (client)/home screen: a dog-photo
 // hero with the business name overlaid, floating quick-actions, an "Up next"
-// card in the brand gradient, and the client tab bar. Shared by the first-run
-// personalization wizard and Settings → Design so the preview matches both.
+// card in the solid brand colour, and the client tab bar. Shared by the
+// first-run personalization wizard and Settings → Design so the preview matches
+// both.
 export function BrandPreview({
   businessName,
   logoUrl,
-  gradStart,
-  gradEnd,
+  brandColor,
   note,
 }: {
   businessName: string
   logoUrl: string
-  gradStart: string
-  gradEnd: string
+  brandColor: string
   note: string
 }) {
   const name = businessName.trim() || 'Your business'
-  const gs = HEX.test(gradStart) ? gradStart : DEFAULT_GRADIENT_START
-  const ge = HEX.test(gradEnd) ? gradEnd : DEFAULT_GRADIENT_END
-  const gradient = `linear-gradient(135deg, ${gs}, ${ge})`
-  const accent = gs
+  const accent = HEX.test(brandColor) ? brandColor : DEFAULT_BRAND_COLOR
   const soft = `color-mix(in srgb, ${accent} 12%, white)`
 
   return (
@@ -67,7 +63,7 @@ export function BrandPreview({
 
           {/* logo + business name */}
           <div className="relative flex items-center gap-2 px-4 mt-2">
-            <div className="h-8 w-8 rounded-xl overflow-hidden flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ring-1 ring-white/50" style={{ backgroundImage: gradient }}>
+            <div className="h-8 w-8 rounded-xl overflow-hidden flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ring-1 ring-white/50" style={{ background: accent }}>
               {logoUrl
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={logoUrl} alt="" className="h-full w-full object-contain bg-white/90 p-0.5" />
@@ -108,8 +104,8 @@ export function BrandPreview({
             </div>
           )}
 
-          {/* up next — brand gradient */}
-          <div className="rounded-2xl p-3 text-white shadow-sm" style={{ backgroundImage: gradient }}>
+          {/* up next — solid brand colour */}
+          <div className="rounded-2xl p-3 text-white shadow-sm" style={{ background: accent }}>
             <p className="text-[8.5px] font-semibold uppercase tracking-wide text-white/80">Up next · in 3 days</p>
             <p className="text-[12px] font-bold mt-0.5 leading-tight">Loose-lead walking</p>
             <p className="text-[9.5px] text-white/85 mt-0.5">Sat 10:00am · 60 min</p>

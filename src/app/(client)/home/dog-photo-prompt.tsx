@@ -64,7 +64,7 @@ export function DogPhotoPrompt({ dogId, dogName }: { dogId: string; dogName: str
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
-          style={{ backgroundImage: 'linear-gradient(135deg,var(--accent),var(--accent-strong))' }}
+          style={{ background: 'var(--accent)' }}
         >
           {uploading ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading…</> : 'Add photo'}
         </button>

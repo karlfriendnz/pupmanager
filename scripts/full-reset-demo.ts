@@ -73,8 +73,6 @@ async function main() {
       intakeSectionOrder: [],
       intakeFormPublished: false,
       // Brand + wizard fields back to defaults (null = falls back to PupManager teal).
-      appGradientStart: null,
-      appGradientEnd: null,
       emailAccentColor: null,
       clientWelcomeNote: null,
       website: null,

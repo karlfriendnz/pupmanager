@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Loader2, Upload, ImageIcon, ArrowRight, ArrowLeft, Sparkles, PawPrint, Wand2, ChevronLeft, ChevronRight, FlaskConical, Check, Plus, Receipt, CreditCard, Users, Car, ShoppingBag, Trophy, Calendar, NotebookPen, Smartphone, type LucideIcon } from 'lucide-react'
 import { BrandPreview } from '@/components/brand-preview'
+import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { extractLogoColors, type LogoPalette } from '@/lib/logo-colors'
 import { compressImageFile } from '@/lib/compress-image'
 import { type CurrencyCode } from '@/lib/pricing'
@@ -38,17 +39,12 @@ const WELCOME_VIDEO_URL: string | null = null
 // add a welcome note, then look through the real client app with a seeded
 // sample client. Saves via the existing branding endpoints.
 
-const DEFAULT_GRADIENT_START = '#2a9da9'
-const DEFAULT_GRADIENT_END = '#1f818c'
-const DEFAULT_ACCENT = '#7c3aed'
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 export type WizardInitial = {
   businessName: string
   logoUrl: string | null
   emailAccentColor: string | null
-  appGradientStart: string | null
-  appGradientEnd: string | null
   clientWelcomeNote: string | null
   // Public contact details (pre-filled from signup where available).
   website: string | null
@@ -112,9 +108,7 @@ export function PersonalizationWizard({
   const [phone, setPhone] = useState(initial.phone ?? '')
   const [email, setEmail] = useState(initial.publicEmail ?? initial.signupEmail ?? '')
   const [logoUrl, setLogoUrl] = useState(initial.logoUrl ?? '')
-  const [accent, setAccent] = useState(initial.emailAccentColor || DEFAULT_ACCENT)
-  const [gradStart, setGradStart] = useState(initial.appGradientStart || DEFAULT_GRADIENT_START)
-  const [gradEnd, setGradEnd] = useState(initial.appGradientEnd || DEFAULT_GRADIENT_END)
+  const [accent, setAccent] = useState(initial.emailAccentColor || DEFAULT_BRAND_COLOR)
   // Pre-fill a starter note for fresh trainers; keep an existing one untouched.
   const [note, setNote] = useState(initial.clientWelcomeNote?.trim() ? initial.clientWelcomeNote : STARTER_NOTES[0])
   const [starterIdx, setStarterIdx] = useState(0)
@@ -221,11 +215,9 @@ export function PersonalizationWizard({
   const [logoPalette, setLogoPalette] = useState<LogoPalette | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Apply a logo-derived palette to the brand colours (used on upload and from
+  // Apply a logo-derived palette to the brand colour (used on upload and from
   // the "Match my logo" button on the colours step).
   function applyPalette(p: LogoPalette) {
-    setGradStart(p.start)
-    setGradEnd(p.end)
     setAccent(p.accent)
   }
 
@@ -248,8 +240,6 @@ export function PersonalizationWizard({
         publicEmail: email.trim(),
         logoUrl: logoUrl || '',
         emailAccentColor: HEX.test(accent) ? accent : '',
-        appGradientStart: HEX.test(gradStart) ? gradStart : '',
-        appGradientEnd: HEX.test(gradEnd) ? gradEnd : '',
         clientWelcomeNote: note.trim(),
         // Persist the chosen personas so the rest of the app can tailor itself
         // (e.g. the schedule "add" options). Only write once picked so an early
@@ -373,17 +363,15 @@ export function PersonalizationWizard({
     }
   }
 
-  const gs = HEX.test(gradStart) ? gradStart : DEFAULT_GRADIENT_START
-  const ge = HEX.test(gradEnd) ? gradEnd : DEFAULT_GRADIENT_END
-  const brandGradient = `linear-gradient(150deg, ${gs} 0%, ${ge} 100%)`
+  const brandColor = HEX.test(accent) ? accent : DEFAULT_BRAND_COLOR
   const showPhone = step >= 1 && step <= 3
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-md p-4 animate-pm-fade">
       <div className="w-full max-w-4xl rounded-[2rem] bg-white shadow-[0_30px_80px_-20px_rgba(2,18,28,0.55)] ring-1 ring-black/5 overflow-hidden flex flex-col md:flex-row max-h-[94vh] animate-pm-pop">
 
-        {/* ─── Branded stage (desktop) — fixed teal so it never shifts with the trainer's chosen colours ─── */}
-        <aside className="hidden md:flex md:w-[42%] relative flex-col justify-between p-8 text-white overflow-hidden" style={{ backgroundImage: `linear-gradient(150deg, ${DEFAULT_GRADIENT_START} 0%, ${DEFAULT_GRADIENT_END} 100%)` }}>
+        {/* ─── Branded stage (desktop) — fixed teal so it never shifts with the trainer's chosen colour ─── */}
+        <aside className="hidden md:flex md:w-[42%] relative flex-col justify-between p-8 text-white overflow-hidden" style={{ background: DEFAULT_BRAND_COLOR }}>
           <div aria-hidden className="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
           <div aria-hidden className="absolute -left-12 bottom-10 h-40 w-40 rounded-full bg-black/10 blur-2xl" />
           <div aria-hidden className="absolute inset-0 opacity-[0.07] select-none">
@@ -395,7 +383,7 @@ export function PersonalizationWizard({
           {/* center art */}
           <div className="relative flex-1 grid place-items-center py-6">
             {showPhone ? (
-              <BrandPreview businessName={businessName} logoUrl={logoUrl} gradStart={gradStart} gradEnd={gradEnd} note={note} />
+              <BrandPreview businessName={businessName} logoUrl={logoUrl} brandColor={accent} note={note} />
             ) : (
               <div className="text-center px-4">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -419,7 +407,7 @@ export function PersonalizationWizard({
         {/* ─── Content column ─── */}
         <div className="flex-1 min-w-0 flex flex-col max-h-[94vh]">
           {/* mobile brand/progress bar */}
-          <div className="md:hidden px-5 pt-5 pb-4 text-white" style={{ backgroundImage: brandGradient }}>
+          <div className="md:hidden px-5 pt-5 pb-4 text-white" style={{ background: brandColor }}>
             <div className="flex items-center">
               <span className="text-sm font-semibold truncate">{businessName.trim() || 'PupManager'}</span>
             </div>
@@ -486,36 +474,27 @@ export function PersonalizationWizard({
                   </div>
                 </div>
 
-                <MobilePreview show={showPhone} businessName={businessName} logoUrl={logoUrl} gradStart={gradStart} gradEnd={gradEnd} note={note} />
+                <MobilePreview show={showPhone} businessName={businessName} logoUrl={logoUrl} brandColor={accent} note={note} />
               </div>
             )}
 
             {step === 2 && (
               <div key="s2">
-                <StepHead title="Your colours" sub="Pick the gradient your clients see on buttons and highlights — the preview updates live." />
+                <StepHead title="Your colour" sub="Pick the brand colour your clients see on buttons and highlights — the preview updates live." />
                 {logoPalette && (
                   <div className="mt-4 flex items-center gap-2 rounded-xl bg-teal-50 border border-teal-100 px-3 py-2.5">
-                    <span className="flex items-center gap-1">
-                      {[logoPalette.start, logoPalette.end, logoPalette.accent].map((c, i) => (
-                        <span key={i} className="h-4 w-4 rounded-full ring-1 ring-black/10" style={{ backgroundColor: c }} />
-                      ))}
-                    </span>
+                    <span className="h-4 w-4 rounded-full ring-1 ring-black/10" style={{ backgroundColor: logoPalette.accent }} />
                     <p className="text-xs text-slate-600 flex-1">Pulled from your logo.</p>
                     <button type="button" onClick={() => applyPalette(logoPalette)} className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 px-3 h-8 text-xs font-semibold text-white transition-colors">
                       <Wand2 className="h-3.5 w-3.5" /> Match my logo
                     </button>
                   </div>
                 )}
-                <label className="block text-sm font-medium text-slate-700 mt-6 mb-2">App gradient</label>
-                <div className="h-14 w-full rounded-2xl border border-slate-200 mb-3 shadow-inner" style={{ backgroundImage: `linear-gradient(135deg, ${gs}, ${ge})` }} />
-                <div className="flex flex-wrap gap-4">
-                  <ColorField label="Start" value={gradStart} onChange={setGradStart} fallback={DEFAULT_GRADIENT_START} />
-                  <ColorField label="End" value={gradEnd} onChange={setGradEnd} fallback={DEFAULT_GRADIENT_END} />
-                </div>
-                <label className="block text-sm font-medium text-slate-700 mt-6 mb-1">Email accent</label>
-                <p className="text-xs text-slate-400 mb-2">The strip across the top of emails to your clients.</p>
-                <ColorField label="" value={accent} onChange={setAccent} fallback={DEFAULT_ACCENT} />
-                <MobilePreview show={showPhone} businessName={businessName} logoUrl={logoUrl} gradStart={gradStart} gradEnd={gradEnd} note={note} />
+                <label className="block text-sm font-medium text-slate-700 mt-6 mb-2">Brand colour</label>
+                <p className="text-xs text-slate-400 mb-2">One colour for your brand — used across your clients&apos; app and the accent strip on your emails.</p>
+                <div className="h-14 w-full rounded-2xl border border-slate-200 mb-3 shadow-inner" style={{ background: brandColor }} />
+                <ColorField label="" value={accent} onChange={setAccent} fallback={DEFAULT_BRAND_COLOR} />
+                <MobilePreview show={showPhone} businessName={businessName} logoUrl={logoUrl} brandColor={accent} note={note} />
               </div>
             )}
 
@@ -538,7 +517,7 @@ export function PersonalizationWizard({
                 </div>
                 <textarea ref={noteRef} value={note} onChange={e => setNote(e.target.value.slice(0, 500))} rows={4} placeholder="Welcome! So glad to have you and your pup with us. Tap around — your sessions, homework and progress all live here. — the team" className="w-full min-h-[7rem] resize-none overflow-hidden rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-[15px] leading-relaxed focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
                 <p className="text-xs text-slate-400 mt-1.5">{note.length}/500 · edit it freely — this is just a starting point.</p>
-                <MobilePreview show={showPhone} businessName={businessName} logoUrl={logoUrl} gradStart={gradStart} gradEnd={gradEnd} note={note} />
+                <MobilePreview show={showPhone} businessName={businessName} logoUrl={logoUrl} brandColor={accent} note={note} />
               </div>
             )}
 
@@ -719,14 +698,14 @@ export function PersonalizationWizard({
               const wantsClientApp = answers.clientapp !== 'email' && answers.clientapp !== 'none'
               return (
                 <div className="text-center max-w-md mx-auto py-4" key="s5">
-                  <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ backgroundImage: brandGradient }}>
+                  <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: brandColor }}>
                     <Sparkles className="h-8 w-8 text-white" />
                   </div>
                   {wantsClientApp ? (
                     <>
                       <h2 className="font-display text-2xl font-bold text-slate-900 mt-5 tracking-tight">You’re set — take a look</h2>
                       <p className="text-[15px] text-slate-500 mt-2.5 leading-relaxed">Here’s a live preview of what your clients see — branded in your colours, with a sample pup. It’s just a demo; nothing’s added to your account.</p>
-                      <Link href="/preview-as" onClick={() => { try { sessionStorage.setItem('pm_wizard_resume_last', '1') } catch { /* ignore */ } }} className="mt-6 inline-flex items-center gap-2 rounded-2xl px-6 h-12 text-sm font-semibold text-white shadow-lg hover:-translate-y-px transition-transform" style={{ backgroundImage: brandGradient }}>
+                      <Link href="/preview-as" onClick={() => { try { sessionStorage.setItem('pm_wizard_resume_last', '1') } catch { /* ignore */ } }} className="mt-6 inline-flex items-center gap-2 rounded-2xl px-6 h-12 text-sm font-semibold text-white shadow-lg hover:-translate-y-px transition-transform" style={{ background: brandColor }}>
                         See the client app <ArrowRight className="h-4 w-4" />
                       </Link>
                     </>
@@ -743,7 +722,7 @@ export function PersonalizationWizard({
             {step === 7 && (
               <div className="max-w-md mx-auto py-2" key="s6">
                 <div className="text-center">
-                  <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ backgroundImage: brandGradient }}>
+                  <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: brandColor }}>
                     <FlaskConical className="h-8 w-8 text-white" />
                   </div>
                   <h2 className="font-display text-2xl font-bold text-slate-900 mt-5 tracking-tight">How do you want to start?</h2>
@@ -758,7 +737,7 @@ export function PersonalizationWizard({
                     disabled={seeding || busy}
                     className="group flex items-start gap-3 rounded-2xl border-2 border-slate-200 hover:border-teal-400 hover:bg-teal-50/50 p-4 text-left transition-colors disabled:opacity-60"
                   >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white" style={{ backgroundImage: brandGradient }}>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white" style={{ background: brandColor }}>
                       {seeding ? <Loader2 className="h-5 w-5 animate-spin" /> : <FlaskConical className="h-5 w-5" />}
                     </span>
                     <span className="min-w-0">
@@ -820,11 +799,11 @@ function StepHead({ title, sub }: { title: string; sub: string }) {
 }
 
 // Phone preview shown inline on mobile (the desktop stage carries it otherwise).
-function MobilePreview(props: { show: boolean; businessName: string; logoUrl: string; gradStart: string; gradEnd: string; note: string }) {
+function MobilePreview(props: { show: boolean; businessName: string; logoUrl: string; brandColor: string; note: string }) {
   if (!props.show) return null
   return (
     <div className="md:hidden mt-7 flex justify-center">
-      <BrandPreview businessName={props.businessName} logoUrl={props.logoUrl} gradStart={props.gradStart} gradEnd={props.gradEnd} note={props.note} />
+      <BrandPreview businessName={props.businessName} logoUrl={props.logoUrl} brandColor={props.brandColor} note={props.note} />
     </div>
   )
 }

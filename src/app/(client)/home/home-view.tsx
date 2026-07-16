@@ -243,7 +243,7 @@ export function ClientHomeView({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={heroImg} alt={dogName} className="absolute inset-0 h-full w-full object-cover object-[50%_30%]" />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundImage: 'linear-gradient(135deg,var(--accent),var(--accent-strong))' }}>
+            <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--accent)' }}>
               <DogIcon className="h-16 w-16 text-white/80" />
             </div>
           )}
@@ -298,7 +298,7 @@ export function ClientHomeView({
               <Link
                 href={`/my-sessions/${upcomingSession.id}`}
                 className="mt-3 block rounded-3xl p-5 text-white active:scale-[0.99] transition-transform"
-                style={{ backgroundImage: 'linear-gradient(135deg,var(--accent),var(--accent-strong))' }}
+                style={{ background: 'var(--accent)' }}
               >
                 <p className="text-xs font-medium text-white/75">{countdownLabel(upcomingSession.scheduledAt)}</p>
                 <h3 className="font-display text-xl font-bold leading-tight mt-0.5">{upcomingSession.title}</h3>
@@ -346,7 +346,7 @@ export function ClientHomeView({
                     )}
                   </div>
                 ) : (
-                  <div className="w-28 flex-shrink-0 flex items-center justify-center" style={{ backgroundImage: 'linear-gradient(135deg,var(--accent),var(--accent-strong))' }}>
+                  <div className="w-28 flex-shrink-0 flex items-center justify-center" style={{ background: 'var(--accent)' }}>
                     <DogIcon className="h-9 w-9 text-white" />
                   </div>
                 )}

@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { escapeHtml } from '@/lib/enquiries'
 import { emailBodyToHtml, emailHtmlToText } from '@/lib/email-html'
+import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 
 const schema = z.object({
   subject: z.string().min(1).max(200),
@@ -58,7 +59,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const validHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
   const accentColor = enquiry.trainer.emailAccentColor && validHex.test(enquiry.trainer.emailAccentColor)
     ? enquiry.trainer.emailAccentColor
-    : '#7c3aed'
+    : DEFAULT_BRAND_COLOR
 
   // The composer emits sanitized rich-text HTML; emailBodyToHtml inlines styles
   // and still gracefully handles any legacy plain-text body. emailHtmlToText

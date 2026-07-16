@@ -6,6 +6,7 @@ import { AppShell } from '@/components/shared/app-shell'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { countUnreadMessages } from '@/lib/unread-messages'
 import { getEnabledAddons } from '@/lib/billing'
+import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { IntakeGate } from './intake-gate'
 import { PreviewBanner } from './preview-banner'
 import { PreviewOnboardingGuide } from './preview-onboarding-guide'
@@ -18,7 +19,7 @@ export default async function ClientLayout({ children }: { children: React.React
     where: { id: active.clientId },
     include: {
       user: { select: { name: true, email: true } },
-      trainer: { select: { id: true, businessName: true, logoUrl: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true, phone: true, showPhoneToClients: true, website: true, publicEmail: true, intakeSectionOrder: true, intakeSystemFieldSections: true } },
+      trainer: { select: { id: true, businessName: true, logoUrl: true, emailAccentColor: true, phone: true, showPhoneToClients: true, website: true, publicEmail: true, intakeSectionOrder: true, intakeSystemFieldSections: true } },
       dog: { select: { id: true, name: true } },
       dogs: { select: { id: true, name: true } },
       customFieldValues: { select: { fieldId: true, dogId: true, value: true } },
@@ -153,26 +154,19 @@ export default async function ClientLayout({ children }: { children: React.React
     ? 0
     : await countUnreadMessages({ kind: 'client', clientId: clientProfile.id, userId: clientProfile.userId })
 
-  // Per-trainer accent gradient. The trainer's start colour drives --accent
-  // (and re-derives the soft/tint/surface shades on this wrapper so they follow
-  // the start colour rather than the :root teal); the end colour drives
-  // --accent-strong (the gradient's far stop), falling back to a derived
-  // darker shade. Null start → the PupManager teal default on :root.
+  // Per-trainer brand colour. A single solid colour drives --accent (and
+  // re-derives the soft/tint/surface shades on this wrapper so they follow the
+  // brand colour rather than the :root teal). --accent-strong is set to the SAME
+  // colour so any `linear-gradient(--accent, --accent-strong)` renders solid.
   const t = clientProfile.trainer
-  const start = t.appGradientStart ?? t.emailAccentColor
-  const end = t.appGradientEnd
-  let themeStyle: React.CSSProperties | undefined
-  if (start) {
-    themeStyle = {
-      ['--accent' as string]: start,
-      ['--accent-strong' as string]: end ?? 'color-mix(in oklab, var(--accent), black 14%)',
-      ['--accent-soft' as string]: 'color-mix(in srgb, var(--accent) 14%, white)',
-      ['--accent-tint' as string]: 'color-mix(in srgb, var(--accent) 7%, white)',
-      ['--surface' as string]: 'color-mix(in srgb, var(--accent) 4%, #f7fafb)',
-    } as React.CSSProperties
-  } else if (end) {
-    themeStyle = { ['--accent-strong' as string]: end } as React.CSSProperties
-  }
+  const brand = t.emailAccentColor ?? DEFAULT_BRAND_COLOR
+  const themeStyle = {
+    ['--accent' as string]: brand,
+    ['--accent-strong' as string]: brand,
+    ['--accent-soft' as string]: 'color-mix(in srgb, var(--accent) 14%, white)',
+    ['--accent-tint' as string]: 'color-mix(in srgb, var(--accent) 7%, white)',
+    ['--surface' as string]: 'color-mix(in srgb, var(--accent) 4%, #f7fafb)',
+  } as React.CSSProperties
 
   // Does this user work with more than one trainer? Drives the "Switch
   // trainer" entry in the menu/sidebar. Skipped in preview (trainer-as-client).

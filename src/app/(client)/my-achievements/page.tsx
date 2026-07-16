@@ -36,7 +36,7 @@ export default async function AchievementsPage() {
     <>
       <PageHeader title="Achievements" />
       <div className="px-4 pt-5 pb-10 max-w-3xl mx-auto w-full space-y-5">
-        <div className="rounded-3xl p-5 text-white" style={{ backgroundImage: 'linear-gradient(135deg,var(--accent),var(--accent-strong))' }}>
+        <div className="rounded-3xl p-5 text-white" style={{ background: 'var(--accent)' }}>
           <p className="font-display text-2xl font-extrabold">{earnedCount} badge{earnedCount === 1 ? '' : 's'} earned</p>
           <p className="text-sm text-white/85">Keep training to unlock more 🐾</p>
         </div>

@@ -1,5 +1,6 @@
 import { escapeHtml } from '@/lib/enquiries'
 import { emailBodyToHtml, emailHtmlToText } from '@/lib/email-html'
+import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 
 // Shared renderer for trainer→client email. Used by BOTH the one-off Messages
 // composer (`/api/messages/email`) and the bulk Clients-list broadcast
@@ -47,7 +48,7 @@ export interface BuiltClientEmail {
   text: string
 }
 
-const DEFAULT_ACCENT = '#0d9488'
+const DEFAULT_ACCENT = DEFAULT_BRAND_COLOR
 const VALID_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 // Resolve the supported {{placeholders}}. Subject is plain text; body is HTML

@@ -8,6 +8,7 @@ import { NOTIFICATION_TYPES, renderTemplate } from '@/lib/notification-types'
 import { resolvePref } from '@/lib/notification-prefs'
 import { escapeHtml } from '@/lib/enquiries'
 import { emailBodyToHtml, emailHtmlToText } from '@/lib/email-html'
+import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { renderWeeklySummaryEmail, type SessionRow, type TaskRow } from '@/lib/weekly-summary-email'
 import type { NotificationType } from '@/generated/prisma'
 
@@ -154,7 +155,7 @@ function renderTestEmailHtml({ label, title, body, recipientName }: {
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:560px;">
           <tr>
             <td style="background:#ffffff;border-radius:18px;box-shadow:0 1px 3px rgba(15,23,42,0.04),0 8px 24px rgba(15,23,42,0.06);overflow:hidden;">
-              <div style="height:4px;background:#7c3aed;"></div>
+              <div style="height:4px;background:${DEFAULT_BRAND_COLOR};"></div>
               <div style="padding:18px 32px 0;">
                 <span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">Test send</span>
                 <span style="margin-left:8px;font-size:12px;color:#94a3b8;">${escapeHtml(label)}</span>

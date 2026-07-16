@@ -13,6 +13,7 @@ import { Alert } from '@/components/ui/alert'
 import { COUNTRIES } from '@/lib/countries'
 import { Accordion, AccordionItem } from '@/components/ui/accordion'
 import { BrandPreview } from '@/components/brand-preview'
+import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { TIMEZONES } from '@/lib/timezones'
 import { PERSONAS } from '@/lib/onboarding-recommendations'
 import { ImagePlus, Loader2 } from 'lucide-react'
@@ -36,13 +37,9 @@ const designSchema = z.object({
   dashboardBgUrl: z.string().url().optional().or(z.literal('')),
   // Hex (#rgb / #rrggbb) — empty string clears to default.
   emailAccentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
-  appGradientStart: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
-  appGradientEnd: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
 })
 
-const DEFAULT_EMAIL_ACCENT = '#7c3aed'
-const DEFAULT_GRADIENT_START = '#2a9da9'
-const DEFAULT_GRADIENT_END = '#1f818c'
+const DEFAULT_EMAIL_ACCENT = DEFAULT_BRAND_COLOR
 
 type BusinessData = z.infer<typeof businessSchema>
 type DesignData = z.infer<typeof designSchema>
@@ -52,7 +49,7 @@ export function TrainerSettingsForm({
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; dashboardBgUrl: string | null; emailAccentColor: string | null; appGradientStart: string | null; appGradientEnd: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; dashboardBgUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
@@ -83,16 +80,12 @@ export function TrainerSettingsForm({
       logoUrl: profile.logoUrl ?? '',
       dashboardBgUrl: profile.dashboardBgUrl ?? '',
       emailAccentColor: profile.emailAccentColor ?? '',
-      appGradientStart: profile.appGradientStart ?? '',
-      appGradientEnd: profile.appGradientEnd ?? '',
     },
   })
 
   const logoUrl = designForm.watch('logoUrl')
   const dashboardBgUrl = designForm.watch('dashboardBgUrl')
   const emailAccentColor = designForm.watch('emailAccentColor')
-  const appGradientStart = designForm.watch('appGradientStart')
-  const appGradientEnd = designForm.watch('appGradientEnd')
   const logoInputRef = useRef<HTMLInputElement>(null)
   const bgInputRef = useRef<HTMLInputElement>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
@@ -139,8 +132,6 @@ export function TrainerSettingsForm({
         logoUrl: data.logoUrl,
         dashboardBgUrl: data.dashboardBgUrl,
         emailAccentColor: data.emailAccentColor,
-        appGradientStart: data.appGradientStart,
-        appGradientEnd: data.appGradientEnd,
       }),
     })
     setDesignMsg(res.ok ? 'Saved!' : 'Failed to save.')
@@ -310,10 +301,10 @@ export function TrainerSettingsForm({
             </div>
           </div>
 
-          {/* Email accent / top-border colour. */}
+          {/* Brand colour — one solid colour across the client app + emails. */}
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-slate-700">Reply email border colour</label>
-            <p className="text-xs text-slate-400 -mt-1">The thin accent strip across the top of the email card. Match it to your brand.</p>
+            <label className="text-sm font-medium text-slate-700">Brand colour</label>
+            <p className="text-xs text-slate-400 -mt-1">One colour for your brand — used across your clients&apos; app and the accent strip on your emails.</p>
             <div className="flex items-center gap-3">
               <div
                 className="h-12 w-12 rounded-xl border border-slate-200 flex-shrink-0"
@@ -324,7 +315,7 @@ export function TrainerSettingsForm({
                 value={emailAccentColor || DEFAULT_EMAIL_ACCENT}
                 onChange={e => designForm.setValue('emailAccentColor', e.target.value, { shouldDirty: true })}
                 className="h-10 w-14 rounded border border-slate-200 cursor-pointer"
-                aria-label="Email accent colour"
+                aria-label="Brand colour"
               />
               <Input
                 type="text"
@@ -343,51 +334,8 @@ export function TrainerSettingsForm({
                 </button>
               )}
             </div>
-          </div>
-
-          {/* Client-app accent gradient (start + end). */}
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-slate-700">App accent gradient</label>
-            <p className="text-xs text-slate-400 -mt-1">The two colours used across your clients’ app — buttons, the “Up next” card, highlights. Start fades into end.</p>
-            <div
-              className="h-14 w-full rounded-2xl border border-slate-200"
-              style={{ backgroundImage: `linear-gradient(135deg, ${appGradientStart || DEFAULT_GRADIENT_START}, ${appGradientEnd || DEFAULT_GRADIENT_END})` }}
-            />
-            <div className="flex flex-wrap items-center gap-4 mt-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 w-9">Start</span>
-                <input
-                  type="color"
-                  value={appGradientStart || DEFAULT_GRADIENT_START}
-                  onChange={e => designForm.setValue('appGradientStart', e.target.value, { shouldDirty: true })}
-                  className="h-10 w-14 rounded border border-slate-200 cursor-pointer"
-                  aria-label="Gradient start colour"
-                />
-                <Input type="text" value={appGradientStart ?? ''} onChange={e => designForm.setValue('appGradientStart', e.target.value, { shouldDirty: true })} placeholder={DEFAULT_GRADIENT_START} className="w-28 font-mono text-sm" />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 w-9">End</span>
-                <input
-                  type="color"
-                  value={appGradientEnd || DEFAULT_GRADIENT_END}
-                  onChange={e => designForm.setValue('appGradientEnd', e.target.value, { shouldDirty: true })}
-                  className="h-10 w-14 rounded border border-slate-200 cursor-pointer"
-                  aria-label="Gradient end colour"
-                />
-                <Input type="text" value={appGradientEnd ?? ''} onChange={e => designForm.setValue('appGradientEnd', e.target.value, { shouldDirty: true })} placeholder={DEFAULT_GRADIENT_END} className="w-28 font-mono text-sm" />
-              </div>
-              {(appGradientStart || appGradientEnd) && (
-                <button
-                  type="button"
-                  onClick={() => { designForm.setValue('appGradientStart', '', { shouldDirty: true }); designForm.setValue('appGradientEnd', '', { shouldDirty: true }) }}
-                  className="text-xs text-slate-400 hover:text-red-500"
-                >
-                  Reset
-                </button>
-              )}
-            </div>
             {designForm.formState.errors.emailAccentColor && (
-              <p className="text-xs text-red-500">Use a hex colour like #7c3aed or #fff.</p>
+              <p className="text-xs text-red-500">Use a hex colour like #2a9da9 or #fff.</p>
             )}
           </div>
 
@@ -401,8 +349,7 @@ export function TrainerSettingsForm({
             <BrandPreview
               businessName={businessForm.watch('businessName')}
               logoUrl={logoUrl || ''}
-              gradStart={appGradientStart || ''}
-              gradEnd={appGradientEnd || ''}
+              brandColor={emailAccentColor || DEFAULT_BRAND_COLOR}
               note=""
             />
             <p className="mt-3 text-center text-xs text-slate-400">Live preview of your client app</p>

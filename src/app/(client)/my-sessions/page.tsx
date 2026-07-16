@@ -121,7 +121,7 @@ export default async function MySessionsPage() {
             <h2 className="font-display text-lg font-bold text-slate-900 mb-2.5">Upcoming</h2>
             <div className="space-y-3">
               {next && (
-                <Link href={`/my-sessions/${next.id}`} className="block rounded-3xl p-5 text-white active:scale-[0.99] transition-transform" style={{ backgroundImage: 'linear-gradient(135deg,var(--accent),var(--accent-strong))' }}>
+                <Link href={`/my-sessions/${next.id}`} className="block rounded-3xl p-5 text-white active:scale-[0.99] transition-transform" style={{ background: 'var(--accent)' }}>
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-xs font-medium text-white/75">{formatDateTime(next.scheduledAt)}</p>

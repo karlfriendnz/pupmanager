@@ -1,4 +1,5 @@
 import { escapeHtml } from '@/lib/enquiries'
+import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 
 // Branded "here's your free download" email for a lead-magnet sign-up. Mirrors
 // the shell in client-email.ts but with a prominent Download button and the
@@ -23,7 +24,7 @@ export interface BuildLeadMagnetEmailInput {
   emailIntro?: string | null
 }
 
-const DEFAULT_ACCENT = '#0d9488'
+const DEFAULT_ACCENT = DEFAULT_BRAND_COLOR
 const VALID_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 export function buildLeadMagnetEmail({

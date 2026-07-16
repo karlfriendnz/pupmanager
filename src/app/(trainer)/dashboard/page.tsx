@@ -65,7 +65,7 @@ export default async function DashboardPage({
   const brandingP = prisma.trainerProfile.findUnique({
     where: { id: trainerId },
     select: {
-      businessName: true, logoUrl: true, emailAccentColor: true, appGradientStart: true, appGradientEnd: true,
+      businessName: true, logoUrl: true, emailAccentColor: true,
       clientWelcomeNote: true, website: true, phone: true, publicEmail: true, signupCountry: true,
       payoutCurrency: true, pendingTeamInvites: true, connectChargesEnabled: true,
       subscriptionStatus: true, trialEndsAt: true, stripeSubscriptionId: true,
@@ -154,8 +154,6 @@ export default async function DashboardPage({
     businessName: brandingProfile?.businessName ?? '',
     logoUrl: brandingProfile?.logoUrl ?? null,
     emailAccentColor: brandingProfile?.emailAccentColor ?? null,
-    appGradientStart: brandingProfile?.appGradientStart ?? null,
-    appGradientEnd: brandingProfile?.appGradientEnd ?? null,
     clientWelcomeNote: brandingProfile?.clientWelcomeNote ?? null,
     website: brandingProfile?.website ?? null,
     phone: brandingProfile?.phone ?? null,

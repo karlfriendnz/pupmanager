@@ -43,11 +43,9 @@ const patchSchema = z.object({
   publicEmail: z.string().max(200).optional().or(z.literal('')),
   dashboardBgUrl: z.string().url().optional().or(z.literal('')),
   inviteTemplate: z.string().optional(),
-  // 3- or 6-digit hex (with leading #), or empty string to clear.
+  // Brand colour — 3- or 6-digit hex (with leading #), or empty string to clear.
+  // Drives the client-app accent AND the accent strip on outbound emails.
   emailAccentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
-  // Client-app accent gradient start + end (hex, or empty to clear).
-  appGradientStart: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
-  appGradientEnd: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
   // Personal welcome note shown to clients on the app home (empty to clear).
   clientWelcomeNote: z.string().max(500).optional().or(z.literal('')),
   // Schedule view prefs. Hours 0–23, days 1=Mon..7=Sun, end > start.
@@ -123,8 +121,6 @@ export async function PATCH(req: Request) {
   // Empty string from the colour input means "clear this" — store as null
   // so the email template falls back to the default.
   if (data.emailAccentColor === '') data.emailAccentColor = null as unknown as string
-  if (data.appGradientStart === '') data.appGradientStart = null as unknown as string
-  if (data.appGradientEnd === '') data.appGradientEnd = null as unknown as string
   if (data.clientWelcomeNote === '') data.clientWelcomeNote = null as unknown as string
   if (data.website === '') data.website = null as unknown as string
   if (data.publicEmail === '') data.publicEmail = null as unknown as string

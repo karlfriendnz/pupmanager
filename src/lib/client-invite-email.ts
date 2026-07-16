@@ -5,6 +5,7 @@
 
 import { escapeHtml } from './enquiries'
 import { emailBodyToHtml, emailHtmlToText } from './email-html'
+import { DEFAULT_BRAND_COLOR } from './brand'
 
 export interface ClientInviteEmailArgs {
   clientName: string
@@ -32,7 +33,7 @@ export interface RenderedClientInvite {
   trainerEmail: string
 }
 
-const DEFAULT_ACCENT = '#7c3aed'
+const DEFAULT_ACCENT = DEFAULT_BRAND_COLOR
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 export function renderClientInviteEmail(args: ClientInviteEmailArgs): RenderedClientInvite {
