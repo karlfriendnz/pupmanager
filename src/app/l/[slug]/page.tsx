@@ -86,7 +86,8 @@ export default async function LinkInBioPage({
       instagram: lp.instagram,
       facebook: lp.facebook,
       tiktok: lp.tiktok,
-      links: lp.links.map((l) => ({ label: l.label, url: l.url })),
+      links: lp.links.map((l) => ({ id: l.id, label: l.label, url: l.url })),
+      itemOrder: lp.itemOrder,
     },
     {
       slug,

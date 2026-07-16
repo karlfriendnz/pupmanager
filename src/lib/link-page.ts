@@ -11,7 +11,14 @@ export interface LinkPageConfig {
   instagram: string | null
   facebook: string | null
   tiktok: string | null
-  links: { label: string; url: string }[]
+  links: { id: string; label: string; url: string }[]
+  /**
+   * Global order across ALL buttons. Keys: 'book' | 'website' | 'contact' |
+   * 'custom:<link id>'. 'contact' expands to the email button then the call
+   * button (both adjacent, still gated on availability). An empty array = the
+   * legacy default order, so old pages render exactly as before.
+   */
+  itemOrder: string[]
 }
 
 // ── Font choice ──────────────────────────────────────────────────────────────
@@ -128,38 +135,71 @@ export function socialUrl(kind: 'instagram' | 'facebook' | 'tiktok', value: stri
 
 /**
  * Build the ordered list of MAIN buttons the public page renders, from the
- * trainer's branding + their link-page config. Order: Book → custom links →
- * Website → Email → Call. Socials are NOT included here — they render as their
- * own icon row (see buildSocialLinks). A phone is only ever exposed when
- * showPhoneToClients is true.
+ * trainer's branding + their link-page config. The ORDER is driven by
+ * `cfg.itemOrder` (keys: 'book' | 'website' | 'contact' | 'custom:<id>'); any
+ * available button whose key isn't listed there is appended AFTER, in the legacy
+ * default order (Book → custom links → Website → Email → Call) — so a page with
+ * an empty itemOrder renders exactly as it always has. 'contact' expands to the
+ * Email button then the Call button (adjacent). Socials are NOT included here —
+ * they render as their own icon row (see buildSocialLinks). A phone is only ever
+ * exposed when showPhoneToClients is true.
  */
 export function buildLinkButtons(cfg: LinkPageConfig, trainer: LinkPageTrainer): LinkButton[] {
-  const out: LinkButton[] = []
-
-  if (cfg.showBooking) {
-    out.push({ key: 'book', label: 'Book a session', href: `/c/${trainer.slug}/book`, icon: 'calendar', external: false })
+  // Each order-key maps to the button(s) it emits. Only AVAILABLE buttons are
+  // added as candidates (toggled on + valid target), so gating is unchanged.
+  const candidates = new Map<string, LinkButton[]>()
+  const defaultOrder: string[] = []
+  const addCandidate = (key: string, buttons: LinkButton[]) => {
+    candidates.set(key, buttons)
+    defaultOrder.push(key)
   }
 
-  cfg.links.forEach((l, i) => {
+  if (cfg.showBooking) {
+    addCandidate('book', [{ key: 'book', label: 'Book a session', href: `/c/${trainer.slug}/book`, icon: 'calendar', external: false }])
+  }
+
+  cfg.links.forEach((l) => {
     const label = l.label.trim()
     const href = safeExternalUrl(l.url)
-    if (label && href) out.push({ key: `link-${i}`, label, href, icon: 'link', external: true })
+    if (label && href) {
+      const key = `custom:${l.id}`
+      addCandidate(key, [{ key, label, href, icon: 'link', external: true }])
+    }
   })
 
   if (cfg.showWebsite) {
     const href = safeExternalUrl(trainer.website)
-    if (href) out.push({ key: 'website', label: 'Visit our website', href, icon: 'globe', external: true })
+    if (href) addCandidate('website', [{ key: 'website', label: 'Visit our website', href, icon: 'globe', external: true }])
   }
 
   if (cfg.showContact) {
+    const contact: LinkButton[] = []
     const email = (trainer.publicEmail ?? '').trim()
-    if (email) out.push({ key: 'email', label: 'Email us', href: `mailto:${email}`, icon: 'mail', external: false })
+    if (email) contact.push({ key: 'email', label: 'Email us', href: `mailto:${email}`, icon: 'mail', external: false })
     const phone = (trainer.phone ?? '').trim()
     if (trainer.showPhoneToClients && phone) {
-      out.push({ key: 'call', label: 'Call us', href: `tel:${phone.replace(/\s+/g, '')}`, icon: 'phone', external: false })
+      contact.push({ key: 'call', label: 'Call us', href: `tel:${phone.replace(/\s+/g, '')}`, icon: 'phone', external: false })
     }
+    if (contact.length > 0) addCandidate('contact', contact)
   }
 
+  const out: LinkButton[] = []
+  const emitted = new Set<string>()
+  // First, everything the trainer explicitly ordered (stale/unknown keys skipped).
+  for (const key of cfg.itemOrder) {
+    const buttons = candidates.get(key)
+    if (buttons && !emitted.has(key)) {
+      out.push(...buttons)
+      emitted.add(key)
+    }
+  }
+  // Then any remaining candidate (new/unsaved) in the legacy default order.
+  for (const key of defaultOrder) {
+    if (!emitted.has(key)) {
+      out.push(...candidates.get(key)!)
+      emitted.add(key)
+    }
+  }
   return out
 }
 

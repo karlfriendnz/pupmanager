@@ -53,11 +53,35 @@ interface Initial {
   font: string | null
   backgroundUrl: string | null
   links: EditLink[]
+  itemOrder: string[]
 }
 
 // Stable-ish local id for a freshly-added row (dnd keys need to be stable).
 let tempSeq = 0
 const nextTempId = () => `new-${tempSeq++}`
+
+// Build the FULL on-screen order: every item present exactly once, honouring the
+// saved order and appending anything missing (new links, first load) in the
+// legacy default order (book → customs → website → contact). Stale keys drop.
+function resolveItemOrder(order: string[], linkIds: string[]): string[] {
+  const all = ['book', ...linkIds.map((id) => `custom:${id}`), 'website', 'contact']
+  const allSet = new Set(all)
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const k of order) {
+    if (allSet.has(k) && !seen.has(k)) {
+      result.push(k)
+      seen.add(k)
+    }
+  }
+  for (const k of all) {
+    if (!seen.has(k)) {
+      result.push(k)
+      seen.add(k)
+    }
+  }
+  return result
+}
 
 export function InstagramEditor({
   publicUrl,
@@ -80,6 +104,8 @@ export function InstagramEditor({
   const [font, setFont] = useState(initial.font ?? 'default')
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(initial.backgroundUrl)
   const [links, setLinks] = useState<EditLink[]>(initial.links)
+  // Global item order (keys: 'book' | 'website' | 'contact' | 'custom:<id>').
+  const [order, setOrder] = useState<string[]>(initial.itemOrder ?? [])
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -90,15 +116,18 @@ export function InstagramEditor({
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
+  // The full ordered list of items shown in (and dragged within) the single stack.
+  const resolvedOrder = useMemo(() => resolveItemOrder(order, links.map((l) => l.id)), [order, links])
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    setLinks((prev) => {
-      const oldIndex = prev.findIndex((l) => l.id === active.id)
-      const newIndex = prev.findIndex((l) => l.id === over.id)
-      if (oldIndex === -1 || newIndex === -1) return prev
-      return arrayMove(prev, oldIndex, newIndex)
-    })
+    const items = resolvedOrder
+    const oldIndex = items.indexOf(String(active.id))
+    const newIndex = items.indexOf(String(over.id))
+    if (oldIndex === -1 || newIndex === -1) return
+    // Materialise the moved order (all items now explicit) so it round-trips.
+    setOrder(arrayMove(items, oldIndex, newIndex))
     setSaved(false)
   }
 
@@ -107,11 +136,14 @@ export function InstagramEditor({
     setSaved(false)
   }
   function addLink() {
-    setLinks((prev) => [...prev, { id: nextTempId(), label: '', url: '' }])
+    const id = nextTempId()
+    setLinks((prev) => [...prev, { id, label: '', url: '' }])
+    setOrder((prev) => [...resolveItemOrder(prev, links.map((l) => l.id)), `custom:${id}`])
     setSaved(false)
   }
   function removeLink(id: string) {
     setLinks((prev) => prev.filter((l) => l.id !== id))
+    setOrder((prev) => prev.filter((k) => k !== `custom:${id}`))
     setSaved(false)
   }
 
@@ -151,7 +183,8 @@ export function InstagramEditor({
           instagram: instagram || null,
           facebook: facebook || null,
           tiktok: tiktok || null,
-          links: links.map((l) => ({ label: l.label, url: l.url })),
+          links: links.map((l) => ({ id: l.id, label: l.label, url: l.url })),
+          itemOrder: order,
         },
         {
           slug: brand.slug,
@@ -161,7 +194,7 @@ export function InstagramEditor({
           showPhoneToClients: brand.showPhoneToClients,
         },
       ),
-    [headline, bio, showBooking, showWebsite, showContact, instagram, facebook, tiktok, links, brand],
+    [headline, bio, showBooking, showWebsite, showContact, instagram, facebook, tiktok, links, order, brand],
   )
 
   // Preview socials — the icon row, computed like the public page.
@@ -174,6 +207,21 @@ export function InstagramEditor({
     setSaving(true)
     setError(null)
     try {
+      // Persist links in the GLOBAL on-screen order (not the raw `links` array),
+      // keeping only complete rows. itemOrder's custom keys are then in the same
+      // order as the links payload, so the server can map placeholder ids → real
+      // ids by position and the arrangement round-trips exactly.
+      const resolved = resolveItemOrder(order, links.map((l) => l.id))
+      const linkById = new Map(links.map((l) => [l.id, l]))
+      const savedLinks = resolved
+        .filter((k) => k.startsWith('custom:'))
+        .map((k) => linkById.get(k.slice('custom:'.length)))
+        .filter((l): l is EditLink => !!l && l.label.trim() !== '' && l.url.trim() !== '')
+      const savedIds = new Set(savedLinks.map((l) => l.id))
+      const itemOrder = resolved.filter(
+        (k) => !k.startsWith('custom:') || savedIds.has(k.slice('custom:'.length)),
+      )
+
       const res = await fetch('/api/trainer/link-page', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -189,10 +237,8 @@ export function InstagramEditor({
           socialsLabel: socialsLabel.trim() || null,
           font,
           backgroundUrl: backgroundUrl || null,
-          // Send only rows that actually have a label + url; keep display order.
-          links: links
-            .filter((l) => l.label.trim() && l.url.trim())
-            .map((l) => ({ label: l.label.trim(), url: l.url.trim() })),
+          links: savedLinks.map((l) => ({ label: l.label.trim(), url: l.url.trim() })),
+          itemOrder,
         }),
       })
       if (!res.ok) {
@@ -351,17 +397,6 @@ export function InstagramEditor({
           </div>
         </section>
 
-        {/* Built-in buttons */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="mb-1 text-sm font-semibold text-slate-900">Buttons</h2>
-          <p className="mb-3 text-xs text-slate-500">Toggle the built-in buttons on or off.</p>
-          <div className="flex flex-col divide-y divide-slate-100">
-            <Toggle label="Book a session" hint="Links to your booking page" checked={showBooking} onChange={setShowBooking} accent={brand.accent} />
-            <Toggle label="Website" hint={brand.website ? brand.website : 'Add a website in Settings to use this'} checked={showWebsite} onChange={setShowWebsite} accent={brand.accent} disabled={!brand.website} />
-            <Toggle label="Contact" hint="Email and, if shared, call buttons" checked={showContact} onChange={setShowContact} accent={brand.accent} />
-          </div>
-        </section>
-
         {/* Socials */}
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-sm font-semibold text-slate-900">Social links</h2>
@@ -380,12 +415,12 @@ export function InstagramEditor({
           </div>
         </section>
 
-        {/* Custom links */}
+        {/* Buttons & links — one reorderable stack (built-ins + custom links) */}
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Custom links</h2>
-              <p className="text-xs text-slate-500">Drag to reorder.</p>
+              <h2 className="text-sm font-semibold text-slate-900">Buttons &amp; links</h2>
+              <p className="text-xs text-slate-500">Drag to reorder. Toggle the built-in buttons on or off.</p>
             </div>
             <Button type="button" variant="secondary" size="sm" onClick={addLink} disabled={links.length >= 20}>
               <Plus className="h-4 w-4" />
@@ -393,27 +428,66 @@ export function InstagramEditor({
             </Button>
           </div>
 
-          {links.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-400">
-              No custom links yet.
-            </p>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={links.map((l) => l.id)} strategy={verticalListSortingStrategy}>
-                <div className="flex flex-col gap-2">
-                  {links.map((l) => (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={resolvedOrder} strategy={verticalListSortingStrategy}>
+              <div className="flex flex-col gap-2">
+                {resolvedOrder.map((key) => {
+                  if (key === 'book') {
+                    return (
+                      <SortableBuiltinRow
+                        key="book"
+                        sortableId="book"
+                        label="Book a session"
+                        hint="Links to your booking page"
+                        checked={showBooking}
+                        onChange={(v) => { setShowBooking(v); setSaved(false) }}
+                        accent={brand.accent}
+                      />
+                    )
+                  }
+                  if (key === 'website') {
+                    return (
+                      <SortableBuiltinRow
+                        key="website"
+                        sortableId="website"
+                        label="Website"
+                        hint={brand.website ? brand.website : 'Add a website in Settings to use this'}
+                        checked={showWebsite}
+                        onChange={(v) => { setShowWebsite(v); setSaved(false) }}
+                        accent={brand.accent}
+                        disabled={!brand.website}
+                      />
+                    )
+                  }
+                  if (key === 'contact') {
+                    return (
+                      <SortableBuiltinRow
+                        key="contact"
+                        sortableId="contact"
+                        label="Contact"
+                        hint="Email and, if shared, call buttons"
+                        checked={showContact}
+                        onChange={(v) => { setShowContact(v); setSaved(false) }}
+                        accent={brand.accent}
+                      />
+                    )
+                  }
+                  const id = key.slice('custom:'.length)
+                  const link = links.find((l) => l.id === id)
+                  if (!link) return null
+                  return (
                     <SortableLinkRow
-                      key={l.id}
-                      link={l}
-                      showHandle={links.length > 1}
-                      onChange={(patch) => updateLink(l.id, patch)}
-                      onRemove={() => removeLink(l.id)}
+                      key={key}
+                      sortableId={key}
+                      link={link}
+                      onChange={(patch) => updateLink(link.id, patch)}
+                      onRemove={() => removeLink(link.id)}
                     />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          )}
+                  )
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         </section>
 
         <div className="flex items-center gap-3">
@@ -446,7 +520,10 @@ export function InstagramEditor({
   )
 }
 
-function Toggle({
+// A built-in button row (Book / Website / Contact) inside the sortable stack:
+// drag handle + label/hint + the canonical on/off switch, inline.
+function SortableBuiltinRow({
+  sortableId,
   label,
   hint,
   checked,
@@ -454,6 +531,7 @@ function Toggle({
   accent,
   disabled,
 }: {
+  sortableId: string
   label: string
   hint?: string
   checked: boolean
@@ -461,9 +539,25 @@ function Toggle({
   accent: string
   disabled?: boolean
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId })
+  const style = {
+    transform: transform ? CSS.Transform.toString(transform) : undefined,
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
   return (
-    <div className="flex items-center justify-between py-3">
-      <div className="min-w-0">
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        className="cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <div className="min-w-0 flex-1 py-1">
         <p className="text-sm font-medium text-slate-900">{label}</p>
         {hint && <p className="truncate text-xs text-slate-500">{hint}</p>}
       </div>
@@ -486,17 +580,17 @@ function Toggle({
 }
 
 function SortableLinkRow({
+  sortableId,
   link,
-  showHandle,
   onChange,
   onRemove,
 }: {
+  sortableId: string
   link: EditLink
-  showHandle: boolean
   onChange: (patch: Partial<EditLink>) => void
   onRemove: () => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: link.id })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sortableId })
   const style = {
     transform: transform ? CSS.Transform.toString(transform) : undefined,
     transition,
@@ -505,17 +599,15 @@ function SortableLinkRow({
 
   return (
     <div ref={setNodeRef} style={style} className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-2">
-      {showHandle && (
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          aria-label="Drag to reorder"
-          className="mt-3 cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
-      )}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        className="mt-3 cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
       <div className="flex flex-1 flex-col gap-2">
         <Input
           value={link.label}

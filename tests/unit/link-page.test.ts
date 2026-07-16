@@ -39,7 +39,7 @@ describe('link-page helpers', () => {
     expect(socialUrl('instagram', null)).toBeNull()
   })
 
-  it('buildLinkButtons orders Book → custom → website → contact, tags icons, and gates phone (socials excluded)', () => {
+  it('buildLinkButtons: empty itemOrder → default Book → custom → website → email → call, icons, phone gate (socials excluded)', () => {
     const buttons = buildLinkButtons(
       {
         headline: null,
@@ -50,7 +50,8 @@ describe('link-page helpers', () => {
         instagram: '@jess',
         facebook: null,
         tiktok: null,
-        links: [{ label: 'Guide', url: 'guide.com' }],
+        links: [{ id: 'g1', label: 'Guide', url: 'guide.com' }],
+        itemOrder: [], // no saved order → renders exactly as it always has
       },
       {
         slug: 'jess',
@@ -61,20 +62,66 @@ describe('link-page helpers', () => {
       },
     )
     // Socials are NOT in the main button list any more.
-    expect(buttons.map((b) => b.key)).toEqual(['book', 'link-0', 'website', 'email', 'call'])
+    expect(buttons.map((b) => b.key)).toEqual(['book', 'custom:g1', 'website', 'email', 'call'])
     expect(buttons.some((b) => b.key === 'instagram')).toBe(false)
     expect(buttons[0].href).toBe('/c/jess/book')
-    expect(buttons.find((b) => b.key === 'link-0')!.href).toBe('https://guide.com/')
+    expect(buttons.find((b) => b.key === 'custom:g1')!.href).toBe('https://guide.com/')
     expect(buttons.find((b) => b.key === 'call')!.href).toBe('tel:0215550000')
     // Every main button carries a leading icon id.
     expect(buttons.find((b) => b.key === 'book')!.icon).toBe('calendar')
-    expect(buttons.find((b) => b.key === 'link-0')!.icon).toBe('link')
+    expect(buttons.find((b) => b.key === 'custom:g1')!.icon).toBe('link')
     expect(buttons.find((b) => b.key === 'website')!.icon).toBe('globe')
     expect(buttons.find((b) => b.key === 'email')!.icon).toBe('mail')
     expect(buttons.find((b) => b.key === 'call')!.icon).toBe('phone')
     // Custom + website are external; book/email/call are not.
     expect(buttons.find((b) => b.key === 'website')!.external).toBe(true)
     expect(buttons.find((b) => b.key === 'email')!.external).toBe(false)
+  })
+
+  it('buildLinkButtons respects itemOrder — website first, contact expands to email+call in place, then book, then custom', () => {
+    const buttons = buildLinkButtons(
+      {
+        headline: null,
+        bio: null,
+        showBooking: true,
+        showWebsite: true,
+        showContact: true,
+        instagram: null,
+        facebook: null,
+        tiktok: null,
+        links: [{ id: 'g1', label: 'Guide', url: 'guide.com' }],
+        itemOrder: ['website', 'contact', 'book', 'custom:g1'],
+      },
+      {
+        slug: 'jess',
+        website: 'jessdogs.com',
+        publicEmail: 'hi@jessdogs.com',
+        phone: '021 555 0000',
+        showPhoneToClients: true,
+      },
+    )
+    // 'contact' expands to email then call, in the position it was ordered.
+    expect(buttons.map((b) => b.key)).toEqual(['website', 'email', 'call', 'book', 'custom:g1'])
+  })
+
+  it('buildLinkButtons ignores stale/unknown custom keys and appends new candidates in default order', () => {
+    const buttons = buildLinkButtons(
+      {
+        headline: null,
+        bio: null,
+        showBooking: true,
+        showWebsite: false,
+        showContact: false,
+        instagram: null,
+        facebook: null,
+        tiktok: null,
+        links: [{ id: 'g1', label: 'Guide', url: 'guide.com' }],
+        // 'custom:gone' no longer exists (skipped); g1 isn't listed → appended after.
+        itemOrder: ['custom:gone', 'book'],
+      },
+      { slug: 'jess', website: null, publicEmail: null, phone: null, showPhoneToClients: false },
+    )
+    expect(buttons.map((b) => b.key)).toEqual(['book', 'custom:g1'])
   })
 
   it('buildSocialLinks returns the icon-row entries (platform + href), not buttons', () => {
@@ -112,6 +159,7 @@ describe('link-page helpers', () => {
         facebook: null,
         tiktok: null,
         links: [],
+        itemOrder: [],
       },
       {
         slug: 'jess',
@@ -131,10 +179,11 @@ describe('link-page helpers', () => {
         headline: null, bio: null, showBooking: false, showWebsite: false, showContact: false,
         instagram: null, facebook: null, tiktok: null,
         links: [
-          { label: 'Bad', url: 'javascript:alert(1)' },
-          { label: '', url: 'ok.com' },
-          { label: 'Good', url: 'good.com' },
+          { id: 'b1', label: 'Bad', url: 'javascript:alert(1)' },
+          { id: 'e1', label: '', url: 'ok.com' },
+          { id: 'g1', label: 'Good', url: 'good.com' },
         ],
+        itemOrder: [],
       },
       { slug: 'jess', website: null, publicEmail: null, phone: null, showPhoneToClients: false },
     )
@@ -157,8 +206,10 @@ const h = vi.hoisted(() => ({
   guardPermission: vi.fn(),
   requireSameOrigin: vi.fn((): Response | null => null),
   upsert: vi.fn(),
+  update: vi.fn(),
   deleteMany: vi.fn(),
   createMany: vi.fn(),
+  findMany: vi.fn(),
   findUnique: vi.fn(),
 }))
 
@@ -166,12 +217,12 @@ vi.mock('@/lib/membership', () => ({ guardPermission: h.guardPermission }))
 vi.mock('@/lib/csrf', () => ({ requireSameOrigin: h.requireSameOrigin }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    linkPage: { findUnique: h.findUnique, upsert: h.upsert },
-    linkPageButton: { deleteMany: h.deleteMany, createMany: h.createMany },
+    linkPage: { findUnique: h.findUnique, upsert: h.upsert, update: h.update },
+    linkPageButton: { deleteMany: h.deleteMany, createMany: h.createMany, findMany: h.findMany },
     $transaction: (fn: (tx: unknown) => unknown) =>
       fn({
-        linkPage: { upsert: h.upsert, findUnique: h.findUnique },
-        linkPageButton: { deleteMany: h.deleteMany, createMany: h.createMany },
+        linkPage: { upsert: h.upsert, findUnique: h.findUnique, update: h.update },
+        linkPageButton: { deleteMany: h.deleteMany, createMany: h.createMany, findMany: h.findMany },
       }),
   },
 }))
@@ -193,8 +244,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.requireSameOrigin.mockReturnValue(null)
   h.upsert.mockResolvedValue({ id: 'lp-1', trainerId: 't-1' })
+  h.update.mockResolvedValue({ id: 'lp-1', trainerId: 't-1' })
   h.deleteMany.mockResolvedValue({ count: 0 })
   h.createMany.mockResolvedValue({ count: 0 })
+  h.findMany.mockResolvedValue([])
   h.findUnique.mockResolvedValue({ id: 'lp-1', trainerId: 't-1', links: [] })
 })
 
@@ -217,6 +270,38 @@ describe('PATCH /api/trainer/link-page', () => {
         { linkPageId: 'lp-1', label: 'Second', url: 'https://second.com/', order: 1 },
       ],
     })
+  })
+
+  it('accepts itemOrder and reconciles custom:* placeholder keys to the freshly-created link ids', async () => {
+    asOwner('t-1')
+    // The replaced links come back (ordered by `order`) with their new server ids.
+    h.findMany.mockResolvedValue([{ id: 'srv-A' }, { id: 'srv-B' }])
+    const res = await PATCH(patchReq({
+      links: [
+        { label: 'First', url: 'first.com' },
+        { label: 'Second', url: 'second.com' },
+      ],
+      // custom keys carry client placeholders and appear in the same order as links.
+      itemOrder: ['website', 'custom:new-0', 'book', 'custom:new-1', 'contact'],
+    }))
+    expect(res.status).toBe(200)
+    // Built-ins pass through; each custom placeholder maps to the Nth new id.
+    expect(h.update).toHaveBeenCalledWith({
+      where: { id: 'lp-1' },
+      data: { itemOrder: ['website', 'custom:srv-A', 'book', 'custom:srv-B', 'contact'] },
+    })
+  })
+
+  it('stores itemOrder verbatim on the config row when links are not being replaced', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({ itemOrder: ['contact', 'book', 'website'] }))
+    expect(res.status).toBe(200)
+    // No link replacement → no reconciling update, order saved as-is.
+    expect(h.deleteMany).not.toHaveBeenCalled()
+    expect(h.update).not.toHaveBeenCalled()
+    const call = h.upsert.mock.calls[0][0]
+    expect(call.update.itemOrder).toEqual(['contact', 'book', 'website'])
+    expect(call.create.itemOrder).toEqual(['contact', 'book', 'website'])
   })
 
   it('accepts the styling fields (font, backgroundUrl, socialsLabel) and normalises them', async () => {

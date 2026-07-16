@@ -73,6 +73,10 @@ const patchSchema = z.object({
   font: fontField,
   backgroundUrl: backgroundField,
   links: z.array(linkSchema).max(20).optional(),
+  // Global button order. Keys: 'book' | 'website' | 'contact' | 'custom:<id>'.
+  // When `links` is also present the 'custom:*' entries carry client-side
+  // placeholder ids; they're reconciled to the freshly-created ids below.
+  itemOrder: z.array(z.string()).max(60).optional(),
 })
 
 export async function GET() {
@@ -99,14 +103,19 @@ export async function PATCH(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
-  const { links, ...fields } = parsed.data
+  const { links, itemOrder, ...fields } = parsed.data
 
   const page = await prisma.$transaction(async (tx) => {
+    // When links are NOT being replaced, itemOrder's 'custom:*' keys already
+    // reference live ids, so it can be stored verbatim in the upsert. When links
+    // ARE replaced the ids change, so we defer itemOrder to a reconciling update.
+    const verbatimOrder = links === undefined && itemOrder !== undefined ? { itemOrder } : {}
+
     // Upsert the config row, scoped to the caller's own trainer only.
     const lp = await tx.linkPage.upsert({
       where: { trainerId },
-      create: { trainerId, ...fields },
-      update: fields,
+      create: { trainerId, ...fields, ...verbatimOrder },
+      update: { ...fields, ...verbatimOrder },
     })
 
     // Replace the whole link set when provided, assigning order by array index.
@@ -116,6 +125,32 @@ export async function PATCH(req: Request) {
         await tx.linkPageButton.createMany({
           data: links.map((l, i) => ({ linkPageId: lp.id, label: l.label, url: l.url, order: i })),
         })
+      }
+
+      // Reconcile itemOrder against the freshly-assigned ids. The client sends
+      // 'custom:*' keys in the SAME order as `links`, so we walk the new ids
+      // (fetched back in `order` = array-index order) and swap each placeholder
+      // for its real id. Built-in keys pass through; leftover/stale customs drop.
+      if (itemOrder !== undefined) {
+        const created =
+          links.length > 0
+            ? await tx.linkPageButton.findMany({
+                where: { linkPageId: lp.id },
+                orderBy: { order: 'asc' },
+                select: { id: true },
+              })
+            : []
+        const newIds = created.map((c) => c.id)
+        let ci = 0
+        const reconciled: string[] = []
+        for (const key of itemOrder) {
+          if (key.startsWith('custom:')) {
+            if (ci < newIds.length) reconciled.push(`custom:${newIds[ci++]}`)
+          } else {
+            reconciled.push(key)
+          }
+        }
+        await tx.linkPage.update({ where: { id: lp.id }, data: { itemOrder: reconciled } })
       }
     }
 
