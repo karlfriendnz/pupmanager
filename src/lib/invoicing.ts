@@ -178,6 +178,144 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
   }
 }
 
+export interface ManualSaleLine {
+  description: string
+  quantity: number
+  unitAmountCents: number
+  xeroAccountCode?: string | null
+}
+
+export interface ManualSaleInput {
+  trainerId: string
+  clientId: string
+  /** Arbitrary lines — products picked from the catalogue and/or free-text items. */
+  lines: ManualSaleLine[]
+  /**
+   * Caller-generated key that makes the sale idempotent. Stored as `sourceId`
+   * against sourceType 'MANUAL'. A POS sale is rung up on a phone, mid-groom —
+   * a double-tap or a retry on a flaky connection must never raise (or charge)
+   * two invoices, and unlike the assignment flows there's no natural source row
+   * to key off.
+   */
+  idempotencyKey: string
+}
+
+/**
+ * Raise an UNPAID receivable for an ad-hoc, trainer-initiated IN-PERSON sale —
+ * the "instant sale" (POS) flow. Unlike createInvoiceForAssignment (priced off a
+ * package/product) and createCancellationFeeInvoice (a single fixed fee), the
+ * lines here are arbitrary and multi-item: whatever the trainer rang up.
+ *
+ * The invoice is payable immediately through the existing /pay/<payToken> page —
+ * the trainer shows that link as a QR code and the client pays on their own
+ * phone, which mints a Stripe Checkout Session via the same direct-charge path
+ * as every other purchase. No new Stripe code, and nothing to install.
+ *
+ * Idempotent on (trainer, client, 'MANUAL', idempotencyKey).
+ *
+ * NOT best-effort, unlike its siblings in this file: this IS the trainer's
+ * action rather than a side effect of one, so a failure must surface instead of
+ * silently returning null and leaving them to think the sale went through.
+ * Throws on failure; the route maps that to a 500. The post-commit side effects
+ * (client email, Xero push) stay best-effort and never block the sale.
+ */
+export async function createManualSaleInvoice(
+  input: ManualSaleInput,
+): Promise<{ id: string; payToken: string | null; amountCents: number }> {
+  if (input.lines.length === 0) throw new Error('a sale needs at least one line')
+
+  // Scope the client to this trainer — an id alone must never be enough to
+  // invoice someone else's client.
+  const client = await prisma.clientProfile.findFirst({
+    where: { id: input.clientId, trainerId: input.trainerId },
+    select: { id: true },
+  })
+  if (!client) throw new Error('client not found for this trainer')
+
+  const lines = input.lines.map((l, i) => ({
+    description: l.description,
+    quantity: l.quantity,
+    unitAmountCents: l.unitAmountCents,
+    amountCents: l.quantity * l.unitAmountCents,
+    xeroAccountCode: l.xeroAccountCode ?? null,
+    sortOrder: i,
+  }))
+  const amountCents = lines.reduce((sum, l) => sum + l.amountCents, 0)
+  if (amountCents <= 0) throw new Error('a sale needs a total above zero')
+
+  // Idempotency: same key ⇒ same invoice, never a second one.
+  const existing = await prisma.invoice.findFirst({
+    where: {
+      trainerId: input.trainerId,
+      clientId: input.clientId,
+      sourceType: 'MANUAL',
+      sourceId: input.idempotencyKey,
+    },
+    select: { id: true, payToken: true, amountCents: true },
+  })
+  if (existing) return existing
+
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: input.trainerId },
+    select: {
+      autoSendInvoices: true,
+      payoutCurrency: true,
+      businessName: true,
+      sandboxBilling: true,
+      xeroConnection: { select: { id: true } },
+    },
+  })
+  if (!trainer) throw new Error('trainer not found')
+
+  const currency = trainer.payoutCurrency ?? 'nzd'
+  const autoSend = trainer.autoSendInvoices === true
+  // The first line labels the invoice, matching the assignment flows; a
+  // multi-item sale reads as "Ball thrower +2 more".
+  const description = lines.length === 1
+    ? lines[0].description
+    : `${lines[0].description} +${lines.length - 1} more`
+
+  const invoice = await prisma.invoice.create({
+    data: {
+      trainerId: input.trainerId,
+      clientId: input.clientId,
+      amountCents,
+      currency,
+      status: 'UNPAID',
+      description,
+      sourceType: 'MANUAL',
+      sourceId: input.idempotencyKey,
+      sentAt: autoSend ? new Date() : null,
+      lines: { create: lines },
+    },
+    select: { id: true, payToken: true, amountCents: true },
+  })
+
+  // Same post-commit pattern as the assignment flow: never make the trainer
+  // stand there while Resend/Xero round-trip.
+  const xeroEnabled = !!trainer.xeroConnection && (!trainer.sandboxBilling || process.env.NODE_ENV === 'development')
+  after(() => {
+    const tasks: Promise<unknown>[] = []
+    if (autoSend) {
+      tasks.push(notifyClientOfInvoice({
+        trainerId: input.trainerId,
+        clientId: input.clientId,
+        businessName: trainer.businessName ?? 'Your trainer',
+        description,
+        amountCents,
+        currency,
+        payToken: invoice.payToken,
+      }).catch((e) => console.error('[invoicing] manual sale notify failed', invoice.id, e)))
+    }
+    if (xeroEnabled) {
+      tasks.push(syncReceivableToXero(invoice.id).catch((e) => console.error('[invoicing] manual sale xero push failed', invoice.id, e)))
+    }
+    return Promise.all(tasks)
+  })
+
+  return invoice
+}
+
 /**
  * Raise a fixed-amount receivable for a client-initiated CANCELLATION FEE. Unlike
  * createInvoiceForAssignment (which prices off the package/product/class), the

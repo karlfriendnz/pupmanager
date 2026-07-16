@@ -39,6 +39,11 @@ export const NUDGE_COPY: Record<string, { title: string; body: string; ctaLabel:
     body: 'Branded badges your clients earn and share — free marketing every time an owner posts.',
     ctaLabel: 'Set up Achievements',
   },
+  pos: {
+    title: 'Sell on the spot',
+    body: 'Pick a client, add what they’re buying and take payment right there — or record it to settle later.',
+    ctaLabel: 'Set up Instant sale',
+  },
   shop: {
     title: 'Sell to your clients',
     body: 'A branded in-app shop for the leads, toys and extras they already ask you for.',

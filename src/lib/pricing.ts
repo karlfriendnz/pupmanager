@@ -45,7 +45,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram'
+export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos'
 
 export interface AddonDef {
   id: AddonId
@@ -82,6 +82,15 @@ export const ADDONS: AddonDef[] = [
     name: 'Client shop',
     description: 'In-app checkout for extras like leads, toys and gift cards. Branded with your name and colours.',
     price: { AUD: 27, NZD: 29, GBP: 15, CAD: 23, USD: 21, ZAR: 389 },
+  },
+  {
+    id: 'pos',
+    name: 'Instant sale',
+    // Free on purpose: every sale it drives is a Connect charge we already clip
+    // a platform fee on, so volume pays for it — no Stripe Price IDs to wire.
+    description: 'Sell in person, on the spot. Pick a client, add what they’re buying, and either take payment there and then or record it to settle later.',
+    free: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
   {
     id: 'marketing',
