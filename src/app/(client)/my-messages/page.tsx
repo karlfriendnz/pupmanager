@@ -39,12 +39,14 @@ export default async function ClientMessagesPage() {
   const trainerName = clientProfile.trainer.user.name ?? clientProfile.trainer.businessName ?? 'Your trainer'
 
   return (
-    // Full-height chat surface — fills <main>'s flex column and reclaims
-    // its pb-24 padding (mobile) / pb-8 padding (desktop) so the composer
-    // sits flush above the bottom tab nav. The trainer header sits at
-    // top, messages scroll in the middle, composer pins at bottom — no
-    // sticky positioning needed because the page itself never scrolls.
-    <div className="flex flex-col flex-1 min-h-0 -mb-24 md:-mb-8">
+    // Full-height chat surface — fills <main>'s flex column. On mobile it
+    // reclaims main's pb-24 (the bottom tab-nav gutter) so the composer sits
+    // flush above the tabs. On desktop main has no bottom padding, so there's
+    // nothing to reclaim — a negative margin there just forces this flex child
+    // 2rem past the viewport, scrolling the whole page and clipping the
+    // composer. The header pins top, messages scroll in the middle, composer
+    // pins bottom — the page itself never scrolls.
+    <div className="flex flex-col flex-1 min-h-0 -mb-24 md:mb-0">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 bg-white flex-shrink-0">
         <div className="h-9 w-9 rounded-full bg-accent-soft text-accent font-bold text-sm flex items-center justify-center flex-shrink-0">
           {trainerName[0].toUpperCase()}

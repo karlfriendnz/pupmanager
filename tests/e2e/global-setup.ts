@@ -57,6 +57,12 @@ export default async function globalSetup() {
         phone: '+6421000000',
         subscriptionStatus: 'ACTIVE',
         seatCount: 10, // room to invite the 5 trainers
+        // Card payments live (no real Stripe call is made in these specs) and
+        // the card fee passed on to the client — so the client-app invoice list
+        // must quote balance + surcharge, exactly like the pay page does.
+        acceptPaymentsEnabled: true,
+        connectChargesEnabled: true,
+        passProcessingFeeToClient: true,
       },
     })
     await prisma.trainerMembership.create({
@@ -120,12 +126,19 @@ export default async function globalSetup() {
 
     // A sample client + dog + a package, so assigned-trainer flows have targets.
     // The client is assigned to the staff member so they can see it.
+    // Password + phone so the CLIENT app can be logged into (my-invoices spec):
+    // the (client) layout's intake gate demands a name + phone before it lets
+    // anyone past, so a phone-less client would only ever see the gate.
+    const clientHash = await bcrypt.hash(SEED.client.password, 12)
     const clientUser = await prisma.user.create({
-      data: { email: 'client@e2e.test', name: 'Sarah Client', role: 'CLIENT', emailVerified: new Date() },
+      data: {
+        email: SEED.client.email, name: SEED.client.name, role: 'CLIENT', emailVerified: new Date(),
+        accounts: { create: { type: 'credentials', provider: 'credentials', providerAccountId: clientHash } },
+      },
     })
     const dog = await prisma.dog.create({ data: { name: 'Bailey' } })
     await prisma.clientProfile.create({
-      data: { id: SEED.assignedClientId, userId: clientUser.id, trainerId: profile.id, dogId: dog.id, status: 'ACTIVE', assignedMembershipId: staffMembership.id },
+      data: { id: SEED.assignedClientId, userId: clientUser.id, trainerId: profile.id, dogId: dog.id, status: 'ACTIVE', assignedMembershipId: staffMembership.id, phone: '+6421000009' },
     })
     // A second, unassigned client (fixed id) — staff should NOT see this one.
     const otherUser = await prisma.user.create({
@@ -187,8 +200,23 @@ export default async function globalSetup() {
       data: {
         id: INV.editableInvoiceId, trainerId: profile.id, clientId: SEED.assignedClientId,
         amountCents: 20000, amountPaidCents: 0, currency: 'nzd', status: 'UNPAID',
+        // Fixed pay token so the client-app spec can assert the invoice links at
+        // the right /pay/<token> (the same page the emailed link goes to).
+        payToken: INV.editableInvoicePayToken,
         description: 'Editable Invoice', sourceType: 'MANUAL',
         lines: { create: [{ description: 'Consult', quantity: 1, unitAmountCents: 20000, amountCents: 20000, sortOrder: 0 }] },
+      },
+    })
+    // A settled invoice on the assigned client — the client app's "Paid"
+    // receipt list needs history to show. Nothing is owed on it, so it never
+    // appears in an outstanding/receivable assertion.
+    await prisma.invoice.create({
+      data: {
+        id: INV.paidInvoiceId, trainerId: profile.id, clientId: SEED.assignedClientId,
+        amountCents: 12000, amountPaidCents: 12000, currency: 'nzd', status: 'PAID',
+        description: 'Puppy Starter Pack', sourceType: 'MANUAL',
+        sentAt: new Date('2026-05-02'), paidAt: new Date('2026-05-04'),
+        lines: { create: [{ description: 'Starter pack', quantity: 1, unitAmountCents: 12000, amountCents: 12000, sortOrder: 0 }] },
       },
     })
     // A Business B invoice — the cross-tenant guard target.
@@ -198,6 +226,22 @@ export default async function globalSetup() {
         amountCents: 5000, amountPaidCents: 0, currency: 'nzd', status: 'UNPAID',
         description: 'Rival Invoice', sourceType: 'MANUAL',
         lines: { create: [{ description: 'Rival Item', quantity: 1, unitAmountCents: 5000, amountCents: 5000, sortOrder: 0 }] },
+      },
+    })
+
+    // A homework task on the assigned client, dated now so it shows in the
+    // client home's "This week" list. The homework-log spec opens it and logs
+    // a practice against it.
+    await prisma.trainingTask.create({
+      data: {
+        id: SEED.homework.taskId,
+        clientId: SEED.assignedClientId,
+        dogId: dog.id,
+        date: new Date(),
+        title: SEED.homework.title,
+        description: 'Practise loose-lead walking for 10 minutes on a quiet street.',
+        repetitions: 3,
+        videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
       },
     })
 

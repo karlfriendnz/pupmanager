@@ -31,11 +31,12 @@ const PUBLIC_PATHS = [
 const TRAINER_PATHS = [
   '/dashboard', '/clients', '/schedule', '/templates', '/library',
   '/progress', '/messages', '/ai-tools', '/settings', '/help',
-  '/packages', '/products',
+  '/packages', '/products', '/notifications',
 ]
 
-// Client-only route prefixes
-const CLIENT_PATHS = ['/home', '/my-profile', '/my-messages', '/my-help', '/my-sessions', '/my-shop', '/notifications', '/my-classes', '/my-dogs', '/my-achievements', '/my-availability', '/switch-trainer']
+// Client-only route prefixes. The client feed is /my-notifications (matching the
+// rest of the client's /my-* routes); the bare /notifications is the trainer feed.
+const CLIENT_PATHS = ['/home', '/my-profile', '/my-messages', '/my-help', '/my-sessions', '/my-shop', '/my-notifications', '/my-classes', '/my-dogs', '/my-achievements', '/my-availability', '/switch-trainer']
 
 // The admin area lives under app.pupmanager.com/admin. `admin.pupmanager.com`
 // is a convenience host that just redirects there — no separate deployment,

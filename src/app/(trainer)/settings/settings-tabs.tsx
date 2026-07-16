@@ -1,8 +1,9 @@
 'use client'
 
 import { Fragment, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark } from 'lucide-react'
+import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 import { TabIntro } from './tab-intro'
 
@@ -120,11 +121,21 @@ export function SettingsTabs({
 
   return (
     <div className="flex flex-col md:flex-row md:gap-8">
-      {/* Tab rail — the app's left menu, wearing the same clothes. Vertical on
-          md+, a horizontal scroll row on mobile (where the real nav is a bottom
-          bar, so there's nothing to match). */}
-      <nav className="md:w-64 md:flex-shrink-0">
-        <div className="flex md:flex-col gap-1 overflow-x-auto overflow-y-hidden -mx-4 px-4 md:mx-0 md:px-3 md:py-4 border-b border-slate-200 md:border-b-0 md:border-r md:border-slate-100 md:bg-white md:rounded-2xl mb-6 md:mb-0 md:sticky md:top-4">
+      {/* Tab rail — the app's left menu, wearing the same clothes. On md+ it's a
+          fixed full-height rail flush to the left edge, matching the main app's
+          sidebar (top-14 → bottom, white panel, right border). On mobile it's a
+          horizontal scroll row (where the real nav is a bottom bar). */}
+      <nav className="md:fixed md:top-14 md:bottom-0 md:left-0 md:z-30 md:flex md:w-64 md:flex-col md:bg-white md:border-r md:border-slate-100">
+        <div className="flex md:flex-col md:flex-1 gap-1 overflow-x-auto overflow-y-hidden md:overflow-x-hidden md:overflow-y-auto -mx-4 px-4 md:mx-0 md:px-3 md:py-4 border-b border-slate-200 md:border-b-0 mb-6 md:mb-0">
+          {/* Settings hides the app's main nav, so the rail is the only way back
+              out — lead with an explicit exit to the dashboard. */}
+          <Link
+            href="/dashboard"
+            className="relative shrink-0 md:shrink flex items-center gap-3 px-3 py-2.5 text-sm font-medium whitespace-nowrap rounded-xl transition-colors text-slate-600 hover:bg-slate-50 hover:text-slate-900 md:mb-1 md:border-b md:border-slate-100 md:pb-3 md:rounded-b-none"
+          >
+            <ArrowLeft className="h-5 w-5 flex-shrink-0" />
+            Back to app
+          </Link>
           {tabs.map((t, idx, arr) => {
             const Icon = t.icon
             const active = tab === t.id
@@ -160,8 +171,9 @@ export function SettingsTabs({
       </nav>
 
       {/* Content. Single-column forms get a readable cap (max-w-2xl); wide
-          master-detail panels (Forms, Email templates) use the full width. */}
-      <div className="min-w-0 flex-1">
+          master-detail panels (Forms, Email templates) use the full width.
+          md:ml-64 clears the fixed left rail (which is out of flow). */}
+      <div className="min-w-0 flex-1 md:ml-64">
         {/* What this tab is for, and how to get it working — every tab, same shape. */}
         <TabIntro tab={tab} />
         {profile != null && <div className={tab === 'profile' ? 'max-w-2xl' : 'hidden'}>{profile}</div>}

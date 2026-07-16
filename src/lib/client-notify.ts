@@ -56,7 +56,7 @@ async function doNotify({ userId, trainerId, type, vars = {}, link, ctaLabel, se
 
   // Push — iOS (APNs) + Android (FCM) via the unified sender.
   if (channelOn('PUSH')) {
-    await sendPush(userId, { alert: { title, body }, customData: { type, path: link ?? '/notifications' } })
+    await sendPush(userId, { alert: { title, body }, customData: { type, path: link ?? '/my-notifications' } })
   }
 
   // Email — branded to the triggering trainer (logo, accent, business name).
@@ -84,7 +84,7 @@ async function doNotify({ userId, trainerId, type, vars = {}, link, ctaLabel, se
         detail: vars.detail ?? null,
         sessions,
         ctaLabel: ctaLabel ?? 'Open in PupManager',
-        ctaHref: `${APP_URL}${link ?? '/notifications'}`,
+        ctaHref: `${APP_URL}${link ?? '/my-notifications'}`,
       })
       await sendEmail({
         to: user.email,

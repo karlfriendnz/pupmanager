@@ -22,6 +22,10 @@ export const SEED = {
   staff: { email: 'staffer@e2e.test', password: 'Password123!', name: 'Sam Staff' },
   // Platform admin for /admin/* specs.
   admin: { email: 'admin@e2e.test', password: 'Password123!', name: 'Ada Admin' },
+  // The seeded dog owner (Business A's assigned client). Has a password + phone
+  // so the CLIENT app can actually be logged into (the client layout's intake
+  // gate requires name + phone).
+  client: { email: 'client@e2e.test', password: 'Password123!', name: 'Sarah Client' },
   // A published public embed form, used to test the public-form rate limiter.
   embedFormId: 'e2eembedform0000000000000',
   // Business A clients with fixed ids: one assigned to staff (mass-assignment
@@ -47,10 +51,23 @@ export const SEED = {
     // drives the "paid $X of $Y" / "Partially paid" UI assertions.
     partialInvoiceId: 'e2epartialinv00000000000x',
     // An editable UNPAID invoice on Business A's assignedClient — the edit spec
-    // opens it, changes a line, and asserts the total updates.
+    // opens it, changes a line, and asserts the total updates. It carries a
+    // FIXED pay token so the client-app spec (my-invoices) can assert the "Pay"
+    // link points at the right public /pay/<token> page.
     editableInvoiceId: 'e2eeditableinv00000000000',
+    editableInvoicePayToken: 'e2epaytoken0000000000000',
+    // A fully PAID invoice on the same client — the client app shows it as a
+    // receipt. Settled, so it's absent from every outstanding/receivable list.
+    paidInvoiceId: 'e2epaidinvoice0000000000',
     // A Business B invoice — the cross-tenant guard target (A must 404 on it).
     businessBInvoiceId: 'e2ebinvoice0000000000000x',
+  },
+  // A homework task on Business A's assignedClient, dated at seed time so it
+  // lands in the client home's current-week "This week" list. The homework-log
+  // spec opens it and logs a practice against it.
+  homework: {
+    taskId: 'e2ehomeworktask000000000x',
+    title: 'Loose-lead walking',
   },
   // Emails we invite trainers at during the multi-trainer spec.
   invitees: [
