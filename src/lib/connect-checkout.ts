@@ -126,9 +126,13 @@ export async function mintCheckoutSession(
 ): Promise<string | null> {
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
-    include: { items: true },
+    include: { items: true, client: { select: { user: { select: { email: true } } } } },
   })
   if (!payment || payment.status !== 'PENDING') return null
+  // Prefill the client's email on the Stripe Checkout page so they don't retype
+  // it (and Stripe emails the receipt there). Comes from the invoice's client,
+  // so it works on the public pay link too — not just a logged-in session.
+  const customerEmail = payment.client?.user?.email ?? null
   // No connected account, no charge. This is the money chokepoint now that the
   // rollout allowlist is gone: a trainer who hasn't finished Stripe onboarding
   // has no account to charge on, and we must not call Stripe without one.
@@ -166,6 +170,7 @@ export async function mintCheckoutSession(
           : {}),
       },
       client_reference_id: payment.id,
+      ...(customerEmail ? { customer_email: customerEmail } : {}),
       metadata: { ...extraMetadata, paymentId: payment.id, trainerId: payment.trainerId },
       success_url: urls.successUrl,
       cancel_url: urls.cancelUrl,
