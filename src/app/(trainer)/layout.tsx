@@ -194,9 +194,10 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     ? await countUnreadMessages({ kind: 'trainer', companyId: session.user.trainerId, userId: session.user.id })
     : 0
 
-  // Unread in-app notifications for the Notifications nav badge.
+  // Unread in-app notifications for the Notifications nav badge. Chats are
+  // excluded — they have their own Messages badge and don't show in this feed.
   const unreadNotifications = await prisma.notification.count({
-    where: { userId: session.user.id, readAt: null },
+    where: { userId: session.user.id, readAt: null, type: { not: 'NEW_MESSAGE' } },
   })
 
   // Training-day engagement streak for the always-visible sidebar pill.

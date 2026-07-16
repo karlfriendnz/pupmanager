@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, X, Dumbbell, MessageSquare, Inbox, CheckCircle2, UserPlus, type LucideIcon } from 'lucide-react'
+import { X } from 'lucide-react'
+import { iconForNotification } from './notification-icon'
 
 // Global toast for realtime in-app notifications. Mounted in the trainer shell,
 // it listens for the `pm:notification` window event that the notifications SSE
@@ -11,14 +12,6 @@ import { Bell, X, Dumbbell, MessageSquare, Inbox, CheckCircle2, UserPlus, type L
 // page; each auto-dismisses after a few seconds.
 interface Toast { id: string; title: string; body: string; link?: string | null; type?: string | null }
 
-// A fitting icon per notification type, falling back to the bell.
-const ICONS: Record<string, LucideIcon> = {
-  CLIENT_LOGGED_TRAINING: Dumbbell,
-  CLIENT_COMPLETED_TASKS: CheckCircle2,
-  NEW_MESSAGE: MessageSquare,
-  NEW_ENQUIRY: Inbox,
-  NEW_CLIENT_INVITE_ACCEPTED: UserPlus,
-}
 const AUTO_DISMISS_MS = 6000
 
 export function NotificationToaster() {
@@ -47,7 +40,7 @@ export function NotificationToaster() {
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
       {toasts.map(t => {
-        const Icon = (t.type && ICONS[t.type]) || Bell
+        const Icon = iconForNotification(t.type)
         return (
           <div
             key={t.id}

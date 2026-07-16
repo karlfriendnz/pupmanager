@@ -43,7 +43,9 @@ export async function GET() {
         try {
           while (!closed && Date.now() - startedAt < STREAM_MAX_MS) {
             const [count, fresh] = await Promise.all([
-              prisma.notification.count({ where: { userId, readAt: null } }),
+              // Bell badge excludes chats (they have their own Messages badge);
+              // the toast feed below still includes them.
+              prisma.notification.count({ where: { userId, readAt: null, type: { not: 'NEW_MESSAGE' } } }),
               prisma.notification.findMany({
                 where: { userId, createdAt: { gt: lastSeenAt } },
                 orderBy: { createdAt: 'asc' },

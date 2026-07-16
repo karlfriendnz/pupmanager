@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Card, CardBody } from '@/components/ui/card'
+import { iconForNotification } from '@/components/shared/notification-icon'
 import { formatDate } from '@/lib/utils'
 import type { Metadata } from 'next'
 
@@ -18,7 +19,9 @@ export default async function TrainerNotificationsPage() {
   const userId = session.user.id
 
   const notifications = await prisma.notification.findMany({
-    where: { userId },
+    // Chats are their own thing — they live in Messages, not this feed (they
+    // still push + toast). Everything else surfaces here.
+    where: { userId, type: { not: 'NEW_MESSAGE' } },
     orderBy: { createdAt: 'desc' },
     take: 50,
   })
@@ -42,10 +45,14 @@ export default async function TrainerNotificationsPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {notifications.map((n) => {
+            const Icon = iconForNotification(n.type)
             const inner = (
               <CardBody className="pt-4 pb-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-slate-900 text-sm">{n.title}</p>
                     <p className="text-sm text-slate-600 mt-0.5">{n.body}</p>
                   </div>
