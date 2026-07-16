@@ -194,6 +194,11 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     ? await countUnreadMessages({ kind: 'trainer', companyId: session.user.trainerId, userId: session.user.id })
     : 0
 
+  // Unread in-app notifications for the Notifications nav badge.
+  const unreadNotifications = await prisma.notification.count({
+    where: { userId: session.user.id, readAt: null },
+  })
+
   // Training-day engagement streak for the always-visible sidebar pill.
   // Recomputed per navigation (this layout is already dynamic).
   let streak: { current: number } | null = null
@@ -216,8 +221,8 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       businessName={tp?.businessName ?? session.user.businessName}
       highlightMenuHref={highlightMenuHref}
       completedStepKeys={completedStepKeys}
-      unreadCounts={{ '/messages': unreadMessageCount }}
-      unreadTotal={unreadMessageCount}
+      unreadCounts={{ '/messages': unreadMessageCount, '/notifications': unreadNotifications }}
+      unreadTotal={unreadMessageCount + unreadNotifications}
       hiddenNavHrefs={hiddenNavHrefs}
       addonLockedHrefs={addonLockedHrefs}
       orgs={orgs}

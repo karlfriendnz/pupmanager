@@ -200,10 +200,16 @@ export function ClientHomeView({
   const dogName = primaryDog?.name ?? 'your pup'
   const firstName = clientName.split(' ')[0] || 'there'
   const heroImg = primaryDog?.photoUrl ?? dashboardBgUrl
-  // Next achievement the client is closest to (unearned, with progress).
+  // Next achievement the client is closest to (unearned, but actually started).
   const nextBadge = achievements
-    .filter(a => !a.earned && a.progress && a.progress.target > 0)
+    .filter(a => !a.earned && a.progress && a.progress.target > 0 && a.progress.current > 0)
     .sort((a, b) => (b.progress!.current / b.progress!.target) - (a.progress!.current / a.progress!.target))[0]
+  // Whether the Achievements section has anything real to say. A client who's
+  // earned nothing and started nothing would otherwise get a row of blank,
+  // greyed-out trophies with no context — clutter, not motivation. Only surface
+  // the section once there's an earned badge or genuine progress to show.
+  const hasEarnedBadge = achievements.some(a => a.earned)
+  const showAchievements = hasEarnedBadge || !!nextBadge
 
   return (
     <div className="bg-surface min-h-full">
@@ -370,51 +376,35 @@ export function ClientHomeView({
                 </div>
                 <div className="mt-4 space-y-1">
                   {homeworkResolved.map(task => (
-                    <button
-                      key={task.id}
-                      type="button"
-                      onClick={() => toggleHomework(task)}
-                      disabled={busyTaskId === task.id}
-                      className={cn('w-full flex items-center gap-3 py-2 text-left transition-colors rounded-xl', busyTaskId === task.id && 'opacity-60')}
-                    >
-                      <span className={cn('flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all flex-shrink-0', task.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300')}>
-                        {task.done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
-                      </span>
-                      <span className={cn('flex-1 text-sm transition-all', task.done ? 'text-slate-400 line-through' : 'text-slate-800 font-medium')}>
-                        {task.title}
-                        {task.repetitions != null && task.repetitions > 0 && <span className="ml-1 text-[11px] font-normal text-slate-400">· {task.repetitions} reps</span>}
-                      </span>
-                      {task.done && <span className="text-[10px] font-bold text-emerald-600">+50</span>}
-                    </button>
+                    // Two targets in one row: tap the circle for a quick done/undone
+                    // toggle; tap the label to open the task and log the training.
+                    <div key={task.id} className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleHomework(task)}
+                        disabled={busyTaskId === task.id}
+                        aria-label={task.done ? 'Mark not done' : 'Mark done'}
+                        className={cn('flex-shrink-0 py-2', busyTaskId === task.id && 'opacity-60')}
+                      >
+                        <span className={cn('flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all', task.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300')}>
+                          {task.done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                        </span>
+                      </button>
+                      <Link
+                        href={`/my-homework/${task.id}`}
+                        className="flex flex-1 min-w-0 items-center gap-2 py-2 -mx-1 px-1 rounded-xl hover:bg-slate-50 transition-colors"
+                      >
+                        <span className={cn('flex-1 truncate text-sm transition-all', task.done ? 'text-slate-400 line-through' : 'text-slate-800 font-medium')}>
+                          {task.title}
+                          {task.repetitions != null && task.repetitions > 0 && <span className="ml-1 text-[11px] font-normal text-slate-400">· {task.repetitions} reps</span>}
+                        </span>
+                        {task.done && <span className="text-[10px] font-bold text-emerald-600 flex-shrink-0">+50</span>}
+                        <ChevronRight className="h-4 w-4 text-slate-300 flex-shrink-0" />
+                      </Link>
+                    </div>
                   ))}
                 </div>
                 <ConfettiBurst key={confettiKey} />
-              </div>
-            </section>
-          )}
-
-          {/* ─── Achievements ─── */}
-          {achievements.length > 0 && (
-            <section className="px-4">
-              <SectionHeader title="Achievements" linkHref="/my-achievements" linkLabel="See all" />
-              {nextBadge && (
-                <div className="mt-3 rounded-3xl bg-accent-soft p-4 flex items-center gap-4">
-                  <div className="text-4xl">{nextBadge.icon || '🏅'}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-display font-bold text-slate-900">Almost there!</p>
-                    <p className="text-xs text-slate-600 truncate">{nextBadge.progress!.current}/{nextBadge.progress!.target} toward <b>{nextBadge.name}</b></p>
-                    <div className="mt-2 h-2 rounded-full bg-white/70 overflow-hidden">
-                      <div className="h-full bg-accent" style={{ width: `${Math.min(100, (nextBadge.progress!.current / nextBadge.progress!.target) * 100)}%` }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className="mt-3 grid grid-cols-4 gap-2.5">
-                {achievements.slice(0, 4).map(b => (
-                  <div key={b.id} className={cn('aspect-square rounded-2xl flex flex-col items-center justify-center p-2 text-center', b.earned ? 'bg-white shadow-[0_2px_14px_rgba(15,31,36,0.06)]' : 'bg-slate-100')}>
-                    <span className={cn('text-2xl', !b.earned && 'opacity-30 grayscale')}>{b.icon || '🏆'}</span>
-                  </div>
-                ))}
               </div>
             </section>
           )}
@@ -482,6 +472,32 @@ export function ClientHomeView({
                     ? <a key={item.id} href={item.downloadUrl} target="_blank" rel="noopener noreferrer" className={className}>{inner}</a>
                     : <Link key={item.id} href="/my-shop" className={className}>{inner}</Link>
                 })}
+              </div>
+            </section>
+          )}
+
+          {/* ─── Achievements ─── (kept last — progress/rewards, not a primary action) */}
+          {showAchievements && (
+            <section className="px-4">
+              <SectionHeader title="Achievements" linkHref="/my-achievements" linkLabel="See all" />
+              {nextBadge && (
+                <div className="mt-3 rounded-3xl bg-accent-soft p-4 flex items-center gap-4">
+                  <div className="text-4xl">{nextBadge.icon || '🏅'}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-display font-bold text-slate-900">Almost there!</p>
+                    <p className="text-xs text-slate-600 truncate">{nextBadge.progress!.current}/{nextBadge.progress!.target} toward <b>{nextBadge.name}</b></p>
+                    <div className="mt-2 h-2 rounded-full bg-white/70 overflow-hidden">
+                      <div className="h-full bg-accent" style={{ width: `${Math.min(100, (nextBadge.progress!.current / nextBadge.progress!.target) * 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="mt-3 grid grid-cols-4 gap-2.5">
+                {achievements.slice(0, 4).map(b => (
+                  <div key={b.id} className={cn('aspect-square rounded-2xl flex flex-col items-center justify-center p-2 text-center', b.earned ? 'bg-white shadow-[0_2px_14px_rgba(15,31,36,0.06)]' : 'bg-slate-100')}>
+                    <span className={cn('text-2xl', !b.earned && 'opacity-30 grayscale')}>{b.icon || '🏆'}</span>
+                  </div>
+                ))}
               </div>
             </section>
           )}

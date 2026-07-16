@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate, cn, formatSessionTitle } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, Receipt } from 'lucide-react'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, Receipt, Dumbbell } from 'lucide-react'
 import { ClientNotesTab } from './client-notes-tab'
+import { ClientTrainingLogTab, type TrainerTrainingLog } from './client-training-log-tab'
 import { ClientInvoicesTab, ClientUnpaidInvoicesCard } from './client-invoices'
 import { Button } from '@/components/ui/button'
 import { SessionFormReport } from '@/components/session-form-report'
@@ -14,7 +15,7 @@ import { StatusToggle } from './status-toggle'
 import { DogGalleryManager } from './dog-gallery-manager'
 import Link from 'next/link'
 
-type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements' | 'communication' | 'notes' | 'invoices'
+type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements' | 'communication' | 'notes' | 'invoices' | 'training'
 
 export interface CommItem {
   id: string
@@ -125,6 +126,9 @@ interface Props {
   notes: string | null
   // Client app add-on on — gates the Comms tab (no app + no email = no comms).
   clientAppEnabled: boolean
+  // Recent practice logs the client recorded against their homework tasks
+  // (newest first) — powers the Training log tab.
+  trainingLogs: TrainerTrainingLog[]
 }
 
 function groupByCategory<T extends { category: string | null }>(items: T[]) {
@@ -155,6 +159,7 @@ export function ClientProfileTabs({
   canViewBilling,
   notes,
   clientAppEnabled,
+  trainingLogs,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [pendingRequests, setPendingRequests] = useState(initialPendingRequests)
@@ -297,6 +302,7 @@ export function ClientProfileTabs({
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
     { id: 'overview',     label: 'Overview',     icon: Home },
     { id: 'sessions',     label: 'Sessions',     icon: Calendar, badge: sessions.length > 0 ? sessions.length : undefined },
+    { id: 'training',     label: 'Training log', icon: Dumbbell, badge: trainingLogs.length > 0 ? trainingLogs.length : undefined },
     { id: 'dogs',         label: dogs.length > 1 ? 'Dogs' : 'Dog', icon: PawPrint, badge: dogs.length > 1 ? dogs.length : undefined },
     ...(showComms ? [{ id: 'communication' as Tab, label: 'Comms', icon: MessageSquare, badge: communications.length > 0 ? communications.length : undefined }] : []),
     { id: 'notes',        label: 'Notes',        icon: StickyNote },
@@ -698,6 +704,11 @@ export function ClientProfileTabs({
             )
           })}
         </div>
+      )}
+
+      {/* ── Training log ─────────────────────────────────────────────────── */}
+      {tab === 'training' && (
+        <ClientTrainingLogTab logs={trainingLogs} />
       )}
 
       {/* ── Notes ────────────────────────────────────────────────────────── */}

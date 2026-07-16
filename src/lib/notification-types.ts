@@ -142,7 +142,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     label: 'Client signed up',
     description: 'A client used your invite link and finished onboarding.',
     trigger: 'event',
-    channels: ['PUSH', 'EMAIL'],
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
     defaults: {
       enabled: true,
       title: 'New client onboard 🎉',
@@ -159,7 +159,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     label: 'Client finished today',
     description: 'A client completed every training task you assigned today.',
     trigger: 'event',
-    channels: ['PUSH', 'EMAIL'],
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
     defaults: {
       enabled: false, // off by default — high-volume trainers would get spammed
       title: 'All done ✅ — {{dogName}}',
@@ -172,6 +172,24 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
       taskCount: '4',
     },
   },
+  CLIENT_LOGGED_TRAINING: {
+    type: 'CLIENT_LOGGED_TRAINING',
+    label: 'Client logged training',
+    description: 'A client logged a practice session against one of their homework tasks.',
+    trigger: 'event',
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaults: {
+      enabled: true,
+      title: '{{clientName}} logged training',
+      body: '{{clientName}} logged a session for “{{taskTitle}}”.',
+    },
+    placeholders: ['clientName', 'dogName', 'taskTitle'],
+    sampleValues: {
+      clientName: 'Liz Reed',
+      dogName: 'Rusty',
+      taskTitle: 'Loose-lead walking',
+    },
+  },
   NEW_ENQUIRY: {
     type: 'NEW_ENQUIRY',
     label: 'New enquiry',
@@ -180,7 +198,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     // PUSH for the in-pocket buzz, EMAIL so the trainer has the full
     // enquiry in their inbox to reply from (or forward, or read at
     // their desk).
-    channels: ['PUSH', 'EMAIL'],
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
     defaults: {
       enabled: true,
       title: '🐾 New enquiry from {{name}}',
@@ -223,7 +241,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     label: 'New message',
     description: 'Someone sent you a message in the app.',
     trigger: 'event',
-    channels: ['PUSH', 'EMAIL'],
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
     defaults: {
       enabled: true,
       title: 'Message from {{senderName}}',
@@ -371,6 +389,22 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     },
     placeholders: ['senderName', 'preview'],
     sampleValues: { senderName: 'Jess', preview: 'See you Thursday at 6!' },
+  },
+  TRAINER_COMMENTED_LOG: {
+    type: 'TRAINER_COMMENTED_LOG',
+    label: 'Trainer replies to your log',
+    description: "When your trainer comments on one of your practice logs.",
+    trigger: 'event',
+    audience: 'client',
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaultChannels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaults: {
+      enabled: true,
+      title: '{{trainerName}} replied to your log',
+      body: '{{trainerName}} commented on your “{{taskTitle}}” practice.',
+    },
+    placeholders: ['trainerName', 'taskTitle'],
+    sampleValues: { trainerName: 'Jess', taskTitle: 'Loose-lead walking' },
   },
 }
 

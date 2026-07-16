@@ -46,6 +46,7 @@ export default async function ClientDetailPage({
     products,
     pendingProductRequests,
     baseProfile,
+    trainingLogs,
   ] = await Promise.all([
     prisma.clientProfile.findUnique({
       where: { id: clientId },
@@ -107,6 +108,17 @@ export default async function ClientDetailPage({
     prisma.trainerProfile.findUnique({
       where: { id: access.trainerId },
       select: { baseLat: true, baseLng: true },
+    }),
+    // Recent practice logs across this client's homework tasks (newest first).
+    prisma.trainingLog.findMany({
+      where: { task: { clientId } },
+      orderBy: { loggedAt: 'desc' },
+      take: 30,
+      select: {
+        id: true, loggedAt: true, note: true, repsDone: true, rating: true,
+        imageUrls: true, videoUrl: true, trainerComment: true,
+        task: { select: { id: true, title: true } },
+      },
     }),
   ])
 
@@ -359,6 +371,18 @@ export default async function ClientDetailPage({
         status={client.status}
         notes={client.notes}
         clientAppEnabled={clientAppEnabled}
+        trainingLogs={trainingLogs.map(l => ({
+          id: l.id,
+          taskId: l.task.id,
+          taskTitle: l.task.title,
+          loggedAt: l.loggedAt.toISOString(),
+          note: l.note,
+          repsDone: l.repsDone,
+          rating: l.rating,
+          imageUrls: Array.isArray(l.imageUrls) ? (l.imageUrls as string[]) : [],
+          videoUrl: l.videoUrl,
+          trainerComment: l.trainerComment,
+        }))}
       />
       </div>
       </div>

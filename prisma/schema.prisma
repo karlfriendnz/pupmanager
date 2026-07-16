@@ -158,6 +158,7 @@ enum NotificationType {
   SESSION_NOTES_REMINDER // n minutes before a TrainingSession ends — prompts the trainer to write session notes
   NEW_CLIENT_INVITE_ACCEPTED // a client used the invite link to sign up
   CLIENT_COMPLETED_TASKS // a client completed all of today's tasks
+  CLIENT_LOGGED_TRAINING // a client logged a practice against a homework task
   NEW_MESSAGE // a new in-app message landed
   NEW_ENQUIRY // a public form (embed or intake) submission landed
   ENQUIRY_FOLLOWUP_REMINDER // a NEW enquiry has gone unanswered — nudges at 6/18/24/36h
@@ -171,6 +172,7 @@ enum NotificationType {
   CLIENT_SESSION_CHANGED // a session was rescheduled or cancelled
   CLIENT_RECAP_READY // the trainer posted the write-up for a session
   CLIENT_NEW_MESSAGE // the trainer sent the client a message
+  TRAINER_COMMENTED_LOG // the trainer replied to the client's practice log
 }
 
 enum NotificationChannel {
@@ -573,9 +575,10 @@ model XeroConnection {
   tenantName String?
 
   // Account + tax mapping (populated in Phase 1 from the org's chart of
-  // accounts). bankAccountCode = the account client payments are recorded
-  // against; salesAccountCode = fallback revenue account for line items with no
-  // per-product mapping; taxType = default Xero tax type code (e.g. "NONE").
+  // accounts). bankAccountCode = the trainer's REAL bank account (where Stripe's
+  // payout lands, reconciled from the bank feed); salesAccountCode = fallback
+  // revenue account for line items with no per-product mapping; taxType =
+  // default Xero tax type code (e.g. "NONE").
   bankAccountCode  String?
   bankAccountName  String?
   salesAccountCode String?
@@ -583,6 +586,24 @@ model XeroConnection {
   // Curated shortlist of income accounts the trainer uses — [{ code, name }].
   // Product/package/class create forms offer these when assigning an account.
   accountShortlist Json?
+
+  // ── Stripe clearing model (so the bank feed actually reconciles) ────────────
+  // Stripe never pays the gross into the bank: it deducts its processing fee AND
+  // our application fee first. So a card payment is NOT posted to bankAccountCode
+  // — it's posted to a Stripe CLEARING account (a Xero account of Type=BANK the
+  // trainer creates, e.g. "Stripe Clearing"), and the two fees are written out of
+  // that clearing account as SPEND bank transactions coded to feeAccountCode.
+  // Stripe's payout then arrives in the real bank feed and reconciles as a
+  // transfer clearing → bank, to the cent.
+  //
+  //   clearingAccountCode  BANK-type account the gross client payment lands in
+  //   feeAccountCode       EXPENSE account the Stripe + PupManager fees are coded to
+  //   surchargeAccountCode REVENUE account for a client-paid card surcharge
+  //                        (income the trainer received). Falls back to salesAccountCode.
+  clearingAccountCode  String?
+  clearingAccountName  String?
+  feeAccountCode       String?
+  surchargeAccountCode String?
 
   connectedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1013,6 +1034,7 @@ model TrainingTask {
   dog        Dog?             @relation(fields: [dogId], references: [id])
   session    TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   completion TaskCompletion?
+  logs       TrainingLog[]
 
   @@index([clientId])
   @@index([date])
@@ -1031,6 +1053,33 @@ model TaskCompletion {
   task TrainingTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@map("task_completions")
+}
+
+// A client-logged practice record against a homework task. Unlike TaskCompletion
+// (one row = "done this week"), there are MANY of these per task: the client logs
+// each time they practise, building a history the trainer can see progress in.
+// The first log flips the task's completion on; further logs just add to the
+// record. rating is an optional 1–3 self-assessment (1 tough · 2 okay · 3 great).
+model TrainingLog {
+  id       String   @id @default(cuid())
+  taskId   String
+  loggedAt DateTime @default(now())
+  note     String?  @db.Text
+  repsDone Int?
+  rating   Int? // 1..3, optional "how did it go"
+  videoUrl String? // optional client-submitted link
+  imageUrls Json    @default("[]") // string[] of public image URLs the client attached
+
+  // One editable comment the trainer can leave back on this log (feedback loop).
+  trainerComment   String?   @db.Text
+  trainerCommentAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  task TrainingTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("training_logs")
 }
 
 // ─── Scheduling ──────────────────────────────────────────────────────────────
@@ -2018,6 +2067,14 @@ model Payment {
   xeroPaymentId  String?
   xeroSyncStatus XeroSyncStatus @default(NOT_SYNCED)
   xeroSyncError  String?
+
+  // The three Xero BankTransactions that make the Stripe clearing account
+  // balance (see XeroConnection): the client-paid card surcharge RECEIVEd into
+  // clearing (income), and the two fees SPENT out of it. Each id's presence is
+  // the idempotency guard, so a webhook re-delivery never double-posts.
+  xeroSurchargeTxnId   String? // RECEIVE — card surcharge the client paid (income)
+  xeroFeeTxnId         String? // SPEND  — Stripe's processing fee
+  xeroPlatformFeeTxnId String? // SPEND  — PupManager's application fee
 
   createdAt DateTime  @default(now())
   paidAt    DateTime?

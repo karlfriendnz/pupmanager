@@ -12,7 +12,7 @@ import {
   MoreHorizontal, X, Inbox, GraduationCap,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone, Lock, ClipboardList,
-  Download,
+  Download, Receipt, Bell,
   type LucideIcon,
 } from 'lucide-react'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
@@ -39,6 +39,7 @@ type NavItem = { href: string; label: string; icon: LucideIcon; section: NavSect
 
 const TRAINER_NAV: NavItem[] = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, section: 'overview' },
+  { href: '/notifications', label: 'Notifications', icon: Bell,          section: 'overview' },
 
   { href: '/clients',      label: 'Clients',      icon: Users,           section: 'clients' },
   { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
@@ -97,6 +98,7 @@ const CLIENT_MENU = [
   { href: '/my-classes', label: 'Classes', icon: GraduationCap },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-shop', label: 'Shop', icon: ShoppingBag },
+  { href: '/my-invoices', label: 'Invoices', icon: Receipt },
   { href: '/my-achievements', label: 'Achievements', icon: Trophy },
   { href: '/my-dogs', label: 'My dogs', icon: Dog },
   { href: '/my-profile', label: 'My details', icon: User },
@@ -191,13 +193,13 @@ interface AppShellProps {
 // How often the nav badge re-checks the unread count (also refetches on window
 // focus / tab-visible and on the `pm:refresh-unread` event a thread fires when
 // it's opened). Cheap: one count query, and only while the tab is visible.
-const UNREAD_POLL_MS = 25_000
+const UNREAD_POLL_MS = 10_000
 
 // Keeps the messages nav badge fresh WITHOUT a full reload. Seeds from the
 // server-rendered `initial`, adopts a newer server value on navigation (render-
 // time state sync — the endorsed alternative to a set-state-in-effect), then
 // polls the lightweight /api/messages/unread-count while the tab is visible.
-function useLiveUnreadTotal(initial: number, enabled: boolean): number {
+function useLiveUnreadTotal(initial: number, enabled: boolean, url = '/api/messages/unread-count'): number {
   const [seenInitial, setSeenInitial] = useState(initial)
   const [count, setCount] = useState(initial)
   if (initial !== seenInitial) {
@@ -211,7 +213,7 @@ function useLiveUnreadTotal(initial: number, enabled: boolean): number {
     const refetch = async () => {
       if (document.visibilityState === 'hidden') return
       try {
-        const res = await fetch('/api/messages/unread-count', { cache: 'no-store' })
+        const res = await fetch(url, { cache: 'no-store' })
         if (!res.ok) return
         const data = await res.json()
         if (!cancelled && typeof data.count === 'number') setCount(data.count)
@@ -230,6 +232,35 @@ function useLiveUnreadTotal(initial: number, enabled: boolean): number {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('pm:refresh-unread', onTrigger)
     }
+  }, [enabled, url])
+
+  return count
+}
+
+// Instant in-app notification badge via Server-Sent Events — the server pushes
+// the unread count the moment it changes (new notification, or the user reading
+// them), so there's no poll interval / latency. Seeds from the server-rendered
+// `initial` and re-syncs it on navigation (e.g. opening the feed clears to 0).
+// EventSource auto-reconnects, so the ~250s server-side stream rotation is
+// seamless.
+function useLiveNotificationCount(initial: number, enabled: boolean): number {
+  const [seenInitial, setSeenInitial] = useState(initial)
+  const [count, setCount] = useState(initial)
+  if (initial !== seenInitial) {
+    setSeenInitial(initial)
+    setCount(initial)
+  }
+
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined') return
+    const es = new EventSource('/api/notifications/stream')
+    es.addEventListener('count', (ev) => {
+      try {
+        const d = JSON.parse((ev as MessageEvent).data)
+        if (typeof d.count === 'number') setCount(d.count)
+      } catch { /* ignore malformed events */ }
+    })
+    return () => es.close()
   }, [enabled])
 
   return count
@@ -241,14 +272,19 @@ export function AppShell(props: AppShellProps) {
   // the /messages item isn't hidden by role/add-on).
   const messagesVisible = props.role === 'CLIENT' || !(props.hiddenNavHrefs ?? []).includes('/messages')
   const liveTotal = useLiveUnreadTotal(props.unreadTotal ?? 0, messagesVisible)
-  // Override the messages badge (and the client Home hint) with the live number.
-  const effectiveCounts = messagesVisible
-    ? {
-        ...props.unreadCounts,
-        [messagesHref]: liveTotal,
-        ...(props.role === 'CLIENT' ? { '/home': liveTotal } : {}),
-      }
-    : props.unreadCounts
+  // The trainer's in-app notifications bell polls its own count so a client
+  // logging a session (etc.) lights the badge without a manual refresh.
+  const notificationsVisible = props.role === 'TRAINER'
+  const liveNotifs = useLiveNotificationCount(props.unreadCounts?.['/notifications'] ?? 0, notificationsVisible)
+  // Override the messages badge (and the client Home hint) + the notifications
+  // bell with their live numbers.
+  const effectiveCounts = {
+    ...props.unreadCounts,
+    ...(messagesVisible
+      ? { [messagesHref]: liveTotal, ...(props.role === 'CLIENT' ? { '/home': liveTotal } : {}) }
+      : {}),
+    ...(notificationsVisible ? { '/notifications': liveNotifs } : {}),
+  }
 
   return (
     <>

@@ -71,6 +71,23 @@ export async function notifyTrainer(
   path: string = '/dashboard',
   companyId: string | null = null,
 ): Promise<void> {
+  // In-app feed — a persistent row in the trainer's /notifications list (the
+  // same Notification model the client feed uses). Only for types that list
+  // IN_APP and only when the trainer hasn't turned that channel off. Without
+  // this, trainer notifications were push+email ONLY — nothing landed in-system.
+  try {
+    const meta = NOTIFICATION_TYPES[type]
+    if (meta && meta.audience !== 'client' && meta.channels.includes('IN_APP')) {
+      const pref = await resolvePref(userId, type, 'IN_APP', companyId)
+      if (pref.enabled) {
+        await prisma.notification.create({
+          data: { userId, type, title: renderTemplate(pref.title, subs), body: renderTemplate(pref.body, subs), link: path },
+        })
+      }
+    }
+  } catch (err) {
+    console.error('[notify-trainer in-app] failed:', err instanceof Error ? err.message : 'unknown')
+  }
   // Push
   try {
     const pushPref = await resolvePref(userId, type, 'PUSH', companyId)
