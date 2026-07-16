@@ -60,6 +60,24 @@ describe('PATCH trainer/profile — brand colour', () => {
     expect(h.profileUpdate).not.toHaveBeenCalled()
   })
 
+  it('accepts a square brand iconUrl alongside the logo', async () => {
+    const res = await PATCH(req({ iconUrl: 'https://blob.example.com/icon.png' }))
+    expect(res.status).toBe(200)
+    expect(h.profileUpdate).toHaveBeenCalledWith({
+      where: { id: 'company-1' },
+      data: { iconUrl: 'https://blob.example.com/icon.png' },
+    })
+  })
+
+  it('clears the icon when passed an empty string', async () => {
+    const res = await PATCH(req({ iconUrl: '' }))
+    expect(res.status).toBe(200)
+    expect(h.profileUpdate).toHaveBeenCalledWith({
+      where: { id: 'company-1' },
+      data: { iconUrl: '' },
+    })
+  })
+
   it('ignores the retired appGradientStart / appGradientEnd fields', async () => {
     const res = await PATCH(req({
       emailAccentColor: '#123456',

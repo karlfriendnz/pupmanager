@@ -34,6 +34,7 @@ const businessSchema = z.object({
 
 const designSchema = z.object({
   logoUrl: z.string().url().optional().or(z.literal('')),
+  iconUrl: z.string().url().optional().or(z.literal('')),
   // Hex (#rgb / #rrggbb) — empty string clears to default.
   emailAccentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
 })
@@ -48,7 +49,7 @@ export function TrainerSettingsForm({
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
@@ -77,33 +78,61 @@ export function TrainerSettingsForm({
     resolver: zodResolver(designSchema),
     defaultValues: {
       logoUrl: profile.logoUrl ?? '',
+      iconUrl: profile.iconUrl ?? '',
       emailAccentColor: profile.emailAccentColor ?? '',
     },
   })
 
   const logoUrl = designForm.watch('logoUrl')
+  const iconUrl = designForm.watch('iconUrl')
   const emailAccentColor = designForm.watch('emailAccentColor')
   const logoInputRef = useRef<HTMLInputElement>(null)
+  const iconInputRef = useRef<HTMLInputElement>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [uploadingIcon, setUploadingIcon] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
-  async function uploadLogo(file: File) {
+  // Upload a branding image AND persist it immediately, so an upload alone
+  // "sticks" without the trainer also having to hit Save design.
+  async function uploadBranding(
+    kind: 'logo' | 'icon',
+    field: 'logoUrl' | 'iconUrl',
+    file: File,
+    setUploading: (b: boolean) => void,
+  ) {
     setUploadError(null)
-    setUploadingLogo(true)
+    setDesignMsg(null)
+    setUploading(true)
     try {
       const toSend = await compressImageFile(file)
       const fd = new FormData()
       fd.append('file', toSend)
-      fd.append('kind', 'logo')
-      const res = await fetch('/api/trainer/branding-image', { method: 'POST', body: fd })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok) {
+      fd.append('kind', kind)
+      const up = await fetch('/api/trainer/branding-image', { method: 'POST', body: fd })
+      const body = await up.json().catch(() => ({}))
+      if (!up.ok) {
         setUploadError(body.error ?? 'Upload failed.')
         return
       }
-      designForm.setValue('logoUrl', body.url, { shouldDirty: true })
+      await persistBranding(field, body.url)
     } finally {
-      setUploadingLogo(false)
+      setUploading(false)
+    }
+  }
+
+  // Persist a single branding field (also used by Remove, which passes '').
+  async function persistBranding(field: 'logoUrl' | 'iconUrl', url: string) {
+    designForm.setValue(field, url, { shouldDirty: false })
+    const res = await fetch('/api/trainer/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: url }),
+    })
+    if (res.ok) {
+      setDesignMsg('Saved!')
+      router.refresh()
+    } else {
+      setUploadError('Uploaded, but saving failed — please try again.')
     }
   }
 
@@ -124,6 +153,7 @@ export function TrainerSettingsForm({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         logoUrl: data.logoUrl,
+        iconUrl: data.iconUrl,
         emailAccentColor: data.emailAccentColor,
       }),
     })
@@ -238,7 +268,7 @@ export function TrainerSettingsForm({
                   {uploadingLogo ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Uploading…</> : (logoUrl ? 'Replace' : 'Upload logo')}
                 </Button>
                 {logoUrl && (
-                  <button type="button" onClick={() => designForm.setValue('logoUrl', '', { shouldDirty: true })} className="text-xs text-slate-400 hover:text-red-500 self-start">
+                  <button type="button" onClick={() => persistBranding('logoUrl', '')} className="text-xs text-slate-400 hover:text-red-500 self-start">
                     Remove
                   </button>
                 )}
@@ -250,7 +280,44 @@ export function TrainerSettingsForm({
                 className="hidden"
                 onChange={e => {
                   const f = e.target.files?.[0]
-                  if (f) uploadLogo(f)
+                  if (f) uploadBranding('logo', 'logoUrl', f, setUploadingLogo)
+                  e.target.value = ''
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Icon upload — a square mark, distinct from the wide logo. */}
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-slate-700">Icon</label>
+            <p className="text-xs text-slate-400 -mt-1">A square mark — used as your app icon and small avatar. Your logo is the full wordmark.</p>
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden">
+                {iconUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={iconUrl} alt="Icon" className="h-full w-full object-cover" />
+                ) : (
+                  <ImagePlus className="h-5 w-5 text-slate-400" />
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <Button type="button" size="sm" variant="ghost" onClick={() => iconInputRef.current?.click()} disabled={uploadingIcon}>
+                  {uploadingIcon ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Uploading…</> : (iconUrl ? 'Replace' : 'Upload icon')}
+                </Button>
+                {iconUrl && (
+                  <button type="button" onClick={() => persistBranding('iconUrl', '')} className="text-xs text-slate-400 hover:text-red-500 self-start">
+                    Remove
+                  </button>
+                )}
+              </div>
+              <input
+                ref={iconInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (f) uploadBranding('icon', 'iconUrl', f, setUploadingIcon)
                   e.target.value = ''
                 }}
               />
@@ -305,6 +372,7 @@ export function TrainerSettingsForm({
             <BrandPreview
               businessName={businessForm.watch('businessName')}
               logoUrl={logoUrl || ''}
+              iconUrl={iconUrl || ''}
               brandColor={emailAccentColor || DEFAULT_BRAND_COLOR}
               note=""
             />

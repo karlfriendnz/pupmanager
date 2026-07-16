@@ -39,6 +39,7 @@ const patchSchema = z.object({
   // auto-set from the IP at signup, but settable here when that wasn't captured.
   signupCountry: z.string().regex(/^[A-Za-z]{2}$/).optional().or(z.literal('')),
   logoUrl: z.string().url().optional().or(z.literal('')),
+  iconUrl: z.string().url().optional().or(z.literal('')),
   website: z.string().max(200).optional().or(z.literal('')),
   publicEmail: z.string().max(200).optional().or(z.literal('')),
   inviteTemplate: z.string().optional(),

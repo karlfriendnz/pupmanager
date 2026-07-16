@@ -112,6 +112,8 @@ interface AppShellProps {
   userName?: string
   userEmail?: string
   trainerLogo?: string | null
+  /** Square brand mark. Preferred over trainerLogo for the trainer top-bar square. */
+  trainerIcon?: string | null
   businessName?: string
   /**
    * If set to a TRAINER_NAV href, that menu item gets a small pulsing dot
@@ -632,6 +634,7 @@ function TrainerTopBar({
   collapsed,
   onToggle,
   trainerLogo,
+  trainerIcon,
   businessName,
   fallbackTitle,
   userName,
@@ -644,6 +647,7 @@ function TrainerTopBar({
   collapsed: boolean
   onToggle: () => void
   trainerLogo?: string | null
+  trainerIcon?: string | null
   businessName?: string | null
   fallbackTitle: string
   userName?: string | null
@@ -660,7 +664,10 @@ function TrainerTopBar({
       <div className={cn('flex items-center h-full shrink-0 border-r border-slate-100 transition-all duration-200 overflow-hidden', collapsed ? 'w-16 justify-center px-2' : 'w-64 gap-3 px-5')}>
         {/* Logo fits inside a fixed square box (object-contain, never cropped),
             with the org name beside it when expanded. */}
-        {trainerLogo ? (
+        {trainerIcon ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={trainerIcon} alt={businessName ?? 'Icon'} className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100 shrink-0" />
+        ) : trainerLogo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100 shrink-0" />
         ) : (
@@ -701,6 +708,7 @@ function TrainerShell({
   userName,
   userEmail,
   trainerLogo,
+  trainerIcon,
   businessName,
   highlightMenuHref,
   completedStepKeys = [],
@@ -818,6 +826,7 @@ function TrainerShell({
         collapsed={collapsed}
         onToggle={toggleCollapse}
         trainerLogo={trainerLogo}
+        trainerIcon={trainerIcon}
         businessName={businessName}
         fallbackTitle={navFallbackTitle}
         userName={userName}

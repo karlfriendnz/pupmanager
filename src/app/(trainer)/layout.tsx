@@ -141,6 +141,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     select: {
       businessName: true,
       logoUrl: true,
+      iconUrl: true,
       subscriptionStatus: true,
       trialEndsAt: true,
       stripeSubscriptionId: true,
@@ -219,6 +220,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       userName={session.user.name ?? ''}
       userEmail={session.user.email ?? ''}
       trainerLogo={tp?.logoUrl ?? null}
+      trainerIcon={tp?.iconUrl ?? null}
       businessName={tp?.businessName ?? session.user.businessName}
       highlightMenuHref={highlightMenuHref}
       completedStepKeys={completedStepKeys}

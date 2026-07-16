@@ -24,11 +24,15 @@ const SAMPLE_DOG = '/sample-dog.jpg'
 export function BrandPreview({
   businessName,
   logoUrl,
+  iconUrl,
   brandColor,
   note,
 }: {
   businessName: string
   logoUrl: string
+  // Square brand mark. Preferred for the small square avatar; falls back to the
+  // logo, then the business initial.
+  iconUrl?: string
   brandColor: string
   note: string
 }) {
@@ -64,7 +68,10 @@ export function BrandPreview({
           {/* logo + business name */}
           <div className="relative flex items-center gap-2 px-4 mt-2">
             <div className="h-8 w-8 rounded-xl overflow-hidden flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ring-1 ring-white/50" style={{ background: accent }}>
-              {logoUrl
+              {iconUrl
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={iconUrl} alt="" className="h-full w-full object-cover" />
+                : logoUrl
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={logoUrl} alt="" className="h-full w-full object-contain bg-white/90 p-0.5" />
                 : name[0]?.toUpperCase()}
