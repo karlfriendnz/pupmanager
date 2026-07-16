@@ -112,7 +112,7 @@ export async function processScheduledAutomations(now: Date = new Date()): Promi
   let sent = 0
   for (const a of autos) {
     const offsetMs = a.offsetMinutes * 60_000
-    const tz = a.bookingPage.trainer.user.timezone
+    const tz = a.bookingPage.trainer.user.timezone ?? 'Pacific/Auckland'
     const businessName = a.bookingPage.trainer.businessName
 
     const scheduledWhere =

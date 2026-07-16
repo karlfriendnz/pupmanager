@@ -62,12 +62,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     if (parsed.data.notify !== false && (result as { status?: string }).status !== 'WAITLISTED') {
       const [runDetail, clientUser, trainer, dog] = await Promise.all([
         prisma.classRun.findUnique({ where: { id: runId }, select: { name: true, sessions: { where: { scheduledAt: { gte: new Date() } }, orderBy: { scheduledAt: 'asc' }, select: { scheduledAt: true } } } }),
-        prisma.clientProfile.findUnique({ where: { id: parsed.data.clientId }, select: { userId: true, user: { select: { timezone: true } } } }),
-        prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { name: true } } } }),
+        prisma.clientProfile.findUnique({ where: { id: parsed.data.clientId }, select: { userId: true } }),
+        prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { name: true, timezone: true } } } }),
         parsed.data.dogId ? prisma.dog.findUnique({ where: { id: parsed.data.dogId }, select: { name: true } }) : Promise.resolve(null),
       ])
       if (clientUser?.userId && runDetail) {
-        const tz = clientUser.user?.timezone ?? 'Pacific/Auckland'
+        // The class happens in the TRAINER's locale — render the times in the
+        // trainer's timezone so a 3pm class never shows as UTC "3am".
+        const tz = trainer?.user?.timezone ?? 'Pacific/Auckland'
         await notifyClient({
           userId: clientUser.userId,
           trainerId,

@@ -283,12 +283,14 @@ export async function POST(
   // every session is in the past (a history back-fill).
   if (parsed.data.notify !== false && sessionDates.some(d => d.getTime() > Date.now())) {
     const [clientProfile, trainer, dog] = await Promise.all([
-      prisma.clientProfile.findUnique({ where: { id: clientId }, select: { userId: true, user: { select: { timezone: true } } } }),
-      prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { name: true } } } }),
+      prisma.clientProfile.findUnique({ where: { id: clientId }, select: { userId: true } }),
+      prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { name: true, timezone: true } } } }),
       dogId ? prisma.dog.findUnique({ where: { id: dogId }, select: { name: true } }) : Promise.resolve(null),
     ])
     if (clientProfile?.userId) {
-      const tz = clientProfile.user?.timezone ?? 'Pacific/Auckland'
+      // Session times render in the TRAINER's timezone (the sessions happen in
+      // the trainer's locale) — never the server's UTC.
+      const tz = trainer?.user?.timezone ?? 'Pacific/Auckland'
       const sorted = [...sessionDates].sort((a, b) => a.getTime() - b.getTime())
       await notifyClient({
         userId: clientProfile.userId,

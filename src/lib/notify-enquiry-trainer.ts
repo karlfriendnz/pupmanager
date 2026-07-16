@@ -34,7 +34,7 @@ async function doNotify({ enquiryId }: NotifyArgs) {
       trainer: {
         select: {
           businessName: true,
-          user: { select: { id: true, email: true } },
+          user: { select: { id: true, email: true, timezone: true } },
         },
       },
       form: { select: { title: true } },
@@ -101,7 +101,7 @@ interface EnquiryForEmail {
 
 async function sendEnquiryEmail(
   enquiry: EnquiryForEmail,
-  trainerUser: { id: string; email: string | null },
+  trainerUser: { id: string; email: string | null; timezone: string },
 ): Promise<void> {
   if (!trainerUser.email) return
   const pref = await resolvePref(trainerUser.id, 'NEW_ENQUIRY', 'EMAIL')
@@ -115,7 +115,7 @@ async function sendEnquiryEmail(
     ['Email', enquiry.email],
     ...(enquiry.phone ? [['Phone', enquiry.phone] as [string, string]] : []),
     ...(enquiry.dogName ? [['Dog', `${enquiry.dogName}${enquiry.dogBreed ? ` · ${enquiry.dogBreed}` : ''}`] as [string, string]] : []),
-    ['Submitted', enquiry.createdAt.toLocaleString('en-NZ', { dateStyle: 'medium', timeStyle: 'short' })],
+    ['Submitted', enquiry.createdAt.toLocaleString('en-NZ', { dateStyle: 'medium', timeStyle: 'short', timeZone: trainerUser.timezone })],
     ...(enquiry.form?.title ? [['Form', enquiry.form.title] as [string, string]] : []),
   ]
 

@@ -10,12 +10,15 @@ import { z } from 'zod'
 async function notifySessionChanged(opts: {
   clientId: string; trainerId: string; dogId: string | null; title: string; at: Date; detail: (when: string) => string; link: string
 }) {
-  const [client, dog] = await Promise.all([
-    prisma.clientProfile.findUnique({ where: { id: opts.clientId }, select: { userId: true, user: { select: { timezone: true } } } }),
+  const [client, dog, trainer] = await Promise.all([
+    prisma.clientProfile.findUnique({ where: { id: opts.clientId }, select: { userId: true } }),
     opts.dogId ? prisma.dog.findUnique({ where: { id: opts.dogId }, select: { name: true } }) : Promise.resolve(null),
+    prisma.trainerProfile.findUnique({ where: { id: opts.trainerId }, select: { user: { select: { timezone: true } } } }),
   ])
   if (!client?.userId) return
-  const tz = client.user?.timezone ?? 'Pacific/Auckland'
+  // The session happens in the TRAINER's locale — render its time in the
+  // trainer's timezone, never the server's UTC.
+  const tz = trainer?.user?.timezone ?? 'Pacific/Auckland'
   const when = opts.at.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
   await notifyClient({
     userId: client.userId, trainerId: opts.trainerId, type: 'CLIENT_SESSION_CHANGED',

@@ -35,14 +35,17 @@ export async function GET(req: Request) {
     },
     select: {
       id: true, scheduledAt: true, title: true, trainerId: true, clientId: true,
+      // The session happens in the TRAINER's locale, so the reminder time renders
+      // in the trainer's timezone (never the server's UTC).
+      trainer: { select: { user: { select: { timezone: true } } } },
       dog: { select: { name: true } },
-      client: { select: { userId: true, user: { select: { timezone: true } } } },
+      client: { select: { userId: true } },
       classRun: {
         select: {
           name: true,
           enrollments: {
             where: { status: 'ENROLLED' },
-            select: { client: { select: { userId: true, user: { select: { timezone: true } } } }, dog: { select: { name: true } } },
+            select: { client: { select: { userId: true } }, dog: { select: { name: true } } },
           },
         },
       },
@@ -51,11 +54,12 @@ export async function GET(req: Request) {
 
   let sent = 0
   for (const s of sessions) {
+    const tz = s.trainer?.user?.timezone ?? 'Pacific/Auckland'
     const recipients = s.clientId && s.client?.userId
-      ? [{ userId: s.client.userId, tz: s.client.user?.timezone ?? null, dogName: s.dog?.name ?? null, planName: s.title }]
+      ? [{ userId: s.client.userId, dogName: s.dog?.name ?? null, planName: s.title }]
       : (s.classRun?.enrollments ?? [])
           .filter(e => e.client?.userId)
-          .map(e => ({ userId: e.client.userId, tz: e.client.user?.timezone ?? null, dogName: e.dog?.name ?? null, planName: s.classRun!.name }))
+          .map(e => ({ userId: e.client.userId, dogName: e.dog?.name ?? null, planName: s.classRun!.name }))
 
     for (const r of recipients) {
       // Build lead → channels from the client's per-channel leadMinutes (or the
@@ -84,7 +88,6 @@ export async function GET(req: Request) {
           continue // already sent
         }
 
-        const tz = r.tz ?? 'Pacific/Auckland'
         const startTime = s.scheduledAt.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
         await notifyClient({
           userId: r.userId,

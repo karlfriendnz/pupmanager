@@ -83,7 +83,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const ctx = await loadEnabledPage(slug, pageSlug)
   if (!ctx) return NextResponse.json({ error: 'Booking not available' }, { status: 404 })
   const { trainer, page } = ctx
-  const tz = trainer.user.timezone
+  const tz = trainer.user.timezone ?? 'Pacific/Auckland'
 
   const parsed = schema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })

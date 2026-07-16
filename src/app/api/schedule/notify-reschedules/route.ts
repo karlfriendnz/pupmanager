@@ -83,23 +83,29 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const selected: Set<string> | null = Array.isArray(body?.clientUserIds) ? new Set(body.clientUserIds) : null
 
+  // The sessions happen in the TRAINER's locale, so every client-facing time
+  // renders in the trainer's timezone (never the server's UTC, and not the
+  // individual client's device tz — the class is at one wall-clock time).
+  const trainer = await prisma.trainerProfile.findUnique({ where: { id: tid }, select: { user: { select: { timezone: true } } } })
+  const trainerTz = trainer?.user?.timezone ?? 'Pacific/Auckland'
+
   const pending = await prisma.trainingSession.findMany({
     where: pendingWhere(tid),
     select: {
       id: true, scheduledAt: true, title: true,
       clientId: true,
-      client: { select: { userId: true, user: { select: { timezone: true, emailVerified: true } } } },
+      client: { select: { userId: true, user: { select: { emailVerified: true } } } },
       dog: { select: { name: true } },
       classRunId: true,
-      classRun: { select: { name: true, enrollments: { where: activatedEnroll, select: { client: { select: { userId: true, user: { select: { timezone: true } } } }, dog: { select: { name: true } } } } } },
+      classRun: { select: { name: true, enrollments: { where: activatedEnroll, select: { client: { select: { userId: true } }, dog: { select: { name: true } } } } } },
     },
     orderBy: { scheduledAt: 'asc' },
   })
 
   type Item = { at: Date; title: string; dogName: string | null }
-  const byUser = new Map<string, { tz: string; items: Item[] }>()
-  const push = (userId: string, tz: string | null, item: Item) => {
-    const e = byUser.get(userId) ?? { tz: tz ?? 'Pacific/Auckland', items: [] }
+  const byUser = new Map<string, { items: Item[] }>()
+  const push = (userId: string, item: Item) => {
+    const e = byUser.get(userId) ?? { items: [] }
     e.items.push(item)
     byUser.set(userId, e)
   }
@@ -109,12 +115,12 @@ export async function POST(req: Request) {
     const affected: string[] = []
     if (s.clientId && s.client?.userId && s.client.user?.emailVerified) {
       affected.push(s.client.userId)
-      push(s.client.userId, s.client.user?.timezone ?? null, { at: s.scheduledAt, title: s.title, dogName: s.dog?.name ?? null })
+      push(s.client.userId, { at: s.scheduledAt, title: s.title, dogName: s.dog?.name ?? null })
     } else if (s.classRunId) {
       for (const en of s.classRun?.enrollments ?? []) {
         if (!en.client?.userId) continue
         affected.push(en.client.userId)
-        push(en.client.userId, en.client.user?.timezone ?? null, { at: s.scheduledAt, title: s.classRun?.name ?? s.title, dogName: en.dog?.name ?? null })
+        push(en.client.userId, { at: s.scheduledAt, title: s.classRun?.name ?? s.title, dogName: en.dog?.name ?? null })
       }
     }
     // Clear this session's flag only if everyone it affects is being notified.
@@ -122,7 +128,8 @@ export async function POST(req: Request) {
   }
 
   let notified = 0
-  for (const [userId, { tz, items }] of byUser) {
+  for (const [userId, { items }] of byUser) {
+    const tz = trainerTz
     if (selected && !selected.has(userId)) continue
     items.sort((a, b) => a.at.getTime() - b.at.getTime())
     const dogName = items.find(i => i.dogName)?.dogName ?? 'your dog'

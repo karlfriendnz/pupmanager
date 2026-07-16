@@ -12,8 +12,10 @@ import { notifyTrainer } from '@/lib/trainer-notify'
 // the trainer withdraw route). A cancellation fee may apply, measured against the
 // run's next upcoming session start.
 
-function shortDate(d: Date): string {
-  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).format(d)
+// Rendered in the trainer's timezone (the class happens in their locale) so the
+// date never shifts a day under the server's UTC clock.
+function shortDate(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz }).format(d)
 }
 
 function money(cents: number): string {
@@ -38,7 +40,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ runId:
         select: {
           name: true,
           trainerId: true,
-          trainer: { select: { cancellationFeeCents: true, cancellationFeeWindowHours: true } },
+          trainer: { select: { cancellationFeeCents: true, cancellationFeeWindowHours: true, user: { select: { timezone: true } } } },
           sessions: {
             where: { scheduledAt: { gte: now } },
             orderBy: { scheduledAt: 'asc' },
@@ -98,7 +100,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ runId:
   const trainerUserId = profile?.assignedTrainer?.user?.id ?? profile?.trainer?.user?.id ?? null
   if (trainerUserId) {
     const feeNote = feeCharged > 0 ? ` (${money(feeCharged)} fee charged)` : ''
-    const when = nextStart ? ` (from ${shortDate(nextStart)})` : ''
+    const tz = run.trainer.user?.timezone ?? 'Pacific/Auckland'
+    const when = nextStart ? ` (from ${shortDate(nextStart, tz)})` : ''
     await notifyTrainer(
       trainerUserId,
       'CLIENT_CANCELLED_SESSION',

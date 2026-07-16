@@ -10,9 +10,11 @@ import { notifyTrainer } from '@/lib/trainer-notify'
 // sessions (clientId null, classRunId set) are NOT cancellable here — the client
 // leaves the whole run via /api/my/classes/[runId]/cancel instead.
 
-// Short human date for the notification detail, e.g. "Thu 17 Jul".
-function shortDate(d: Date): string {
-  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).format(d)
+// Short human date for the notification detail, e.g. "Thu 17 Jul". Rendered in
+// the trainer's timezone (the session happens in their locale) so it never
+// shifts a day under the server's UTC clock.
+function shortDate(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz }).format(d)
 }
 
 function money(cents: number): string {
@@ -55,9 +57,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ sessio
     }),
     prisma.trainerProfile.findUnique({
       where: { id: session.trainerId },
-      select: { cancellationFeeCents: true, cancellationFeeWindowHours: true },
+      select: { cancellationFeeCents: true, cancellationFeeWindowHours: true, user: { select: { timezone: true } } },
     }),
   ])
+  const tz = trainer?.user?.timezone ?? 'Pacific/Auckland'
 
   const feeCents = trainer
     ? resolveCancellationFeeCents(
@@ -90,7 +93,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ sessio
       clientId: active.clientId,
       amountCents: feeCents,
       sourceId: session.id,
-      description: `Cancellation fee — ${session.title} (${shortDate(session.scheduledAt)})`,
+      description: `Cancellation fee — ${session.title} (${shortDate(session.scheduledAt, tz)})`,
     })
     feeCharged = feeCents
   }
@@ -104,7 +107,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ sessio
       {
         clientName: profile?.user?.name ?? 'A client',
         dogName: profile?.dog?.name ?? '',
-        detail: `${session.title} on ${shortDate(session.scheduledAt)}${feeNote}`,
+        detail: `${session.title} on ${shortDate(session.scheduledAt, tz)}${feeNote}`,
       },
       '/schedule',
       session.trainerId,

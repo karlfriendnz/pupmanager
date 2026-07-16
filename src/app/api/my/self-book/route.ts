@@ -43,9 +43,11 @@ async function clientCtx() {
   }
 }
 
-// Short human date for a notification detail, e.g. "Thu 17 Jul".
-function shortDate(d: Date): string {
-  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).format(d)
+// Short human date for a notification detail, e.g. "Thu 17 Jul". Rendered in the
+// trainer's timezone (the session happens in their locale) so it never shifts a
+// day under the server's UTC clock.
+function shortDate(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz }).format(d)
 }
 
 export async function GET() {
@@ -134,7 +136,7 @@ export async function POST(req: Request) {
       await notifyTrainer(
         ctx.trainerUserId,
         'CLIENT_BOOKED_SESSION',
-        { clientName: ctx.clientName, dogName: ctx.dogName, detail: `${pkg.name} on ${shortDate(start)}` },
+        { clientName: ctx.clientName, dogName: ctx.dogName, detail: `${pkg.name} on ${shortDate(start, avail.tz)}` },
         '/schedule',
         ctx.trainerId,
       )
@@ -223,7 +225,7 @@ export async function POST(req: Request) {
     await notifyTrainer(
       ctx.trainerUserId,
       'CLIENT_BOOKED_SESSION',
-      { clientName: ctx.clientName, dogName: ctx.dogName, detail: `${pkg.name} on ${shortDate(start)}` },
+      { clientName: ctx.clientName, dogName: ctx.dogName, detail: `${pkg.name} on ${shortDate(start, avail.tz)}` },
       '/schedule',
       ctx.trainerId,
     )

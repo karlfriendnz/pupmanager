@@ -149,13 +149,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
       if (result.scheduleChanged) {
         const runDetail = await prisma.classRun.findUnique({
           where: { id: runId },
-          select: { name: true, sessions: { where: { scheduledAt: { gte: new Date() } }, orderBy: { scheduledAt: 'asc' }, select: { scheduledAt: true } } },
+          select: {
+            name: true,
+            // The class time is a physical instant in the TRAINER's locale, so
+            // client-facing times render in the trainer's timezone (not the
+            // server's UTC — which showed a 3pm class as "3am").
+            trainer: { select: { user: { select: { timezone: true } } } },
+            sessions: { where: { scheduledAt: { gte: new Date() } }, orderBy: { scheduledAt: 'asc' }, select: { scheduledAt: true } },
+          },
         })
+        const tz = runDetail?.trainer?.user?.timezone ?? 'Pacific/Auckland'
         await notifyRunClients({
           runId, trainerId, planName: runDetail?.name ?? d.name,
           detail: 'Rescheduled — here are the new times',
           link: '/my-sessions',
-          sessions: (runDetail?.sessions ?? []).map(s => ({ when: s.scheduledAt.toLocaleString('en-NZ', { timeZone: 'Pacific/Auckland', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) })),
+          sessions: (runDetail?.sessions ?? []).map(s => ({ when: s.scheduledAt.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) })),
         })
       }
       return NextResponse.json({ ok: true })
