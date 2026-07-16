@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
-import { withdrawEnrollment, ClassError } from '@/lib/class-runs'
+import { withdrawEnrollmentAndNotify, ClassError } from '@/lib/class-runs'
 
 // DELETE /api/class-runs/[runId]/enrollments/[enrollmentId]
 // Withdraw an enrolment. If it freed a real seat, lib/class-runs auto-
@@ -31,26 +31,7 @@ export async function DELETE(
   if (!enr) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   try {
-    const { promotedEnrollmentId } = await withdrawEnrollment(enrollmentId)
-
-    if (promotedEnrollmentId) {
-      const promoted = await prisma.classEnrollment.findUnique({
-        where: { id: promotedEnrollmentId },
-        select: { clientId: true, classRun: { select: { name: true } } },
-      })
-      if (promoted) {
-        await prisma.clientNotification
-          .create({
-            data: {
-              clientId: promoted.clientId,
-              trainerId,
-              subject: `You're off the waitlist for ${promoted.classRun.name}`,
-              notes: `A spot opened up and you've been enrolled in ${promoted.classRun.name}.`,
-            },
-          })
-          .catch(e => console.error('[class withdraw] promote notify failed', e))
-      }
-    }
+    const { promotedEnrollmentId } = await withdrawEnrollmentAndNotify(enrollmentId, trainerId)
     return NextResponse.json({ ok: true, promotedEnrollmentId })
   } catch (err) {
     if (err instanceof ClassError) {

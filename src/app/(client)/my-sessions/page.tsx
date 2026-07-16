@@ -4,6 +4,8 @@ import { Calendar, Clock, MapPin, Video, ChevronRight, Users } from 'lucide-reac
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { PageHeader } from '@/components/shared/page-header'
+import { resolveCancellationFeeCents } from '@/lib/cancellation'
+import { CancelSessionButton } from './cancel-session-button'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Sessions' }
@@ -31,6 +33,23 @@ export default async function MySessionsPage() {
   if (!active) redirect('/login')
 
   const now = new Date()
+
+  // The client's trainer, for the self-cancel affordance: the cancellation-fee
+  // config drives the fee we warn about before they confirm.
+  const clientProfile = await prisma.clientProfile.findUnique({
+    where: { id: active.clientId },
+    select: {
+      trainer: {
+        select: { cancellationFeeCents: true, cancellationFeeWindowHours: true, payoutCurrency: true },
+      },
+    },
+  })
+  const feeConfig = {
+    cancellationFeeCents: clientProfile?.trainer.cancellationFeeCents ?? null,
+    cancellationFeeWindowHours: clientProfile?.trainer.cancellationFeeWindowHours ?? null,
+  }
+  const currency = clientProfile?.trainer.payoutCurrency ?? 'nzd'
+  const feeFor = (at: Date) => resolveCancellationFeeCents(feeConfig, at, now)
 
   // 1:1 sessions (direct client link) + group-class sessions (via the client's
   // enrolments → the run's shared sessions). Merged into one timeline.
@@ -100,6 +119,13 @@ export default async function MySessionsPage() {
                     {next.sessionType === 'IN_PERSON' && next.location && <><span className="opacity-50">·</span><MapPin className="h-4 w-4 opacity-80" /> <span className="truncate">{next.location}</span></>}
                     {next.sessionType === 'VIRTUAL' && <><span className="opacity-50">·</span><Video className="h-4 w-4 opacity-80" /> Virtual</>}
                   </div>
+                  {!next.isClass && (
+                    <div className="mt-3 border-t border-white/15 pt-2.5">
+                      <span className="[&_button]:!text-white/90 [&_button:hover]:!text-white">
+                        <CancelSessionButton sessionId={next.id} title={titleOf(next)} feeCents={feeFor(next.scheduledAt)} currency={currency} />
+                      </span>
+                    </div>
+                  )}
                 </Link>
               )}
               {restUpcoming.length > 0 && (
@@ -113,6 +139,7 @@ export default async function MySessionsPage() {
                         </p>
                         <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(s.scheduledAt)} · {s.durationMins} min</p>
                       </div>
+                      {!s.isClass && <CancelSessionButton sessionId={s.id} title={titleOf(s)} feeCents={feeFor(s.scheduledAt)} currency={currency} />}
                       <ChevronRight className="h-4 w-4 text-slate-300 flex-shrink-0" />
                     </Link>
                   ))}

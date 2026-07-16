@@ -179,6 +179,97 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
 }
 
 /**
+ * Raise a fixed-amount receivable for a client-initiated CANCELLATION FEE. Unlike
+ * createInvoiceForAssignment (which prices off the package/product/class), the
+ * amount here is passed in — the fee the trainer configured — so we don't reuse
+ * that helper's price-resolution. Everything else matches: an UNPAID Invoice with
+ * one line, optionally auto-sent to the client, and best-effort mirrored into Xero,
+ * payable through the same /pay/<payToken> flow.
+ *
+ * Idempotent on (trainer, client, 'CANCELLATION_FEE', sourceId) — sourceId is the
+ * cancelled session or enrolment id, so a double-cancel never double-charges.
+ * Best-effort and NON-FATAL: swallows/logs errors so a Xero/email/DB hiccup can't
+ * break the cancellation that triggered it. Returns the invoice id, or null when
+ * there's nothing to raise (no amount, or the trainer/client can't be resolved).
+ */
+export async function createCancellationFeeInvoice(input: {
+  trainerId: string
+  clientId: string
+  amountCents: number
+  sourceId: string
+  description: string
+}): Promise<string | null> {
+  try {
+    if (!input.amountCents || input.amountCents <= 0) return null
+
+    const existing = await prisma.invoice.findFirst({
+      where: { trainerId: input.trainerId, clientId: input.clientId, sourceType: 'CANCELLATION_FEE', sourceId: input.sourceId },
+      select: { id: true },
+    })
+    if (existing) return existing.id
+
+    const trainer = await prisma.trainerProfile.findUnique({
+      where: { id: input.trainerId },
+      select: {
+        autoSendInvoices: true,
+        payoutCurrency: true,
+        businessName: true,
+        sandboxBilling: true,
+        xeroConnection: { select: { id: true } },
+      },
+    })
+    if (!trainer) return null
+
+    const currency = trainer.payoutCurrency ?? 'nzd'
+    const autoSend = trainer.autoSendInvoices === true
+    const description = input.description
+
+    const invoice = await prisma.invoice.create({
+      data: {
+        trainerId: input.trainerId,
+        clientId: input.clientId,
+        amountCents: input.amountCents,
+        currency,
+        status: 'UNPAID',
+        description,
+        sourceType: 'CANCELLATION_FEE',
+        sourceId: input.sourceId,
+        sentAt: autoSend ? new Date() : null,
+        lines: {
+          create: [{ description, quantity: 1, unitAmountCents: input.amountCents, amountCents: input.amountCents, sortOrder: 0 }],
+        },
+      },
+      select: { id: true, payToken: true },
+    })
+
+    const xeroEnabled = !!trainer.xeroConnection && (!trainer.sandboxBilling || process.env.NODE_ENV === 'development')
+    after(() => {
+      const tasks: Promise<unknown>[] = []
+      if (autoSend) {
+        tasks.push(notifyClientOfInvoice({
+          trainerId: input.trainerId,
+          clientId: input.clientId,
+          businessName: trainer.businessName ?? 'Your trainer',
+          description,
+          amountCents: input.amountCents,
+          currency,
+          payToken: invoice.payToken,
+        }).catch((e) => console.error('[invoicing] cancel-fee notify failed', invoice.id, e)))
+      }
+      if (xeroEnabled) {
+        tasks.push(syncReceivableToXero(invoice.id).catch((e) => console.error('[invoicing] cancel-fee xero push failed', invoice.id, e)))
+      }
+      return Promise.all(tasks)
+    })
+
+    return invoice.id
+  } catch (err) {
+    console.error('[invoicing] createCancellationFeeInvoice failed', input, err)
+    return null
+  }
+}
+
+/**
  * Notify a client that a receivable has been issued: in-app notification, push,
  * and a branded email with a "Pay now" CTA to the public pay page
  * (/pay/<payToken>, no login required). Invoice notifications aren't

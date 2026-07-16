@@ -168,7 +168,7 @@ export async function POST(req: Request) {
       if (!isConnectConfigured(sandbox)) {
         return NextResponse.json({ error: 'Payments are not configured yet' }, { status: 503 })
       }
-      const avail = `${env.NEXT_PUBLIC_APP_URL}/my-availability`
+      const appUrl = env.NEXT_PUBLIC_APP_URL
       const { url } = await createConnectCheckout({
         sandbox,
         trainerId: ctx.trainerId,
@@ -192,8 +192,11 @@ export async function POST(req: Request) {
             },
           },
         ],
-        successUrl: `${avail}?purchase=success`,
-        cancelUrl: `${avail}?purchase=cancelled`,
+        // On success land on the client's Sessions timeline, where the newly
+        // paid-for session shows once the connect webhook books it. A cancelled
+        // payment returns to the availability wizard so they can retry.
+        successUrl: `${appUrl}/my-sessions?booked=1`,
+        cancelUrl: `${appUrl}/my-availability?purchase=cancelled`,
       })
       if (!url) return NextResponse.json({ error: 'Could not start checkout' }, { status: 502 })
       return NextResponse.json({ ok: true, mode: 'payment', url }, { status: 201 })

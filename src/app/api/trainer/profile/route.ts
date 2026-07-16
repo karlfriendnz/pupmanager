@@ -23,6 +23,11 @@ const patchSchema = z.object({
   // item + payments enabled means the client pays up front; off = book now, pay
   // later by default (each item can still override).
   defaultRequirePayment: z.boolean().optional(),
+  // Client self-cancellation fee, in the trainer's payout-currency minor units.
+  // null (or 0) = no fee. Window = only charge cancellations within N hours of
+  // the start; null window = charge ANY cancellation when a fee is set.
+  cancellationFeeCents: z.number().int().min(0).max(100_000_00).nullable().optional(),
+  cancellationFeeWindowHours: z.number().int().min(1).max(8760).nullable().optional(),
   // Onboarding personas that describe what the business offers. Drives which
   // schedule "add" options appear. Loose string ids (validated against the
   // known persona list would couple this route to the wizard) — unknown ids are

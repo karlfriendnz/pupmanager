@@ -124,7 +124,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       return NextResponse.json({ error: 'Payments are not configured yet' }, { status: 503 })
     }
     if (!payLater) {
-      const classesUrl = `${env.NEXT_PUBLIC_APP_URL}/my-classes`
+      // Enrolment now only ever starts from the availability wizard, so land on
+      // the client's Sessions timeline (where the new class shows) on success,
+      // and back on the wizard if they cancel.
+      const appUrl = env.NEXT_PUBLIC_APP_URL
+      const successUrl = `${appUrl}/my-sessions?booked=1`
+      const cancelUrl = `${appUrl}/my-availability?enrol=cancelled`
       const { url } = await createConnectCheckout({
         sandbox,
         trainerId: profile.trainerId,
@@ -141,8 +146,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
             intent: { classRunId: runId, type, dogId: dogId ?? null },
           },
         ],
-        successUrl: `${classesUrl}?enrol=success`,
-        cancelUrl: `${classesUrl}?enrol=cancelled`,
+        successUrl,
+        cancelUrl,
       })
       if (!url) return NextResponse.json({ error: 'Could not start checkout' }, { status: 502 })
       return NextResponse.json({ ok: true, mode: 'payment', url }, { status: 201 })

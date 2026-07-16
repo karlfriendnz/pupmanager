@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { isConnectConfigured, readAccountFlags } from '@/lib/connect'
 import { stripeFor } from '@/lib/stripe'
 import { ConnectButton, AcceptPaymentsToggle, PassFeeToggle, AutoSendInvoicesToggle, DefaultRequirePaymentToggle } from './payments-actions'
+import { CancellationFeeCard } from './cancellation-fee-card'
 
 // Trainer-facing setup for taking payments from their clients (Stripe Connect
 // Express). Owner-only; rendered as a tab on Settings. Three states: not
@@ -22,6 +23,8 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
       sandboxBilling: true,
       autoSendInvoices: true,
       defaultRequirePayment: true,
+      cancellationFeeCents: true,
+      cancellationFeeWindowHours: true,
     },
   })
 
@@ -162,6 +165,14 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
           <AutoSendInvoicesToggle initial={profile?.autoSendInvoices ?? false} />
         </div>
       </div>
+
+      {/* Client self-cancellation fee — independent of Stripe (raised as an
+          invoice, payable by card or bank transfer). */}
+      <CancellationFeeCard
+        initialFeeCents={profile?.cancellationFeeCents ?? null}
+        initialWindowHours={profile?.cancellationFeeWindowHours ?? null}
+        currency={profile?.payoutCurrency ?? 'nzd'}
+      />
 
       {/* Transactions + invoices live under Finances. */}
       {active && (

@@ -519,6 +519,40 @@ export async function withdrawEnrollment(
   })
 }
 
+/**
+ * Withdraw an enrolment AND notify the promoted waitlister, if any. Shared by
+ * the trainer-side withdraw route and the client self-cancel route so promotion
+ * + the "you're off the waitlist" notification behave identically in both. The
+ * promote notification is best-effort and never blocks the withdraw. Returns the
+ * promoted enrolment id (or null).
+ */
+export async function withdrawEnrollmentAndNotify(
+  enrollmentId: string,
+  trainerId: string,
+): Promise<{ promotedEnrollmentId: string | null }> {
+  const { promotedEnrollmentId } = await withdrawEnrollment(enrollmentId)
+
+  if (promotedEnrollmentId) {
+    const promoted = await prisma.classEnrollment.findUnique({
+      where: { id: promotedEnrollmentId },
+      select: { clientId: true, classRun: { select: { name: true } } },
+    })
+    if (promoted) {
+      await prisma.clientNotification
+        .create({
+          data: {
+            clientId: promoted.clientId,
+            trainerId,
+            subject: `You're off the waitlist for ${promoted.classRun.name}`,
+            notes: `A spot opened up and you've been enrolled in ${promoted.classRun.name}.`,
+          },
+        })
+        .catch(e => console.error('[class withdraw] promote notify failed', e))
+    }
+  }
+  return { promotedEnrollmentId }
+}
+
 export class ClassError extends Error {
   constructor(public code: string, message: string) {
     super(message)

@@ -489,6 +489,15 @@ model TrainerProfile {
   // + payments switched on means pay-to-book. A trainer can flip this to false
   // to make "book now, pay later" the default, and override per item.
   defaultRequirePayment     Boolean   @default(true)
+  // Cancellation fee a client is charged when they cancel a booking/enrolment
+  // themselves. null or 0 = no fee. Stored in the trainer's payout currency
+  // minor units (cents), same as every other price on this model.
+  cancellationFeeCents      Int?
+  // The fee only applies when the client cancels within this many hours of the
+  // session start (a "late cancellation" window). null = the fee applies to ANY
+  // cancellation whenever cancellationFeeCents is set (no grace window). e.g. 24
+  // means only cancellations inside 24h of the start are charged.
+  cancellationFeeWindowHours Int?
 
   // ─── Bulk-email sending domain (Resend) ─────────────────────────────────────
   // To send bulk emails to their clients the trainer must verify a *sending

@@ -110,6 +110,10 @@ vi.mock('@/lib/class-runs', () => ({
   enrolledCount: h.enrolledCount,
   dropInPriceCents: h.dropInPriceCents,
   withdrawEnrollment: h.withdrawEnrollment,
+  // The trainer withdraw route now goes through the shared helper (withdraw +
+  // waitlist-promote notification); reuse the same stub — it returns the
+  // promotedEnrollmentId shape the route expects.
+  withdrawEnrollmentAndNotify: h.withdrawEnrollment,
 }))
 vi.mock('@/lib/env', () => ({ env: { NEXT_PUBLIC_APP_URL: 'https://app.pupmanager.com' } }))
 
