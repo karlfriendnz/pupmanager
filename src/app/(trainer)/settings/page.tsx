@@ -58,9 +58,9 @@ export default async function TrainerSettingsPage() {
   if (!user || !trainerProfile) redirect('/login')
 
   // Forms data is only needed for the Forms tab — skip the queries for members
-  // who can't manage forms (the tab won't render for them). Embed (lead-capture)
-  // forms now live on the standalone Website page, not here.
-  const [customFields, sessionForms] = canManageForms
+  // who can't manage forms (the tab won't render for them). Lead-capture (embed)
+  // forms now live here under Fields & forms too (moved off the Website tab).
+  const [customFields, sessionForms, embedForms] = canManageForms
     ? await Promise.all([
         prisma.customField.findMany({
           where: { trainerId: trainerProfile.id },
@@ -71,8 +71,12 @@ export default async function TrainerSettingsPage() {
           orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
           include: { _count: { select: { responses: true } } },
         }),
+        prisma.embedForm.findMany({
+          where: { trainerId: trainerProfile.id },
+          orderBy: { createdAt: 'desc' },
+        }),
       ])
-    : [[], []] as const
+    : [[], [], []] as const
 
   const intakeFields = customFields.map(f => ({
     id: f.id,
@@ -132,6 +136,13 @@ export default async function TrainerSettingsPage() {
               questions: Array.isArray(f.questions) ? f.questions as unknown as Question[] : [],
               responses: f._count.responses,
               isActive: f.isActive,
+            }))}
+            embedForms={embedForms.map(f => ({
+              id: f.id,
+              title: f.title,
+              description: f.description,
+              isActive: f.isActive,
+              fieldCount: (Array.isArray(f.fields) ? f.fields.length : 0) + (Array.isArray(f.customFieldIds) ? f.customFieldIds.length : 0),
             }))}
             intakeCustomFields={intakeFields}
             intakeFormPublished={trainerProfile.intakeFormPublished}

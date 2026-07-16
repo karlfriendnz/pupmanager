@@ -94,7 +94,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 // Page-style embed form editor. Renders in a dedicated route (/forms/embed/new
 // or /forms/embed/[formId]) — the parent page provides the chrome (back link
 // + title), this component owns the form fields, save/delete/toggle, and the
-// embed code reveal. Save and delete redirect back to /website.
+// embed code reveal. Save and delete redirect back to Settings → Fields & forms.
 export function EmbedFormEditor({
   initial,
   customFields,
@@ -213,7 +213,7 @@ export function EmbedFormEditor({
       setSaving(false)
       return
     }
-    router.push('/website')
+    router.push('/settings?tab=forms')
     router.refresh()
   }
 
@@ -231,7 +231,7 @@ export function EmbedFormEditor({
     if (!initial) return
     const res = await fetch(`/api/embed-forms/${initial.id}`, { method: 'DELETE' })
     if (!res.ok) return
-    router.push('/website')
+    router.push('/settings?tab=forms')
     router.refresh()
   }
 
@@ -623,6 +623,17 @@ function CustomFieldToggleRow({
 
 type FormType = 'INTAKE' | 'EMBED' | 'SESSION'
 
+// Lightweight list-row shape for lead-capture (embed) forms — mirrors the
+// former EmbedFormsCard's EmbedFormRow. Editing happens on the dedicated
+// /forms/embed/* routes; here we just list them alongside session forms.
+export interface EmbedFormRow {
+  id: string
+  title: string
+  description: string | null
+  isActive: boolean
+  fieldCount: number
+}
+
 const TYPE_BADGE: Record<FormType, { label: string; cls: string; Icon: typeof Globe }> = {
   INTAKE: { label: 'Intake', cls: 'bg-amber-100 text-amber-700', Icon: ClipboardList },
   EMBED: { label: 'Embed', cls: 'bg-blue-100 text-blue-700', Icon: Globe },
@@ -630,6 +641,7 @@ const TYPE_BADGE: Record<FormType, { label: string; cls: string; Icon: typeof Gl
 }
 export function FormsManager({
   initialSessionForms,
+  embedForms,
   intakeCustomFields,
   intakeFormPublished,
   intakeSectionOrder,
@@ -637,6 +649,8 @@ export function FormsManager({
   businessRoles,
 }: {
   initialSessionForms: SessionFormRow[]
+  /** Lead-capture (embed) forms — null when the member can't manage forms. */
+  embedForms: EmbedFormRow[] | null
   intakeCustomFields: IntakeCustomField[]
   intakeFormPublished: boolean
   intakeSectionOrder: { name: string; description: string | null }[]
@@ -837,6 +851,68 @@ export function FormsManager({
             </div>
           </div>
         ))}
+
+        {/* Lead-capture (embed) forms — public forms a trainer embeds on their
+            own website; a submission lands in their enquiries. Editing opens
+            the dedicated /forms/embed/* route (embed URL + iframe snippet live
+            there). Relocated here from Settings → Website. */}
+        {embedForms != null && (
+          <>
+            <div className="flex items-center justify-between gap-3 mt-2">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-slate-900">Lead-capture forms</h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Embed a form on your website — submissions land in your enquiries.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => router.push('/forms/embed/new')}
+                className="flex-shrink-0"
+              >
+                <Plus className="h-4 w-4" />
+                New lead-capture form
+              </Button>
+            </div>
+
+            {embedForms.length === 0 ? (
+              <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-400">
+                No lead-capture forms yet.
+              </p>
+            ) : (
+              embedForms.map(f => (
+                <div key={f.id} className="bg-white rounded-2xl border border-slate-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4">
+                    <TypeBadgeIcon type="EMBED" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-slate-900 truncate">{f.title}</p>
+                        <TypeBadge type="EMBED" />
+                        <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+                          f.isActive ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {f.isActive ? 'Published' : 'Draft'}
+                        </span>
+                      </div>
+                      {f.description && <p className="text-sm text-slate-400 truncate mt-0.5">{f.description}</p>}
+                      <p className="text-xs text-slate-400 mt-1">
+                        {f.fieldCount} field{f.fieldCount === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => router.push(`/forms/embed/${f.id}`)}
+                      className="p-2 text-slate-400 hover:text-blue-600 transition-colors flex-shrink-0"
+                      title="Edit form"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </>
+        )}
       </section>
     </div>
   )
