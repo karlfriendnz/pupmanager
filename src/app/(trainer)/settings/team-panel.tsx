@@ -59,9 +59,9 @@ function PermissionEditor({
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {GROUPS.map((group) => (
-        <div key={group} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{group}</p>
-          <div className="flex flex-col gap-2">
+        <div key={group} className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{group}</p>
+          <div className="flex flex-col gap-3">
             {grouped[group]?.map((def) => (
               <label key={def.key} className="flex items-start gap-2.5 cursor-pointer">
                 <input
@@ -408,7 +408,7 @@ function MemberRow({ member, canManage, onChanged }: { member: Member; canManage
   }
 
   return (
-    <div className="p-4" data-testid={`member-${member.email}`}>
+    <div className="p-5" data-testid={`member-${member.email}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
