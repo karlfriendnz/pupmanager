@@ -11,6 +11,7 @@ import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { resolveRequirePayment } from '@/lib/require-payment'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { notifyTrainer } from '@/lib/trainer-notify'
+import { notifyClient } from '@/lib/client-notify'
 import { env } from '@/lib/env'
 
 // Client self-enrolment into a group class run. Free classes (or trainers not
@@ -34,7 +35,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       // Names + trainer routing for the "client booked" notification.
       user: { select: { name: true } },
       dog: { select: { name: true } },
-      trainer: { select: { user: { select: { id: true } } } },
+      trainer: { select: { businessName: true, user: { select: { id: true } } } },
       assignedTrainer: { select: { user: { select: { id: true } } } },
     },
   })
@@ -184,6 +185,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
         `/classes/${runId}`,
         profile.trainerId,
       )
+    }
+    // Confirm to the client (in-app + email per their prefs) — a real seat only,
+    // not a waitlist spot.
+    if (result.status === 'ENROLLED') {
+      await notifyClient({
+        userId: active.userId,
+        trainerId: profile.trainerId,
+        type: 'CLIENT_ADDED_TO_PLAN',
+        vars: { trainerName: profile.trainer?.businessName ?? 'Your trainer', dogName: profile.dog?.name ?? '', planName: run.name, detail: type === 'DROP_IN' ? 'Drop-in' : '' },
+        link: '/my-sessions',
+        ctaLabel: 'View your sessions',
+      }).catch(err => console.error('[class enrol] client-confirm failed', err))
     }
     return NextResponse.json({ ok: true, mode: result.status === 'WAITLISTED' ? 'waitlisted' : 'enrolled' }, { status: 201 })
   } catch (err) {

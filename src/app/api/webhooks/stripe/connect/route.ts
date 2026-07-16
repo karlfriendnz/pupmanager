@@ -9,6 +9,7 @@ import { materializeBooking } from '@/lib/booking-page'
 import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automations'
 import { enrollInRun } from '@/lib/class-runs'
 import { notifyTrainer } from '@/lib/trainer-notify'
+import { notifyClient } from '@/lib/client-notify'
 import { sendEmail } from '@/lib/email'
 import { syncPaymentToXero } from '@/lib/xero-sync'
 import { settleInvoiceFromPayment, syncReceivablePaymentToXero } from '@/lib/invoicing'
@@ -314,21 +315,35 @@ async function fulfilClassEnrolments(
   // self-enrol path notifies inline; this brings the paid path to parity).
   if (enrolledRunIds.length) {
     const [trainer, client, runs] = await Promise.all([
-      prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { user: { select: { id: true } } } }),
-      prisma.clientProfile.findUnique({ where: { id: clientId }, select: { user: { select: { name: true } }, dog: { select: { name: true } } } }),
+      prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { id: true } } } }),
+      prisma.clientProfile.findUnique({ where: { id: clientId }, select: { user: { select: { id: true, name: true } }, dog: { select: { name: true } } } }),
       prisma.classRun.findMany({ where: { id: { in: enrolledRunIds } }, select: { id: true, name: true } }),
     ])
     const trainerUserId = trainer?.user?.id
-    if (trainerUserId) {
-      const nameById = new Map(runs.map(r => [r.id, r.name]))
-      for (const runId of enrolledRunIds) {
+    const nameById = new Map(runs.map(r => [r.id, r.name]))
+    for (const runId of enrolledRunIds) {
+      const runName = nameById.get(runId) ?? 'a class'
+      // Tell the trainer — a paid class books via this webhook, so without this
+      // they'd never hear about it (the free self-enrol path notifies inline).
+      if (trainerUserId) {
         await notifyTrainer(
           trainerUserId,
           'CLIENT_BOOKED_SESSION',
-          { clientName: client?.user?.name ?? 'A client', dogName: client?.dog?.name ?? '', detail: nameById.get(runId) ?? 'a class' },
+          { clientName: client?.user?.name ?? 'A client', dogName: client?.dog?.name ?? '', detail: runName },
           `/classes/${runId}`,
           trainerId,
-        ).catch(err => console.error('[connect webhook] class enrol notify failed', err))
+        ).catch(err => console.error('[connect webhook] class enrol trainer-notify failed', err))
+      }
+      // Confirm to the CLIENT (in-app + email per their prefs).
+      if (client?.user?.id) {
+        await notifyClient({
+          userId: client.user.id,
+          trainerId,
+          type: 'CLIENT_ADDED_TO_PLAN',
+          vars: { trainerName: trainer?.businessName ?? 'Your trainer', dogName: client.dog?.name ?? '', planName: runName, detail: '' },
+          link: '/my-sessions',
+          ctaLabel: 'View your sessions',
+        }).catch(err => console.error('[connect webhook] class enrol client-confirm failed', err))
       }
     }
   }
