@@ -150,6 +150,20 @@ export default async function globalSetup() {
     await prisma.package.create({
       data: { trainerId: profile.id, name: 'Puppy Foundations', sessionCount: 4, weeksBetween: 1 },
     })
+    // A FREE, instant, client-self-bookable package + week-round availability, so
+    // the /my-availability booking wizard has something to offer on any day.
+    await prisma.package.create({
+      data: {
+        id: SEED.selfBookPackageId, trainerId: profile.id, name: 'Self-Book Session',
+        sessionCount: 1, weeksBetween: 1, durationMins: 60, clientSelfBook: true,
+        selfBookRequiresApproval: false,
+      },
+    })
+    await prisma.availabilitySlot.createMany({
+      data: [1, 2, 3, 4, 5, 6, 7].map(dayOfWeek => ({
+        trainerId: profile.id, dayOfWeek, startTime: '09:00', endTime: '17:00', cadenceWeeks: 1,
+      })),
+    })
     // A published public embed form, for the public-form rate-limit test.
     await prisma.embedForm.create({
       data: { id: SEED.embedFormId, trainerId: profile.id, title: 'Get in touch', isActive: true },

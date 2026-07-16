@@ -32,6 +32,10 @@ export const SEED = {
   // target), one unassigned (staff without clients.viewAll must NOT reach it).
   assignedClientId: 'e2eaassignedclient000000x',
   unassignedClientId: 'e2eaunassignedclient00000',
+  // A FREE, instant, self-bookable package on Business A (no approval, no price)
+  // plus 7-day 09:00–17:00 availability — drives the /my-availability booking
+  // wizard happy path without any Stripe handoff.
+  selfBookPackageId: 'e2eselfbookpkg0000000000x',
   // A SEPARATE business (different tenant) — the pentest tries to breach it
   // from Business A. Its resources have fixed ids so the attacker can target them.
   businessB: {
