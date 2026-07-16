@@ -9,7 +9,7 @@ import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { htmlHasText } from '@/lib/email-html'
 
 type NotificationType = keyof typeof NOTIFICATION_TYPES
-type Channel = 'PUSH' | 'EMAIL'
+type Channel = 'PUSH' | 'EMAIL' | 'IN_APP'
 
 interface PrefRow {
   type: NotificationType
@@ -25,6 +25,7 @@ const MINUTES_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180]
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => h)
 const TRAINER_TYPES = Object.values(NOTIFICATION_TYPES).filter(m => m.audience !== 'client')
 const CHANNELS: { id: Channel; label: string; Icon: typeof Bell }[] = [
+  { id: 'IN_APP', label: 'In-app', Icon: Bell },
   { id: 'PUSH', label: 'Phone', Icon: Smartphone },
   { id: 'EMAIL', label: 'Email', Icon: Mail },
 ]
@@ -67,23 +68,25 @@ export function NotificationsPanel() {
   }
 
   return (
-    <section className="flex flex-col gap-4 md:max-w-xl">
+    <section className="flex flex-col gap-6 md:max-w-2xl">
+      <p className="text-sm text-slate-500 leading-snug">In-app shows in your notifications bell and as a pop-up toast. Phone sends a push to your device; Email lands in your inbox.</p>
+
       {loadError && <Alert variant="error">Couldn&apos;t load preferences: {loadError}</Alert>}
       {!loadError && !rows && <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}
 
       {rows && (
-        <div className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
-          <table className="w-full">
+        <div className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-x-auto">
+          <table className="w-full min-w-[480px]">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/70">
-                <th className="text-left px-3 py-2.5 align-bottom">
+                <th className="text-left px-5 py-4 align-bottom">
                   <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Notify me</span>
                   <span className="block text-xs font-normal text-slate-400 mt-0.5 normal-case tracking-normal">Tap a row to set timing &amp; wording.</span>
                 </th>
                 {CHANNELS.map(({ id, label, Icon }) => {
                   const on = columnOn(id)
                   return (
-                    <th key={id} className="px-1 py-2.5 w-[64px]">
+                    <th key={id} className="px-3 py-4 w-[72px]">
                       <button type="button" onClick={() => toggleColumn(id)} title={`Toggle all ${label}`} className="flex flex-col items-center gap-1.5 w-full group">
                         <span className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${on ? 'bg-accent text-white shadow-sm' : 'bg-white text-slate-400 ring-1 ring-slate-200 group-hover:text-slate-600'}`}>
                           <Icon className="h-[18px] w-[18px]" />
@@ -93,7 +96,7 @@ export function NotificationsPanel() {
                     </th>
                   )
                 })}
-                <th className="px-2 py-2.5 w-[100px]"></th>
+                <th className="px-4 py-4 w-[108px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -105,20 +108,20 @@ export function NotificationsPanel() {
                 return (
                   <Fragment key={meta.type}>
                     <tr className="border-t border-slate-50">
-                      <td className="px-3 py-3 align-top">
+                      <td className="px-5 py-5 align-top">
                         <span className="block text-sm font-medium text-slate-900 leading-tight">{meta.label}</span>
                         <span className="block text-xs text-slate-400 leading-tight mt-0.5">{meta.description}</span>
                       </td>
                       {CHANNELS.map(({ id }) => {
-                        if (!supports(meta.type, id)) return <td key={id} className="text-center text-slate-200">—</td>
+                        if (!supports(meta.type, id)) return <td key={id} className="px-3 py-5 text-center align-middle text-slate-200">—</td>
                         const r = rowOf(meta.type, id)
                         return (
-                          <td key={id} className="px-1 py-3 text-center align-middle">
+                          <td key={id} className="px-3 py-5 text-center align-middle">
                             <input type="checkbox" checked={!!r?.enabled} onChange={() => saveCell(meta.type as NotificationType, id, { enabled: !r?.enabled })} aria-label={`${meta.label} — ${id}`} className="h-5 w-5 accent-[var(--accent)] cursor-pointer" />
                           </td>
                         )
                       })}
-                      <td className="px-2 py-3 text-right align-middle">
+                      <td className="px-4 py-5 text-right align-middle">
                         {canExpand && (
                           <button type="button" onClick={() => setExpanded(open ? null : meta.type)} className={`inline-flex items-center rounded-lg px-2.5 h-8 text-xs font-medium border transition-colors ${open ? 'border-accent bg-accent-soft text-accent' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
                             {open ? 'Done' : 'Customise'}
@@ -128,7 +131,7 @@ export function NotificationsPanel() {
                     </tr>
                     {open && (
                       <tr className="bg-slate-50/50">
-                        <td colSpan={2 + CHANNELS.length} className="px-3 pb-3 pt-1">
+                        <td colSpan={2 + CHANNELS.length} className="px-5 pb-5 pt-1">
                           <div className="flex flex-col gap-3">
                             {CHANNELS.filter(c => supports(meta.type, c.id)).map(c => {
                               const r = rowOf(meta.type, c.id)
@@ -199,8 +202,9 @@ function PrefRowEditor({
     } catch (e) { setTestState({ kind: 'error', message: e instanceof Error ? e.message : 'Network error' }) }
   }
 
-  const ChannelIcon = row.channel === 'PUSH' ? Smartphone : Mail
-  const channelLabel = row.channel === 'PUSH' ? 'Phone' : 'Email'
+  const channelMeta = CHANNELS.find(c => c.id === row.channel) ?? CHANNELS[0]
+  const ChannelIcon = channelMeta.Icon
+  const channelLabel = channelMeta.label
 
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-white ring-1 ring-slate-100 p-3">
@@ -259,9 +263,15 @@ function PrefRowEditor({
           {!saving && savedAt && <span className="text-emerald-600">Saved</span>}
           {error && <span className="text-red-600">{error}</span>}
         </div>
-        <Button type="button" size="sm" variant="secondary" onClick={sendTest} loading={testState.kind === 'sending'}>
-          <Send className="h-3.5 w-3.5 mr-1" /> Send test
-        </Button>
+        {row.channel === 'IN_APP' ? (
+          // In-app has nothing to "send" — it just appears in the bell/toast as
+          // notifications fire, so there's no test-send for this channel.
+          <span className="text-[11px] text-slate-400">Appears live in your bell &amp; toast</span>
+        ) : (
+          <Button type="button" size="sm" variant="secondary" onClick={sendTest} loading={testState.kind === 'sending'}>
+            <Send className="h-3.5 w-3.5 mr-1" /> Send test
+          </Button>
+        )}
       </div>
       {testState.kind === 'sent' && <Alert variant="success">Test sent — check your iPhone.</Alert>}
       {testState.kind === 'sentEmail' && <Alert variant="success">Test email sent{testState.to ? ` to ${testState.to}` : ''} — check your inbox.</Alert>}
