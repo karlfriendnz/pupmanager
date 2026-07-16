@@ -8,6 +8,7 @@ import { readAccountFlags, stripeProcessingFeeFrom } from '@/lib/connect'
 import { materializeBooking } from '@/lib/booking-page'
 import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automations'
 import { enrollInRun } from '@/lib/class-runs'
+import { notifyTrainer } from '@/lib/trainer-notify'
 import { sendEmail } from '@/lib/email'
 import { syncPaymentToXero } from '@/lib/xero-sync'
 import { settleInvoiceFromPayment, syncReceivablePaymentToXero } from '@/lib/invoicing'
@@ -288,6 +289,7 @@ async function fulfilClassEnrolments(
   items: { itemId: string; intent: ClassIntent }[],
 ) {
   const failures: string[] = []
+  const enrolledRunIds: string[] = []
   for (const it of items) {
     const { classRunId, type, dogId } = it.intent
     if (!classRunId) continue
@@ -296,6 +298,7 @@ async function fulfilClassEnrolments(
       if (r.status === 'ENROLLED') {
         await prisma.paymentItem.update({ where: { id: it.itemId }, data: { classEnrollmentId: r.enrollmentId } })
         await prisma.classEnrollment.update({ where: { id: r.enrollmentId }, data: { invoicedAt: new Date() } })
+        enrolledRunIds.push(classRunId)
       } else {
         // Paid but only got a waitlist seat — trainer needs to decide.
         failures.push(classRunId)
@@ -303,6 +306,30 @@ async function fulfilClassEnrolments(
     } catch (err) {
       console.error('[stripe connect webhook] paid class enrol failed', classRunId, err)
       failures.push(classRunId)
+    }
+  }
+
+  // Notify the trainer in-app for each completed enrolment — a paid class books
+  // via this webhook, so without this the trainer never hears about it (the free
+  // self-enrol path notifies inline; this brings the paid path to parity).
+  if (enrolledRunIds.length) {
+    const [trainer, client, runs] = await Promise.all([
+      prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { user: { select: { id: true } } } }),
+      prisma.clientProfile.findUnique({ where: { id: clientId }, select: { user: { select: { name: true } }, dog: { select: { name: true } } } }),
+      prisma.classRun.findMany({ where: { id: { in: enrolledRunIds } }, select: { id: true, name: true } }),
+    ])
+    const trainerUserId = trainer?.user?.id
+    if (trainerUserId) {
+      const nameById = new Map(runs.map(r => [r.id, r.name]))
+      for (const runId of enrolledRunIds) {
+        await notifyTrainer(
+          trainerUserId,
+          'CLIENT_BOOKED_SESSION',
+          { clientName: client?.user?.name ?? 'A client', dogName: client?.dog?.name ?? '', detail: nameById.get(runId) ?? 'a class' },
+          `/classes/${runId}`,
+          trainerId,
+        ).catch(err => console.error('[connect webhook] class enrol notify failed', err))
+      }
     }
   }
 
