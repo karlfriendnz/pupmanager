@@ -32,3 +32,36 @@ export function countUnreadMessages(scope: UnreadMessageScope): Promise<number> 
     },
   })
 }
+
+/**
+ * A user's total unread across EVERY hat they wear — the number for their
+ * native app-icon badge. A device belongs to one user, not one role, so this
+ * sums unread across all companies they're a member of (owner or staff) AND all
+ * client profiles they own. Same definition as countUnreadMessages (unread
+ * TRAINER_CLIENT messages they didn't send), just not scoped to one active
+ * context. Used by sendPush() to stamp aps.badge / the FCM count on every push.
+ *
+ * Returns 0 for a user with no threads at all (the icon badge should be blank).
+ */
+export async function unreadBadgeCountForUser(userId: string): Promise<number> {
+  const [memberships, clientProfiles] = await Promise.all([
+    prisma.trainerMembership.findMany({ where: { userId }, select: { companyId: true } }),
+    prisma.clientProfile.findMany({ where: { userId }, select: { id: true } }),
+  ])
+  const companyIds = memberships.map(m => m.companyId)
+  const clientIds = clientProfiles.map(c => c.id)
+  if (companyIds.length === 0 && clientIds.length === 0) return 0
+
+  const threadOr = []
+  if (companyIds.length) threadOr.push({ client: { is: { trainerId: { in: companyIds } } } })
+  if (clientIds.length) threadOr.push({ clientId: { in: clientIds } })
+
+  return prisma.message.count({
+    where: {
+      channel: 'TRAINER_CLIENT',
+      readAt: null,
+      senderId: { not: userId },
+      OR: threadOr,
+    },
+  })
+}

@@ -6,6 +6,27 @@ import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Badge } from '@capawesome/capacitor-badge';
+
+// Pull the user's true unread total from the server and write it to the app-icon
+// badge. Called on launch, whenever the app returns to the foreground, and after
+// a foreground push — so the number reflects reality and drops back to 0 once
+// everything's read. The server stamps the SAME count on each push (see
+// sendPush → unreadBadgeCountForUser), so the icon never disagrees with itself.
+// Best-effort: the badge is cosmetic, so every failure is swallowed.
+async function syncAppBadge() {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    const r = await fetch('/api/notifications/badge', { cache: 'no-store' });
+    if (!r.ok) return;
+    const { count } = await r.json();
+    const n = Number(count) || 0;
+    if (n > 0) await Badge.set({ count: n });
+    else await Badge.clear();
+  } catch {
+    /* badge is cosmetic — never let it surface an error */
+  }
+}
 
 export function NativeBootstrap() {
   const router = useRouter();
@@ -106,10 +127,14 @@ export function NativeBootstrap() {
       // away client state on the current page.
       await PushNotifications.addListener('pushNotificationReceived', () => {
         router.refresh();
+        // A push just arrived while foregrounded — the count moved, so re-read it.
+        void syncAppBadge();
       });
 
       await PushNotifications.register();
       registered = true;
+      // First paint of the badge once we're registered + logged in.
+      void syncAppBadge();
     }
 
     void tryRegister();
@@ -170,8 +195,15 @@ export function NativeBootstrap() {
   const wasActiveRef = useRef(true);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
+    // Sync the icon badge on first mount (app cold-launched into the foreground)
+    // and on every background → foreground return below. Opening the app to read
+    // messages is exactly when a stale badge should come down.
+    void syncAppBadge();
     const handle = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
-      if (isActive && !wasActiveRef.current) router.refresh();
+      if (isActive && !wasActiveRef.current) {
+        router.refresh();
+        void syncAppBadge();
+      }
       wasActiveRef.current = isActive;
     });
     return () => { void handle.then(h => h.remove()); };

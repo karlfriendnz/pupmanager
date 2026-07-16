@@ -11,6 +11,8 @@ interface ServiceAccount { projectId: string; clientEmail: string; privateKey: s
 interface FcmPayload {
   alert: { title: string; body: string }
   customData?: Record<string, unknown>
+  /** App-icon badge number — surfaced to Android as notification_count. */
+  badge?: number
 }
 
 export interface FcmResult { token: string; ok: boolean; status?: number; reason?: string }
@@ -102,7 +104,14 @@ export async function sendFcm(deviceTokens: string[], payload: FcmPayload): Prom
             token,
             notification: { title: payload.alert.title, body: payload.alert.body },
             ...(data ? { data } : {}),
-            android: { priority: 'high', notification: { sound: 'default' } },
+            android: {
+              priority: 'high',
+              notification: {
+                sound: 'default',
+                // Drives the launcher badge count where the launcher supports it.
+                ...(payload.badge !== undefined ? { notification_count: payload.badge } : {}),
+              },
+            },
           },
         }),
       })

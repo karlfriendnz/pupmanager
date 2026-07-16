@@ -1,10 +1,17 @@
 import { prisma } from '@/lib/prisma'
 import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
 import { sendFcm, FCM_INVALID_TOKEN_REASONS } from '@/lib/fcm'
+import { unreadBadgeCountForUser } from '@/lib/unread-messages'
 
 interface PushPayload {
   alert: { title: string; body: string }
   customData?: Record<string, unknown>
+  /**
+   * App-icon badge number. Omit to let sendPush stamp the recipient's current
+   * unread total automatically (the normal case — see below). Pass an explicit
+   * value only to override (e.g. a test push forcing a specific number).
+   */
+  badge?: number
 }
 
 export interface PushResult {
@@ -32,9 +39,18 @@ export async function sendPush(
   const ios = tokens.filter(t => t.platform === 'IOS').map(t => t.token)
   const android = tokens.filter(t => t.platform === 'ANDROID').map(t => t.token)
 
+  // Stamp the icon badge with the recipient's CURRENT unread total (absolute,
+  // not an increment — that's how APNs badges work). A new-message push then
+  // shows the right running count, and other push types (reminders, invoices)
+  // carry the unchanged unread total so they never wrongly bump the badge. The
+  // app zeroes it on open (native @capawesome/capacitor-badge). An explicit
+  // payload.badge overrides (test pushes); otherwise compute it here.
+  const badge = payload.badge ?? await unreadBadgeCountForUser(userId)
+  const withBadge = { ...payload, badge }
+
   const [iosResults, androidResults] = await Promise.all([
-    ios.length ? sendApns(ios, payload) : Promise.resolve([]),
-    android.length ? sendFcm(android, payload) : Promise.resolve([]),
+    ios.length ? sendApns(ios, withBadge) : Promise.resolve([]),
+    android.length ? sendFcm(android, withBadge) : Promise.resolve([]),
   ])
 
   const stale: string[] = []
