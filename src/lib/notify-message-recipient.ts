@@ -1,11 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import { sendPush } from '@/lib/push'
-import { resolvePref } from '@/lib/notification-prefs'
-import { renderTemplate } from '@/lib/notification-types'
-import { sendTrainerEmail } from '@/lib/trainer-notify'
+import { notifyTrainer } from '@/lib/trainer-notify'
 import { notifyClient } from '@/lib/client-notify'
-
-const APP_URL = 'https://app.pupmanager.com'
 
 // Push the recipient of a freshly-created Message. "Recipient" = whichever
 // party in the trainer↔client thread didn't send it. Fire-and-forget from
@@ -28,7 +23,7 @@ export async function notifyMessageRecipient(args: NotifyArgs): Promise<void> {
   }
 }
 
-async function doNotify({ messageId, clientId, senderId, body }: NotifyArgs) {
+async function doNotify({ clientId, senderId, body }: NotifyArgs) {
   // Resolve the two parties: the client (User attached to ClientProfile)
   // and the trainer (User attached to the ClientProfile's trainer's
   // TrainerProfile). Whichever isn't `senderId` is the recipient.
@@ -73,14 +68,10 @@ async function doNotify({ messageId, clientId, senderId, body }: NotifyArgs) {
     // scoped to this organisation so a multi-org trainer's per-org choice wins.
     const target = profile.assignedTrainer?.user ?? trainerUser
     const companyId = profile.trainerId
-    const pushPref = await resolvePref(target.id, 'NEW_MESSAGE', 'PUSH', companyId)
-    if (pushPref.enabled) {
-      await sendPush(target.id, {
-        alert: { title: renderTemplate(pushPref.title, subs), body: renderTemplate(pushPref.body, subs) },
-        customData: { type: 'new-message', messageId, path: `/messages/${clientId}` },
-      })
-    }
-    await sendTrainerEmail(target.id, 'NEW_MESSAGE', subs, `${APP_URL}/messages/${clientId}`, companyId)
+    // Route through notifyTrainer so push, email AND the in-app feed row (which
+    // drives the realtime bell badge + toast) all fire, each gated by the
+    // trainer's per-channel NEW_MESSAGE preference.
+    await notifyTrainer(target.id, 'NEW_MESSAGE', subs, `/messages/${clientId}`, companyId)
   } else {
     // Client side: route through the client engine so push/email/feed all
     // honour the client's CLIENT_NEW_MESSAGE settings.
