@@ -40,7 +40,7 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
   return (
     <>
       <PageHeader
-        title="Classes"
+        title="Group Classes"
         subtitle="Run a class — pick the day, time and how many weeks. Clients enrol into one shared timetable with a roster, capacity and waitlist."
         actions={
           <Button onClick={() => setShowCreate(true)}>

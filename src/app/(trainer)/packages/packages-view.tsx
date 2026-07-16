@@ -95,7 +95,7 @@ export function PackagesView({
   return (
     <>
       <PageHeader
-        title="Packages"
+        title="1:1 Packages"
         actions={
           <Button size="sm" onClick={() => router.push('/packages/new')}>
             <Plus className="h-4 w-4" />

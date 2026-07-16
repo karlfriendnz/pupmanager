@@ -53,8 +53,8 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/lead-magnets', label: 'Lead magnets', icon: Download,        section: 'clients', child: true },
   { href: '/email-templates', label: 'Email templates', icon: Mail,       section: 'clients', child: true },
 
-  { href: '/packages',     label: 'Packages',     icon: Package,         section: 'programs' },
-  { href: '/classes',      label: 'Classes',      icon: GraduationCap,   section: 'programs' },
+  { href: '/packages',     label: '1:1 Packages', icon: Package,         section: 'programs' },
+  { href: '/classes',      label: 'Group Classes', icon: GraduationCap,  section: 'programs' },
   { href: '/templates',    label: 'Library',      icon: Layers,          section: 'programs' },
   { href: '/products',     label: 'Products',     icon: ShoppingBag,     section: 'programs' },
   { href: '/achievements', label: 'Achievements', icon: Trophy,          section: 'programs' },

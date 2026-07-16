@@ -6,7 +6,7 @@ import { hasAddon } from '@/lib/billing'
 import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Classes' }
+export const metadata: Metadata = { title: 'Group Classes' }
 
 export default async function ClassesPage() {
   const session = await auth()
