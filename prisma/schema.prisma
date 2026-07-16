@@ -585,6 +585,11 @@ model LinkPage {
   // legacy default order (book → customs → website → contact); the show* flags
   // still gate on/off, LinkPageButton.order stays but is secondary.
   itemOrder   String[] @default([])
+  // Per-button style overrides, keyed by the SAME button keys the builder uses
+  // ('book' | 'website' | 'contact' | 'custom:<LinkPageButton.id>'). Each value is
+  // { imageUrl?, bgColor?, textColor?, font? }; any absent sub-field falls back to
+  // the page-level styling. 'contact' styles BOTH the email and call buttons.
+  buttonStyles Json?
   links       LinkPageButton[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

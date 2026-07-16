@@ -6,6 +6,7 @@ import { hasAddon } from '@/lib/billing'
 import { ensureTrainerSlug } from '@/lib/slug'
 import { env } from '@/lib/env'
 import { PageHeader } from '@/components/shared/page-header'
+import type { ButtonStyle } from '@/lib/link-page'
 import { InstagramEditor } from './instagram-editor'
 
 export const metadata: Metadata = { title: 'Link in bio' }
@@ -84,6 +85,7 @@ export default async function InstagramPage() {
             backgroundUrl: linkPage.backgroundUrl,
             links: linkPage.links.map((l) => ({ id: l.id, label: l.label, url: l.url })),
             itemOrder: linkPage.itemOrder,
+            buttonStyles: (linkPage.buttonStyles as Record<string, ButtonStyle> | null) ?? null,
           }}
         />
       </div>

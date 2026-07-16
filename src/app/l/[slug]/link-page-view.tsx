@@ -136,11 +136,28 @@ export function LinkPageView({
         <div className="mt-7 flex w-full flex-col gap-3">
           {buttons.map((b) => {
             const Icon = BUTTON_ICONS[b.icon]
+            // Per-button overrides, each falling back to the page-level styling.
+            const bg = b.style?.bgColor ?? accent
+            const btnStyle: React.CSSProperties = { background: bg }
+            if (b.style?.textColor) btnStyle.color = b.style.textColor
+            if (b.style?.font) btnStyle.fontFamily = linkPageFontStack(b.style.font)
             const inner = (
               <>
-                <Icon className="h-5 w-5 shrink-0" aria-hidden />
+                {b.style?.imageUrl ? (
+                  // Small rounded image at the LEFT, in place of the lucide icon.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={b.style.imageUrl}
+                    alt=""
+                    aria-hidden
+                    className="h-8 w-8 shrink-0 rounded-lg object-cover"
+                  />
+                ) : (
+                  <Icon className="h-5 w-5 shrink-0" aria-hidden />
+                )}
                 <span className="flex-1 text-center">{b.label}</span>
-                <span className="h-5 w-5 shrink-0" aria-hidden />
+                {/* Matching spacer on the right keeps the label centred. */}
+                <span className={`shrink-0 ${b.style?.imageUrl ? 'h-8 w-8' : 'h-5 w-5'}`} aria-hidden />
               </>
             )
             return interactive ? (
@@ -149,7 +166,7 @@ export function LinkPageView({
                 href={b.href}
                 {...(b.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                 className="flex h-14 w-full items-center gap-2 rounded-2xl px-4 text-[15px] font-semibold text-white shadow-sm transition-transform hover:-translate-y-0.5 active:translate-y-0"
-                style={{ background: accent }}
+                style={btnStyle}
               >
                 {inner}
               </a>
@@ -157,7 +174,7 @@ export function LinkPageView({
               <div
                 key={b.key}
                 className="flex h-14 w-full items-center gap-2 rounded-2xl px-4 text-[15px] font-semibold text-white shadow-sm"
-                style={{ background: accent }}
+                style={btnStyle}
               >
                 {inner}
               </div>

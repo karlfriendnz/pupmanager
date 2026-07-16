@@ -6,7 +6,7 @@ import crypto from 'crypto'
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'])
-const ALLOWED_KINDS = new Set(['logo', 'icon', 'background', 'product'])
+const ALLOWED_KINDS = new Set(['logo', 'icon', 'background', 'product', 'button'])
 
 export async function POST(req: Request) {
   const session = await auth()

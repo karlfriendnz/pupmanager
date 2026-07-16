@@ -189,6 +189,62 @@ describe('link-page helpers', () => {
     )
     expect(buttons.map((b) => b.label)).toEqual(['Good'])
   })
+
+  it('buildLinkButtons attaches resolved per-button style; contact styles BOTH email + call', () => {
+    const buttons = buildLinkButtons(
+      {
+        headline: null, bio: null, showBooking: true, showWebsite: true, showContact: true,
+        instagram: null, facebook: null, tiktok: null,
+        links: [{ id: 'g1', label: 'Guide', url: 'guide.com' }],
+        itemOrder: [],
+        buttonStyles: {
+          book: { bgColor: '#ff0000', textColor: '#000000', font: 'rounded', imageUrl: 'https://img.test/a.png' },
+          'custom:g1': { bgColor: '#00ff00' },
+          contact: { bgColor: '#0000ff' },
+          website: {}, // empty entry → no style
+        },
+      },
+      { slug: 'jess', website: 'jessdogs.com', publicEmail: 'hi@jessdogs.com', phone: '021 555 0000', showPhoneToClients: true },
+    )
+    const byKey = (k: string) => buttons.find((b) => b.key === k)!
+    expect(byKey('book').style).toEqual({ bgColor: '#ff0000', textColor: '#000000', font: 'rounded', imageUrl: 'https://img.test/a.png' })
+    expect(byKey('custom:g1').style).toEqual({ bgColor: '#00ff00' })
+    // The single 'contact' entry styles both expanded buttons.
+    expect(byKey('email').style).toEqual({ bgColor: '#0000ff' })
+    expect(byKey('call').style).toEqual({ bgColor: '#0000ff' })
+    // An empty entry leaves the button with no style (inherits the page).
+    expect(byKey('website').style).toBeUndefined()
+  })
+
+  it('buildLinkButtons drops invalid colour / font / url from a style, keeping only clean fields', () => {
+    const buttons = buildLinkButtons(
+      {
+        headline: null, bio: null, showBooking: true, showWebsite: false, showContact: false,
+        instagram: null, facebook: null, tiktok: null,
+        links: [], itemOrder: [],
+        buttonStyles: {
+          // All four invalid → the whole entry drops (no style).
+          website: { bgColor: 'red', textColor: '#zz0', font: 'comic-sans', imageUrl: 'javascript:alert(1)' },
+          // Mixed → only the valid fields survive.
+          book: { bgColor: '#abc', textColor: 'notacolor', font: 'rounded', imageUrl: 'nope::' },
+        },
+      },
+      { slug: 'jess', website: null, publicEmail: null, phone: null, showPhoneToClients: false },
+    )
+    expect(buttons.find((b) => b.key === 'book')!.style).toEqual({ bgColor: '#abc', font: 'rounded' })
+  })
+
+  it('buildLinkButtons leaves every button style undefined when buttonStyles is null/absent', () => {
+    const buttons = buildLinkButtons(
+      {
+        headline: null, bio: null, showBooking: true, showWebsite: false, showContact: false,
+        instagram: null, facebook: null, tiktok: null,
+        links: [], itemOrder: [], buttonStyles: null,
+      },
+      { slug: 'jess', website: null, publicEmail: null, phone: null, showPhoneToClients: false },
+    )
+    expect(buttons.every((b) => b.style === undefined)).toBe(true)
+  })
 })
 
 describe('instagram add-on registration', () => {
@@ -327,6 +383,76 @@ describe('PATCH /api/trainer/link-page', () => {
     expect(call.update.font).toBeNull()
     expect(call.update.backgroundUrl).toBeNull()
     expect(call.update.socialsLabel).toBeNull()
+  })
+
+  it('accepts buttonStyles and reconciles custom:* style keys alongside itemOrder', async () => {
+    asOwner('t-1')
+    // Replaced links come back (ordered by `order`) with their new server ids.
+    h.findMany.mockResolvedValue([{ id: 'srv-A' }, { id: 'srv-B' }])
+    const res = await PATCH(patchReq({
+      links: [
+        { label: 'First', url: 'first.com' },
+        { label: 'Second', url: 'second.com' },
+      ],
+      itemOrder: ['website', 'custom:new-0', 'book', 'custom:new-1', 'contact'],
+      buttonStyles: {
+        book: { bgColor: '#112233' },
+        'custom:new-0': { textColor: '#ffffff', font: 'rounded' },
+        'custom:new-1': { imageUrl: 'https://img.test/x.png' },
+        contact: { bgColor: '#000000' },
+      },
+    }))
+    expect(res.status).toBe(200)
+    // itemOrder AND buttonStyles keys both remapped placeholder → new id in one update.
+    expect(h.update).toHaveBeenCalledWith({
+      where: { id: 'lp-1' },
+      data: {
+        itemOrder: ['website', 'custom:srv-A', 'book', 'custom:srv-B', 'contact'],
+        buttonStyles: {
+          book: { bgColor: '#112233' },
+          'custom:srv-A': { textColor: '#ffffff', font: 'rounded' },
+          'custom:srv-B': { imageUrl: 'https://img.test/x.png' },
+          contact: { bgColor: '#000000' },
+        },
+      },
+    })
+  })
+
+  it('stores buttonStyles verbatim on the config row when links are not being replaced', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({ buttonStyles: { book: { bgColor: '#123456' } } }))
+    expect(res.status).toBe(200)
+    expect(h.update).not.toHaveBeenCalled()
+    const call = h.upsert.mock.calls[0][0]
+    expect(call.update.buttonStyles).toEqual({ book: { bgColor: '#123456' } })
+    expect(call.create.buttonStyles).toEqual({ book: { bgColor: '#123456' } })
+  })
+
+  it('strips empty button-style entries and drops blank sub-fields', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({
+      buttonStyles: {
+        book: { bgColor: '#abcdef', textColor: '', font: '' }, // only bgColor survives
+        website: {}, // empty → stripped entirely
+      },
+    }))
+    expect(res.status).toBe(200)
+    const call = h.upsert.mock.calls[0][0]
+    expect(call.update.buttonStyles).toEqual({ book: { bgColor: '#abcdef' } })
+  })
+
+  it('rejects an invalid button-style colour with 400', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({ buttonStyles: { book: { bgColor: 'red' } } }))
+    expect(res.status).toBe(400)
+    expect(h.upsert).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unknown button-style font id with 400', async () => {
+    asOwner('t-1')
+    const res = await PATCH(patchReq({ buttonStyles: { book: { font: 'comic-sans' } } }))
+    expect(res.status).toBe(400)
+    expect(h.upsert).not.toHaveBeenCalled()
   })
 
   it('rejects an unknown font id with 400', async () => {

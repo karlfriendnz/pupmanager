@@ -19,6 +19,22 @@ export interface LinkPageConfig {
    * legacy default order, so old pages render exactly as before.
    */
   itemOrder: string[]
+  /**
+   * Per-button style overrides, keyed by the SAME button keys as `itemOrder`
+   * ('book' | 'website' | 'contact' | 'custom:<id>'). Each entry can set any of
+   * imageUrl / bgColor / textColor / font; anything absent falls back to the
+   * page-level styling. 'contact' styles BOTH the email and call buttons. Null /
+   * undefined = no overrides (every button inherits the page defaults).
+   */
+  buttonStyles?: Record<string, ButtonStyle> | null
+}
+
+/** A per-button style override. Every field is optional; absent ⇒ inherit page. */
+export interface ButtonStyle {
+  imageUrl?: string
+  bgColor?: string
+  textColor?: string
+  font?: string
 }
 
 // ── Font choice ──────────────────────────────────────────────────────────────
@@ -72,6 +88,34 @@ export interface LinkButton {
   icon: LinkButtonIcon
   /** External http(s) link → open in a new tab with rel="noopener noreferrer". */
   external: boolean
+  /**
+   * Resolved per-button style overrides (undefined when this button has none).
+   * Only clean values survive: bgColor/textColor are hex, font is a valid
+   * LINK_PAGE_FONTS id, imageUrl is a safe http(s) URL.
+   */
+  style?: ButtonStyle
+}
+
+/** A #rgb / #rrggbb hex colour. */
+export const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
+
+/**
+ * Defensively normalise a raw per-button style entry to a clean ButtonStyle, or
+ * undefined when nothing valid remains. Only passes through hex-looking colours,
+ * a known LINK_PAGE_FONTS id, and a safe http(s) imageUrl — anything else drops.
+ */
+export function normalizeButtonStyle(raw: unknown): ButtonStyle | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const out: ButtonStyle = {}
+  if (typeof r.bgColor === 'string' && HEX_COLOR.test(r.bgColor.trim())) out.bgColor = r.bgColor.trim()
+  if (typeof r.textColor === 'string' && HEX_COLOR.test(r.textColor.trim())) out.textColor = r.textColor.trim()
+  if (typeof r.font === 'string' && isLinkPageFontId(r.font.trim())) out.font = r.font.trim()
+  if (typeof r.imageUrl === 'string') {
+    const safe = safeExternalUrl(r.imageUrl)
+    if (safe) out.imageUrl = safe
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 /** A social profile shown in the icon row (separate from the main buttons). */
@@ -198,6 +242,18 @@ export function buildLinkButtons(cfg: LinkPageConfig, trainer: LinkPageTrainer):
     if (!emitted.has(key)) {
       out.push(...candidates.get(key)!)
       emitted.add(key)
+    }
+  }
+
+  // Attach resolved per-button style overrides. The email/call buttons both read
+  // from the 'contact' entry (they're one row in the editor); everything else
+  // reads from its own key. Only clean values survive; no entry ⇒ no style.
+  const styles = cfg.buttonStyles
+  if (styles && typeof styles === 'object') {
+    for (const b of out) {
+      const styleKey = b.key === 'email' || b.key === 'call' ? 'contact' : b.key
+      const resolved = normalizeButtonStyle(styles[styleKey])
+      if (resolved) b.style = resolved
     }
   }
   return out
