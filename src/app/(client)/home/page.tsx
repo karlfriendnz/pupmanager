@@ -34,7 +34,7 @@ export default async function ClientHomePage() {
     where: { id: active.clientId },
     include: {
       user: { select: { name: true } },
-      trainer: { select: { id: true, businessName: true, logoUrl: true, dashboardBgUrl: true, clientWelcomeNote: true } },
+      trainer: { select: { id: true, businessName: true, logoUrl: true, clientWelcomeNote: true } },
       dog: { select: { id: true, name: true, breed: true, photoUrl: true } },
       dogs: { select: { id: true, name: true, breed: true, photoUrl: true } },
     },
@@ -214,7 +214,6 @@ export default async function ClientHomePage() {
       clientName={clientProfile.user.name ?? 'there'}
       businessName={clientProfile.trainer.businessName}
       welcomeNote={clientProfile.trainer.clientWelcomeNote}
-      dashboardBgUrl={clientProfile.trainer.dashboardBgUrl}
       trainerLogoUrl={clientProfile.trainer.logoUrl}
       primaryDog={primaryDog}
       gallery={galleryMedia.map(m => ({ id: m.id, kind: m.kind as 'IMAGE' | 'VIDEO', url: m.url, thumbnailUrl: m.thumbnailUrl }))}

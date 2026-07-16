@@ -23,7 +23,7 @@ export default async function PreviewAsIndexPage() {
     }),
     prisma.trainerProfile.findUnique({
       where: { id: trainerId },
-      select: { businessName: true, logoUrl: true, dashboardBgUrl: true },
+      select: { businessName: true, logoUrl: true },
     }),
     prisma.achievement.findMany({
       where: { trainerId, published: true },
@@ -41,7 +41,6 @@ export default async function PreviewAsIndexPage() {
     <DemoClientPreview
       businessName={profile?.businessName || 'Your business'}
       logoUrl={profile?.logoUrl ?? null}
-      dashboardBgUrl={profile?.dashboardBgUrl ?? null}
       achievements={achievements}
     />
   )

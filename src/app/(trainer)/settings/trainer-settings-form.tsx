@@ -34,7 +34,6 @@ const businessSchema = z.object({
 
 const designSchema = z.object({
   logoUrl: z.string().url().optional().or(z.literal('')),
-  dashboardBgUrl: z.string().url().optional().or(z.literal('')),
   // Hex (#rgb / #rrggbb) — empty string clears to default.
   emailAccentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
 })
@@ -49,7 +48,7 @@ export function TrainerSettingsForm({
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; dashboardBgUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
@@ -78,38 +77,33 @@ export function TrainerSettingsForm({
     resolver: zodResolver(designSchema),
     defaultValues: {
       logoUrl: profile.logoUrl ?? '',
-      dashboardBgUrl: profile.dashboardBgUrl ?? '',
       emailAccentColor: profile.emailAccentColor ?? '',
     },
   })
 
   const logoUrl = designForm.watch('logoUrl')
-  const dashboardBgUrl = designForm.watch('dashboardBgUrl')
   const emailAccentColor = designForm.watch('emailAccentColor')
   const logoInputRef = useRef<HTMLInputElement>(null)
-  const bgInputRef = useRef<HTMLInputElement>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
-  const [uploadingBg, setUploadingBg] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
-  async function uploadBrandingImage(kind: 'logo' | 'background', file: File) {
+  async function uploadLogo(file: File) {
     setUploadError(null)
-    const setUploading = kind === 'logo' ? setUploadingLogo : setUploadingBg
-    setUploading(true)
+    setUploadingLogo(true)
     try {
       const toSend = await compressImageFile(file)
       const fd = new FormData()
       fd.append('file', toSend)
-      fd.append('kind', kind)
+      fd.append('kind', 'logo')
       const res = await fetch('/api/trainer/branding-image', { method: 'POST', body: fd })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
         setUploadError(body.error ?? 'Upload failed.')
         return
       }
-      designForm.setValue(kind === 'logo' ? 'logoUrl' : 'dashboardBgUrl', body.url, { shouldDirty: true })
+      designForm.setValue('logoUrl', body.url, { shouldDirty: true })
     } finally {
-      setUploading(false)
+      setUploadingLogo(false)
     }
   }
 
@@ -130,7 +124,6 @@ export function TrainerSettingsForm({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         logoUrl: data.logoUrl,
-        dashboardBgUrl: data.dashboardBgUrl,
         emailAccentColor: data.emailAccentColor,
       }),
     })
@@ -223,7 +216,7 @@ export function TrainerSettingsForm({
       <div className="min-w-0 lg:flex-1">
         <Accordion>
       {/* Design */}
-      <AccordionItem title="Design" subtitle="Logo, dashboard background and brand colours" defaultOpen>
+      <AccordionItem title="Design" subtitle="Logo and brand colour" defaultOpen>
         <div className="flex flex-col gap-6">
         <div className="min-w-0 flex-1">
         {designMsg && <Alert variant={designMsg === 'Saved!' ? 'success' : 'error'} className="mb-3">{designMsg}</Alert>}
@@ -257,44 +250,7 @@ export function TrainerSettingsForm({
                 className="hidden"
                 onChange={e => {
                   const f = e.target.files?.[0]
-                  if (f) uploadBrandingImage('logo', f)
-                  e.target.value = ''
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Dashboard background upload */}
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-slate-700">Client dashboard background</label>
-            <p className="text-xs text-slate-400 -mt-1">Shown as a banner on each client&apos;s home screen. Wide / landscape images work best.</p>
-            <div className="flex items-stretch gap-4">
-              <div className="h-24 w-40 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden">
-                {dashboardBgUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={dashboardBgUrl} alt="Dashboard background" className="h-full w-full object-cover" />
-                ) : (
-                  <ImagePlus className="h-5 w-5 text-slate-400" />
-                )}
-              </div>
-              <div className="flex flex-col gap-1 justify-center">
-                <Button type="button" size="sm" variant="ghost" onClick={() => bgInputRef.current?.click()} disabled={uploadingBg}>
-                  {uploadingBg ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Uploading…</> : (dashboardBgUrl ? 'Replace' : 'Upload background')}
-                </Button>
-                {dashboardBgUrl && (
-                  <button type="button" onClick={() => designForm.setValue('dashboardBgUrl', '', { shouldDirty: true })} className="text-xs text-slate-400 hover:text-red-500 self-start">
-                    Remove
-                  </button>
-                )}
-              </div>
-              <input
-                ref={bgInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={e => {
-                  const f = e.target.files?.[0]
-                  if (f) uploadBrandingImage('background', f)
+                  if (f) uploadLogo(f)
                   e.target.value = ''
                 }}
               />

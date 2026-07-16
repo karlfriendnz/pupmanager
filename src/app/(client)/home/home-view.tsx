@@ -96,7 +96,6 @@ interface Props {
   clientName: string
   businessName: string
   welcomeNote?: string | null
-  dashboardBgUrl: string | null
   trainerLogoUrl: string | null
   primaryDog: Dog | null
   upcomingSession: UpcomingSession | null
@@ -152,7 +151,6 @@ export function ClientHomeView({
   clientName,
   businessName,
   welcomeNote,
-  dashboardBgUrl,
   primaryDog,
   upcomingSession,
   recentSessions,
@@ -201,7 +199,7 @@ export function ClientHomeView({
 
   const dogName = primaryDog?.name ?? 'your pup'
   const firstName = clientName.split(' ')[0] || 'there'
-  const heroImg = primaryDog?.photoUrl ?? dashboardBgUrl
+  const heroImg = primaryDog?.photoUrl ?? null
   // Next achievement the client is closest to (unearned, but actually started).
   const nextBadge = achievements
     .filter(a => !a.earned && a.progress && a.progress.target > 0 && a.progress.current > 0)

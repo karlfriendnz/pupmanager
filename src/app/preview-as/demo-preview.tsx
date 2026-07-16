@@ -40,12 +40,10 @@ interface AchievementShape {
 export function DemoClientPreview({
   businessName,
   logoUrl,
-  dashboardBgUrl,
   achievements,
 }: {
   businessName: string
   logoUrl: string | null
-  dashboardBgUrl: string | null
   achievements: AchievementShape[]
 }) {
   // Tomorrow at 10am for the upcoming session.
@@ -69,7 +67,6 @@ export function DemoClientPreview({
             shopEnabled
             clientName={SAMPLE_CLIENT_NAME}
             businessName={businessName}
-            dashboardBgUrl={dashboardBgUrl}
             trainerLogoUrl={logoUrl}
             primaryDog={SAMPLE_DOG}
             upcomingSession={{

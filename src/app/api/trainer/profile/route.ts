@@ -41,7 +41,6 @@ const patchSchema = z.object({
   logoUrl: z.string().url().optional().or(z.literal('')),
   website: z.string().max(200).optional().or(z.literal('')),
   publicEmail: z.string().max(200).optional().or(z.literal('')),
-  dashboardBgUrl: z.string().url().optional().or(z.literal('')),
   inviteTemplate: z.string().optional(),
   // Brand colour — 3- or 6-digit hex (with leading #), or empty string to clear.
   // Drives the client-app accent AND the accent strip on outbound emails.

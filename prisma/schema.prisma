@@ -322,7 +322,6 @@ model TrainerProfile {
   logoUrl            String?
   website            String? // public website URL, shown to clients as a link in the app header
   publicEmail        String? // public contact email shown to clients (may differ from login email)
-  dashboardBgUrl     String? // background image shown on the client home dashboard
   inviteTemplate     String? @db.Text // customisable invite email template
   // Brand colour — drives the client-app accent AND the accent strip on
   // outbound emails. Falls back to PupManager teal (#2a9da9).
