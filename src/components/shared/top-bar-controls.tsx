@@ -11,6 +11,10 @@ import { OrgSwitcher } from './org-switcher'
 type Org = { id: string; name: string; role: string }
 type Scope = 'all' | 'client' | 'breed' | 'dog'
 
+// The engagement streak is hidden from the control bar for now. The prop and
+// its server-side plumbing stay wired — flip this to bring it back.
+const SHOW_STREAK: boolean = false
+
 const SCOPES: { value: Scope; label: string }[] = [
   { value: 'all', label: 'Anything' },
   { value: 'client', label: 'Client' },
@@ -85,7 +89,7 @@ export function TopBarControls({
     <div className="flex items-center gap-1">
       {/* Streak — a plain ghost circle until there's a streak, then an orange
           pill with the count. Matches the search/help circles when idle. */}
-      {streak && (
+      {SHOW_STREAK && streak && (
         <Link
           href="/awards"
           title={streak.current > 0 ? `${streak.current}-training-day streak` : 'Start a streak — finish notes on a training day'}
