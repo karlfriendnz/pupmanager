@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { getEnabledAddons } from '@/lib/billing'
 import { ShopGrid } from './shop-grid'
 import type { Metadata } from 'next'
 
@@ -26,6 +27,10 @@ export default async function MyShopPage() {
     },
   })
   if (!profile) redirect('/login')
+
+  // The shop is a trainer add-on — bounce direct visits when it's off, matching
+  // the hidden nav item + home shortcut.
+  if (!(await getEnabledAddons(profile.trainerId)).has('shop')) redirect('/home')
 
   // Clients can buy (vs request) only when the trainer has switched payments on
   // and their Connect account can actually take charges.

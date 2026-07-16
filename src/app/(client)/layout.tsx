@@ -5,6 +5,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { AppShell } from '@/components/shared/app-shell'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { countUnreadMessages } from '@/lib/unread-messages'
+import { getEnabledAddons } from '@/lib/billing'
 import { IntakeGate } from './intake-gate'
 import { PreviewBanner } from './preview-banner'
 import { PreviewOnboardingGuide } from './preview-onboarding-guide'
@@ -179,6 +180,10 @@ export default async function ClientLayout({ children }: { children: React.React
     ? 1
     : await prisma.clientProfile.count({ where: { userId: clientProfile.userId } })
 
+  // The client shop is a trainer add-on — hide the Shop nav item (and the home
+  // shop shortcut) when the trainer hasn't enabled it.
+  const shopEnabled = (await getEnabledAddons(clientProfile.trainer.id)).has('shop')
+
   return (
     <div style={themeStyle}>
       {banner}
@@ -198,6 +203,7 @@ export default async function ClientLayout({ children }: { children: React.React
         clientNavHints={showPreviewOnboarding}
         unreadCounts={{ '/my-messages': unreadMessageCount, '/home': unreadMessageCount }}
         unreadTotal={unreadMessageCount}
+        hiddenNavHrefs={shopEnabled ? undefined : ['/my-shop']}
       >
         {children}
       </AppShell>

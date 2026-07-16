@@ -105,6 +105,7 @@ interface Props {
   latestMessage: LatestMessage | null
   packageProgress: PackageProgress | null
   featuredProducts: FeaturedProduct[]
+  shopEnabled: boolean
   libraryItems: LibraryItem[]
   pendingRequests: PendingRequest[]
   achievements?: AchievementBadge[]
@@ -158,6 +159,7 @@ export function ClientHomeView({
   homework,
   latestMessage,
   featuredProducts,
+  shopEnabled,
   libraryItems,
   pendingRequests,
   achievements = [],
@@ -257,12 +259,12 @@ export function ClientHomeView({
           </div>
         </section>
 
-        {/* ─── Quick actions ─── */}
-        <div className="px-4 -mt-7 relative z-20 grid grid-cols-3 gap-3">
+        {/* ─── Quick actions ─── (Shop hidden when the trainer's shop add-on is off) */}
+        <div className={cn('px-4 -mt-7 relative z-20 grid gap-3', shopEnabled ? 'grid-cols-3' : 'grid-cols-2')}>
           {[
             { label: 'Book', icon: CalendarIcon, href: '/my-availability' },
             { label: 'Message', icon: MessageCircle, href: '/my-messages' },
-            { label: 'Shop', icon: ShoppingBag, href: '/my-shop' },
+            ...(shopEnabled ? [{ label: 'Shop', icon: ShoppingBag, href: '/my-shop' }] : []),
           ].map(a => (
             <Link key={a.label} href={a.href} className="rounded-2xl bg-white shadow-[0_4px_16px_rgba(15,31,36,0.10)] py-3.5 flex flex-col items-center gap-1.5 active:scale-[0.98] transition-transform">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent"><a.icon className="h-5 w-5" /></span>
@@ -428,7 +430,7 @@ export function ClientHomeView({
           )}
 
           {/* ─── Recommended ─── */}
-          {featuredProducts.length > 0 && (
+          {shopEnabled && featuredProducts.length > 0 && (
             <section>
               <div className="px-4">
                 <SectionHeader title={`Picked for ${dogName}`} linkHref="/my-shop" linkLabel="Shop" icon={<ShoppingBag className="h-4 w-4" />} />

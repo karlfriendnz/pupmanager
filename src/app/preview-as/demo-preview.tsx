@@ -66,6 +66,7 @@ export function DemoClientPreview({
           previewExitHref="/dashboard"
         >
           <ClientHomeView
+            shopEnabled
             clientName={SAMPLE_CLIENT_NAME}
             businessName={businessName}
             dashboardBgUrl={dashboardBgUrl}

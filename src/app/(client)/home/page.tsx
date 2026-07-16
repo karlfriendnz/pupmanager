@@ -4,6 +4,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { ClientHomeView } from './home-view'
 import { AppInstallModal } from '../app-install-modal'
 import { computeAchievementProgress } from '@/lib/achievements'
+import { getEnabledAddons } from '@/lib/billing'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Home' }
@@ -202,10 +203,14 @@ export default async function ClientHomePage() {
       }
     : null
 
+  // The shop is a trainer add-on — gate the home shop shortcut + product row.
+  const shopEnabled = (await getEnabledAddons(clientProfile.trainer.id)).has('shop')
+
   return (
     <>
     <AppInstallModal />
     <ClientHomeView
+      shopEnabled={shopEnabled}
       clientName={clientProfile.user.name ?? 'there'}
       businessName={clientProfile.trainer.businessName}
       welcomeNote={clientProfile.trainer.clientWelcomeNote}

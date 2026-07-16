@@ -310,7 +310,7 @@ export function AppShell(props: AppShellProps) {
 // PupManager-branded client app. Mobile: full-bleed pages + bottom tab bar +
 // a full-screen pull-down Menu. Desktop (md+): left sidebar, content fills.
 
-function ClientShell({ children, trainerLogo, businessName, clientNavHints, unreadCounts = {}, trainerContact, showTrainerSwitcher, previewExitHref }: AppShellProps) {
+function ClientShell({ children, trainerLogo, businessName, clientNavHints, unreadCounts = {}, trainerContact, showTrainerSwitcher, previewExitHref, hiddenNavHrefs = [] }: AppShellProps) {
   const handleSignOut = () => {
     if (previewExitHref) { window.location.href = previewExitHref; return }
     signOutWithPush()
@@ -318,8 +318,11 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
   const pathname = usePathname()
   // Append a "Switch trainer" entry when the client works with 2+ trainers.
   const switchItem = { href: '/switch-trainer', label: 'Switch trainer', icon: ArrowLeftRight }
-  const menuItems = showTrainerSwitcher ? [...CLIENT_MENU, switchItem] : CLIENT_MENU
-  const sidebarItems = showTrainerSwitcher ? [...CLIENT_SIDEBAR, switchItem] : CLIENT_SIDEBAR
+  // Hide any nav item the trainer's add-ons disable (e.g. /my-shop when the
+  // client-shop add-on is off).
+  const shown = <T extends { href: string }>(items: T[]) => items.filter(i => !hiddenNavHrefs.includes(i.href))
+  const menuItems = shown(showTrainerSwitcher ? [...CLIENT_MENU, switchItem] : CLIENT_MENU)
+  const sidebarItems = shown(showTrainerSwitcher ? [...CLIENT_SIDEBAR, switchItem] : CLIENT_SIDEBAR)
   const [menuOpen, setMenuOpen] = useState(false)
   const [dragY, setDragY] = useState(0)
   const dragStart = useRef<number | null>(null)
