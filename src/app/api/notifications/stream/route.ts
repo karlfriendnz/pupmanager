@@ -23,6 +23,9 @@ export async function GET() {
   const startedAt = Date.now()
   let closed = false
   let lastCount = -1 // force the first read to emit
+  // Only toast notifications that arrive AFTER the stream opens (older ones were
+  // already in the feed) — seed the cursor at connect time.
+  let lastSeenAt = new Date()
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -39,10 +42,25 @@ export async function GET() {
       ;(async () => {
         try {
           while (!closed && Date.now() - startedAt < STREAM_MAX_MS) {
-            const count = await prisma.notification.count({ where: { userId, readAt: null } })
+            const [count, fresh] = await Promise.all([
+              prisma.notification.count({ where: { userId, readAt: null } }),
+              prisma.notification.findMany({
+                where: { userId, createdAt: { gt: lastSeenAt } },
+                orderBy: { createdAt: 'asc' },
+                select: { id: true, title: true, body: true, type: true, link: true, createdAt: true },
+              }),
+            ])
+            // Badge count (changes on both new notifications and reads).
             if (count !== lastCount) {
               lastCount = count
               send('count', { count })
+            }
+            // Fresh arrivals → the client pops a toast for each.
+            if (fresh.length > 0) {
+              lastSeenAt = fresh[fresh.length - 1].createdAt
+              for (const n of fresh) {
+                send('new', { id: n.id, title: n.title, body: n.body, type: n.type, link: n.link })
+              }
             }
             await sleep(POLL_INTERVAL_MS)
           }

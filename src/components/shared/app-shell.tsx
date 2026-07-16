@@ -18,6 +18,7 @@ import {
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
 import { VersionGuard } from './version-guard'
+import { NotificationToaster } from './notification-toaster'
 import { TopBarControls } from './top-bar-controls'
 import { PageTitleProvider, usePageTitle } from './page-title'
 
@@ -260,6 +261,14 @@ function useLiveNotificationCount(initial: number, enabled: boolean): number {
         if (typeof d.count === 'number') setCount(d.count)
       } catch { /* ignore malformed events */ }
     })
+    // Re-broadcast fresh arrivals so <NotificationToaster> can pop a toast,
+    // reusing this single stream connection.
+    es.addEventListener('new', (ev) => {
+      try {
+        const d = JSON.parse((ev as MessageEvent).data)
+        if (d?.id) window.dispatchEvent(new CustomEvent('pm:notification', { detail: d }))
+      } catch { /* ignore malformed events */ }
+    })
     return () => es.close()
   }, [enabled])
 
@@ -290,6 +299,7 @@ export function AppShell(props: AppShellProps) {
     <>
       <VersionGuard />
       <UnreadBadgeSync total={messagesVisible ? liveTotal : props.unreadTotal ?? 0} />
+      {notificationsVisible && <NotificationToaster />}
       {props.role === 'CLIENT'
         ? <ClientShell {...props} unreadCounts={effectiveCounts} />
         : <TrainerShell {...props} unreadCounts={effectiveCounts} />}
