@@ -13,6 +13,9 @@ export const ADDON_PROMO_IMAGES: Record<string, PromoImage> = {
   marketing: { src: '/marketing-promo-v1.jpg', objectPosition: 'center 40%', translateX: '30%' },
   achievements: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%', translateX: '28%' },
   shop: { src: '/promo-shop-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
+  // Shares the shop photo until it has its own art — same story, and several
+  // entries here already double up.
+  pos: { src: '/promo-shop-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
   routeplanner: { src: '/promo-routeplanner-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
   googlecalendar: { src: '/promo-timesheets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
   timesheets: { src: '/promo-timesheets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },

@@ -13,6 +13,8 @@ import { AddonsGrid, type AddonCard } from '../add-ons/addons-grid'
 const DETAILS: Record<string, string> = {
   achievements:
     'Give your clients branded badges to earn and show off — first session, ten-session streak, a graduation. Every time an owner shares a win to their socials your business gets in front of a new audience, for free. You choose which milestones unlock a badge and they appear automatically in the client app.',
+  pos:
+    'Ring up a sale while the client is still standing in front of you. Pick who it’s for, tap the items out of your product list (or type a one-off), and either show a QR code they scan to pay on their own phone, or record it and let them settle later. Either way it lands in your invoices — and in Xero if you’re connected. No card reader, nothing to install.',
   shop:
     'Sell the extras your clients already ask for — slip leads, enrichment toys, treat pouches, gift cards — straight inside the app they use to follow their dog\'s progress. The shop carries your name and colours, checkout is one tap, and you keep the full margin on everything you list.',
   ai:

@@ -61,6 +61,41 @@ const PROMOS: Record<string, Cfg> = {
     ],
     benefits: ['Branded badges', 'Clients share wins', 'Free marketing'],
   },
+  xero: {
+    title: 'Reconcile in Xero',
+    description: 'Invoices and payments, straight into your own Xero.',
+    image: { src: '/promo-timesheets-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
+    steps: [
+      { icon: <RefreshCw className={I} />, label: 'Connect Xero' },
+      { icon: <FileText className={I} />, label: 'Invoices sync' },
+      { icon: <Check className={I} />, label: 'Always reconciled' },
+    ],
+    benefits: ['No double entry', 'Your own organisation', 'Payments matched'],
+  },
+  instagram: {
+    title: 'Turn your bio into bookings',
+    description: 'One shareable link for everything you point followers at.',
+    image: { src: '/marketing-promo-v1.jpg', objectPosition: 'center 40%', translateX: '30%' },
+    steps: [
+      { icon: <PenLine className={I} />, label: 'Add your links' },
+      { icon: <Share2 className={I} />, label: 'Share one URL' },
+      { icon: <CalendarDays className={I} />, label: 'They book' },
+    ],
+    benefits: ['Your logo and colours', 'A Book button', 'Change it anytime'],
+  },
+  pos: {
+    title: 'Sell on the spot',
+    description: 'Ring up a sale while they’re still standing in front of you.',
+    // Borrowing the shop photo until this has its own — same idea, and several
+    // promos already share art (googlecalendar/classes do too).
+    image: { src: '/promo-shop-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },
+    steps: [
+      { icon: <Users className={I} />, label: 'Pick a client' },
+      { icon: <ShoppingBag className={I} />, label: 'Add items' },
+      { icon: <Wallet className={I} />, label: 'They scan & pay' },
+    ],
+    benefits: ['Pay by QR on their phone', 'Or record it for later', 'Lands in your invoices'],
+  },
   shop: {
     title: 'Sell to your clients',
     description: 'An in-app shop for the extras they already ask for.',
