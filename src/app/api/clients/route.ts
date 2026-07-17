@@ -49,18 +49,39 @@ function placeholderEmail(): string {
   return `noemail-${crypto.randomBytes(8).toString('hex')}@no-email.pupmanager.app`
 }
 
-// Searchable client list for pickers (the instant-sale composer's "who's this
-// for?" step). Deliberately NOT guarded on `clients.viewAll` — that would 403
-// every staff member. Instead it mirrors the Clients page: any member of the
-// company may list, and scopeForMember narrows restricted staff to the clients
-// assigned to them, so they see a shorter list rather than a locked door.
+// Searchable client list. Backs both the instant-sale composer's "who's this
+// for?" step and the top bar's search autocomplete.
+//
+// Deliberately NOT guarded on `clients.viewAll` — that would 403 every staff
+// member. Instead it mirrors the Clients page: any member of the company may
+// list, and scopeForMember narrows restricted staff to the clients assigned to
+// them, so they see a shorter list rather than a locked door.
 const LIST_LIMIT = 20
+
+// Mirrors the top bar's scope selector, so a suggestion list can't disagree
+// with the full results page you land on. Omitted/unknown = search everything.
+function searchFilter(q: string, scope: string) {
+  if (!q) return {}
+  const like = { contains: q, mode: 'insensitive' as const }
+  if (scope === 'client') return { user: { is: { name: like } } }
+  if (scope === 'dog') return { dog: { is: { name: like } } }
+  if (scope === 'breed') return { dog: { is: { breed: like } } }
+  return {
+    OR: [
+      { user: { is: { name: like } } },
+      { dog: { is: { name: like } } },
+      { dog: { is: { breed: like } } },
+    ],
+  }
+}
 
 export async function GET(req: Request) {
   const ctx = await getTrainerContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
-  const q = (new URL(req.url).searchParams.get('q') ?? '').trim()
+  const url = new URL(req.url)
+  const q = (url.searchParams.get('q') ?? '').trim()
+  const scope = url.searchParams.get('scope') ?? 'all'
 
   const rows = await prisma.clientProfile.findMany({
     where: {
@@ -68,14 +89,7 @@ export async function GET(req: Request) {
       status: 'ACTIVE',
       // Restricted staff only ever see their own assigned clients.
       ...scopeForMember(ctx, 'clients.viewAll'),
-      ...(q
-        ? {
-            OR: [
-              { user: { is: { name: { contains: q, mode: 'insensitive' } } } },
-              { dog: { is: { name: { contains: q, mode: 'insensitive' } } } },
-            ],
-          }
-        : {}),
+      ...searchFilter(q, scope),
     },
     orderBy: { user: { name: 'asc' } },
     take: LIST_LIMIT,
@@ -83,7 +97,7 @@ export async function GET(req: Request) {
       id: true,
       isSample: true,
       user: { select: { name: true } },
-      dog: { select: { name: true, photoUrl: true } },
+      dog: { select: { name: true, breed: true, photoUrl: true } },
       dogs: { select: { name: true, photoUrl: true } },
     },
   })
@@ -96,6 +110,9 @@ export async function GET(req: Request) {
         id: c.id,
         name: c.user?.name ?? null,
         dogName: c.dog?.name ?? c.dogs[0]?.name ?? null,
+        // Only the primary dog carries a breed here; the picker ignores it, the
+        // search autocomplete shows it so a breed match explains itself.
+        dogBreed: c.dog?.breed ?? null,
         dogPhotoUrl: c.dog?.photoUrl ?? c.dogs[0]?.photoUrl ?? null,
       })),
   })

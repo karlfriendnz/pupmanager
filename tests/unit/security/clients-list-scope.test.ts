@@ -35,7 +35,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   id: 'cl_1',
   isSample: false,
   user: { name: 'Sarah' },
-  dog: { name: 'Bailey', photoUrl: 'https://img/bailey.jpg' },
+  dog: { name: 'Bailey', breed: 'Labrador', photoUrl: 'https://img/bailey.jpg' },
   dogs: [],
   ...over,
 })
@@ -115,13 +115,14 @@ describe('GET /api/clients — scoping', () => {
 })
 
 describe('GET /api/clients — search + shape', () => {
-  it('filters by client name or dog name when q is given', async () => {
+  it('searches client name, dog name and breed when no scope is given', async () => {
     await GET(req('https://app.pupmanager.com/api/clients?q=bail'))
 
     const { where } = h.findMany.mock.calls[0][0]
     expect(where.OR).toEqual([
       { user: { is: { name: { contains: 'bail', mode: 'insensitive' } } } },
       { dog: { is: { name: { contains: 'bail', mode: 'insensitive' } } } },
+      { dog: { is: { breed: { contains: 'bail', mode: 'insensitive' } } } },
     ])
   })
 
@@ -129,6 +130,37 @@ describe('GET /api/clients — search + shape', () => {
     await GET(req('https://app.pupmanager.com/api/clients?q=%20%20'))
 
     expect(h.findMany.mock.calls[0][0].where).not.toHaveProperty('OR')
+  })
+
+  // The top bar's scope selector must narrow the suggestions the same way it
+  // narrows the results page you land on — otherwise the type-ahead and the
+  // full search disagree about what "Breed" means.
+  it.each([
+    ['client', { user: { is: { name: { contains: 'lab', mode: 'insensitive' } } } }],
+    ['dog', { dog: { is: { name: { contains: 'lab', mode: 'insensitive' } } } }],
+    ['breed', { dog: { is: { breed: { contains: 'lab', mode: 'insensitive' } } } }],
+  ])('scope=%s narrows to exactly that field, with no OR', async (scope, expected) => {
+    await GET(req(`https://app.pupmanager.com/api/clients?q=lab&scope=${scope}`))
+
+    const { where } = h.findMany.mock.calls[0][0]
+    expect(where).toMatchObject(expected)
+    expect(where).not.toHaveProperty('OR')
+  })
+
+  it('falls back to searching everything on an unknown scope', async () => {
+    await GET(req('https://app.pupmanager.com/api/clients?q=lab&scope=nonsense'))
+
+    expect(h.findMany.mock.calls[0][0].where.OR).toHaveLength(3)
+  })
+
+  it('still scopes to the company when a scope is passed', async () => {
+    // A scope narrows WHICH FIELD is searched — it must never widen WHOSE
+    // clients are searched.
+    await GET(req('https://app.pupmanager.com/api/clients?q=lab&scope=breed'))
+
+    expect(h.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ trainerId: 'co_1', status: 'ACTIVE' }) }),
+    )
   })
 
   it('hides seeded sample clients from the picker', async () => {
@@ -152,8 +184,20 @@ describe('GET /api/clients — search + shape', () => {
       id: 'cl_1',
       name: 'Sarah',
       dogName: 'Rex',
+      // Breed only comes off the primary dog, so a fallback dog has none.
+      dogBreed: null,
       dogPhotoUrl: 'https://img/rex.jpg',
     })
+  })
+
+  it('returns the primary dog’s breed, so a breed match explains itself', async () => {
+    h.findMany.mockResolvedValue([
+      row({ dog: { name: 'Bailey', breed: 'Labrador', photoUrl: 'https://img/b.jpg' } }),
+    ])
+
+    const body = await (await GET(req())).json()
+
+    expect(body.items[0]).toMatchObject({ dogName: 'Bailey', dogBreed: 'Labrador' })
   })
 
   it('tolerates a client with no dog at all', async () => {
@@ -161,6 +205,6 @@ describe('GET /api/clients — search + shape', () => {
 
     const body = await (await GET(req())).json()
 
-    expect(body.items[0]).toMatchObject({ dogName: null, dogPhotoUrl: null })
+    expect(body.items[0]).toMatchObject({ dogName: null, dogBreed: null, dogPhotoUrl: null })
   })
 })
