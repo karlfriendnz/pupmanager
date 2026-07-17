@@ -66,8 +66,10 @@ test.describe('add-ons — the main nav reflects a toggled add-on', () => {
   test('turning Group classes off hides the Classes nav item', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     // Group classes is free + default-on, so the sidebar link starts visible on
-    // the dashboard (a main-nav page).
-    const classesNav = page.getByRole('link', { name: 'Classes', exact: true })
+    // the dashboard (a main-nav page). Label must track app-shell.tsx's nav —
+    // it was renamed "Classes" → "Group Classes" and this exact-match selector
+    // wasn't updated with it, which quietly reddened the suite.
+    const classesNav = page.getByRole('link', { name: 'Group Classes', exact: true })
     await expect(classesNav).toBeVisible()
 
     // Add-ons live inside Settings now (Settings has its own rail, hiding the
