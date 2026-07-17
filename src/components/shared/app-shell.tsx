@@ -714,7 +714,7 @@ function TrainerTopBar({
       <div id="pm-topbar-actions" className="mr-2 flex items-center gap-1.5 empty:hidden" />
       {/* Right-hand controls. */}
       <div className="pr-3 lg:pr-5">
-        <TopBarControls userName={userName} userEmail={userEmail} orgs={orgs} activeCompanyId={activeCompanyId} streak={streak} notifCount={notifCount} />
+        <TopBarControls userName={userName} userEmail={userEmail} orgs={orgs} activeCompanyId={activeCompanyId} streak={streak} canSell={canSell} currency={currency} notifCount={notifCount} />
       </div>
     </header>
   )

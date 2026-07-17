@@ -46,14 +46,14 @@ describe('add-on promo registry', () => {
   })
 
   it('every promo id is a real add-on — no orphaned entries', () => {
-    const known = new Set(ADDONS.map((a) => a.id))
+    const known = new Set<string>(ADDONS.map((a) => a.id))
     for (const id of ADDON_PROMO_IDS) {
       expect(known.has(id), `PROMOS has "${id}", which is not in ADDONS`).toBe(true)
     }
   })
 
   it('link-only add-ons are real, and stay the exception', () => {
-    const known = new Set(ADDONS.map((a) => a.id))
+    const known = new Set<string>(ADDONS.map((a) => a.id))
     for (const id of LINK_ONLY_IDS) expect(known.has(id), `unknown link-only id: ${id}`).toBe(true)
     // A guard against quietly "fixing" a dead card by adding it here instead of
     // writing its promo — link-only means the card routes to a config page.
