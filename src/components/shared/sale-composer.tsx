@@ -5,7 +5,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { Check, Loader2, Minus, Plus, Search, ShoppingBag, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ModalPortal } from '@/components/shared/modal-portal'
-import { formatMoney } from '@/lib/client-invoices'
+import { currencySymbol, formatMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
 // The "instant sale" (POS) composer — ring up a sale standing in front of a
@@ -474,7 +474,7 @@ function CustomLineForm({ currency, onAdd }: { currency: string; onAdd: (l: Line
       />
       <div className="flex gap-2">
         <div className="flex flex-1 items-center gap-1 rounded-xl bg-slate-50 px-3">
-          <span className="text-sm text-slate-400">{formatMoney(0, currency).replace(/[\d.,]/g, '')}</span>
+          <span className="text-sm text-slate-400">{currencySymbol(currency)}</span>
           <input
             value={amount}
             onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}

@@ -18,14 +18,12 @@ import { prisma } from './prisma'
 import { getActiveClient } from './client-context'
 import { estimateProcessingSurcharge } from './connect'
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  nzd: '$', aud: '$', cad: '$', usd: '$', gbp: '£', eur: '€', zar: 'R',
-}
-
-export function formatMoney(minor: number, currency: string): string {
-  const sym = CURRENCY_SYMBOLS[currency.toLowerCase()] ?? ''
-  return `${sym}${(minor / 100).toLocaleString('en-NZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
+// formatMoney moved to ./money (pure, client-safe) — this module imports prisma
+// + client-context (next/headers), so a 'use client' component importing
+// anything from here would pull server-only code into the client bundle and
+// fail the build. Re-exported so existing server-side callers stay unchanged;
+// client components must import from './money' directly.
+export { formatMoney } from './money'
 
 export interface ClientInvoiceRecord {
   id: string
