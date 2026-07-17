@@ -70,26 +70,32 @@ export default async function SessionPage({
   })
   if (!trainingSession) notFound()
 
-  // What's actually owed for this session, if anything.
+  // What's owed for this session, and how to collect it. Two shapes:
   //
-  // The receivable lives on the PACKAGE, not the session: a pay-later booking
-  // raises one Invoice per assignment (sourceType 'PACKAGE', sourceId =
-  // ClientPackage.id) covering all its sessions, and Invoice has no session
-  // link at all. So we resolve session → clientPackageId → its invoice, and
-  // "take payment" here settles the whole package — you can't part-pay it.
+  // SETTLE — there's already an UNPAID invoice, because the booking went
+  // through the app and createInvoiceForAssignment raised one. That receivable
+  // lives on the PACKAGE, not the session: one invoice covers all N sessions
+  // (Invoice has no session link, only a shared clientPackageId). So we edit
+  // that invoice rather than raise a second one for money already owed, and
+  // taking payment from any one session settles the lot.
   //
-  // Note this is NOT the same as the session's `invoicedAt` flag (the red/green
-  // $ disc), which is a manual "I billed this elsewhere" marker carrying no
-  // amount and nothing linking it to a real Invoice. Only an UNPAID invoice can
-  // be edited (the PATCH 409s once anything is paid), so anything else means no
-  // button.
-  const payable = trainingSession.clientPackageId
+  // FRESH — no invoice exists. Very common: a package created outside the
+  // assign route (seeded, imported, back-filled) never raised one. Without a
+  // fallback the button would simply never appear for those — on this dev data
+  // that was 1 session out of 233. So we open a normal sale instead, seeded
+  // with what this session is worth.
+  //
+  // Neither is the session's `invoicedAt` flag (the red/green $ disc), which is
+  // a manual "I billed this elsewhere" marker with no amount and no link to any
+  // Invoice.
+  const unpaidInvoice = trainingSession.clientPackageId
     ? await prisma.invoice.findFirst({
         where: {
           trainerId,
           clientId: trainingSession.clientId!,
           sourceType: 'PACKAGE',
           sourceId: trainingSession.clientPackageId,
+          // Only an UNPAID invoice is editable — PATCH 409s once anything's paid.
           status: 'UNPAID',
         },
         select: {
@@ -104,9 +110,38 @@ export default async function SessionPage({
       })
     : null
 
+  // For the FRESH case, price this one session. Mirrors the dashboard's
+  // "sessions to invoice" maths exactly (package price ÷ session count) so the
+  // two surfaces can't quote different numbers for the same session.
+  const pkg = trainingSession.clientPackageId && !unpaidInvoice
+    ? await prisma.clientPackage.findFirst({
+        where: { id: trainingSession.clientPackageId },
+        select: { package: { select: { name: true, priceCents: true, specialPriceCents: true, sessionCount: true } } },
+      })
+    : null
+
+  const perSessionCents = (() => {
+    const p = pkg?.package
+    if (!p) return 0
+    const price = p.specialPriceCents ?? p.priceCents
+    if (!price || !p.sessionCount || p.sessionCount <= 0) return 0
+    return Math.round(price / p.sessionCount)
+  })()
+
   // Taking payment is the instant-sale add-on's surface, so gate it the same way
   // the composer's other entry points are. The APIs re-check regardless.
-  const canTakePayment = payable != null && (await hasAddon(trainerId, 'pos'))
+  const posOn = await hasAddon(trainerId, 'pos')
+  const canTakePayment = posOn && trainingSession.client != null
+
+  // An existing invoice already carries the currency it was raised in; a fresh
+  // sale uses the trainer's payout currency (only fetched when we need it).
+  const currency = unpaidInvoice?.currency
+    ?? (canTakePayment
+      ? (await prisma.trainerProfile.findUnique({
+          where: { id: trainerId },
+          select: { payoutCurrency: true },
+        }))?.payoutCurrency ?? 'nzd'
+      : 'nzd')
 
   // Team members for the "who logged time" picker, plus the session's logged
   // time entries shaped for the client component.
@@ -270,11 +305,9 @@ export default async function SessionPage({
                   initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
                   variant="stacked"
                 />
-                {/* Only when there's a real UNPAID invoice behind this session —
-                    otherwise there's nothing to take payment for. */}
-                {canTakePayment && payable && (
+                {canTakePayment && (
                   <PaySessionButton
-                    currency={payable.currency}
+                    currency={currency}
                     prefill={{
                       client: {
                         id: trainingSession.client!.id,
@@ -282,15 +315,29 @@ export default async function SessionPage({
                         dogName: trainingSession.dog?.name ?? null,
                         dogPhotoUrl: trainingSession.dog?.photoUrl ?? null,
                       },
-                      // Seed with what they already owe. PATCH is replace-all,
-                      // so these must go back with the upsell or they'd be wiped.
-                      lines: payable.lines.map((l) => ({
-                        description: l.description,
-                        quantity: l.quantity,
-                        unitAmountCents: l.unitAmountCents,
-                        xeroAccountCode: l.xeroAccountCode,
-                      })),
-                      settle: { invoiceId: payable.id, payToken: payable.payToken },
+                      lines: unpaidInvoice
+                        // Settling: seed with what they already owe. PATCH is
+                        // replace-all, so these must go back with any upsell or
+                        // they'd be wiped.
+                        ? unpaidInvoice.lines.map((l) => ({
+                            description: l.description,
+                            quantity: l.quantity,
+                            unitAmountCents: l.unitAmountCents,
+                            xeroAccountCode: l.xeroAccountCode,
+                          }))
+                        // Fresh: seed this session at its share of the package
+                        // price. Skipped when unpriced — the trainer just picks
+                        // items instead of starting from a $0 line.
+                        : perSessionCents > 0
+                          ? [{
+                              description: formatSessionTitle(trainingSession.title),
+                              quantity: 1,
+                              unitAmountCents: perSessionCents,
+                            }]
+                          : [],
+                      ...(unpaidInvoice
+                        ? { settle: { invoiceId: unpaidInvoice.id, payToken: unpaidInvoice.payToken } }
+                        : {}),
                     }}
                   />
                 )}
