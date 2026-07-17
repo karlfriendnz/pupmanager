@@ -135,6 +135,16 @@ export function SaleComposer({
     [lines],
   )
 
+  // Buzz the client's phone with a tap-through to this invoice's pay screen, so
+  // they can pay from their own hand instead of scanning the QR. Best-effort and
+  // deliberately un-awaited in the UI sense: the QR is already on screen and
+  // works regardless, so a client with no app / push off changes nothing. Never
+  // for a guest — there's no one to notify.
+  function pingClientToPay(invoiceId: string) {
+    void fetch(`/api/trainer/finances/receivables/${invoiceId}/request-payment`, { method: 'POST' })
+      .catch(() => {})
+  }
+
   // A guest sale can't be an invoice, so it takes the Stripe Checkout path and
   // we QR that URL instead of a /pay/<token> one. Card-only — the caller never
   // offers "Record" for a guest.
@@ -223,6 +233,9 @@ export function SaleComposer({
         payToken: settle.payToken,
         amountCents: lines.reduce((sum, l) => sum + l.quantity * l.unitAmountCents, 0),
       })
+      // Only when actually asking for the money — "Save" is just filing the
+      // upsell, and pinging them then would be a nag out of nowhere.
+      if (thenShowQr) pingClientToPay(settle.invoiceId)
       setShowQr(thenShowQr)
       setStep('done')
     } catch {
@@ -271,7 +284,10 @@ export function SaleComposer({
         setSaving(false)
         return
       }
-      setCreated(await res.json())
+      const made: Created = await res.json()
+      setCreated(made)
+      // Same rule as settling: only ping when we're asking to be paid now.
+      if (thenShowQr) pingClientToPay(made.id)
       setShowQr(thenShowQr)
       setStep('done')
     } catch {
@@ -857,6 +873,14 @@ function DoneStep({
                 ? `Point ${clientName}’s camera at this to pay on their phone.`
                 : 'Point their camera at this to pay on their phone.'}
             </p>
+            {/* Only clients get the push — a guest has no account to send it to.
+                Worded as a maybe, because we can't know from here whether they
+                have the app or have push switched on; the QR is the sure thing. */}
+            {clientName && (
+              <p className="mt-1 max-w-xs text-xs text-slate-400">
+                We’ve also sent a payment request to their phone.
+              </p>
+            )}
             <button onClick={copy} className="mt-4 text-sm font-semibold text-[var(--pm-brand-600)] hover:underline">
               {copied ? 'Link copied' : 'Copy pay link instead'}
             </button>

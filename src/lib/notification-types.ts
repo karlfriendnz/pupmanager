@@ -403,6 +403,27 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     placeholders: ['dogName', 'planName', 'detail'],
     sampleValues: { dogName: 'Bailey', planName: 'Puppy Foundations', detail: 'Moved to Fri 13 Jun, 6:00 pm' },
   },
+  CLIENT_PAYMENT_REQUEST: {
+    type: 'CLIENT_PAYMENT_REQUEST',
+    label: 'Payment requests',
+    description: 'When your trainer asks you to pay for something you booked.',
+    trigger: 'event',
+    audience: 'client',
+    channels: ['PUSH', 'IN_APP'],
+    // Push + in-app only, on purpose. This fires while the trainer is standing
+    // in front of the client asking them to pay — the point is that it lands on
+    // their phone NOW and taps through to the pay screen. An email would arrive
+    // too late to be the thing they tap, and the invoice email (sendReceivable)
+    // already covers the "pay it later, in your own time" path.
+    defaultChannels: ['PUSH', 'IN_APP'],
+    defaults: {
+      enabled: true,
+      title: 'Payment request — {{trainerName}}',
+      body: 'Tap to pay {{amount}} for {{description}}',
+    },
+    placeholders: ['trainerName', 'amount', 'description'],
+    sampleValues: { trainerName: 'Jess', amount: '$33.00', description: 'Puppy Foundations' },
+  },
   CLIENT_RECAP_READY: {
     type: 'CLIENT_RECAP_READY',
     label: 'Session recaps',

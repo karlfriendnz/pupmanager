@@ -176,6 +176,7 @@ enum NotificationType {
   CLIENT_RECAP_READY // the trainer posted the write-up for a session
   CLIENT_NEW_MESSAGE // the trainer sent the client a message
   TRAINER_COMMENTED_LOG // the trainer replied to the client's practice log
+  CLIENT_PAYMENT_REQUEST // the trainer is asking the client to pay an invoice now
 }
 
 enum NotificationChannel {
