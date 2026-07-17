@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Check, Loader2, Minus, Plus, Search, ShoppingBag, Trash2, UserPlus, UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -35,14 +35,36 @@ const GUEST = { id: '__guest__', name: 'Guest', dogName: null, dogPhotoUrl: null
 type Target = ClientRow | typeof GUEST
 const isGuest = (t: Target | null): boolean => t?.id === GUEST.id
 
+/**
+ * Opens the composer already knowing who it's for, and optionally what's on it.
+ *
+ * `settle` is the "take payment for something they already booked" case: a
+ * pay-later package ALREADY raised an UNPAID invoice (createInvoiceForAssignment
+ * runs even when payment isn't required — "not required" only skips the up-front
+ * Stripe charge). So we must edit THAT invoice rather than raise a second one for
+ * money already owed. With `settle` set the composer PATCHes the existing invoice
+ * and QRs its existing payToken; without it, it POSTs a new MANUAL sale.
+ *
+ * Note the invoice is per PACKAGE, not per session — one invoice covers all N
+ * sessions of an assignment — so settling from any one session settles the lot.
+ */
+export type SalePrefill = {
+  client: ClientRow
+  /** Lines to start with. For `settle`, these are the invoice's CURRENT lines. */
+  lines?: { description: string; quantity: number; unitAmountCents: number; xeroAccountCode?: string | null }[]
+  settle?: { invoiceId: string; payToken: string | null }
+}
+
 export function SaleComposer({
   open,
   onClose,
   currency = 'nzd',
+  prefill,
 }: {
   open: boolean
   onClose: () => void
   currency?: string
+  prefill?: SalePrefill
 }) {
   const [step, setStep] = useState<Step>('client')
   const [client, setClient] = useState<Target | null>(null)
@@ -58,23 +80,46 @@ export function SaleComposer({
   // instead of ringing it up twice.
   const idempotencyKey = useRef<string>('')
 
-  const reset = useCallback(() => {
-    setStep('client')
-    setClient(null)
-    setLines([])
+  // Read through a ref so `prefill`'s identity can NEVER retrigger the reset
+  // below. It's built inline by the calling server component, so it gets a new
+  // identity whenever that page's data refreshes — including immediately after
+  // we settle an invoice, when the refreshed prefill also carries the lines we
+  // just wrote. Keying the reset on it snapped the composer back to the items
+  // step (showing the merged lines) instead of the QR, even though the PATCH
+  // had succeeded. Only opening should reset.
+  const prefillRef = useRef(prefill)
+  prefillRef.current = prefill
+
+  useEffect(() => {
+    if (!open) return
+    const p = prefillRef.current
+    // With a prefill we already know who it's for, so skip straight to the
+    // items — making a trainer re-pick the client they just clicked "Pay" on
+    // would be busywork.
+    setStep(p ? 'items' : 'client')
+    setClient(p?.client ?? null)
+    setLines(
+      (p?.lines ?? []).map((l, i) => ({
+        // Prefilled lines get stable keys so the steppers work on them like any
+        // other; `s_` marks them as seeded (vs `p_` product / `c_` custom).
+        key: `s_${i}`,
+        description: l.description,
+        quantity: l.quantity,
+        unitAmountCents: l.unitAmountCents,
+        xeroAccountCode: l.xeroAccountCode ?? null,
+      })),
+    )
     setCreated(null)
     setGuestUrl(null)
     setShowQr(false)
     setSaving(false)
     setError(null)
-  }, [])
-
-  useEffect(() => {
-    if (open) {
-      reset()
-      idempotencyKey.current = `sale_${crypto.randomUUID().replace(/-/g, '')}`
-    }
-  }, [open, reset])
+    // One key per composer session, so a double-tap (or a retry on a flaky
+    // connection) resolves to the same sale instead of ringing it up twice.
+    idempotencyKey.current = `sale_${crypto.randomUUID().replace(/-/g, '')}`
+    // Reset ONLY when the modal opens — see prefillRef above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // Escape closes — except mid-save, where bailing out would leave the trainer
   // unsure whether the sale landed.
@@ -137,9 +182,60 @@ export function SaleComposer({
     }
   }
 
+  // Settling an invoice that already exists (a pay-later booking). PATCH
+  // replaces the invoice's ENTIRE line set, so we always send the full merged
+  // list — the seeded lines plus whatever was upsold. Sending only the new
+  // lines would silently delete what they already owed.
+  async function submitSettle(thenShowQr: boolean) {
+    const settle = prefill?.settle
+    if (!settle || lines.length === 0 || saving) return
+    setSaving(true)
+    setError(null)
+
+    if (created) { setShowQr(thenShowQr); setStep('done'); setSaving(false); return }
+
+    try {
+      const res = await fetch(`/api/trainer/finances/receivables/${settle.invoiceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lines: lines.map((l) => ({
+            description: l.description,
+            quantity: l.quantity,
+            unitAmountCents: l.unitAmountCents,
+            xeroAccountCode: l.xeroAccountCode ?? null,
+          })),
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        // 409 = it stopped being editable while they were adding items (someone
+        // paid it, or part-paid it). Surface the endpoint's own wording — it
+        // explains which of those happened.
+        setError(typeof body?.error === 'string' && body.error
+          ? body.error
+          : 'That didn’t go through. Nothing was charged — try again.')
+        setSaving(false)
+        return
+      }
+      setCreated({
+        id: settle.invoiceId,
+        payToken: settle.payToken,
+        amountCents: lines.reduce((sum, l) => sum + l.quantity * l.unitAmountCents, 0),
+      })
+      setShowQr(thenShowQr)
+      setStep('done')
+    } catch {
+      setError('That didn’t go through. Nothing was charged — try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function submit(thenShowQr: boolean) {
     if (!client || lines.length === 0 || saving) return
     if (isGuest(client)) { await submitGuest(); return }
+    if (prefill?.settle) { await submitSettle(thenShowQr); return }
     setSaving(true)
     setError(null)
 
@@ -195,7 +291,9 @@ export function SaleComposer({
           <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
             <div className="min-w-0">
               <h2 className="text-base font-semibold text-slate-900">
-                {step === 'done' ? (showQr ? 'Take payment' : 'Sale recorded') : 'New sale'}
+                {step === 'done'
+                  ? showQr ? 'Take payment' : prefill?.settle ? 'Invoice updated' : 'Sale recorded'
+                  : prefill?.settle ? 'Take payment' : 'New sale'}
               </h2>
               {client && step !== 'done' && (
                 <p className="truncate text-xs text-slate-400">
@@ -231,7 +329,11 @@ export function SaleComposer({
               saving={saving}
               error={error}
               guest={isGuest(client)}
-              onBack={() => setStep('client')}
+              // A prefilled composer has no client step behind it to go back to.
+              onBack={prefill ? null : () => setStep('client')}
+              // Settling an existing invoice — "Record" would be a no-op, it's
+              // already recorded. Saving the upsell IS the record.
+              recordLabel={prefill?.settle ? 'Save' : 'Record'}
               onRecord={() => submit(false)}
               onCharge={() => submit(true)}
             />
@@ -478,7 +580,7 @@ function Avatar({ url, name }: { url: string | null; name: string | null }) {
 // Step 2 — what they're buying. Catalogue items are one tap; anything else is a
 // free-text line so a trainer is never blocked by a product they never set up.
 function ItemsStep({
-  lines, setLines, currency, total, saving, error, guest, onBack, onRecord, onCharge,
+  lines, setLines, currency, total, saving, error, guest, recordLabel = 'Record', onBack, onRecord, onCharge,
 }: {
   lines: Line[]
   setLines: (fn: (prev: Line[]) => Line[]) => void
@@ -488,7 +590,9 @@ function ItemsStep({
   error: string | null
   /** Guest sale — card only, so no "Record" (there's nobody to invoice later). */
   guest: boolean
-  onBack: () => void
+  recordLabel?: string
+  /** null when there's no earlier step to return to (a prefilled composer). */
+  onBack: (() => void) | null
   onRecord: () => void
   onCharge: () => void
 }) {
@@ -621,9 +725,11 @@ function ItemsStep({
       <footer className="border-t border-slate-100 bg-white px-5 py-4">
         {error && <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="mb-3 flex items-baseline justify-between">
-          <button onClick={onBack} disabled={saving} className="text-sm text-slate-500 hover:text-slate-900 disabled:opacity-40">
-            Back
-          </button>
+          {onBack ? (
+            <button onClick={onBack} disabled={saving} className="text-sm text-slate-500 hover:text-slate-900 disabled:opacity-40">
+              Back
+            </button>
+          ) : <span />}
           <div className="text-right">
             <p className="text-xs text-slate-400">Total</p>
             <p className="text-2xl font-bold tabular-nums text-slate-900">{formatMoney(total, currency)}</p>
@@ -634,7 +740,7 @@ function ItemsStep({
               is just a number nobody can chase. */}
           {!guest && (
             <Button variant="secondary" className="flex-1" onClick={onRecord} disabled={saving || total <= 0}>
-              Record
+              {recordLabel}
             </Button>
           )}
           <Button className="flex-1" onClick={onCharge} loading={saving} disabled={saving || total <= 0}>

@@ -10,6 +10,7 @@ import { hasAddon } from '@/lib/billing'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
 import { MarkCompleteButton } from '@/components/mark-complete-button'
 import { MarkInvoicedButton } from '@/components/mark-invoiced-button'
+import { PaySessionButton } from './pay-session-button'
 import { SessionAttachments } from '@/components/session-attachments'
 import { SessionTimeTracking } from '@/components/session-time-tracking'
 import { OpenSessionLink } from './open-session-link'
@@ -68,6 +69,44 @@ export default async function SessionPage({
     },
   })
   if (!trainingSession) notFound()
+
+  // What's actually owed for this session, if anything.
+  //
+  // The receivable lives on the PACKAGE, not the session: a pay-later booking
+  // raises one Invoice per assignment (sourceType 'PACKAGE', sourceId =
+  // ClientPackage.id) covering all its sessions, and Invoice has no session
+  // link at all. So we resolve session → clientPackageId → its invoice, and
+  // "take payment" here settles the whole package — you can't part-pay it.
+  //
+  // Note this is NOT the same as the session's `invoicedAt` flag (the red/green
+  // $ disc), which is a manual "I billed this elsewhere" marker carrying no
+  // amount and nothing linking it to a real Invoice. Only an UNPAID invoice can
+  // be edited (the PATCH 409s once anything is paid), so anything else means no
+  // button.
+  const payable = trainingSession.clientPackageId
+    ? await prisma.invoice.findFirst({
+        where: {
+          trainerId,
+          clientId: trainingSession.clientId!,
+          sourceType: 'PACKAGE',
+          sourceId: trainingSession.clientPackageId,
+          status: 'UNPAID',
+        },
+        select: {
+          id: true,
+          payToken: true,
+          currency: true,
+          lines: {
+            orderBy: { sortOrder: 'asc' },
+            select: { description: true, quantity: true, unitAmountCents: true, xeroAccountCode: true },
+          },
+        },
+      })
+    : null
+
+  // Taking payment is the instant-sale add-on's surface, so gate it the same way
+  // the composer's other entry points are. The APIs re-check regardless.
+  const canTakePayment = payable != null && (await hasAddon(trainerId, 'pos'))
 
   // Team members for the "who logged time" picker, plus the session's logged
   // time entries shaped for the client component.
@@ -231,6 +270,30 @@ export default async function SessionPage({
                   initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
                   variant="stacked"
                 />
+                {/* Only when there's a real UNPAID invoice behind this session —
+                    otherwise there's nothing to take payment for. */}
+                {canTakePayment && payable && (
+                  <PaySessionButton
+                    currency={payable.currency}
+                    prefill={{
+                      client: {
+                        id: trainingSession.client!.id,
+                        name: trainingSession.client!.user?.name ?? null,
+                        dogName: trainingSession.dog?.name ?? null,
+                        dogPhotoUrl: trainingSession.dog?.photoUrl ?? null,
+                      },
+                      // Seed with what they already owe. PATCH is replace-all,
+                      // so these must go back with the upsell or they'd be wiped.
+                      lines: payable.lines.map((l) => ({
+                        description: l.description,
+                        quantity: l.quantity,
+                        unitAmountCents: l.unitAmountCents,
+                        xeroAccountCode: l.xeroAccountCode,
+                      })),
+                      settle: { invoiceId: payable.id, payToken: payable.payToken },
+                    }}
+                  />
+                )}
               </div>
 
               {clientId && (
