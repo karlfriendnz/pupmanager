@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Check, Loader2, Minus, Plus, Search, ShoppingBag, Trash2, X } from 'lucide-react'
+import { Check, Loader2, Minus, Plus, Search, ShoppingBag, Trash2, UserPlus, UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { currencySymbol, formatMoney } from '@/lib/money'
@@ -27,6 +27,14 @@ type Created = { id: string; payToken: string | null; amountCents: number }
 
 type Step = 'client' | 'items' | 'done'
 
+// A sale is either FOR a client (→ an invoice, payable now or later) or for a
+// GUEST — a walk-up who isn't a client and doesn't need to become one. A guest
+// sale has no invoice (Invoice.clientId is required) and no "pay later" (nobody
+// to chase), so it goes straight to Stripe Checkout and is card-only.
+const GUEST = { id: '__guest__', name: 'Guest', dogName: null, dogPhotoUrl: null } as const
+type Target = ClientRow | typeof GUEST
+const isGuest = (t: Target | null): boolean => t?.id === GUEST.id
+
 export function SaleComposer({
   open,
   onClose,
@@ -37,9 +45,10 @@ export function SaleComposer({
   currency?: string
 }) {
   const [step, setStep] = useState<Step>('client')
-  const [client, setClient] = useState<ClientRow | null>(null)
+  const [client, setClient] = useState<Target | null>(null)
   const [lines, setLines] = useState<Line[]>([])
   const [created, setCreated] = useState<Created | null>(null)
+  const [guestUrl, setGuestUrl] = useState<string | null>(null)
   const [showQr, setShowQr] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +63,7 @@ export function SaleComposer({
     setClient(null)
     setLines([])
     setCreated(null)
+    setGuestUrl(null)
     setShowQr(false)
     setSaving(false)
     setError(null)
@@ -80,8 +90,56 @@ export function SaleComposer({
     [lines],
   )
 
+  // A guest sale can't be an invoice, so it takes the Stripe Checkout path and
+  // we QR that URL instead of a /pay/<token> one. Card-only — the caller never
+  // offers "Record" for a guest.
+  async function submitGuest() {
+    if (lines.length === 0 || saving) return
+    setSaving(true)
+    setError(null)
+
+    // Already minted — don't create a second Checkout Session.
+    if (guestUrl) { setShowQr(true); setStep('done'); setSaving(false); return }
+
+    try {
+      const res = await fetch('/api/trainer/finances/sales/guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lines: lines.map((l) => ({
+            description: l.description,
+            quantity: l.quantity,
+            unitAmountCents: l.unitAmountCents,
+          })),
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(
+          body?.error === 'PAYMENTS_REQUIRED'
+            ? 'A guest sale needs card payments switched on — connect Stripe in Settings → Payments, or sell to a client instead.'
+            : body?.error === 'ADDON_REQUIRED'
+              ? 'Instant sale is switched off. Turn it on in Settings → Add-ons.'
+              : 'That didn’t go through. Nothing was charged — try again.',
+        )
+        setSaving(false)
+        return
+      }
+      const body = await res.json()
+      setGuestUrl(body.url)
+      setCreated({ id: 'guest', payToken: null, amountCents: body.amountCents })
+      setShowQr(true)
+      setStep('done')
+    } catch {
+      setError('That didn’t go through. Nothing was charged — try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function submit(thenShowQr: boolean) {
     if (!client || lines.length === 0 || saving) return
+    if (isGuest(client)) { await submitGuest(); return }
     setSaving(true)
     setError(null)
 
@@ -141,7 +199,9 @@ export function SaleComposer({
               </h2>
               {client && step !== 'done' && (
                 <p className="truncate text-xs text-slate-400">
-                  For {client.name ?? 'this client'}{client.dogName ? ` · ${client.dogName}` : ''}
+                  {isGuest(client)
+                    ? 'Guest sale · card only'
+                    : `For ${client.name ?? 'this client'}${client.dogName ? ` · ${client.dogName}` : ''}`}
                 </p>
               )}
             </div>
@@ -158,6 +218,7 @@ export function SaleComposer({
           {step === 'client' && (
             <ClientStep
               onPick={(c) => { setClient(c); setStep('items') }}
+              onGuest={() => { setClient(GUEST); setStep('items') }}
             />
           )}
 
@@ -169,6 +230,7 @@ export function SaleComposer({
               total={total}
               saving={saving}
               error={error}
+              guest={isGuest(client)}
               onBack={() => setStep('client')}
               onRecord={() => submit(false)}
               onCharge={() => submit(true)}
@@ -180,7 +242,8 @@ export function SaleComposer({
               created={created}
               currency={currency}
               showQr={showQr}
-              clientName={client?.name ?? null}
+              guestUrl={guestUrl}
+              clientName={isGuest(client) ? null : client?.name ?? null}
               onShowQr={() => setShowQr(true)}
               onClose={onClose}
             />
@@ -192,11 +255,14 @@ export function SaleComposer({
 }
 
 // Step 1 — who's it for. Search-as-you-type over the trainer's clients; the
-// server narrows restricted staff to their own assigned clients.
-function ClientStep({ onPick }: { onPick: (c: ClientRow) => void }) {
+// server narrows restricted staff to their own assigned clients. Two escape
+// hatches sit above the list, because the person in front of you often isn't in
+// it: add them as a client on the spot, or sell to them as a guest.
+function ClientStep({ onPick, onGuest }: { onPick: (c: ClientRow) => void; onGuest: () => void }) {
   const [q, setQ] = useState('')
   const [rows, setRows] = useState<ClientRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [addOpen, setAddOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -229,10 +295,47 @@ function ClientStep({ onPick }: { onPick: (c: ClientRow) => void }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-2">
+        {/* The two ways out of "they're not on this list". */}
+        {addOpen ? (
+          <NewClientForm
+            initialName={q}
+            onCancel={() => setAddOpen(false)}
+            onCreated={onPick}
+          />
+        ) : (
+          <div className="mb-2 flex flex-col gap-1">
+            <button
+              onClick={() => setAddOpen(true)}
+              className="flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--pm-brand-50,#f0fdfa)] text-[var(--pm-brand-600)]">
+                <UserPlus className="h-[18px] w-[18px]" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-slate-900">New client</p>
+                <p className="text-xs text-slate-400">Add them as you sell</p>
+              </div>
+            </button>
+            <button
+              onClick={onGuest}
+              className="flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                <UserRound className="h-[18px] w-[18px]" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-slate-900">Guest</p>
+                <p className="text-xs text-slate-400">No details, card only</p>
+              </div>
+            </button>
+            <div className="my-1 border-t border-slate-100" />
+          </div>
+        )}
+
         {loading ? (
           <div className="flex justify-center py-10 text-slate-300"><Loader2 className="h-5 w-5 animate-spin" /></div>
         ) : rows.length === 0 ? (
-          <p className="px-2 py-10 text-center text-sm text-slate-400">
+          <p className="px-2 py-6 text-center text-sm text-slate-400">
             {q ? 'No clients match that.' : 'No clients yet.'}
           </p>
         ) : (
@@ -255,6 +358,111 @@ function ClientStep({ onPick }: { onPick: (c: ClientRow) => void }) {
   )
 }
 
+// Add a client without leaving the sale. Intentionally the bare minimum — name
+// only, with email/phone optional — because this is used with a real person
+// waiting. Anything else can be filled in later on their profile. Reuses the
+// same quick-add API as the Clients page (which mints a placeholder email when
+// one isn't given), so there's one client-creation path, not two.
+function NewClientForm({
+  initialName,
+  onCancel,
+  onCreated,
+}: {
+  initialName: string
+  onCancel: () => void
+  onCreated: (c: ClientRow) => void
+}) {
+  // Whatever they typed in the search box was probably the person's name.
+  const [name, setName] = useState(initialName)
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function create() {
+    const trimmed = name.trim()
+    if (!trimmed || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'quick',
+          name: trimmed,
+          email: email.trim(),
+          phone: phone.trim(),
+          sendInvite: false,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        // Quick-add validates against the trainer's own client-field config, so
+        // it can legitimately reject this (e.g. "Dog's name is required" when
+        // they've made it mandatory). Show what it actually said — a generic
+        // "couldn't add them" would leave them with no idea what to fix.
+        setError(
+          res.status === 403
+            ? 'You don’t have permission to add clients.'
+            : typeof body?.error === 'string' && body.error
+              ? body.error
+              : 'Couldn’t add them. Try again, or sell to them as a guest.',
+        )
+        setBusy(false)
+        return
+      }
+      const { clientId } = await res.json()
+      if (!clientId) {
+        setError('Couldn’t add them. Try again, or sell to them as a guest.')
+        setBusy(false)
+        return
+      }
+      onCreated({ id: clientId, name: trimmed, dogName: null, dogPhotoUrl: null })
+    } catch {
+      setError('Couldn’t add them. Try again, or sell to them as a guest.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mb-3 flex flex-col gap-2 rounded-2xl border border-slate-200 p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-slate-900">New client</p>
+        <button onClick={onCancel} className="text-xs text-slate-400 hover:text-slate-700">Cancel</button>
+      </div>
+      {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        maxLength={120}
+        placeholder="Name"
+        className="h-10 rounded-xl bg-slate-50 px-3 text-sm outline-none placeholder:text-slate-400"
+      />
+      <div className="flex gap-2">
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          type="email"
+          placeholder="Email (optional)"
+          className="h-10 min-w-0 flex-1 rounded-xl bg-slate-50 px-3 text-sm outline-none placeholder:text-slate-400"
+        />
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          type="tel"
+          placeholder="Phone (optional)"
+          className="h-10 min-w-0 flex-1 rounded-xl bg-slate-50 px-3 text-sm outline-none placeholder:text-slate-400"
+        />
+      </div>
+      <Button size="sm" onClick={create} loading={busy} disabled={!name.trim() || busy}>
+        Add and continue
+      </Button>
+    </div>
+  )
+}
+
 function Avatar({ url, name }: { url: string | null; name: string | null }) {
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element -- arbitrary blob host, sized tiny
@@ -270,7 +478,7 @@ function Avatar({ url, name }: { url: string | null; name: string | null }) {
 // Step 2 — what they're buying. Catalogue items are one tap; anything else is a
 // free-text line so a trainer is never blocked by a product they never set up.
 function ItemsStep({
-  lines, setLines, currency, total, saving, error, onBack, onRecord, onCharge,
+  lines, setLines, currency, total, saving, error, guest, onBack, onRecord, onCharge,
 }: {
   lines: Line[]
   setLines: (fn: (prev: Line[]) => Line[]) => void
@@ -278,6 +486,8 @@ function ItemsStep({
   total: number
   saving: boolean
   error: string | null
+  /** Guest sale — card only, so no "Record" (there's nobody to invoice later). */
+  guest: boolean
   onBack: () => void
   onRecord: () => void
   onCharge: () => void
@@ -420,9 +630,13 @@ function ItemsStep({
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" className="flex-1" onClick={onRecord} disabled={saving || total <= 0}>
-            Record
-          </Button>
+          {/* No "Record" for a guest — an unpaid sale with no one attached to it
+              is just a number nobody can chase. */}
+          {!guest && (
+            <Button variant="secondary" className="flex-1" onClick={onRecord} disabled={saving || total <= 0}>
+              Record
+            </Button>
+          )}
           <Button className="flex-1" onClick={onCharge} loading={saving} disabled={saving || total <= 0}>
             Take payment
           </Button>
@@ -493,18 +707,23 @@ function CustomLineForm({ currency, onAdd }: { currency: string; onAdd: (l: Line
 // points at the invoice's public pay page, which the client opens on their own
 // phone and pays with their own card.
 function DoneStep({
-  created, currency, showQr, clientName, onShowQr, onClose,
+  created, currency, showQr, guestUrl, clientName, onShowQr, onClose,
 }: {
   created: Created
   currency: string
   showQr: boolean
+  /** Stripe Checkout URL for a guest sale — QR'd directly, no invoice behind it. */
+  guestUrl: string | null
   clientName: string | null
   onShowQr: () => void
   onClose: () => void
 }) {
-  const payUrl = created.payToken
-    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/pay/${created.payToken}`
-    : null
+  // A client sale points at its invoice's pay page; a guest sale points straight
+  // at Stripe Checkout.
+  const payUrl = guestUrl
+    ?? (created.payToken
+      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/pay/${created.payToken}`
+      : null)
   const [copied, setCopied] = useState(false)
 
   async function copy() {
@@ -526,7 +745,11 @@ function DoneStep({
               {formatMoney(created.amountCents, currency)}
             </p>
             <p className="mt-1 max-w-xs text-sm text-slate-500">
-              Point {clientName ?? 'your client'}’s camera at this to pay on their phone.
+              {/* No name for a guest — and calling them "your client" would be
+                  wrong, since not being one is the whole point. */}
+              {clientName
+                ? `Point ${clientName}’s camera at this to pay on their phone.`
+                : 'Point their camera at this to pay on their phone.'}
             </p>
             <button onClick={copy} className="mt-4 text-sm font-semibold text-[var(--pm-brand-600)] hover:underline">
               {copied ? 'Link copied' : 'Copy pay link instead'}

@@ -17,6 +17,8 @@ const PUBLIC_PATHS = [
   '/l/',         // public per-trainer "link in bio" page (/l/<slug>) — trailing slash so it can't match /login/logout/library
   '/pay/',       // public no-login invoice pay page (/pay/<payToken>) — trailing slash
   '/api/pay/',   // public invoice checkout API (rate-limited, token-gated inside)
+  '/sale/',      // guest instant-sale return page (/sale/thanks) — a guest has no
+                 // account by definition, so Stripe can't return them anywhere gated
 
   '/concepts',   // TEMP: client-home redesign concept previews (mock data, no auth) — remove before ship
   '/concept-products', // TEMP: generated product images for the concept shop — remove before ship
