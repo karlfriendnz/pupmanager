@@ -771,6 +771,11 @@ function WeekGrid({
   const scrollRef = useRef<HTMLDivElement>(null)
   // Start point of a candidate horizontal swipe on the mobile day grid.
   const swipeRef = useRef<{ x: number; y: number } | null>(null)
+  // Long-press timer (touch pick-up) and a flag that a drag was picked up this
+  // gesture — the latter suppresses the day-swipe so a real drag never also
+  // changes the day.
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const didDragRef = useRef(false)
   // Stretch the visible-hours range to fill the available height so 7pm sits
   // at the bottom of the view; clamp at 48px/hr so blocks stay readable on
   // very short viewports (it'll start scrolling instead).
@@ -870,10 +875,11 @@ function WeekGrid({
   const canMobileNext = useThreeDayWindow && (mobileDayStart + 3 < weekDays.length || !!onAdvanceWeek)
 
   // Swipe the mobile 3-day window: swipe left → next days, swipe right →
-  // previous days. Only in the 3-day window; ignore touches that start on a
-  // session block (those own the drag-to-reschedule gesture) or mid block-drag.
+  // previous days. A swipe can start anywhere (including over an event) because
+  // events only move after a press-and-hold — a quick flick just changes days.
   function handleSwipeStart(e: React.TouchEvent) {
-    if (!useThreeDayWindow || dragging || e.touches.length !== 1 || (e.target as HTMLElement).closest('[data-session-id]')) {
+    didDragRef.current = false
+    if (!useThreeDayWindow || dragging || e.touches.length !== 1) {
       swipeRef.current = null
       return
     }
@@ -882,7 +888,8 @@ function WeekGrid({
   function handleSwipeEnd(e: React.TouchEvent) {
     const start = swipeRef.current
     swipeRef.current = null
-    if (!start || dragging) return
+    // Never change days off the back of an actual event-drag.
+    if (!start || dragging || didDragRef.current) return
     const t = e.changedTouches[0]
     if (!t) return
     const dx = t.clientX - start.x
@@ -906,22 +913,67 @@ function WeekGrid({
 
   const handlePointerDown = useCallback((e: React.PointerEvent, session: Session, dayIndex: number) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return
-    e.preventDefault()
     const blockEl = e.currentTarget as HTMLElement
-    // Capture so touch pointermove/up keep firing on the block (and bubble to the grid)
-    // even when the finger drifts outside it. Hit-testing for the target column uses
-    // clientX/clientY, so capture does NOT prevent cross-column drags.
-    try { blockEl.setPointerCapture(e.pointerId) } catch {}
-    const rect = blockEl.getBoundingClientRect()
-    setDragging({
-      session,
-      originalDayIndex: dayIndex,
-      dayIndex,
-      offsetY: e.clientY - rect.top,
-      currentTop: sessionTop(session.scheduledAt, tz, startHour, pxPerHour),
-      moved: false,
-    })
-  }, [])
+    const pointerId = e.pointerId
+    const downX = e.clientX
+    const downY = e.clientY
+    didDragRef.current = false
+
+    // Pick the session up for a drag. Capture so pointermove/up keep firing on
+    // the block (and bubble to the grid) even when the finger drifts outside it.
+    const begin = () => {
+      try { blockEl.setPointerCapture(pointerId) } catch {}
+      const rect = blockEl.getBoundingClientRect()
+      didDragRef.current = true
+      setDragging({
+        session,
+        originalDayIndex: dayIndex,
+        dayIndex,
+        offsetY: downY - rect.top,
+        currentTop: sessionTop(session.scheduledAt, tz, startHour, pxPerHour),
+        moved: false,
+      })
+    }
+
+    // Desktop (mouse/pen): pick up immediately — there's no swipe to conflict with.
+    if (e.pointerType !== 'touch') {
+      e.preventDefault()
+      begin()
+      return
+    }
+
+    // Touch: require a press-and-hold to pick up an event, so a quick swipe moves
+    // through days instead of dragging the event. Moving before the hold completes
+    // cancels it (it was a swipe); a quick release is a tap (open the event).
+    let cancelled = false
+    const cleanup = () => {
+      clearTimeout(pressTimer.current)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+    const onMove = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientX - downX) > 10 || Math.abs(ev.clientY - downY) > 10) {
+        cancelled = true
+        cleanup()
+      }
+    }
+    const onUp = () => {
+      cleanup()
+      if (!cancelled) onSessionClick(session) // quick tap on an event = open it
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    clearTimeout(pressTimer.current)
+    pressTimer.current = setTimeout(() => {
+      cleanup()
+      if (!cancelled) {
+        begin()
+        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(8)
+      }
+    }, 350)
+  }, [tz, startHour, pxPerHour, onSessionClick])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging || !gridRef.current) return
