@@ -4,50 +4,14 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import type { Editor } from '@tiptap/react'
 import { Button } from '@/components/ui/button'
-import { Mail, X, Send, ArrowLeft, ArrowRight, ShieldAlert, Users, Search, Check, ImagePlus, Trash2, Loader2, Plus, ArrowUp, ArrowDown, Type } from 'lucide-react'
-import { RichTextEditor } from '@/components/shared/rich-text-editor'
-import { htmlHasText, emailBodyToHtml } from '@/lib/email-html'
-import { compressImageFile } from '@/lib/compress-image'
+import { Mail, X, Send, ArrowLeft, ArrowRight, ShieldAlert, Users, Search, Check } from 'lucide-react'
+import { EmailBodyBuilder, serializeBlocks, blocksHaveContent, seedBlocks, type EmailBlock } from '@/components/shared/email-body-builder'
+import { emailBodyToHtml } from '@/lib/email-html'
 
 type EmailTemplate = { id: string; name: string; category: string | null; subject: string; body: string }
 
-// A composed email is an ordered list of stacked blocks (text/image), mirroring
-// the admin onboarding-emails builder. Serialized into one HTML body on send.
-export type EmailBlock =
-  | { id: string; type: 'text'; html: string }
-  | { id: string; type: 'image'; url: string; link?: string }
-
-// Escape a value destined for an HTML attribute (URLs/links in serialized img).
-function escapeAttr(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-// Flatten ordered blocks into one HTML body. Image blocks are wrapped in a
-// block-level <div> — the email sanitizer only keeps inline styles on block-level
-// tags, and a bare <img> would be escaped. Empty image blocks are dropped.
-export function serializeBlocks(blocks: EmailBlock[]): string {
-  return blocks
-    .map(b => {
-      if (b.type === 'text') return b.html
-      if (!b.url) return ''
-      const img = `<img src="${escapeAttr(b.url)}" style="display:block;max-width:100%;height:auto;border-radius:12px;margin:0 auto;border:0;" />`
-      const inner = b.link ? `<a href="${escapeAttr(b.link)}">${img}</a>` : img
-      return `<div style="margin:16px 0;text-align:center;">${inner}</div>`
-    })
-    .filter(Boolean)
-    .join('\n')
-}
-
-// Valid when at least one block has content: a text block with visible text, or
-// an image block with an uploaded url.
-function blocksHaveContent(blocks: EmailBlock[]): boolean {
-  return blocks.some(b => (b.type === 'text' ? htmlHasText(b.html) : !!b.url))
-}
+// The email body builder (block model, serialize) is shared with the admin
+// announcements composer — see @/components/shared/email-body-builder.
 
 // A client the trainer can email (already filtered to mailable: real email,
 // active, not opted out) — the pool the recipients step chooses from.
@@ -243,8 +207,7 @@ export function EmailComposer({
   const [step, setStep] = useState<Step>('create')
   const [templates, setTemplates] = useState<EmailTemplate[] | null>(null)
   const [subject, setSubject] = useState('')
-  const [blocks, setBlocks] = useState<EmailBlock[]>(() => [{ id: 'b0', type: 'text', html: '' }])
-  const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [blocks, setBlocks] = useState<EmailBlock[]>(seedBlocks)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(initialSelectedIds ?? candidates.map(c => c.id)),
   )
@@ -259,9 +222,6 @@ export function EmailComposer({
   // Editors keyed by block id so placeholders insert into the focused text block.
   const editorsRef = useRef<Map<string, Editor>>(new Map())
   const subjectRef = useRef<HTMLInputElement>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
-  // The image block awaiting a file from the (shared) hidden file input.
-  const pendingUploadRef = useRef<string | null>(null)
   // Monotonic block-id source (no Math.random / Date.now). b0 is the seed block.
   const idRef = useRef(0)
   function nextId() { idRef.current += 1; return `b${idRef.current}` }
@@ -314,50 +274,10 @@ export function EmailComposer({
     editor?.chain().focus().insertContent(token).run()
   }
 
-  // ── Block builder ──────────────────────────────────────────────────────────
-  function addText() { setBlocks(prev => [...prev, { id: nextId(), type: 'text', html: '' }]) }
-  function addImage() { setBlocks(prev => [...prev, { id: nextId(), type: 'image', url: '', link: '' }]) }
-  function removeBlock(id: string) {
-    editorsRef.current.delete(id)
-    setBlocks(prev => prev.filter(b => b.id !== id))
-  }
-  function moveBlock(id: string, dir: 'up' | 'down') {
-    setBlocks(prev => {
-      const i = prev.findIndex(b => b.id === id)
-      const j = dir === 'up' ? i - 1 : i + 1
-      if (i < 0 || j < 0 || j >= prev.length) return prev
-      const next = [...prev]
-      ;[next[i], next[j]] = [next[j], next[i]]
-      return next
-    })
-  }
-  function updateText(id: string, html: string) {
-    setBlocks(prev => prev.map(b => (b.id === id && b.type === 'text' ? { ...b, html } : b)))
-  }
-  function updateImage(id: string, patch: { url?: string; link?: string }) {
-    setBlocks(prev => prev.map(b => (b.id === id && b.type === 'image' ? { ...b, ...patch } : b)))
-  }
-  function pickImage(id: string) { pendingUploadRef.current = id; fileRef.current?.click() }
-
-  async function uploadBlockImage(id: string, file: File) {
-    setError(null)
-    setUploadingId(id)
-    try {
-      const toSend = await compressImageFile(file)
-      const fd = new FormData()
-      fd.append('file', toSend)
-      fd.append('sessionId', 'email')
-      const res = await fetch('/api/upload/image', { method: 'POST', body: fd })
-      const data = await res.json().catch(() => null)
-      if (res.ok && data?.url) updateImage(id, { url: data.url as string })
-      else setError(typeof data?.error === 'string' ? data.error : 'Could not upload image.')
-    } catch {
-      setError('Could not upload image — please try again.')
-    } finally {
-      setUploadingId(null)
-      if (fileRef.current) fileRef.current.value = ''
-    }
-  }
+  // Editor registration (for placeholder insertion) + block focus tracking are
+  // wired into the shared EmailBodyBuilder below; block add/move/remove/upload
+  // all live there now.
+  function trackBlockFocus(id: string) { lastFocused.current = { kind: 'block', id } }
 
   // ── Recipients step helpers ────────────────────────────────────────────────
   const customFilters = useMemo(() => Object.entries(fCustom).filter(([, v]) => v), [fCustom])
@@ -546,100 +466,16 @@ export function EmailComposer({
               </div>
             </div>
 
-            {/* Stacked block builder — text/image blocks in order. */}
+            {/* Stacked block builder — text/image blocks in order (shared). */}
             <div className="flex flex-col gap-3">
               <label className="text-xs font-medium text-slate-600 block">Content blocks</label>
-              {blocks.map((block, i) => (
-                <div key={block.id} className="rounded-xl border border-slate-200 p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      {block.type === 'text' ? <Type className="h-3.5 w-3.5" /> : <ImagePlus className="h-3.5 w-3.5" />}
-                      {block.type === 'text' ? 'Text' : 'Image'}
-                    </span>
-                    <div className="flex items-center gap-0.5">
-                      <button type="button" onClick={() => moveBlock(block.id, 'up')} disabled={i === 0}
-                        className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:hover:text-slate-400" aria-label="Move block up">
-                        <ArrowUp className="h-4 w-4" />
-                      </button>
-                      <button type="button" onClick={() => moveBlock(block.id, 'down')} disabled={i === blocks.length - 1}
-                        className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:hover:text-slate-400" aria-label="Move block down">
-                        <ArrowDown className="h-4 w-4" />
-                      </button>
-                      <button type="button" onClick={() => removeBlock(block.id)} disabled={blocks.length === 1}
-                        className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-30 disabled:hover:text-slate-400" aria-label="Delete block">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {block.type === 'text' ? (
-                    <div onFocus={() => { lastFocused.current = { kind: 'block', id: block.id } }}>
-                      <RichTextEditor
-                        key={block.id}
-                        theme="light"
-                        value={block.html}
-                        onChange={html => updateText(block.id, html)}
-                        minHeight={140}
-                        onEditorReady={ed => registerEditor(block.id, ed)}
-                      />
-                    </div>
-                  ) : block.url ? (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-start gap-3">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={block.url} alt="" className="h-20 w-32 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
-                        <div className="flex items-center gap-3 pt-1">
-                          <button type="button" onClick={() => pickImage(block.id)} disabled={uploadingId === block.id}
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--pm-brand-700)] hover:underline disabled:opacity-60">
-                            {uploadingId === block.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
-                            Change
-                          </button>
-                          <button type="button" onClick={() => updateImage(block.id, { url: '' })}
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700">
-                            <Trash2 className="h-3.5 w-3.5" /> Remove
-                          </button>
-                        </div>
-                      </div>
-                      <input
-                        value={block.link ?? ''}
-                        onChange={e => updateImage(block.id, { link: e.target.value })}
-                        placeholder="Link when clicked (optional) — https://…"
-                        className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
-                      />
-                    </div>
-                  ) : (
-                    <button type="button" onClick={() => pickImage(block.id)} disabled={uploadingId === block.id}
-                      className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs font-medium text-slate-600 hover:border-[var(--pm-brand-500)] hover:text-[var(--pm-brand-700)] disabled:opacity-60">
-                      {uploadingId === block.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                      {uploadingId === block.id ? 'Uploading…' : 'Upload image'}
-                    </button>
-                  )}
-                </div>
-              ))}
-
-              {/* Shared hidden input feeds whichever image block requested it. */}
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={e => {
-                  const f = e.target.files?.[0]
-                  const id = pendingUploadRef.current
-                  if (f && id) uploadBlockImage(id, f)
-                }}
+              <EmailBodyBuilder
+                blocks={blocks}
+                onBlocksChange={setBlocks}
+                disabled={sending}
+                onEditorReady={registerEditor}
+                onBlockFocus={trackBlockFocus}
               />
-
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={addText}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:border-[var(--pm-brand-500)] hover:text-[var(--pm-brand-700)]">
-                  <Plus className="h-3.5 w-3.5" /> Add text
-                </button>
-                <button type="button" onClick={addImage}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:border-[var(--pm-brand-500)] hover:text-[var(--pm-brand-700)]">
-                  <Plus className="h-3.5 w-3.5" /> Add image
-                </button>
-              </div>
             </div>
           </>
         )}
