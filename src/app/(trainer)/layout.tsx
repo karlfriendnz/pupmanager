@@ -8,6 +8,7 @@ import { can, type PermissionKey } from '@/lib/permissions'
 import { getEnabledAddons } from '@/lib/billing'
 import type { AddonId } from '@/lib/pricing'
 import { AppShell } from '@/components/shared/app-shell'
+import { ShieldAlert } from 'lucide-react'
 import { BookingConflictProvider } from '@/components/schedule/booking-conflict-dialog'
 import { OnboardingFab } from './onboarding-fab'
 import { PaywallFrame } from './paywall-frame'
@@ -242,21 +243,18 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       orgs={orgs}
       activeCompanyId={session.user.trainerId ?? null}
     >
-      {/* Admin impersonation banner — only present when an admin used
-          "Log in as trainer". Stays pinned so the way back to admin is
-          always one click away. */}
+      {/* Admin impersonation marker — a small pill pinned bottom-right (out of
+          the way of the page chrome) that exits back to admin on click. */}
       {session.user.impersonatorId && (
-        <div className="top-banner-safe sticky top-0 z-40 flex items-center justify-between gap-3 px-4 bg-amber-500 text-amber-950 text-sm font-medium">
-          <span>
-            Viewing as <strong>{tp?.businessName ?? session.user.name ?? 'this trainer'}</strong> — admin impersonation
-          </span>
-          <a
-            href="/api/impersonate/stop"
-            className="shrink-0 rounded-lg bg-amber-950/90 px-3 py-1 text-xs font-semibold text-amber-50 hover:bg-amber-950"
-          >
-            Exit to admin
-          </a>
-        </div>
+        <a
+          href="/api/impersonate/stop"
+          title={`Viewing as ${tp?.businessName ?? session.user.name ?? 'this trainer'} — click to exit to admin`}
+          className="impersonate-fab inline-flex items-center gap-2 rounded-full bg-amber-500 px-3.5 py-2.5 text-xs font-semibold text-amber-950 shadow-lg ring-1 ring-black/10 transition-colors hover:bg-amber-400"
+        >
+          <ShieldAlert className="h-4 w-4 shrink-0" />
+          <span>Admin impersonate</span>
+          <span className="text-amber-900/70">· Exit</span>
+        </a>
       )}
       {/* Trial / payment-status banner now lives in the dashboard header only
           (see app/(trainer)/dashboard/page.tsx) instead of floating on every

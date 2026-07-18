@@ -64,6 +64,21 @@ html[data-native='true'] body {
   }
 }
 
+/* Small floating "Admin impersonate" pill, bottom-right. Clears the mobile
+   bottom tab bar (h-16) + safe-area on phones; on md+ (no bottom nav) it sits
+   just above the home-indicator inset. */
+.impersonate-fab {
+  position: fixed;
+  z-index: 50;
+  right: calc(1rem + env(safe-area-inset-right, 0px));
+  bottom: calc(4rem + env(safe-area-inset-bottom, 0px) + 1rem);
+}
+@media (min-width: 768px) {
+  .impersonate-fab {
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 /* Minimum touch target size */
 button, a, [role="button"] {
   min-height: 44px;
