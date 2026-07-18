@@ -23,6 +23,7 @@ const PUBLIC_PATHS = [
   '/concepts',   // TEMP: client-home redesign concept previews (mock data, no auth) — remove before ship
   '/concept-products', // TEMP: generated product images for the concept shop — remove before ship
   '/api/version', // build-id check for the stale-client reload guard (no secrets)
+  '/api/app/',   // native-shell config (version-gate requirements) — read on launch pre-login, no secrets
   // Universal Links / Android App Links discovery files. Apple and Google
   // fetch these on app install to verify domain↔app association; they
   // MUST resolve with no auth, no redirects, and Content-Type: application/json.

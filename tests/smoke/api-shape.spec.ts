@@ -59,6 +59,17 @@ test.describe('Authed API endpoints', () => {
     })
   }
 
+  // The native-shell version gate reads this on launch, often before login, so
+  // it MUST be public (in PUBLIC_PATHS) — a 307 login bounce here means the app
+  // can never read its update floor. Guards against the entry being dropped.
+  test('GET /api/app/version-requirements is public and returns store links', async ({ request }) => {
+    const r = await request.get('/api/app/version-requirements', { maxRedirects: 0 })
+    expect(r.status(), 'must be reachable without auth (not a 307 login bounce)').toBe(200)
+    const body = await r.json()
+    expect(body.ios?.storeUrl, 'ios store url present').toBeTruthy()
+    expect(body.android?.storeUrl, 'android store url present').toBeTruthy()
+  })
+
   // Stripe webhook is signature-gated, not auth-gated, so an unsigned
   // POST should land on the signature check (400) or hit the
   // not-configured short-circuit (503) — never 500.
