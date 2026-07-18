@@ -6,6 +6,7 @@ import { getTrainerEmailReport } from '@/lib/onboarding/email-report'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { ArrowLeft, LogIn, Check } from 'lucide-react'
 import { TrainerDetailActions } from './trainer-detail-actions'
+import { AdminTrainerNotes } from './admin-trainer-notes'
 import type { ReactNode } from 'react'
 import type { Metadata } from 'next'
 
@@ -56,10 +57,12 @@ export default async function AdminTrainerDetailPage({
   const p = user.trainerProfile
 
   // Same live-derived signals the table used, now computed once for the detail.
-  const [sampleCount, fab, report] = await Promise.all([
+  const [sampleCount, fab, report, notes, tasks] = await Promise.all([
     prisma.clientProfile.count({ where: { trainerId: p.id, isSample: true } }),
     getOnboardingFabState(p.id),
     getTrainerEmailReport(p.id),
+    prisma.adminTrainerNote.findMany({ where: { trainerId: p.id }, orderBy: { createdAt: 'desc' }, take: 100 }),
+    prisma.adminTrainerTask.findMany({ where: { trainerId: p.id }, orderBy: [{ done: 'asc' }, { createdAt: 'desc' }] }),
   ])
   const done = fab.steps.filter(s => s.status === 'completed').length
   const total = fab.totalSteps
@@ -223,6 +226,13 @@ export default async function AdminTrainerDetailPage({
           </p>
         )}
       </div>
+
+      {/* Internal progress diary + to-dos (admin-only, trainer never sees this). */}
+      <AdminTrainerNotes
+        trainerId={p.id}
+        initialNotes={notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString() }))}
+        initialTasks={tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, createdAt: t.createdAt.toISOString() }))}
+      />
     </div>
   )
 }

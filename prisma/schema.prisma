@@ -235,6 +235,34 @@ model Announcement {
   @@map("announcements")
 }
 
+// Internal (super-admin) diary note about a trainer business — for the PupManager
+// team to track a trainer's progress. Not visible to the trainer. trainerId is a
+// TrainerProfile.id (loosely coupled, admin-only).
+model AdminTrainerNote {
+  id          String   @id @default(cuid())
+  trainerId   String
+  body        String   @db.Text
+  createdById String? // admin User who wrote it
+  createdAt   DateTime @default(now())
+
+  @@index([trainerId, createdAt])
+  @@map("admin_trainer_notes")
+}
+
+// Internal (super-admin) to-do against a trainer business.
+model AdminTrainerTask {
+  id          String    @id @default(cuid())
+  trainerId   String
+  title       String
+  done        Boolean   @default(false)
+  createdById String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([trainerId, done, createdAt])
+  @@map("admin_trainer_tasks")
+}
+
 // Per-(user, type, channel) preference. Absence of a row means "use the
 // type's default" (typically enabled). `minutesBefore` is only meaningful for
 // time-relative types like SESSION_REMINDER; null otherwise.
