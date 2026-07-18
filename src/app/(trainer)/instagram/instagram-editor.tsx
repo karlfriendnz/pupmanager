@@ -428,13 +428,16 @@ export function InstagramEditor({
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[1fr_360px]">
       {/* ── Editor column ─────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-6">
+      {/* min-w-0: a grid track child defaults to min-width:auto, so without this
+          an incompressible child (long public URL, menu-link rows) forces the
+          whole column past a phone's viewport and the page scrolls sideways. */}
+      <div className="flex min-w-0 flex-col gap-6">
         {/* Public URL */}
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-slate-900">Your public link</h2>
           <p className="mt-0.5 text-xs text-slate-500">Pop this in your Instagram bio.</p>
           <div className="mt-3 flex items-center gap-2">
-            <code className="flex-1 truncate rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+            <code className="min-w-0 flex-1 truncate rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
               {publicUrl ?? 'Set a business name to generate your link'}
             </code>
             <Button type="button" variant="secondary" size="sm" onClick={copyUrl} disabled={!publicUrl}>
