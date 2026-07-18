@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   getTrainerContext: vi.fn(),
   upsert: vi.fn(),
   findUnique: vi.fn(),
+  billingItemUpsert: vi.fn(),
 }))
 
 vi.mock('@/lib/membership', () => ({ getTrainerContext: h.getTrainerContext }))
@@ -17,6 +18,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     trainerAddon: { upsert: h.upsert },
     trainerProfile: { findUnique: h.findUnique },
+    billingItem: { upsert: h.billingItemUpsert },
   },
 }))
 // The route imports these at module load; the free path never calls them.
@@ -33,9 +35,11 @@ beforeEach(() => {
   h.getTrainerContext.mockReset()
   h.upsert.mockReset()
   h.findUnique.mockReset()
+  h.billingItemUpsert.mockReset()
   // Owner has every permission, incl. billing.seats (real can() short-circuits).
   h.getTrainerContext.mockResolvedValue({ companyId: 'co_1', role: 'OWNER', permissions: null })
   h.upsert.mockResolvedValue({})
+  h.billingItemUpsert.mockResolvedValue({})
 })
 
 const freeAddons = ADDONS.filter((a) => a.free && !a.comingSoon)
@@ -58,6 +62,18 @@ describe('POST /api/addons — every free add-on toggles', () => {
     for (const id of ['clientapp', 'notes', 'classes']) {
       expect(freeAddons.map((a) => a.id)).toContain(id)
     }
+  })
+
+  // Regression guard for the exact prod bug found 2026-07-18: `pos` and
+  // `instagram` 500'd because their BillingItem row (the TrainerAddon FK target)
+  // was never seeded. The route now self-heals by upserting the row from the
+  // catalog before touching TrainerAddon, so a missing row can never 500 again.
+  it.each(freeAddons.map((a) => [a.id]))('self-heals the BillingItem for "%s" before enabling', async (id) => {
+    const res = await POST(req({ itemId: id, active: true }))
+    expect(res.status, id).toBe(200)
+    expect(h.billingItemUpsert).toHaveBeenCalledTimes(1)
+    expect(h.billingItemUpsert.mock.calls[0][0].where).toEqual({ id })
+    expect(h.billingItemUpsert.mock.calls[0][0].create).toMatchObject({ id, kind: 'ADDON' })
   })
 
   it('a coming-soon add-on cannot be toggled', async () => {

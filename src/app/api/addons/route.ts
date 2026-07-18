@@ -6,7 +6,29 @@ import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
 import { resolvePriceId, loadPriceIndex } from '@/lib/billing'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
-import { addonById, isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
+import { ADDONS, addonById, isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
+import type { AddonDef } from '@/lib/pricing'
+
+// TrainerAddon.itemId is an FK to BillingItem.id, so enabling an add-on whose
+// BillingItem row was never seeded in this environment 500s on a FK violation.
+// Historically that meant re-running scripts/backfill-addon-billing-items.ts by
+// hand every time a new add-on shipped. Instead, self-heal: ensure the row
+// exists (from the catalog) before we touch TrainerAddon. Idempotent; `update:{}`
+// leaves an existing row's Stripe price wiring untouched.
+async function ensureBillingItem(def: AddonDef): Promise<void> {
+  await prisma.billingItem.upsert({
+    where: { id: def.id },
+    create: {
+      id: def.id,
+      kind: 'ADDON',
+      name: def.name,
+      description: def.description,
+      priceMonthly: def.price.NZD,
+      sortOrder: ADDONS.findIndex(a => a.id === def.id) + 1,
+    },
+    update: {},
+  })
+}
 
 // POST /api/addons — enable/disable an add-on for the current trainer's
 // business by adding/removing the matching line item on their Stripe
@@ -43,6 +65,9 @@ export async function POST(req: Request) {
   if (!def || def.comingSoon) {
     return NextResponse.json({ error: 'This add-on isn\'t available yet.' }, { status: 404 })
   }
+
+  // Guarantee the BillingItem the TrainerAddon FK points at exists in this env.
+  await ensureBillingItem(def)
 
   // FREE add-ons (e.g. Timesheets) toggle with no Stripe involvement.
   if (def.free) {
