@@ -368,6 +368,8 @@ function BusyStrip({ block, dayDate, tz, startHour, endHour, pxPerHour }: {
   endHour: number
   pxPerHour: number
 }) {
+  // Tap-to-reveal details on touch devices (hooks run before any early return).
+  const [busyDetailOpen, setBusyDetailOpen] = useState(false)
   if (ymdInTz(block.startsAt, tz) !== toDateStr(dayDate)) return null
 
   // Position by the block's TRUE local start/end minutes, clamped to the visible
@@ -388,12 +390,19 @@ function BusyStrip({ block, dayDate, tz, startHour, endHour, pxPerHour }: {
   const timeRange = `${fmt(block.startsAt)} – ${fmt(block.endsAt)}`
   const label = block.title || 'Busy'
 
+  // Desktop reveals the details on hover. Touch devices (phone / tablet) can't
+  // hover, so a tap toggles the same popup — and swallows the click so it isn't
+  // treated as "book over this busy time".
   return (
-    // Outer wrapper is the hover target (no clip, so the popup can overflow) and
-    // is click-transparent so a click still bubbles to the column to book.
     <div className="group absolute left-0.5 right-0.5" style={{ top, height }} title={`${label} · ${timeRange}`}>
       <div
         className="h-full w-full overflow-hidden rounded-md border-l-2 border-slate-300 bg-slate-200/70 transition-colors group-hover:bg-slate-300/80"
+        onClick={(e) => {
+          if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) {
+            e.stopPropagation()
+            setBusyDetailOpen((v) => !v)
+          }
+        }}
         style={{
           backgroundImage:
             'repeating-linear-gradient(45deg, rgba(148,163,184,0.18) 0, rgba(148,163,184,0.18) 6px, transparent 6px, transparent 12px)',
@@ -403,8 +412,8 @@ function BusyStrip({ block, dayDate, tz, startHour, endHour, pxPerHour }: {
           Busy
         </span>
       </div>
-      {/* Hover popup — what the busy time is. */}
-      <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-1 hidden w-max max-w-[220px] -translate-x-1/2 rounded-lg bg-slate-900 px-2.5 py-1.5 shadow-xl group-hover:block">
+      {/* Details popup — revealed on hover (desktop) or tap (touch). */}
+      <div className={`pointer-events-none absolute bottom-full left-1/2 z-30 mb-1 w-max max-w-[220px] -translate-x-1/2 rounded-lg bg-slate-900 px-2.5 py-1.5 shadow-xl group-hover:block ${busyDetailOpen ? 'block' : 'hidden'}`}>
         <p className="truncate text-[11px] font-semibold leading-tight text-white">{label}</p>
         <p className="text-[10px] leading-tight text-slate-300">{timeRange}</p>
         <p className="mt-0.5 text-[9px] uppercase tracking-wide text-slate-400">Google Calendar</p>
