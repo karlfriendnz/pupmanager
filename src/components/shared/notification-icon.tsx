@@ -1,6 +1,7 @@
 import {
   Bell, Dumbbell, CheckCircle2, MessageSquare, Inbox, UserPlus, Calendar, CalendarDays,
   FileText, Clock, Flame, ClipboardList, CalendarClock, CalendarX, ShoppingBag, Trophy,
+  Megaphone,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -23,6 +24,7 @@ const NOTIFICATION_ICONS: Record<string, LucideIcon> = {
   DAILY_SUMMARY: Calendar,
   WEEKLY_SUMMARY: CalendarDays,
   STREAK_UPDATE: Flame,
+  PLATFORM_ANNOUNCEMENT: Megaphone,
   // Client-facing
   CLIENT_ADDED_TO_PLAN: ClipboardList,
   CLIENT_SESSION_DIGEST: Calendar,

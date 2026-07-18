@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Package, Database, ClipboardList, Mail, Ticket, type LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Users, Package, Database, ClipboardList, Mail, Ticket, Megaphone, type LucideIcon } from 'lucide-react'
 
 // Shared admin tab list — rendered as a horizontal top bar on desktop
 // (AdminTabNav) and as a fixed bottom bar on mobile (AdminBottomNav).
@@ -21,6 +21,7 @@ export type AdminTab = {
 export const ADMIN_TABS: AdminTab[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/trainers', label: 'Trainers', icon: Users },
+  { href: '/admin/announcements', label: 'Announcements', short: 'News', icon: Megaphone },
   { href: '/admin/onboarding-steps', label: 'Onboarding', short: 'Onboard', icon: Mail, match: '/admin/onboarding' },
   { href: '/admin/plans', label: 'Plans', icon: Package },
   { href: '/admin/promo-codes', label: 'Promo codes', short: 'Promos', icon: Ticket },

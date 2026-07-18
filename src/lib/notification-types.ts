@@ -481,6 +481,26 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     placeholders: ['trainerName', 'taskTitle'],
     sampleValues: { trainerName: 'Jess', taskTitle: 'Loose-lead walking' },
   },
+  PLATFORM_ANNOUNCEMENT: {
+    type: 'PLATFORM_ANNOUNCEMENT',
+    label: 'Product updates',
+    description: "News from PupManager when we improve the app.",
+    trigger: 'event',
+    audience: 'trainer',
+    // Bell + phone push. No email channel here — email announcements are a
+    // separate, later channel. The admin authors the exact title/body per
+    // announcement, so there's nothing for a trainer to customise.
+    channels: ['IN_APP', 'PUSH'],
+    customisable: false,
+    defaults: {
+      enabled: true,
+      // Fallbacks only — the real copy comes from each Announcement row.
+      title: 'PupManager update',
+      body: "We've made the app better.",
+    },
+    placeholders: [],
+    sampleValues: {},
+  },
 }
 
 // Substitute {{placeholder}} tokens. Unknown placeholders are left as-is

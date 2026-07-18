@@ -33,7 +33,9 @@ export interface ManageableMember {
 const MINUTES_OPTIONS = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180]
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => h)
 const roleLabel = (role: string) => role.charAt(0) + role.slice(1).toLowerCase()
-const TRAINER_TYPES = Object.values(NOTIFICATION_TYPES).filter(m => m.audience !== 'client')
+// Product-update announcements aren't a per-trainer opt-out (they're rare,
+// important, and admin-authored), so they don't appear as a settings toggle.
+const TRAINER_TYPES = Object.values(NOTIFICATION_TYPES).filter(m => m.audience !== 'client' && m.type !== 'PLATFORM_ANNOUNCEMENT')
 const CHANNELS: { id: Channel; label: string; Icon: typeof Bell }[] = [
   { id: 'IN_APP', label: 'In-app', Icon: Bell },
   { id: 'PUSH', label: 'Phone', Icon: Smartphone },

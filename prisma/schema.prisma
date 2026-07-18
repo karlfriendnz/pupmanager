@@ -168,6 +168,7 @@ enum NotificationType {
   DAILY_SUMMARY // morning digest of today's sessions/tasks
   WEEKLY_SUMMARY // Sunday-evening wrap of the week + week-ahead glance
   STREAK_UPDATE // daily nudge about the trainer's weekly engagement streak
+  PLATFORM_ANNOUNCEMENT // a product update / "what's new" broadcast from PupManager
   // ─── Client-facing (the dog owner) ───
   CLIENT_ADDED_TO_PLAN // trainer added the client to a session / package / class
   CLIENT_SESSION_DIGEST // morning summary of the day's sessions
@@ -183,6 +184,39 @@ enum NotificationChannel {
   PUSH
   EMAIL
   IN_APP // shows in the client's notifications feed
+}
+
+enum AnnouncementStatus {
+  DRAFT // authored in the admin area, not yet broadcast
+  SENT // fanned out to recipients' notification feeds
+}
+
+enum AnnouncementAudience {
+  ALL_TRAINERS // every accepted trainer-side team member (owners + staff)
+}
+
+// A platform "what's new" update authored by a super-admin (Karl) and broadcast
+// to trainers' notification bells. This row is the editable source of truth /
+// history; sending fans out one Notification row per recipient User (the bell
+// reads Notification, not this table). See src/app/api/admin/announcements.
+model Announcement {
+  id             String               @id @default(cuid())
+  title          String
+  body           String               @db.Text
+  // Optional in-app deep link the bell card routes to (e.g. "/settings?tab=addons").
+  link           String?
+  status         AnnouncementStatus   @default(DRAFT)
+  audience       AnnouncementAudience @default(ALL_TRAINERS)
+  // The admin User who authored it (kept for the history list). Null = legacy.
+  createdById    String?
+  // Set when broadcast; recipientCount records how many feeds it reached.
+  sentAt         DateTime?
+  recipientCount Int?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([status, createdAt])
+  @@map("announcements")
 }
 
 // Per-(user, type, channel) preference. Absence of a row means "use the
