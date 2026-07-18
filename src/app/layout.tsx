@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Baloo_2 } from 'next/font/google'
 import './globals.css'
 import { NativeBootstrap } from '@/components/native/NativeBootstrap'
+import { UpdateGate } from '@/components/native/UpdateGate'
 
 const geist = Geist({
   variable: '--font-geist',
@@ -53,6 +54,7 @@ export default function RootLayout({
     <html lang="en-NZ" suppressHydrationWarning className={`${geist.variable} ${baloo.variable} h-full antialiased`}>
       <body suppressHydrationWarning className="min-h-full bg-slate-50 text-slate-900 flex flex-col">
         <NativeBootstrap />
+        <UpdateGate />
         {children}
       </body>
     </html>
