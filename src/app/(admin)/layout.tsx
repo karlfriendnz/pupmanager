@@ -10,21 +10,25 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col">
-      {/* Admin top bar */}
-      <header className="flex items-center justify-between gap-3 sm:gap-6 px-4 sm:px-6 h-14 border-b border-slate-700 bg-slate-800">
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <span className="text-lg">🐾</span>
-          <span className="font-semibold">PupManager Admin</span>
-          <span className="text-xs bg-red-600 px-2 py-0.5 rounded-full hidden sm:inline">Super Admin</span>
+      {/* Admin top bar. The wrapper pads env(safe-area-inset-top) so the slate
+          bar fills behind the iOS status bar / notch on iPad + iPhone (the admin
+          area isn't inside the app-shell that normally reserves this). */}
+      <header className="border-b border-slate-700 bg-slate-800" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <div className="flex items-center justify-between gap-3 sm:gap-6 px-4 sm:px-6 h-14">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <span className="text-lg">🐾</span>
+            <span className="font-semibold">PupManager Admin</span>
+            <span className="text-xs bg-red-600 px-2 py-0.5 rounded-full hidden sm:inline">Super Admin</span>
+          </div>
+          {/* Desktop nav in the top bar. On mobile the fixed AdminBottomNav takes
+              over, so this is hidden below md. */}
+          <div className="min-w-0 hidden md:block">
+            <AdminTabNav />
+          </div>
+          <form action={async () => { 'use server'; await signOut({ redirectTo: '/login' }) }} className="shrink-0">
+            <button type="submit" className="text-xs text-slate-400 hover:text-white">Sign out</button>
+          </form>
         </div>
-        {/* Desktop nav in the top bar. On mobile the fixed AdminBottomNav takes
-            over, so this is hidden below md. */}
-        <div className="min-w-0 hidden md:block">
-          <AdminTabNav />
-        </div>
-        <form action={async () => { 'use server'; await signOut({ redirectTo: '/login' }) }} className="shrink-0">
-          <button type="submit" className="text-xs text-slate-400 hover:text-white">Sign out</button>
-        </form>
       </header>
       {/* pb-24 (mobile) clears the fixed bottom nav; md:pb-6 restores normal
           spacing once the top bar takes over. Split padding axes so the bottom

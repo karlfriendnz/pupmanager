@@ -246,7 +246,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
           "Log in as trainer". Stays pinned so the way back to admin is
           always one click away. */}
       {session.user.impersonatorId && (
-        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 px-4 py-2 bg-amber-500 text-amber-950 text-sm font-medium">
+        <div className="top-banner-safe sticky top-0 z-40 flex items-center justify-between gap-3 px-4 bg-amber-500 text-amber-950 text-sm font-medium">
           <span>
             Viewing as <strong>{tp?.businessName ?? session.user.name ?? 'this trainer'}</strong> — admin impersonation
           </span>

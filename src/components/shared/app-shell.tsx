@@ -674,7 +674,13 @@ function TrainerTopBar({
 }) {
   const title = usePageTitle() ?? fallbackTitle
   return (
-    <header className="hidden md:flex fixed top-0 inset-x-0 z-40 h-14 items-center border-b border-slate-100 bg-white/85 backdrop-blur">
+    <header
+      className="hidden md:block fixed top-0 inset-x-0 z-40 border-b border-slate-100 bg-white/85 backdrop-blur"
+      // Reserve the iOS status-bar inset so the bar fills behind it on iPad
+      // (which runs the desktop layout) instead of the row being clipped.
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
+    <div className="flex h-14 items-center">
       {/* Logo zone — aligned to the sidebar width so it sits above it. */}
       <div className={cn('flex items-center h-full shrink-0 border-r border-slate-100 transition-all duration-200 overflow-hidden', collapsed ? 'w-16 justify-center px-2' : 'w-64 gap-3 px-5')}>
         {/* Logo fits inside a fixed square box (object-contain, never cropped),
@@ -716,6 +722,7 @@ function TrainerTopBar({
       <div className="pr-3 lg:pr-5">
         <TopBarControls userName={userName} userEmail={userEmail} orgs={orgs} activeCompanyId={activeCompanyId} streak={streak} canSell={canSell} currency={currency} notifCount={notifCount} />
       </div>
+    </div>
     </header>
   )
 }

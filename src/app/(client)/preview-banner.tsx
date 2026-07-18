@@ -6,7 +6,7 @@ import { exitClientPreview } from '@/app/preview-as/actions'
 // the cookie clears reliably without JS.
 export function PreviewBanner({ clientName }: { clientName: string }) {
   return (
-    <div className="sticky top-0 z-50 flex items-center justify-between gap-3 px-4 py-2 bg-amber-100 border-b border-amber-200 text-amber-900 text-sm">
+    <div className="top-banner-safe sticky top-0 z-50 flex items-center justify-between gap-3 px-4 bg-amber-100 border-b border-amber-200 text-amber-900 text-sm">
       <div className="flex items-center gap-2 min-w-0">
         <Eye className="h-4 w-4 shrink-0 text-amber-600" />
         <span className="font-medium truncate">

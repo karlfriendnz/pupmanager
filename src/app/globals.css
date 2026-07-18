@@ -45,6 +45,25 @@ html[data-native='true'] body {
   padding-right: env(safe-area-inset-right);
 }
 
+/* Full-width banners pinned to the very top of the app on mobile (admin
+   impersonation, preview-as-client, demo preview). Reserve the iOS status-bar /
+   notch inset so their text isn't clipped, and cancel <main>'s capped safe-area
+   pad so the bar sits flush behind the status bar. On md+ (iPad shows the
+   desktop layout with its own fixed top bar) the banner sits below that bar, so
+   no inset handling is needed. env() is 0 on non-notched surfaces, so this is a
+   plain 0.5rem y-padding on the web. */
+.top-banner-safe {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+  padding-bottom: 0.5rem;
+  margin-top: calc(min(env(safe-area-inset-top, 0px), 1rem) * -1);
+}
+@media (min-width: 768px) {
+  .top-banner-safe {
+    padding-top: 0.5rem;
+    margin-top: 0;
+  }
+}
+
 /* Minimum touch target size */
 button, a, [role="button"] {
   min-height: 44px;
