@@ -31,6 +31,7 @@ const businessSchema = z.object({
   publicEmail: z.union([z.string().email('Enter a valid email'), z.literal('')]).optional(),
   signupCountry: z.string().optional(),
   timezone: z.string().min(1, 'Timezone is required'),
+  landingPage: z.enum(['dashboard', 'schedule']),
 })
 
 const designSchema = z.object({
@@ -49,7 +50,7 @@ export function TrainerSettingsForm({
   user,
   profile,
 }: {
-  user: { name: string | null; email: string; timezone: string }
+  user: { name: string | null; email: string; timezone: string; landingPage: string }
   profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
 }) {
   const router = useRouter()
@@ -72,6 +73,7 @@ export function TrainerSettingsForm({
       publicEmail: profile.publicEmail ?? '',
       signupCountry: profile.signupCountry ?? '',
       timezone: user.timezone,
+      landingPage: user.landingPage === 'schedule' ? 'schedule' : 'dashboard',
     },
   })
 
@@ -140,7 +142,7 @@ export function TrainerSettingsForm({
   async function saveBusiness(data: BusinessData) {
     setBusinessMsg(null)
     const [r1, r2] = await Promise.all([
-      fetch('/api/user', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: data.name, timezone: data.timezone }) }),
+      fetch('/api/user', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: data.name, timezone: data.timezone, landingPage: data.landingPage }) }),
       fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, showPhoneToClients: data.showPhoneToClients ?? false, publicEmail: data.publicEmail ?? '', signupCountry: data.signupCountry ?? '', businessRoles: bizRoles }) }),
     ])
     setBusinessMsg(r1.ok && r2.ok ? 'Saved!' : 'Failed to save.')
@@ -213,6 +215,15 @@ export function TrainerSettingsForm({
             <select className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" {...businessForm.register('timezone')}>
               {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
             </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">When you open the app, start on</label>
+            <select className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" {...businessForm.register('landingPage')}>
+              <option value="dashboard">Dashboard</option>
+              <option value="schedule">Schedule</option>
+            </select>
+            <p className="text-xs text-slate-500">The page you land on each time you open PupManager.</p>
           </div>
 
           <div className="flex flex-col gap-1.5 sm:col-span-2">

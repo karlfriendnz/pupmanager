@@ -8,6 +8,7 @@ const patchSchema = z.object({
   timezone: z.string().optional(),
   notifyEmail: z.boolean().optional(),
   notifyPush: z.boolean().optional(),
+  landingPage: z.enum(['dashboard', 'schedule']).optional(),
 })
 
 export async function PATCH(req: Request) {
@@ -23,7 +24,7 @@ export async function PATCH(req: Request) {
     data: parsed.data,
     // Return only the fields the client set — not the whole User row (which
     // carries internal flags like emailVerified / lastLoginAt / role).
-    select: { id: true, name: true, timezone: true, notifyEmail: true, notifyPush: true },
+    select: { id: true, name: true, timezone: true, notifyEmail: true, notifyPush: true, landingPage: true },
   })
 
   return NextResponse.json(user)

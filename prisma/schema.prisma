@@ -101,6 +101,9 @@ model User {
 
   notifyEmail Boolean @default(true)
   notifyPush  Boolean @default(true)
+  // Which page a trainer lands on when they open the app: "dashboard" (default)
+  // or "schedule". Personal per-user preference, honoured by the root redirect.
+  landingPage String  @default("dashboard")
   // Opt-out of PupManager product-update ("what's new") announcement EMAILS.
   // Universal to any user (trainer or client); set via the email unsubscribe
   // link. The in-app bell announcement is never suppressed by this.

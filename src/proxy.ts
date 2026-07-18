@@ -77,7 +77,8 @@ export default auth((req) => {
     if (pathname === '/') {
       if (role === 'ADMIN') return NextResponse.redirect(new URL('/admin', req.url))
       if (role === 'CLIENT') return NextResponse.redirect(new URL('/home', req.url))
-      return NextResponse.redirect(new URL('/dashboard', req.url))
+      // TRAINER: fall through to app/page.tsx, which honours the trainer's chosen
+      // landing page (dashboard or schedule) — middleware can't read that pref.
     }
 
     // Admin: only allow /admin paths (plus public + api). `/api/*` is the
