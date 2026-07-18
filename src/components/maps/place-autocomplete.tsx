@@ -13,12 +13,17 @@ export type PlaceResult = { address: string; lat: number; lng: number; placeId: 
 // hands back coordinates (no separate geocoding call needed).
 export function PlaceAutocomplete({
   onSelect,
+  onTextChange,
   placeholder = 'Search address…',
   bias,
   region,
   initialValue = '',
 }: {
   onSelect: (r: PlaceResult) => void
+  // Fires on every keystroke with the raw typed text (no coordinates). Lets a
+  // consumer keep a manually-typed address that never matched a suggestion —
+  // otherwise the text is lost unless the user taps a dropdown option.
+  onTextChange?: (text: string) => void
   placeholder?: string
   // Centre to bias results toward (the trainer's home city/base).
   bias?: { lat: number; lng: number } | null
@@ -41,6 +46,8 @@ export function PlaceAutocomplete({
 
   function onChange(value: string) {
     setQuery(value)
+    // Hand the raw text back so a typed-but-never-selected address still counts.
+    onTextChange?.(value)
     clearTimeout(debounceRef.current)
     if (!value.trim()) { setSuggestions([]); setOpen(false); return }
     debounceRef.current = setTimeout(async () => {

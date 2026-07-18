@@ -153,6 +153,10 @@ export function CreateClientForm({
             initialValue={address.line}
             placeholder="Search address…"
             onSelect={(p) => setAddress({ line: p.address, lat: p.lat, lng: p.lng, placeId: p.placeId })}
+            // Keep a typed address even if the trainer never taps a Google
+            // suggestion (e.g. rural addresses Google doesn't list). Coordinates
+            // stay null until geocoded — far better than losing the address.
+            onTextChange={(line) => setAddress({ line, lat: null, lng: null, placeId: null })}
           />
         </div>
         {ownerFields.length > 0 && ownerFields.map(f => (
