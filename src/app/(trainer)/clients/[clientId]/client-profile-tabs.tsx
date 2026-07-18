@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
-import { formatDate, cn, formatSessionTitle } from '@/lib/utils'
+import { formatDate, cn, formatSessionTitle, displayEmail } from '@/lib/utils'
 import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, Receipt, Dumbbell } from 'lucide-react'
 import { ClientNotesTab } from './client-notes-tab'
 import { ClientTrainingLogTab, type TrainerTrainingLog } from './client-training-log-tab'
@@ -761,9 +761,9 @@ export function ClientProfileTabs({
                 {canEdit && <StatusToggle clientId={clientId} initialStatus={status} />}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 text-sm">
-                <div className={contact.email && contact.email.length > 32 ? 'sm:col-span-2' : ''}>
+                <div className={displayEmail(contact.email) && contact.email!.length > 32 ? 'sm:col-span-2' : ''}>
                   <p className="text-xs text-slate-400 mb-0.5">Email</p>
-                  {contact.email ? (
+                  {displayEmail(contact.email) ? (
                     <a href={`mailto:${contact.email}`} className="text-blue-600 hover:underline break-all">{contact.email}</a>
                   ) : (
                     <p className="text-slate-300">—</p>

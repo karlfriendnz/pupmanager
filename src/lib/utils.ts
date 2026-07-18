@@ -93,6 +93,20 @@ export function formatSessionTitle(title: string): string {
   return title.replace(/\s*[—-]\s*session(\s+1\s*\/\s*1)?\s*$/i, '')
 }
 
+// Synthetic client emails (seeded demo clients, or clients added without a real
+// address) live on the `@pupmanager.test` domain. They're a placeholder, never a
+// real inbox, so anything client-facing should treat them as "no email".
+export function isPlaceholderEmail(email: string | null | undefined): boolean {
+  const trimmed = email?.trim()
+  return !trimmed || /@pupmanager\.test$/i.test(trimmed)
+}
+
+// The email to show in the UI, or null when it's a placeholder. Callers render
+// a muted "No email" for the null case.
+export function displayEmail(email: string | null | undefined): string | null {
+  return isPlaceholderEmail(email) ? null : email!.trim()
+}
+
 export function getInitials(name: string): string {
   return name
     .split(' ')

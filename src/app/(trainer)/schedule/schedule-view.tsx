@@ -3638,7 +3638,7 @@ export function ScheduleView({
             row underneath the date nav); tablet+ it's right-aligned (ml-auto)
             and hosts the slide-out search first, so opening the search grows the
             cluster leftward into the gap rather than wrapping to a new row. */}
-        <div className="flex items-center gap-1.5 w-full sm:w-auto sm:ml-auto sm:flex-shrink-0 justify-start sm:justify-end">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full sm:w-auto sm:ml-auto sm:flex-shrink-0 justify-start sm:justify-end">
           {/* Tablet+ slide-out search — collapsed icon that grows into a field
               on click (mirrors the global top-bar search). Phones use the
               icon-button + drawer below. */}

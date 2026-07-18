@@ -169,13 +169,13 @@ function SortablePackageRow({
     <div ref={setNodeRef} style={style}>
       <Card className="hover:border-blue-100 transition-colors">
         <CardBody className="px-4 py-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-start gap-3">
             {showHandle && (
               <button
                 type="button"
                 {...attributes}
                 {...listeners}
-                className="text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing"
+                className="mt-1.5 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing"
                 aria-label="Drag to reorder"
               >
                 <GripVertical className="h-4 w-4" />
@@ -184,7 +184,7 @@ function SortablePackageRow({
 
             <Link
               href={`/packages/${p.id}`}
-              className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
+              className="flex items-start gap-3 flex-1 min-w-0 text-left cursor-pointer"
             >
             <div className={`flex h-10 w-10 items-center justify-center rounded-xl flex-shrink-0 ${packageIconClasses(p.color)}`}>
               <PackageIcon className="h-5 w-5" />
@@ -206,21 +206,18 @@ function SortablePackageRow({
                 )}
               </div>
               {p.description && <p className="text-sm text-slate-500 mt-0.5">{p.description}</p>}
-              <div className="flex items-center gap-3 text-xs text-slate-400 mt-1.5 flex-wrap">
-                <span>{p.sessionCount === 0 ? 'Ongoing' : `${p.sessionCount} sessions`}</span>
-                <span>·</span>
-                <span>{p.weeksBetween === 0 ? 'No spacing' : `every ${p.weeksBetween} week${p.weeksBetween > 1 ? 's' : ''}`}</span>
-                <span>·</span>
-                <span>{p.durationMins} min</span>
-                <span>·</span>
-                <span>{p.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'}</span>
-                {p.assignments > 0 && (
-                  <>
-                    <span>·</span>
-                    <span className="text-blue-600">{p.assignments} assigned</span>
-                  </>
-                )}
-              </div>
+              {/* Meta as flowing text (not flex items) so it wraps naturally on a
+                  phone instead of each part — and the '·' separators — dropping
+                  onto their own line. */}
+              <p className="text-xs text-slate-400 mt-1.5">
+                {[
+                  p.sessionCount === 0 ? 'Ongoing' : `${p.sessionCount} sessions`,
+                  p.weeksBetween === 0 ? 'No spacing' : `every ${p.weeksBetween} week${p.weeksBetween > 1 ? 's' : ''}`,
+                  `${p.durationMins} min`,
+                  p.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person',
+                ].join(' · ')}
+                {p.assignments > 0 && <> · <span className="text-blue-600">{p.assignments} assigned</span></>}
+              </p>
             </div>
             </Link>
             <div className="flex items-center gap-1 flex-shrink-0">

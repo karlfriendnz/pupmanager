@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers, CheckSquare, Mail, CheckCircle2 } from 'lucide-react'
-import { dateParts } from '@/lib/utils'
+import { dateParts, displayEmail } from '@/lib/utils'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { BulkEmailModal } from './bulk-email-modal'
 
@@ -456,7 +456,12 @@ function buildDataColumns(
       key: 'email',
       label: 'Email',
       width: 'minmax(140px, 1.4fr)',
-      render: c => <span className="truncate text-slate-500">{c.email}</span>,
+      render: c => {
+        const email = displayEmail(c.email)
+        return email
+          ? <span className="truncate text-slate-500">{email}</span>
+          : <span className="truncate text-slate-300 italic">No email</span>
+      },
     })
   }
   if (visible.has('dog')) {

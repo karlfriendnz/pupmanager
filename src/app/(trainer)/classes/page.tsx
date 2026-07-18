@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isConnectConfigured } from '@/lib/connect'
 import { hasAddon } from '@/lib/billing'
+import { formatDate } from '@/lib/utils'
 import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
 
@@ -55,7 +56,10 @@ export default async function ClassesPage() {
         id: r.id,
         name: r.name,
         scheduleNote: r.scheduleNote,
-        startDate: r.startDate.toISOString(),
+        // Pre-format on the server so the card renders one stable string — a raw
+        // toLocaleDateString() in the client component formats in the server's
+        // timezone during SSR and the browser's on hydration, which mismatched.
+        startLabel: formatDate(r.startDate),
         status: r.status,
         sessionCount: r._count.sessions,
         enrolledCount: r.enrollments.length,

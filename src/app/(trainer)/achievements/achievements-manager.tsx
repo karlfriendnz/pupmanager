@@ -216,6 +216,14 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
           {items.map(a => {
             const tone = COLOR_BY_KEY[(a.color as Color) ?? DEFAULT_COLOR] ?? COLOR_BY_KEY[DEFAULT_COLOR]
             const isEditing = editingId === a.id
+            const triggerLine = a.triggerType === 'MANUAL'
+              ? 'Manual'
+              : TRIGGER_META[a.triggerType]?.preview(a.triggerValue ?? 1) ?? 'Auto'
+            // Hide the free-text description when it just echoes the trigger line
+            // (the auto-generated seed badges set both to the same sentence, so
+            // the card was printing it twice — once normal, once uppercase).
+            const norm = (s: string) => s.toLowerCase().replace(/[.\s]+/g, ' ').trim()
+            const showDesc = a.description && norm(a.description) !== norm(triggerLine)
             return (
               <li key={a.id} className={`relative rounded-2xl bg-white border border-slate-100 shadow-sm p-4 ring-1 ${tone.ring} ${isEditing ? 'opacity-50 pointer-events-none' : ''}`}>
                 <div className="flex items-start gap-3">
@@ -231,13 +239,11 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
                         {a.published ? 'Published' : 'Draft'}
                       </span>
                     </div>
-                    {a.description && (
+                    {showDesc && (
                       <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{a.description}</p>
                     )}
                     <p className="text-[10px] text-slate-400 mt-1.5 uppercase tracking-wide font-medium">
-                      {a.triggerType === 'MANUAL'
-                        ? 'Manual'
-                        : TRIGGER_META[a.triggerType]?.preview(a.triggerValue ?? 1) ?? 'Auto'}
+                      {triggerLine}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">

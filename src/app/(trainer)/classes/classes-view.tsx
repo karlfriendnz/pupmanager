@@ -14,7 +14,7 @@ type RunRow = {
   id: string
   name: string
   scheduleNote: string | null
-  startDate: string
+  startLabel: string
   status: 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
   sessionCount: number
   enrolledCount: number
@@ -85,14 +85,17 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-slate-900 truncate">{r.name}</p>
+                      {/* Title gets the full row; the status chip wraps beneath it
+                          on a narrow phone instead of squeezing the name to
+                          "Reactiv…". */}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <p className="font-medium text-slate-900 break-words">{r.name}</p>
                         <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_STYLE[r.status]}`}>
                           {r.status.toLowerCase()}
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        {new Date(r.startDate).toLocaleDateString()} ·{' '}
+                        {r.startLabel} ·{' '}
                         {r.scheduleNote || `${r.sessionCount} session${r.sessionCount === 1 ? '' : 's'}`}
                         {r.trainerNames.length > 0 && <span className="text-slate-400"> · {r.trainerNames.join(', ')}</span>}
                       </p>
