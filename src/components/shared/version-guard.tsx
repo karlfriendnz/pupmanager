@@ -44,7 +44,7 @@ export function VersionGuard() {
   if (!stale) return null
 
   return (
-    <div className="fixed inset-x-0 top-0 z-[100] flex items-center justify-center gap-3 bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-md">
+    <div className="fixed inset-x-0 bottom-0 z-[100] flex items-center justify-center gap-3 bg-amber-500 px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] text-sm font-medium text-white shadow-md">
       <span>A newer version of PupManager is available — reload to avoid out-of-date data.</span>
       <button
         onClick={() => window.location.reload()}
