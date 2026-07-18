@@ -769,6 +769,8 @@ function WeekGrid({
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i)
   const gridRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Start point of a candidate horizontal swipe on the mobile day grid.
+  const swipeRef = useRef<{ x: number; y: number } | null>(null)
   // Stretch the visible-hours range to fill the available height so 7pm sits
   // at the bottom of the view; clamp at 48px/hr so blocks stay readable on
   // very short viewports (it'll start scrolling instead).
@@ -866,6 +868,31 @@ function WeekGrid({
   // advance callback the buttons clamp to the current week's edges.
   const canMobilePrev = useThreeDayWindow && (mobileDayStart > 0 || !!onAdvanceWeek)
   const canMobileNext = useThreeDayWindow && (mobileDayStart + 3 < weekDays.length || !!onAdvanceWeek)
+
+  // Swipe the mobile 3-day window: swipe left → next days, swipe right →
+  // previous days. Only in the 3-day window; ignore touches that start on a
+  // session block (those own the drag-to-reschedule gesture) or mid block-drag.
+  function handleSwipeStart(e: React.TouchEvent) {
+    if (!useThreeDayWindow || dragging || e.touches.length !== 1 || (e.target as HTMLElement).closest('[data-session-id]')) {
+      swipeRef.current = null
+      return
+    }
+    swipeRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  }
+  function handleSwipeEnd(e: React.TouchEvent) {
+    const start = swipeRef.current
+    swipeRef.current = null
+    if (!start || dragging) return
+    const t = e.changedTouches[0]
+    if (!t) return
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    // Require a clear horizontal flick so vertical scrolls are never mistaken
+    // for a day change.
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    if (dx < 0) { if (canMobileNext) handleMobileNext() }
+    else if (canMobilePrev) handleMobilePrev()
+  }
 
   // ── Drag state ──────────────────────────────────────────────────────────────
   const [dragging, setDragging] = useState<{
@@ -1031,7 +1058,10 @@ function WeekGrid({
       {/* Grid body */}
       <div
         ref={scrollRef}
+        data-testid="schedule-scroll"
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
+        onTouchStart={handleSwipeStart}
+        onTouchEnd={handleSwipeEnd}
         // While a session is being dragged, stop iOS from scroll-arbitrating
         // the gesture: a mid-drag scroll shifts the column's client rect under
         // the finger, collapsing the computed Y to 0 and snapping the session
@@ -3260,6 +3290,26 @@ export function ScheduleView({
     }
   }
 
+  // Swipe the single-day (mobile) view left/right to move to the next/previous
+  // day. (The 3-day and week grids do their own windowed swipe in WeekGrid.)
+  const daySwipeRef = useRef<{ x: number; y: number } | null>(null)
+  function handleDayTouchStart(e: React.TouchEvent) {
+    if (e.touches.length !== 1) { daySwipeRef.current = null; return }
+    daySwipeRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  }
+  function handleDayTouchEnd(e: React.TouchEvent) {
+    const start = daySwipeRef.current
+    daySwipeRef.current = null
+    if (!start) return
+    const t = e.changedTouches[0]
+    if (!t) return
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    // Require a clear horizontal flick so a vertical scroll never changes day.
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    navigate(dx < 0 ? 1 : -1)
+  }
+
   // Clicking an empty slot opens the type chooser first; each choice then opens
   // the matching create flow.
   function openAssignModal(dateStr: string, time?: string) {
@@ -3757,13 +3807,15 @@ export function ScheduleView({
             previewClashes={previewClashes}
           />
         ) : (
-          <DayList
-            sessions={daySessions}
-            onDelete={handleDeleteSession}
-            onNavigateClient={(clientId) => router.push(`/clients/${clientId}`)}
-            matchedIds={matchedIds}
-            searchActive={searchTokens.length > 0}
-          />
+          <div className="h-full" data-testid="day-swipe" onTouchStart={handleDayTouchStart} onTouchEnd={handleDayTouchEnd}>
+            <DayList
+              sessions={daySessions}
+              onDelete={handleDeleteSession}
+              onNavigateClient={(clientId) => router.push(`/clients/${clientId}`)}
+              matchedIds={matchedIds}
+              searchActive={searchTokens.length > 0}
+            />
+          </div>
         )}
       </div>
 
