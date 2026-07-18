@@ -21,6 +21,7 @@ const updateSchema = z.object({
   title: z.string().trim().min(3).max(120).optional(),
   body: z.string().trim().min(1).max(2000).optional(),
   link: linkSchema,
+  audience: z.enum(['ALL_TRAINERS', 'ALL_CLIENTS', 'EVERYONE']).optional(),
 })
 
 // Edit a DRAFT announcement. A SENT announcement is history — its wording has
@@ -44,6 +45,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
       ...(parsed.data.body !== undefined ? { body: parsed.data.body } : {}),
       ...(parsed.data.link !== undefined ? { link: parsed.data.link ?? null } : {}),
+      ...(parsed.data.audience !== undefined ? { audience: parsed.data.audience } : {}),
     },
   })
   return NextResponse.json({ ok: true, announcement: updated })

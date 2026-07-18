@@ -193,6 +193,8 @@ enum AnnouncementStatus {
 
 enum AnnouncementAudience {
   ALL_TRAINERS // every accepted trainer-side team member (owners + staff)
+  ALL_CLIENTS  // every client (dog owner) with an account, excluding sample previews
+  EVERYONE     // trainers + clients, de-duplicated across roles
 }
 
 // A platform "what's new" update authored by a super-admin (Karl) and broadcast

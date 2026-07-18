@@ -14,6 +14,7 @@ export default async function AdminAnnouncementsPage() {
     body: a.body,
     link: a.link,
     status: a.status,
+    audience: a.audience,
     sentAt: a.sentAt ? a.sentAt.toISOString() : null,
     recipientCount: a.recipientCount,
     createdAt: a.createdAt.toISOString(),
@@ -24,8 +25,8 @@ export default async function AdminAnnouncementsPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold">Announcements</h1>
         <p className="text-slate-400 text-sm mt-1">
-          Tell trainers when we improve the app. Write it in plain words, check the preview, then send
-          it to everyone&rsquo;s notification bell. Nothing goes out until you press send.
+          Tell trainers or clients when we improve the app. Write it in plain words, pick who gets it,
+          check the preview, then send it to their notification bell. Nothing goes out until you press send.
         </p>
       </div>
       <AnnouncementsManager announcements={announcements} />

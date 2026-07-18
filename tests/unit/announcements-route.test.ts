@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   annCreate: vi.fn(),
   annUpdate: vi.fn(),
   membershipFindMany: vi.fn(),
+  clientFindMany: vi.fn(),
   notifCreateMany: vi.fn(),
   userFindMany: vi.fn(),
   sendPush: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     announcement: { findMany: h.annFindMany, findUnique: h.annFindUnique, create: h.annCreate, update: h.annUpdate },
     trainerMembership: { findMany: h.membershipFindMany },
+    clientProfile: { findMany: h.clientFindMany },
     notification: { createMany: h.notifCreateMany },
     user: { findMany: h.userFindMany },
   },
@@ -41,6 +43,8 @@ beforeEach(() => {
   h.notifCreateMany.mockResolvedValue({ count: 0 })
   h.annUpdate.mockResolvedValue({})
   h.userFindMany.mockResolvedValue([])
+  h.membershipFindMany.mockResolvedValue([])
+  h.clientFindMany.mockResolvedValue([])
 })
 
 describe('admin guard', () => {
@@ -94,6 +98,18 @@ describe('create validation', () => {
       createdById: 'admin_1',
     })
   })
+
+  it('persists a chosen audience', async () => {
+    h.annCreate.mockResolvedValue({ id: 'a2' })
+    await POST(req({ title: 'Update the app', body: 'A new version is ready.', audience: 'EVERYONE' }))
+    expect(h.annCreate.mock.calls[0][0].data).toMatchObject({ audience: 'EVERYONE' })
+  })
+
+  it('rejects an unknown audience', async () => {
+    const res = await POST(req({ title: 'A good title', body: 'ok', audience: 'ALL_DOGS' }))
+    expect(res.status).toBe(400)
+    expect(h.annCreate).not.toHaveBeenCalled()
+  })
 })
 
 describe('send fan-out', () => {
@@ -137,5 +153,30 @@ describe('send fan-out', () => {
     await SEND(new Request('https://x/send', { method: 'POST' }), params('a1'))
     expect(h.sendPush).toHaveBeenCalledTimes(1)
     expect(h.sendPush.mock.calls[0][0]).toBe('u1')
+  })
+
+  it('ALL_CLIENTS fans out to clients only, never trainers', async () => {
+    h.annFindUnique.mockResolvedValue({ id: 'a1', status: 'DRAFT', title: 'T', body: 'B', link: null, audience: 'ALL_CLIENTS' })
+    h.clientFindMany.mockResolvedValue([{ userId: 'c1' }, { userId: 'c2' }])
+
+    const res = await SEND(new Request('https://x/send', { method: 'POST' }), params('a1'))
+    expect(await res.json()).toMatchObject({ recipientCount: 2 })
+    expect(h.membershipFindMany).not.toHaveBeenCalled()
+    // Real clients only — sample previews excluded.
+    expect(h.clientFindMany.mock.calls[0][0]).toMatchObject({ where: { isSample: false } })
+    expect(h.notifCreateMany.mock.calls[0][0].data.map((r: { userId: string }) => r.userId)).toEqual(['c1', 'c2'])
+  })
+
+  it('EVERYONE unions trainers + clients and de-dupes shared users', async () => {
+    h.annFindUnique.mockResolvedValue({ id: 'a1', status: 'DRAFT', title: 'T', body: 'B', link: null, audience: 'EVERYONE' })
+    h.membershipFindMany.mockResolvedValue([{ userId: 'u1' }, { userId: 'shared' }])
+    h.clientFindMany.mockResolvedValue([{ userId: 'shared' }, { userId: 'c1' }]) // 'shared' is both a trainer and a client
+
+    const res = await SEND(new Request('https://x/send', { method: 'POST' }), params('a1'))
+    // 3 distinct people, not 4 — 'shared' counted once.
+    expect(await res.json()).toMatchObject({ recipientCount: 3 })
+    const ids = h.notifCreateMany.mock.calls[0][0].data.map((r: { userId: string }) => r.userId)
+    expect(new Set(ids)).toEqual(new Set(['u1', 'shared', 'c1']))
+    expect(ids).toHaveLength(3)
   })
 })

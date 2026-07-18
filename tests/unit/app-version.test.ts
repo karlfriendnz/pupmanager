@@ -100,6 +100,7 @@ describe('requirementsFromEnv', () => {
     expect(requirementsFromEnv({}).android.storeUrl).toContain(
       'play.google.com/store/apps/details?id=com.pupmanager.app',
     )
+    expect(requirementsFromEnv({}).ios.storeUrl).toBe('https://apps.apple.com/app/id6766399138')
     const overridden = requirementsFromEnv({ APP_STORE_URL_IOS: 'https://apps.apple.com/app/id123' })
     expect(overridden.ios.storeUrl).toBe('https://apps.apple.com/app/id123')
   })

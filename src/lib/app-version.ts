@@ -84,7 +84,7 @@ export function requirementsFromEnv(env: Record<string, string | undefined>): Ve
       // latest defaults to the floor: if you only set a floor, there's no
       // separate nudge tier — you either meet the floor or you're blocked.
       latest: env.APP_LATEST_VERSION_IOS ?? iosMin,
-      storeUrl: env.APP_STORE_URL_IOS ?? 'https://apps.apple.com/app/pupmanager',
+      storeUrl: env.APP_STORE_URL_IOS ?? 'https://apps.apple.com/app/id6766399138',
     },
     android: {
       minSupported: androidMin,

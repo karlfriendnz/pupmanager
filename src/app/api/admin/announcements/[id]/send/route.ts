@@ -30,14 +30,39 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'This announcement has already been sent.' }, { status: 409 })
   }
 
-  // Recipients: every accepted trainer-side team member, de-duplicated (a user
-  // can belong to more than one company but should only get one notification).
-  const members = await prisma.trainerMembership.findMany({
-    where: { acceptedAt: { not: null } },
-    select: { userId: true },
-    distinct: ['userId'],
-  })
-  const userIds = members.map((m) => m.userId)
+  // Recipients depend on the announcement's audience. Collect into a Set so a
+  // user who is BOTH a trainer and a client (of some other business) still gets
+  // exactly one notification when the audience is EVERYONE. A missing audience
+  // (legacy rows) falls back to trainers-only.
+  const audience = announcement.audience ?? 'ALL_TRAINERS'
+  const wantsTrainers = audience === 'ALL_TRAINERS' || audience === 'EVERYONE'
+  const wantsClients = audience === 'ALL_CLIENTS' || audience === 'EVERYONE'
+
+  const userIdSet = new Set<string>()
+
+  if (wantsTrainers) {
+    // Every accepted trainer-side team member, de-duplicated (a user can belong
+    // to more than one company but should only get one notification).
+    const members = await prisma.trainerMembership.findMany({
+      where: { acceptedAt: { not: null } },
+      select: { userId: true },
+      distinct: ['userId'],
+    })
+    for (const m of members) userIdSet.add(m.userId)
+  }
+
+  if (wantsClients) {
+    // Every real client (dog owner) with an account. Sample/preview clients
+    // seeded by the personalization wizard are excluded — they aren't people.
+    const clients = await prisma.clientProfile.findMany({
+      where: { isSample: false },
+      select: { userId: true },
+      distinct: ['userId'],
+    })
+    for (const c of clients) userIdSet.add(c.userId)
+  }
+
+  const userIds = [...userIdSet]
 
   // Fan out the in-app rows (the bell + /notifications + live badge read these).
   if (userIds.length > 0) {

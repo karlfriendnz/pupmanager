@@ -25,6 +25,8 @@ const createSchema = z.object({
   title: z.string().trim().min(3, 'Give it a short title').max(120),
   body: z.string().trim().min(1, 'Write a message').max(2000),
   link: linkSchema,
+  // Who the broadcast reaches. Defaults to trainers to match prior behaviour.
+  audience: z.enum(['ALL_TRAINERS', 'ALL_CLIENTS', 'EVERYONE']).optional(),
 })
 
 export async function GET() {
@@ -47,6 +49,7 @@ export async function POST(req: Request) {
       title: parsed.data.title,
       body: parsed.data.body,
       link: parsed.data.link ?? null,
+      ...(parsed.data.audience ? { audience: parsed.data.audience } : {}),
       createdById: session.user.id,
     },
   })

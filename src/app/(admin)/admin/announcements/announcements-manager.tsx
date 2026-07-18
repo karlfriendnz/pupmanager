@@ -6,16 +6,28 @@ import { Megaphone, Send, Trash2, Pencil, X } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { readability, readingEase } from '@/lib/readability'
 
+type Audience = 'ALL_TRAINERS' | 'ALL_CLIENTS' | 'EVERYONE'
+
 type Announcement = {
   id: string
   title: string
   body: string
   link: string | null
   status: 'DRAFT' | 'SENT'
+  audience: Audience
   sentAt: string | null
   recipientCount: number | null
   createdAt: string
 }
+
+const AUDIENCES: { value: Audience; label: string; hint: string }[] = [
+  { value: 'ALL_TRAINERS', label: 'Trainers', hint: 'Every trainer and team member' },
+  { value: 'ALL_CLIENTS', label: 'Clients', hint: 'Every dog owner with an account' },
+  { value: 'EVERYONE', label: 'Everyone', hint: 'Trainers and clients' },
+]
+
+const audienceLabel = (a: Audience) =>
+  a === 'EVERYONE' ? 'everyone' : a === 'ALL_CLIENTS' ? 'all clients' : 'all trainers'
 
 // How a trainer sees the announcement in their notification bell.
 function BellPreview({ title, body, link }: { title: string; body: string; link: string | null }) {
@@ -46,6 +58,7 @@ export function AnnouncementsManager({ announcements }: { announcements: Announc
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [link, setLink] = useState('')
+  const [audience, setAudience] = useState<Audience>('ALL_TRAINERS')
   const [busy, setBusy] = useState(false)
   const [confirmSend, setConfirmSend] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -55,18 +68,18 @@ export function AnnouncementsManager({ announcements }: { announcements: Announc
   const easeColor = ease.tone === 'good' ? 'text-emerald-400' : ease.tone === 'ok' ? 'text-amber-400' : 'text-rose-400'
 
   function resetForm() {
-    setEditId(null); setTitle(''); setBody(''); setLink(''); setConfirmSend(false); setError(null)
+    setEditId(null); setTitle(''); setBody(''); setLink(''); setAudience('ALL_TRAINERS'); setConfirmSend(false); setError(null)
   }
 
   function startEdit(a: Announcement) {
-    setEditId(a.id); setTitle(a.title); setBody(a.body); setLink(a.link ?? ''); setConfirmSend(false); setError(null)
+    setEditId(a.id); setTitle(a.title); setBody(a.body); setLink(a.link ?? ''); setAudience(a.audience); setConfirmSend(false); setError(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   // Create a new draft or update the one being edited. Returns its id.
   async function saveDraft(): Promise<string | null> {
     setError(null)
-    const payload = { title: title.trim(), body: body.trim(), link: link.trim() }
+    const payload = { title: title.trim(), body: body.trim(), link: link.trim(), audience }
     const res = editId
       ? await fetch(`/api/admin/announcements/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       : await fetch('/api/admin/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -165,11 +178,33 @@ export function AnnouncementsManager({ announcements }: { announcements: Announc
                 className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </label>
+            <fieldset className="flex flex-col gap-1.5 text-sm">
+              <span className="text-slate-400">Who gets this?</span>
+              <div className="grid grid-cols-3 gap-2">
+                {AUDIENCES.map((a) => (
+                  <button
+                    key={a.value}
+                    type="button"
+                    onClick={() => setAudience(a.value)}
+                    aria-pressed={audience === a.value}
+                    title={a.hint}
+                    className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                      audience === a.value
+                        ? 'border-blue-500 bg-blue-600/20 text-white'
+                        : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <span className="block font-medium">{a.label}</span>
+                    <span className="block text-[11px] text-slate-400">{a.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
           </div>
 
           {/* Right: live preview */}
           <div className="flex flex-col gap-2">
-            <span className="text-sm text-slate-400">How trainers see it</span>
+            <span className="text-sm text-slate-400">How it looks in the notification bell</span>
             <BellPreview title={title} body={body} link={link.trim() || null} />
           </div>
         </div>
@@ -193,11 +228,11 @@ export function AnnouncementsManager({ announcements }: { announcements: Announc
               disabled={!canSubmit}
               className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
             >
-              <Send className="h-4 w-4" /> Send to all trainers
+              <Send className="h-4 w-4" /> Send to {audienceLabel(audience)}
             </button>
           ) : (
             <div className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-1.5">
-              <span className="text-sm text-slate-300">Send to every trainer now?</span>
+              <span className="text-sm text-slate-300">Send to {audienceLabel(audience)} now?</span>
               <button type="button" onClick={handleSend} disabled={busy} className="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40">
                 {busy ? 'Sending…' : 'Yes, send'}
               </button>
@@ -249,7 +284,7 @@ export function AnnouncementsManager({ announcements }: { announcements: Announc
                 <div className="flex items-baseline justify-between gap-4">
                   <p className="font-medium text-white">{a.title}</p>
                   <span className="shrink-0 text-xs text-slate-500">
-                    {a.sentAt ? formatDate(a.sentAt) : ''} · {a.recipientCount ?? 0} trainer{a.recipientCount === 1 ? '' : 's'}
+                    {a.sentAt ? formatDate(a.sentAt) : ''} · {a.recipientCount ?? 0} recipient{a.recipientCount === 1 ? '' : 's'}
                   </span>
                 </div>
                 <p className="mt-0.5 text-sm text-slate-400">{a.body}</p>
