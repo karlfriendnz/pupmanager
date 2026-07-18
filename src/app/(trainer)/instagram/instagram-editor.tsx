@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -27,6 +27,7 @@ import {
   Loader2,
   Palette,
   Pencil,
+  MoreHorizontal,
   X,
   Calendar,
   Gift,
@@ -561,12 +562,12 @@ export function InstagramEditor({
 
         {/* Buttons & links — one reorderable stack of smart links */}
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <h2 className="text-sm font-semibold text-slate-900">Buttons &amp; links</h2>
-              <p className="text-xs text-slate-500">Drag to reorder. Tap a row to edit, or the paintbrush to style it.</p>
+              <p className="text-xs text-slate-500">Drag to reorder. Tap a row to edit; the ⋯ menu styles or removes it.</p>
             </div>
-            <Button type="button" variant="secondary" size="sm" onClick={openAdd} disabled={buttons.length >= 30}>
+            <Button type="button" variant="secondary" size="sm" onClick={openAdd} disabled={buttons.length >= 30} className="shrink-0 whitespace-nowrap">
               <Plus className="h-4 w-4" />
               Add link
             </Button>
@@ -721,43 +722,47 @@ function SortableButtonRow({
   const Icon = TYPE_META[button.type].Icon
 
   return (
-    <div ref={setNodeRef} style={style} className="rounded-xl border border-slate-200 bg-white p-2">
-      <div className="flex items-center gap-2">
+    <div ref={setNodeRef} style={style} className="rounded-xl border border-slate-200 bg-white p-1.5">
+      <div className="flex items-center gap-1">
+        {/* Drag handle — narrow but a full 44px-tall touch target. */}
         <button
           type="button"
           {...attributes}
           {...listeners}
           aria-label="Drag to reorder"
-          className="cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing"
+          className="flex h-11 w-7 shrink-0 touch-none cursor-grab items-center justify-center text-slate-300 hover:text-slate-500 active:cursor-grabbing"
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0 flex-1 py-1">
-          <p className="truncate text-sm font-medium text-slate-900">{button.label || 'Untitled'}</p>
-          <p className="truncate text-xs text-slate-500">{subtitle}</p>
-        </div>
-        <CustomiseToggle open={open} active={hasStyle} onClick={() => setOpen((o) => !o)} />
+        {/* The row body is the primary tap target — it opens the editor, so the
+            label gets all the room instead of being crushed by inline buttons. */}
         <button
           type="button"
           onClick={onEdit}
-          aria-label="Edit link"
-          style={{ minHeight: 0 }}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg py-1.5 pr-1 text-left hover:bg-slate-50"
         >
-          <Pencil className="h-4 w-4" />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+            <Icon className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-slate-900">{button.label || 'Untitled'}</span>
+            <span className="block truncate text-xs text-slate-500">{subtitle}</span>
+          </span>
+          {hasStyle && (
+            <span
+              aria-hidden
+              title="Custom style applied"
+              className="h-2 w-2 shrink-0 rounded-full bg-slate-900"
+            />
+          )}
         </button>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Delete link"
-          style={{ minHeight: 0 }}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        {/* Secondary + destructive actions collapse into one trailing menu. */}
+        <RowActionsMenu
+          styleOpen={open}
+          onEdit={onEdit}
+          onToggleStyle={() => setOpen((o) => !o)}
+          onRemove={onRemove}
+        />
       </div>
       {open && (
         <ButtonStylePanel
@@ -772,23 +777,126 @@ function SortableButtonRow({
   )
 }
 
-// A small paintbrush toggle that opens/closes a row's style panel.
-function CustomiseToggle({ open, active, onClick }: { open: boolean; active: boolean; onClick: () => void }) {
+// Trailing overflow menu for a link row: edit, customise appearance, delete.
+// Keeps the row itself uncluttered so the label never gets crushed on a phone.
+function RowActionsMenu({
+  styleOpen,
+  onEdit,
+  onToggleStyle,
+  onRemove,
+}: {
+  styleOpen: boolean
+  onEdit: () => void
+  onToggleStyle: () => void
+  onRemove: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onPointer(ev: MouseEvent | TouchEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(ev.target as Node)) {
+        setOpen(false)
+        setConfirmingDelete(false)
+      }
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === 'Escape') {
+        setOpen(false)
+        setConfirmingDelete(false)
+      }
+    }
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('touchstart', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('touchstart', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  function close() {
+    setOpen(false)
+    setConfirmingDelete(false)
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Customise this button"
-      aria-expanded={open}
-      style={{ minHeight: 0 }}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${
-        open || active
-          ? 'border-slate-900 bg-slate-900 text-white'
-          : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
-      }`}
-    >
-      <Palette className="h-4 w-4" />
-    </button>
+    <div ref={wrapRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Link actions"
+        className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+      >
+        <MoreHorizontal className="h-5 w-5" />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-slate-100 bg-white shadow-[0_18px_45px_-12px_rgba(15,23,42,0.25)]"
+        >
+          {!confirmingDelete ? (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { close(); onEdit() }}
+                className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <Pencil className="h-4 w-4 shrink-0 text-slate-500" />
+                Edit link
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setOpen(false); if (!styleOpen) onToggleStyle() }}
+                className="flex w-full items-center gap-2.5 border-t border-slate-100 px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <Palette className="h-4 w-4 shrink-0 text-slate-500" />
+                Customise appearance
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => setConfirmingDelete(true)}
+                className="flex w-full items-center gap-2.5 border-t border-slate-100 px-4 py-3 text-left text-sm text-rose-600 hover:bg-rose-50"
+              >
+                <Trash2 className="h-4 w-4 shrink-0" />
+                Delete link
+              </button>
+            </>
+          ) : (
+            <div className="p-3">
+              <p className="mb-1 text-sm font-medium text-slate-900">Delete this link?</p>
+              <p className="mb-3 text-xs text-slate-500">This can&rsquo;t be undone.</p>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={close}
+                  className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { close(); onRemove() }}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
