@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BaseLocationSetting } from './base-location-setting'
+import { trainerRegionCode } from '@/lib/country'
 import { compressImageFile } from '@/lib/compress-image'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -49,7 +50,7 @@ export function TrainerSettingsForm({
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
@@ -195,7 +196,7 @@ export function TrainerSettingsForm({
           </div>
 
           <div className="sm:col-span-2">
-            <BaseLocationSetting initialBase={{ address: profile.baseAddress, lat: profile.baseLat, lng: profile.baseLng }} />
+            <BaseLocationSetting initialBase={{ address: profile.baseAddress, lat: profile.baseLat, lng: profile.baseLng }} region={trainerRegionCode(profile)} />
           </div>
 
           <div className="flex flex-col gap-1.5">

@@ -14,6 +14,7 @@ export type PlaceResult = { address: string; lat: number; lng: number; placeId: 
 export function PlaceAutocomplete({
   onSelect,
   onTextChange,
+  onBlur,
   placeholder = 'Search address…',
   bias,
   region,
@@ -24,6 +25,9 @@ export function PlaceAutocomplete({
   // consumer keep a manually-typed address that never matched a suggestion —
   // otherwise the text is lost unless the user taps a dropdown option.
   onTextChange?: (text: string) => void
+  // Fires when the field loses focus (after any suggestion click has resolved).
+  // Lets a consumer persist a hand-typed address that was never geocoded.
+  onBlur?: () => void
   placeholder?: string
   // Centre to bias results toward (the trainer's home city/base).
   bias?: { lat: number; lng: number } | null
@@ -107,7 +111,11 @@ export function PlaceAutocomplete({
           placeholder={placeholder}
           onChange={e => onChange(e.target.value)}
           onFocus={() => { if (suggestions.length) setOpen(true) }}
-          onBlur={() => { blurRef.current = setTimeout(() => setOpen(false), 150) }}
+          // Fire onBlur inside the same 150ms grace window used to let a
+          // suggestion click land first — so if the blur was caused by picking a
+          // suggestion, onSelect has already run and the consumer's guard sees
+          // the geocoded value rather than overwriting it with raw text.
+          onBlur={() => { blurRef.current = setTimeout(() => { setOpen(false); onBlur?.() }, 150) }}
           className="w-full h-11 rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
         />
       </div>

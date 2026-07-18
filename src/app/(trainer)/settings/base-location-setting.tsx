@@ -10,8 +10,10 @@ import { PlaceAutocomplete, type PlaceResult } from '@/components/maps/place-aut
 // basePlaceId the route manager writes, via the shared /api/route/base endpoint,
 // so the two stay in sync. Saves immediately on pick (independent of the form's
 // Save button).
-export function BaseLocationSetting({ initialBase }: {
+export function BaseLocationSetting({ initialBase, region }: {
   initialBase: { address: string | null; lat: number | null; lng: number | null } | null
+  // ISO alpha-2 of the trainer's country — localises address suggestions.
+  region?: string
 }) {
   const [base, setBase] = useState<string | null>(initialBase?.address ?? null)
   const [saving, setSaving] = useState(false)
@@ -42,6 +44,7 @@ export function BaseLocationSetting({ initialBase }: {
       <PlaceAutocomplete
         onSelect={onSelect}
         initialValue={initialBase?.address ?? ''}
+        region={region}
         bias={initialBase?.lat != null && initialBase?.lng != null ? { lat: initialBase.lat, lng: initialBase.lng } : null}
         placeholder={base ? 'Change base address…' : 'Search your base address…'}
       />

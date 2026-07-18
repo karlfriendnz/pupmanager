@@ -30,11 +30,14 @@ export function RouteManager({
   clients: initialClients,
   members,
   initialDate,
+  region,
 }: {
   base: Base
   clients: Client[]
   members: Member[]
   initialDate: string
+  // ISO alpha-2 of the trainer's country — localises address suggestions.
+  region?: string
 }) {
   const searchParams = useSearchParams()
   const urlDate = searchParams.get('date')
@@ -289,7 +292,7 @@ export function RouteManager({
               <button onClick={() => setShowBaseInput(true)} className="text-slate-400 hover:text-[var(--pm-brand-600)]"><Pencil className="h-4 w-4" /></button>
             )}
           </div>
-          {(!base || showBaseInput) && <div className="mt-2.5"><PlaceAutocomplete placeholder="Search your base address…" onSelect={saveBase} bias={base ? { lat: base.lat, lng: base.lng } : null} /></div>}
+          {(!base || showBaseInput) && <div className="mt-2.5"><PlaceAutocomplete placeholder="Search your base address…" onSelect={saveBase} region={region} bias={base ? { lat: base.lat, lng: base.lng } : null} /></div>}
         </div>
 
         {/* Order mode */}
@@ -393,7 +396,7 @@ export function RouteManager({
                   {settingAddrFor === c.id ? (
                     <div className="rounded-xl bg-white p-2.5">
                       <p className="text-sm font-medium text-slate-700 mb-1.5">{c.name}</p>
-                      <PlaceAutocomplete placeholder={`${c.name}'s address…`} onSelect={r => saveClientAddr(c.id, r)} bias={base ? { lat: base.lat, lng: base.lng } : null} />
+                      <PlaceAutocomplete placeholder={`${c.name}'s address…`} onSelect={r => saveClientAddr(c.id, r)} region={region} bias={base ? { lat: base.lat, lng: base.lng } : null} />
                     </div>
                   ) : (
                     <div className="flex items-center gap-3 rounded-xl px-1 py-1">

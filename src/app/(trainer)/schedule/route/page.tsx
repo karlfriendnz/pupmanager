@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { todayInTz } from '@/lib/timezone'
+import { trainerRegionCode } from '@/lib/country'
 import { RouteManager } from './route-manager'
 
 export const metadata: Metadata = { title: 'Route' }
@@ -17,7 +18,7 @@ export default async function RoutePage({ searchParams }: { searchParams: Promis
 
   const profile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
-    select: { baseAddress: true, baseLat: true, baseLng: true, user: { select: { timezone: true } } },
+    select: { baseAddress: true, baseLat: true, baseLng: true, addressCountry: true, signupCountry: true, user: { select: { timezone: true } } },
   })
   const tz = profile?.user.timezone ?? 'Pacific/Auckland'
   // Honour ?date=YYYY-MM-DD (e.g. clicked from the schedule); default to today.
@@ -41,7 +42,7 @@ export default async function RoutePage({ searchParams }: { searchParams: Promis
     <div>
       <h1 className="text-xl font-bold mb-3">Route</h1>
       <Suspense fallback={<p className="text-sm text-slate-400">Loading route…</p>}>
-        <RouteManager base={base} clients={[]} members={members} initialDate={date} />
+        <RouteManager base={base} clients={[]} members={members} initialDate={date} region={profile ? trainerRegionCode(profile) : undefined} />
       </Suspense>
     </div>
   )

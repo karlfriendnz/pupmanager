@@ -57,4 +57,41 @@ test.describe('New client — typed address (no dropdown pick)', () => {
     await page.getByRole('button', { name: 'Details' }).click()
     await expect(page.getByPlaceholder('Search address…')).toHaveValue(typedAddress)
   })
+
+  test('editing to a new hand-typed address persists on blur', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+
+    // Create a client to edit (typed address, no pick).
+    await page.goto('/clients/invite')
+    await page.getByPlaceholder('Jane Smith').fill(`Edit Addr ${Date.now()}`)
+    await page.locator('label:has-text("Training goals") ~ textarea').fill('Recall')
+    await page.getByPlaceholder('Search address…').fill('12 First Street, Gore')
+    await page.getByRole('button', { name: 'Create client' }).click()
+    await page.waitForURL(
+      (url) => /\/clients\/[^/]+$/.test(url.pathname) && !url.pathname.endsWith('/invite'),
+      { timeout: 30_000 },
+    )
+    const clientId = page.url().split('/clients/')[1].split(/[?#]/)[0]
+
+    // On the edit form, type a *different* address and never pick a suggestion.
+    const newAddress = '99 Second Avenue, Queenstown'
+    await page.goto(`/clients/${clientId}/edit`)
+    await page.getByRole('button', { name: 'Details' }).click()
+    const addr = page.getByPlaceholder('Search address…')
+    await addr.fill(newAddress)
+    // Blur the field (click another input) so the on-blur persistence fires,
+    // and wait for the location PATCH to complete.
+    const patch = page.waitForResponse(
+      (r) => r.url().includes(`/clients/${clientId}/location`) && r.request().method() === 'PATCH' && r.ok(),
+      { timeout: 15_000 },
+    )
+    await page.getByPlaceholder('+64 21 555 0100').click()
+    await patch
+
+    // Reload — the new typed address must have persisted (old behaviour dropped
+    // it because nothing was picked from the dropdown).
+    await page.goto(`/clients/${clientId}/edit`)
+    await page.getByRole('button', { name: 'Details' }).click()
+    await expect(page.getByPlaceholder('Search address…')).toHaveValue(newAddress)
+  })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -121,6 +121,21 @@ export function EditClientForm({ clientId, initialName, initialEmail, initialPho
   const [email, setEmail] = useState(initialEmail)
   const [phone, setPhone] = useState(initialPhone)
   const [address, setAddress] = useState(initialAddress ?? '')
+  // Refs (not state) so the blur handler always reads the latest values, immune
+  // to stale closures: `addressRef` = what's in the box now; `savedAddressRef` =
+  // what we've persisted. A hand-typed address (no suggestion pick) is saved on
+  // blur; a geocoded pick saves immediately via onSelect and updates both refs,
+  // so blur then sees no change and won't clobber the coordinates.
+  const addressRef = useRef(initialAddress ?? '')
+  const savedAddressRef = useRef(initialAddress ?? '')
+
+  async function saveClientLocation(body: { address: string; lat: number | null; lng: number | null; placeId: string | null }) {
+    await fetch(`/api/clients/${clientId}/location`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
   const [dogs, setDogs] = useState<Dog[]>(initialDogs)
   const [expandedDog, setExpandedDog] = useState<number>(0)
   const [fieldValues, setFieldValues] = useState<Record<string, string>>(initialFieldValues)
@@ -431,13 +446,22 @@ export function EditClientForm({ clientId, initialName, initialEmail, initialPho
                   placeholder="Search address…"
                   region={region}
                   bias={biasLat != null && biasLng != null ? { lat: biasLat, lng: biasLng } : null}
+                  onTextChange={v => { setAddress(v); addressRef.current = v }}
                   onSelect={async r => {
                     setAddress(r.address)
-                    await fetch(`/api/clients/${clientId}/location`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(r),
-                    })
+                    addressRef.current = r.address
+                    savedAddressRef.current = r.address
+                    await saveClientLocation(r)
+                  }}
+                  onBlur={() => {
+                    // Persist a hand-typed address that was never geocoded. Only
+                    // when it actually changed — so we never overwrite a picked
+                    // suggestion's coordinates with null.
+                    const v = addressRef.current.trim()
+                    if (v && v !== savedAddressRef.current) {
+                      savedAddressRef.current = v
+                      void saveClientLocation({ address: v, lat: null, lng: null, placeId: null })
+                    }
                   }}
                 />
                 <p className="text-[11px] text-slate-400">Used by the route planner to map and optimise visits.</p>
