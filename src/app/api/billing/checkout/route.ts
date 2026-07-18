@@ -10,6 +10,7 @@ import { env } from '@/lib/env'
 import { isCurrencyCode, isAddonId, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 import { resolvePriceId } from '@/lib/billing'
 import { isFounderEligible } from '@/lib/founder'
+import { countryToISO } from '@/lib/country'
 
 const MAX_SEATS = 50
 
@@ -286,20 +287,3 @@ export async function POST(req: Request) {
 // accepts the alpha-2; for anything we don't recognise we let it
 // through as-is (Stripe will reject obvious nonsense). Cheap lookup —
 // add aliases as we see real data.
-function countryToISO(name: string | null | undefined): string | undefined {
-  if (!name) return undefined
-  const v = name.trim().toLowerCase()
-  const map: Record<string, string> = {
-    'new zealand': 'NZ', 'nz': 'NZ', 'aotearoa': 'NZ',
-    'australia': 'AU', 'au': 'AU',
-    'united kingdom': 'GB', 'uk': 'GB', 'great britain': 'GB', 'england': 'GB', 'scotland': 'GB', 'wales': 'GB', 'gb': 'GB',
-    'united states': 'US', 'us': 'US', 'usa': 'US', 'america': 'US',
-    'canada': 'CA', 'ca': 'CA',
-    'south africa': 'ZA', 'za': 'ZA',
-    'ireland': 'IE', 'ie': 'IE',
-  }
-  if (map[v]) return map[v]
-  // Already a 2-letter code? Pass through uppercased.
-  if (/^[a-z]{2}$/.test(v)) return v.toUpperCase()
-  return undefined
-}

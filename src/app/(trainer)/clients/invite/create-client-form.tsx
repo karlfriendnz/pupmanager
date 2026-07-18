@@ -48,11 +48,13 @@ function CustomFieldInput({ field, value, onChange }: { field: CustomField; valu
 }
 
 export function CreateClientForm({
-  config, customFields, defaultTemplate,
+  config, customFields, defaultTemplate, region,
 }: {
   config: ResolvedFieldConfig
   customFields: CustomField[]
   defaultTemplate: string
+  // ISO alpha-2 of the trainer's country — localises address suggestions.
+  region?: string
 }) {
   const router = useRouter()
   const ownerFields = customFields.filter(f => f.appliesTo === 'OWNER')
@@ -152,6 +154,7 @@ export function CreateClientForm({
           <PlaceAutocomplete
             initialValue={address.line}
             placeholder="Search address…"
+            region={region}
             onSelect={(p) => setAddress({ line: p.address, lat: p.lat, lng: p.lng, placeId: p.placeId })}
             // Keep a typed address even if the trainer never taps a Google
             // suggestion (e.g. rural addresses Google doesn't list). Coordinates

@@ -43,6 +43,8 @@ type Props = {
   /** Trainer's base — biases the address autocomplete toward their city. */
   biasLat: number | null
   biasLng: number | null
+  /** ISO alpha-2 of the trainer's country — localises address suggestions. */
+  region?: string
   /** False for co-managers — field renders read-only with a hint. */
   canEditEmail: boolean
   initialDogs: Dog[]
@@ -107,7 +109,7 @@ function FieldInput({
   )
 }
 
-export function EditClientForm({ clientId, initialName, initialEmail, initialPhone, initialAddress, biasLat, biasLng, canEditEmail, initialDogs, customFields, initialFieldValues }: Props) {
+export function EditClientForm({ clientId, initialName, initialEmail, initialPhone, initialAddress, biasLat, biasLng, region, canEditEmail, initialDogs, customFields, initialFieldValues }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
   // Open straight to Details when linked with ?tab=details (e.g. route manager).
@@ -427,6 +429,7 @@ export function EditClientForm({ clientId, initialName, initialEmail, initialPho
                 <PlaceAutocomplete
                   initialValue={address}
                   placeholder="Search address…"
+                  region={region}
                   bias={biasLat != null && biasLng != null ? { lat: biasLat, lng: biasLng } : null}
                   onSelect={async r => {
                     setAddress(r.address)

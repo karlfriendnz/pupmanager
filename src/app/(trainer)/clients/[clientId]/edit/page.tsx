@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { trainerRegionCode } from '@/lib/country'
 import { EditClientForm } from './edit-client-form'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
@@ -42,10 +43,11 @@ export default async function EditClientPage({
       orderBy: { order: 'asc' },
     }),
     prisma.customFieldValue.findMany({ where: { clientId } }),
-    // The trainer's base biases the address autocomplete toward their city.
+    // The trainer's base biases the address autocomplete toward their city, and
+    // their country localises which region's addresses are suggested.
     prisma.trainerProfile.findUnique({
       where: { id: access.client.trainerId },
-      select: { baseLat: true, baseLng: true },
+      select: { baseLat: true, baseLng: true, addressCountry: true, signupCountry: true },
     }),
   ])
 
@@ -83,6 +85,7 @@ export default async function EditClientPage({
         initialAddress={client.addressLine}
         biasLat={tp?.baseLat ?? null}
         biasLng={tp?.baseLng ?? null}
+        region={tp ? trainerRegionCode(tp) : undefined}
         // Email is the client's login credential — only the primary
         // trainer can change it (co-managers see the field disabled).
         canEditEmail={access.client.trainerId === access.trainerId}
