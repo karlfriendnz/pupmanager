@@ -55,6 +55,23 @@ test.describe('Platform announcements', () => {
     await expect(page.getByText(body).first()).toBeVisible()
   })
 
+  test('the "also send email" option reveals the shared builder and email preview', async ({ page }) => {
+    await loginAdmin(page)
+    await page.goto('/admin/announcements')
+    await page.getByPlaceholder("Adding a client's address is easier").fill('Email UI test')
+    await page.getByPlaceholder(/You can now type any address/).fill('A short body.')
+
+    // No email builder until the toggle is on.
+    await expect(page.getByRole('button', { name: 'Add image' })).toHaveCount(0)
+
+    await page.getByText('Also send this as an email').click()
+
+    // The shared block builder + the PupManager email preview appear.
+    await expect(page.getByRole('button', { name: 'Add text' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add image' })).toBeVisible()
+    await expect(page.getByText('How the email looks')).toBeVisible()
+  })
+
   test('a normal trainer cannot open the admin announcements page', async ({ page }) => {
     await loginTrainer(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/admin/announcements')

@@ -7,7 +7,7 @@ function client(): Resend {
   return _client
 }
 
-const PLATFORM_FROM = env.RESEND_FROM_EMAIL
+export const PLATFORM_FROM = env.RESEND_FROM_EMAIL
 
 type SendArgs = {
   to: string

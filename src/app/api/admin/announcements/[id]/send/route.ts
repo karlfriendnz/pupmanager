@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendPush } from '@/lib/push'
+import { sendEmailBatch, PLATFORM_FROM } from '@/lib/email'
+import { renderAnnouncementEmail } from '@/lib/announcement-email'
+import { productUnsubscribeUrl } from '@/lib/unsubscribe-token'
+
+// Placeholder addresses for no-email clients (noemail-<rand>@no-email.pupmanager.app)
+// aren't deliverable — never email them.
+const PLACEHOLDER_EMAIL_DOMAIN = '@no-email.pupmanager.app'
 
 async function requireAdmin() {
   const session = await auth()
@@ -100,5 +107,39 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     )
   }
 
-  return NextResponse.json({ ok: true, recipientCount: userIds.length })
+  // Optional email fan-out — same audience, from PupManager, best-effort. Skips
+  // users who opted out and placeholder (no-real-email) addresses. Never fails
+  // the request: the bell/push already went out and mustn't roll back.
+  let emailRecipientCount = 0
+  if (announcement.sendEmail && userIds.length > 0) {
+    try {
+      const recipients = await prisma.user.findMany({
+        where: {
+          id: { in: userIds },
+          productEmailOptOut: false,
+          NOT: { email: { endsWith: PLACEHOLDER_EMAIL_DOMAIN } },
+        },
+        select: { id: true, email: true },
+      })
+      const subject = announcement.emailSubject?.trim() || announcement.title
+      const bodyHtml = announcement.emailHtml?.trim() || announcement.body
+      const messages = recipients.map((u) => {
+        const { html } = renderAnnouncementEmail({
+          subject,
+          bodyHtml,
+          unsubscribeUrl: productUnsubscribeUrl(u.id),
+        })
+        return { to: u.email, subject, html, from: PLATFORM_FROM }
+      })
+      for (let i = 0; i < messages.length; i += 100) {
+        await sendEmailBatch(messages.slice(i, i + 100))
+      }
+      emailRecipientCount = messages.length
+      await prisma.announcement.update({ where: { id }, data: { emailRecipientCount } })
+    } catch (err) {
+      console.error('[announcement email] failed:', err instanceof Error ? err.message : 'unknown')
+    }
+  }
+
+  return NextResponse.json({ ok: true, recipientCount: userIds.length, emailRecipientCount })
 }

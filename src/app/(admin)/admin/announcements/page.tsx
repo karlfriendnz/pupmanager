@@ -15,8 +15,12 @@ export default async function AdminAnnouncementsPage() {
     link: a.link,
     status: a.status,
     audience: a.audience,
+    sendEmail: a.sendEmail,
+    emailSubject: a.emailSubject,
+    emailHtml: a.emailHtml,
     sentAt: a.sentAt ? a.sentAt.toISOString() : null,
     recipientCount: a.recipientCount,
+    emailRecipientCount: a.emailRecipientCount,
     createdAt: a.createdAt.toISOString(),
   }))
 

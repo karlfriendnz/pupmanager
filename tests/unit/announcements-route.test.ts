@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   notifCreateMany: vi.fn(),
   userFindMany: vi.fn(),
   sendPush: vi.fn(),
+  sendEmailBatch: vi.fn(),
 }))
 
 vi.mock('@/lib/auth', () => ({ auth: h.auth }))
@@ -27,6 +28,9 @@ vi.mock('@/lib/prisma', () => ({
   },
 }))
 vi.mock('@/lib/push', () => ({ sendPush: h.sendPush }))
+vi.mock('@/lib/email', () => ({ sendEmailBatch: h.sendEmailBatch, PLATFORM_FROM: 'updates@pupmanager.com' }))
+vi.mock('@/lib/announcement-email', () => ({ renderAnnouncementEmail: ({ subject }: { subject: string }) => ({ subject, html: '<x/>' }) }))
+vi.mock('@/lib/unsubscribe-token', () => ({ productUnsubscribeUrl: (id: string) => `https://app/u/${id}` }))
 
 import { GET, POST } from '@/app/api/admin/announcements/route'
 import { POST as SEND } from '@/app/api/admin/announcements/[id]/send/route'
@@ -45,6 +49,7 @@ beforeEach(() => {
   h.userFindMany.mockResolvedValue([])
   h.membershipFindMany.mockResolvedValue([])
   h.clientFindMany.mockResolvedValue([])
+  h.sendEmailBatch.mockResolvedValue({})
 })
 
 describe('admin guard', () => {
@@ -153,6 +158,44 @@ describe('send fan-out', () => {
     await SEND(new Request('https://x/send', { method: 'POST' }), params('a1'))
     expect(h.sendPush).toHaveBeenCalledTimes(1)
     expect(h.sendPush.mock.calls[0][0]).toBe('u1')
+  })
+
+  it('emails the audience when sendEmail is on, from PupManager', async () => {
+    h.annFindUnique.mockResolvedValue({ id: 'a1', status: 'DRAFT', title: 'T', body: 'B', link: null, audience: 'ALL_TRAINERS', sendEmail: true, emailSubject: 'Hello', emailHtml: '<p>hi</p>' })
+    h.membershipFindMany.mockResolvedValue([{ userId: 'u1' }, { userId: 'u2' }])
+    // 1st user.findMany = push (none), 2nd = email recipients.
+    h.userFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'u1', email: 'a@x.com' }, { id: 'u2', email: 'b@x.com' }])
+
+    const res = await SEND(new Request('https://x/send', { method: 'POST' }), params('a1'))
+    expect((await res.json()).emailRecipientCount).toBe(2)
+
+    expect(h.sendEmailBatch).toHaveBeenCalledTimes(1)
+    const msgs = h.sendEmailBatch.mock.calls[0][0]
+    expect(msgs.map((m: { to: string }) => m.to)).toEqual(['a@x.com', 'b@x.com'])
+    expect(msgs.every((m: { from: string }) => m.from === 'updates@pupmanager.com')).toBe(true)
+
+    // Recipients query excludes opted-out users AND placeholder (no-email) addresses.
+    const emailWhere = h.userFindMany.mock.calls[1][0].where
+    expect(emailWhere.productEmailOptOut).toBe(false)
+    expect(emailWhere.NOT.email.endsWith).toBe('@no-email.pupmanager.app')
+  })
+
+  it('does not email when sendEmail is off', async () => {
+    h.annFindUnique.mockResolvedValue({ id: 'a1', status: 'DRAFT', title: 'T', body: 'B', link: null, audience: 'ALL_TRAINERS', sendEmail: false })
+    h.membershipFindMany.mockResolvedValue([{ userId: 'u1' }])
+    const res = await SEND(new Request('https://x/send', { method: 'POST' }), params('a1'))
+    expect((await res.json()).emailRecipientCount).toBe(0)
+    expect(h.sendEmailBatch).not.toHaveBeenCalled()
+  })
+
+  it('email failure never fails the send (bell already went out)', async () => {
+    h.annFindUnique.mockResolvedValue({ id: 'a1', status: 'DRAFT', title: 'T', body: 'B', link: null, audience: 'ALL_TRAINERS', sendEmail: true, emailSubject: 'S', emailHtml: '<p>x</p>' })
+    h.membershipFindMany.mockResolvedValue([{ userId: 'u1' }])
+    h.userFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'u1', email: 'a@x.com' }])
+    h.sendEmailBatch.mockRejectedValue(new Error('resend down'))
+    const res = await SEND(new Request('https://x/send', { method: 'POST' }), params('a1'))
+    expect(res.status).toBe(200)
+    expect((await res.json()).emailRecipientCount).toBe(0)
   })
 
   it('ALL_CLIENTS fans out to clients only, never trainers', async () => {

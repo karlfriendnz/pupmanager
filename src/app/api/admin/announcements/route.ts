@@ -27,6 +27,11 @@ const createSchema = z.object({
   link: linkSchema,
   // Who the broadcast reaches. Defaults to trainers to match prior behaviour.
   audience: z.enum(['ALL_TRAINERS', 'ALL_CLIENTS', 'EVERYONE']).optional(),
+  // Optional email version — sendEmail toggles it; emailSubject defaults to the
+  // title; emailHtml is the serialized rich-builder body.
+  sendEmail: z.boolean().optional(),
+  emailSubject: z.string().trim().max(200).optional(),
+  emailHtml: z.string().max(200_000).optional(),
 })
 
 export async function GET() {
@@ -50,6 +55,9 @@ export async function POST(req: Request) {
       body: parsed.data.body,
       link: parsed.data.link ?? null,
       ...(parsed.data.audience ? { audience: parsed.data.audience } : {}),
+      ...(parsed.data.sendEmail !== undefined ? { sendEmail: parsed.data.sendEmail } : {}),
+      ...(parsed.data.emailSubject !== undefined ? { emailSubject: parsed.data.emailSubject || null } : {}),
+      ...(parsed.data.emailHtml !== undefined ? { emailHtml: parsed.data.emailHtml || null } : {}),
       createdById: session.user.id,
     },
   })

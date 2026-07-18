@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Megaphone, Send, Trash2, Pencil, X } from 'lucide-react'
+import { Megaphone, Send, Trash2, Pencil, X, Mail } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { readability, readingEase } from '@/lib/readability'
+import { EmailBodyBuilder, serializeBlocks, blocksHaveContent, seedBlocks, type EmailBlock } from '@/components/shared/email-body-builder'
+import { emailBodyToHtml } from '@/lib/email-html'
 
 type Audience = 'ALL_TRAINERS' | 'ALL_CLIENTS' | 'EVERYONE'
 
@@ -15,9 +17,40 @@ type Announcement = {
   link: string | null
   status: 'DRAFT' | 'SENT'
   audience: Audience
+  sendEmail: boolean
+  emailSubject: string | null
+  emailHtml: string | null
   sentAt: string | null
   recipientCount: number | null
+  emailRecipientCount: number | null
   createdAt: string
+}
+
+// A branded PupManager email preview (teal strip → logo → body). The body is the
+// same serialized/sanitized HTML that is sent, so preview == send.
+function EmailPreview({ subject, bodyHtml }: { subject: string; bodyHtml: string }) {
+  const inner = bodyHtml.trim() ? emailBodyToHtml(bodyHtml) : ''
+  return (
+    <div className="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+        <p className="text-sm font-semibold text-slate-900 truncate">{subject || '(no subject)'}</p>
+        <p className="text-xs text-slate-500">PupManager</p>
+      </div>
+      <div style={{ height: 4, background: '#2a9da9' }} />
+      <div className="px-6 pt-5 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="https://app.pupmanager.com/email-logo.png" alt="PupManager" style={{ height: 34, display: 'inline-block' }} />
+      </div>
+      {inner ? (
+        <div className="tiptap-body tiptap-light px-6 py-4 text-sm text-slate-900 [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg" dangerouslySetInnerHTML={{ __html: inner }} />
+      ) : (
+        <div className="px-6 py-4 text-sm text-slate-400">Your email content will appear here…</div>
+      )}
+      <div className="px-6 py-3 bg-stone-50 border-t border-slate-100 text-center">
+        <p className="text-[11px] text-slate-400">You&rsquo;re getting this because you use PupManager. <span className="underline">Unsubscribe</span></p>
+      </div>
+    </div>
+  )
 }
 
 const AUDIENCES: { value: Audience; label: string; hint: string }[] = [
@@ -59,9 +92,14 @@ export function AnnouncementsManager({ announcements }: { announcements: Announc
   const [body, setBody] = useState('')
   const [link, setLink] = useState('')
   const [audience, setAudience] = useState<Audience>('ALL_TRAINERS')
+  const [sendEmail, setSendEmail] = useState(false)
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBlocks, setEmailBlocks] = useState<EmailBlock[]>(seedBlocks)
   const [busy, setBusy] = useState(false)
   const [confirmSend, setConfirmSend] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const emailBodyHtml = useMemo(() => serializeBlocks(emailBlocks), [emailBlocks])
 
   const read = useMemo(() => readability(body), [body])
   const ease = readingEase(read.grade)
@@ -69,17 +107,27 @@ export function AnnouncementsManager({ announcements }: { announcements: Announc
 
   function resetForm() {
     setEditId(null); setTitle(''); setBody(''); setLink(''); setAudience('ALL_TRAINERS'); setConfirmSend(false); setError(null)
+    setSendEmail(false); setEmailSubject(''); setEmailBlocks(seedBlocks())
   }
 
   function startEdit(a: Announcement) {
     setEditId(a.id); setTitle(a.title); setBody(a.body); setLink(a.link ?? ''); setAudience(a.audience); setConfirmSend(false); setError(null)
+    setSendEmail(a.sendEmail); setEmailSubject(a.emailSubject ?? '')
+    // Reload the stored email HTML into a single rich block (round-trips losslessly
+    // for the sent HTML; block separation isn't preserved, which is fine to edit).
+    setEmailBlocks(a.emailHtml ? [{ id: 'b0', type: 'text', html: a.emailHtml }] : seedBlocks())
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   // Create a new draft or update the one being edited. Returns its id.
   async function saveDraft(): Promise<string | null> {
     setError(null)
-    const payload = { title: title.trim(), body: body.trim(), link: link.trim(), audience }
+    const payload = {
+      title: title.trim(), body: body.trim(), link: link.trim(), audience,
+      sendEmail,
+      emailSubject: emailSubject.trim(),
+      emailHtml: sendEmail ? emailBodyHtml : '',
+    }
     const res = editId
       ? await fetch(`/api/admin/announcements/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       : await fetch('/api/admin/announcements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -125,6 +173,7 @@ export function AnnouncementsManager({ announcements }: { announcements: Announc
   }
 
   const canSubmit = title.trim().length >= 3 && body.trim().length >= 1 && !busy
+    && (!sendEmail || blocksHaveContent(emailBlocks))
 
   return (
     <div className="flex flex-col gap-8">
@@ -200,12 +249,45 @@ export function AnnouncementsManager({ announcements }: { announcements: Announc
                 ))}
               </div>
             </fieldset>
+
+            {/* Email option — same audience, PupManager-branded, rich builder. */}
+            <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="h-4 w-4 rounded accent-blue-600" />
+                <span className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-200"><Mail className="h-4 w-4" /> Also send this as an email</span>
+              </label>
+              {sendEmail && (
+                <div className="mt-3 flex flex-col gap-3">
+                  <label className="flex flex-col gap-1.5 text-sm">
+                    <span className="text-slate-400">Email subject <span className="text-slate-500">(defaults to the title)</span></span>
+                    <input
+                      value={emailSubject}
+                      onChange={(e) => setEmailSubject(e.target.value)}
+                      placeholder={title || 'Email subject'}
+                      maxLength={200}
+                      className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </label>
+                  <span className="text-xs text-slate-400">Email content (images, formatting)</span>
+                  {/* The builder is styled for a light surface — wrap it in white. */}
+                  <div className="rounded-lg bg-white p-3">
+                    <EmailBodyBuilder blocks={emailBlocks} onBlocksChange={setEmailBlocks} disabled={busy} />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right: live preview */}
           <div className="flex flex-col gap-2">
             <span className="text-sm text-slate-400">How it looks in the notification bell</span>
             <BellPreview title={title} body={body} link={link.trim() || null} />
+            {sendEmail && (
+              <>
+                <span className="mt-2 text-sm text-slate-400">How the email looks</span>
+                <EmailPreview subject={emailSubject.trim() || title} bodyHtml={emailBodyHtml} />
+              </>
+            )}
           </div>
         </div>
 

@@ -101,6 +101,10 @@ model User {
 
   notifyEmail Boolean @default(true)
   notifyPush  Boolean @default(true)
+  // Opt-out of PupManager product-update ("what's new") announcement EMAILS.
+  // Universal to any user (trainer or client); set via the email unsubscribe
+  // link. The in-app bell announcement is never suppressed by this.
+  productEmailOptOut Boolean @default(false)
 
   // Soft delete. When set, the account is "deactivated" — blocked from signing
   // in — but all its data is retained. Admins deactivate/reactivate from
@@ -214,6 +218,13 @@ model Announcement {
   // Set when broadcast; recipientCount records how many feeds it reached.
   sentAt         DateTime?
   recipientCount Int?
+  // Optional email version: when sendEmail is on, the same broadcast also emails
+  // the audience. emailHtml is the serialized rich-builder body; emailSubject
+  // defaults to the title. emailRecipientCount records how many emails went out.
+  sendEmail           Boolean  @default(false)
+  emailSubject        String?
+  emailHtml           String?  @db.Text
+  emailRecipientCount Int?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
