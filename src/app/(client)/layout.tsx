@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { CurrencyProvider } from '@/components/currency-context'
 import { AppShell } from '@/components/shared/app-shell'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { countUnreadMessages } from '@/lib/unread-messages'
@@ -19,7 +20,7 @@ export default async function ClientLayout({ children }: { children: React.React
     where: { id: active.clientId },
     include: {
       user: { select: { name: true, email: true } },
-      trainer: { select: { id: true, businessName: true, logoUrl: true, emailAccentColor: true, phone: true, showPhoneToClients: true, website: true, publicEmail: true, intakeSectionOrder: true, intakeSystemFieldSections: true } },
+      trainer: { select: { id: true, businessName: true, logoUrl: true, emailAccentColor: true, phone: true, showPhoneToClients: true, website: true, publicEmail: true, payoutCurrency: true, intakeSectionOrder: true, intakeSystemFieldSections: true } },
       dog: { select: { id: true, name: true } },
       dogs: { select: { id: true, name: true } },
       customFieldValues: { select: { fieldId: true, dogId: true, value: true } },
@@ -199,7 +200,9 @@ export default async function ClientLayout({ children }: { children: React.React
         unreadTotal={unreadMessageCount}
         hiddenNavHrefs={shopEnabled ? undefined : ['/my-shop']}
       >
-        {children}
+        <CurrencyProvider currency={clientProfile.trainer.payoutCurrency ?? 'nzd'}>
+          {children}
+        </CurrencyProvider>
       </AppShell>
     </div>
   )

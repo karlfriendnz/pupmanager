@@ -10,6 +10,7 @@ import type { AddonId } from '@/lib/pricing'
 import { AppShell } from '@/components/shared/app-shell'
 import { ShieldAlert } from 'lucide-react'
 import { BookingConflictProvider } from '@/components/schedule/booking-conflict-dialog'
+import { CurrencyProvider } from '@/components/currency-context'
 import { OnboardingFab } from './onboarding-fab'
 import { PaywallFrame } from './paywall-frame'
 import { CompleteProfileFrame } from './complete-profile/frame'
@@ -268,7 +269,9 @@ export default async function TrainerLayout({ children }: { children: React.Reac
           totalSteps={fabState.totalSteps}
         />
       )}
-      <BookingConflictProvider>{children}</BookingConflictProvider>
+      <CurrencyProvider currency={tp?.payoutCurrency ?? 'nzd'}>
+        <BookingConflictProvider>{children}</BookingConflictProvider>
+      </CurrencyProvider>
     </AppShell>
   )
 }
