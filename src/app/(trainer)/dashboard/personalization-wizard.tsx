@@ -56,9 +56,22 @@ export type WizardInitial = {
   enabledAddonIds: string[]
 }
 
-// Index 0 ('Welcome') is the unnumbered intro; the numbered count starts at
-// index 1, so "Make it yours" shows as Step 1 of 6.
-const STEPS = ['Welcome', 'Make it yours', 'Your colours', 'Say hello', 'Your tools', 'Client form', 'Take a look', 'Sample data'] as const
+// The wizard is a core setup everyone does, plus a client-app section that only
+// appears when the trainer wants their clients to have an app. The ordered list
+// of step keys is computed per render (STEP_KEYS, inside the component) so those
+// extra steps slot in and out cleanly; this map is just their display labels.
+// 'welcome' is the unnumbered intro.
+const STEP_LABELS: Record<string, string> = {
+  welcome: 'Welcome',
+  business: 'Make it yours',
+  contact: 'Contact details',
+  colour: 'Your colour',
+  tools: 'Your tools',
+  sayhello: 'Say hello',
+  clientform: 'Client form',
+  preview: 'Take a look',
+  sample: 'Sample data',
+}
 
 // Ready-to-go welcome notes (shown on the client's home screen). The wizard
 // pre-fills the first so trainers tweak rather than face a blank box; "Try
@@ -113,7 +126,7 @@ export function PersonalizationWizard({
     try {
       if (sessionStorage.getItem('pm_wizard_resume_last') === '1') {
         sessionStorage.removeItem('pm_wizard_resume_last')
-        setStep(STEPS.length - 1)
+        setStep(STEP_KEYS.length - 1)
       }
     } catch { /* sessionStorage unavailable — ignore */ }
   }, [])
@@ -304,22 +317,40 @@ export function PersonalizationWizard({
     ...WIZ_QUESTIONS.filter(q => questionApplies(q, roles)).map(q => q.id),
   ]
 
+  // Does the trainer want their clients to have an app? Decided by the client-app
+  // question in the tools step; until then it defaults to yes. Drives whether the
+  // client-app steps (say hello / client form / preview) appear at all.
+  const wantsClientApp = answers.clientapp !== 'email' && answers.clientapp !== 'none'
+
+  // The ordered step keys for this run. Core setup for everyone, then the
+  // client-app section right after it only if they want an app.
+  const STEP_KEYS: string[] = [
+    'welcome',
+    'business',
+    'contact',
+    'colour',
+    'tools',
+    ...(wantsClientApp ? ['sayhello', 'clientform', 'preview'] : []),
+    'sample',
+  ]
+  const stepKey = STEP_KEYS[step] ?? 'sample'
+
   // Forward nav. Steps 1–3 save the profile then advance. Step 4 pages through
   // the tools sub-flow and only commits the add-ons + advances at the end.
   async function handleNext() {
-    if (step === 4) {
+    if (stepKey === 'tools') {
       if (extra < screens.length - 1) { setExtra(e => e + 1); return }
       setBusy(true)
-      try { await persistAddons(); await saveProfile(); setStep(5) } finally { setBusy(false) }
+      try { await persistAddons(); await saveProfile(); setStep(step + 1) } finally { setBusy(false) }
       return
     }
     setBusy(true)
     try {
       await saveProfile()
       // Leaving the "Client form" step commits the field config choices.
-      if (STEPS[step] === 'Client form') await persistFieldConfig()
+      if (stepKey === 'clientform') await persistFieldConfig()
       const target = step + 1
-      if (target === 4) setExtra(0) // entering the sub-flow at the role picker
+      if (STEP_KEYS[target] === 'tools') setExtra(0) // entering the sub-flow at the role picker
       setStep(target)
     } finally {
       setBusy(false)
@@ -329,9 +360,9 @@ export function PersonalizationWizard({
   // Back nav. Inside step 4, step back through the sub-flow first; when leaving
   // step 5 backwards, land on the sub-flow's recap rather than its first screen.
   function handleBack() {
-    if (step === 4 && extra > 0) { setExtra(e => e - 1); return }
+    if (stepKey === 'tools' && extra > 0) { setExtra(e => e - 1); return }
     const target = Math.max(0, step - 1)
-    if (target === 4) setExtra(screens.length - 1)
+    if (STEP_KEYS[target] === 'tools') setExtra(screens.length - 1)
     setStep(target)
   }
 
@@ -378,7 +409,8 @@ export function PersonalizationWizard({
   }
 
   const brandColor = HEX.test(accent) ? accent : DEFAULT_BRAND_COLOR
-  const showPhone = step >= 1 && step <= 3
+  // Steps whose content the branded phone preview reflects.
+  const showPhone = stepKey === 'business' || stepKey === 'contact' || stepKey === 'colour' || stepKey === 'sayhello'
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-950/70 backdrop-blur-md p-0 md:items-center md:p-4 animate-pm-fade">
@@ -410,9 +442,9 @@ export function PersonalizationWizard({
 
           {/* progress */}
           <div className="relative">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 mb-2">{STEPS[step]}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 mb-2">{STEP_LABELS[stepKey]}</p>
             <div className="flex gap-1.5">
-              {STEPS.slice(1).map((_, i) => (
+              {STEP_KEYS.slice(1).map((_, i) => (
                 <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${i + 1 <= step ? 'bg-white' : 'bg-white/25'}`} />
               ))}
             </div>
@@ -427,12 +459,12 @@ export function PersonalizationWizard({
               <span className="text-sm font-semibold truncate">{businessName.trim() || 'PupManager'}</span>
             </div>
             <div className="mt-3 flex gap-1.5">
-              {STEPS.slice(1).map((_, i) => <div key={i} className={`h-1.5 flex-1 rounded-full ${i + 1 <= step ? 'bg-white' : 'bg-white/25'}`} />)}
+              {STEP_KEYS.slice(1).map((_, i) => <div key={i} className={`h-1.5 flex-1 rounded-full ${i + 1 <= step ? 'bg-white' : 'bg-white/25'}`} />)}
             </div>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-6 md:px-8 py-6 md:py-7">
-            {step === 0 && (
-              <div className="max-w-lg mx-auto" key="s0">
+            {stepKey === 'welcome' && (
+              <div className="max-w-lg mx-auto" key="s-welcome">
                 <h2 className="font-display text-3xl font-bold text-slate-900 tracking-tight">Welcome to PupManager</h2>
                 <div className="relative aspect-video mt-5">
                   {WELCOME_VIDEO_URL ? (
@@ -449,9 +481,9 @@ export function PersonalizationWizard({
               </div>
             )}
 
-            {step === 1 && (
-              <div key="s1">
-                <StepHead title="Make it yours" sub="Your name, contact details and logo appear across your clients’ app and emails. We’ve pre-filled what we can — tweak anything." />
+            {stepKey === 'business' && (
+              <div key="s-business">
+                <StepHead title="Make it yours" sub="Your name and logo appear across your clients’ app and emails. We’ve pre-filled what we can — tweak anything." />
                 <label className="block text-sm font-medium text-slate-700 mt-6 mb-2">Business name</label>
                 <input value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Pawsome Dog Training" className="w-full h-12 rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-[15px] focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
 
@@ -473,8 +505,14 @@ export function PersonalizationWizard({
                 </div>
                 {uploadError && <p className="text-xs text-red-500 mt-2">{uploadError}</p>}
 
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mt-6 mb-2">Public contact details</p>
-                <div className="grid sm:grid-cols-2 gap-3">
+                <MobilePreview show={showPhone} businessName={businessName} logoUrl={logoUrl} brandColor={accent} note={note} />
+              </div>
+            )}
+
+            {stepKey === 'contact' && (
+              <div key="s-contact">
+                <StepHead title="Contact details" sub="How your clients reach you — shown on your booking page, client app and emails. Add what you’re happy to share." />
+                <div className="mt-6 grid sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1.5">Email</label>
                     <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="hello@pawsome.co.nz" className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
@@ -493,8 +531,8 @@ export function PersonalizationWizard({
               </div>
             )}
 
-            {step === 2 && (
-              <div key="s2">
+            {stepKey === 'colour' && (
+              <div key="s-colour">
                 <StepHead title="Your colour" sub="Pick the brand colour your clients see on buttons and highlights — the preview updates live." />
                 {logoPalette && (
                   <div className="mt-4 flex items-center gap-2 rounded-xl bg-teal-50 border border-teal-100 px-3 py-2.5">
@@ -513,8 +551,8 @@ export function PersonalizationWizard({
               </div>
             )}
 
-            {step === 3 && (
-              <div key="s3">
+            {stepKey === 'sayhello' && (
+              <div key="s-sayhello">
                 <StepHead title="Say hello" sub="A short, warm welcome shown on your clients’ home screen. We’ve written one to start from — tweak it to sound like you." />
                 <div className="flex items-center justify-between mt-6 mb-2">
                   <label className="block text-sm font-medium text-slate-700">Welcome note</label>
@@ -536,7 +574,7 @@ export function PersonalizationWizard({
               </div>
             )}
 
-            {step === 4 && (() => {
+            {stepKey === 'tools' && (() => {
               // Clamp in case the role selection shrank the screen list.
               const screen = screens[Math.min(extra, screens.length - 1)]
 
@@ -703,11 +741,11 @@ export function PersonalizationWizard({
               )
             })()}
 
-            {step === 5 && (
+            {stepKey === 'clientform' && (
               <ClientFieldsStep onConfigChange={setFieldConfig} />
             )}
 
-            {step === 6 && (() => {
+            {stepKey === 'preview' && (() => {
               // No client app? Don't push the client-app preview — show a plain
               // "you're set" for their admin workspace instead.
               const wantsClientApp = answers.clientapp !== 'email' && answers.clientapp !== 'none'
@@ -734,8 +772,8 @@ export function PersonalizationWizard({
               )
             })()}
 
-            {step === 7 && (
-              <div className="max-w-md mx-auto py-2" key="s6">
+            {stepKey === 'sample' && (
+              <div className="max-w-md mx-auto py-2" key="s-sample">
                 <div className="text-center">
                   <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: brandColor }}>
                     <FlaskConical className="h-8 w-8 text-white" />
@@ -789,7 +827,7 @@ export function PersonalizationWizard({
             <button onClick={handleBack} disabled={busy || step === 0} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-0">
               <ArrowLeft className="h-4 w-4" /> Back
             </button>
-            {step < STEPS.length - 1 ? (
+            {stepKey !== 'sample' ? (
               <button onClick={handleNext} disabled={busy} className="inline-flex items-center gap-2 rounded-2xl px-6 h-12 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 shadow-md hover:-translate-y-px transition-all disabled:opacity-60 disabled:hover:translate-y-0">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Continue <ArrowRight className="h-4 w-4" />
               </button>
