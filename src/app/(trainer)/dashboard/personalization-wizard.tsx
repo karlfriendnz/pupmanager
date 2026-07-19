@@ -388,6 +388,11 @@ export function PersonalizationWizard({
     setSeeding(true)
     setSeedError(null)
     try {
+      // Persist what they've entered first (name, branding, and crucially their
+      // line of work) so the profile matches the sample data we're about to seed
+      // — otherwise businessRoles stays stale and the rest of the app's persona
+      // tailoring (schedule slot types, field packs, landing view) is wrong.
+      await saveProfile()
       const res = await fetch('/api/trainer/sample-data/seed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
