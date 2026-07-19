@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { validateSlug } from '@/lib/slug'
 import { applyFieldPacksForRoles } from '@/lib/onboarding/apply-field-packs'
+import { seedScheduleDefaultsForRoles } from '@/lib/onboarding/schedule-defaults'
 
 const patchSchema = z.object({
   businessName: z.string().min(2).optional(),
@@ -166,7 +167,13 @@ export async function PATCH(req: Request) {
   // etc.). Idempotent — won't duplicate fields they already have. Best-effort:
   // never fail the profile save over it.
   if (parsed.data.businessRoles?.length) {
-    await applyFieldPacksForRoles(prisma, guard.companyId, parsed.data.businessRoles).catch(() => {})
+    await Promise.all([
+      applyFieldPacksForRoles(prisma, guard.companyId, parsed.data.businessRoles),
+      // Sensible starting hours for their trade (a groomer breaks for lunch).
+      // Only seeds when they have no availability yet, so it never overwrites
+      // hours they've set.
+      seedScheduleDefaultsForRoles(prisma, guard.companyId, parsed.data.businessRoles),
+    ]).catch(() => {})
   }
 
   return NextResponse.json(profile)
