@@ -93,6 +93,20 @@ export function PersonalizationWizard({
 }) {
   const [step, setStep] = useState(0)
 
+  // Lock the page behind the modal while it's open — otherwise the dashboard
+  // keeps its own scrollbar and you get two side by side (the modal's inner
+  // scroll + the background page's).
+  useEffect(() => {
+    const prevBody = document.body.style.overflow
+    const prevHtml = document.documentElement.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevBody
+      document.documentElement.style.overflow = prevHtml
+    }
+  }, [])
+
   // If we're returning from the client-app preview (opened from the last step),
   // resume there instead of restarting at step 1.
   useEffect(() => {
@@ -367,8 +381,9 @@ export function PersonalizationWizard({
   const showPhone = step >= 1 && step <= 3
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-md p-4 animate-pm-fade">
-      <div className="w-full max-w-4xl rounded-[2rem] bg-white shadow-[0_30px_80px_-20px_rgba(2,18,28,0.55)] ring-1 ring-black/5 overflow-hidden flex flex-col md:flex-row max-h-[94vh] animate-pm-pop">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-950/70 backdrop-blur-md p-0 md:items-center md:p-4 animate-pm-fade">
+      {/* Full-screen on the app (phones); a centred card on desktop. */}
+      <div className="w-full h-full max-w-none rounded-none bg-white shadow-none ring-0 overflow-hidden flex flex-col md:h-auto md:max-w-4xl md:rounded-[2rem] md:shadow-[0_30px_80px_-20px_rgba(2,18,28,0.55)] md:ring-1 md:ring-black/5 md:flex-row md:max-h-[94vh] animate-pm-pop">
 
         {/* ─── Branded stage (desktop) — fixed teal so it never shifts with the trainer's chosen colour ─── */}
         <aside className="hidden md:flex md:w-[42%] relative flex-col justify-between p-8 text-white overflow-hidden" style={{ background: DEFAULT_BRAND_COLOR }}>
@@ -405,7 +420,7 @@ export function PersonalizationWizard({
         </aside>
 
         {/* ─── Content column ─── */}
-        <div className="flex-1 min-w-0 flex flex-col max-h-[94vh]">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col max-h-none md:max-h-[94vh]">
           {/* mobile brand/progress bar */}
           <div className="md:hidden px-5 pt-5 pb-4 text-white" style={{ background: brandColor }}>
             <div className="flex items-center">
@@ -415,7 +430,7 @@ export function PersonalizationWizard({
               {STEPS.slice(1).map((_, i) => <div key={i} className={`h-1.5 flex-1 rounded-full ${i + 1 <= step ? 'bg-white' : 'bg-white/25'}`} />)}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-6 md:px-8 py-6 md:py-7">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 md:px-8 py-6 md:py-7">
             {step === 0 && (
               <div className="max-w-lg mx-auto" key="s0">
                 <h2 className="font-display text-3xl font-bold text-slate-900 tracking-tight">Welcome to PupManager</h2>
@@ -768,8 +783,9 @@ export function PersonalizationWizard({
             )}
           </div>
 
-          {/* Footer nav */}
-          <div className="flex items-center justify-between gap-3 px-6 md:px-8 py-4 border-t border-slate-100">
+          {/* Footer nav — pinned to the bottom; only the middle scrolls. On phones
+              it carries the safe-area inset so it clears the home indicator. */}
+          <div className="shrink-0 flex items-center justify-between gap-3 px-6 md:px-8 py-4 border-t border-slate-100 bg-white pb-[max(1rem,env(safe-area-inset-bottom))]">
             <button onClick={handleBack} disabled={busy || step === 0} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-0">
               <ArrowLeft className="h-4 w-4" /> Back
             </button>
