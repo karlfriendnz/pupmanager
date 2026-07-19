@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate, cn, formatSessionTitle, displayEmail } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, DollarSign, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, Receipt, Dumbbell } from 'lucide-react'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, Receipt, Dumbbell } from 'lucide-react'
+import { CurrencyGlyph } from '@/components/currency-glyph'
 import { ClientNotesTab } from './client-notes-tab'
 import { ClientTrainingLogTab, type TrainerTrainingLog } from './client-training-log-tab'
 import { ClientInvoicesTab, ClientUnpaidInvoicesCard } from './client-invoices'
@@ -1050,7 +1051,7 @@ function ClientSessionRow({
           title={isInvoiced ? 'Invoiced' : 'Not invoiced'}
           aria-label={isInvoiced ? 'Invoiced' : 'Not invoiced'}
         >
-          <DollarSign className="h-2.5 w-2.5" strokeWidth={2.5} />
+          <CurrencyGlyph className="text-[10px]" />
         </span>
       </div>
     </Link>

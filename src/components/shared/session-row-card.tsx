@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { ShoppingBag, ArrowRight, DollarSign, Users } from 'lucide-react'
+import { ShoppingBag, ArrowRight, Users } from 'lucide-react'
+import { CurrencyGlyph } from '@/components/currency-glyph'
 import { cn, formatSessionTitle } from '@/lib/utils'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 
@@ -199,7 +200,7 @@ export function SessionRowCard({
             title={isInvoiced ? 'Invoiced' : 'Not invoiced'}
             aria-label={isInvoiced ? 'Invoiced' : 'Not invoiced'}
           >
-            <DollarSign className="h-3 w-3" strokeWidth={isInvoiced ? 2.5 : 3} />
+            <CurrencyGlyph className="text-[11px]" />
           </span>
 
           {toBringCount != null && toBringCount > 0 && (

@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ListTodo, FileText, DollarSign } from 'lucide-react'
+import { ListTodo, FileText } from 'lucide-react'
+import { CurrencyGlyph } from '@/components/currency-glyph'
 import { PageHeader } from '@/components/shared/page-header'
 import { NeedsNotesList, type TodoRow } from './needs-notes-list'
 import { formatMoney } from '@/lib/money'
@@ -124,7 +125,7 @@ export default async function SessionsTodoPage() {
               </div>
               <div className="rounded-2xl bg-white border border-rose-100 p-4 flex items-center gap-3">
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-600 text-white">
-                  <DollarSign className="h-5 w-5" strokeWidth={3} />
+                  <CurrencyGlyph className="text-lg" />
                 </span>
                 <div className="min-w-0">
                   <p className="text-2xl font-bold text-slate-900 leading-none tabular-nums">

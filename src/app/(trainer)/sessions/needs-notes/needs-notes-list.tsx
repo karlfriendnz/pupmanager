@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Dog, FileText, DollarSign, ChevronRight, Check, Loader2 } from 'lucide-react'
+import { Dog, FileText, ChevronRight, Check, Loader2 } from 'lucide-react'
+import { CurrencyGlyph } from '@/components/currency-glyph'
 import { formatMoney } from '@/lib/money'
 
 export type TodoRow = {
@@ -157,7 +158,7 @@ export function NeedsNotesList({ rows, currency }: { rows: TodoRow[]; currency: 
                                   className="inline-flex items-center gap-1 text-[10px] font-semibold pl-0.5 pr-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 hover:border-rose-300 transition-colors disabled:opacity-60"
                                 >
                                   <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-white">
-                                    {isInvoicing ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <DollarSign className="h-2.5 w-2.5" strokeWidth={3} />}
+                                    {isInvoicing ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <CurrencyGlyph className="text-[10px]" />}
                                   </span>
                                   {s.valueCents != null ? formatMoney(s.valueCents, currency) : 'Invoice'}
                                 </button>
@@ -192,7 +193,7 @@ export function NeedsNotesList({ rows, currency }: { rows: TodoRow[]; currency: 
                 onClick={() => bulkUpdate({ invoiced: true })} disabled={bulkBusy}
                 className="inline-flex items-center gap-2 rounded-xl bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 text-sm font-semibold px-4 h-10 disabled:opacity-60"
               >
-                {bulkBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" strokeWidth={2.5} />}
+                {bulkBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CurrencyGlyph className="text-[15px]" />}
                 Mark invoiced
               </button>
               <button

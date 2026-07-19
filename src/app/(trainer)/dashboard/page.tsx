@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Calendar, ChevronLeft, ChevronRight, ArrowRight, Users, PawPrint, Inbox, FileText, DollarSign } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ArrowRight, Users, PawPrint, Inbox, FileText } from 'lucide-react'
+import { CurrencyGlyph } from '@/components/currency-glyph'
 import { SessionRowCard } from '@/components/shared/session-row-card'
 import { PageHeader } from '@/components/shared/page-header'
 import { WaitlistNudge } from '@/components/shared/waitlist-nudge'
@@ -387,7 +388,7 @@ export default async function DashboardPage({
               'flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0',
               wrapInvoiceCount > 0 ? 'bg-rose-600 text-white' : 'bg-slate-50 text-slate-400',
             )}>
-              <DollarSign className="h-4 w-4" strokeWidth={3} />
+              <CurrencyGlyph className="text-[15px]" />
             </span>
             <div className="min-w-0">
               <p className="text-xl font-bold text-slate-900 leading-none tabular-nums">
