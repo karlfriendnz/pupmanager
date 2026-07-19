@@ -60,7 +60,7 @@ describe('POST /api/custom-fields/packs — guards', () => {
   })
 
   it('writes fields to the CALLER\'s company, never a company from the request', async () => {
-    await call({ keys: ['essentials:breed'], trainerId: 'co2' })
+    await call({ keys: ['essentials:vet'], trainerId: 'co2' })
     const [ops] = h.transaction.mock.calls[0]
     void ops
     expect(h.createMany).toHaveBeenCalledWith(
@@ -87,10 +87,16 @@ describe('POST /api/custom-fields/packs — input is not trusted', () => {
   })
 
   it('creates from the server catalog, ignoring client-supplied definitions', async () => {
-    await call({ keys: ['essentials:breed'], label: 'DROP TABLE', type: 'DROPDOWN' })
+    await call({ keys: ['essentials:vet'], label: 'DROP TABLE', type: 'DROPDOWN' })
     expect(h.createMany).toHaveBeenCalledWith({
-      data: [expect.objectContaining({ label: 'Breed', type: 'TEXT', category: 'About your dog' })],
+      data: [expect.objectContaining({ label: 'Vet clinic', type: 'TEXT', category: 'About your dog' })],
     })
+  })
+
+  it('never creates a custom field that duplicates a built-in (Breed / Age)', async () => {
+    const res = await call({ keys: ['essentials:breed', 'essentials:age'] })
+    expect(res.status).toBe(200)
+    expect(h.createMany).not.toHaveBeenCalled()
   })
 })
 
@@ -107,7 +113,7 @@ describe('POST /api/custom-fields/packs — behaviour', () => {
 
   it('appends each pack\'s section without dropping existing ones', async () => {
     h.profileFindUnique.mockResolvedValue({ intakeSectionOrder: [{ name: 'About you', description: null }] })
-    await call({ keys: ['essentials:breed', 'walking:access'] })
+    await call({ keys: ['essentials:vet', 'walking:access'] })
     expect(h.profileUpdate).toHaveBeenCalledWith({
       where: { id: OWNER_CO },
       data: {
@@ -122,7 +128,7 @@ describe('POST /api/custom-fields/packs — behaviour', () => {
 
   it('continues the existing field order rather than colliding with it', async () => {
     h.fieldFindMany.mockResolvedValue([{ label: 'Existing', order: 7 }])
-    await call({ keys: ['essentials:breed'] })
+    await call({ keys: ['essentials:vet'] })
     expect(h.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ order: 8 })],
     })
