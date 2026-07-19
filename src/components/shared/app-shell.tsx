@@ -12,7 +12,7 @@ import {
   MoreHorizontal, X, Inbox, GraduationCap,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone, Lock, ClipboardList,
-  Download, Receipt,
+  Download,
   type LucideIcon,
 } from 'lucide-react'
 import { InstagramIcon } from '@/components/icons/instagram-icon'
@@ -101,7 +101,7 @@ const CLIENT_MENU = [
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-shop', label: 'Shop', icon: ShoppingBag },
-  { href: '/my-invoices', label: 'Invoices', icon: Receipt },
+  { href: '/my-invoices', label: 'Invoices', icon: FileText },
   { href: '/my-achievements', label: 'Achievements', icon: Trophy },
   { href: '/my-dogs', label: 'My dogs', icon: Dog },
   { href: '/my-profile', label: 'My details', icon: User },

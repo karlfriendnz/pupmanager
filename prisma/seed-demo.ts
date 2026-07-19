@@ -345,6 +345,15 @@ async function seedTeamAndOps(trainerId: string) {
   // couple of other states so the earnings page reads alive.
   await prisma.payment.deleteMany({ where: { trainerId } })
 
+  // Seed the earnings in the trainer's own base currency so the demo is
+  // self-consistent when the currency isn't NZD (records keep the currency
+  // they were transacted in — we just create them in the right one).
+  const seedTrainer = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { payoutCurrency: true },
+  })
+  const demoCurrency = seedTrainer?.payoutCurrency ?? 'nzd'
+
   const paidPackages = await prisma.package.findMany({
     where: { trainerId },
     select: { id: true, name: true, priceCents: true },
@@ -391,7 +400,7 @@ async function seedTeamAndOps(trainerId: string) {
         clientId: client.id,
         connectAccountId: 'acct_demo_sandbox',
         amountTotal: amount,
-        currency: 'nzd',
+        currency: demoCurrency,
         applicationFeeAmount: applicationFee,
         stripeFeeAmount: status === 'PAID' || status === 'REFUNDED' ? cardFee : null,
         amountRefunded: refunded,

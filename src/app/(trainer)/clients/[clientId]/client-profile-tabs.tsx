@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate, cn, formatSessionTitle, displayEmail } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, Receipt, Dumbbell } from 'lucide-react'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, FileText, Dumbbell } from 'lucide-react'
 import { CurrencyGlyph } from '@/components/currency-glyph'
 import { ClientNotesTab } from './client-notes-tab'
 import { ClientTrainingLogTab, type TrainerTrainingLog } from './client-training-log-tab'
@@ -309,7 +309,7 @@ export function ClientProfileTabs({
     { id: 'dogs',         label: dogs.length > 1 ? 'Dogs' : 'Dog', icon: PawPrint, badge: dogs.length > 1 ? dogs.length : undefined },
     ...(showComms ? [{ id: 'communication' as Tab, label: 'Comms', icon: MessageSquare, badge: communications.length > 0 ? communications.length : undefined }] : []),
     { id: 'notes',        label: 'Notes',        icon: StickyNote },
-    ...(canViewBilling ? [{ id: 'invoices' as Tab, label: 'Invoices', icon: Receipt }] : []),
+    ...(canViewBilling ? [{ id: 'invoices' as Tab, label: 'Invoices', icon: FileText }] : []),
     { id: 'achievements', label: 'Achievements', icon: Trophy },
     { id: 'details',      label: 'Details',      icon: Info },
   ]

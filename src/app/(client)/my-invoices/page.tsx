@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { Receipt, ChevronRight } from 'lucide-react'
+import { FileText, ChevronRight } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { getActiveClientInvoices, formatMoney, type ClientInvoiceView } from '@/lib/client-invoices'
 import type { Metadata } from 'next'
@@ -95,7 +95,7 @@ export default async function MyInvoicesPage() {
         {rows.length === 0 ? (
           <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-8 text-center">
             <div className="mx-auto h-12 w-12 rounded-2xl bg-accent-soft flex items-center justify-center">
-              <Receipt className="h-6 w-6 text-accent" />
+              <FileText className="h-6 w-6 text-accent" />
             </div>
             <p className="mt-3 text-sm font-semibold text-slate-700">No invoices yet</p>
             <p className="mt-1 text-xs text-slate-400">
