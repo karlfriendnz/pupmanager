@@ -12,12 +12,12 @@ import {
 // Type-only import — `reports.ts` pulls in Prisma, so importing a runtime value
 // from it here would bundle the DB client into the browser. Types are erased.
 import type { BusinessReports, CustomFieldReport, ReportFilterField } from '@/lib/reports'
+import { currencySymbol } from '@/lib/money'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-const CURRENCY_SYMBOL: Record<string, string> = { nzd: '$', aud: '$', usd: '$', gbp: '£', eur: '€', cad: '$' }
 function money(cents: number, currency: string): string {
-  const sym = CURRENCY_SYMBOL[currency.toLowerCase()] ?? '$'
+  const sym = currencySymbol(currency) || '$'
   return `${sym}${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 

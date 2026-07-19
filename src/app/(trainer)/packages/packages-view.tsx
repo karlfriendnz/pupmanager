@@ -9,6 +9,7 @@ import { Plus, Package as PackageIcon, Pencil, Trash2, GripVertical } from 'luci
 import { PageHeader } from '@/components/shared/page-header'
 import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 import { type PackageColor, type PkgRow } from './package-form'
+import { formatMoney } from '@/lib/money'
 import {
   DndContext,
   PointerSensor,
@@ -26,12 +27,6 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 
 export type { SessionFormOption } from './package-form'
-
-function formatPrice(cents: number | null): string | null {
-  if (cents === null || cents === undefined) return null
-  // Locale-friendly: "$120" or "$120.50"
-  return new Intl.NumberFormat('en-NZ', { style: 'currency', currency: 'NZD' }).format(cents / 100)
-}
 
 // Static class map — Tailwind purges dynamic class names so each package
 // colour needs its own listed pair here.
@@ -123,6 +118,7 @@ export function PackagesView({
                 <SortablePackageRow
                   key={p.id}
                   pkg={p}
+                  currency={currency}
                   showHandle={packages.length > 1}
                   onEdit={() => router.push(`/packages/${p.id}/edit`)}
                   onDelete={() => handleDelete(p.id)}
@@ -149,15 +145,19 @@ export function PackagesView({
 // package (nothing to reorder when there's one).
 function SortablePackageRow({
   pkg: p,
+  currency,
   showHandle,
   onEdit,
   onDelete,
 }: {
   pkg: PkgRow
+  currency: string
   showHandle: boolean
   onEdit: () => void
   onDelete: () => void
 }) {
+  const formatPrice = (cents: number | null): string | null =>
+    cents === null || cents === undefined ? null : formatMoney(cents, currency)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.id })
   const style = {
     transform: transform ? CSS.Transform.toString(transform) : undefined,

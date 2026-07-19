@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Dog, FileText, DollarSign, ChevronRight, Check, Loader2 } from 'lucide-react'
+import { formatMoney } from '@/lib/money'
 
 export type TodoRow = {
   id: string
@@ -16,10 +17,6 @@ export type TodoRow = {
   valueCents: number | null
 }
 
-function formatDollars(cents: number): string {
-  const d = cents / 100
-  return d % 1 === 0 ? `$${d}` : `$${d.toFixed(2)}`
-}
 function startOfWeek(d: Date): Date {
   const out = new Date(d); out.setHours(0, 0, 0, 0)
   const day = out.getDay(); out.setDate(out.getDate() + (day === 0 ? -6 : 1 - day)); return out
@@ -44,7 +41,7 @@ function formatWeekLabel(weekStart: Date): string {
   return weekStart.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-export function NeedsNotesList({ rows }: { rows: TodoRow[] }) {
+export function NeedsNotesList({ rows, currency }: { rows: TodoRow[]; currency: string }) {
   const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [invoicing, setInvoicing] = useState<Set<string>>(new Set())
@@ -156,13 +153,13 @@ export function NeedsNotesList({ rows }: { rows: TodoRow[] }) {
                                   type="button"
                                   onClick={() => markInvoiced(s.id)}
                                   disabled={isInvoicing}
-                                  title={s.valueCents != null ? `Mark invoiced (${formatDollars(s.valueCents)})` : 'Mark as invoiced'}
+                                  title={s.valueCents != null ? `Mark invoiced (${formatMoney(s.valueCents, currency)})` : 'Mark as invoiced'}
                                   className="inline-flex items-center gap-1 text-[10px] font-semibold pl-0.5 pr-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 hover:border-rose-300 transition-colors disabled:opacity-60"
                                 >
                                   <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-white">
                                     {isInvoicing ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <DollarSign className="h-2.5 w-2.5" strokeWidth={3} />}
                                   </span>
-                                  {s.valueCents != null ? formatDollars(s.valueCents) : 'Invoice'}
+                                  {s.valueCents != null ? formatMoney(s.valueCents, currency) : 'Invoice'}
                                 </button>
                               )}
                               {s.invoiced && (

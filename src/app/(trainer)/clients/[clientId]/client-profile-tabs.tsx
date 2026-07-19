@@ -13,6 +13,8 @@ import { SessionFormReport } from '@/components/session-form-report'
 import { ClientAchievementsPanel } from './client-achievements-panel'
 import { StatusToggle } from './status-toggle'
 import { DogGalleryManager } from './dog-gallery-manager'
+import { useCurrency } from '@/components/currency-context'
+import { formatMoney } from '@/lib/money'
 import Link from 'next/link'
 
 type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements' | 'communication' | 'notes' | 'invoices' | 'training'
@@ -848,6 +850,7 @@ function ProductPickerModal({
   onClose: () => void
   onPick: (productId: string) => void | Promise<void>
 }) {
+  const currency = useCurrency()
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -934,7 +937,7 @@ function ProductPickerModal({
                               )}
                             </p>
                             <p className="text-xs text-slate-500">
-                              {p.priceCents != null ? `$${(p.priceCents / 100).toFixed(2)}` : 'Contact'}
+                              {p.priceCents != null ? formatMoney(p.priceCents, currency) : 'Contact'}
                               {' · '}
                               {p.kind === 'DIGITAL' ? 'Digital' : 'Physical'}
                             </p>

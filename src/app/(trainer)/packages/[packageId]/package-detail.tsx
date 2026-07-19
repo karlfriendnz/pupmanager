@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { Info, Users, Pencil, Package as PackageIcon } from 'lucide-react'
+import { formatMoney } from '@/lib/money'
 
 type Tab = 'details' | 'clients'
 
@@ -44,11 +45,6 @@ export type PackageClientRow = {
   ongoing: boolean
 }
 
-function formatPrice(cents: number | null): string {
-  if (cents === null || cents === undefined) return '—'
-  return new Intl.NumberFormat('en-NZ', { style: 'currency', currency: 'NZD' }).format(cents / 100)
-}
-
 // Derive a client's standing on this package. "Completed" = a fixed-length
 // package whose sessions are all done. Inactive client = past. Everything else
 // counts as present/active.
@@ -65,7 +61,7 @@ const STATUS_BADGE: Record<'Active' | 'Completed' | 'Inactive', string> = {
   Inactive: 'bg-amber-50 text-amber-700',
 }
 
-export function PackageDetail({ pkg, clients }: { pkg: PackageInfo; clients: PackageClientRow[] }) {
+export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; clients: PackageClientRow[]; currency: string }) {
   const [tab, setTab] = useState<Tab>('details')
 
   const rows = clients.map(c => ({ ...c, derived: deriveStatus(c) }))
@@ -126,11 +122,12 @@ export function PackageDetail({ pkg, clients }: { pkg: PackageInfo; clients: Pac
         </div>
 
         {tab === 'details' ? (
-          <DetailsTab pkg={pkg} />
+          <DetailsTab pkg={pkg} currency={currency} />
         ) : (
           <ClientsTab
             present={present}
             past={past}
+            currency={currency}
             stats={{
               total: rows.length,
               active: present.length,
@@ -145,7 +142,9 @@ export function PackageDetail({ pkg, clients }: { pkg: PackageInfo; clients: Pac
   )
 }
 
-function DetailsTab({ pkg }: { pkg: PackageInfo }) {
+function DetailsTab({ pkg, currency }: { pkg: PackageInfo; currency: string }) {
+  const formatPrice = (cents: number | null): string =>
+    cents === null || cents === undefined ? '—' : formatMoney(cents, currency)
   return (
     <div className="flex flex-col gap-5">
       <Card>
@@ -193,11 +192,15 @@ function ClientsTab({
   present,
   past,
   stats,
+  currency,
 }: {
   present: (PackageClientRow & { derived: ReturnType<typeof deriveStatus> })[]
   past: (PackageClientRow & { derived: ReturnType<typeof deriveStatus> })[]
   stats: { total: number; active: number; completed: number; totalRevenue: number | null; avgSessionsUsed: number }
+  currency: string
 }) {
+  const formatPrice = (cents: number | null): string =>
+    cents === null || cents === undefined ? '—' : formatMoney(cents, currency)
   return (
     <div className="flex flex-col gap-5">
       {/* Stats strip */}

@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { compressImageFile } from '@/lib/compress-image'
+import { useCurrency } from '@/components/currency-context'
+import { formatMoney } from '@/lib/money'
 
 type Kind = 'PHYSICAL' | 'DIGITAL'
 
@@ -44,11 +46,6 @@ const EMPTY_DRAFT: Omit<Product, 'id'> = {
   xeroAccountCode: null,
   requirePayment: null,
   active: true,
-}
-
-function formatPrice(cents: number | null) {
-  if (cents == null) return 'Contact'
-  return `$${(cents / 100).toFixed(2)}`
 }
 
 export function ProductsManager({ initialProducts }: { initialProducts: Product[] }) {
@@ -143,6 +140,9 @@ export function ProductsManager({ initialProducts }: { initialProducts: Product[
 }
 
 function ProductCard({ product, onEdit }: { product: Product; onEdit: () => void }) {
+  const currency = useCurrency()
+  const formatPrice = (cents: number | null) =>
+    cents == null ? 'Contact' : formatMoney(cents, currency)
   return (
     <button
       onClick={onEdit}

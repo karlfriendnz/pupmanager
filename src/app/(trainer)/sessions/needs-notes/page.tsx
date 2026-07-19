@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { ListTodo, FileText, DollarSign } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { NeedsNotesList, type TodoRow } from './needs-notes-list'
+import { formatMoney } from '@/lib/money'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'To do' }
@@ -61,16 +62,17 @@ function sessionValueCents(s: { clientPackage: { package: { priceCents: number |
   return Math.round(pkg.priceCents / pkg.sessionCount)
 }
 
-function formatDollars(cents: number): string {
-  const dollars = cents / 100
-  return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`
-}
-
 export default async function SessionsTodoPage() {
   const session = await auth()
   if (!session) redirect('/login')
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
+
+  const profile = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { payoutCurrency: true },
+  })
+  const currency = profile?.payoutCurrency ?? 'nzd'
 
   const sessions = await loadPendingSessions(trainerId)
   const needsNotesCount = sessions.filter(s => s._count.formResponses === 0 && !(DONE_STATUSES as readonly string[]).includes(s.status)).length
@@ -126,7 +128,7 @@ export default async function SessionsTodoPage() {
                 </span>
                 <div className="min-w-0">
                   <p className="text-2xl font-bold text-slate-900 leading-none tabular-nums">
-                    {totalInvoiceCents > 0 ? formatDollars(totalInvoiceCents) : needsInvoiceCount}
+                    {totalInvoiceCents > 0 ? formatMoney(totalInvoiceCents, currency) : needsInvoiceCount}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
                     {needsInvoiceCount} session{needsInvoiceCount === 1 ? '' : 's'} to invoice
@@ -144,7 +146,7 @@ export default async function SessionsTodoPage() {
             <p className="text-xs text-slate-400 mt-1">Past sessions only show here while notes or invoicing are pending.</p>
           </div>
         ) : (
-          <NeedsNotesList rows={rows} />
+          <NeedsNotesList rows={rows} currency={currency} />
         )}
       </div>
     </>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Loader2, Plus, Pencil, Trash2, CheckCircle2, Mail, Download, Lock, Unlock, X, Printer, LayoutGrid, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { money, minutesToHours, hoursToMinutes, amountFor } from '@/lib/timesheets'
+import { currencySymbol } from '@/lib/money'
 import { TimesheetReport } from './timesheet-report'
 
 type Rate = { id: string; name: string; rateCents: number }
@@ -224,7 +225,7 @@ export function TimesheetDetail({ id }: { id: string }) {
               </Field>
               {draft.rateId
                 ? <Field label="Amount"><div className="h-9 flex items-center text-sm font-medium text-slate-700">{money(draftAmountCents(draft), currency)}</div></Field>
-                : <Field label="Amount ($)"><input inputMode="decimal" value={draft.manualDollars} onChange={e => setDraft({ ...draft, manualDollars: e.target.value })} placeholder="0.00" className={inp} /></Field>}
+                : <Field label={`Amount (${currencySymbol(currency)})`}><input inputMode="decimal" value={draft.manualDollars} onChange={e => setDraft({ ...draft, manualDollars: e.target.value })} placeholder="0.00" className={inp} /></Field>}
               <Field label="Client (optional)">
                 <select value={draft.clientId} onChange={e => setDraft({ ...draft, clientId: e.target.value })} className={inp}>
                   <option value="">—</option>

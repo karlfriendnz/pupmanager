@@ -5,6 +5,7 @@ import { sendEmail } from '@/lib/email'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
 import { renderWeeklySummaryEmail, type SessionRow, type TaskRow } from '@/lib/weekly-summary-email'
+import { currencySymbol } from '@/lib/money'
 
 // Sunday-evening wrap-up. Cron should hit this hourly (matches the
 // daily-summary cadence); the route filters to trainers whose local
@@ -48,7 +49,7 @@ export async function GET(req: Request) {
       timezone: true,
       notifyPush: true,
       notifyEmail: true,
-      trainerProfile: { select: { id: true, businessName: true } },
+      trainerProfile: { select: { id: true, businessName: true, payoutCurrency: true } },
       deviceTokens: { select: { token: true } },
       notificationPreferences: { where: { type: 'WEEKLY_SUMMARY' } },
     },
@@ -177,7 +178,7 @@ export async function GET(req: Request) {
     if (pushDue) {
       const subs = {
         sessionsCompleted: String(sessionsCompleted.length),
-        revenue: revenueCents > 0 ? formatCents(revenueCents) : '—',
+        revenue: revenueCents > 0 ? formatCents(revenueCents, u.trainerProfile.payoutCurrency ?? 'nzd') : '—',
         nextWeekSessions: String(nextWeekSessions.length),
         nextWeekTasks: String(nextWeekTasks.length),
       }
@@ -230,7 +231,7 @@ export async function GET(req: Request) {
   })
 }
 
-function formatCents(cents: number): string {
+function formatCents(cents: number, currency: string): string {
   const dollars = Math.round(cents / 100)
-  return '$' + dollars.toLocaleString('en-NZ')
+  return currencySymbol(currency) + dollars.toLocaleString('en-NZ')
 }

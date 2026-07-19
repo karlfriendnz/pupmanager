@@ -17,6 +17,7 @@ import { hasAddon, getEnabledAddons } from '@/lib/billing'
 import { AddonNudge } from '@/components/shared/addon-nudge'
 import { addonNudge, pickNudgeAddonId } from '@/components/shared/addon-nudge-registry'
 import { isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
+import { formatMoney } from '@/lib/money'
 import { OnboardingPanel } from './onboarding-panel'
 import { TeamInviteCard } from './team-invite-card'
 import { SampleDataBanner } from './sample-data-banner'
@@ -259,10 +260,7 @@ export default async function DashboardPage({
     return sum + Math.round(pkg.priceCents / pkg.sessionCount)
   }, 0)
   const wrapInvoiceLabel = wrapInvoiceCents > 0
-    ? '$' + (wrapInvoiceCents / 100).toLocaleString('en-NZ', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: wrapInvoiceCents % 100 === 0 ? 0 : 2,
-      })
+    ? formatMoney(wrapInvoiceCents, brandingProfile?.payoutCurrency ?? 'nzd')
     : null
 
   // Pending product requests across this trainer's clients — shown as a panel

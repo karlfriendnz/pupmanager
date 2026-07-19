@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { formatMoney, currencySymbol } from '@/lib/money'
 
 // Trainer control for the client self-cancellation fee. Saved via the general
 // trainer-profile PATCH route (the same one autoSendInvoices / defaultRequirePayment
@@ -26,7 +27,7 @@ export function CancellationFeeCard({
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const cur = currency.toUpperCase()
+  const sym = currencySymbol(currency)
   const parsed = Math.round(parseFloat(amount) * 100)
   const feeCents = amount.trim() === '' || Number.isNaN(parsed) || parsed <= 0 ? 0 : parsed
   const hasFee = feeCents > 0
@@ -71,7 +72,7 @@ export function CancellationFeeCard({
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-slate-500">Fee amount</span>
           <div className="flex items-center rounded-xl border border-slate-200 bg-white px-3 focus-within:border-slate-300">
-            <span className="text-sm text-slate-400">{cur}</span>
+            <span className="text-sm text-slate-400">{sym}</span>
             <input
               type="number"
               inputMode="decimal"
@@ -107,8 +108,8 @@ export function CancellationFeeCard({
       <p className="mt-3 text-xs text-slate-500">
         {hasFee
           ? window === ''
-            ? `Clients are charged ${cur} ${(feeCents / 100).toFixed(2)} whenever they cancel.`
-            : `Clients are charged ${cur} ${(feeCents / 100).toFixed(2)} only when they cancel within ${window} hours of the start.`
+            ? `Clients are charged ${formatMoney(feeCents, currency)} whenever they cancel.`
+            : `Clients are charged ${formatMoney(feeCents, currency)} only when they cancel within ${window} hours of the start.`
           : 'No cancellation fee — clients can cancel for free.'}
       </p>
 

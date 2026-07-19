@@ -42,6 +42,12 @@ export default async function PackagePage({
 
   if (!pkg) notFound()
 
+  const profile = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { payoutCurrency: true },
+  })
+  const currency = profile?.payoutCurrency ?? 'nzd'
+
   const clients = pkg.assignments.map(a => {
     const dog = a.client.dog ?? a.client.dogs[0] ?? null
     const sessionsUsed = a.sessions.filter(s => s.status !== 'UPCOMING').length
@@ -82,6 +88,7 @@ export default async function PackagePage({
         clientSelfBook: pkg.clientSelfBook,
       }}
       clients={clients}
+      currency={currency}
     />
   )
 }

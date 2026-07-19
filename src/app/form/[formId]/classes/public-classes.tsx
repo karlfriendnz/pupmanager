@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { formatMoney } from '@/lib/money'
 
 type Run = {
   id: string
@@ -15,12 +16,9 @@ type Run = {
   waitlistAvailable: boolean
 }
 
-function price(cents: number | null): string | null {
-  if (cents == null) return null
-  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`
-}
-
-export function PublicClasses({ formId, runs }: { formId: string; runs: Run[] }) {
+export function PublicClasses({ formId, runs, currency }: { formId: string; runs: Run[]; currency: string }) {
+  const price = (cents: number | null): string | null =>
+    cents == null ? null : formatMoney(cents, currency)
   const [selected, setSelected] = useState<Run | null>(null)
   const [done, setDone] = useState(false)
 

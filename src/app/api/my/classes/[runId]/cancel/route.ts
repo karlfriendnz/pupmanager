@@ -5,6 +5,7 @@ import { resolveCancellationFeeCents } from '@/lib/cancellation'
 import { createCancellationFeeInvoice } from '@/lib/invoicing'
 import { withdrawEnrollmentAndNotify, ClassError } from '@/lib/class-runs'
 import { notifyTrainer } from '@/lib/trainer-notify'
+import { formatMoney } from '@/lib/money'
 
 // POST /api/my/classes/[runId]/cancel
 // The signed-in client withdraws themselves from a class run: their enrolment is
@@ -16,10 +17,6 @@ import { notifyTrainer } from '@/lib/trainer-notify'
 // date never shifts a day under the server's UTC clock.
 function shortDate(d: Date, tz: string): string {
   return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz }).format(d)
-}
-
-function money(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`
 }
 
 export async function POST(_req: Request, { params }: { params: Promise<{ runId: string }> }) {
@@ -40,7 +37,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ runId:
         select: {
           name: true,
           trainerId: true,
-          trainer: { select: { cancellationFeeCents: true, cancellationFeeWindowHours: true, user: { select: { timezone: true } } } },
+          trainer: { select: { cancellationFeeCents: true, cancellationFeeWindowHours: true, payoutCurrency: true, user: { select: { timezone: true } } } },
           sessions: {
             where: { scheduledAt: { gte: now } },
             orderBy: { scheduledAt: 'asc' },
@@ -99,7 +96,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ runId:
 
   const trainerUserId = profile?.assignedTrainer?.user?.id ?? profile?.trainer?.user?.id ?? null
   if (trainerUserId) {
-    const feeNote = feeCharged > 0 ? ` (${money(feeCharged)} fee charged)` : ''
+    const feeNote = feeCharged > 0 ? ` (${formatMoney(feeCharged, run.trainer.payoutCurrency ?? 'nzd')} fee charged)` : ''
     const tz = run.trainer.user?.timezone ?? 'Pacific/Auckland'
     const when = nextStart ? ` (from ${shortDate(nextStart, tz)})` : ''
     await notifyTrainer(

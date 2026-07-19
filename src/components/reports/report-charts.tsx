@@ -16,6 +16,7 @@ import {
   type ChartOptions,
 } from 'chart.js'
 import { Bar, Line, Doughnut } from 'react-chartjs-2'
+import { currencySymbol } from '@/lib/money'
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, PointElement, LineElement,
@@ -51,7 +52,7 @@ function baseScales(currency?: string): ChartOptions<'bar' | 'line'>['scales'] {
 }
 
 function formatAxisMoney(cents: number, currency: string): string {
-  const sym = currency.toUpperCase() === 'USD' ? '$' : currency.toUpperCase() === 'GBP' ? '£' : currency.toUpperCase() === 'EUR' ? '€' : '$'
+  const sym = currencySymbol(currency) || '$'
   return `${sym}${Math.round(cents / 100)}`
 }
 

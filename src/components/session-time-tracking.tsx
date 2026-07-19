@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { Clock, Plus, Pencil, Trash2, Loader2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useCurrency } from '@/components/currency-context'
+import { formatMoney, currencySymbol } from '@/lib/money'
 
 export type TimeEntry = {
   id: string
@@ -20,10 +22,6 @@ function fmtHours(min: number): string {
   const h = min / 60
   const s = (h % 1 === 0) ? String(h) : h.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
   return `${s} h`
-}
-function fmtMoney(cents: number): string {
-  const d = cents / 100
-  return d % 1 === 0 ? `$${d}` : `$${d.toFixed(2)}`
 }
 function hoursToMinutes(hours: string): number | null {
   const n = parseFloat(hours)
@@ -46,7 +44,7 @@ function blankDraft(members: TeamMember[]): Draft {
 
 // The shared field row used for both adding and editing an entry.
 function EntryForm({
-  members, draft, setDraft, onSave, onCancel, busy, saveLabel,
+  members, draft, setDraft, onSave, onCancel, busy, saveLabel, currency,
 }: {
   members: TeamMember[]
   draft: Draft
@@ -55,6 +53,7 @@ function EntryForm({
   onCancel: () => void
   busy: boolean
   saveLabel: string
+  currency: string
 }) {
   const valid = !!draft.membershipId && hoursToMinutes(draft.hours) != null
   return (
@@ -78,7 +77,7 @@ function EntryForm({
           <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">h</span>
         </label>
         <label className="relative block">
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">$</span>
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">{currencySymbol(currency)}</span>
           <input
             type="number" inputMode="decimal" step="1" min="0" placeholder="Rate/hr"
             value={draft.rate}
@@ -110,6 +109,7 @@ export function SessionTimeTracking({
   initialEntries: TimeEntry[]
   members: TeamMember[]
 }) {
+  const currency = useCurrency()
   const [entries, setEntries] = useState<TimeEntry[]>(initialEntries)
   const [adding, setAdding] = useState(false)
   const [addDraft, setAddDraft] = useState<Draft>(blankDraft(members))
@@ -199,7 +199,7 @@ export function SessionTimeTracking({
         <div className="rounded-xl border border-slate-100 divide-y divide-slate-100">
           {entries.map(e => editingId === e.id ? (
             <div key={e.id} className="p-3">
-              <EntryForm members={members} draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={() => setEditingId(null)} busy={busy} saveLabel="Save" />
+              <EntryForm members={members} draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={() => setEditingId(null)} busy={busy} saveLabel="Save" currency={currency} />
             </div>
           ) : (
             <div key={e.id} className="flex items-center gap-3 px-3 py-2.5">
@@ -212,7 +212,7 @@ export function SessionTimeTracking({
               </div>
               <div className="text-right flex-shrink-0">
                 <p className="text-sm font-semibold text-slate-800 tabular-nums">{fmtHours(e.minutes)}</p>
-                {e.amountCents != null && <p className="text-xs text-slate-500 tabular-nums">{fmtMoney(e.amountCents)}</p>}
+                {e.amountCents != null && <p className="text-xs text-slate-500 tabular-nums">{formatMoney(e.amountCents, currency)}</p>}
               </div>
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 <button type="button" onClick={() => startEdit(e)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100" aria-label="Edit entry">
@@ -228,7 +228,7 @@ export function SessionTimeTracking({
       )}
 
       {adding ? (
-        <EntryForm members={members} draft={addDraft} setDraft={setAddDraft} onSave={addEntry} onCancel={() => { setAdding(false); setError(null) }} busy={busy} saveLabel="Add" />
+        <EntryForm members={members} draft={addDraft} setDraft={setAddDraft} onSave={addEntry} onCancel={() => { setAdding(false); setError(null) }} busy={busy} saveLabel="Add" currency={currency} />
       ) : (
         <button
           type="button"
@@ -245,7 +245,7 @@ export function SessionTimeTracking({
             <Clock className="h-4 w-4 text-slate-400" /> {fmtHours(totalMinutes)} total
           </span>
           {totalBillable > 0 && (
-            <span className="text-sm font-semibold text-slate-700 tabular-nums">{fmtMoney(totalBillable)} billable</span>
+            <span className="text-sm font-semibold text-slate-700 tabular-nums">{formatMoney(totalBillable, currency)} billable</span>
           )}
         </div>
       )}

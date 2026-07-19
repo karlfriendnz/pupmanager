@@ -6,6 +6,8 @@ import {
   UserPlus, TrendingUp, Sparkles, Package as PackageIcon, ListChecks, CalendarRange, BarChart2, Trophy,
   UsersRound, ShoppingBag,
 } from 'lucide-react'
+import { useCurrency } from '@/components/currency-context'
+import { formatMoney, currencySymbol } from '@/lib/money'
 
 // Trainer's effective take-home after platform / processing share. Tweak this
 // constant (or thread it through TrainerProfile later) if the cut changes.
@@ -78,12 +80,13 @@ interface AnnualData {
 
 // ─── Formatters ──────────────────────────────────────────────────────────────
 
-function fmtMoney(cents: number, opts?: { compact?: boolean }): string {
+function fmtMoney(cents: number, currency: string, opts?: { compact?: boolean }): string {
+  const sym = currencySymbol(currency)
   const dollars = cents / 100
   if (opts?.compact && dollars >= 1000) {
-    return `$${(dollars / 1000).toLocaleString('en-NZ', { maximumFractionDigits: 1 })}k`
+    return `${sym}${(dollars / 1000).toLocaleString('en-NZ', { maximumFractionDigits: 1 })}k`
   }
-  return `$${dollars.toLocaleString('en-NZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return formatMoney(cents, currency)
 }
 
 function fmtRange(weekStart: string, weekEnd: string, tz: string): string {
@@ -291,6 +294,7 @@ function WeeklyView({ weekStart }: { weekStart: string }) {
 // ─── Annual view ─────────────────────────────────────────────────────────────
 
 function AnnualView() {
+  const currency = useCurrency()
   const [year, setYear] = useState(new Date().getFullYear())
   const { data, loading, error } = useFetch<AnnualData>(`/api/schedule/report/annual?year=${year}`, [year])
 
@@ -318,7 +322,7 @@ function AnnualView() {
           <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-full px-2.5 py-1">
             <Trophy className="h-3 w-3" />
             Best month: <span className="font-semibold">{data.totals.bestMonthLabel}</span>
-            <span className="text-amber-500">({fmtMoney(data.totals.bestMonthRevenueCents, { compact: true })})</span>
+            <span className="text-amber-500">({fmtMoney(data.totals.bestMonthRevenueCents, currency, { compact: true })})</span>
           </div>
         )}
       </div>
@@ -345,7 +349,7 @@ function AnnualView() {
                   tone: 'amber',
                   icon: <Trophy className="h-4 w-4" />,
                   label: 'Avg / month',
-                  value: fmtMoney(data.totals.avgRevenuePerMonthCents, { compact: true }),
+                  value: fmtMoney(data.totals.avgRevenuePerMonthCents, currency, { compact: true }),
                   sub: 'months with sessions',
                 },
               ]}
@@ -367,6 +371,7 @@ function AnnualView() {
 }
 
 function MonthlyChart({ byMonth }: { byMonth: AnnualData['byMonth'] }) {
+  const currency = useCurrency()
   const maxRev = Math.max(1, ...byMonth.map(m => m.revenueCents))
   const totalSessions = byMonth.reduce((acc, m) => acc + m.sessions, 0)
   return (
@@ -389,7 +394,7 @@ function MonthlyChart({ byMonth }: { byMonth: AnnualData['byMonth'] }) {
                         : 'bg-slate-100'
                     }`}
                     style={{ height: `${h}%` }}
-                    title={`${m.label}: ${fmtMoney(m.revenueCents)} · ${m.sessions} session${m.sessions === 1 ? '' : 's'}`}
+                    title={`${m.label}: ${fmtMoney(m.revenueCents, currency)} · ${m.sessions} session${m.sessions === 1 ? '' : 's'}`}
                   />
                 </div>
               </div>
@@ -421,6 +426,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 }
 
 function RevenueBanner({ total, subline }: { total: CommonTotals; subline: string }) {
+  const currency = useCurrency()
   const takeHomeCents = Math.round(total.revenueCents * TAKE_HOME_RATE)
   return (
     <div className="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-white via-indigo-50/60 to-violet-50/60 shadow-sm">
@@ -429,7 +435,7 @@ function RevenueBanner({ total, subline }: { total: CommonTotals; subline: strin
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-500">Revenue</p>
           <p className="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 tabular-nums leading-none">
-            {fmtMoney(total.revenueCents)}
+            {fmtMoney(total.revenueCents, currency)}
           </p>
           <p className="text-[11px] text-slate-500 mt-1">{subline}</p>
         </div>
@@ -441,7 +447,7 @@ function RevenueBanner({ total, subline }: { total: CommonTotals; subline: strin
             </span>
           </div>
           <p className="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 tabular-nums leading-none">
-            {fmtMoney(takeHomeCents)}
+            {fmtMoney(takeHomeCents, currency)}
           </p>
           <p className="text-[11px] text-slate-500 mt-1">after costs</p>
         </div>
@@ -665,6 +671,7 @@ function BreakdownCard({
   // Noun for the per-row count ("session" → "3 sessions"; "sold" → "3 sold").
   countNoun?: string
 }) {
+  const currency = useCurrency()
   const t = TONE[accent]
   const totalRev = rows.reduce((acc, r) => acc + r.revenueCents, 0)
   const totalCount = rows.reduce((acc, r) => acc + r.sessions, 0)
@@ -684,7 +691,7 @@ function BreakdownCard({
       </div>
       {rows.length > 0 && (
         <span className="text-[11px] text-slate-400">
-          {showRevenue ? fmtMoney(totalRev, { compact: true }) : fmtCount(totalCount)}
+          {showRevenue ? fmtMoney(totalRev, currency, { compact: true }) : fmtCount(totalCount)}
         </span>
       )}
     </div>
@@ -717,7 +724,7 @@ function BreakdownCard({
                   <div className="flex items-baseline gap-2 shrink-0">
                     {showRevenue && (
                       <span className="text-sm font-semibold text-slate-900 tabular-nums">
-                        {fmtMoney(r.revenueCents, { compact: true })}
+                        {fmtMoney(r.revenueCents, currency, { compact: true })}
                       </span>
                     )}
                     <span className={`text-xs font-medium ${showRevenue ? 'text-slate-400' : t.text} tabular-nums`}>

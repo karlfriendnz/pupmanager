@@ -10,6 +10,8 @@ import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info } from 'lucide-react'
 import { ClassFormModal, type TeamMemberOption } from '../class-form-modal'
+import { useCurrency } from '@/components/currency-context'
+import { formatMoney } from '@/lib/money'
 
 type Tab = 'details' | 'clients'
 type RunStatus = 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
@@ -62,11 +64,6 @@ const ENROLL_BADGE: Record<EnrollStatus, string> = {
   WITHDRAWN: 'bg-slate-100 text-slate-500',
 }
 
-function formatPrice(cents: number | null): string {
-  if (cents === null || cents === undefined) return '—'
-  return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`
-}
-
 export function RunDetail({
   run,
   sessions,
@@ -81,6 +78,9 @@ export function RunDetail({
   teamMembers: TeamMemberOption[]
 }) {
   const router = useRouter()
+  const currency = useCurrency()
+  const formatPrice = (cents: number | null): string =>
+    cents === null || cents === undefined ? '—' : formatMoney(cents, currency)
   const [tab, setTab] = useState<Tab>('details')
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)

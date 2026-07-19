@@ -17,6 +17,8 @@ interface GalleryMedia {
   thumbnailUrl: string | null
 }
 import { cn } from '@/lib/utils'
+import { useCurrency } from '@/components/currency-context'
+import { formatMoney } from '@/lib/money'
 
 interface Dog {
   id: string
@@ -111,11 +113,6 @@ interface Props {
   gallery?: GalleryMedia[]
 }
 
-function formatPrice(cents: number | null) {
-  if (cents == null) return 'Contact'
-  return `$${(cents / 100).toFixed(2)}`
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 // Locale fixed to en-NZ on server + client to avoid hydration mismatches.
 function formatSessionWhen(iso: string) {
@@ -164,6 +161,9 @@ export function ClientHomeView({
   gallery = [],
 }: Props) {
   const router = useRouter()
+  const currency = useCurrency()
+  const formatPrice = (cents: number | null) =>
+    cents == null ? 'Contact' : formatMoney(cents, currency)
   const [, startTransition] = useTransition()
 
   const [optimisticDone, setOptimisticDone] = useState<Record<string, boolean>>({})

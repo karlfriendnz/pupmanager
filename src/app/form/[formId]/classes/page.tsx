@@ -23,6 +23,12 @@ export default async function PublicClassesPage({
   })
   if (!form) notFound()
 
+  const profile = await prisma.trainerProfile.findUnique({
+    where: { id: form.trainerId },
+    select: { payoutCurrency: true },
+  })
+  const currency = profile?.payoutCurrency ?? 'nzd'
+
   const runs = await prisma.classRun.findMany({
     where: {
       trainerId: form.trainerId,
@@ -40,6 +46,7 @@ export default async function PublicClassesPage({
   return (
     <PublicClasses
       formId={form.id}
+      currency={currency}
       runs={runs.map(r => {
         const cap = effectiveCapacity(r.capacity, r.package.capacity)
         const left = seatsRemaining(cap, r.enrollments.length)

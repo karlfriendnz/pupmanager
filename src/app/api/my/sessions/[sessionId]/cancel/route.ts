@@ -4,6 +4,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { resolveCancellationFeeCents } from '@/lib/cancellation'
 import { createCancellationFeeInvoice } from '@/lib/invoicing'
 import { notifyTrainer } from '@/lib/trainer-notify'
+import { formatMoney } from '@/lib/money'
 
 // POST /api/my/sessions/[sessionId]/cancel
 // The signed-in client cancels ONE upcoming self-booked 1:1 session. Class
@@ -15,10 +16,6 @@ import { notifyTrainer } from '@/lib/trainer-notify'
 // shifts a day under the server's UTC clock.
 function shortDate(d: Date, tz: string): string {
   return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz }).format(d)
-}
-
-function money(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`
 }
 
 export async function POST(_req: Request, { params }: { params: Promise<{ sessionId: string }> }) {
@@ -57,7 +54,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ sessio
     }),
     prisma.trainerProfile.findUnique({
       where: { id: session.trainerId },
-      select: { cancellationFeeCents: true, cancellationFeeWindowHours: true, user: { select: { timezone: true } } },
+      select: { cancellationFeeCents: true, cancellationFeeWindowHours: true, payoutCurrency: true, user: { select: { timezone: true } } },
     }),
   ])
   const tz = trainer?.user?.timezone ?? 'Pacific/Auckland'
@@ -100,7 +97,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ sessio
 
   const trainerUserId = profile?.assignedTrainer?.user?.id ?? profile?.trainer?.user?.id ?? null
   if (trainerUserId) {
-    const feeNote = feeCharged > 0 ? ` (${money(feeCharged)} fee charged)` : ''
+    const feeNote = feeCharged > 0 ? ` (${formatMoney(feeCharged, trainer?.payoutCurrency ?? 'nzd')} fee charged)` : ''
     await notifyTrainer(
       trainerUserId,
       'CLIENT_CANCELLED_SESSION',
