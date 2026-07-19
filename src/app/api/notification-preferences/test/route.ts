@@ -10,6 +10,7 @@ import { escapeHtml } from '@/lib/enquiries'
 import { emailBodyToHtml, emailHtmlToText } from '@/lib/email-html'
 import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { renderWeeklySummaryEmail, type SessionRow, type TaskRow } from '@/lib/weekly-summary-email'
+import { currencySymbol } from '@/lib/money'
 import type { NotificationType } from '@/generated/prisma'
 
 export const runtime = 'nodejs'
@@ -51,7 +52,7 @@ export async function POST(req: Request) {
           email: true,
           name: true,
           timezone: true,
-          trainerProfile: { select: { businessName: true } },
+          trainerProfile: { select: { businessName: true, payoutCurrency: true } },
         },
       })
       if (!user?.email) {
@@ -65,16 +66,18 @@ export async function POST(req: Request) {
       // Rich-template types render their *real* email layout with
       // sample data so the trainer sees what production looks like.
       // Generic types fall back to the simple "test send" wrapper.
+      const currency = user.trainerProfile?.payoutCurrency ?? 'nzd'
       const html = meta.type === 'WEEKLY_SUMMARY'
         ? renderSampleWeeklySummary({
             recipientName: user.name,
             businessName: user.trainerProfile?.businessName ?? 'Your training business',
             tz: user.timezone,
+            currency,
           })
         : renderTestEmailHtml({ label: meta.label, title, body, recipientName: user.name })
 
       const subject = meta.type === 'WEEKLY_SUMMARY'
-        ? '[Test] Your week — 12 sessions done, $480 earned'
+        ? `[Test] Your week — 12 sessions done, ${currencySymbol(currency)}480 earned`
         : title
 
       try {
@@ -200,10 +203,11 @@ function renderTestEmailHtml({ label, title, body, recipientName }: {
 // upcoming, 6 tasks). Same component as the cron uses, so what the
 // trainer previews in the test send is exactly what they'll get on
 // Sunday at 7pm in production.
-function renderSampleWeeklySummary({ recipientName, businessName, tz }: {
+function renderSampleWeeklySummary({ recipientName, businessName, tz, currency }: {
   recipientName: string | null
   businessName: string
   tz: string
+  currency: string
 }): string {
   const now = new Date()
   // Anchor the sample week on the upcoming Sunday so the date strip
@@ -258,7 +262,8 @@ function renderSampleWeeklySummary({ recipientName, businessName, tz }: {
     trainerFirstName,
     businessName,
     sessionsCompleted,
-    revenueCents: 48000, // $480 — matches the marketing-aligned per-session prorate
+    revenueCents: 48000, // 480 — matches the marketing-aligned per-session prorate
+    currency,
     nextWeekSessions,
     nextWeekTasks,
     tz,

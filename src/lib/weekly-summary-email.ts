@@ -9,6 +9,7 @@
 // we can reference it absolutely from the email.
 
 import { escapeHtml } from './enquiries'
+import { currencySymbol } from './money'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com'
 
@@ -40,6 +41,8 @@ export interface WeeklySummaryData {
   businessName: string
   sessionsCompleted: SessionRow[]
   revenueCents: number
+  // Trainer's base currency (lower-case ISO) for the revenue figure.
+  currency: string
   nextWeekSessions: SessionRow[]
   nextWeekTasks: TaskRow[]
   tz: string
@@ -53,7 +56,7 @@ export interface RenderedEmail {
 
 export function renderWeeklySummaryEmail(d: WeeklySummaryData): RenderedEmail {
   const completedCount = d.sessionsCompleted.length
-  const revenueLabel = d.revenueCents > 0 ? formatCents(d.revenueCents) : null
+  const revenueLabel = d.revenueCents > 0 ? formatCents(d.revenueCents, d.currency) : null
   const upcomingCount = d.nextWeekSessions.length
   const taskCount = d.nextWeekTasks.length
 
@@ -362,7 +365,7 @@ function formatDateTimeShort(d: Date, tz: string): string {
   return `${formatShortDate(d, tz)} · ${formatTimeShort(d, tz)}`
 }
 
-function formatCents(cents: number): string {
+function formatCents(cents: number, currency: string): string {
   const dollars = Math.round(cents / 100)
-  return '$' + dollars.toLocaleString('en-NZ')
+  return currencySymbol(currency) + dollars.toLocaleString('en-NZ')
 }

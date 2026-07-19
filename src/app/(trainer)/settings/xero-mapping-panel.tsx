@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, type ReactNode } from 'react'
+import { currencySymbol } from '@/lib/money'
+import { useCurrency } from '@/components/currency-context'
 import { Loader2, Check, ExternalLink } from 'lucide-react'
 
 // Deep links into the trainer's own Xero org (Xero redirects to their tenant).
@@ -80,6 +82,8 @@ function AccountSelect({
 // connecting Xero. Collapsed by default; opening it loads the org's accounts /
 // tax rates on demand (one Xero API call, not on every settings visit).
 export function XeroMappingPanel() {
+  // Symbol for the worked example below, in the trainer's base currency.
+  const sym = currencySymbol(useCurrency())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<MappingData | null>(null)
@@ -211,8 +215,8 @@ export function XeroMappingPanel() {
 
           <Step n={2} title="Your Stripe clearing account" required visible={!!bank}>
             <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-900">
-              Stripe doesn’t pay the full invoice into your bank — it takes its fee first. If a client pays a $150 invoice,
-              about $145 turns up in your bank, so a payment recorded as $150 straight to your bank account will never
+              Stripe doesn’t pay the full invoice into your bank — it takes its fee first. If a client pays a {sym}150 invoice,
+              about {sym}145 turns up in your bank, so a payment recorded as {sym}150 straight to your bank account will never
               match your bank feed.
               <br /><br />
               A <strong>clearing account</strong> fixes that. We record the payment there in full, then record Stripe’s fee

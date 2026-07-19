@@ -205,6 +205,7 @@ export async function GET(req: Request) {
         businessName: u.trainerProfile.businessName,
         sessionsCompleted, nextWeekSessions, nextWeekTasks,
         revenueCents,
+        currency: u.trainerProfile.payoutCurrency ?? 'nzd',
         tz: u.timezone,
       })
       try {

@@ -26,7 +26,7 @@ export function mondayOf(d: Date): Date {
 }
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
-  nzd: '$', aud: '$', usd: '$', cad: '$', gbp: '£', eur: '€',
+  nzd: '$', aud: '$', usd: '$', cad: '$', gbp: '£', eur: '€', zar: 'R',
 }
 
 // Format minor units (cents) for display, e.g. money(8050, 'nzd') → "$80.50".

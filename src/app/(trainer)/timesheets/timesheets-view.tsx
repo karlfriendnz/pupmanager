@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Plus, Loader2, Clock, Trash2, ChevronRight, Mail, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { money, minutesToHours } from '@/lib/timesheets'
+import { currencySymbol } from '@/lib/money'
 
 type Row = {
   id: string
@@ -228,7 +229,7 @@ function RatesCard({ currency, isOwner, rates, onChange }: { currency: string; i
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Training" className="w-full h-9 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
           </div>
           <div className="w-28">
-            <label className="block text-xs font-medium text-slate-600 mb-1">$ / hour</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">{currencySymbol(currency)} / hour</label>
             <input value={dollars} onChange={e => setDollars(e.target.value)} inputMode="decimal" placeholder="80" className="w-full h-9 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
           </div>
           <Button type="button" variant="secondary" size="sm" onClick={add} loading={busy}>{!busy && <Plus className="h-4 w-4" />} Add</Button>
