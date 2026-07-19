@@ -8,6 +8,7 @@ import { postPaymentThroughClearing, isSurchargeItem } from './xero-clearing'
 import { createXeroInvoice, fetchXeroInvoiceState } from './xero'
 import { dropInPriceCents } from './class-runs'
 import { env } from './env'
+import { currencySymbol } from './money'
 
 // Payment-method-agnostic receivables. When a *priced* package or product is
 // assigned to a client (trainer-assigns OR client self-purchase), we raise an
@@ -23,7 +24,7 @@ import { env } from './env'
 const ACCENT = '#0d9488'
 
 function money(minor: number, currency: string): string {
-  return `${currency.toUpperCase()} ${(minor / 100).toFixed(2)}`
+  return `${currencySymbol(currency)}${(minor / 100).toFixed(2)}`
 }
 
 export interface AssignmentInvoiceInput {
