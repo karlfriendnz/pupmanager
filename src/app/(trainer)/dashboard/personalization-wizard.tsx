@@ -313,6 +313,10 @@ export function PersonalizationWizard({
   const packageOptions = packageOptionsFor(roles)
   const screens: string[] = [
     'roles',
+    // Straight after "line of work": offer a look at the platform seeded for
+    // their trade, or carry on setting up. Only once they've picked a role, so
+    // the sample data can be tailored.
+    ...(roles.length ? ['takealook'] : []),
     ...(packageOptions.length ? ['packages'] : []),
     ...WIZ_QUESTIONS.filter(q => questionApplies(q, roles)).map(q => q.id),
   ]
@@ -604,6 +608,58 @@ export function PersonalizationWizard({
                         )
                       })}
                     </div>
+                  </div>
+                )
+              }
+
+              // ── "Take a look" — preview the platform seeded for their trade,
+              //    or keep setting up. Sits straight after the line-of-work pick.
+              if (screen === 'takealook') {
+                return (
+                  <div key="s4-takealook" className="max-w-md mx-auto py-2">
+                    <div className="mx-auto h-16 w-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: brandColor }}>
+                      <FlaskConical className="h-8 w-8 text-white" />
+                    </div>
+                    <h2 className="font-display text-2xl font-bold text-slate-900 mt-5 tracking-tight text-center">Want a look first?</h2>
+                    <p className="text-[15px] text-slate-500 mt-2.5 leading-relaxed text-center">
+                      We can fill your account with sample clients, sessions and progress — tailored to the work you do — so you can explore before you build. Or carry on setting up your real business.
+                    </p>
+
+                    <div className="mt-6 flex flex-col gap-3 text-left">
+                      {/* Preview → seed sample data tailored to their roles, then explore */}
+                      <button
+                        type="button"
+                        onClick={loadSampleData}
+                        disabled={seeding || busy}
+                        className="group flex items-start gap-3 rounded-2xl border-2 border-slate-200 hover:border-teal-400 hover:bg-teal-50/50 p-4 text-left transition-colors disabled:opacity-60"
+                      >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white" style={{ background: brandColor }}>
+                          {seeding ? <Loader2 className="h-5 w-5 animate-spin" /> : <FlaskConical className="h-5 w-5" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-slate-800">{seeding ? 'Loading your preview…' : `Preview ${businessName.trim() || 'my business'}`}</span>
+                          <span className="block text-[13px] text-slate-500 mt-0.5 leading-relaxed">See it in action with sample data in your colours. Wipe it in one click when you&apos;re ready — anything you add yourself stays.</span>
+                        </span>
+                      </button>
+
+                      {/* Keep setting up → advance through the rest of the tools flow */}
+                      <button
+                        type="button"
+                        onClick={() => setExtra(e => e + 1)}
+                        disabled={seeding || busy}
+                        className="group flex items-start gap-3 rounded-2xl border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 p-4 text-left transition-colors disabled:opacity-60"
+                      >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+                          <ArrowRight className="h-5 w-5" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-slate-800">Keep setting up</span>
+                          <span className="block text-[13px] text-slate-500 mt-0.5 leading-relaxed">Answer a few quick questions so we can tailor PupManager to how you work.</span>
+                        </span>
+                      </button>
+                    </div>
+
+                    {seedError && <p className="text-xs text-red-500 mt-3 text-center">{seedError}</p>}
                   </div>
                 )
               }
