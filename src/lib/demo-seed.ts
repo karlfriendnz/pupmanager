@@ -405,6 +405,156 @@ const ENQUIRY_MESSAGES = [
   "Morning — I have two dogs (a 4yo lab and a 1yo kelpie) and the younger one has started guarding toys and the couch from the older one. There've been a couple of scuffles, nothing serious yet, but I'd really like to get on top of it before it escalates. Could you let me know what a household-harmony package looks like, rough pricing, and whether you'd want to see them together or separately to start?",
 ]
 
+// ─── Persona-specific sample content ──────────────────────────────────────────
+// The training-flavoured constants above are the trainer set. These give the
+// other trades data that reads true — a groomer's calendar should say "Full
+// groom", not "Crate training". Resolved by role in seedDemoData (union of the
+// matching sets, falling back to the trainer set when roles are unknown).
+
+const SESSION_TITLES_BY_ROLE: Record<string, string[]> = {
+  trainer: SESSION_TITLES,
+  behaviourist: [
+    'Behaviour assessment', 'Reactivity session', 'Counter-conditioning', 'Confidence building',
+    'Muzzle training', 'Separation plan check-in', 'Management review', 'Desensitisation session',
+    'Follow-up review', 'Household harmony session',
+  ],
+  walker: [
+    'Solo walk', 'Group walk', 'Pack walk', 'Puppy walk', 'Adventure walk', 'Drop-in visit',
+    'Lunchtime walk', 'Beach walk', 'Toilet break', 'Enrichment walk',
+  ],
+  groomer: [
+    'Full groom', 'Bath & tidy', 'Nail trim', 'Puppy intro groom', 'De-shed treatment',
+    'Wash & blow-dry', 'Face & feet tidy', 'Ear clean & tidy', 'Hand strip', 'Coat trim',
+  ],
+  petsitter: [
+    'Home visit', 'Overnight stay', 'House sitting', 'Doggy day care', 'Feed & toilet visit',
+    'Midday check-in', 'Weekend stay', 'Boarding', 'Play & company visit', 'Evening walk & feed',
+  ],
+}
+
+const ENQUIRY_MESSAGES_BY_ROLE: Record<string, string[]> = {
+  trainer: ENQUIRY_MESSAGES,
+  behaviourist: [
+    'Our adolescent staffy has started growling at other dogs on walks.',
+    "Just adopted a rescue, she's nervous around visitors. What would you suggest?",
+    'Reactivity on walks is escalating — looking for someone experienced.',
+    'Our dog has started guarding the couch from our other dog. Can you help before it escalates?',
+    ENQUIRY_MESSAGES[13], // the long rescue/fearful message
+    ENQUIRY_MESSAGES[14], // the long household-harmony message
+  ],
+  walker: [
+    "Hi, do you have space to walk our lab on weekdays while we're at work?",
+    'Looking for a group walk a couple of times a week for our spaniel.',
+    'Could you do a lunchtime toilet break for our new pup?',
+    'We need a regular dog walker from next week — what are your rates?',
+    'Our collie needs more exercise than we can give midweek. Do you do pack walks?',
+  ],
+  groomer: [
+    'Hi, our doodle is getting matted — any grooming slots this week?',
+    'How often should our cavoodle be groomed? Keen to book a full groom.',
+    'Do you do nail trims as a walk-in?',
+    "Our pup's never been groomed — do you do a gentle first groom for puppies?",
+    'Our husky is blowing his coat everywhere — do you do a de-shed treatment?',
+  ],
+  petsitter: [
+    "We're away for a week in the school holidays — do you do overnight stays?",
+    'Looking for a house sitter for our two dogs over Christmas.',
+    'Do you offer doggy day care on weekdays?',
+    "Need someone to pop in twice a day to feed and walk our dog while we're at work.",
+    'Do you board dogs at your place, or is it care in our home?',
+  ],
+}
+
+const PRODUCTS_BY_ROLE: Record<string, typeof PRODUCT_DEFS> = {
+  trainer: PRODUCT_DEFS,
+  behaviourist: [
+    { name: 'Reactivity ebook',       description: 'Full 60-page guide to leash reactivity.',        kind: 'DIGITAL',  priceCents: 2800, category: 'Guides',    featured: true  },
+    { name: 'Management long line',    description: '5m long line for safe, low-stress management.',   kind: 'PHYSICAL', priceCents: 4200, category: 'Equipment', featured: false },
+    { name: 'Muzzle sizing kit',       description: 'Try-at-home sizing kit for a comfy basket muzzle.', kind: 'PHYSICAL', priceCents: 3800, category: 'Equipment', featured: false },
+    { name: 'Calming chews',           description: 'Vet-formulated calming chews for stressful days.', kind: 'PHYSICAL', priceCents: 2600, category: 'Wellbeing', featured: false },
+  ],
+  walker: [
+    { name: 'Reflective lead',         description: 'Hi-vis lead for early-morning and evening walks.', kind: 'PHYSICAL', priceCents: 2800, category: 'Equipment', featured: true  },
+    { name: 'Poop bag holder',         description: 'Clip-on dispenser with a starter roll.',          kind: 'PHYSICAL', priceCents: 1200, category: 'Equipment', featured: false },
+    { name: 'Collapsible water bowl',  description: 'Pocket-sized bowl for out on the trail.',          kind: 'PHYSICAL', priceCents: 1500, category: 'Equipment', featured: false },
+    { name: 'Muddy-paw towel',         description: 'Quick-dry microfibre towel for after the walk.',   kind: 'PHYSICAL', priceCents: 1900, category: 'Equipment', featured: false },
+  ],
+  groomer: [
+    { name: 'De-shed brush',           description: 'Undercoat rake for double-coated breeds.',        kind: 'PHYSICAL', priceCents: 2400, category: 'Grooming',  featured: true  },
+    { name: 'Gentle dog shampoo',      description: 'Sensitive-skin shampoo, 500ml.',                  kind: 'PHYSICAL', priceCents: 1800, category: 'Grooming',  featured: false },
+    { name: 'Detangling spray',        description: 'Leave-in spray to keep coats knot-free.',         kind: 'PHYSICAL', priceCents: 1600, category: 'Grooming',  featured: false },
+    { name: 'Grooming wipes',          description: 'Between-groom wipes for face, paws and bum.',      kind: 'PHYSICAL', priceCents: 900,  category: 'Grooming',  featured: false },
+    { name: 'Nail file kit',           description: 'Gentle nail file for smooth, snag-free nails.',    kind: 'PHYSICAL', priceCents: 1400, category: 'Grooming',  featured: false },
+  ],
+  petsitter: [
+    { name: 'Puzzle feeder',           description: 'Slow-feed puzzle to keep them busy while you’re out.', kind: 'PHYSICAL', priceCents: 2200, category: 'Enrichment', featured: true  },
+    { name: 'Comfort blanket',         description: 'A cosy blanket that smells like home.',            kind: 'PHYSICAL', priceCents: 2600, category: 'Enrichment', featured: false },
+    { name: 'Long-lasting chew',       description: 'A natural chew for settled, happy stays.',         kind: 'PHYSICAL', priceCents: 1200, category: 'Enrichment', featured: false },
+    { name: 'Travel water bottle',     description: 'Leak-proof bottle with a built-in bowl.',          kind: 'PHYSICAL', priceCents: 1700, category: 'Equipment',   featured: false },
+  ],
+}
+
+// Best-effort photos for the non-training products (reuse the concept-product
+// pool). Missing names just render without an image.
+const PRODUCT_IMAGES_EXTRA: Record<string, string> = {
+  'Management long line': '/concept-products/leash.jpg',
+  'Muzzle sizing kit': '/concept-products/leash.jpg',
+  'Calming chews': '/concept-products/treats.jpg',
+  'Reflective lead': '/concept-products/leash.jpg',
+  'Poop bag holder': '/concept-products/treats.jpg',
+  'Collapsible water bowl': '/concept-products/bed.jpg',
+  'Muddy-paw towel': '/concept-products/bed.jpg',
+  'De-shed brush': '/concept-products/chewtoy.jpg',
+  'Gentle dog shampoo': '/concept-products/treats.jpg',
+  'Detangling spray': '/concept-products/treats.jpg',
+  'Grooming wipes': '/concept-products/treats.jpg',
+  'Nail file kit': '/concept-products/clicker.jpg',
+  'Puzzle feeder': '/concept-products/chewtoy.jpg',
+  'Comfort blanket': '/concept-products/bed.jpg',
+  'Long-lasting chew': '/concept-products/chewtoy.jpg',
+  'Travel water bottle': '/concept-products/bed.jpg',
+}
+
+// Achievements everyone gets (session milestones + anniversary), plus the
+// homework/trick badges that only make sense for training-style work.
+const ACHIEVEMENT_DEFS_BASE = ACHIEVEMENT_DEFS.filter(a =>
+  a.triggerType !== 'PERFECT_WEEK' && a.triggerType !== 'HOMEWORK_STREAK_DAYS' && a.name !== 'Trick title prep grad')
+const ACHIEVEMENT_DEFS_TRAINING = ACHIEVEMENT_DEFS.filter(a =>
+  a.triggerType === 'PERFECT_WEEK' || a.triggerType === 'HOMEWORK_STREAK_DAYS' || a.name === 'Trick title prep grad')
+
+// Union of the sets matching the chosen roles (deduped), falling back to the
+// trainer/base set when roles are unknown.
+function contentForRoles<T>(byRole: Record<string, T[]>, roles: string[], key: (t: T) => string, fallback: T[]): T[] {
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (const role of roles) {
+    for (const item of byRole[role] ?? []) {
+      const k = key(item)
+      if (!seen.has(k)) { seen.add(k); out.push(item) }
+    }
+  }
+  return out.length ? out : fallback
+}
+
+const isTrainingRole = (roles: string[]) => roles.some(r => r === 'trainer' || r === 'behaviourist')
+
+// The full sample-content set for a trade — session titles, enquiries, products,
+// achievements and library, each resolved to the chosen roles (union, deduped,
+// falling back to the trainer/base set). Exported so the persona tailoring is
+// unit-testable without touching a DB.
+export function sampleContentForRoles(roles: string[]) {
+  const isTraining = roles.length === 0 || isTrainingRole(roles)
+  return {
+    sessionTitles: contentForRoles(SESSION_TITLES_BY_ROLE, roles, s => s, SESSION_TITLES),
+    enquiryMessages: contentForRoles(ENQUIRY_MESSAGES_BY_ROLE, roles, s => s, ENQUIRY_MESSAGES),
+    products: contentForRoles(PRODUCTS_BY_ROLE, roles, p => p.name, PRODUCT_DEFS),
+    // Homework/trick achievements + the exercise library only make sense for
+    // training-style work; everyone still gets the session-milestone badges.
+    achievements: isTraining ? ACHIEVEMENT_DEFS : ACHIEVEMENT_DEFS_BASE,
+    library: isTraining ? LIBRARY_CONTENT : [],
+  }
+}
+
 // ─── Reset ───────────────────────────────────────────────────────────────────
 
 export type ResetResult = {
@@ -694,7 +844,17 @@ export async function seedDemoData(
   const rand = rng(opts.seed ?? 0x70757070) // 'pupp'
   const reset = opts.reset ?? true
   // Package set tailored to the trainer's line of work (falls back to training).
-  const packageDefs = packageDefsFor(opts.roles ?? [])
+  const roleList = opts.roles ?? []
+  const packageDefs = packageDefsFor(roleList)
+  // The rest of the sample content, tailored the same way so a groomer's demo
+  // doesn't read like a dog trainer's.
+  const {
+    sessionTitles,
+    enquiryMessages,
+    products: productDefs,
+    achievements: achievementDefs,
+    library: libraryContent,
+  } = sampleContentForRoles(roleList)
   const markSample = opts.markSample ?? false
   const finalize = opts.finalize ?? true
 
@@ -803,8 +963,8 @@ export async function seedDemoData(
   const libraryTypeRows: Array<{ id: string; trainerId: string; isSample: boolean; name: string; order: number }> = []
   const libraryThemeRows: Array<{ id: string; typeId: string; name: string; order: number }> = []
   const libraryTaskRows: Array<{ themeId: string; title: string; description?: string; repetitions?: number; order: number }> = []
-  for (let ti = 0; ti < LIBRARY_CONTENT.length; ti++) {
-    const t = LIBRARY_CONTENT[ti]
+  for (let ti = 0; ti < libraryContent.length; ti++) {
+    const t = libraryContent[ti]
     const typeId = randomUUID()
     libraryTypeRows.push({ id: typeId, trainerId, isSample: markSample, name: t.type, order: ti })
     for (let thi = 0; thi < t.themes.length; thi++) {
@@ -829,7 +989,7 @@ export async function seedDemoData(
 
   // Products + achievements — one createMany each.
   await prisma.product.createMany({
-    data: PRODUCT_DEFS.map((p, i) => ({
+    data: productDefs.map((p, i) => ({
       trainerId,
       isSample: markSample,
       name: p.name,
@@ -838,12 +998,12 @@ export async function seedDemoData(
       priceCents: p.priceCents,
       category: p.category,
       featured: p.featured,
-      imageUrl: PRODUCT_IMAGES[p.name] ?? null,
+      imageUrl: PRODUCT_IMAGES[p.name] ?? PRODUCT_IMAGES_EXTRA[p.name] ?? null,
       order: i,
     })),
   })
   // Pre-generate IDs so we can award some of these as earned badges below.
-  const achievementRows = ACHIEVEMENT_DEFS.map((a, i) => ({
+  const achievementRows = achievementDefs.map((a, i) => ({
     id: randomUUID(),
     trainerId,
     isSample: markSample,
@@ -983,7 +1143,7 @@ export async function seedDemoData(
           clientId: c.profileId,
           dogId: c.dogId,
           clientPackageId: null,
-          title: SESSION_TITLES[Math.floor(rand() * SESSION_TITLES.length)],
+          title: sessionTitles[Math.floor(rand() * sessionTitles.length)],
           scheduledAt,
           durationMins: 60,
           sessionType: rand() < 0.85 ? 'IN_PERSON' : 'VIRTUAL',
@@ -1156,7 +1316,7 @@ export async function seedDemoData(
       phone: `+64 21 ${String(Math.floor(rand() * 9_000_000) + 1_000_000)}`,
       dogName,
       dogBreed: BREEDS[Math.floor(rand() * BREEDS.length)],
-      message: ENQUIRY_MESSAGES[Math.floor(rand() * ENQUIRY_MESSAGES.length)],
+      message: enquiryMessages[Math.floor(rand() * enquiryMessages.length)],
       status,
       viewedAt: status !== 'NEW' ? created : null,
       createdAt: created,
@@ -1305,8 +1465,8 @@ export async function seedDemoData(
     libraryTypes: libraryTypeRows.length,
     libraryThemes: libraryThemeRows.length,
     libraryTasks: libraryTaskRows.length,
-    products: PRODUCT_DEFS.length,
-    achievements: ACHIEVEMENT_DEFS.length,
+    products: productDefs.length,
+    achievements: achievementDefs.length,
     enquiries: enquiryRows.length,
     customFields: customFields.length,
     availabilitySlots: availabilitySlots.length,
