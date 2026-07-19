@@ -9,7 +9,7 @@ import { extractLogoColors, type LogoPalette } from '@/lib/logo-colors'
 import { compressImageFile } from '@/lib/compress-image'
 import { type CurrencyCode } from '@/lib/pricing'
 import { type ResolvedFieldConfig } from '@/lib/client-fields'
-import { PERSONAS, WIZ_QUESTIONS, MANAGED_ADDON_IDS, recommendedAddons, coreAddonState, packageOptionsFor, questionApplies, type WizAnswers } from '@/lib/onboarding-recommendations'
+import { PERSONAS, WIZ_QUESTIONS, MANAGED_ADDON_IDS, recommendedAddons, coreAddonState, packageOptionsFor, questionApplies, landingViewForRoles, type WizAnswers } from '@/lib/onboarding-recommendations'
 import { ClientFieldsStep } from './client-fields-step'
 
 // The paged "Your tools" sub-flow is: role picker → tailored "what do you offer?"
@@ -359,10 +359,23 @@ export function PersonalizationWizard({
     setStep(target)
   }
 
+  // Seed the trainer's home view from their trade (groomers/walkers/sitters open
+  // on the Schedule; trainers/behaviourists on the Dashboard). Only when they
+  // picked a role; they can still change it in Settings. Fire-and-forget.
+  async function persistLandingView() {
+    if (!roles.length) return
+    await fetch('/api/user', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ landingPage: landingViewForRoles(roles) }),
+    }).catch(() => {})
+  }
+
   async function finish() {
     setBusy(true)
     try {
       await saveProfile()
+      await persistLandingView()
       await onComplete()
     } finally {
       setBusy(false)
@@ -386,15 +399,17 @@ export function PersonalizationWizard({
         setSeeding(false)
         return
       }
-      // Mark the welcome done + tour started (same as finishing), then do one
-      // full navigation so the populated dashboard loads in a single clean pass.
-      // A soft router.refresh() here flashes the empty dashboard before the new
-      // data swaps in; a hard load avoids that. Keep "Loading…" up until we go.
+      // Mark the welcome done + tour started (same as finishing) and seed their
+      // home view, then do one full navigation so the populated app loads in a
+      // single clean pass. A soft router.refresh() here flashes the empty view
+      // before the data swaps in; a hard load avoids that. Land them on their
+      // persona's home (a groomer opens on the Schedule, not the Dashboard).
       await Promise.all([
         fetch('/api/onboarding/tour/start', { method: 'POST' }),
         fetch('/api/onboarding/welcome/dismiss', { method: 'POST' }),
+        persistLandingView(),
       ]).catch(() => {})
-      window.location.href = '/dashboard'
+      window.location.href = landingViewForRoles(roles) === 'schedule' ? '/schedule' : '/dashboard'
     } catch {
       setSeedError('Could not load sample data. Please try again.')
       setSeeding(false)

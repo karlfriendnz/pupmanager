@@ -14,6 +14,18 @@ export const PERSONAS: Persona[] = [
   { id: 'petsitter', label: 'Pet sitter', icon: '🏡' },
 ]
 
+// Which home view suits a persona best. Appointment-book trades (walking,
+// grooming, sitting) live in their calendar, so they open on the Schedule;
+// programme/progress trades (training, behaviour) get the Dashboard overview.
+// Only 'dashboard' | 'schedule' are valid User.landingPage values today. This
+// is a sensible default seeded at onboarding — the trainer can still change it
+// in Settings. A mixed trainer+groomer leans to the Dashboard (the richer view).
+export function landingViewForRoles(roles: string[]): 'dashboard' | 'schedule' {
+  if (roles.some(r => r === 'trainer' || r === 'behaviourist')) return 'dashboard'
+  if (roles.some(r => r === 'walker' || r === 'groomer' || r === 'petsitter')) return 'schedule'
+  return 'dashboard'
+}
+
 export type WizQuestion = {
   id: string
   category: string
