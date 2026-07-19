@@ -29,6 +29,12 @@ describe('generateSessionDates', () => {
     const d = generateSessionDates(new Date('2026-06-02T00:00:00Z'), 3, 0)
     expect(new Set(d.map(x => x.toISOString())).size).toBe(1)
   })
+  it('one-off (sessionCount 1) yields exactly one session regardless of cadence', () => {
+    const start = new Date('2026-06-02T18:00:00Z')
+    const dates = generateSessionDates(start, 1, 2)
+    expect(dates).toHaveLength(1)
+    expect(dates[0].toISOString()).toBe(start.toISOString())
+  })
 })
 
 describe('effectiveCapacity', () => {

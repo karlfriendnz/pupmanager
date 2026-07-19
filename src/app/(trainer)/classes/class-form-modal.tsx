@@ -71,7 +71,11 @@ export function ClassFormModal({
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [startDate, setStartDate] = useState(toLocalInput(initial?.startDateIso) || '')
-  const [weeksBetween, setWeeksBetween] = useState(String(initial?.weeksBetween ?? 1))
+  // "Repeats" — "0" is the sentinel for a one-off (doesn't repeat). An existing
+  // class with a single session opens showing "Doesn't repeat".
+  const [weeksBetween, setWeeksBetween] = useState(
+    initial && initial.sessionCount === 1 ? '0' : String(initial?.weeksBetween ?? 1),
+  )
   const [sessionCount, setSessionCount] = useState(String(initial?.sessionCount ?? 6))
   const [durationMins, setDurationMins] = useState(String(initial?.durationMins ?? 60))
   const [bufferMins, setBufferMins] = useState<number>(initial?.bufferMins ?? 0)
@@ -109,6 +113,8 @@ export function ClassFormModal({
   }, [])
 
   const scheduleLocked = mode === 'edit' && !canReschedule
+  // One-off class — a single session, no cadence.
+  const oneOff = weeksBetween === '0'
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -135,8 +141,9 @@ export function ClassFormModal({
       const payload = {
         name: name.trim(),
         startDate: new Date(startDate).toISOString(),
-        sessionCount: Math.max(1, Math.floor(Number(sessionCount) || 1)),
-        weeksBetween: Math.max(1, Math.floor(Number(weeksBetween) || 1)),
+        // A one-off is a single session; weeksBetween is moot but must stay valid.
+        sessionCount: oneOff ? 1 : Math.max(1, Math.floor(Number(sessionCount) || 1)),
+        weeksBetween: oneOff ? 1 : Math.max(1, Math.floor(Number(weeksBetween) || 1)),
         durationMins: Math.max(5, Math.floor(Number(durationMins) || 60)),
         bufferMins,
         sessionType,
@@ -195,17 +202,20 @@ export function ClassFormModal({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
+            <div className={oneOff ? 'col-span-2' : ''}>
               <label className="text-sm font-medium text-slate-700 block mb-1.5">Repeats</label>
               <select value={weeksBetween} disabled={scheduleLocked} onChange={e => setWeeksBetween(e.target.value)} className={fieldCls}>
+                <option value="0">Doesn&apos;t repeat (one-off)</option>
                 <option value="1">Weekly</option>
                 <option value="2">Every 2 weeks</option>
               </select>
             </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">For how many weeks</label>
-              <input type="number" min={1} max={52} value={sessionCount} disabled={scheduleLocked} onChange={e => setSessionCount(e.target.value)} className={fieldCls} />
-            </div>
+            {!oneOff && (
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1.5">For how many weeks</label>
+                <input type="number" min={1} max={52} value={sessionCount} disabled={scheduleLocked} onChange={e => setSessionCount(e.target.value)} className={fieldCls} />
+              </div>
+            )}
           </div>
 
           {scheduleLocked && (

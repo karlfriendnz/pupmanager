@@ -132,7 +132,7 @@ export function PackageForm({
   const [clientSelfBook, setClientSelfBook] = useState<boolean>(existing?.clientSelfBook ?? false)
   const [selfBookRequiresApproval, setSelfBookRequiresApproval] = useState<boolean>(existing?.selfBookRequiresApproval ?? true)
   const [requirePayment, setRequirePayment] = useState<boolean | null>(existing?.requirePayment ?? null)
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: existing
       ? {
@@ -147,6 +147,9 @@ export function PackageForm({
         }
       : { sessionCount: 3, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', price: '', specialPrice: '' },
   })
+
+  // A one-off package — a single session, no cadence. "Weeks between" is moot.
+  const oneOff = Number(watch('sessionCount')) === 1
 
   async function onSubmit(values: FormValues) {
     setError(null)
@@ -242,11 +245,13 @@ export function PackageForm({
           error={errors.sessionCount?.message}
           {...register('sessionCount', { valueAsNumber: true })}
         />
-        <p className="text-[11px] text-slate-400 mt-1">0 = ongoing (you set an end date when assigning)</p>
+        <p className="text-[11px] text-slate-400 mt-1">0 = ongoing (you set an end date when assigning) · 1 = one-off (single session)</p>
       </div>
       <Input
         label="Weeks between"
         type="number"
+        disabled={oneOff}
+        hint={oneOff ? "Not needed for a one-off — there's only one session." : undefined}
         error={errors.weeksBetween?.message}
         {...register('weeksBetween', { valueAsNumber: true })}
       />
