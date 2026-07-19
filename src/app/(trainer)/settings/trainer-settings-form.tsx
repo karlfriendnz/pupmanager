@@ -18,6 +18,7 @@ import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { TIMEZONES } from '@/lib/timezones'
 import { PERSONAS } from '@/lib/onboarding-recommendations'
 import { ImagePlus, Loader2 } from 'lucide-react'
+import { BaseCurrencySelect } from './base-currency-select'
 
 const businessSchema = z.object({
   name: z.string().min(2, 'Your name is required'),
@@ -51,7 +52,7 @@ export function TrainerSettingsForm({
   profile,
 }: {
   user: { name: string | null; email: string; timezone: string; landingPage: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[] }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[]; payoutCurrency: string | null }
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
@@ -208,6 +209,15 @@ export function TrainerSettingsForm({
               {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
             </select>
             <p className="text-xs text-slate-500">Helps us tailor PupManager to your region. Usually set automatically — choose it here if it&apos;s missing.</p>
+          </div>
+
+          {/* Base/display currency — saves instantly (not part of this form's
+              Save). Drives how every price is shown across the app and what
+              clients are charged in. */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">Currency</label>
+            <BaseCurrencySelect initial={profile.payoutCurrency ?? 'nzd'} />
+            <p className="text-xs text-slate-500">Shown on every price, invoice and shop item across the app — and what clients are charged in.</p>
           </div>
 
           <div className="flex flex-col gap-1.5">

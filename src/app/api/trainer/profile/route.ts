@@ -25,6 +25,11 @@ const patchSchema = z.object({
   // item + payments enabled means the client pays up front; off = book now, pay
   // later by default (each item can still override).
   defaultRequirePayment: z.boolean().optional(),
+  // Base currency for all prices/invoices shown AND charged (drives display
+  // app-wide, not just Stripe payouts). Lower-case ISO from the supported set.
+  // Always editable — Stripe charges in this presentment currency and settles
+  // to the connected account (with FX where they differ).
+  payoutCurrency: z.enum(['aud', 'nzd', 'gbp', 'cad', 'usd', 'zar']).optional(),
   // Client self-cancellation fee, in the trainer's payout-currency minor units.
   // null (or 0) = no fee. Window = only charge cancellations within N hours of
   // the start; null window = charge ANY cancellation when a fee is set.

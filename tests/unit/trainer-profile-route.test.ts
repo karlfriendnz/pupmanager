@@ -91,3 +91,20 @@ describe('PATCH trainer/profile — brand colour', () => {
     expect(data).not.toHaveProperty('appGradientEnd')
   })
 })
+
+describe('PATCH trainer/profile — base currency', () => {
+  it('writes a supported base currency (always editable, incl. once Stripe is live)', async () => {
+    const res = await PATCH(req({ payoutCurrency: 'gbp' }))
+    expect(res.status).toBe(200)
+    expect(h.profileUpdate).toHaveBeenCalledWith({
+      where: { id: 'company-1' },
+      data: { payoutCurrency: 'gbp' },
+    })
+  })
+
+  it('rejects an unsupported currency code with 400 (no write)', async () => {
+    const res = await PATCH(req({ payoutCurrency: 'jpy' }))
+    expect(res.status).toBe(400)
+    expect(h.profileUpdate).not.toHaveBeenCalled()
+  })
+})
