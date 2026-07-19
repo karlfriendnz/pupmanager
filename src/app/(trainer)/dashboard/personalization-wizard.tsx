@@ -454,11 +454,11 @@ export function PersonalizationWizard({
 
         {/* ─── Content column ─── */}
         <div className="flex-1 min-w-0 min-h-0 flex flex-col max-h-none md:max-h-[94vh]">
-          {/* mobile brand bar (step progress intentionally hidden) */}
-          <div className="md:hidden px-5 pt-5 pb-4 text-white" style={{ background: brandColor }}>
-            <div className="flex items-center">
-              <span className="text-sm font-semibold truncate">{businessName.trim() || 'PupManager'}</span>
-            </div>
+          {/* mobile header — the PupManager wordmark (this is our onboarding, so
+              our brand, not the trainer's colour). Step progress hidden. */}
+          <div className="md:hidden flex justify-center px-5 py-4" style={{ background: DEFAULT_BRAND_COLOR }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-wordmark.png" alt="PupManager" className="h-6 object-contain" />
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-6 md:px-8 py-6 md:py-7">
             {stepKey === 'welcome' && (
