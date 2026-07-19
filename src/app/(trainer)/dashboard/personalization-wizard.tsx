@@ -491,7 +491,7 @@ export function PersonalizationWizard({
                 <input value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Pawsome Dog Training" className="w-full h-12 rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-[15px] focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/70 focus:border-transparent transition" />
 
                 <label className="block text-sm font-medium text-slate-700 mt-6 mb-2">Logo</label>
-                <div className="flex items-center gap-4">
+                <div className="flex items-start gap-4">
                   <div className="h-20 w-20 rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center flex-shrink-0 shadow-sm">
                     {logoUrl
                       // eslint-disable-next-line @next/next/no-img-element
