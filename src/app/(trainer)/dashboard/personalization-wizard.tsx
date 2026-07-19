@@ -59,19 +59,8 @@ export type WizardInitial = {
 // The wizard is a core setup everyone does, plus a client-app section that only
 // appears when the trainer wants their clients to have an app. The ordered list
 // of step keys is computed per render (STEP_KEYS, inside the component) so those
-// extra steps slot in and out cleanly; this map is just their display labels.
-// 'welcome' is the unnumbered intro.
-const STEP_LABELS: Record<string, string> = {
-  welcome: 'Welcome',
-  business: 'Make it yours',
-  contact: 'Contact details',
-  colour: 'Your colour',
-  tools: 'Your tools',
-  sayhello: 'Say hello',
-  clientform: 'Client form',
-  preview: 'Take a look',
-  sample: 'Sample data',
-}
+// extra steps slot in and out cleanly. 'welcome' is the unnumbered intro. The
+// step progress indicator is intentionally hidden, so no label map is needed.
 
 // Ready-to-go welcome notes (shown on the client's home screen). The wizard
 // pre-fills the first so trainers tweak rather than face a blank box; "Try
@@ -444,26 +433,16 @@ export function PersonalizationWizard({
             )}
           </div>
 
-          {/* progress */}
-          <div className="relative">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 mb-2">{STEP_LABELS[stepKey]}</p>
-            <div className="flex gap-1.5">
-              {STEP_KEYS.slice(1).map((_, i) => (
-                <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${i + 1 <= step ? 'bg-white' : 'bg-white/25'}`} />
-              ))}
-            </div>
-          </div>
+          {/* Step progress intentionally hidden — the flow is short and we don't
+              want to signal "lots of steps left". */}
         </aside>
 
         {/* ─── Content column ─── */}
         <div className="flex-1 min-w-0 min-h-0 flex flex-col max-h-none md:max-h-[94vh]">
-          {/* mobile brand/progress bar */}
+          {/* mobile brand bar (step progress intentionally hidden) */}
           <div className="md:hidden px-5 pt-5 pb-4 text-white" style={{ background: brandColor }}>
             <div className="flex items-center">
               <span className="text-sm font-semibold truncate">{businessName.trim() || 'PupManager'}</span>
-            </div>
-            <div className="mt-3 flex gap-1.5">
-              {STEP_KEYS.slice(1).map((_, i) => <div key={i} className={`h-1.5 flex-1 rounded-full ${i + 1 <= step ? 'bg-white' : 'bg-white/25'}`} />)}
             </div>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-6 md:px-8 py-6 md:py-7">
