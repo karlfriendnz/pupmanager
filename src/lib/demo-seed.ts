@@ -857,6 +857,10 @@ export async function seedDemoData(
   } = sampleContentForRoles(roleList)
   const markSample = opts.markSample ?? false
   const finalize = opts.finalize ?? true
+  // Unique token for this seed run — keeps synthetic client emails from
+  // colliding with any this trainer already has (see the client loop below).
+  // From randomUUID (not the deterministic RNG) so every run is distinct.
+  const seedRunToken = randomUUID().slice(0, 8)
 
   if (reset) await resetDemoData(prisma, trainerId)
 
@@ -1043,11 +1047,12 @@ export async function seedDemoData(
     const dogId = randomUUID()
     const profileId = randomUUID()
     const name = `${first} ${last}`
-    // Scope the synthetic email to the trainer so two trainers (e.g. the admin
-    // demo account + any trial trainer loading sample data) never collide on
-    // the global User.email unique. Still ends in @pupmanager.test so reset /
-    // clearSampleData identify these as synthetic.
-    const email = `demo-client-${i + 1}-${trainerId}@pupmanager.test`
+    // Unique synthetic email per client. The per-RUN token (below) keeps it from
+    // colliding with sample clients this trainer already has — so loading sample
+    // data onto an account that isn't empty (e.g. the demo, or a trainer who has
+    // added a few real clients) no longer trips the global User.email unique.
+    // Still ends in @pupmanager.test so reset / clearSampleData spot it.
+    const email = `demo-client-${seedRunToken}-${i + 1}@pupmanager.test`
     userRows.push({ id: userId, name, email, role: 'CLIENT', emailVerified: new Date() })
     // ~70% of dogs get a photo; the rest stay blank so the "add a photo" prompt
     // still demonstrates.
