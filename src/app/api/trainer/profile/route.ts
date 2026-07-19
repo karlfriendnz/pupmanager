@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { validateSlug } from '@/lib/slug'
+import { applyFieldPacksForRoles } from '@/lib/onboarding/apply-field-packs'
 
 const patchSchema = z.object({
   businessName: z.string().min(2).optional(),
@@ -159,6 +160,14 @@ export async function PATCH(req: Request) {
     where: { id: guard.companyId },
     data,
   })
+
+  // When they tell us their trade, pre-create the matching starter fields so
+  // their intake form isn't blank (a groomer gets coat type / last groomed,
+  // etc.). Idempotent — won't duplicate fields they already have. Best-effort:
+  // never fail the profile save over it.
+  if (parsed.data.businessRoles?.length) {
+    await applyFieldPacksForRoles(prisma, guard.companyId, parsed.data.businessRoles).catch(() => {})
+  }
 
   return NextResponse.json(profile)
 }

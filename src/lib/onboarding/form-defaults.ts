@@ -4,6 +4,8 @@
 
 import { randomUUID } from 'crypto'
 import type { PrismaClient } from '@/generated/prisma'
+import { recommendedFieldKeys } from '@/lib/field-packs'
+import { applyFieldPackKeys } from '@/lib/onboarding/apply-field-packs'
 
 export interface DefaultEmbedFormFieldSpec {
   key: 'phone' | 'dogName' | 'dogBreed' | 'dogWeight' | 'dogDob' | 'message'
@@ -25,23 +27,6 @@ export const DEFAULT_EMBED_FORM = {
   isActive: false,
 }
 
-interface DefaultIntakeFieldSpec {
-  label: string
-  type: 'TEXT' | 'NUMBER' | 'DROPDOWN'
-  required: boolean
-  options?: string[]
-  appliesTo: 'OWNER' | 'DOG'
-}
-
-// NB: breed and date-of-birth are built-in dog fields, so we don't seed custom
-// fields for them (that caused duplicate "Breed"/"Dog's breed" and "Date of
-// birth"/"Dog's age" inputs). Vaccinations are out of scope. Only genuine
-// owner-intake questions are seeded.
-export const DEFAULT_INTAKE_FIELDS: DefaultIntakeFieldSpec[] = [
-  { label: 'Training goals', type: 'TEXT', required: true, appliesTo: 'OWNER' },
-  { label: 'Behavioural concerns', type: 'TEXT', required: false, appliesTo: 'OWNER' },
-]
-
 interface DefaultSessionQuestion {
   id: string
   type: 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'
@@ -61,10 +46,10 @@ function makeSessionQuestions(): DefaultSessionQuestion[] {
 // Idempotent — only creates each form type when the trainer has none of that
 // type yet. Safe to call from initTrainerOnboarding without double-seeding.
 export async function seedDefaultFormsFor(prisma: PrismaClient, trainerId: string): Promise<void> {
-  const [embedCount, sessionCount, intakeCount] = await Promise.all([
+  const [embedCount, sessionCount, profile] = await Promise.all([
     prisma.embedForm.count({ where: { trainerId } }),
     prisma.sessionForm.count({ where: { trainerId } }),
-    prisma.customField.count({ where: { trainerId, category: 'INTAKE' } }),
+    prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessRoles: true } }),
   ])
 
   if (embedCount === 0) {
@@ -82,22 +67,11 @@ export async function seedDefaultFormsFor(prisma: PrismaClient, trainerId: strin
     })
   }
 
-  if (intakeCount === 0) {
-    await prisma.customField.createMany({
-      data: DEFAULT_INTAKE_FIELDS.map((f, i) => ({
-        trainerId,
-        label: f.label,
-        type: f.type,
-        required: f.required,
-        // Prisma's Json column rejects raw `null`; pass `undefined` to omit
-        // the column instead. (Prisma.JsonNull works too if we want stored null.)
-        options: f.options ?? undefined,
-        order: i,
-        category: 'INTAKE',
-        appliesTo: f.appliesTo,
-      })),
-    })
-  }
+  // Persona-recommended starter fields from the field packs (idempotent). With
+  // no roles yet this seeds just the universal "essentials"; the persona packs
+  // (grooming, training, walking…) get added when they pick their trade — see
+  // the /api/trainer/profile PATCH handler.
+  await applyFieldPackKeys(prisma, trainerId, recommendedFieldKeys(profile?.businessRoles ?? []))
 
   if (sessionCount === 0) {
     await prisma.sessionForm.create({
