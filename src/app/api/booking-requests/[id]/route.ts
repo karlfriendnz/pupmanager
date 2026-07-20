@@ -77,6 +77,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   })
 
   await safeEvaluate(reqRow.clientId)
+  // Best-effort: mirror the confirmed session series onto the trainer's Google
+  // Calendar. createMany returns no ids, so re-read them by the new assignment.
+  try {
+    const createdRows = await prisma.trainingSession.findMany({
+      where: { clientPackageId: assignmentId },
+      select: { id: true },
+    })
+    if (createdRows.length) {
+      const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
+      await syncSessionsToGoogle(createdRows.map(r => r.id))
+    }
+  } catch {
+    // Non-critical
+  }
   // Best-effort receivable for the confirmed self-booking (idempotent, skips
   // unpriced packages, never blocks the confirmation).
   await createInvoiceForAssignment({ trainerId, clientId: reqRow.clientId, sourceType: 'PACKAGE', clientPackageId: assignmentId })

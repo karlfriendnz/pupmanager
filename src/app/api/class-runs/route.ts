@@ -6,6 +6,19 @@ import { z } from 'zod'
 import { createClassRun, createClassWithPackage, ClassError } from '@/lib/class-runs'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
 
+// Best-effort: mirror a class's freshly-created sessions onto the trainer's
+// Google Calendar. Unassigned class sessions route to the company owner's
+// connection (the sync engine's built-in fallback). Never breaks the create.
+async function syncClassSessions(sessionIds: string[]) {
+  if (sessionIds.length === 0) return
+  try {
+    const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
+    await syncSessionsToGoogle(sessionIds)
+  } catch {
+    // Non-critical
+  }
+}
+
 // GET  /api/class-runs        — every run for the trainer (+ enrolled count)
 // POST /api/class-runs        — create a run + its shared session series
 export async function GET() {
@@ -86,12 +99,13 @@ export async function POST(req: Request) {
   try {
     if (d.packageId) {
       // Legacy path: schedule a run off an existing group package.
-      const run = await createClassRun({
+      const { createdSessionIds, ...run } = await createClassRun({
         trainerId, packageId: d.packageId, name: d.name, startDate,
         scheduleNote: d.scheduleNote ?? null, capacity: d.capacity ?? null,
         // undefined → inherit the group package's own gap.
         bufferMins: d.bufferMins ?? null,
       })
+      await syncClassSessions(createdSessionIds)
       return NextResponse.json({ ok: true, ...run }, { status: 201 })
     }
 
@@ -99,7 +113,7 @@ export async function POST(req: Request) {
     if (d.sessionCount == null || d.durationMins == null || !d.sessionType) {
       return NextResponse.json({ error: 'Missing class settings' }, { status: 400 })
     }
-    const run = await createClassWithPackage({
+    const { createdSessionIds, ...run } = await createClassWithPackage({
       trainerId,
       name: d.name,
       startDate,
@@ -117,6 +131,7 @@ export async function POST(req: Request) {
       assignedMembershipIds: d.assignedMembershipIds,
       requirePayment: d.requirePayment ?? null,
     })
+    await syncClassSessions(createdSessionIds)
     return NextResponse.json({ ok: true, ...run }, { status: 201 })
   } catch (err) {
     if (err instanceof ClassError) {

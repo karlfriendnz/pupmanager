@@ -201,6 +201,8 @@ async function markPaidAndFulfil(
   const booked: { bookingPageId: string; slotAt: Date }[] = []
   const collisions: Date[] = []
   const classItems: { itemId: string; intent: ClassIntent }[] = []
+  // Session ids created by paid bookings — mirrored to Google after the commit.
+  const syncSessionIds: string[] = []
   let didFulfil = false
 
   await prisma.$transaction(async (tx) => {
@@ -251,6 +253,7 @@ async function markPaidAndFulfil(
           })
           if (r.booked && r.bookingPageId && r.slotAt) booked.push({ bookingPageId: r.bookingPageId, slotAt: r.slotAt })
           if (r.collided && r.slotAt) collisions.push(r.slotAt)
+          if (r.sessionIds.length) syncSessionIds.push(...r.sessionIds)
         }
       } else if (item.kind === 'CLASS_ENROLLMENT') {
         // enrollInRun runs its own transaction (capacity/waitlist logic), so it
@@ -262,6 +265,16 @@ async function markPaidAndFulfil(
 
   if (didFulfil && (booked.length || collisions.length)) {
     await runBookingSideEffects(payment.trainerId, payment.clientId, booked, collisions)
+  }
+  // Best-effort: mirror the paid booking's sessions onto the trainer's Google
+  // Calendar now the payment has committed. Never throws (guarded by the engine).
+  if (didFulfil && syncSessionIds.length) {
+    try {
+      const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
+      await syncSessionsToGoogle(syncSessionIds)
+    } catch {
+      // Non-critical
+    }
   }
   if (didFulfil && classItems.length && payment.clientId) {
     await fulfilClassEnrolments(payment.trainerId, payment.clientId, classItems)
@@ -422,6 +435,8 @@ interface BookingOutcome {
   collided: boolean
   bookingPageId: string | null
   slotAt: Date | null
+  // Ids of the sessions this booking created — mirrored to Google post-commit.
+  sessionIds: string[]
 }
 
 async function fulfilScheduledBooking(
@@ -434,7 +449,7 @@ async function fulfilScheduledBooking(
     paidAt: Date
   },
 ): Promise<BookingOutcome> {
-  const none: BookingOutcome = { booked: false, collided: false, bookingPageId: null, slotAt: null }
+  const none: BookingOutcome = { booked: false, collided: false, bookingPageId: null, slotAt: null, sessionIds: [] }
   const intent = args.intent
   if (!intent?.slotIso) {
     console.error('[stripe connect webhook] scheduled item missing slotIso', args.itemId)
@@ -467,10 +482,10 @@ async function fulfilScheduledBooking(
     console.error('[stripe connect webhook] slot taken before payment cleared — paid but NOT booked', {
       itemId: args.itemId, trainerId: args.trainerId, slotIso: intent.slotIso,
     })
-    return { booked: false, collided: true, bookingPageId: intent.bookingPageId ?? null, slotAt }
+    return { booked: false, collided: true, bookingPageId: intent.bookingPageId ?? null, slotAt, sessionIds: [] }
   }
 
-  const clientPackageId = await materializeBooking(tx, {
+  const { clientPackageId, sessionIds } = await materializeBooking(tx, {
     trainerId: args.trainerId,
     clientId: args.clientId,
     dogId: intent.dogId ?? null,
@@ -488,7 +503,7 @@ async function fulfilScheduledBooking(
     await tx.clientPackage.update({ where: { id: clientPackageId }, data: { invoicedAt: args.paidAt } })
   }
 
-  return { booked: true, collided: false, bookingPageId: intent.bookingPageId ?? null, slotAt }
+  return { booked: true, collided: false, bookingPageId: intent.bookingPageId ?? null, slotAt, sessionIds }
 }
 
 // Backfill the Stripe processing ("card") fee onto a Payment once the charge's

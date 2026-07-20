@@ -36,6 +36,11 @@ export async function extendOngoingPackages(trainerId: string): Promise<void> {
     },
   })
 
+  // Accumulate ONLY the sessions actually created this call, so we mirror the
+  // brand-new ones to Google without ever re-syncing existing rows. Empty on the
+  // common case (nothing to top up) → zero Google traffic.
+  const createdSessionIds: string[] = []
+
   for (const a of ongoing) {
     const last = a.sessions[0]
     if (!last || !last.clientId) continue
@@ -83,6 +88,25 @@ export async function extendOngoingPackages(trainerId: string): Promise<void> {
 
     if (newRows.length > 0) {
       await prisma.trainingSession.createMany({ data: newRows })
+      // createMany returns no ids — re-read exactly the rows we just inserted
+      // (this assignment, at the new scheduledAt instants) to mirror them.
+      const created = await prisma.trainingSession.findMany({
+        where: { clientPackageId: a.id, scheduledAt: { in: newRows.map((r) => r.scheduledAt) } },
+        select: { id: true },
+      })
+      createdSessionIds.push(...created.map((s) => s.id))
+    }
+  }
+
+  // Best-effort: mirror only the freshly-generated sessions onto Google Calendar.
+  // The engine no-ops when the add-on is off or nobody's connected, so this is a
+  // cheap no-op on the common path. Never throws.
+  if (createdSessionIds.length > 0) {
+    try {
+      const { syncSessionsToGoogle } = await import('./google-calendar-sync')
+      await syncSessionsToGoogle(createdSessionIds)
+    } catch {
+      // Non-critical
     }
   }
 }

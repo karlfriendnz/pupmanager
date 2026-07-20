@@ -97,6 +97,10 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
     }
   }
 
+  // Session ids created by the booking (if any), captured inside the tx so we
+  // can mirror them to Google Calendar after it commits.
+  let bookedSessionIds: string[] = []
+
   const clientProfileId = await prisma.$transaction(async tx => {
     // Find-or-join: reuse the person, join their existing profile for this
     // trainer (adding the enquiry's dog), or create a fresh profile. Never
@@ -131,7 +135,7 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
     // so accepting a booking-page prospect both creates/joins the client and
     // books their chosen slot.
     if (booked) {
-      await materializeBooking(tx, {
+      const { sessionIds } = await materializeBooking(tx, {
         trainerId: enquiry.trainerId,
         clientId: clientProfileId,
         dogId: bookDogId,
@@ -142,6 +146,7 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
         singleTitle: booked.title,
         bookingPageId: enquiry.bookedPageId,
       })
+      bookedSessionIds = sessionIds
     }
 
     const entries = Object.entries(customFieldSnapshot).filter(([, v]) => v?.trim())
@@ -169,6 +174,17 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
 
     return clientProfileId
   })
+
+  // Best-effort: mirror the booked session(s) onto the trainer's Google Calendar
+  // once the conversion has committed. Never blocks the accept.
+  if (bookedSessionIds.length) {
+    try {
+      const { syncSessionsToGoogle } = await import('./google-calendar-sync')
+      await syncSessionsToGoogle(bookedSessionIds)
+    } catch {
+      // Non-critical
+    }
+  }
 
   if (magicLinkToken) {
     // Magic link goes via NextAuth's Resend callback so the client lands logged

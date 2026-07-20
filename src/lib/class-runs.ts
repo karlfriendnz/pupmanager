@@ -140,7 +140,7 @@ export async function createClassRun(args: {
   // Per-run override of the package's "gap before the next session".
   // undefined/null = inherit the package's bufferMins.
   bufferMins?: number | null
-}): Promise<{ id: string; sessionCount: number }> {
+}): Promise<{ id: string; sessionCount: number; createdSessionIds: string[] }> {
   const pkg = await prisma.package.findFirst({
     where: { id: args.packageId, trainerId: args.trainerId, isGroup: true },
   })
@@ -176,7 +176,13 @@ export async function createClassRun(args: {
         sessionType: pkg.sessionType,
       })),
     })
-    return { id: run.id, sessionCount: dates.length }
+    // createMany returns no ids — re-read them (visible inside this tx) so the
+    // caller can mirror just these sessions to Google Calendar post-commit.
+    const created = await tx.trainingSession.findMany({
+      where: { classRunId: run.id },
+      select: { id: true },
+    })
+    return { id: run.id, sessionCount: dates.length, createdSessionIds: created.map((s) => s.id) }
   })
 }
 
@@ -208,7 +214,7 @@ export async function createClassWithPackage(args: {
   assignedMembershipIds?: string[]
   // Tri-state "require payment to enrol": null = inherit trainer default.
   requirePayment?: boolean | null
-}): Promise<{ id: string; sessionCount: number }> {
+}): Promise<{ id: string; sessionCount: number; createdSessionIds: string[] }> {
   const count = args.sessionCount > 0 ? args.sessionCount : 1
   const dates = generateSessionDates(args.startDate, count, args.weeksBetween)
   const buffer = normalizeBufferMins(args.bufferMins)
@@ -256,7 +262,13 @@ export async function createClassWithPackage(args: {
       })),
     })
     await setRunTrainers(run.id, args.trainerId, args.assignedMembershipIds, tx)
-    return { id: run.id, sessionCount: dates.length }
+    // createMany returns no ids — re-read them (visible inside this tx) so the
+    // caller can mirror just these sessions to Google Calendar post-commit.
+    const created = await tx.trainingSession.findMany({
+      where: { classRunId: run.id },
+      select: { id: true },
+    })
+    return { id: run.id, sessionCount: dates.length, createdSessionIds: created.map((s) => s.id) }
   })
 }
 
@@ -287,12 +299,14 @@ export async function updateClass(args: {
   assignedMembershipIds?: string[]
   // Tri-state "require payment to enrol"; undefined leaves it untouched.
   requirePayment?: boolean | null
-}): Promise<{ scheduleChanged: boolean }> {
+  // When the schedule was rebuilt: the ids of the freshly-created sessions (to
+  // mirror to Google) and the Google event ids of the deleted ones (to remove).
+}): Promise<{ scheduleChanged: boolean; createdSessionIds: string[]; deletedEventIds: string[] }> {
   const run = await prisma.classRun.findFirst({
     where: { id: args.runId, trainerId: args.trainerId },
     include: {
       package: true,
-      sessions: { select: { id: true, sessionIndex: true } },
+      sessions: { select: { id: true, sessionIndex: true, googleCalendarEventId: true } },
     },
   })
   if (!run) throw new ClassError('RUN_NOT_FOUND', 'Class not found')
@@ -321,6 +335,13 @@ export async function updateClass(args: {
     args.bufferMins !== undefined
       ? normalizeBufferMins(args.bufferMins)
       : effectiveBufferMins(run.bufferMins, run.package.bufferMins)
+
+  // A rebuild deletes the old sessions — capture their mirrored Google event ids
+  // first so the caller can remove them from the calendar post-commit.
+  const deletedEventIds = scheduleChanged
+    ? run.sessions.map((s) => s.googleCalendarEventId).filter((id): id is string => !!id)
+    : []
+  let createdSessionIds: string[] = []
 
   await prisma.$transaction(async (tx) => {
     await tx.package.update({
@@ -367,6 +388,12 @@ export async function updateClass(args: {
           sessionType: args.sessionType,
         })),
       })
+      // Re-read the fresh ids (visible in-tx) to mirror just these to Google.
+      const created = await tx.trainingSession.findMany({
+        where: { classRunId: run.id },
+        select: { id: true },
+      })
+      createdSessionIds = created.map((s) => s.id)
     } else {
       // Schedule unchanged — propagate name/duration/buffer/format to existing
       // sessions. A class is one shared event the trainer is editing head-on, so
@@ -386,7 +413,7 @@ export async function updateClass(args: {
     }
   })
 
-  return { scheduleChanged }
+  return { scheduleChanged, createdSessionIds, deletedEventIds }
 }
 
 /**

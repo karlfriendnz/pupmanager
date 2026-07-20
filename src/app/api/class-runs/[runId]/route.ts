@@ -145,6 +145,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
         assignedMembershipIds: d.assignedMembershipIds,
         requirePayment: d.requirePayment,
       })
+      // Keep Google Calendar in step with a rebuild: remove the deleted
+      // sessions' mirrored events, then mirror the freshly-created ones.
+      // Best-effort — a calendar failure must never break the edit.
+      if (result.scheduleChanged) {
+        try {
+          const { syncSessionsToGoogle, deleteGoogleEvents } = await import('@/lib/google-calendar-sync')
+          if (result.deletedEventIds.length) await deleteGoogleEvents(trainerId, result.deletedEventIds)
+          await syncSessionsToGoogle(result.createdSessionIds)
+        } catch {
+          // Non-critical
+        }
+      }
       // Only a genuine time change regenerates sessions — notify clients then.
       if (result.scheduleChanged) {
         const runDetail = await prisma.classRun.findUnique({

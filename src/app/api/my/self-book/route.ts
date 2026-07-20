@@ -218,6 +218,21 @@ export async function POST(req: Request) {
     }),
   )
   await safeEvaluate(ctx.clientId)
+  // Best-effort: mirror the newly-booked session(s) onto the trainer's Google
+  // Calendar. createBookingAssignment uses createMany (no ids), so re-read the
+  // rows by the assignment we just created. Wrapped so it never breaks booking.
+  try {
+    const createdRows = await prisma.trainingSession.findMany({
+      where: { clientPackageId: assignmentId },
+      select: { id: true },
+    })
+    if (createdRows.length) {
+      const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
+      await syncSessionsToGoogle(createdRows.map(r => r.id))
+    }
+  } catch {
+    // Non-critical
+  }
   // Best-effort receivable for the self-booked package (this free-flow path only;
   // the paid path above goes through Stripe checkout instead).
   await createInvoiceForAssignment({ trainerId: ctx.trainerId, clientId: ctx.clientId, sourceType: 'PACKAGE', clientPackageId: assignmentId })

@@ -100,15 +100,19 @@ interface MaterializeArgs {
 }
 
 /**
- * Create the booked calendar rows inside a transaction and return the
- * resulting ClientPackage id (or null for a single session). With a package
- * the chosen slot is session 1 and the rest auto-place on the package cadence;
- * with no package a single TrainingSession lands on the slot.
+ * Create the booked calendar rows inside a transaction. Returns the resulting
+ * ClientPackage id (or null for a single session) AND the ids of the sessions
+ * created, so the caller can mirror just these to Google Calendar post-commit.
+ * With a package the chosen slot is session 1 and the rest auto-place on the
+ * package cadence; with no package a single TrainingSession lands on the slot.
  */
-export async function materializeBooking(tx: Tx, args: MaterializeArgs): Promise<string | null> {
+export async function materializeBooking(
+  tx: Tx,
+  args: MaterializeArgs,
+): Promise<{ clientPackageId: string | null; sessionIds: string[] }> {
   if (args.pkg) {
     const dates = generateSessionDates(args.slotAt, args.pkg.sessionCount, args.pkg.weeksBetween)
-    return createBookingAssignment(tx, {
+    const clientPackageId = await createBookingAssignment(tx, {
       trainerId: args.trainerId,
       clientId: args.clientId,
       packageId: args.pkg.id,
@@ -117,9 +121,16 @@ export async function materializeBooking(tx: Tx, args: MaterializeArgs): Promise
       sessionDates: dates,
       bookingPageId: args.bookingPageId,
     })
+    // createBookingAssignment uses createMany (no ids) — re-read the rows it
+    // just created (visible in-tx) by the assignment id.
+    const created = await tx.trainingSession.findMany({
+      where: { clientPackageId },
+      select: { id: true },
+    })
+    return { clientPackageId, sessionIds: created.map((s) => s.id) }
   }
 
-  await tx.trainingSession.create({
+  const session = await tx.trainingSession.create({
     data: {
       trainerId: args.trainerId,
       clientId: args.clientId,
@@ -130,6 +141,7 @@ export async function materializeBooking(tx: Tx, args: MaterializeArgs): Promise
       durationMins: args.singleDurationMins,
       sessionType: args.singleSessionType,
     },
+    select: { id: true },
   })
-  return null
+  return { clientPackageId: null, sessionIds: [session.id] }
 }

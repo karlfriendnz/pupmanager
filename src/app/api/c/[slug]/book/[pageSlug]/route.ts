@@ -184,7 +184,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       return NextResponse.json({ ok: true, mode: 'requested' }, { status: 201 })
     }
 
-    const clientPackageId = await prisma.$transaction(tx =>
+    const { clientPackageId, sessionIds } = await prisma.$transaction(tx =>
       materializeBooking(tx, {
         trainerId: trainer.id,
         clientId: client.id,
@@ -198,6 +198,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       }),
     )
     await safeEvaluate(client.id)
+    // Best-effort: mirror the booked session(s) onto the trainer's Google Calendar.
+    try {
+      if (sessionIds.length) {
+        const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
+        await syncSessionsToGoogle(sessionIds)
+      }
+    } catch {
+      // Non-critical
+    }
     // Best-effort receivable when this booking kicked off a priced package
     // (single one-off sessions return no clientPackageId and aren't invoiced here).
     if (clientPackageId) {
