@@ -19,6 +19,9 @@ const h = vi.hoisted(() => ({
   classRunFindFirst: vi.fn(),
   classRunFindUnique: vi.fn(),
   classRunUpdate: vi.fn(),
+  classRunDelete: vi.fn(),
+  sessionDeleteMany: vi.fn(),
+  txn: vi.fn(),
   enrollmentFindMany: vi.fn(),
 }))
 
@@ -41,13 +44,15 @@ vi.mock('@/lib/google-calendar-sync', () => ({
 vi.mock('@/lib/buffer', () => ({ MAX_BUFFER_MINS: 240 }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    classRun: { findFirst: h.classRunFindFirst, findUnique: h.classRunFindUnique, update: h.classRunUpdate },
+    classRun: { findFirst: h.classRunFindFirst, findUnique: h.classRunFindUnique, update: h.classRunUpdate, delete: h.classRunDelete },
+    trainingSession: { deleteMany: h.sessionDeleteMany },
     classEnrollment: { findMany: h.enrollmentFindMany },
+    $transaction: h.txn,
   },
 }))
 
 import { POST } from '@/app/api/class-runs/route'
-import { PATCH } from '@/app/api/class-runs/[runId]/route'
+import { PATCH, DELETE } from '@/app/api/class-runs/[runId]/route'
 
 const TRAINER = 'co1'
 
@@ -59,6 +64,7 @@ beforeEach(() => {
   h.deleteGoogleEvents.mockResolvedValue(undefined)
   h.notifyClient.mockResolvedValue(undefined)
   h.enrollmentFindMany.mockResolvedValue([])
+  h.txn.mockResolvedValue([])
 })
 
 describe('POST /api/class-runs — mirrors the new class series to Google', () => {
@@ -138,5 +144,41 @@ describe('PATCH /api/class-runs/[runId] — reschedule keeps Google in step', ()
     expect(res.status).toBe(200)
     expect(h.deleteGoogleEvents).not.toHaveBeenCalled()
     expect(h.syncSessionsToGoogle).toHaveBeenCalledWith(['n1'])
+  })
+})
+
+describe('DELETE /api/class-runs/[runId] — removes the class events from Google', () => {
+  function delReq() {
+    return DELETE(
+      new Request('https://app.pupmanager.com/api/class-runs/run-1', { method: 'DELETE' }),
+      { params: Promise.resolve({ runId: 'run-1' }) },
+    )
+  }
+
+  it('deletes exactly the mirrored event ids of the class sessions', async () => {
+    h.classRunFindFirst.mockResolvedValue({
+      id: 'run-1', name: 'Puppy',
+      sessions: [{ googleCalendarEventId: 'e1' }, { googleCalendarEventId: null }, { googleCalendarEventId: 'e2' }],
+    })
+    const res = await delReq()
+    expect(res.status).toBe(200)
+    expect(h.deleteGoogleEvents).toHaveBeenCalledWith(TRAINER, ['e1', 'e2'])
+  })
+
+  it('touches Google not at all when no session was ever mirrored', async () => {
+    h.classRunFindFirst.mockResolvedValue({
+      id: 'run-1', name: 'Puppy', sessions: [{ googleCalendarEventId: null }],
+    })
+    const res = await delReq()
+    expect(res.status).toBe(200)
+    expect(h.deleteGoogleEvents).not.toHaveBeenCalled()
+  })
+
+  it('a Google failure never breaks the delete', async () => {
+    h.classRunFindFirst.mockResolvedValue({ id: 'run-1', name: 'Puppy', sessions: [{ googleCalendarEventId: 'e1' }] })
+    h.deleteGoogleEvents.mockRejectedValue(new Error('Google 500'))
+    const res = await delReq()
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ ok: true, deleted: true })
   })
 })

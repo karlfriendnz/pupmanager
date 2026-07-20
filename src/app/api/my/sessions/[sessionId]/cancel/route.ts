@@ -30,7 +30,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ sessio
   // A foreign or class session returns null → 404, and nothing is deleted.
   const session = await prisma.trainingSession.findFirst({
     where: { id: sessionId, clientId: active.clientId, status: 'UPCOMING' },
-    select: { id: true, title: true, scheduledAt: true, clientPackageId: true, trainerId: true },
+    select: { id: true, title: true, scheduledAt: true, clientPackageId: true, trainerId: true, assignedMembershipId: true, googleCalendarEventId: true },
   })
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -69,6 +69,18 @@ export async function POST(_req: Request, { params }: { params: Promise<{ sessio
   // Delete the session (matches the trainer cancel path — there's no CANCELLED
   // status). Re-scoped by clientId so we can never delete someone else's row.
   await prisma.trainingSession.deleteMany({ where: { id: sessionId, clientId: active.clientId } })
+
+  // Best-effort: remove the mirrored event from the trainer's Google Calendar
+  // (routed to the same member the session synced to — its assignee, else the
+  // owner). Never blocks the cancellation.
+  if (session.googleCalendarEventId) {
+    try {
+      const { deleteGoogleEvents } = await import('@/lib/google-calendar-sync')
+      await deleteGoogleEvents(session.trainerId, [session.googleCalendarEventId], session.assignedMembershipId)
+    } catch {
+      // Non-critical
+    }
+  }
 
   // Regeneration guard: a self-booked package has a fixed sessionCount and is NOT
   // extendIndefinitely, so a plain delete sticks. But if this session's package

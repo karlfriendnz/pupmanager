@@ -362,6 +362,77 @@ export async function refreshBusyForMembership(membershipId: string): Promise<nu
   }
 }
 
+// ─── one-off backfill (pre-existing sessions → Google) ────────────────────────
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Push pre-existing, future-dated sessions that were never mirrored (their
+ * `googleCalendarEventId` is still null) into Google — the gap left by the
+ * class / self-book / booking-page / ongoing paths that only started syncing
+ * on 2026-07-20. Reuses the live per-session routing + add-on gating.
+ *
+ * Idempotent (only null-event-id rows) → safe to re-run, and RESUMABLE: each
+ * call processes at most `limit` upcoming sessions and reports how many remain,
+ * so a caller loops until `remaining` hits 0 without risking a function timeout.
+ * `execute: false` (default) only counts — it writes nothing.
+ */
+export async function backfillSessionsToGoogle(opts: {
+  execute?: boolean
+  limit?: number
+} = {}): Promise<{ activeCompanies: number; candidates: number; synced: number; remaining: number }> {
+  const execute = opts.execute ?? false
+  const limit = Math.max(1, opts.limit ?? 1500)
+
+  // Only companies with a live connection AND the add-on still on can receive a push.
+  const connections = await prisma.googleCalendarConnection.findMany({ select: { companyId: true } })
+  const connectedCompanyIds = [...new Set(connections.map((c) => c.companyId))]
+  const activeCompanyIds: string[] = []
+  for (const companyId of connectedCompanyIds) {
+    if (await hasAddon(companyId, 'googlecalendar')) activeCompanyIds.push(companyId)
+  }
+
+  const baseWhere = {
+    trainerId: { in: activeCompanyIds },
+    scheduledAt: { gte: new Date() },
+    googleCalendarEventId: null,
+  }
+
+  const candidates = activeCompanyIds.length
+    ? await prisma.trainingSession.count({ where: baseWhere })
+    : 0
+
+  if (!execute || candidates === 0) {
+    return { activeCompanies: activeCompanyIds.length, candidates, synced: 0, remaining: candidates }
+  }
+
+  // Take this call's slice (oldest-first), then sync in small throttled chunks so
+  // we stay well under Google's per-project write quota.
+  const slice = await prisma.trainingSession.findMany({
+    where: baseWhere,
+    select: { id: true },
+    orderBy: { scheduledAt: 'asc' },
+    take: limit,
+  })
+  const ids = slice.map((s) => s.id)
+
+  const CHUNK = 25
+  const PAUSE_MS = 300
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    await syncSessionsToGoogle(ids.slice(i, i + CHUNK))
+    if (i + CHUNK < ids.length) await sleep(PAUSE_MS)
+  }
+
+  // What actually got mirrored (some may still no-op if the routed member/owner
+  // isn't the connected one) and how many un-mirrored sessions remain overall.
+  const stillNull = await prisma.trainingSession.count({
+    where: { id: { in: ids }, googleCalendarEventId: null },
+  })
+  const synced = ids.length - stillNull
+  const remaining = await prisma.trainingSession.count({ where: baseWhere })
+  return { activeCompanies: activeCompanyIds.length, candidates, synced, remaining }
+}
+
 /**
  * Refresh busy blocks for EVERY connected member whose company still has the
  * add-on on. Used by the busy-refresh cron. Best-effort per connection.

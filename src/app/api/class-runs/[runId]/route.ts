@@ -227,9 +227,18 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ runI
   // Tenant guard: only a run owned by THIS company can be deleted.
   const run = await prisma.classRun.findFirst({
     where: { id: runId, trainerId },
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      // Capture the mirrored Google event ids BEFORE the cascade wipes them, so
+      // we can remove them from the trainer's calendar after the local delete.
+      sessions: { select: { googleCalendarEventId: true } },
+    },
   })
   if (!run) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const deletedEventIds = run.sessions
+    .map((s) => s.googleCalendarEventId)
+    .filter((id): id is string => !!id)
 
   // Best-effort — a flaky email/push must not block the delete.
   try {
@@ -252,6 +261,18 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ runI
   } catch (err) {
     console.error('[class-runs] delete failed', err)
     return NextResponse.json({ error: 'Could not delete this class. Please try again.' }, { status: 500 })
+  }
+
+  // Best-effort: pull the class's now-deleted sessions off the trainer's Google
+  // Calendar. Unassigned class sessions live on the owner's connection (the sync
+  // engine's fallback). Never blocks the delete.
+  if (deletedEventIds.length) {
+    try {
+      const { deleteGoogleEvents } = await import('@/lib/google-calendar-sync')
+      await deleteGoogleEvents(trainerId, deletedEventIds)
+    } catch {
+      // Non-critical
+    }
   }
 
   return NextResponse.json({ ok: true, deleted: true })
