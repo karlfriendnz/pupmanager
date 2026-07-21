@@ -12,6 +12,8 @@ export const PERSONAS: Persona[] = [
   { id: 'behaviourist', label: 'Behavior consulting', icon: '🧠' },
   { id: 'groomer', label: 'Groomer', icon: '✂️' },
   { id: 'petsitter', label: 'Pet sitter', icon: '🏡' },
+  { id: 'puppyschool', label: 'Puppy school', icon: '🐶' },
+  { id: 'other', label: 'Other', icon: '🐾' },
 ]
 
 // Which home view suits a persona best. Appointment-book trades (walking,
@@ -21,7 +23,7 @@ export const PERSONAS: Persona[] = [
 // is a sensible default seeded at onboarding — the trainer can still change it
 // in Settings. A mixed trainer+groomer leans to the Dashboard (the richer view).
 export function landingViewForRoles(roles: string[]): 'dashboard' | 'schedule' {
-  if (roles.some(r => r === 'trainer' || r === 'behaviourist')) return 'dashboard'
+  if (roles.some(r => r === 'trainer' || r === 'behaviourist' || r === 'puppyschool')) return 'dashboard'
   if (roles.some(r => r === 'walker' || r === 'groomer' || r === 'petsitter')) return 'schedule'
   return 'dashboard'
 }
@@ -69,6 +71,15 @@ export const PACKAGE_TYPES: Record<string, { id: string; label: string }[]> = {
     { id: 'home-visit', label: 'Home visits' },
     { id: 'overnight', label: 'Overnight stays' },
     { id: 'house-sit', label: 'House sitting' },
+  ],
+  puppyschool: [
+    { id: 'puppy', label: 'Puppy courses' },
+    { id: 'group-class', label: 'Group classes' },
+    { id: 'private', label: '1:1 sessions' },
+  ],
+  other: [
+    { id: 'private', label: '1:1 sessions' },
+    { id: 'group-class', label: 'Group classes' },
   ],
 }
 
@@ -153,7 +164,7 @@ export const WIZ_QUESTIONS: WizQuestion[] = [
   },
   {
     id: 'reward', category: 'Your clients', q: 'Would you like to celebrate your clients’ progress?', icon: 'trophy', multi: false,
-    roles: ['trainer', 'behaviourist'],
+    roles: ['trainer', 'behaviourist', 'puppyschool'],
     options: [
       { id: 'yes', label: 'Yes, I already do', addons: ['achievements'] },
       { id: 'aspire', label: 'I’d like to', addons: ['achievements'] },
@@ -212,7 +223,7 @@ export type WizAnswers = Record<string, string | string[]>
 // single confirming tap.
 export function defaultAnswers(roles: string[]): WizAnswers {
   const mobile = roles.some(r => r === 'walker' || r === 'petsitter')
-  const coach = roles.some(r => r === 'trainer' || r === 'behaviourist')
+  const coach = roles.some(r => r === 'trainer' || r === 'behaviourist' || r === 'puppyschool')
   const groomer = roles.includes('groomer')
   return {
     invoice: 'manual',

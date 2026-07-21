@@ -20,6 +20,8 @@ const SCHEDULE_BY_ROLE: Record<string, ScheduleDefault> = {
   // Trainers run evening classes; lunch break midday.
   trainer: { days: MON_SAT, windows: [{ start: '09:00', end: '12:00' }, { start: '13:00', end: '19:00' }], gridStart: 8, gridEnd: 20 },
   behaviourist: { days: MON_FRI, windows: [{ start: '09:00', end: '12:00' }, { start: '13:00', end: '18:00' }], gridStart: 8, gridEnd: 19 },
+  // Puppy schools run weekday evening + weekend-morning classes.
+  puppyschool: { days: MON_SAT, windows: [{ start: '09:00', end: '12:00' }, { start: '16:00', end: '20:00' }], gridStart: 8, gridEnd: 21 },
   // Walkers work straight through — walks happen over lunchtime.
   walker: { days: MON_FRI, windows: [{ start: '07:00', end: '18:00' }], gridStart: 6, gridEnd: 19 },
   // Groomers take a midday lunch between appointments.

@@ -18,9 +18,11 @@ const ALL_SLOT_TYPES: ServiceSlotType[] = ['session', 'class', 'buddies', 'dropi
 const ROLE_SLOT_TYPES: Record<string, ServiceSlotType[]> = {
   trainer: ['session', 'class', 'dropin'],
   behaviourist: ['session', 'class', 'dropin'],
+  puppyschool: ['session', 'class', 'dropin'],
   walker: ['session', 'buddies'],
   groomer: ['session'],
   petsitter: ['session'],
+  // 'other' intentionally unlisted → allowedSlotTypes falls back to everything.
 }
 
 /**
