@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { UserPlus } from 'lucide-react'
 import { ClientsList } from './clients-list'
-import { QuickAddContact } from './quick-add-contact'
+import { QuickAddButton, QuickAddModal } from './quick-add-contact'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddonNudge } from '@/components/shared/addon-nudge'
 import { addonNudge } from '@/components/shared/addon-nudge-registry'
@@ -208,7 +208,7 @@ export default async function ClientsPage({
         subtitle={`${newCount > 0 ? `${newCount} new · ` : ''}${activeCount} active · ${inactiveCount} inactive`}
         actions={
           <div className="flex items-center gap-2">
-            <QuickAddContact />
+            <QuickAddButton />
             <Link href="/clients/invite">
               <Button size="sm">
                 <UserPlus className="h-4 w-4" />
@@ -218,6 +218,10 @@ export default async function ClientsPage({
           </div>
         }
       />
+      {/* Single quick-add modal for the whole page — opens from ?new=1 (the
+          header button, the top bar's + menu, or the mobile FAB). Mounted once
+          here so it never double-renders like a header action would. */}
+      <QuickAddModal />
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
 
 
