@@ -883,21 +883,53 @@ function WeekGrid({
   const canMobilePrev = useThreeDayWindow && (mobileDayStart > 0 || !!onAdvanceWeek)
   const canMobileNext = useThreeDayWindow && (mobileDayStart + 3 < weekDays.length || !!onAdvanceWeek)
 
-  // Swipe the mobile 3-day window: swipe left → next days, swipe right →
-  // previous days. A swipe can start anywhere (including over an event) because
-  // events only move after a press-and-hold — a quick flick just changes days.
+  // Horizontal touch navigation, two flavours:
+  //  • 3-day window (phones): a quick flick steps the 3-day window / week.
+  //  • Full week (iPad / any touch on the 7-day grid): a press-and-drag pulls
+  //    the grid with the finger and commits to the prev/next week on release —
+  //    the iPad equivalent of the phone's day-swipe. `pan-y` on the scroll
+  //    container lets vertical scrolling stay native while we own horizontal.
+  const [weekDragDx, setWeekDragDx] = useState(0)
+  const [weekDragging, setWeekDragging] = useState(false)
+  const weekSwipeOn = !useThreeDayWindow && !!onAdvanceWeek
+
   function handleSwipeStart(e: React.TouchEvent) {
     didDragRef.current = false
-    if (!useThreeDayWindow || dragging || e.touches.length !== 1) {
+    if (dragging || e.touches.length !== 1 || (!useThreeDayWindow && !weekSwipeOn)) {
       swipeRef.current = null
       return
     }
     swipeRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
   }
+  function handleSwipeMove(e: React.TouchEvent) {
+    // Only the full-week grid drags with the finger; the 3-day window flicks.
+    if (!weekSwipeOn || !swipeRef.current || dragging || didDragRef.current || e.touches.length !== 1) return
+    const dx = e.touches[0].clientX - swipeRef.current.x
+    const dy = e.touches[0].clientY - swipeRef.current.y
+    if (!weekDragging) {
+      // Leave a mostly-vertical gesture to native scrolling; claim the drag only
+      // once it's clearly horizontal.
+      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 10) { swipeRef.current = null; return }
+      if (Math.abs(dx) > 12) setWeekDragging(true)
+      else return
+    }
+    setWeekDragDx(dx)
+  }
   function handleSwipeEnd(e: React.TouchEvent) {
     const start = swipeRef.current
     swipeRef.current = null
-    // Never change days off the back of an actual event-drag.
+    // Full-week press-and-drag: commit past a threshold, else spring back.
+    if (weekSwipeOn) {
+      const dx = weekDragDx
+      const wasDragging = weekDragging
+      setWeekDragging(false)
+      setWeekDragDx(0)
+      if (wasDragging && Math.abs(dx) > 70 && !dragging && !didDragRef.current) {
+        onAdvanceWeek?.(dx < 0 ? 1 : -1)
+      }
+      return
+    }
+    // 3-day window flick. Never change days off the back of an actual event-drag.
     if (!start || dragging || didDragRef.current) return
     const t = e.changedTouches[0]
     if (!t) return
@@ -1122,13 +1154,15 @@ function WeekGrid({
         data-testid="schedule-scroll"
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
         onTouchStart={handleSwipeStart}
+        onTouchMove={handleSwipeMove}
         onTouchEnd={handleSwipeEnd}
         // While a session is being dragged, stop iOS from scroll-arbitrating
         // the gesture: a mid-drag scroll shifts the column's client rect under
         // the finger, collapsing the computed Y to 0 and snapping the session
         // to the top of the day (~7am). Locking touch-action keeps the pointer
-        // math stable for the whole drag.
-        style={{ touchAction: dragging ? 'none' : undefined }}
+        // math stable for the whole drag. Otherwise `pan-y` (when the full-week
+        // swipe is on) keeps vertical scrolling native while we own horizontal.
+        style={{ touchAction: dragging ? 'none' : (weekSwipeOn ? 'pan-y' : undefined) }}
       >
         <div
           ref={gridRef}
@@ -1137,6 +1171,10 @@ function WeekGrid({
             gridTemplateColumns: `48px repeat(${visibleDays.length}, 1fr)`,
             height: totalHeight,
             touchAction: dragging ? 'none' : undefined,
+            // Follow the finger during a full-week swipe (clamped so it never
+            // slides fully off-screen); spring back / reset once released.
+            transform: weekDragDx ? `translateX(${Math.max(-140, Math.min(140, weekDragDx))}px)` : undefined,
+            transition: weekDragging ? 'none' : 'transform 0.2s ease-out',
           }}
           onPointerMove={dragging ? handlePointerMove : undefined}
           onPointerUp={dragging ? handlePointerUp : undefined}
