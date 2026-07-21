@@ -9,7 +9,7 @@ export type Persona = { id: string; label: string; icon: string }
 export const PERSONAS: Persona[] = [
   { id: 'walker', label: 'Dog walker', icon: '🦮' },
   { id: 'trainer', label: 'Dog trainer', icon: '🎓' },
-  { id: 'behaviourist', label: 'Dog behaviourist', icon: '🧠' },
+  { id: 'behaviourist', label: 'Behavior consulting', icon: '🧠' },
   { id: 'groomer', label: 'Groomer', icon: '✂️' },
   { id: 'petsitter', label: 'Pet sitter', icon: '🏡' },
 ]
