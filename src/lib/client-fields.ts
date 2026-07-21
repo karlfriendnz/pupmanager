@@ -39,11 +39,13 @@ export const CLIENT_FIELDS: ClientFieldDef[] = [
 ]
 
 // Sensible out-of-the-box behaviour before a trainer customises anything:
-// full form requires only a name; quick-add captures name + phone.
+// full form requires only a name; quick-add captures name + phone + email (the
+// three you almost always want when you meet someone). All toggleable in
+// Settings → Fields & forms.
 const DEFAULTS: Record<ClientFieldKey, FieldMode> = {
   name:      { required: true,  quickAdd: true },
   phone:     { required: false, quickAdd: true },
-  email:     { required: false, quickAdd: false },
+  email:     { required: false, quickAdd: true },
   address:   { required: false, quickAdd: false },
   dogName:   { required: false, quickAdd: false },
   dogBreed:  { required: false, quickAdd: false },
