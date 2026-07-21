@@ -125,7 +125,7 @@ export function SettingsTabs({
           fixed full-height rail flush to the left edge, matching the main app's
           sidebar (top-14 → bottom, white panel, right border). On mobile it's a
           horizontal scroll row (where the real nav is a bottom bar). */}
-      <nav className="md:fixed md:top-14 md:bottom-0 md:left-0 md:z-30 md:flex md:w-64 md:flex-col md:bg-white md:border-r md:border-slate-100">
+      <nav className="md:fixed md:top-[calc(3.5rem_+_var(--app-safe-top))] md:bottom-0 md:left-0 md:z-30 md:flex md:w-64 md:flex-col md:bg-white md:border-r md:border-slate-100">
         <div className="flex md:flex-col md:flex-1 gap-1 overflow-x-auto overflow-y-hidden md:overflow-x-hidden md:overflow-y-auto -mx-4 px-4 md:mx-0 md:px-3 md:py-4 border-b border-slate-200 md:border-b-0 mb-6 md:mb-0">
           {/* Settings hides the app's main nav, so the rail is the only way back
               out — lead with an explicit exit to the dashboard. */}

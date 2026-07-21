@@ -45,6 +45,16 @@ html[data-native='true'] body {
   padding-right: env(safe-area-inset-right);
 }
 
+/* Capped top safe-area inset, shared by the desktop top bar and its fixed
+   sidebars. iPad renders the desktop layout inside the native shell, so those
+   fixed surfaces must clear the status bar (previously they pinned to top-0 /
+   top-14 and sat under it, making the top rows hard to tap). env() is 0 on
+   non-notched surfaces, so this is a no-op on the web; capped at 1rem to match
+   <main>'s own reservation. */
+:root {
+  --app-safe-top: min(env(safe-area-inset-top, 0px), 1rem);
+}
+
 /* Full-width banners pinned to the very top of the app on mobile (admin
    impersonation, preview-as-client, demo preview). Reserve the iOS status-bar /
    notch inset so their text isn't clipped, and cancel <main>'s capped safe-area

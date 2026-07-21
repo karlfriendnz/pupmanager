@@ -674,7 +674,7 @@ function TrainerTopBar({
 }) {
   const title = usePageTitle() ?? fallbackTitle
   return (
-    <header className="hidden md:flex fixed top-0 inset-x-0 z-40 h-14 items-center border-b border-slate-100 bg-white/85 backdrop-blur">
+    <header className="hidden md:flex fixed top-0 inset-x-0 z-40 min-h-[3.5rem] items-center border-b border-slate-100 bg-white/85 backdrop-blur pt-[var(--app-safe-top)]">
       {/* Logo zone — aligned to the sidebar width so it sits above it. */}
       <div className={cn('flex items-center h-full shrink-0 border-r border-slate-100 transition-all duration-200 overflow-hidden', collapsed ? 'w-16 justify-center px-2' : 'w-64 gap-3 px-5')}>
         {/* Logo fits inside a fixed square box (object-contain, never cropped),
@@ -860,7 +860,7 @@ function TrainerShell({
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
           Hidden inside Settings, which brings its own rail. */}
-      <aside className={cn('hidden md:flex-col md:fixed md:top-14 md:bottom-0 md:left-0 md:z-40 bg-white border-r border-slate-100 transition-all duration-200', inSettings ? 'md:hidden' : 'md:flex', sidebarWidth)}>
+      <aside className={cn('hidden md:flex-col md:fixed md:top-[calc(3.5rem_+_var(--app-safe-top))] md:bottom-0 md:left-0 md:z-40 bg-white border-r border-slate-100 transition-all duration-200', inSettings ? 'md:hidden' : 'md:flex', sidebarWidth)}>
         <nav className={cn('flex-1 overflow-y-auto py-4 space-y-1', collapsed ? 'px-2' : 'px-3')}>
           {desktopNav.map((item, idx, arr) => {
             // Section grouping: emit a small header (expanded) or a divider
