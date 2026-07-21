@@ -3316,16 +3316,10 @@ export function ScheduleView({
   }
 
   const navSeq = useRef(0)
-  async function navigate(delta: number) {
-    let nextDateStr: string
-    if (view === 'week' || view === 'threeDay') {
-      const monday = getMondayOf(selectedDate)
-      nextDateStr = toDateStr(addDays(monday, delta * 7))
-    } else {
-      const d = parseLocalDate(selectedDate)
-      d.setDate(d.getDate() + delta)
-      nextDateStr = toDateStr(d)
-    }
+  // Load a specific date's window (fetches its sessions + client extras and
+  // updates the URL). The shared core behind the arrows, the "Today" button and
+  // the "jump ahead" dropdown.
+  async function goToDate(nextDateStr: string) {
     const seq = ++navSeq.current
 
     setNavigatingWeek(true)
@@ -3349,6 +3343,33 @@ export function ScheduleView({
     } finally {
       if (seq === navSeq.current) setNavigatingWeek(false)
     }
+  }
+
+  // Step by whole weeks (week / 3-day views) or single days (day view).
+  function navigate(delta: number) {
+    let nextDateStr: string
+    if (view === 'week' || view === 'threeDay') {
+      const monday = getMondayOf(selectedDate)
+      nextDateStr = toDateStr(addDays(monday, delta * 7))
+    } else {
+      const d = parseLocalDate(selectedDate)
+      d.setDate(d.getDate() + delta)
+      nextDateStr = toDateStr(d)
+    }
+    return goToDate(nextDateStr)
+  }
+
+  // Jump forward N whole weeks from the current view (the "jump ahead" dropdown).
+  function jumpWeeks(n: number) {
+    if (!n) return
+    const base = view === 'week' || view === 'threeDay' ? getMondayOf(selectedDate) : parseLocalDate(selectedDate)
+    return goToDate(toDateStr(addDays(base, n * 7)))
+  }
+
+  // Snap straight back to today (no-op guard when already there).
+  function goToToday() {
+    if (selectedDate === today) return
+    return goToDate(today)
   }
 
   // Swipe the single-day (mobile) view left/right to move to the next/previous
@@ -3632,6 +3653,30 @@ export function ScheduleView({
           >
             <ChevronRight className="h-4 w-4" />
           </button>
+        </div>
+
+        {/* Jump-to control — Today plus forward 1–10 weeks in one dropdown, so
+            the trainer can reposition the calendar without repeated arrow taps.
+            Wraps to its own row on phones; sits by the arrows on tablet+. */}
+        <div className="flex items-center gap-1.5">
+          <select
+            value=""
+            onChange={e => {
+              const v = e.target.value
+              if (v === 'today') goToToday()
+              else if (v) jumpWeeks(Number(v))
+            }}
+            disabled={navigatingWeek}
+            aria-label="Jump to a date"
+            title="Jump to…"
+            className="h-8 rounded-lg border border-slate-200 bg-white px-1.5 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
+          >
+            <option value="">Jump to…</option>
+            <option value="today">Today</option>
+            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+              <option key={n} value={n}>+{n} {n === 1 ? 'week' : 'weeks'}</option>
+            ))}
+          </select>
         </div>
 
         {/* Action cluster — left-aligned and full-width on phones (its own
