@@ -197,7 +197,7 @@ export async function fetchFreeBusy(
     .map((b) => ({ start: new Date(b.start), end: new Date(b.end) }))
 }
 
-export type CalendarBusyEvent = { start: Date; end: Date; title: string | null }
+export type CalendarBusyEvent = { id: string | null; start: Date; end: Date; title: string | null }
 
 /**
  * List the member's actual events between timeMin and timeMax (expanding
@@ -234,6 +234,7 @@ export async function fetchCalendarEvents(
       summary?: string
       start?: { dateTime?: string; date?: string }
       end?: { dateTime?: string; date?: string }
+      id?: string
     }[]
   } = await res.json()
 
@@ -248,7 +249,7 @@ export async function fetchCalendarEvents(
     const start = new Date(startStr)
     const end = new Date(endStr)
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) continue
-    out.push({ start, end, title: e.summary?.trim() || null })
+    out.push({ id: e.id ?? null, start, end, title: e.summary?.trim() || null })
   }
   return out
 }

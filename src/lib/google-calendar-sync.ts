@@ -332,10 +332,27 @@ export async function refreshBusyBlocksForConnection(connection: GoogleCalendarC
     return 0
   }
 
+  // Drop the events PupManager itself pushed. We sync sessions OUT to Google and
+  // then read the same calendar back for busy times, so without this every
+  // session appears twice on /schedule: once as itself, once as a grey "busy"
+  // strip over the top. It also made deletions look broken — delete the copy in
+  // Google and the outbound sync recreates it, so the busy strip returns.
+  const ourEventIds = new Set(
+    (await prisma.trainingSession.findMany({
+      where: {
+        trainerId: connection.companyId,
+        googleCalendarEventId: { not: null },
+        scheduledAt: { gte: now, lte: until },
+      },
+      select: { googleCalendarEventId: true },
+    })).map(s => s.googleCalendarEventId!),
+  )
+  const external = events.filter(e => !e.id || !ourEventIds.has(e.id))
+
   await prisma.googleBusyBlock.deleteMany({ where: { membershipId: connection.membershipId } })
-  if (events.length === 0) return 0
+  if (external.length === 0) return 0
   await prisma.googleBusyBlock.createMany({
-    data: events.map((e) => ({
+    data: external.map((e) => ({
       membershipId: connection.membershipId,
       companyId: connection.companyId,
       startsAt: e.start,
@@ -343,7 +360,7 @@ export async function refreshBusyBlocksForConnection(connection: GoogleCalendarC
       title: e.title,
     })),
   })
-  return events.length
+  return external.length
 }
 
 /**

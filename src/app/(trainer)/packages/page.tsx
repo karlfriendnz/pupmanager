@@ -21,7 +21,10 @@ export default async function PackagesPage({
 
   const [packages, trainer] = await Promise.all([
     prisma.package.findMany({
-      where: { trainerId },
+      // 1:1 packages only. A group package is the template behind a class and
+      // belongs under Group Classes — listing it here showed the same thing in
+      // two places, and "assign this to a client" makes no sense for a cohort.
+      where: { trainerId, isGroup: false },
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
       include: { _count: { select: { assignments: true } } },
     }),

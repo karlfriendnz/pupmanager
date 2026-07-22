@@ -455,13 +455,11 @@ export function PackageForm({
             <p className="text-[11px] text-slate-400 mt-1">Max enrolments per run. A run can override this.</p>
           </div>
 
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input type="checkbox" checked={allowWaitlist} onChange={e => setAllowWaitlist(e.target.checked)} className="h-4 w-4 mt-0.5" />
-            <span className="flex-1 min-w-0">
-              <span className="block text-sm font-medium text-slate-700">Allow a waitlist when full</span>
-              <span className="block text-[11px] text-slate-400 mt-0.5">Auto-promotes the next person when someone withdraws.</span>
-            </span>
-          </label>
+          {/* "Allow a waitlist when full" removed from the form on request. The
+              allowWaitlist field itself stays — the enrolment engine still reads
+              it, and the state is still initialised from (and saved back with)
+              the package, so an existing package's setting round-trips
+              untouched rather than being silently cleared on the next edit. */}
 
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={allowDropIn} onChange={e => setAllowDropIn(e.target.checked)} className="h-4 w-4 mt-0.5" />
