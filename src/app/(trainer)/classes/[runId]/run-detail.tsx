@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
-import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info, Check, Send, FileText, AlertTriangle } from 'lucide-react'
+import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info, Check, Send, FileText, AlertTriangle, Search } from 'lucide-react'
 import { ClassFormModal, type TeamMemberOption } from '../class-form-modal'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
@@ -358,11 +358,11 @@ export function RunDetail({
               ) : (
                 <>
                   {present.length > 0 && (
-                    <EnrollTable title="Current roster" rows={present} onWithdraw={withdraw} withdrawable />
+                    <EnrollTable title="Current roster" rows={present} onWithdraw={withdraw} withdrawable runId={run.id} />
                   )}
                   {past.length > 0 && (
                     <div className="mt-5">
-                      <EnrollTable title="Past clients" rows={past} onWithdraw={withdraw} withdrawable={false} />
+                      <EnrollTable title="Past clients" rows={past} onWithdraw={withdraw} withdrawable={false} runId={run.id} />
                     </div>
                   )}
                 </>
@@ -428,12 +428,35 @@ function EnrollTable({
   rows,
   onWithdraw,
   withdrawable,
+  runId,
 }: {
   title: string
   rows: Enrollment[]
   onWithdraw: (id: string) => void
   withdrawable: boolean
+  runId: string
 }) {
+  const router = useRouter()
+  // One-click repair for a row showing "No invoice" — enrolments made before
+  // class invoicing existed have nothing behind them, and hand-building one in
+  // Finances is a slog. The endpoint is idempotent, so a double-click is safe.
+  const [invoicingId, setInvoicingId] = useState<string | null>(null)
+  async function createInvoice(enrollmentId: string) {
+    if (invoicingId) return
+    setInvoicingId(enrollmentId)
+    try {
+      const res = await fetch(`/api/class-runs/${runId}/enrollments/${enrollmentId}/invoice`, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: unknown } | null
+        alert(typeof body?.error === 'string' ? body.error : 'Could not create the invoice.')
+        return
+      }
+      router.refresh()
+    } finally {
+      setInvoicingId(null)
+    }
+  }
+
   return (
     <div>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1 px-1">{title} ({rows.length})</p>
@@ -483,8 +506,21 @@ function EnrollTable({
                           ) : e.invoiceState === 'CANCELLED' ? (
                             <span className="text-[11px] font-medium text-slate-400">Invoice cancelled</span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600">
-                              <AlertTriangle className="h-3 w-3" /> No invoice
+                            // The repair: enrolments made before class
+                            // invoicing existed have nothing behind them, and
+                            // building one by hand in Finances is a slog.
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600">
+                                <AlertTriangle className="h-3 w-3" /> No invoice
+                              </span>
+                              <button
+                                type="button"
+                                onClick={ev => { ev.preventDefault(); ev.stopPropagation(); createInvoice(e.id) }}
+                                disabled={invoicingId === e.id}
+                                className="text-[11px] font-semibold text-blue-600 hover:underline disabled:opacity-50"
+                              >
+                                {invoicingId === e.id ? 'Creating…' : 'Create'}
+                              </button>
                             </span>
                           )}
                         </span>
@@ -559,6 +595,19 @@ function EnrolModal({
 }) {
   const candidates = clients.filter(c => !existing.has(c.name))
   const [clientId, setClientId] = useState(candidates[0]?.id ?? '')
+  const [search, setSearch] = useState('')
+  // Match on the client's name OR their dog's — trainers routinely remember
+  // "Teddy's owner" rather than the owner's surname.
+  const q = search.trim().toLowerCase()
+  const visible = q
+    ? candidates.filter(c =>
+        c.name.toLowerCase().includes(q) || (c.dogName ?? '').toLowerCase().includes(q))
+    : candidates
+  // Keep the selection valid as the list narrows, so Enrol can't submit
+  // someone who's been filtered away.
+  useEffect(() => {
+    if (visible.length > 0 && !visible.some(c => c.id === clientId)) setClientId(visible[0].id)
+  }, [visible, clientId])
   const [type, setType] = useState<'FULL' | 'DROP_IN'>('FULL')
   const [notify, setNotify] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -612,17 +661,37 @@ function EnrolModal({
             <>
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-1.5">Client</label>
+                {/* A bare <select> is unusable once a trainer has a few hundred
+                    clients — you can't scan for a name. Filter first, then
+                    pick. The box only appears when there's enough to warrant
+                    it. */}
+                {candidates.length > 8 && (
+                  <div className="relative mb-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder="Search clients or dogs…"
+                      aria-label="Search clients"
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
                 <select
                   value={clientId}
                   onChange={e => setClientId(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  size={visible.length > 8 ? 8 : undefined}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {candidates.map(c => (
+                  {visible.map(c => (
                     <option key={c.id} value={c.id}>
                       {c.name}{c.dogName ? ` · ${c.dogName}` : ''}
                     </option>
                   ))}
                 </select>
+                {visible.length === 0 && (
+                  <p className="text-[11px] text-slate-400 mt-1">No client matches &ldquo;{search}&rdquo;.</p>
+                )}
               </div>
               {allowDropIn && (
                 <div>
