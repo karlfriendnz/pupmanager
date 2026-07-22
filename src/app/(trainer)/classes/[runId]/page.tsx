@@ -19,7 +19,7 @@ export default async function ClassRunPage({
   const { runId } = await params
   // attendanceCount filters by classRunId === runId (the param), so it doesn't
   // depend on the run lookup — fan all of these out in parallel.
-  const [run, attendanceCount, clients, teamMembers] = await Promise.all([
+  const [run, attendanceCount, enrolmentInvoices, clients, teamMembers] = await Promise.all([
     prisma.classRun.findFirst({
       where: { id: runId, trainerId },
       include: {
@@ -42,6 +42,12 @@ export default async function ClassRunPage({
       },
     }),
     prisma.sessionAttendance.count({ where: { session: { classRunId: runId } } }),
+    // Invoice state per enrolment, so the roster can show who's been billed.
+    // One query keyed by sourceId rather than a lookup per row.
+    prisma.invoice.findMany({
+      where: { trainerId, sourceType: 'CLASS_ENROLLMENT' },
+      select: { sourceId: true, status: true, sentAt: true },
+    }),
     prisma.clientProfile.findMany({
       where: { trainerId, status: 'ACTIVE' },
       select: {
@@ -59,6 +65,9 @@ export default async function ClassRunPage({
     }),
   ])
   if (!run) notFound()
+
+  // sourceId → invoice, for the roster's billed/sent indicator.
+  const invoiceByEnrolment = new Map(enrolmentInvoices.map(i => [i.sourceId, i]))
 
   return (
     <RunDetail
@@ -101,6 +110,7 @@ export default async function ClassRunPage({
       }))}
       enrollments={run.enrollments.map(e => {
         const attended = e.attendance.filter(a => a.status === 'PRESENT' || a.status === 'LATE' || a.status === 'MAKEUP').length
+        const inv = invoiceByEnrolment.get(e.id)
         return {
           id: e.id,
           status: e.status,
@@ -113,6 +123,11 @@ export default async function ClassRunPage({
           dogPhotoUrl: e.dog?.photoUrl ?? null,
           attendedCount: attended,
           markedCount: e.attendance.length,
+          // null = no invoice raised at all; otherwise where it's got to.
+          invoiceState: !inv ? null
+            : inv.status === 'PAID' ? 'PAID'
+            : inv.status === 'CANCELLED' ? 'CANCELLED'
+            : inv.sentAt ? 'SENT' : 'UNSENT',
         }
       })}
       clients={clients.map(c => ({

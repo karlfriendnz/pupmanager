@@ -8,7 +8,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
-import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info } from 'lucide-react'
+import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info, Check, Send, FileText, AlertTriangle } from 'lucide-react'
 import { ClassFormModal, type TeamMemberOption } from '../class-form-modal'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
@@ -48,6 +48,8 @@ type Enrollment = {
   id: string
   status: EnrollStatus
   type: 'FULL' | 'DROP_IN'
+  /** Where this enrolment's invoice has got to. null = never raised one. */
+  invoiceState: 'PAID' | 'SENT' | 'UNSENT' | 'CANCELLED' | null
   waitlistPosition: number | null
   source: string
   clientId: string
@@ -261,7 +263,17 @@ export function RunDetail({
                 <Detail label="Length" value={`${run.durationMins} min`} />
                 <Detail label="Format" value={run.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'} />
                 <Detail label="Price" value={formatPrice(run.priceCents)} />
+                {run.location && <Detail label="Location" value={run.location} />}
               </div>
+              {/* The description is what clients are sent when they're booked
+                  in, so it's worth seeing here rather than only in the edit
+                  form — it's the thing you check before enrolling someone. */}
+              {run.description && (
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">About this class</p>
+                  <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{run.description}</p>
+                </div>
+              )}
               {run.assignedTrainers.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-slate-100">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Trainers</p>
@@ -449,6 +461,32 @@ function EnrollTable({
                           {e.waitlistPosition != null && `#${e.waitlistPosition} waitlist`}
                           {e.type === 'DROP_IN' && <span className="text-amber-600"> · drop-in</span>}
                           {e.source === 'SELF_SERVE' && ' · self-enrolled'}
+                        </span>
+                      )}
+                      {/* Billing state at a glance — the roster is where a
+                          trainer notices someone hasn't been invoiced, not the
+                          finances tab. Withdrawn rows have nothing to bill. */}
+                      {e.status !== 'WITHDRAWN' && (
+                        <span className="block mt-0.5">
+                          {e.invoiceState === 'PAID' ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                              <Check className="h-3 w-3" /> Paid
+                            </span>
+                          ) : e.invoiceState === 'SENT' ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-600">
+                              <Send className="h-3 w-3" /> Invoice sent
+                            </span>
+                          ) : e.invoiceState === 'UNSENT' ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400">
+                              <FileText className="h-3 w-3" /> Invoice not sent
+                            </span>
+                          ) : e.invoiceState === 'CANCELLED' ? (
+                            <span className="text-[11px] font-medium text-slate-400">Invoice cancelled</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600">
+                              <AlertTriangle className="h-3 w-3" /> No invoice
+                            </span>
+                          )}
                         </span>
                       )}
                     </span>
