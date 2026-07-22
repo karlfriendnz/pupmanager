@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
-import { Plus, Package as PackageIcon, Pencil, Trash2, GripVertical } from 'lucide-react'
+import { Plus, Package as PackageIcon, Pencil, Trash2, GripVertical, Copy } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 import { type PackageColor, type PkgRow } from './package-form'
@@ -66,6 +66,23 @@ export function PackagesView({
     if (res.ok) setPackages(prev => prev.filter(p => p.id !== id))
   }
 
+  // Duplicate → straight into the copy's edit form. Copying is almost always
+  // "make one like that but different", so dropping them where they can change
+  // it beats landing back on the list to hunt for the new row.
+  const [duplicating, setDuplicating] = useState<string | null>(null)
+  async function handleDuplicate(id: string) {
+    if (duplicating) return
+    setDuplicating(id)
+    try {
+      const res = await fetch(`/api/packages/${id}/clone`, { method: 'POST' })
+      if (!res.ok) { alert('Could not duplicate that package.'); return }
+      const created = await res.json() as { id: string }
+      router.push(`/packages/${created.id}/edit`)
+    } finally {
+      setDuplicating(null)
+    }
+  }
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   function handleDragEnd(event: DragEndEvent) {
@@ -121,6 +138,7 @@ export function PackagesView({
                   currency={currency}
                   showHandle={packages.length > 1}
                   onEdit={() => router.push(`/packages/${p.id}/edit`)}
+                  onDuplicate={() => handleDuplicate(p.id)}
                   onDelete={() => handleDelete(p.id)}
                 />
               ))}
@@ -148,12 +166,14 @@ function SortablePackageRow({
   currency,
   showHandle,
   onEdit,
+  onDuplicate,
   onDelete,
 }: {
   pkg: PkgRow
   currency: string
   showHandle: boolean
   onEdit: () => void
+  onDuplicate: () => void
   onDelete: () => void
 }) {
   const formatPrice = (cents: number | null): string | null =>
@@ -227,6 +247,14 @@ function SortablePackageRow({
                 aria-label="Edit"
               >
                 <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                onClick={onDuplicate}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                aria-label="Duplicate"
+                title="Duplicate"
+              >
+                <Copy className="h-4 w-4" />
               </button>
               <button
                 onClick={onDelete}
