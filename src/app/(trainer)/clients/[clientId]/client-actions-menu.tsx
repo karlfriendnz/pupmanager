@@ -8,7 +8,7 @@ import {
   Share2, Trash2, X, Loader2, Check, AlertCircle,
 } from 'lucide-react'
 import { ShareClientModal } from './share-client-modal'
-import { AssignPackageButton } from './assign-package-modal'
+import { AssignPackageButton, type ClassOption } from './assign-package-modal'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { useIsNative } from '@/lib/native'
 
@@ -43,6 +43,7 @@ interface Props {
    *  available for both. */
   needsInvite: boolean
   packages: PkgOption[]
+  classes?: ClassOption[]
   availability: AvailabilityRow[]
   dogs: { id: string; name: string }[]
   /** Staff members in the business + the logged-in user's membership id.
@@ -85,7 +86,7 @@ type ReinviteState =
   | { kind: 'error'; message: string }
 
 export function ClientActionsMenu({
-  clientId, clientName, clientEmail, needsInvite, packages, availability, dogs,
+  clientId, clientName, clientEmail, needsInvite, packages, classes = [], availability, dogs,
   members = [], currentMembershipId = null,
   canEdit, isPrimaryTrainer, clientAppEnabled,
 }: Props) {
@@ -265,6 +266,7 @@ export function ClientActionsMenu({
       <AssignPackageButton
         clientId={clientId}
         packages={packages}
+        classes={classes}
         availability={availability}
         dogs={dogs}
         members={members}

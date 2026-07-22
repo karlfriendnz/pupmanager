@@ -41,6 +41,7 @@ export default async function ClientDetailPage({
     trainingSessions,
     customFields,
     packages,
+    openClasses,
     availabilitySlots,
     teamMembers,
     products,
@@ -71,8 +72,24 @@ export default async function ClientDetailPage({
     // Packages owned by the *current* trainer (co-managers see their own).
     canEdit
       ? prisma.package.findMany({
-          where: { trainerId: access.trainerId },
+          // 1:1 packages only, and never the first-run sample ones: a group
+          // package is a class template — you enrol someone into a class run
+          // off it, you don't assign the template to one client.
+          where: { trainerId: access.trainerId, isGroup: false, isSample: false },
           orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+        })
+      : Promise.resolve([]),
+    // Classes this client could be enrolled into: still running, not finished,
+    // with their current roster size so the picker can show seats left.
+    canEdit
+      ? prisma.classRun.findMany({
+          where: { trainerId: access.trainerId, status: { in: ['SCHEDULED', 'RUNNING'] } },
+          orderBy: { startDate: 'asc' },
+          select: {
+            id: true, name: true, scheduleNote: true, startDate: true, capacity: true,
+            package: { select: { capacity: true, allowDropIn: true } },
+            enrollments: { where: { status: 'ENROLLED' }, select: { id: true } },
+          },
         })
       : Promise.resolve([]),
     canEdit
@@ -226,6 +243,17 @@ export default async function ClientDetailPage({
               durationMins: p.durationMins,
               sessionType: p.sessionType,
             }))}
+            classes={openClasses.map(c => {
+              const cap = c.capacity ?? c.package.capacity ?? null
+              return {
+                id: c.id,
+                name: c.name,
+                scheduleNote: c.scheduleNote,
+                startLabel: c.startDate.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' }),
+                seatsLeft: cap == null ? null : Math.max(0, cap - c.enrollments.length),
+                allowDropIn: c.package.allowDropIn,
+              }
+            })}
             availability={availabilitySlots.map(s => ({
               id: s.id,
               dayOfWeek: s.dayOfWeek,

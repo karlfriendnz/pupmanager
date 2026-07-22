@@ -43,12 +43,24 @@ const ONGOING_MAX_SESSIONS = 52
 // Default end date offered for ongoing packages (12 weeks from start).
 const ONGOING_DEFAULT_WEEKS = 12
 
+/** A class this client could be enrolled into, for the modal's Class mode. */
+export type ClassOption = {
+  id: string
+  name: string
+  scheduleNote: string | null
+  startLabel: string
+  /** null = unlimited. */
+  seatsLeft: number | null
+  allowDropIn: boolean
+}
+
 // External `open` + `onOpenChange` make this controllable from the
 // new ClientActionsMenu. When omitted (legacy callers), the
 // component renders its own trigger Button and manages state itself.
 export function AssignPackageButton({
   clientId,
   packages,
+  classes = [],
   availability,
   dogs,
   members = [],
@@ -58,6 +70,7 @@ export function AssignPackageButton({
 }: {
   clientId: string
   packages: PkgOption[]
+  classes?: ClassOption[]
   availability: AvailabilityRow[]
   dogs?: { id: string; name: string }[]
   members?: MemberOption[]
@@ -73,7 +86,7 @@ export function AssignPackageButton({
     else setInternalOpen(v)
   }
 
-  if (packages.length === 0) {
+  if (packages.length === 0 && classes.length === 0) {
     if (isControlled) {
       // In a menu — silently no-op when triggered. The menu can
       // gate the item itself based on `packages.length`.
@@ -104,6 +117,7 @@ export function AssignPackageButton({
         <AssignModal
           clientId={clientId}
           packages={packages}
+          classes={classes}
           availability={availability}
           dogs={dogs ?? []}
           members={members}
@@ -118,6 +132,7 @@ export function AssignPackageButton({
 function AssignModal({
   clientId,
   packages,
+  classes,
   availability,
   dogs,
   members,
@@ -126,6 +141,7 @@ function AssignModal({
 }: {
   clientId: string
   packages: PkgOption[]
+  classes: ClassOption[]
   availability: AvailabilityRow[]
   dogs: { id: string; name: string }[]
   members: MemberOption[]
@@ -133,7 +149,37 @@ function AssignModal({
   onClose: () => void
 }) {
   const router = useRouter()
-  const [packageId, setPackageId] = useState(packages[0].id)
+  // Packages and classes are assigned in completely different ways — a package
+  // needs session dates proposed and picked, a class already HAS its schedule
+  // and you just take a seat. So they're two modes rather than one merged form.
+  const [mode, setMode] = useState<'package' | 'class'>(packages.length > 0 ? 'package' : 'class')
+  const [packageId, setPackageId] = useState(packages[0]?.id ?? '')
+  const [classRunId, setClassRunId] = useState(classes[0]?.id ?? '')
+  const [enrolType, setEnrolType] = useState<'FULL' | 'DROP_IN'>('FULL')
+  const selectedClass = classes.find(c => c.id === classRunId) ?? null
+
+  async function enrolInClass() {
+    if (!classRunId) { setError('Pick a class.'); return }
+    setError(null)
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/class-runs/${classRunId}/enrollments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, dogId, type: enrolType, notify }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setError(body?.error?.toString() ?? 'Could not enrol into that class.')
+        return
+      }
+      onClose()
+      router.replace(`/clients/${clientId}?tab=sessions`)
+      router.refresh()
+    } finally {
+      setSubmitting(false)
+    }
+  }
   // "Assigned trainer" picker — only for multi-trainer businesses. Defaults to
   // the logged-in user's membership (the owner when the owner is signed in).
   const showTrainerPicker = members.length > 1
@@ -229,7 +275,7 @@ function AssignModal({
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
       <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900">Assign package</h2>
+          <h2 className="font-semibold text-slate-900">{mode === 'class' ? 'Enrol in a class' : 'Assign package'}</h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
@@ -238,6 +284,75 @@ function AssignModal({
         <div className="p-5 flex flex-col gap-4">
           {error && <Alert variant="error">{error}</Alert>}
 
+          {/* Only worth showing when they actually have both. */}
+          {packages.length > 0 && classes.length > 0 && (
+            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
+              {([
+                { id: 'package' as const, label: '1:1 package' },
+                { id: 'class' as const, label: 'Group class' },
+              ]).map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => { setMode(m.id); setError(null) }}
+                  aria-pressed={mode === m.id}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    mode === m.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {mode === 'class' ? (
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1.5">Class</label>
+                <select
+                  value={classRunId}
+                  onChange={e => setClassRunId(e.target.value)}
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {classes.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} — {c.startLabel}
+                      {c.seatsLeft != null ? ` · ${c.seatsLeft} left` : ''}
+                    </option>
+                  ))}
+                </select>
+                {selectedClass?.scheduleNote && (
+                  <p className="text-[11px] text-slate-400 mt-1">{selectedClass.scheduleNote}</p>
+                )}
+                {selectedClass?.seatsLeft === 0 && (
+                  <p className="text-[11px] text-amber-600 mt-1">
+                    This class is full — they&apos;ll go on the waitlist if it has one.
+                  </p>
+                )}
+              </div>
+              {selectedClass?.allowDropIn && (
+                <div>
+                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Enrolment type</label>
+                  <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
+                    {(['FULL', 'DROP_IN'] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setEnrolType(t)}
+                        aria-pressed={enrolType === t}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                          enrolType === t ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        {t === 'FULL' ? 'Whole course' : 'Drop-in'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Package</label>
             <select
@@ -251,12 +366,13 @@ function AssignModal({
                 </option>
               ))}
             </select>
-            {pkg.description && (
+            {pkg?.description && (
               <p className="text-xs text-slate-500 mt-1.5">{pkg.description}</p>
             )}
           </div>
+          )}
 
-          {showTrainerPicker && (
+          {mode === 'package' && showTrainerPicker && (
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1.5">Assigned trainer</label>
               <select
@@ -311,6 +427,9 @@ function AssignModal({
             </div>
           )}
 
+          {/* A class already HAS its dates — none of the proposing/placing
+              machinery below applies to enrolling someone into one. */}
+          {mode === 'package' && (<>
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Start day</label>
             <input
@@ -387,11 +506,13 @@ function AssignModal({
               </p>
             )}
             <p className="text-[11px] text-slate-400 mt-1">
-              Each session is {pkg.durationMins} min, {pkg.sessionType === 'VIRTUAL' ? 'virtual' : 'in person'}.
+              Each session is {pkg?.durationMins} min, {pkg?.sessionType === 'VIRTUAL' ? 'virtual' : 'in person'}.
               You can drag any of them on the calendar afterwards.
             </p>
           </div>
+          </>)}
 
+          {mode === 'package' && (
           <div>
             <p className="text-sm font-medium text-slate-700">Invoicing</p>
             <div className="mt-2 flex gap-1 rounded-lg bg-slate-100 p-1">
@@ -416,6 +537,7 @@ function AssignModal({
               </p>
             )}
           </div>
+          )}
 
           <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
             <input
@@ -433,11 +555,17 @@ function AssignModal({
           </label>
 
           <div className="flex gap-2 pt-1">
-            <Button onClick={handleSubmit} loading={submitting} disabled={placedCount === 0}>
-              {allPlaced
-                ? 'Assign & create sessions'
-                : `Create ${placedCount} session${placedCount === 1 ? '' : 's'}`}
-            </Button>
+            {mode === 'class' ? (
+              <Button onClick={enrolInClass} loading={submitting} disabled={!classRunId}>
+                Enrol in class
+              </Button>
+            ) : (
+              <Button onClick={handleSubmit} loading={submitting} disabled={placedCount === 0}>
+                {allPlaced
+                  ? 'Assign & create sessions'
+                  : `Create ${placedCount} session${placedCount === 1 ? '' : 's'}`}
+              </Button>
+            )}
             <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
           </div>
         </div>
