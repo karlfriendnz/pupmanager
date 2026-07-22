@@ -87,3 +87,6 @@ next-env.d.ts
 
 # graphify knowledge-graph output (local dev artifact)
 graphify-out/
+
+# python bytecode
+__pycache__/
