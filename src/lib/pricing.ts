@@ -182,6 +182,12 @@ export const ADDONS: AddonDef[] = [
     id: 'dropins',
     name: 'Drop-in classes',
     hidden: true,
+    // On by default and box hidden: drop-ins aren't a separate thing a trainer
+    // opts into — they're just part of running group classes. The nav item and
+    // booking choice appear for anyone with the classes add-on (also defaultOn),
+    // and there's no toggle to find or forget. Without defaultOn, hasAddon()
+    // returned false with no way to flip it, so the whole feature was invisible.
+    defaultOn: true,
     description: 'Sell single sessions of a class — one-off spots for people who can’t commit to the whole course, or regulars filling a gap.',
     // Free while the feature beds in: it only pays off once a trainer is
     // actually running classes, and charging for it up front would stop people
