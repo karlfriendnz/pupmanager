@@ -278,7 +278,12 @@ export async function POST(
   // we'd raise a duplicate for something they've already billed.
   let invoiceId: string | null = null
   if (!parsed.data.markInvoiced) {
-    invoiceId = await createInvoiceForAssignment({ trainerId, clientId, sourceType: 'PACKAGE', clientPackageId: created.id })
+    invoiceId = await createInvoiceForAssignment({
+      trainerId, clientId, sourceType: 'PACKAGE', clientPackageId: created.id,
+      // The "You're booked in" email below carries the same Pay now link —
+      // one email, not two seconds apart asking for the same money.
+      notifyClient: false,
+    })
   }
 
   // Notify the client they've been booked in — unless the trainer opted out or

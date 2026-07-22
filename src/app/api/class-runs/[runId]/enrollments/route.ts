@@ -72,6 +72,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
         clientId: parsed.data.clientId,
         sourceType: 'CLASS_ENROLLMENT',
         classEnrollmentId: enrollmentId,
+        // The enrolment email below carries the same Pay now link.
+        notifyClient: false,
       })
     }
 

@@ -173,6 +173,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
         clientId: profile.id,
         sourceType: 'CLASS_ENROLLMENT',
         classEnrollmentId: result.enrollmentId,
+        // They get the enrolment confirmation below — two emails seconds
+        // apart, both about the same booking, is worse than one.
+        notifyClient: false,
       })
     }
     // Tell the trainer their client just enrolled (or joined the waitlist).

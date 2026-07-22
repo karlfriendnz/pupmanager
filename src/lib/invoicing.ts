@@ -35,6 +35,16 @@ export interface AssignmentInvoiceInput {
   clientPackageId?: string
   productId?: string
   classEnrollmentId?: string
+  /**
+   * Whether to email the client about this invoice. Default true.
+   *
+   * Set false when the CALLER is already emailing them — booking someone into a
+   * package or class sends "You're booked in" carrying the same Pay now link,
+   * so letting the invoice email fire too meant two emails, seconds apart,
+   * asking for the same money. The invoice is still marked sent, because the
+   * client genuinely has been given the link.
+   */
+  notifyClient?: boolean
 }
 
 /**
@@ -125,6 +135,8 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
 
     const currency = trainer.payoutCurrency ?? 'nzd'
     const autoSend = trainer.autoSendInvoices === true
+    // The caller may already be telling the client (see notifyClient).
+    const emailClient = autoSend && input.notifyClient !== false
 
     const invoice = await prisma.invoice.create({
       data: {
@@ -153,7 +165,7 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
     const xeroEnabled = !!trainer.xeroConnection && (!trainer.sandboxBilling || process.env.NODE_ENV === 'development')
     after(() => {
       const tasks: Promise<unknown>[] = []
-      if (autoSend) {
+      if (emailClient) {
         tasks.push(notifyClientOfInvoice({
           trainerId: input.trainerId,
           clientId: input.clientId,
