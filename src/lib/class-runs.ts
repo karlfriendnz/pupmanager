@@ -580,6 +580,22 @@ export async function withdrawEnrollmentAndNotify(
   return { promotedEnrollmentId }
 }
 
+/**
+ * Is a class run finished (i.e. belongs on the "Past" tab)?
+ *
+ * Explicitly completed/cancelled runs are always past. Otherwise a run is past
+ * once its LAST session has been and gone — not merely because it started a
+ * while ago, since a 6-week course starting last month is still running.
+ * Falls back to the start date when no sessions exist yet.
+ */
+export function isClassRunPast(
+  run: { status: string; startDate: Date; lastSessionAt?: Date | null },
+  now: Date = new Date(),
+): boolean {
+  if (run.status === 'COMPLETED' || run.status === 'CANCELLED') return true
+  return (run.lastSessionAt ?? run.startDate).getTime() < now.getTime()
+}
+
 export class ClassError extends Error {
   constructor(public code: string, message: string) {
     super(message)

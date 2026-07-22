@@ -21,6 +21,7 @@ type RunRow = {
   capacity: number | null
   imageUrl: string | null
   trainerNames: string[]
+  isPast: boolean
 }
 
 const STATUS_STYLE: Record<RunRow['status'], string> = {
@@ -36,6 +37,13 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
   // Set (to the new class's name) when a priced class was just created and we
   // want to pop the connect-Stripe modal over the (refreshed) list.
   const [connectName, setConnectName] = useState<string | null>(null)
+  const [tab, setTab] = useState<'current' | 'past'>('current')
+
+  // Server hands the list back newest-start-first. Current classes read better
+  // soonest-first (what's on next), past ones most-recent-first.
+  const current = runs.filter(r => !r.isPast).reverse()
+  const past = runs.filter(r => r.isPast)
+  const shown = tab === 'past' ? past : current
 
   return (
     <>
@@ -66,8 +74,55 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
           </CardBody>
         </Card>
       ) : (
+        <>
+        {/* Current / Past — same pill-tab bar as the client profile, so a long
+            history of finished classes doesn't bury what's running now. */}
+        <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-4">
+          {([
+            { id: 'current' as const, label: 'Current', count: current.length },
+            { id: 'past' as const, label: 'Past', count: past.length },
+          ]).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
+                tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.label}
+              <span className={`min-w-5 px-1.5 text-[11px] font-semibold tabular-nums rounded-full ${
+                tab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+              }`}>
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {shown.length === 0 ? (
+          <Card>
+            <CardBody>
+              <div className="text-center py-10 px-4">
+                <GraduationCap className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-600 font-medium">
+                  {tab === 'past' ? 'No past classes' : 'No current classes'}
+                </p>
+                <p className="text-sm text-slate-400 mt-1 max-w-sm mx-auto">
+                  {tab === 'past'
+                    ? 'Classes move here once their last session has been, or when you mark them complete or cancelled.'
+                    : 'Every class you have has finished. Start a new one to fill the calendar.'}
+                </p>
+                {tab === 'current' && (
+                  <Button className="mt-4" onClick={() => setShowCreate(true)}>
+                    <Plus className="h-4 w-4" /> New class
+                  </Button>
+                )}
+              </div>
+            </CardBody>
+          </Card>
+        ) : (
         <div className="flex flex-col gap-3">
-          {runs.map(r => (
+          {shown.map(r => (
             <Link key={r.id} href={`/classes/${r.id}`} className="block">
               <Card className="hover:border-blue-200 transition-colors">
                 <CardBody className="py-4">
@@ -112,6 +167,8 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
             </Link>
           ))}
         </div>
+        )}
+        </>
       )}
 
       {showCreate && (

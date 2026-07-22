@@ -12,7 +12,49 @@ import {
   seatsRemaining,
   decideEnrollment,
   dropInPriceCents,
+  isClassRunPast,
 } from '../../src/lib/class-runs'
+
+describe('isClassRunPast (Current/Past tabs on /classes)', () => {
+  const now = new Date('2026-07-22T09:00:00.000Z')
+
+  it('a run mid-course is current even though it started weeks ago', () => {
+    expect(
+      isClassRunPast(
+        {
+          status: 'SCHEDULED',
+          startDate: new Date('2026-06-30T18:00:00.000Z'),
+          lastSessionAt: new Date('2026-08-04T18:00:00.000Z'),
+        },
+        now,
+      ),
+    ).toBe(false)
+  })
+
+  it('a run whose last session has been is past', () => {
+    expect(
+      isClassRunPast(
+        {
+          status: 'SCHEDULED',
+          startDate: new Date('2026-05-05T18:00:00.000Z'),
+          lastSessionAt: new Date('2026-06-09T18:00:00.000Z'),
+        },
+        now,
+      ),
+    ).toBe(true)
+  })
+
+  it('COMPLETED and CANCELLED are past regardless of dates', () => {
+    const future = { startDate: new Date('2026-09-01T18:00:00.000Z'), lastSessionAt: new Date('2026-10-06T18:00:00.000Z') }
+    expect(isClassRunPast({ status: 'COMPLETED', ...future }, now)).toBe(true)
+    expect(isClassRunPast({ status: 'CANCELLED', ...future }, now)).toBe(true)
+  })
+
+  it('falls back to startDate when the run has no sessions yet', () => {
+    expect(isClassRunPast({ status: 'SCHEDULED', startDate: new Date('2026-09-01T18:00:00.000Z') }, now)).toBe(false)
+    expect(isClassRunPast({ status: 'SCHEDULED', startDate: new Date('2026-01-05T18:00:00.000Z') }, now)).toBe(true)
+  })
+})
 
 describe('generateSessionDates', () => {
   it('spaces sessions weeksBetween apart from startDate', () => {

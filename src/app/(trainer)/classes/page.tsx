@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isConnectConfigured } from '@/lib/connect'
 import { hasAddon } from '@/lib/billing'
+import { isClassRunPast } from '@/lib/class-runs'
 import { formatDate } from '@/lib/utils'
 import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
@@ -24,6 +25,9 @@ export default async function ClassesPage() {
       include: {
         package: { select: { name: true, capacity: true } },
         _count: { select: { sessions: true } },
+        // Last session drives the current/past split — a run isn't "past" just
+        // because it started a while ago, only once its final session has been.
+        sessions: { orderBy: { scheduledAt: 'desc' }, take: 1, select: { scheduledAt: true } },
         enrollments: { where: { status: 'ENROLLED' }, select: { id: true } },
         assignedTrainers: {
           include: { membership: { select: { user: { select: { name: true } } } } },
@@ -41,6 +45,10 @@ export default async function ClassesPage() {
     }),
   ])
   const currency = (trainer?.payoutCurrency ?? 'NZD').toUpperCase()
+
+  // Split current vs past here (not in the client) so it matches the server
+  // clock and doesn't shift on hydration.
+  const now = new Date()
 
   // Nudge Stripe Connect after a priced class is created — only when payments
   // aren't already live AND the trainer can actually onboard now (Connect
@@ -66,6 +74,10 @@ export default async function ClassesPage() {
         capacity: r.capacity ?? r.package.capacity ?? null,
         imageUrl: r.imageUrl,
         trainerNames: r.assignedTrainers.map(a => a.membership.user.name ?? 'Team member'),
+        isPast: isClassRunPast(
+          { status: r.status, startDate: r.startDate, lastSessionAt: r.sessions[0]?.scheduledAt },
+          now,
+        ),
       }))}
       teamMembers={teamMembers.map(m => ({
         id: m.id,
