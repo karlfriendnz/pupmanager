@@ -64,6 +64,7 @@ export function DemoClientPreview({
           previewExitHref="/dashboard"
         >
           <ClientHomeView
+      timeZone="Pacific/Auckland"
             shopEnabled
             clientName={SAMPLE_CLIENT_NAME}
             businessName={businessName}

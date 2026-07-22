@@ -95,6 +95,9 @@ interface AchievementBadge {
 }
 
 interface Props {
+  /** IANA zone the sessions happen in (the trainer's). Pinned so the server
+   *  and the browser render identical strings — see the formatters below. */
+  timeZone: string
   clientName: string
   businessName: string
   welcomeNote?: string | null
@@ -114,12 +117,16 @@ interface Props {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-// Locale fixed to en-NZ on server + client to avoid hydration mismatches.
-function formatSessionWhen(iso: string) {
-  return new Date(iso).toLocaleString('en-NZ', { weekday: 'long', hour: 'numeric', minute: '2-digit' })
+// Locale AND timezone are both fixed so the server and the browser render the
+// same string. Pinning only the locale still left a mismatch: the server
+// formatted in UTC and the browser in the viewer's zone, so a 6pm class was
+// painted as 6am and then flipped on hydration. The trainer's zone is the right
+// answer either way — that's where the class actually happens.
+function formatSessionWhen(iso: string, timeZone: string) {
+  return new Date(iso).toLocaleString('en-NZ', { timeZone, weekday: 'long', hour: 'numeric', minute: '2-digit' })
 }
-function formatShortDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-NZ', { month: 'short', day: 'numeric' })
+function formatShortDate(iso: string, timeZone: string) {
+  return new Date(iso).toLocaleDateString('en-NZ', { timeZone, month: 'short', day: 'numeric' })
 }
 function countdownLabel(iso: string) {
   const ms = new Date(iso).getTime() - Date.now()
@@ -145,6 +152,7 @@ function relativeTime(iso: string) {
 // ─── View ────────────────────────────────────────────────────────────────────
 
 export function ClientHomeView({
+  timeZone,
   clientName,
   businessName,
   welcomeNote,
@@ -301,7 +309,7 @@ export function ClientHomeView({
                 <p className="text-xs font-medium text-white/75">{countdownLabel(upcomingSession.scheduledAt)}</p>
                 <h3 className="font-display text-xl font-bold leading-tight mt-0.5">{upcomingSession.title}</h3>
                 <div className="mt-3 space-y-1.5 text-sm text-white/90">
-                  <div className="flex items-center gap-2"><Clock className="h-4 w-4 opacity-80" />{formatSessionWhen(upcomingSession.scheduledAt)} · {upcomingSession.durationMins} min</div>
+                  <div className="flex items-center gap-2"><Clock className="h-4 w-4 opacity-80" />{formatSessionWhen(upcomingSession.scheduledAt, timeZone)} · {upcomingSession.durationMins} min</div>
                   {upcomingSession.sessionType === 'IN_PERSON' && upcomingSession.location && (
                     <div className="flex items-center gap-2"><MapPin className="h-4 w-4 opacity-80" /><span className="truncate">{upcomingSession.location}</span></div>
                   )}
@@ -353,7 +361,7 @@ export function ClientHomeView({
                     📋 Recap ready
                   </span>
                   <h3 className="font-display text-lg font-bold text-slate-900 leading-tight mt-1.5 line-clamp-1">{recentSessions[0].title}</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">{formatSessionWhen(recentSessions[0].scheduledAt)}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{formatSessionWhen(recentSessions[0].scheduledAt, timeZone)}</p>
                   <p className="text-sm font-semibold text-accent mt-2 flex items-center gap-1">
                     See how {dogName} got on <ChevronRight className="h-4 w-4" />
                   </p>

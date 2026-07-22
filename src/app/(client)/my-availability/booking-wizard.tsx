@@ -103,9 +103,12 @@ function toUtcIso(dateStr: string, hhmm: string, tz: string): string {
   return zonedToUtc(y, m, d, h, min, tz).toISOString()
 }
 
-function fmtNextSession(iso: string | null): string | null {
+// The wizard already knows the trainer's zone (props.tz) — use it. Without it
+// this formatted in the SERVER's zone during SSR and the VIEWER's after
+// hydration, so a class starting 6pm showed as 6am on the booking summary.
+function fmtNextSession(iso: string | null, timeZone: string): string | null {
   if (!iso) return null
-  return new Date(iso).toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+  return new Date(iso).toLocaleString('en-NZ', { timeZone, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
 }
 
 type Selection =
@@ -373,6 +376,7 @@ export function BookingWizard(props: {
 
       {step === 2 && cls && (
         <ClassOptionsStep
+          tz={props.tz}
           cls={cls}
           currency={currency}
           acceptPayments={acceptPayments}
@@ -388,6 +392,7 @@ export function BookingWizard(props: {
       {/* ---------- STEP 3 · confirm ---------- */}
       {step === 3 && selection && (
         <ConfirmStep
+          tz={props.tz}
           selection={selection}
           date={date}
           time={time}
@@ -551,7 +556,8 @@ function SessionTimeStep({ pkg, availableDates, timeOptions, date, time, onDate,
 
 /* ============================ step 2 · class options ============================ */
 
-function ClassOptionsStep({ cls, currency, acceptPayments, dogs, dogId, onDog, classType, onType, onContinue }: {
+function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDog, classType, onType, onContinue }: {
+  tz: string
   cls: WizardClass
   currency: string | null
   acceptPayments: boolean
@@ -586,7 +592,7 @@ function ClassOptionsStep({ cls, currency, acceptPayments, dogs, dogId, onDog, c
               <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-t border-slate-100 first:border-t-0">
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-soft text-accent text-xs font-bold shrink-0 tabular-nums">{i + 1}</span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-800">{fmtNextSession(s.at)}</p>
+                  <p className="text-sm font-medium text-slate-800">{fmtNextSession(s.at, tz)}</p>
                   {s.title && <p className="text-xs text-slate-400 truncate">{s.title}</p>}
                 </div>
                 <span className="text-xs text-slate-400 shrink-0">{s.durationMins} min</span>
@@ -652,7 +658,8 @@ function TypeCard({ active, onClick, title, sub }: { active: boolean; onClick: (
 
 /* ============================ step 3 · confirm ============================ */
 
-function ConfirmStep({ selection, date, time, currency, acceptPayments, classType, dogName, saving, error, onConfirm }: {
+function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dogName, saving, error, onConfirm }: {
+  tz: string
   selection: Selection
   date: string
   time: string
@@ -702,7 +709,7 @@ function ConfirmStep({ selection, date, time, currency, acceptPayments, classTyp
           ) : (
             <>
               {cls!.scheduleNote && <SummaryRow label="Schedule" value={cls!.scheduleNote} />}
-              {fmtNextSession(cls!.nextSessionAt) && <SummaryRow label="Starts" value={fmtNextSession(cls!.nextSessionAt)!} />}
+              {fmtNextSession(cls!.nextSessionAt, tz) && <SummaryRow label="Starts" value={fmtNextSession(cls!.nextSessionAt, tz)!} />}
               <SummaryRow label="Type" value={classType === 'DROP_IN' ? 'Drop-in (single session)' : 'Full course'} />
             </>
           )}

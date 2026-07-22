@@ -34,7 +34,7 @@ export default async function ClientHomePage() {
     where: { id: active.clientId },
     include: {
       user: { select: { name: true } },
-      trainer: { select: { id: true, businessName: true, logoUrl: true, clientWelcomeNote: true } },
+      trainer: { select: { id: true, businessName: true, logoUrl: true, clientWelcomeNote: true, user: { select: { timezone: true } } } },
       dog: { select: { id: true, name: true, breed: true, photoUrl: true } },
       dogs: { select: { id: true, name: true, breed: true, photoUrl: true } },
     },
@@ -211,6 +211,9 @@ export default async function ClientHomePage() {
     <AppInstallModal />
     <ClientHomeView
       shopEnabled={shopEnabled}
+      // Sessions happen in the trainer's locale — render them there, not in the
+      // server's zone (UTC) or whatever zone the client's device is in.
+      timeZone={clientProfile.trainer.user?.timezone ?? 'Pacific/Auckland'}
       clientName={clientProfile.user.name ?? 'there'}
       businessName={clientProfile.trainer.businessName}
       welcomeNote={clientProfile.trainer.clientWelcomeNote}

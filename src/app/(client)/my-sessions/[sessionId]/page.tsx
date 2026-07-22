@@ -31,9 +31,13 @@ export default async function ClientSessionPage({
 
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
-    select: { id: true, trainerId: true },
+    // trainer.user.timezone: sessions happen in the TRAINER's locale, and this
+    // is a server component — an unqualified toLocaleString formats in the
+    // server's zone (UTC on Vercel), turning a 6:00pm class into 6:00am.
+    select: { id: true, trainerId: true, trainer: { select: { user: { select: { timezone: true } } } } },
   })
   if (!profile) redirect('/login')
+  const tz = profile.trainer?.user?.timezone ?? 'Pacific/Auckland'
 
   let sessionTitle = ''
   let scheduledAt = new Date()
@@ -154,7 +158,7 @@ export default async function ClientSessionPage({
         {pendingMessage ? (
           <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-8 text-center">
             <h1 className="font-display text-xl font-bold text-slate-900">{sessionTitle}</h1>
-            <p className="mt-1 text-sm text-slate-500">{scheduledAt.toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
+            <p className="mt-1 text-sm text-slate-500">{scheduledAt.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
             <p className="mt-4 text-sm text-slate-400">{pendingMessage}</p>
           </div>
         ) : (

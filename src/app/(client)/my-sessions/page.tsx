@@ -26,8 +26,14 @@ type Row = {
   classRunId: string | null
 }
 
-function formatDateTime(d: Date) {
-  return d.toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+// Sessions happen in the TRAINER's locale, so they must render in the trainer's
+// timezone — the same source the enrolment email uses. This is a SERVER
+// component, so an unqualified toLocaleString formatted in the server's zone
+// (UTC on Vercel): a 6:00pm NZ class was shown to the client as 6:00am.
+function formatDateTime(d: Date, timeZone: string) {
+  return d.toLocaleString('en-NZ', {
+    timeZone, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+  })
 }
 
 export default async function MySessionsPage() {
@@ -42,7 +48,10 @@ export default async function MySessionsPage() {
     where: { id: active.clientId },
     select: {
       trainer: {
-        select: { cancellationFeeCents: true, cancellationFeeWindowHours: true, payoutCurrency: true },
+        select: {
+          cancellationFeeCents: true, cancellationFeeWindowHours: true, payoutCurrency: true,
+          user: { select: { timezone: true } },
+        },
       },
     },
   })
@@ -51,6 +60,8 @@ export default async function MySessionsPage() {
     cancellationFeeWindowHours: clientProfile?.trainer.cancellationFeeWindowHours ?? null,
   }
   const currency = clientProfile?.trainer.payoutCurrency ?? 'nzd'
+  // Same fallback as the trainer-side notification code.
+  const tz = clientProfile?.trainer.user?.timezone ?? 'Pacific/Auckland'
   const feeFor = (at: Date) => resolveCancellationFeeCents(feeConfig, at, now)
 
   // 1:1 sessions (direct client link) + group-class sessions (via the client's
@@ -124,7 +135,7 @@ export default async function MySessionsPage() {
                 <Link href={`/my-sessions/${next.id}`} className="block rounded-3xl p-5 text-white active:scale-[0.99] transition-transform" style={{ background: 'var(--accent)' }}>
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-xs font-medium text-white/75">{formatDateTime(next.scheduledAt)}</p>
+                      <p className="text-xs font-medium text-white/75">{formatDateTime(next.scheduledAt, tz)}</p>
                       <h3 className="font-display text-xl font-bold mt-0.5">{titleOf(next)}</h3>
                     </div>
                     <span className="text-[10px] font-semibold bg-white/15 rounded-full px-2 py-1">{next.isClass ? 'Class' : 'Next'}</span>
@@ -153,12 +164,12 @@ export default async function MySessionsPage() {
                 <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
                   {restUpcoming.map((s, i) => (
                     <Link key={s.id} href={`/my-sessions/${s.id}`} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors ${i > 0 ? 'border-t border-slate-100' : ''}`}>
-                      <DateChip date={s.scheduledAt} tone="accent" />
+                      <DateChip date={s.scheduledAt} timeZone={tz} tone={"accent"} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-900 truncate flex items-center gap-1.5">
                           {s.isClass && <Users className="h-3.5 w-3.5 text-teal-500 flex-shrink-0" />}{titleOf(s)}
                         </p>
-                        <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(s.scheduledAt)} · {s.durationMins} min</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(s.scheduledAt, tz)} · {s.durationMins} min</p>
                       </div>
                       {!s.isClass ? (
                         <CancelSessionButton sessionId={s.id} title={titleOf(s)} feeCents={feeFor(s.scheduledAt)} currency={currency} />
@@ -182,12 +193,12 @@ export default async function MySessionsPage() {
                 const done = DONE.includes(s.status)
                 return (
                   <Link key={s.id} href={`/my-sessions/${s.id}`} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors ${i > 0 ? 'border-t border-slate-100' : ''}`}>
-                    <DateChip date={s.scheduledAt} tone="slate" />
+                    <DateChip date={s.scheduledAt} timeZone={tz} tone={"slate"} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-slate-900 truncate flex items-center gap-1.5">
                         {s.isClass && <Users className="h-3.5 w-3.5 text-teal-500 flex-shrink-0" />}{titleOf(s)}
                       </p>
-                      <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(s.scheduledAt)} · {s.durationMins} min</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(s.scheduledAt, tz)} · {s.durationMins} min</p>
                     </div>
                     {done && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full uppercase tracking-wide">Done</span>}
                     <ChevronRight className="h-4 w-4 text-slate-300 flex-shrink-0" />
@@ -202,11 +213,17 @@ export default async function MySessionsPage() {
   )
 }
 
-function DateChip({ date, tone }: { date: Date; tone: 'accent' | 'slate' }) {
+function DateChip({ date, tone, timeZone }: { date: Date; tone: 'accent' | 'slate'; timeZone: string }) {
+  // getDate() reads the SERVER's calendar day, which is a different date from
+  // the trainer's for any morning session (9am NZ is the previous day in UTC).
+  // Format both parts in the trainer's zone so the chip and the time agree.
+  const parts = new Intl.DateTimeFormat('en-NZ', { timeZone, month: 'short', day: 'numeric' }).formatToParts(date)
+  const month = parts.find(p => p.type === 'month')?.value ?? ''
+  const day = parts.find(p => p.type === 'day')?.value ?? ''
   return (
     <div className={`flex h-10 w-10 flex-col items-center justify-center rounded-xl flex-shrink-0 ${tone === 'accent' ? 'bg-accent-soft text-accent' : 'bg-slate-100 text-slate-500'}`}>
-      <span className="text-[10px] font-semibold uppercase leading-none">{date.toLocaleDateString('en-NZ', { month: 'short' })}</span>
-      <span className="text-sm font-bold leading-tight">{date.getDate()}</span>
+      <span className="text-[10px] font-semibold uppercase leading-none">{month}</span>
+      <span className="text-sm font-bold leading-tight">{day}</span>
     </div>
   )
 }
