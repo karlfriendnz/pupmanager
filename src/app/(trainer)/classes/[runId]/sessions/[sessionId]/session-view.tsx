@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
-import { ClipboardCheck, ChevronLeft, ChevronDown, Check, X, StickyNote } from 'lucide-react'
+import { ClipboardCheck, ChevronLeft, ChevronDown, Check, X, StickyNote, GraduationCap } from 'lucide-react'
 
 type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'MAKEUP'
 
@@ -93,6 +95,7 @@ export function SessionView({
   sessionTitle: string
   sessionScheduledAt: string
 }) {
+  const router = useRouter()
   const [data, setData] = useState<AttendanceData | null>(null)
   const [formId, setFormId] = useState('')
   const [draft, setDraft] = useState<Record<string, ClientDraft>>({})
@@ -198,14 +201,27 @@ export function SessionView({
       <PageHeader
         title={runName}
         back={{
-          // Always up to the class this session belongs to, rather than
-          // router.back() to wherever they happened to arrive from. Attendance
-          // is reached from the schedule as often as from the class itself, and
-          // a back arrow that lands somewhere different each time is worse than
-          // one that reliably goes up a level.
-          label: 'Back to class',
-          href: `/classes/${runId}`,
+          label: 'Back',
+          // Return to wherever they came from (schedule, dashboard, the class…);
+          // fall back to the class page on a fresh/deep-linked load. Going UP to
+          // the class is the separate, explicit button in `actions`.
+          onClick: () => {
+            if (typeof window !== 'undefined' && window.history.length > 1) router.back()
+            else router.push(`/classes/${runId}`)
+          },
         }}
+        actions={
+          // Attendance is reached from the schedule as often as from the class,
+          // so "up to the class" needs to be reachable without guessing where
+          // the back arrow will land.
+          <Link
+            href={`/classes/${runId}`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <GraduationCap className="h-4 w-4" />
+            Back to class
+          </Link>
+        }
         subtitle={
           <span suppressHydrationWarning>
             {sessionLabel && <>{sessionLabel} · </>}{new Date(sessionScheduledAt).toLocaleString()}
