@@ -191,7 +191,13 @@ export function PackageForm({
         requirePayment,
       }),
     })
-    if (!res.ok) { setError('Failed to save.'); return }
+    if (!res.ok) {
+      // The convert-while-in-use refusal (409) explains itself — show that
+      // rather than a generic failure the trainer can't act on.
+      const body = await res.json().catch(() => null) as { error?: unknown } | null
+      setError(typeof body?.error === 'string' ? body.error : 'Failed to save.')
+      return
+    }
     const saved = await res.json()
     onSaved(
       {
@@ -360,6 +366,13 @@ export function PackageForm({
           <span className="block text-[11px] text-slate-400 mt-0.5">
             Run cohorts of this package — one shared schedule, many clients, a roster and capacity. Leave off for normal 1:1 packages.
           </span>
+          {existing && isGroup !== (existing.isGroup ?? false) && (
+            <span className="block text-[11px] font-medium mt-1.5 text-amber-600">
+              {isGroup
+                ? 'Converting this 1:1 package into a group class. Only possible while no clients are assigned to it.'
+                : 'Converting this group class back into a 1:1 package. Capacity, waitlist and drop-in settings will be cleared, and it must have no classes running.'}
+            </span>
+          )}
         </span>
       </label>
 

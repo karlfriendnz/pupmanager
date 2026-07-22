@@ -58,9 +58,51 @@ export async function PATCH(
   const parsed = updateSchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
+  // Converting between 1:1 and group flips which half of the system owns this
+  // package: a group package is run as ClassRuns with a shared roster, a 1:1 one
+  // as per-client ClientPackage assignments. Flipping it while either exists
+  // would strand them — a class run whose package is no longer a class, or
+  // assignments against a package that no longer works that way — so the
+  // conversion is refused while the package is in use rather than half-applied.
+  let extra: Record<string, unknown> = {}
+  if (parsed.data.isGroup !== undefined) {
+    const current = await prisma.package.findUnique({
+      where: { id: packageId },
+      select: { isGroup: true },
+    })
+    if (current && current.isGroup !== parsed.data.isGroup) {
+      if (current.isGroup) {
+        const runs = await prisma.classRun.count({ where: { packageId } })
+        if (runs > 0) {
+          return NextResponse.json(
+            { error: `This is running as ${runs} class${runs === 1 ? '' : 'es'}. Delete or finish ${runs === 1 ? 'it' : 'them'} before turning it back into a 1:1 package.` },
+            { status: 409 },
+          )
+        }
+        // Group-only settings are meaningless on a 1:1 package — clear them
+        // here too, not just in the form, so any caller converts cleanly.
+        extra = {
+          capacity: null,
+          allowDropIn: false,
+          dropInPriceCents: null,
+          allowWaitlist: false,
+          publicEnrollment: false,
+        }
+      } else {
+        const assigned = await prisma.clientPackage.count({ where: { packageId } })
+        if (assigned > 0) {
+          return NextResponse.json(
+            { error: `${assigned} client${assigned === 1 ? ' is' : 's are'} assigned to this package. Convert a copy instead, or unassign first.` },
+            { status: 409 },
+          )
+        }
+      }
+    }
+  }
+
   const pkg = await prisma.package.update({
     where: { id: packageId },
-    data: parsed.data,
+    data: { ...parsed.data, ...extra },
   })
   return NextResponse.json(pkg)
 }
