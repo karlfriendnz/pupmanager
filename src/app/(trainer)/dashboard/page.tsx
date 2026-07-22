@@ -16,6 +16,7 @@ import { PendingRequestsPanel } from './pending-requests-panel'
 import { TodoBrainDumpPanel } from './todo-braindump-panel'
 import { hasAddon, getEnabledAddons } from '@/lib/billing'
 import { AddonNudge } from '@/components/shared/addon-nudge'
+import { isNudgeDismissed } from '@/lib/nudge-dismissals'
 import { addonNudge, pickNudgeAddonId } from '@/components/shared/addon-nudge-registry'
 import { isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 import { formatMoney } from '@/lib/money'
@@ -305,6 +306,9 @@ export default async function DashboardPage({
   if (brandingProfile?.connectChargesEnabled) activeAddonIds.add('payments')
   const dashboardNudgeAddonId = pickNudgeAddonId(activeAddonIds)
   const dashboardNudge = dashboardNudgeAddonId ? addonNudge(dashboardNudgeAddonId) : null
+  const dashboardNudgeDismissed = dashboardNudge
+    ? await isNudgeDismissed(session.user.id, `dashboard-${dashboardNudge.addonId}`)
+    : false
   const isDevPreview = process.env.NODE_ENV === 'development'
 
   return (
@@ -609,7 +613,7 @@ export default async function DashboardPage({
         </div>
       </div>
       {dashboardNudge && (
-        <AddonNudge id={`dashboard-${dashboardNudge.addonId}`} {...dashboardNudge} forceShow={isDevPreview} />
+        <AddonNudge id={`dashboard-${dashboardNudge.addonId}`} {...dashboardNudge} forceShow={isDevPreview} dismissed={dashboardNudgeDismissed} />
       )}
     </>
   )

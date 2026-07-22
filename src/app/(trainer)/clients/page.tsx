@@ -9,6 +9,7 @@ import { ClientsList } from './clients-list'
 import { QuickAddButton, QuickAddModal } from './quick-add-contact'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddonNudge } from '@/components/shared/addon-nudge'
+import { isNudgeDismissed } from '@/lib/nudge-dismissals'
 import { addonNudge } from '@/components/shared/addon-nudge-registry'
 import type { Metadata } from 'next'
 
@@ -200,6 +201,7 @@ export default async function ClientsPage({
   const isDevPreview = process.env.NODE_ENV === 'development'
   const marketingNudge = addonNudge('marketing')
   const showMarketingNudge = !(await hasAddon(trainerId, 'marketing')) && !!marketingNudge
+  const marketingNudgeDismissed = await isNudgeDismissed(ctx.userId, 'clients-marketing')
 
   return (
     <>
@@ -275,7 +277,7 @@ export default async function ClientsPage({
       />
       </div>
       {showMarketingNudge && marketingNudge && (
-        <AddonNudge id="clients-marketing" {...marketingNudge} forceShow={isDevPreview} />
+        <AddonNudge id="clients-marketing" {...marketingNudge} forceShow={isDevPreview} dismissed={marketingNudgeDismissed} />
       )}
     </>
   )

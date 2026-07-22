@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { Inbox, ArrowRight, CheckCircle2, XCircle } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddonNudge } from '@/components/shared/addon-nudge'
+import { isNudgeDismissed } from '@/lib/nudge-dismissals'
 import { addonNudge } from '@/components/shared/addon-nudge-registry'
 import { hasAddon } from '@/lib/billing'
 import type { Metadata } from 'next'
@@ -60,6 +61,7 @@ export default async function EnquiriesPage({
   const isDevPreview = process.env.NODE_ENV === 'development'
   const leadMagnetNudge = addonNudge('leadmagnets')
   const showLeadMagnetNudge = !(await hasAddon(trainerId, 'leadmagnets')) && !!leadMagnetNudge
+  const leadMagnetNudgeDismissed = await isNudgeDismissed(session.user.id, 'enquiries-leadmagnets')
 
   return (
     <>
@@ -139,7 +141,7 @@ export default async function EnquiriesPage({
       )}
       </div>
       {showLeadMagnetNudge && leadMagnetNudge && (
-        <AddonNudge id="enquiries-leadmagnets" {...leadMagnetNudge} forceShow={isDevPreview} />
+        <AddonNudge id="enquiries-leadmagnets" {...leadMagnetNudge} forceShow={isDevPreview} dismissed={leadMagnetNudgeDismissed} />
       )}
     </>
   )

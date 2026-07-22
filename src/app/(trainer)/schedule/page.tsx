@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
+import { isNudgeDismissed } from '@/lib/nudge-dismissals'
 import { hasAddon } from '@/lib/billing'
 import { allowedSlotTypes } from '@/lib/service-offerings'
 import { ScheduleView } from './schedule-view'
@@ -361,8 +362,9 @@ export default async function SchedulePage({
   }
 
   // Add-on nudge: only surface "connect Google Calendar" when this member
-  // hasn't already connected. Cheap lookups, run in parallel.
-  const [googleConn, googleAddonOn] = await Promise.all([
+  // hasn't already connected, and not if they've already said "Not now"
+  // (remembered per user, so it stays gone on their other devices).
+  const [googleConn, googleAddonOn, googleNudgeDismissed] = await Promise.all([
     ctx.membershipId
       ? prisma.googleCalendarConnection.findUnique({
           where: { membershipId: ctx.membershipId },
@@ -370,6 +372,7 @@ export default async function SchedulePage({
         })
       : Promise.resolve(null),
     hasAddon(ctx.companyId, 'googlecalendar'),
+    isNudgeDismissed(ctx.userId, 'schedule-google-calendar'),
   ])
   // On local dev, always surface it (even when connected/dismissed) so it's
   // easy to preview. In prod it only shows when this member hasn't connected.
@@ -442,7 +445,7 @@ export default async function SchedulePage({
       previewRequest={previewRequest}
     />
     {showGoogleNudge && (
-      <GoogleCalendarNudge googleAddonOn={googleAddonOn} forceShow={isDevPreview} />
+      <GoogleCalendarNudge googleAddonOn={googleAddonOn} forceShow={isDevPreview} dismissed={googleNudgeDismissed} />
     )}
     </>
   )

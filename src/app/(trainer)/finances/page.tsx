@@ -4,6 +4,7 @@ import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddonNudge } from '@/components/shared/addon-nudge'
+import { isNudgeDismissed } from '@/lib/nudge-dismissals'
 import { addonNudge } from '@/components/shared/addon-nudge-registry'
 import { FinancesView } from './finances-view'
 import type { Metadata } from 'next'
@@ -27,6 +28,9 @@ export default async function FinancesPage() {
   // Only nudge while payments aren't connected — connecting hides it (dev too;
   // the old `|| isDevPreview` forced it on even after setup).
   const showPaymentsNudge = !profile?.connectChargesEnabled && !!paymentsNudge
+  // A previous "Not now" is remembered per user, so it stays gone on their
+  // other devices too (not just the browser it was dismissed in).
+  const paymentsNudgeDismissed = await isNudgeDismissed(ctx.userId, 'finances-payments')
 
   return (
     <>
@@ -35,7 +39,7 @@ export default async function FinancesPage() {
         <FinancesView />
       </div>
       {showPaymentsNudge && paymentsNudge && (
-        <AddonNudge id="finances-payments" {...paymentsNudge} forceShow={isDevPreview} />
+        <AddonNudge id="finances-payments" {...paymentsNudge} forceShow={isDevPreview} dismissed={paymentsNudgeDismissed} />
       )}
     </>
   )

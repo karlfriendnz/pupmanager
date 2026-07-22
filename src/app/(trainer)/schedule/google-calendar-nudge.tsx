@@ -10,9 +10,12 @@ import { AddonPromoModal } from '@/components/shared/addon-promos'
 export function GoogleCalendarNudge({
   googleAddonOn,
   forceShow,
+  dismissed,
 }: {
   googleAddonOn: boolean
   forceShow?: boolean
+  /** Server-recorded "Not now" for this user — keeps it gone across devices. */
+  dismissed?: boolean
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -28,6 +31,7 @@ export function GoogleCalendarNudge({
         // eslint-disable-next-line @next/next/no-img-element
         icon={<img src="/logos/google-calendar.webp" alt="Google Calendar" className="h-6 w-6 object-contain" />}
         forceShow={forceShow}
+        dismissed={dismissed}
       />
       {open && <AddonPromoModal addonId="googlecalendar" onClose={() => setOpen(false)} />}
     </>

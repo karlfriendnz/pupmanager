@@ -21,6 +21,7 @@ export function AddonNudge({
   image,
   icon,
   forceShow = false,
+  dismissed = false,
 }: {
   /** Stable id — the dismissal is remembered under this key. */
   id: string
@@ -38,6 +39,10 @@ export function AddonNudge({
   icon?: ReactNode
   /** Dev-only: show immediately, ignoring a prior dismissal (for local preview). */
   forceShow?: boolean
+  /** Server-side record of a previous "Not now" for this user (see
+   *  lib/nudge-dismissals). Passed by the page so the nudge stays gone on
+   *  every device, not just the browser it was dismissed in. */
+  dismissed?: boolean
   /** Ignored — lets a registry content object (which carries the add-on id) be
    *  spread onto this component without a type error. The call site supplies the
    *  real dismissal key via `id`. */
@@ -49,14 +54,29 @@ export function AddonNudge({
   const [leaving, setLeaving] = useState(false)
 
   useEffect(() => {
+    // A real, server-recorded "Not now" outranks everything — including the
+    // dev preview. forceShow exists so the nudge art is easy to look at
+    // locally, but while it also overrode dismissals the feature looked broken
+    // in dev: you'd click "Not now" and it was back on the next render.
+    if (dismissed) return
     if (forceShow) { setShow(true); return }
+    // localStorage stays as a same-device fast path (covers the moment between
+    // dismissing and the server state reaching the next render).
     if (localStorage.getItem(`pm-nudge:${id}`) === '1') return
     const t = setTimeout(() => setShow(true), 900)
     return () => clearTimeout(t)
-  }, [id, forceShow])
+  }, [id, forceShow, dismissed])
 
   function dismiss() {
+    // Local first so it disappears instantly, then persist so it's remembered
+    // on the trainer's other devices. Fire-and-forget: a failed write only
+    // costs them seeing the nudge again elsewhere.
     try { localStorage.setItem(`pm-nudge:${id}`, '1') } catch { /* ignore */ }
+    fetch('/api/nudges/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nudgeId: id }),
+    }).catch(() => {})
     setLeaving(true)
     setTimeout(() => setShow(false), 200)
   }
@@ -126,7 +146,10 @@ export function AddonNudge({
             {onCta ? (
               <button
                 type="button"
-                onClick={onCta}
+                // Acting on the nudge counts as answering it — record the
+                // dismissal too, or it keeps reappearing after they've engaged.
+                // (The ctaHref <Link> path below already did this.)
+                onClick={() => { dismiss(); onCta() }}
                 className="group inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-teal-500 to-teal-600 px-3 py-1.5 text-[13px] font-semibold text-white shadow-sm shadow-teal-600/30 transition-all hover:from-teal-500 hover:to-teal-700 hover:shadow-md hover:shadow-teal-600/40 active:scale-[0.98]"
               >
                 {ctaLabel}

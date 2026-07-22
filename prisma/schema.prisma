@@ -150,7 +150,29 @@ model User {
   brainDumps   TrainerBrainDump[]
   createdTodos TrainerTodo[]      @relation("TodoCreatedBy")
 
+  // "Not now" choices on add-on nudges, remembered across devices.
+  nudgeDismissals NudgeDismissal[]
+
   @@map("users")
+}
+
+// A "Not now" on an add-on nudge. Previously this lived only in localStorage,
+// so the nudge reappeared on every other browser and device the trainer used.
+// Scoped per USER (not per company) to match that per-person meaning: a staff
+// member dismissing a nudge shouldn't silence it for the owner.
+model NudgeDismissal {
+  id String @id @default(cuid())
+  userId String
+  // The call site's stable nudge key, e.g. "finances-payments" or
+  // "dashboard-xero" — same string the localStorage key used.
+  nudgeId String
+  dismissedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, nudgeId])
+  @@index([userId])
+  @@map("nudge_dismissals")
 }
 
 enum DevicePlatform {
