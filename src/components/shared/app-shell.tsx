@@ -415,6 +415,39 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
 
       {/* Content */}
       <div className="flex-1 md:ml-64 min-h-[100dvh] flex flex-col">
+        {/* Mobile top bar — the TRAINER's brand (this app is white-labelled to
+            them), with the account button on the right. Phone only: on desktop
+            the sidebar already carries the logo. Sticky so it occupies flow and
+            no page needs extra top padding; pads the safe-area inset. */}
+        <header
+          className="md:hidden sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-100"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
+          <div className="flex h-14 items-center justify-between gap-3 px-4">
+            <Link href="/home" className="flex min-w-0 items-center gap-2">
+              {trainerLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-auto max-w-[160px] object-contain" />
+              ) : (
+                <span className="font-display text-lg font-extrabold text-slate-900 truncate">
+                  {businessName ?? 'PupManager'}
+                </span>
+              )}
+            </Link>
+            {/* Opens the same full-screen menu as the bottom bar's Menu tab —
+                account details, contacts and (when they have more than one
+                trainer) the switcher. */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Account menu"
+              aria-expanded={menuOpen}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-soft text-accent"
+            >
+              <User className="h-5 w-5" />
+            </button>
+          </div>
+        </header>
         <main className="flex-1 flex flex-col min-h-0 pb-24 md:pb-0">{children}</main>
       </div>
 
@@ -857,6 +890,36 @@ function TrainerShell({
         currency={currency}
         notifCount={unreadCounts['/notifications'] ?? 0}
       />
+
+      {/* Mobile top bar. The desktop TrainerTopBar is `hidden md:flex`, so on a
+          phone the app had no header at all — no branding, and the global
+          client search was unreachable. White-labelled: the trainer's own icon/
+          logo and business name, never "PupManager". Sticky (not fixed) so it
+          occupies flow and no page needs new top padding; pads the safe-area
+          inset so it clears the notch. */}
+      <header
+        className="md:hidden sticky top-0 z-40 border-b border-slate-100 bg-white/95 backdrop-blur"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
+        <div className="flex h-14 items-center gap-2 px-3">
+          <Link href="/dashboard" className="flex min-w-0 flex-1 items-center gap-2">
+            {trainerIcon ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={trainerIcon} alt="" className="h-8 w-8 rounded-lg object-contain shrink-0" />
+            ) : trainerLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={trainerLogo} alt="" className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100 shrink-0" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg shrink-0" />
+            )}
+            <span className="truncate font-semibold text-slate-900">{businessName ?? 'PupManager'}</span>
+          </Link>
+          {/* The same slide-out search as desktop — one implementation, so the
+              scope selector, type-ahead and keyboard handling can't diverge. */}
+          <TopBarControls variant="search" />
+        </div>
+      </header>
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
           Hidden inside Settings, which brings its own rail. */}

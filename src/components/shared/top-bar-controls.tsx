@@ -44,6 +44,7 @@ export function TopBarControls({
   notifCount = 0,
   canSell = false,
   currency = 'nzd',
+  variant = 'full',
 }: {
   userName?: string | null
   userEmail?: string | null
@@ -54,6 +55,11 @@ export function TopBarControls({
   /** Instant-sale add-on on AND the member may raise a sale — hides "New sale". */
   canSell?: boolean
   currency?: string
+  /** 'search' renders ONLY the slide-out search — used by the mobile top bar,
+   *  where the create/notifications/account controls live in the bottom nav and
+   *  the account menu instead. Everything else (suggestions, scope, keyboard
+   *  handling) is shared, so the two bars can't drift. */
+  variant?: 'full' | 'search'
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -188,15 +194,17 @@ export function TopBarControls({
 
   const initial = userName?.[0]?.toUpperCase() ?? '?'
 
+  const searchOnly = variant === 'search'
+
   return (
     // The right-hand control cluster of the global top bar (TrainerShell owns
     // the bar chrome). Streak, search, settings cog, account, help.
     <div className="flex items-center gap-1">
-      <SaleComposer open={saleOpen} onClose={() => setSaleOpen(false)} currency={currency} />
+      {!searchOnly && <SaleComposer open={saleOpen} onClose={() => setSaleOpen(false)} currency={currency} />}
 
       {/* Streak — a plain ghost circle until there's a streak, then an orange
           pill with the count. Matches the search/help circles when idle. */}
-      {SHOW_STREAK && streak && (
+      {!searchOnly && SHOW_STREAK && streak && (
         <Link
           href="/awards"
           title={streak.current > 0 ? `${streak.current}-training-day streak` : 'Start a streak — finish notes on a training day'}
@@ -328,6 +336,9 @@ export function TopBarControls({
         )}
       </div>
 
+      {/* Everything past the search is desktop-only chrome: on mobile these
+          live in the bottom nav and the account menu. */}
+      {!searchOnly && <>
       {/* Create — the one place to start a new thing from anywhere in the app.
           Wears the same ghost circle as its neighbours rather than shouting as
           a filled primary; it sits in a row of tools, not above them. */}
@@ -448,6 +459,7 @@ export function TopBarControls({
       >
         <HelpCircle className="h-[18px] w-[18px]" />
       </Link>
+      </>}
     </div>
   )
 }
