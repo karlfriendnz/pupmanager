@@ -121,7 +121,13 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   // Prefer the fetched detail; fall back to the list summary while loading.
   const view = data ?? summary
   const badge = receivableBadge(view)
-  const unpaidUnsent = view.status === 'UNPAID' && !view.sentAt
+  // Anything still owed can be emailed to the client — first time, or again.
+  // Previously only a never-sent invoice offered the button, so a client who
+  // lost the email (or an invoice raised before we emailed at all, e.g. the
+  // class-enrolment backfill) had no way to be chased short of copying the pay
+  // link by hand. sendReceivable is happy to re-send; only the UI stopped it.
+  const canSend = view.status === 'UNPAID' || view.status === 'PARTIAL'
+  const alreadySent = !!view.sentAt
   // A paid or cancelled invoice is locked — only UNPAID is editable.
   const editable = view.status === 'UNPAID'
   // Still-open invoices can be paid → offer the shareable public pay link.
@@ -163,11 +169,12 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   }
 
   async function send() {
+    if (view.sentAt && !confirm('Email this invoice to the client again?')) return
     setSending(true); setMsg(null)
     try {
       const res = await fetch(`/api/trainer/finances/receivables/${summary.id}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       if (res.ok) {
-        setMsg('Sent to the client.')
+        setMsg(view.sentAt ? 'Sent again.' : 'Sent to the client.')
         onSent()
         const d = await load()
         if (d) setData(d)
@@ -244,9 +251,21 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
               <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50">
                 <Printer className="h-4 w-4" /> Print
               </button>
-              {unpaidUnsent && (
-                <button type="button" onClick={send} disabled={sending} className="inline-flex items-center gap-1.5 rounded-lg bg-accent hover:bg-accent-strong text-white px-3 h-9 text-sm font-semibold disabled:opacity-60">
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {sending ? 'Sending…' : 'Send'}
+              {canSend && (
+                <button
+                  type="button"
+                  onClick={send}
+                  disabled={sending}
+                  // A resend puts another email in someone's inbox, so it asks
+                  // first; the initial send doesn't need to.
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-semibold disabled:opacity-60 ${
+                    alreadySent
+                      ? 'border border-slate-200 text-slate-700 hover:bg-slate-50'
+                      : 'bg-accent hover:bg-accent-strong text-white'
+                  }`}
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {sending ? 'Sending…' : alreadySent ? 'Resend' : 'Send'}
                 </button>
               )}
             </>
