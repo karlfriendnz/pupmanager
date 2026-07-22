@@ -84,3 +84,6 @@ next-env.d.ts
 # Embedded Postgres for E2E tests
 .test-db/
 .next-e2e/
+
+# graphify knowledge-graph output (local dev artifact)
+graphify-out/
