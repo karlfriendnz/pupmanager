@@ -33,6 +33,8 @@ interface ScheduledIntent {
 interface ClassIntent {
   classRunId?: string
   type?: 'FULL' | 'DROP_IN'
+  // The single session a paid DROP_IN is for (null for a FULL seat).
+  sessionId?: string | null
   dogId?: string | null
 }
 
@@ -305,10 +307,10 @@ async function fulfilClassEnrolments(
   const failures: string[] = []
   const enrolledRunIds: string[] = []
   for (const it of items) {
-    const { classRunId, type, dogId } = it.intent
+    const { classRunId, type, dogId, sessionId } = it.intent
     if (!classRunId) continue
     try {
-      const r = await enrollInRun({ classRunId, clientId, dogId: dogId ?? null, type: type ?? 'FULL', source: 'SELF_SERVE' })
+      const r = await enrollInRun({ classRunId, clientId, dogId: dogId ?? null, type: type ?? 'FULL', sessionId: sessionId ?? null, source: 'SELF_SERVE' })
       if (r.status === 'ENROLLED') {
         await prisma.paymentItem.update({ where: { id: it.itemId }, data: { classEnrollmentId: r.enrollmentId } })
         await prisma.classEnrollment.update({ where: { id: r.enrollmentId }, data: { invoicedAt: new Date() } })

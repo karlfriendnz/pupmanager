@@ -1354,6 +1354,7 @@ model TrainingSession {
   attachments              SessionAttachment[]
   classRun                 ClassRun?               @relation(fields: [classRunId], references: [id], onDelete: Cascade)
   attendance               SessionAttendance[]
+  dropInEnrollments        ClassEnrollment[]       @relation("DropInSession")
   bookingPage              BookingPage?            @relation(fields: [bookingPageId], references: [id], onDelete: SetNull)
   automationSends          BookingAutomationSend[]
   paymentItem              PaymentItem?
@@ -1696,8 +1697,13 @@ model ClassEnrollment {
   type             EnrollmentType   @default(FULL)
   status           EnrollmentStatus @default(ENROLLED)
   waitlistPosition Int? // set only while WAITLISTED
-  // For DROP_IN: the 1-based session index they joined at, so pricing
-  // and the roster only count sessions from here on.
+  // For DROP_IN (single-session model): the ONE session this drop-in is for.
+  // They pay the flat per-session price, count against that session's capacity
+  // only, and appear on that session's roster only. FULL enrolments leave this
+  // null and attend every session.
+  dropInSessionId  String?
+  // For DROP_IN: the 1-based index of dropInSessionId, kept for display
+  // ("dropped into session 3"). dropInSessionId is the source of truth.
   joinedAtIndex    Int?
   source           String           @default("TRAINER") // "TRAINER" | "SELF_SERVE"
   // Mirrors ClientPackage.invoicedAt — manual until billing is wired.
@@ -1705,15 +1711,17 @@ model ClassEnrollment {
   enrolledAt       DateTime         @default(now())
   withdrawnAt      DateTime?
 
-  classRun    ClassRun            @relation(fields: [classRunId], references: [id], onDelete: Cascade)
-  client      ClientProfile       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  dog         Dog?                @relation(fields: [dogId], references: [id], onDelete: SetNull)
-  attendance  SessionAttendance[]
-  paymentItem PaymentItem?
+  classRun      ClassRun            @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  client        ClientProfile       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dog           Dog?                @relation(fields: [dogId], references: [id], onDelete: SetNull)
+  dropInSession TrainingSession?    @relation("DropInSession", fields: [dropInSessionId], references: [id], onDelete: Cascade)
+  attendance    SessionAttendance[]
+  paymentItem   PaymentItem?
 
   @@unique([classRunId, clientId, dogId])
   @@index([classRunId])
   @@index([clientId])
+  @@index([dropInSessionId])
   @@map("class_enrollments")
 }
 

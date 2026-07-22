@@ -79,8 +79,8 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       description = cp.package.name
     } else if (input.sourceType === 'CLASS_ENROLLMENT') {
       // A class enrolment prices off the run's backing group package: a FULL seat
-      // is the package (special) price; a DROP_IN pays per remaining session from
-      // where it joined.
+      // is the package (special) price; a DROP_IN is the flat per-session
+      // drop-in price for the one session they're attending.
       const enr = await prisma.classEnrollment.findFirst({
         where: { id: sourceId, clientId: input.clientId },
         select: {
@@ -88,7 +88,7 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
           classRun: {
             select: {
               name: true,
-              package: { select: { priceCents: true, specialPriceCents: true, dropInPriceCents: true, sessionCount: true } },
+              package: { select: { priceCents: true, specialPriceCents: true, dropInPriceCents: true } },
             },
           },
         },
@@ -96,9 +96,9 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       if (!enr) return null
       const pkg = enr.classRun.package
       amountCents = enr.type === 'DROP_IN'
-        ? dropInPriceCents({ dropInPriceCents: pkg.dropInPriceCents, sessionCount: pkg.sessionCount, joinedAtIndex: enr.joinedAtIndex ?? 1 })
+        ? dropInPriceCents({ dropInPriceCents: pkg.dropInPriceCents })
         : (pkg.specialPriceCents ?? pkg.priceCents)
-      description = enr.classRun.name
+      description = enr.classRun.name + (enr.type === 'DROP_IN' ? ` (drop-in${enr.joinedAtIndex ? ` · session ${enr.joinedAtIndex}` : ''})` : '')
     } else {
       const product = await prisma.product.findFirst({
         where: { id: sourceId, trainerId: input.trainerId },

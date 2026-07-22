@@ -78,7 +78,7 @@ async function main() {
     const pkg = run.package
 
     const amountCents = e.type === 'DROP_IN'
-      ? dropInPriceCents({ dropInPriceCents: pkg.dropInPriceCents, sessionCount: pkg.sessionCount, joinedAtIndex: e.joinedAtIndex ?? 1 })
+      ? dropInPriceCents({ dropInPriceCents: pkg.dropInPriceCents })
       : (pkg.specialPriceCents ?? pkg.priceCents)
     if (!amountCents || amountCents <= 0) { skippedUnpriced++; continue }
 

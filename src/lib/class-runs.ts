@@ -73,19 +73,17 @@ export function decideEnrollment(args: {
 }
 
 /**
- * Price for a DROP_IN joining at 1-based `joinedAtIndex` of a run with
- * `sessionCount` sessions: per-session drop-in rate × sessions they can
- * still attend. Returns null when the package has no drop-in price set.
+ * Price for a single-session DROP_IN: the flat per-session drop-in rate for
+ * the one session they're attending. Returns null when the package has no
+ * drop-in price set.
+ *
+ * (Was "per-session × remaining sessions" under the old late-joiner model; a
+ * drop-in is now one session, sold one at a time.)
  */
 export function dropInPriceCents(args: {
   dropInPriceCents: number | null | undefined
-  sessionCount: number
-  joinedAtIndex: number
 }): number | null {
-  if (typeof args.dropInPriceCents !== 'number') return null
-  const total = args.sessionCount > 0 ? args.sessionCount : 1
-  const remaining = Math.max(0, total - (args.joinedAtIndex - 1))
-  return args.dropInPriceCents * remaining
+  return typeof args.dropInPriceCents === 'number' ? args.dropInPriceCents : null
 }
 
 // ─── DB helpers ──────────────────────────────────────────────────────────────
@@ -118,11 +116,44 @@ export async function setRunTrainers(
   }
 }
 
-/** Count of seats that consume capacity (ENROLLED only). */
+/** Count of FULL-course seats that consume the run's capacity (ENROLLED only).
+ * Drop-ins don't take a course seat — they take a single session's seat, so
+ * they're counted per-session by sessionAttendeeCount, not here. */
 export async function enrolledCount(classRunId: string, tx: Tx = prisma): Promise<number> {
   return tx.classEnrollment.count({
-    where: { classRunId, status: 'ENROLLED' },
+    where: { classRunId, status: 'ENROLLED', type: 'FULL' },
   })
+}
+
+/** How many people are in the room for ONE session: every FULL enrolment (they
+ * attend all sessions) plus the drop-ins booked onto exactly this session.
+ * This is the number a drop-in's capacity check must respect — a course that's
+ * "full" for the whole term can still have a spare seat in a given week. */
+export async function sessionAttendeeCount(
+  classRunId: string,
+  sessionId: string,
+  tx: Tx = prisma,
+): Promise<number> {
+  return tx.classEnrollment.count({
+    where: {
+      classRunId,
+      status: 'ENROLLED',
+      OR: [{ type: 'FULL' }, { type: 'DROP_IN', dropInSessionId: sessionId }],
+    },
+  })
+}
+
+/** The most-attended single session in a run (max headcount across sessions).
+ * A FULL enrolment attends every session, so it must fit the busiest one. */
+async function busiestSessionHeadcount(classRunId: string, tx: Tx = prisma): Promise<number> {
+  const fulls = await tx.classEnrollment.count({ where: { classRunId, status: 'ENROLLED', type: 'FULL' } })
+  const perSession = await tx.classEnrollment.groupBy({
+    by: ['dropInSessionId'],
+    where: { classRunId, status: 'ENROLLED', type: 'DROP_IN', dropInSessionId: { not: null } },
+    _count: { _all: true },
+  })
+  const maxDropIns = perSession.reduce((m, r) => Math.max(m, r._count._all), 0)
+  return fulls + maxDropIns
 }
 
 /**
@@ -433,14 +464,20 @@ export async function updateClass(args: {
 /**
  * Enrol a client+dog into a run. Server-authoritative capacity/waitlist —
  * the decision is recomputed inside the transaction so two concurrent
- * enrols can't both take the last seat. Drop-in stamps joinedAtIndex
- * (the next not-yet-held session) so the roster/pricing start there.
+ * enrols can't both take the last seat.
+ *
+ * FULL takes a course seat and attends every session, so it's checked against
+ * the busiest session's headcount. DROP_IN is for ONE session (dropInSessionId,
+ * required): it's checked against just that session's headcount, so a term
+ * that's "full" can still take a drop-in where a week has room.
  */
 export async function enrollInRun(args: {
   classRunId: string
   clientId: string
   dogId?: string | null
   type?: 'FULL' | 'DROP_IN'
+  /** Required when type is DROP_IN: the one session they're dropping into. */
+  sessionId?: string | null
   source?: 'TRAINER' | 'SELF_SERVE'
 }): Promise<{ enrollmentId: string; status: 'ENROLLED' | 'WAITLISTED' }> {
   return prisma.$transaction(async (tx) => {
@@ -453,8 +490,27 @@ export async function enrollInRun(args: {
       throw new ClassError('RUN_CLOSED', 'This class is no longer taking enrolments')
     }
     const type = args.type ?? 'FULL'
-    if (type === 'DROP_IN' && !run.package.allowDropIn) {
-      throw new ClassError('NO_DROP_IN', 'This class does not allow drop-ins')
+
+    // A drop-in is one specific, still-to-come session of this run.
+    let dropInSessionId: string | null = null
+    let joinedAtIndex: number | null = null
+    if (type === 'DROP_IN') {
+      if (!run.package.allowDropIn) {
+        throw new ClassError('NO_DROP_IN', 'This class does not allow drop-ins')
+      }
+      if (!args.sessionId) {
+        throw new ClassError('NO_SESSION', 'Pick which session to drop into')
+      }
+      const sess = await tx.trainingSession.findFirst({
+        where: { id: args.sessionId, classRunId: args.classRunId },
+        select: { id: true, sessionIndex: true, scheduledAt: true, status: true },
+      })
+      if (!sess) throw new ClassError('SESSION_NOT_FOUND', 'That session isn’t part of this class')
+      if (sess.status !== 'UPCOMING' || sess.scheduledAt.getTime() <= Date.now()) {
+        throw new ClassError('SESSION_PAST', 'That session has already happened')
+      }
+      dropInSessionId = sess.id
+      joinedAtIndex = sess.sessionIndex
     }
 
     // Re-enrolling after withdrawal reuses the row; a live enrolment is a
@@ -473,15 +529,20 @@ export async function enrollInRun(args: {
       throw new ClassError('ALREADY_ENROLLED', 'Already enrolled in this class')
     }
 
-    const count = await enrolledCount(args.classRunId, tx)
+    // Capacity is per-session. FULL must fit the busiest session (it's in every
+    // one); a drop-in only has to fit its single chosen session.
+    const headcount =
+      type === 'DROP_IN'
+        ? await sessionAttendeeCount(args.classRunId, dropInSessionId!, tx)
+        : await busiestSessionHeadcount(args.classRunId, tx)
     const capacity = effectiveCapacity(run.capacity, run.package.capacity)
     const decision = decideEnrollment({
       capacity,
-      enrolledCount: count,
+      enrolledCount: headcount,
       allowWaitlist: run.package.allowWaitlist,
     })
     if (decision === 'REJECTED_FULL') {
-      throw new ClassError('FULL', 'This class is full')
+      throw new ClassError('FULL', type === 'DROP_IN' ? 'That session is full' : 'This class is full')
     }
 
     let waitlistPosition: number | null = null
@@ -493,16 +554,6 @@ export async function enrollInRun(args: {
       waitlistPosition = (last._max.waitlistPosition ?? 0) + 1
     }
 
-    let joinedAtIndex: number | null = null
-    if (type === 'DROP_IN') {
-      const nextSession = await tx.trainingSession.findFirst({
-        where: { classRunId: args.classRunId, scheduledAt: { gte: new Date() } },
-        orderBy: { scheduledAt: 'asc' },
-        select: { sessionIndex: true },
-      })
-      joinedAtIndex = nextSession?.sessionIndex ?? 1
-    }
-
     const data = {
       classRunId: args.classRunId,
       clientId: args.clientId,
@@ -510,6 +561,7 @@ export async function enrollInRun(args: {
       type,
       status: decision,
       waitlistPosition,
+      dropInSessionId,
       joinedAtIndex,
       source: args.source ?? 'TRAINER',
       withdrawnAt: null,

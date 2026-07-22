@@ -41,7 +41,14 @@ export async function GET(
       : Promise.resolve(null),
     prisma.sessionForm.findMany({ where: { trainerId }, orderBy: [{ order: 'asc' }, { createdAt: 'desc' }], select: { id: true, name: true, questions: true } }),
     prisma.classEnrollment.findMany({
-      where: { classRunId: runId, status: 'ENROLLED' },
+      // The roster for THIS session: every full-course enrolee (they attend
+      // every session) plus the drop-ins booked onto this one specific session.
+      // A drop-in must not appear on sessions they aren't attending.
+      where: {
+        classRunId: runId,
+        status: 'ENROLLED',
+        OR: [{ type: 'FULL' }, { type: 'DROP_IN', dropInSessionId: sessionId }],
+      },
       orderBy: { enrolledAt: 'asc' },
       include: {
         client: { select: { user: { select: { name: true } } } },

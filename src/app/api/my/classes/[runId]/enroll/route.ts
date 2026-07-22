@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import {
-  enrollInRun, ClassError, decideEnrollment, effectiveCapacity, enrolledCount, dropInPriceCents,
+  enrollInRun, ClassError, decideEnrollment, effectiveCapacity, enrolledCount,
+  sessionAttendeeCount, dropInPriceCents,
 } from '@/lib/class-runs'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
@@ -20,6 +21,8 @@ import { env } from '@/lib/env'
 
 const schema = z.object({
   type: z.enum(['FULL', 'DROP_IN']).optional(),
+  // Required for a DROP_IN: the single session they're booking.
+  sessionId: z.string().min(1).optional(),
   dogId: z.string().min(1).nullable().optional(),
 })
 
@@ -59,8 +62,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   const parsed = schema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
   const type = parsed.data.type ?? 'FULL'
-  if (type === 'DROP_IN' && !run.package.allowDropIn) {
-    return NextResponse.json({ error: 'This class doesn’t allow drop-ins.' }, { status: 400 })
+  // A drop-in is one specific, still-to-come session. Resolve + validate it up
+  // front so pricing, the capacity check and (for pay-to-confirm) the checkout
+  // intent all point at the same session.
+  let dropInSessionId: string | null = null
+  if (type === 'DROP_IN') {
+    if (!run.package.allowDropIn) {
+      return NextResponse.json({ error: 'This class doesn’t allow drop-ins.' }, { status: 400 })
+    }
+    if (!parsed.data.sessionId) {
+      return NextResponse.json({ error: 'Pick which session to drop into.' }, { status: 400 })
+    }
+    const sess = await prisma.trainingSession.findFirst({
+      where: { id: parsed.data.sessionId, classRunId: runId, status: 'UPCOMING', scheduledAt: { gte: new Date() } },
+      select: { id: true },
+    })
+    if (!sess) return NextResponse.json({ error: 'That session has already happened or isn’t part of this class.' }, { status: 400 })
+    dropInSessionId = sess.id
   }
 
   // Default to the client's primary dog; only honour a supplied dog they own.
@@ -79,27 +97,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     return NextResponse.json({ error: 'You’re already enrolled in this class.' }, { status: 409 })
   }
 
-  // Price the enrolment.
-  let price: number | null
-  if (type === 'FULL') {
-    price = run.package.specialPriceCents ?? run.package.priceCents
-  } else {
-    const next = await prisma.trainingSession.findFirst({
-      where: { classRunId: runId, scheduledAt: { gte: new Date() } },
-      orderBy: { scheduledAt: 'asc' },
-      select: { sessionIndex: true },
-    })
-    price = dropInPriceCents({
-      dropInPriceCents: run.package.dropInPriceCents,
-      sessionCount: run.package.sessionCount,
-      joinedAtIndex: next?.sessionIndex ?? 1,
-    })
-  }
+  // Price the enrolment. A drop-in is the flat per-session price for the one
+  // session; a full seat is the whole-course price.
+  const price: number | null =
+    type === 'FULL'
+      ? (run.package.specialPriceCents ?? run.package.priceCents)
+      : dropInPriceCents({ dropInPriceCents: run.package.dropInPriceCents })
 
-  // Pay-to-confirm only when there's a real seat to pay for.
+  // Pay-to-confirm only when there's a real seat to pay for. Capacity is
+  // per-session: a drop-in checks its one session; a full seat checks the run.
   const seatDecision = decideEnrollment({
     capacity: effectiveCapacity(run.capacity, run.package.capacity),
-    enrolledCount: await enrolledCount(runId),
+    enrolledCount: dropInSessionId
+      ? await sessionAttendeeCount(runId, dropInSessionId)
+      : await enrolledCount(runId),
     allowWaitlist: run.package.allowWaitlist,
   })
 
@@ -144,7 +155,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
             description: `${run.name}${type === 'DROP_IN' ? ' (drop-in)' : ''}`,
             unitAmount: price,
             quantity: 1,
-            intent: { classRunId: runId, type, dogId: dogId ?? null },
+            intent: { classRunId: runId, type, dogId: dogId ?? null, sessionId: dropInSessionId },
           },
         ],
         successUrl,
@@ -165,7 +176,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   // Free (or waitlist) enrolment — straight in. A priced pay-later enrolment
   // (require-payment off) also lands here: we enrol, then raise a receivable.
   try {
-    const result = await enrollInRun({ classRunId: runId, clientId: profile.id, dogId: dogId ?? null, type, source: 'SELF_SERVE' })
+    const result = await enrollInRun({ classRunId: runId, clientId: profile.id, dogId: dogId ?? null, type, sessionId: dropInSessionId, source: 'SELF_SERVE' })
     if (payLater && result.status === 'ENROLLED') {
       await prisma.classEnrollment.update({ where: { id: result.enrollmentId }, data: { invoicedAt: new Date() } }).catch(() => {})
       await createInvoiceForAssignment({

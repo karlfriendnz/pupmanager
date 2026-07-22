@@ -121,18 +121,15 @@ describe('decideEnrollment', () => {
   })
 })
 
-describe('dropInPriceCents', () => {
+describe('dropInPriceCents (single-session model)', () => {
   it('null when package has no drop-in price', () => {
-    expect(dropInPriceCents({ dropInPriceCents: null, sessionCount: 6, joinedAtIndex: 3 })).toBeNull()
+    expect(dropInPriceCents({ dropInPriceCents: null })).toBeNull()
+    expect(dropInPriceCents({ dropInPriceCents: undefined })).toBeNull()
   })
-  it('charges per remaining session from the join index', () => {
-    // 6-session class, joining at session 3 → 4 sessions left × 2500c
-    expect(dropInPriceCents({ dropInPriceCents: 2500, sessionCount: 6, joinedAtIndex: 3 })).toBe(10000)
+  it('is the flat per-session price — a drop-in is one session, sold on its own', () => {
+    expect(dropInPriceCents({ dropInPriceCents: 2500 })).toBe(2500)
   })
-  it('joining at session 1 pays for the whole run', () => {
-    expect(dropInPriceCents({ dropInPriceCents: 2500, sessionCount: 6, joinedAtIndex: 1 })).toBe(15000)
-  })
-  it('never negative if joinedAtIndex past the end', () => {
-    expect(dropInPriceCents({ dropInPriceCents: 2500, sessionCount: 6, joinedAtIndex: 9 })).toBe(0)
+  it('a zero price is a real (free) drop-in, not "unpriced"', () => {
+    expect(dropInPriceCents({ dropInPriceCents: 0 })).toBe(0)
   })
 })

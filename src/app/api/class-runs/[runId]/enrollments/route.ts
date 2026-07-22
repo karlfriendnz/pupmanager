@@ -16,6 +16,8 @@ const schema = z.object({
   clientId: z.string().min(1),
   dogId: z.string().min(1).nullable().optional(),
   type: z.enum(['FULL', 'DROP_IN']).optional(),
+  // Required for a DROP_IN: which single session they're dropping into.
+  sessionId: z.string().min(1).optional(),
   // Whether to tell the client they've been enrolled. Default true.
   notify: z.boolean().optional(),
   // Whether to ask the client to pay now: marks the invoice sent and puts the
@@ -61,6 +63,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       clientId: parsed.data.clientId,
       dogId: parsed.data.dogId ?? null,
       type: parsed.data.type ?? 'FULL',
+      sessionId: parsed.data.sessionId ?? null,
       source: 'TRAINER',
     })
 
