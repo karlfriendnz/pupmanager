@@ -415,6 +415,39 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
 
       {/* Content */}
       <div className="flex-1 md:ml-64 min-h-[100dvh] flex flex-col">
+        {/* Mobile top bar — the trainer's brand on the left, account on the
+            right. Phone only: on desktop the sidebar already carries the logo.
+            Sticky rather than fixed so it occupies flow and no page needs extra
+            top padding. Pads the safe-area inset so it sits below the notch. */}
+        <header
+          className="md:hidden sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-100"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
+          <div className="flex h-14 items-center justify-between gap-3 px-4">
+            <Link href="/home" className="flex min-w-0 items-center gap-2">
+              {trainerLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={trainerLogo} alt={businessName ?? 'Logo'} className="h-8 w-auto max-w-[160px] object-contain" />
+              ) : (
+                <span className="font-display text-lg font-extrabold text-slate-900 truncate">
+                  {businessName ?? 'PupManager'}
+                </span>
+              )}
+            </Link>
+            {/* Opens the same full-screen menu as the bottom bar's Menu tab —
+                account details, contacts and (when they have more than one
+                trainer) the switcher. */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Account menu"
+              aria-expanded={menuOpen}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-soft text-accent"
+            >
+              <User className="h-5 w-5" />
+            </button>
+          </div>
+        </header>
         <main className="flex-1 flex flex-col min-h-0 pb-24 md:pb-0">{children}</main>
       </div>
 
