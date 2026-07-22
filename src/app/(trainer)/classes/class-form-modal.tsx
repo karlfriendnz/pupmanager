@@ -95,6 +95,28 @@ export function ClassFormModal({
   const [forms, setForms] = useState<{ id: string; name: string }[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Convert this class back to a plain 1:1 package. Destructive (the run and
+  // its sessions go), so it confirms first and the server refuses it outright
+  // while anyone is booked in.
+  const [converting, setConverting] = useState(false)
+  const [convertError, setConvertError] = useState<string | null>(null)
+  async function handleConvertToPackage() {
+    if (!runId || converting) return
+    if (!confirm('Convert this class back into a 1:1 package? Its scheduled sessions will be removed.')) return
+    setConverting(true)
+    setConvertError(null)
+    try {
+      const res = await fetch(`/api/class-runs/${runId}/convert-to-package`, { method: 'POST' })
+      const body = await res.json().catch(() => null) as { error?: unknown; packageId?: string } | null
+      if (!res.ok) {
+        setConvertError(typeof body?.error === 'string' ? body.error : 'Could not convert this class.')
+        return
+      }
+      window.location.href = body?.packageId ? `/packages/${body.packageId}/edit` : '/packages'
+    } finally {
+      setConverting(false)
+    }
+  }
   const { confirmBooking } = useBookingConflicts()
 
   // Only worth showing the multi-select when the company has 2+ team members.
@@ -353,6 +375,32 @@ export function ClassFormModal({
                 })}
               </div>
               <p className="text-[11px] text-slate-400 mt-1">Tap to assign one or more team members to this class.</p>
+            </div>
+          )}
+
+          {/* Converting a class back to a 1:1 package has to remove the run and
+              its sessions — the package can't be 1:1 while a cohort hangs off
+              it — so it lives here as its own action, refused outright once
+              anyone is booked in. */}
+          {mode === 'edit' && runId && (
+            <div className="rounded-xl border border-slate-200 px-3 py-2.5 flex items-start gap-3">
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-slate-700">Not actually a class?</span>
+                <span className="block text-[11px] text-slate-400 mt-0.5">
+                  Turn it back into a 1:1 package. The scheduled sessions are removed — only possible while nobody is booked in.
+                </span>
+                {convertError && (
+                  <span className="block text-[11px] font-medium mt-1.5 text-red-600">{convertError}</span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={handleConvertToPackage}
+                disabled={converting}
+                className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {converting ? 'Converting…' : 'Convert to 1:1 package'}
+              </button>
             </div>
           )}
 
