@@ -20,7 +20,8 @@
  * Run (dry):    npx tsx --env-file=.env.local scripts/repoint-subscriptions.ts
  * Run (for real): npx tsx --env-file=.env.local scripts/repoint-subscriptions.ts --apply
  *
- * STRIPE_SECRET_KEY decides the mode: sk_test_… hits test, sk_live_… hits live.
+ * STRIPE_SECRET_KEY decides the mode: any key containing `_live_` (sk_live_ or
+ * a restricted rk_live_) hits live; anything else is treated as test.
  */
 import Stripe from 'stripe'
 import { scriptPrisma } from '../src/lib/prisma-script'
@@ -32,7 +33,12 @@ if (!SECRET) {
   console.error('STRIPE_SECRET_KEY is not set.')
   process.exit(1)
 }
-const MODE = SECRET.startsWith('sk_live_') ? 'LIVE' : 'TEST'
+// Live vs test is decided by the key itself. Matches `_live_` rather than
+// an `sk_live_` prefix so a RESTRICTED key (rk_live_…) is correctly read as
+// LIVE — the safest way to run these scripts is a restricted key scoped to
+// Products/Prices/Subscriptions, and treating one as TEST would point a live
+// migration at test data (or worse, report success having done nothing).
+const MODE = /_live_/.test(SECRET) ? 'LIVE' : 'TEST'
 
 const prisma = scriptPrisma()
 const stripe = new Stripe(SECRET, { apiVersion: '2026-04-22.dahlia' })
