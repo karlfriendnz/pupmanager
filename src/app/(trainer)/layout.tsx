@@ -219,8 +219,10 @@ export default async function TrainerLayout({ children }: { children: React.Reac
 
   // Unread in-app notifications for the Notifications nav badge. Chats are
   // excluded — they have their own Messages badge and don't show in this feed.
+  // NULL-safe (see notifications/page.tsx): a bare `not` drops typed-null rows
+  // like "Payment received", so the badge under-counted them to zero.
   const unreadNotifications = await prisma.notification.count({
-    where: { userId: session.user.id, readAt: null, type: { not: 'NEW_MESSAGE' } },
+    where: { userId: session.user.id, readAt: null, OR: [{ type: null }, { type: { not: 'NEW_MESSAGE' } }] },
   })
 
   // Training-day engagement streak for the always-visible sidebar pill.

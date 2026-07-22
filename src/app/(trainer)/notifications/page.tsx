@@ -21,7 +21,14 @@ export default async function TrainerNotificationsPage() {
   const notifications = await prisma.notification.findMany({
     // Chats are their own thing — they live in Messages, not this feed (they
     // still push + toast). Everything else surfaces here.
-    where: { userId, type: { not: 'NEW_MESSAGE' } },
+    //
+    // NULL-safe: `type != 'NEW_MESSAGE'` in SQL never matches a NULL type, and
+    // Prisma's `not`/`NOT` both compile to that — so either one silently hides
+    // every typed-null notification, which is exactly what "Payment received"
+    // rows are (created without a type). That emptied the whole feed for
+    // trainers whose only notifications were payments. The explicit null branch
+    // keeps them; only real NEW_MESSAGE rows are dropped.
+    where: { userId, OR: [{ type: null }, { type: { not: 'NEW_MESSAGE' } }] },
     orderBy: { createdAt: 'desc' },
     take: 50,
   })

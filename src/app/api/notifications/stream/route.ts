@@ -44,8 +44,10 @@ export async function GET() {
           while (!closed && Date.now() - startedAt < STREAM_MAX_MS) {
             const [count, fresh] = await Promise.all([
               // Bell badge excludes chats (they have their own Messages badge);
-              // the toast feed below still includes them.
-              prisma.notification.count({ where: { userId, readAt: null, type: { not: 'NEW_MESSAGE' } } }),
+              // the toast feed below still includes them. NULL-safe: a bare
+              // `not` drops typed-null rows (e.g. "Payment received"), which is
+              // why the live badge never lit up for them.
+              prisma.notification.count({ where: { userId, readAt: null, OR: [{ type: null }, { type: { not: 'NEW_MESSAGE' } }] } }),
               prisma.notification.findMany({
                 where: { userId, createdAt: { gt: lastSeenAt } },
                 orderBy: { createdAt: 'asc' },
