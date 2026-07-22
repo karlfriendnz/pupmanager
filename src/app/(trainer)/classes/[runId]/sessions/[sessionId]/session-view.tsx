@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
@@ -94,7 +93,6 @@ export function SessionView({
   sessionTitle: string
   sessionScheduledAt: string
 }) {
-  const router = useRouter()
   const [data, setData] = useState<AttendanceData | null>(null)
   const [formId, setFormId] = useState('')
   const [draft, setDraft] = useState<Record<string, ClientDraft>>({})
@@ -200,13 +198,13 @@ export function SessionView({
       <PageHeader
         title={runName}
         back={{
-          label: 'Back',
-          // Return to wherever they came from (schedule, dashboard, the class…);
-          // fall back to the class page on a fresh/deep-linked load.
-          onClick: () => {
-            if (typeof window !== 'undefined' && window.history.length > 1) router.back()
-            else router.push(`/classes/${runId}`)
-          },
+          // Always up to the class this session belongs to, rather than
+          // router.back() to wherever they happened to arrive from. Attendance
+          // is reached from the schedule as often as from the class itself, and
+          // a back arrow that lands somewhere different each time is worse than
+          // one that reliably goes up a level.
+          label: 'Back to class',
+          href: `/classes/${runId}`,
         }}
         subtitle={
           <span suppressHydrationWarning>
