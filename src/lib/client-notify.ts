@@ -87,14 +87,21 @@ async function doNotify({ userId, trainerId, type, vars = {}, link, ctaLabel, se
         ctaLabel: ctaLabel ?? 'Open in PupManager',
         ctaHref: `${APP_URL}${link ?? '/my-notifications'}`,
       })
-      await sendEmail({
+      // Resend reports delivery problems in the RESULT, not by throwing — an
+      // unverified sender, a bad address or a missing `from` all come back as
+      // { data: null, error }. This used to be dropped on the floor, so a
+      // notification could silently never arrive and every log said it had.
+      const sent = await sendEmail({
         to: user.email,
         subject: email.subject,
         html: email.html,
         text: email.text,
         from: fromTrainer(email.displayName),
         replyTo: email.trainerEmail,
-      })
+      }).catch((e) => ({ data: null, error: { message: e instanceof Error ? e.message : String(e) } }))
+      if (sent && 'error' in sent && sent.error) {
+        console.error('[notifyClient] email rejected', { type, userId, error: sent.error })
+      }
     }
   }
 }
