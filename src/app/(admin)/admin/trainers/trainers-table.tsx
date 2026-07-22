@@ -66,6 +66,7 @@ export async function TrainersTable({
           id: true,
           businessName: true,
           subscriptionStatus: true,
+          conversionLikelihood: true,
           // Set only once checkout completes — the paying-customer signal.
           stripeSubscriptionId: true,
           trialEndsAt: true,
@@ -176,7 +177,7 @@ export async function TrainersTable({
                 <th className="text-left px-4 py-3">Name</th>
                 <th className="text-left px-4 py-3">Business</th>
                 <th className="text-left px-4 py-3">Country</th>
-                <th className="text-left px-4 py-3">Plan</th>
+                <th className="text-left px-4 py-3">Likely</th>
                 <th className="text-left px-4 py-3">Clients</th>
                 <th className="text-left px-4 py-3">Onboarding</th>
                 <th className="text-left px-4 py-3">Emails</th>
@@ -195,6 +196,7 @@ export async function TrainersTable({
                   businessName: t.trainerProfile?.businessName ?? null,
                   subscriptionPlanName: t.trainerProfile?.subscriptionPlan?.name ?? null,
                   subscriptionStatus: t.trainerProfile?.subscriptionStatus ?? null,
+                  conversionLikelihood: t.trainerProfile?.conversionLikelihood ?? null,
                   trialEndsAt: t.trainerProfile?.trialEndsAt ?? null,
                   isInternal: t.trainerProfile?.isInternal ?? false,
                   signupCountry: t.trainerProfile?.signupCountry ?? null,

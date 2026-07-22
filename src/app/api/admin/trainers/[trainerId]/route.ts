@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { LIKELIHOODS } from '@/lib/conversion-likelihood'
 
 const schema = z.object({
   name: z.string().min(1).optional(),
@@ -20,6 +21,8 @@ const schema = z.object({
   // Set directly here regardless of subscription — lets us grant extra seats
   // to a trialing account without touching Stripe.
   seatCount: z.number().int().min(1).max(100).optional(),
+  // Internal conversion judgement from the admin "Likely" column. null clears it.
+  conversionLikelihood: z.union([z.enum(LIKELIHOODS), z.null()]).optional(),
 })
 
 async function requireAdmin() {
@@ -39,7 +42,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ traine
   const user = await prisma.user.findUnique({ where: { id: trainerId, role: 'TRAINER' } })
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { name, email, businessName, gracePeriodUntil, isInternal, active, applyTrialDays, seatCount } = parsed.data
+  const { name, email, businessName, gracePeriodUntil, isInternal, active, applyTrialDays, seatCount, conversionLikelihood } = parsed.data
 
   if (email && email !== user.email) {
     const conflict = await prisma.user.findUnique({ where: { email } })
@@ -70,6 +73,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ traine
     }),
     // Set the seat allowance directly (independent of any Stripe subscription).
     ...(seatCount !== undefined && { seatCount }),
+    // Internal-only; null clears the assessment back to "not assessed".
+    ...(conversionLikelihood !== undefined && { conversionLikelihood }),
   }
   if (Object.keys(profileData).length > 0) {
     await prisma.trainerProfile.update({

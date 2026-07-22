@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { Pencil, Trash2, X, Check, LogIn, Ban, RotateCcw, AlertTriangle, Mail, Loader2 } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/utils'
+import { LIKELIHOODS, LIKELIHOOD_META, type ConversionLikelihood } from '@/lib/conversion-likelihood'
 
 // Shape returned by GET /api/admin/trainers/[trainerId]/onboarding-emails
 type EmailReport = {
@@ -28,6 +29,8 @@ type Trainer = {
   email: string
   businessName: string | null
   subscriptionPlanName: string | null
+  // Internal sales judgement, edited inline from the "Likely" column.
+  conversionLikelihood: string | null
   subscriptionStatus: string | null
   trialEndsAt: Date | string | null
   isInternal: boolean
@@ -206,6 +209,25 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
     if (res.ok) router.refresh()
     else setError('Failed to update grace period')
     setSavingGrace(false)
+  }
+
+  // "Likely" — how likely we reckon they are to convert. Optimistic: the
+  // select shows the new value immediately, then reconciles on refresh.
+  const [likely, setLikely] = useState(trainer.conversionLikelihood ?? '')
+  const [savingLikely, setSavingLikely] = useState(false)
+  async function saveLikely(value: string) {
+    const previous = likely
+    setLikely(value)
+    setSavingLikely(true)
+    setError(null)
+    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversionLikelihood: value === '' ? null : value }),
+    })
+    if (res.ok) router.refresh()
+    else { setLikely(previous); setError('Failed to save likelihood') }
+    setSavingLikely(false)
   }
 
   // Apply a fresh N-day trial from today (sets trialEndsAt + flips to TRIALING).
@@ -407,11 +429,12 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
     <tr className={`border-b border-slate-700/50 hover:bg-slate-700/30 ${isActive ? '' : 'opacity-60'}`}>
       <td className="px-4 py-3 text-white">
         <span className="group relative inline-flex items-center gap-1.5">
-          {/* Name links to the trainer's full view; the dotted underline doubles
-              as the hover hotspot for the instant email tooltip below. */}
+          {/* Name links to the trainer's full view. The whole span is the hover
+              hotspot for the email tooltip below — it used to carry a dotted
+              underline to advertise that, but it just read as "..........". */}
           <a
             href={`/admin/trainers/${trainer.id}`}
-            className="border-b border-dotted border-slate-500/60 hover:text-blue-300"
+            className="hover:text-blue-300 hover:underline"
           >
             {trainer.name?.trim() || '—'}
           </a>
@@ -450,23 +473,34 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           <span className="text-slate-600">—</span>
         )}
       </td>
+      {/* "Likely" — our own read on whether they'll convert. Editable in place;
+          the Plan column that used to sit here is hidden (the status chip in the
+          Business column already carries plan/trial state). The Grace badge
+          moved here so hiding Plan didn't take it with it. */}
       <td className="px-4 py-3">
-        <span className={`text-xs px-2 py-0.5 rounded-full ${
-          trainer.subscriptionStatus === 'ACTIVE' ? 'bg-green-900 text-green-300' :
-          trainer.subscriptionStatus === 'TRIALING' ? 'bg-blue-900 text-blue-300' :
-          'bg-slate-700 text-slate-400'
-        }`}>
-          {trainer.subscriptionStatus === 'TRIALING'
-            ? 'Trial'
-            : trainer.subscriptionStatus === 'ACTIVE'
-              ? (trainer.subscriptionPlanName ?? 'Active')
-              : (trainer.subscriptionStatus ?? 'No plan')}
-        </span>
-        {graceActive && (
-          <span className="ml-1.5 text-xs px-2 py-0.5 rounded-full bg-amber-900 text-amber-300" title={`Grace access until ${formatDate(graceUntil!)}`}>
-            Grace
-          </span>
-        )}
+        <div className="flex items-center gap-1.5">
+          <select
+            value={likely}
+            disabled={savingLikely}
+            onChange={e => saveLikely(e.target.value)}
+            aria-label="Likelihood to convert"
+            className={`text-xs rounded-full px-2 py-1 border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 ${
+              likely && likely in LIKELIHOOD_META
+                ? LIKELIHOOD_META[likely as ConversionLikelihood].cls
+                : 'bg-slate-700 text-slate-400'
+            }`}
+          >
+            <option value="">—</option>
+            {LIKELIHOODS.map(l => (
+              <option key={l} value={l}>{LIKELIHOOD_META[l].label}</option>
+            ))}
+          </select>
+          {graceActive && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-900 text-amber-300" title={`Grace access until ${formatDate(graceUntil!)}`}>
+              Grace
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-4 py-3 text-slate-300">{trainer.clientCount}</td>
       <td className="px-4 py-3">
