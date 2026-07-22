@@ -11,6 +11,8 @@ import { AddonsGrid, type AddonCard } from '../add-ons/addons-grid'
 // Longer, page-specific blurbs shown in the "Learn more" modal. Keyed by the
 // pricing.ts AddonId / BillingItem.id so they line up with the cards.
 const DETAILS: Record<string, string> = {
+  dropins:
+    'Sell single sessions of a class instead of the whole course. Someone who can’t commit to six weeks — or a regular filling a gap while they’re between courses — takes one spot, for one night, at a price you set per session. You turn drop-ins on per program and PupManager keeps the maths straight: they only pay for the sessions left, they only fill a seat that’s actually free, and the roster shows at a glance who’s on the full course and who’s just passing through.',
   achievements:
     'Give your clients branded badges to earn and show off — first session, ten-session streak, a graduation. Every time an owner shares a win to their socials your business gets in front of a new audience, for free. You choose which milestones unlock a badge and they appear automatically in the client app.',
   pos:

@@ -13,8 +13,7 @@ import {
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone, Lock, ClipboardList,
   Download,
-  type LucideIcon,
-} from 'lucide-react'
+  type LucideIcon, Ticket,} from 'lucide-react'
 import { InstagramIcon } from '@/components/icons/instagram-icon'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
@@ -58,6 +57,7 @@ const TRAINER_NAV: NavItem[] = [
 
   { href: '/packages',     label: '1:1 Packages', icon: Package,         section: 'programs' },
   { href: '/classes',      label: 'Group Classes', icon: GraduationCap,  section: 'programs' },
+  { href: '/drop-ins',     label: 'Drop-ins',     icon: Ticket,           section: 'programs' },
   { href: '/templates',    label: 'Library',      icon: Layers,          section: 'programs' },
   { href: '/products',     label: 'Products',     icon: ShoppingBag,     section: 'programs' },
   { href: '/achievements', label: 'Achievements', icon: Trophy,          section: 'programs' },

@@ -65,7 +65,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos'
+export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins'
 
 export interface AddonDef {
   id: AddonId
@@ -172,6 +172,16 @@ export const ADDONS: AddonDef[] = [
     description: 'Record write-ups and progress notes against each session. Turn off for a simpler, notes-free session view.',
     free: true,
     defaultOn: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
+    id: 'dropins',
+    name: 'Drop-in classes',
+    description: 'Sell single sessions of a class — one-off spots for people who can’t commit to the whole course, or regulars filling a gap.',
+    // Free while the feature beds in: it only pays off once a trainer is
+    // actually running classes, and charging for it up front would stop people
+    // trying it. Pricing it later is a one-line change here plus a Stripe run.
+    free: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
   {
