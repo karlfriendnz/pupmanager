@@ -151,6 +151,38 @@ export function PackageForm({
   // A one-off package — a single session, no cadence. "Weeks between" is moot.
   const oneOff = Number(watch('sessionCount')) === 1
 
+  // Convert 1:1 ↔ group. Its own request because the server refuses the change
+  // while the package is in use and explains why — a message worth showing
+  // rather than folding into a generic save failure.
+  const [converting, setConverting] = useState(false)
+  const [convertError, setConvertError] = useState<string | null>(null)
+  async function handleConvert() {
+    if (!existing || converting) return
+    const target = !isGroup
+    const msg = target
+      ? 'Convert this into a group class? It will run as cohorts with a roster and capacity.'
+      : 'Convert this back into a 1:1 package? Capacity, waitlist and drop-in settings will be cleared.'
+    if (!confirm(msg)) return
+    setConverting(true)
+    setConvertError(null)
+    try {
+      const res = await fetch(`/api/packages/${existing.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isGroup: target }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: unknown } | null
+        setConvertError(typeof body?.error === 'string' ? body.error : 'Could not convert this package.')
+        return
+      }
+      setIsGroup(target)
+      if (!target) { setCapacity(''); setAllowDropIn(false); setAllowWaitlist(false); setPublicEnrollment(false) }
+    } finally {
+      setConverting(false)
+    }
+  }
+
   async function onSubmit(values: FormValues) {
     setError(null)
     // When Xero is connected with a curated shortlist, the income account is
@@ -353,28 +385,60 @@ export function PackageForm({
         </span>
       </label>
 
-      {/* ─── Group class ─────────────────────────────────────────── */}
-      <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={isGroup}
-          onChange={e => setIsGroup(e.target.checked)}
-          className="h-4 w-4 mt-0.5"
-        />
-        <span className="flex-1 min-w-0">
-          <span className="block text-sm font-medium text-slate-700">This is a group class</span>
-          <span className="block text-[11px] text-slate-400 mt-0.5">
-            Run cohorts of this package — one shared schedule, many clients, a roster and capacity. Leave off for normal 1:1 packages.
-          </span>
-          {existing && isGroup !== (existing.isGroup ?? false) && (
-            <span className="block text-[11px] font-medium mt-1.5 text-amber-600">
-              {isGroup
-                ? 'Converting this 1:1 package into a group class. Only possible while no clients are assigned to it.'
-                : 'Converting this group class back into a 1:1 package. Capacity, waitlist and drop-in settings will be cleared, and it must have no classes running.'}
+      {/* ─── 1:1 vs group class ──────────────────────────────────── */}
+      {existing ? (
+        // Editing: changing type is a deliberate CONVERSION, not a field you
+        // flick while editing something else — it moves the package between two
+        // halves of the system and is refused outright once it's in use. So it
+        // gets its own button and its own round-trip, separate from Save.
+        <div className="md:col-span-2 rounded-xl border border-slate-200 px-3 py-2.5 flex items-start gap-3">
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-medium text-slate-700">
+              {isGroup ? 'Group class' : '1:1 package'}
             </span>
-          )}
-        </span>
-      </label>
+            <span className="block text-[11px] text-slate-400 mt-0.5">
+              {isGroup
+                ? 'Runs as cohorts — one shared schedule, many clients, a roster and capacity.'
+                : 'Assigned to one client at a time, with their own sessions.'}
+            </span>
+            {convertError && (
+              <span className="block text-[11px] font-medium mt-1.5 text-red-600">{convertError}</span>
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={handleConvert}
+            disabled={converting}
+            className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {converting ? 'Converting…' : isGroup ? 'Convert to 1:1 package' : 'Convert to group class'}
+          </button>
+        </div>
+      ) : (
+        // Creating: nothing to convert yet — they're choosing what this IS.
+        <div className="md:col-span-2">
+          <span className="block text-sm font-medium text-slate-700 mb-1.5">What kind of package is this?</span>
+          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
+            {([
+              { group: false, label: '1:1 package', hint: 'One client at a time' },
+              { group: true, label: 'Group class', hint: 'Cohorts with a roster' },
+            ]).map(o => (
+              <button
+                key={o.label}
+                type="button"
+                onClick={() => setIsGroup(o.group)}
+                aria-pressed={isGroup === o.group}
+                className={`px-3 py-2 rounded-lg text-left transition-all ${
+                  isGroup === o.group ? 'bg-white shadow-sm' : 'hover:bg-white/50'
+                }`}
+              >
+                <span className={`block text-sm font-medium ${isGroup === o.group ? 'text-slate-900' : 'text-slate-500'}`}>{o.label}</span>
+                <span className="block text-[11px] text-slate-400">{o.hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isGroup && (
         <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3 flex flex-col gap-3">
