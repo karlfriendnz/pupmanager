@@ -250,18 +250,19 @@ export function PackageForm({
         />
         <p className="text-[11px] text-slate-400 mt-1">0 = ongoing (you set an end date when assigning) · 1 = one-off (single session)</p>
       </div>
-      {/* A one-off has nothing to space out, so the field is hidden rather than
-          shown-but-disabled — a greyed-out box still reads as something you
-          ought to fill in. It stays registered (RHF keeps unmounted values), and
-          onSubmit forces 0 so the stored cadence matches reality. */}
-      {!oneOff && (
+      {/* A one-off has nothing to space out, so the field goes away — but via
+          `invisible`, not by unmounting: visibility:hidden keeps the grid cell
+          (nothing below jumps) while removing it from view AND from the tab
+          order. It stays registered, and onSubmit forces 0 so the stored
+          cadence matches reality. */}
+      <div className={oneOff ? 'invisible' : undefined} aria-hidden={oneOff}>
         <Input
           label="Weeks between"
           type="number"
           error={errors.weeksBetween?.message}
           {...register('weeksBetween', { valueAsNumber: true })}
         />
-      )}
+      </div>
 
       <Input
         label="Default duration (mins)"

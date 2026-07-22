@@ -21,6 +21,8 @@ type Run = {
   id: string
   name: string
   scheduleNote: string | null
+  location: string | null
+  description: string | null
   startDate: string
   status: RunStatus
   capacity: number | null
@@ -375,6 +377,8 @@ export function RunDetail({
             priceCents: run.priceCents,
             capacity: run.capacity,
             scheduleNote: run.scheduleNote,
+            location: run.location,
+            description: run.description,
             defaultSessionFormId: run.defaultSessionFormId,
             imageUrl: run.imageUrl,
             assignedMembershipIds: run.assignedMembershipIds,

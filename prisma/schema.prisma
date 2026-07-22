@@ -1644,6 +1644,10 @@ model ClassRun {
   // NULL = inherit the package's value — same tri-state shape as `capacity`.
   bufferMins   Int?
   imageUrl     String? // optional cover image (Vercel Blob URL)
+  // Where the class meets. Free text by design — a Google-picked address and
+  // "the field behind the hall" are both valid answers. Copied onto each
+  // generated session so a per-session override stays possible.
+  location     String?
   status       ClassRunStatus @default(SCHEDULED)
   // Per-class "require payment to enrol" override. null = inherit the trainer's
   // defaultRequirePayment; true = pay up front (Stripe); false = enrol now, pay

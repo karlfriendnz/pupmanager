@@ -23,7 +23,7 @@ export default async function ClassRunPage({
     prisma.classRun.findFirst({
       where: { id: runId, trainerId },
       include: {
-        package: { select: { name: true, allowDropIn: true, allowWaitlist: true, priceCents: true, durationMins: true, bufferMins: true, sessionType: true, capacity: true, weeksBetween: true, sessionCount: true, defaultSessionFormId: true } },
+        package: { select: { name: true, description: true, allowDropIn: true, allowWaitlist: true, priceCents: true, durationMins: true, bufferMins: true, sessionType: true, capacity: true, weeksBetween: true, sessionCount: true, defaultSessionFormId: true } },
         sessions: {
           orderBy: { sessionIndex: 'asc' },
           select: { id: true, title: true, scheduledAt: true, sessionIndex: true, status: true },
@@ -66,6 +66,8 @@ export default async function ClassRunPage({
         id: run.id,
         name: run.name,
         scheduleNote: run.scheduleNote,
+        location: run.location,
+        description: run.package?.description ?? null,
         startDate: run.startDate.toISOString(),
         status: run.status,
         capacity: run.capacity ?? run.package.capacity ?? null,

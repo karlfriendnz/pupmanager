@@ -210,6 +210,11 @@ export async function createClassWithPackage(args: {
   scheduleNote?: string | null
   defaultSessionFormId?: string | null
   imageUrl?: string | null
+  /** Where the class meets. Free text; copied onto every generated session. */
+  location?: string | null
+  /** What the class actually is. Lives on the backing package (the class has
+   *  no description column of its own) and is what the booking email shows. */
+  description?: string | null
   // TrainerMembership ids (of this company) to assign as the class's trainers.
   assignedMembershipIds?: string[]
   // Tri-state "require payment to enrol": null = inherit trainer default.
@@ -224,6 +229,7 @@ export async function createClassWithPackage(args: {
       data: {
         trainerId: args.trainerId,
         name: args.name,
+        description: args.description?.trim() || null,
         sessionCount: count,
         weeksBetween: args.weeksBetween,
         durationMins: args.durationMins,
@@ -246,6 +252,7 @@ export async function createClassWithPackage(args: {
         startDate: args.startDate,
         capacity: args.capacity ?? null,
         imageUrl: args.imageUrl ?? null,
+        location: args.location?.trim() || null,
         requirePayment: args.requirePayment ?? null,
       },
     })
@@ -259,6 +266,9 @@ export async function createClassWithPackage(args: {
         durationMins: args.durationMins,
         bufferMins: buffer,
         sessionType: args.sessionType,
+        // Sessions carry their own location so one week can move venue without
+        // rewriting the class.
+        location: args.location?.trim() || null,
       })),
     })
     await setRunTrainers(run.id, args.trainerId, args.assignedMembershipIds, tx)
@@ -295,6 +305,8 @@ export async function updateClass(args: {
   weeksBetween: number
   defaultSessionFormId?: string | null
   imageUrl?: string | null
+  location?: string | null
+  description?: string | null
   // TrainerMembership ids to assign; undefined leaves assignments untouched.
   assignedMembershipIds?: string[]
   // Tri-state "require payment to enrol"; undefined leaves it untouched.
@@ -348,6 +360,7 @@ export async function updateClass(args: {
       where: { id: run.packageId },
       data: {
         name: args.name,
+        ...(args.description !== undefined && { description: args.description?.trim() || null }),
         priceCents: args.priceCents,
         durationMins: args.durationMins,
         sessionType: args.sessionType,
@@ -367,6 +380,7 @@ export async function updateClass(args: {
         startDate: args.startDate,
         ...(args.bufferMins !== undefined && { bufferMins: buffer }),
         ...(args.imageUrl !== undefined && { imageUrl: args.imageUrl }),
+        ...(args.location !== undefined && { location: args.location?.trim() || null }),
         ...(args.requirePayment !== undefined && { requirePayment: args.requirePayment }),
       },
     })

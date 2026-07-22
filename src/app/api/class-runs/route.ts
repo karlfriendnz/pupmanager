@@ -69,6 +69,8 @@ const createSchema = z.object({
   color: z.string().max(20).nullable().optional(),
   defaultSessionFormId: z.string().nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
+  location: z.string().max(200).nullable().optional(),
+  description: z.string().max(2000).nullable().optional(),
   // TrainerMembership ids (of this company) to assign as the class's trainers.
   assignedMembershipIds: z.array(z.string()).optional(),
   // Tri-state "require payment to enrol": null = inherit trainer default.
@@ -128,6 +130,8 @@ export async function POST(req: Request) {
       scheduleNote: d.scheduleNote ?? null,
       defaultSessionFormId: d.defaultSessionFormId ?? null,
       imageUrl: d.imageUrl ?? null,
+      location: d.location ?? null,
+      description: d.description ?? null,
       assignedMembershipIds: d.assignedMembershipIds,
       requirePayment: d.requirePayment ?? null,
     })

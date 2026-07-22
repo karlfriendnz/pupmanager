@@ -98,6 +98,8 @@ const patchSchema = z.object({
   weeksBetween: z.number().int().min(1).max(8).optional(),
   defaultSessionFormId: z.string().nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
+  location: z.string().max(200).nullable().optional(),
+  description: z.string().max(2000).nullable().optional(),
   assignedMembershipIds: z.array(z.string()).optional(),
   // Tri-state "require payment to enrol": null = inherit trainer default.
   requirePayment: z.boolean().nullable().optional(),
@@ -142,6 +144,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
         weeksBetween: d.weeksBetween ?? 1,
         defaultSessionFormId: d.defaultSessionFormId,
         imageUrl: d.imageUrl,
+        location: d.location,
+        description: d.description,
         assignedMembershipIds: d.assignedMembershipIds,
         requirePayment: d.requirePayment,
       })

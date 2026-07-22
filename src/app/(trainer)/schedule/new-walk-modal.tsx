@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
 import { X, Plus, Trash2, CalendarClock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
@@ -158,7 +159,16 @@ export function NewWalkModal({
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Location <span className="text-slate-400">(optional)</span></label>
-            <input value={location} onChange={e => setLocation(e.target.value)} className={fieldCls} placeholder="e.g. Cornwall Park" />
+            {/* Google-backed suggestions, but a hand-typed place is equally
+                valid — onTextChange keeps whatever they type even if it never
+                matches a suggestion ("the field behind the hall"). Same
+                component and behaviour as the client address field. */}
+            <PlaceAutocomplete
+              initialValue={location}
+              placeholder="e.g. Cornwall Park"
+              onTextChange={setLocation}
+              onSelect={r => setLocation(r.address)}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

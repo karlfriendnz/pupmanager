@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
 import { useBookingConflicts } from '@/lib/use-booking-conflicts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,8 @@ export type ClassInitial = {
   priceCents?: number | null
   capacity?: number | null
   scheduleNote?: string | null
+  location?: string | null
+  description?: string | null
   defaultSessionFormId?: string | null
   imageUrl?: string | null
   assignedMembershipIds?: string[]
@@ -83,6 +86,8 @@ export function ClassFormModal({
   const [price, setPrice] = useState(initial?.priceCents != null ? String(initial.priceCents / 100) : '')
   const [capacity, setCapacity] = useState(initial?.capacity != null ? String(initial.capacity) : '')
   const [scheduleNote, setScheduleNote] = useState(initial?.scheduleNote ?? '')
+  const [location, setLocation] = useState(initial?.location ?? '')
+  const [description, setDescription] = useState(initial?.description ?? '')
   const [defaultFormId, setDefaultFormId] = useState(initial?.defaultSessionFormId ?? '')
   const [imageUrl, setImageUrl] = useState<string | null>(initial?.imageUrl ?? null)
   const [requirePayment, setRequirePayment] = useState<boolean | null>(initial?.requirePayment ?? null)
@@ -150,6 +155,8 @@ export function ClassFormModal({
         priceCents: price.trim() ? Math.round(Number(price) * 100) : null,
         capacity: capacity.trim() ? Math.max(1, Math.floor(Number(capacity))) : null,
         scheduleNote: scheduleNote.trim() || null,
+        location: location.trim() || null,
+        description: description.trim() || null,
         defaultSessionFormId: defaultFormId || null,
         imageUrl: imageUrl || null,
         requirePayment,
@@ -268,6 +275,37 @@ export function ClassFormModal({
           </div>
 
           <Input label="Schedule note (optional)" placeholder="Thursdays 4:00pm" value={scheduleNote} onChange={e => setScheduleNote(e.target.value)} />
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">
+              Description <span className="text-slate-400">(optional)</span>
+            </label>
+            {/* Goes out in the booking email — it's what tells someone what
+                they've actually signed up for and what to bring. */}
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={3}
+              placeholder="What the class covers, who it suits, what to bring…"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">Included in the email clients get when you book them in.</p>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">
+              Location <span className="text-slate-400">(optional)</span>
+            </label>
+            {/* Google suggestions, but a hand-typed place is equally valid —
+                onTextChange keeps whatever they type even if it never matches
+                a suggestion. Same behaviour as the client address field. */}
+            <PlaceAutocomplete
+              initialValue={location}
+              placeholder="e.g. Bethlehem Hall, or the field behind it"
+              onTextChange={setLocation}
+              onSelect={r => setLocation(r.address)}
+            />
+          </div>
 
           {/* Cover image */}
           <div>
