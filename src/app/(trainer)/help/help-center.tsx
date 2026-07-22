@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Search, ListChecks, HelpCircle, MessageSquare, Lightbulb, Bug, Map,
   ChevronDown, ArrowUpRight, X, PawPrint, ArrowRight,
@@ -15,6 +16,7 @@ import { SupportTicketForm, type SupportFormType } from './support-ticket-form'
 const ROADMAP_URL = 'https://pupmanager.com/roadmap'
 
 export function HelpCenter() {
+  const router = useRouter()
   const [query, setQuery] = useState('')
   const [openArticle, setOpenArticle] = useState<string | null>(null)
   const [modal, setModal] = useState<SupportFormType | null>(null)
@@ -89,7 +91,23 @@ export function HelpCenter() {
         <>
           {/* ── Action cards ─────────────────────────────────────────────── */}
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <ActionCard as="link" href="/dashboard" icon={ListChecks} title="Continue setup" desc="Pick up your welcome checklist." />
+            {/* Doubles as the un-hide for a closed checklist: the dashboard
+                card has an X, so this restores it before navigating. Harmless
+                when it was never dismissed. */}
+            <ActionCard
+              as="button"
+              onClick={async () => {
+                await fetch('/api/onboarding/checklist/dismiss', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ restore: true }),
+                }).catch(() => {})
+                router.push('/dashboard')
+              }}
+              icon={ListChecks}
+              title="Continue setup"
+              desc="Pick up your welcome checklist."
+            />
             <ActionCard as="anchor" href="#faqs" icon={HelpCircle} title="Read the FAQs" desc="Quick answers to common questions." />
             <ActionCard as="button" onClick={() => setModal('support')} icon={MessageSquare} title="Get in touch" desc="Message our support team." />
             <ActionCard as="button" onClick={() => setModal('feature')} icon={Lightbulb} title="Request a feature" desc="Tell us what to build next." />

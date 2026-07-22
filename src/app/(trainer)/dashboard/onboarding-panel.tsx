@@ -214,6 +214,10 @@ export function OnboardingPanel({ state, branding, impersonating = false }: { st
           const step = state.steps.find(s => s.key === key)
           if (step) goToStep(step)
         }}
+        onDismiss={async () => {
+          await fetch('/api/onboarding/checklist/dismiss', { method: 'POST' }).catch(() => {})
+          router.refresh()
+        }}
       />
 
       {showDownload && <DownloadAppModal onClose={() => setShowDownload(false)} />}
@@ -403,13 +407,15 @@ function QrTile({ label, icon, url, fg }: { label: string; icon: React.ReactNode
 // ─── Checklist widget ────────────────────────────────────────────────────────
 
 function ChecklistWidget({
-  steps, allComplete, onOpenStep, clientAppEnabled,
+  steps, allComplete, onOpenStep, clientAppEnabled, onDismiss,
 }: {
   steps: OnboardingStepView[]
   allComplete: boolean
   onOpenStep: (key: string) => void
   clientAppEnabled: boolean
+  onDismiss: () => void | Promise<void>
 }) {
+  const [dismissing, setDismissing] = useState(false)
   // Tailor the tier-1 subtitle to the client-app choice (no "using the app").
   const tier1Meta = clientAppEnabled
     ? TIER_META[1]
@@ -428,7 +434,25 @@ function ChecklistWidget({
         </div>
         <div aria-hidden className="pointer-events-none absolute -top-16 -left-10 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
 
-        <div className="relative min-w-0">
+        {/* Close — available at any point, finished or not. Dismissing hides
+            this card AND the FAB everywhere (getOnboardingFabState treats
+            checklistDismissedAt as "done being nudged"); Help → Continue setup
+            brings it back, so it's never a one-way door. */}
+        <button
+          type="button"
+          aria-label="Close setup"
+          title="Close setup"
+          disabled={dismissing}
+          onClick={async () => {
+            setDismissing(true)
+            try { await onDismiss() } finally { setDismissing(false) }
+          }}
+          className="absolute top-3 right-3 z-10 grid place-items-center h-8 w-8 rounded-full bg-white/15 text-white/90 hover:bg-white/25 hover:text-white transition-colors disabled:opacity-50"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <div className="relative min-w-0 pr-10">
           <h3 className="font-bold text-[17px] leading-tight tracking-tight">
             {allComplete ? "You're all set up! 🎉" : 'Welcome to PupManager'}
           </h3>

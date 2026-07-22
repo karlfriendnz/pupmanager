@@ -50,7 +50,7 @@ beforeEach(() => {
 describe('notification-preferences — authentication', () => {
   it('GET returns 401 when unauthenticated', async () => {
     h.auth.mockResolvedValue(null)
-    expect((await GET()).status).toBe(401)
+    expect((await GET(new Request('http://localhost/api/notification-preferences'))).status).toBe(401)
   })
 
   it('PUT returns 401 when unauthenticated', async () => {
@@ -151,7 +151,7 @@ describe('notification-preferences GET — overlays stored on defaults, scoped t
       { type: 'NEW_MESSAGE', channel: 'EMAIL', companyId: null, enabled: true, leadMinutes: [], customTitle: 'Global', customBody: null },
       { type: 'NEW_MESSAGE', channel: 'EMAIL', companyId: 'co1', enabled: false, leadMinutes: [], customTitle: 'Org', customBody: null },
     ])
-    const res = await GET()
+    const res = await GET(new Request('http://localhost/api/notification-preferences'))
     expect(res.status).toBe(200)
     const { preferences } = await res.json() as { preferences: Array<Record<string, unknown>> }
     const row = preferences.find(p => p.type === 'NEW_MESSAGE' && p.channel === 'EMAIL')!

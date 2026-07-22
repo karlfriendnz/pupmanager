@@ -66,13 +66,13 @@ async function resolveTarget(sessionUserId: string, targetUserId: string | null 
 
 // GET — return one row per (type, channel) the user is allowed to see, with
 // stored values overlaid on defaults. Settings UI hydrates from this.
-export async function GET(req?: Request) {
+export async function GET(req: Request) {
   try {
     const session = await auth()
     if (!session) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
     // Optional ?userId= targets a team member's prefs (owner/manager only).
-    const targetUserId = req ? new URL(req.url).searchParams.get('userId') : null
+    const targetUserId = new URL(req.url).searchParams.get('userId')
     const resolved = await resolveTarget(session.user.id, targetUserId)
     if (!resolved.ok) return NextResponse.json({ error: 'Forbidden' }, { status: resolved.status })
     const { userId, companyId: activeCompanyId } = resolved
