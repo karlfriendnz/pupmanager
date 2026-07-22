@@ -8,7 +8,9 @@
  * Safe by construction:
  *  - DRY RUN by default; --apply writes.
  *  - REAL trainers only: internal/demo businesses and sample (first-run
- *    preview) clients are skipped.
+ *    preview) clients are skipped — unless --trainer=<id> names one explicitly,
+ *    or --include-internal is passed. Some "internal" accounts run real classes
+ *    for real clients, so the blanket skip can hide genuine gaps.
  *  - Never emails. Invoices are created with sentAt = null, so they appear as
  *    unsent receivables the trainer can review and send themselves. Blasting
  *    "pay now" at people for a class they attended months ago would be worse
@@ -31,6 +33,7 @@ import { dropInPriceCents } from '../src/lib/class-runs'
 const APPLY = process.argv.includes('--apply')
 const INCLUDE_PAST = process.argv.includes('--include-past')
 const ONLY_TRAINER = process.argv.find(a => a.startsWith('--trainer='))?.split('=')[1] ?? null
+const INCLUDE_INTERNAL = process.argv.includes('--include-internal')
 
 async function main() {
   console.log(`\nClass-enrolment invoice backfill ${APPLY ? '— *** APPLYING ***' : '(dry run)'}`)
@@ -42,8 +45,12 @@ async function main() {
       invoicedAt: null,
       classRun: {
         ...(ONLY_TRAINER ? { trainerId: ONLY_TRAINER } : {}),
-        // Real businesses only.
-        trainer: { isInternal: false },
+        // Real businesses only — UNLESS a trainer was named explicitly. The
+        // isInternal flag means "ours", but some of those accounts (Paws And
+        // Thrive) run genuine classes for genuine clients, so a blanket skip
+        // silently missed them. Naming the business is the operator saying
+        // they know what it is.
+        ...(ONLY_TRAINER || INCLUDE_INTERNAL ? {} : { trainer: { isInternal: false } }),
       },
       // Never bill a first-run preview client.
       client: { isSample: false },
