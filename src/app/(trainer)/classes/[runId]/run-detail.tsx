@@ -610,6 +610,8 @@ function EnrolModal({
   }, [visible, clientId])
   const [type, setType] = useState<'FULL' | 'DROP_IN'>('FULL')
   const [notify, setNotify] = useState(true)
+  // Ask them to pay now, or raise the invoice quietly and chase it later.
+  const [sendInvoice, setSendInvoice] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -626,7 +628,7 @@ function EnrolModal({
       const res = await fetch(`/api/class-runs/${runId}/enrollments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, dogId: c?.dogId ?? null, type, notify }),
+        body: JSON.stringify({ clientId, dogId: c?.dogId ?? null, type, notify, sendInvoice }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -722,6 +724,23 @@ function EnrolModal({
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                 />
                 <span className="text-sm text-slate-700">Notify the client they&apos;re enrolled</span>
+              </label>
+              {/* The invoice is raised either way — this decides whether the
+                  client is asked to pay now (Pay now button in their enrolment
+                  email) or it sits as a draft for the trainer to send later. */}
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sendInvoice}
+                  onChange={e => setSendInvoice(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span className="text-sm text-slate-700">
+                  Send the invoice
+                  <span className="block text-[11px] text-slate-400">
+                    Adds a Pay now button to their email. Untick to raise it quietly and chase it later.
+                  </span>
+                </span>
               </label>
               <div className="flex gap-2 pt-2">
                 <Button type="submit" loading={saving}>Enrol</Button>

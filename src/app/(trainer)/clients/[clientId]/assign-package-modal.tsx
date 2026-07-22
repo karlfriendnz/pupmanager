@@ -156,6 +156,8 @@ function AssignModal({
   const [packageId, setPackageId] = useState(packages[0]?.id ?? '')
   const [classRunId, setClassRunId] = useState(classes[0]?.id ?? '')
   const [enrolType, setEnrolType] = useState<'FULL' | 'DROP_IN'>('FULL')
+  // Ask them to pay now, or raise the invoice quietly and chase it later.
+  const [sendInvoice, setSendInvoice] = useState(true)
   const selectedClass = classes.find(c => c.id === classRunId) ?? null
 
   async function enrolInClass() {
@@ -166,7 +168,7 @@ function AssignModal({
       const res = await fetch(`/api/class-runs/${classRunId}/enrollments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, dogId, type: enrolType, notify }),
+        body: JSON.stringify({ clientId, dogId, type: enrolType, notify, sendInvoice }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -331,6 +333,20 @@ function AssignModal({
                   </p>
                 )}
               </div>
+              <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={sendInvoice}
+                  onChange={e => setSendInvoice(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <span className="text-sm text-slate-700 leading-snug">
+                  Send the invoice
+                  <span className="block text-[11px] text-slate-400 mt-0.5">
+                    Adds a Pay now button to their email. Untick to raise it quietly and chase it later.
+                  </span>
+                </span>
+              </label>
               {selectedClass?.allowDropIn && (
                 <div>
                   <label className="text-sm font-medium text-slate-700 block mb-1.5">Enrolment type</label>
