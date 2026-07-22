@@ -39,7 +39,16 @@ export async function GET(req: Request) {
       // Skip demo/sample sessions — they belong to a sample client (1:1) or a
       // sample class run, and should never generate real reminders. Real
       // sessions (incl. real class sessions with no client) are unaffected.
-      NOT: { OR: [{ client: { isSample: true } }, { classRun: { isSample: true } }] },
+      // A cancelled class must never remind anyone, even if a session row was
+      // left UPCOMING. Belt and braces alongside cancelling the sessions at the
+      // source — a stale session status must not be able to page a client.
+      NOT: {
+        OR: [
+          { client: { isSample: true } },
+          { classRun: { isSample: true } },
+          { classRun: { status: 'CANCELLED' } },
+        ],
+      },
     },
     include: {
       dog: { select: { name: true } },

@@ -205,6 +205,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ runId:
   })
   // Notify enrolled clients when a class is newly cancelled.
   if (d.status === 'CANCELLED' && before?.status !== 'CANCELLED') {
+    // NOTE: the sessions stay UPCOMING — SessionStatus has no CANCELLED
+    // member, and adding one would ripple through every status switch in the
+    // UI. The reminder crons therefore exclude sessions whose RUN is cancelled
+    // (see the cron where-clauses); that's what stops a cancelled class
+    // announcing itself. They do remain visible on /schedule, which is a
+    // separate decision from whether anyone gets notified.
     await notifyRunClients({ runId, trainerId, planName: before?.name ?? 'your class', detail: 'This class has been cancelled', link: '/my-sessions' })
   }
   return NextResponse.json({ ok: true, status: run.status })

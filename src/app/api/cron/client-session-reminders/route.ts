@@ -31,7 +31,16 @@ export async function GET(req: Request) {
       status: 'UPCOMING',
       OR: [{ clientId: { not: null } }, { classRunId: { not: null } }],
       // Don't remind sample clients about demo sessions (1:1 or sample class).
-      NOT: { OR: [{ client: { isSample: true } }, { classRun: { isSample: true } }] },
+      // A cancelled class must never remind anyone, even if a session row was
+      // left UPCOMING. Belt and braces alongside cancelling the sessions at the
+      // source — a stale session status must not be able to page a client.
+      NOT: {
+        OR: [
+          { client: { isSample: true } },
+          { classRun: { isSample: true } },
+          { classRun: { status: 'CANCELLED' } },
+        ],
+      },
     },
     select: {
       id: true, scheduledAt: true, title: true, trainerId: true, clientId: true,
