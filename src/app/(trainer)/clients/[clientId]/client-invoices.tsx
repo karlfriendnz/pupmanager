@@ -119,6 +119,39 @@ export function ClientUnpaidInvoicesCard({ clientId, onViewAll }: { clientId: st
   const [open, setOpen] = useState<Rcv | null>(null)
   const openItems = (items ?? []).filter(r => r.status === 'UNPAID' || r.status === 'PARTIAL')
 
+  // Combining is only offered for invoices with nothing paid against them —
+  // merging a part-paid one would strand that payment (the API refuses it too).
+  const combinable = openItems.filter(r => r.amountPaidCents === 0)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState<null | 'combine' | 'pay'>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [payFor, setPayFor] = useState<Rcv | null>(null)
+
+  function toggle(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  async function combineSelected() {
+    if (selected.size < 2 || busy) return
+    setBusy('combine'); setMsg(null)
+    try {
+      const res = await fetch('/api/trainer/finances/receivables/combine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceIds: [...selected] }),
+      })
+      const body = await res.json().catch(() => null) as { error?: unknown } | null
+      if (!res.ok) { setMsg(typeof body?.error === 'string' ? body.error : 'Could not combine those invoices.'); return }
+      setSelected(new Set())
+      setMsg('Combined into one invoice — send it when you’re ready.')
+      reload()
+    } finally { setBusy(null) }
+  }
+
   return (
     <Card>
       <CardBody className="py-5">
@@ -133,10 +166,196 @@ export function ClientUnpaidInvoicesCard({ clientId, onViewAll }: { clientId: st
         ) : openItems.length === 0 ? (
           <p className="text-sm text-slate-400">No unpaid invoices.</p>
         ) : (
-          <InvoiceTable items={openItems} onOpen={setOpen} />
+          <>
+            {/* Tick two or more to bill them as one — a client with five
+                outstanding invoices otherwise has to pay five times. */}
+            <ul className="divide-y divide-slate-100">
+              {openItems.map(r => {
+                const canCombine = r.amountPaidCents === 0
+                return (
+                  <li key={r.id} className="flex items-center gap-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(r.id)}
+                      disabled={!canCombine}
+                      onChange={() => toggle(r.id)}
+                      aria-label={`Select ${r.description ?? 'invoice'} to combine`}
+                      title={canCombine ? 'Select to combine' : 'Part-paid invoices can’t be combined'}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-30"
+                    />
+                    <button type="button" onClick={() => setOpen(r)} className="min-w-0 flex-1 text-left">
+                      <span className="block truncate text-sm font-medium text-slate-900">{r.description ?? 'Invoice'}</span>
+                      <span className="block text-[11px] text-slate-400">
+                        {fmtDate(r.createdAt)}
+                        {r.amountPaidCents > 0 && ` · ${money(r.amountPaidCents, r.currency)} paid`}
+                      </span>
+                    </button>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">
+                      {money(r.amountCents - r.amountPaidCents, r.currency)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setPayFor(r); setMsg(null) }}
+                      className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Mark paid
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+
+            {combinable.length > 1 && (
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={combineSelected}
+                  disabled={selected.size < 2 || busy !== null}
+                  className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent-strong disabled:opacity-40"
+                >
+                  {busy === 'combine' ? 'Combining…' : `Combine ${selected.size > 1 ? selected.size + ' ' : ''}into one invoice`}
+                </button>
+                {selected.size > 0 && (
+                  <span className="text-[11px] text-slate-400">
+                    {money(openItems.filter(r => selected.has(r.id)).reduce((s, r) => s + r.amountCents, 0), openItems[0].currency)} total
+                  </span>
+                )}
+              </div>
+            )}
+            {msg && <p className="mt-2 text-[11px] font-medium text-slate-500">{msg}</p>}
+          </>
         )}
       </CardBody>
       {open && <ReceivableDocument summary={open} onClose={() => setOpen(null)} onSent={reload} />}
+      {payFor && (
+        <RecordPaymentModal
+          invoice={payFor}
+          onClose={() => setPayFor(null)}
+          onDone={() => { setPayFor(null); setMsg('Payment recorded.'); reload() }}
+        />
+      )}
     </Card>
+  )
+}
+
+// Record a payment that arrived outside PupManager — a bank transfer, cash on
+// the day. Card payments come through Stripe and settle themselves; without
+// this, anything paid another way sat UNPAID for ever and the trainer's
+// finances under-reported what they'd actually been paid.
+function RecordPaymentModal({
+  invoice,
+  onClose,
+  onDone,
+}: {
+  invoice: Rcv
+  onClose: () => void
+  onDone: () => void
+}) {
+  const outstanding = invoice.amountCents - invoice.amountPaidCents
+  const [method, setMethod] = useState<'BANK_TRANSFER' | 'CASH' | 'OTHER'>('BANK_TRANSFER')
+  // Blank = the whole outstanding amount, which is the usual case.
+  const [amount, setAmount] = useState('')
+  const [reference, setReference] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit() {
+    setSaving(true); setError(null)
+    const dollars = amount.trim() ? Number(amount) : null
+    if (dollars !== null && (!Number.isFinite(dollars) || dollars <= 0)) {
+      setError('Enter a valid amount, or leave it blank to mark it paid in full.')
+      setSaving(false)
+      return
+    }
+    try {
+      const res = await fetch(`/api/trainer/finances/receivables/${invoice.id}/record-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method,
+          ...(dollars !== null ? { amountCents: Math.round(dollars * 100) } : {}),
+          reference: reference.trim() || null,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: unknown } | null
+        setError(typeof body?.error === 'string' ? body.error : 'Could not record that payment.')
+        return
+      }
+      onDone()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+      <div className="relative z-50 w-full max-w-sm rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="border-b border-slate-100 p-5">
+          <h2 className="font-semibold text-slate-900">Record a payment</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {invoice.description ?? 'Invoice'} · {money(outstanding, invoice.currency)} outstanding
+          </p>
+        </div>
+        <div className="flex flex-col gap-3 p-5">
+          {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">How did it arrive?</label>
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+              {([
+                { id: 'BANK_TRANSFER' as const, label: 'Bank transfer' },
+                { id: 'CASH' as const, label: 'Cash' },
+                { id: 'OTHER' as const, label: 'Other' },
+              ]).map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setMethod(m.id)}
+                  aria-pressed={method === m.id}
+                  className={`rounded-lg px-2 py-2 text-xs font-medium transition-all ${
+                    method === m.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Amount</label>
+            <input
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              inputMode="decimal"
+              placeholder={`Leave blank for the full ${money(outstanding, invoice.currency)}`}
+              className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Reference <span className="text-slate-400">(optional)</span>
+            </label>
+            <input
+              value={reference}
+              onChange={e => setReference(e.target.value)}
+              placeholder="e.g. ANZ 12 Aug, or a receipt number"
+              className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={saving}
+              className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-strong disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Record payment'}
+            </button>
+            <button type="button" onClick={onClose} className="px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-700">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

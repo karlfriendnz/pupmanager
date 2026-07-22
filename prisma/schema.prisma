@@ -2383,6 +2383,15 @@ model Invoice {
   // plain unique column — deliberately NOT a Prisma relation — so the existing
   // Stripe `Payment` model stays exactly as-is.
   paymentId String? @unique
+  // How a manually-recorded payment arrived: BANK_TRANSFER | CASH | OTHER.
+  // Null for card payments (they have a Payment row) and for unpaid invoices.
+  // The reference is free text — a bank statement line, a receipt number —
+  // whatever helps the trainer reconcile it later.
+  paymentMethod    String?
+  paymentReference String?
+  // Set on the ORIGINALS when several invoices are combined into one, so the
+  // history stays traceable instead of the old ones simply vanishing.
+  mergedIntoId String?
 
   // Unguessable public pay-token — the key to the no-login pay page at
   // /pay/<payToken>. cuid2 (high entropy) so the URL can't be enumerated;
