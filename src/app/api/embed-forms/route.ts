@@ -25,6 +25,10 @@ const schema = z.object({
   welcomeIntro: z.string().optional().nullable(),
   welcomeShowDiaryButton: z.boolean().default(true),
   welcomeButtonLabel: z.string().optional().nullable(),
+  autoReplyMode: z.enum(['OFF', 'TEMPLATE', 'CUSTOM']).default('OFF'),
+  autoReplyTemplateId: z.string().optional().nullable(),
+  autoReplySubject: z.string().optional().nullable(),
+  autoReplyBody: z.string().optional().nullable(),
 })
 
 export async function GET() {
@@ -60,6 +64,16 @@ export async function POST(req: Request) {
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
+  // Tenant check: an auto-reply template id from the request must belong to
+  // this trainer, never another tenant's.
+  if (parsed.data.autoReplyTemplateId) {
+    const owned = await prisma.emailTemplate.findFirst({
+      where: { id: parsed.data.autoReplyTemplateId, trainerId: trainer.id },
+      select: { id: true },
+    })
+    if (!owned) return NextResponse.json({ error: 'Unknown template' }, { status: 400 })
+  }
+
   try {
     const form = await prisma.embedForm.create({
       data: {
@@ -77,6 +91,10 @@ export async function POST(req: Request) {
         welcomeIntro: parsed.data.welcomeIntro ?? null,
         welcomeShowDiaryButton: parsed.data.welcomeShowDiaryButton,
         welcomeButtonLabel: parsed.data.welcomeButtonLabel ?? null,
+        autoReplyMode: parsed.data.autoReplyMode,
+        autoReplyTemplateId: parsed.data.autoReplyTemplateId ?? null,
+        autoReplySubject: parsed.data.autoReplySubject ?? null,
+        autoReplyBody: parsed.data.autoReplyBody ?? null,
       },
     })
     return NextResponse.json(form, { status: 201 })

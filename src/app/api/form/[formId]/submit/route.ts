@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { notifyEnquiryTrainer } from '@/lib/notify-enquiry-trainer'
+import { sendFormAutoReply } from '@/lib/form-auto-reply'
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 
 // Length caps matter here because this is an UNAUTHENTICATED public endpoint —
@@ -79,6 +80,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
   // the full enquiry on its own and swallows errors internally so a
   // flaky APNs/Resend round-trip never fails the public form.
   await notifyEnquiryTrainer({ enquiryId: enquiry.id })
+
+  // …and the auto-reply to the person who just filled it in, so they get an
+  // immediate acknowledgement instead of silence until the trainer accepts.
+  // No-ops unless this form has an auto-reply configured. Also swallows its
+  // own errors — a failed courtesy email must never fail the submission.
+  await sendFormAutoReply(enquiry.id)
 
   return NextResponse.json({ ok: true }, { status: 201 })
 }

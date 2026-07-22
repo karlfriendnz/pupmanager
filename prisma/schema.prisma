@@ -2722,11 +2722,29 @@ model EmbedForm {
   welcomeIntro           String?  @db.Text
   welcomeShowDiaryButton Boolean  @default(true)
   welcomeButtonLabel     String?  @db.Text
+
+  // Auto-reply — sent to the PERSON WHO FILLED IN THE FORM, immediately on
+  // submit. Distinct from welcomeEmail above, which goes out later when the
+  // trainer accepts the enquiry and opts into a magic link. Modes:
+  //   OFF      — nothing sent (the default; preserves pre-existing behaviour)
+  //   TEMPLATE — send the trainer's saved EmailTemplate (autoReplyTemplateId)
+  //   CUSTOM   — send autoReplySubject / autoReplyBody, written on the form
+  // Subject + body support the same {business} / {name} placeholders as the
+  // welcome email. No login link is ever included: at submit time the enquiry
+  // hasn't been accepted, so no client account exists to log in to.
+  autoReplyMode          String   @default("OFF")
+  autoReplyTemplateId    String?
+  autoReplySubject       String?  @db.Text
+  autoReplyBody          String?  @db.Text
+
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  trainer   TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  enquiries Enquiry[]
+  trainer          TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  enquiries        Enquiry[]
+  // SetNull: deleting a template must not delete the form — it just falls
+  // back to sending nothing until the trainer picks another.
+  autoReplyTemplate EmailTemplate? @relation(fields: [autoReplyTemplateId], references: [id], onDelete: SetNull)
 
   @@index([trainerId])
   @@map("embed_forms")
@@ -2988,6 +3006,8 @@ model EmailTemplate {
   updatedAt DateTime @updatedAt
 
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  // Forms configured to auto-reply with this template on submit.
+  embedForms EmbedForm[]
 
   @@index([trainerId, sortOrder])
   @@map("email_templates")

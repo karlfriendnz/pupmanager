@@ -14,7 +14,7 @@ export default async function EditEmbedFormPage({ params }: { params: Promise<{ 
   if (!trainerId) redirect('/login')
 
   const { formId } = await params
-  const [form, customFields] = await Promise.all([
+  const [form, customFields, emailTemplates] = await Promise.all([
     prisma.embedForm.findFirst({
       where: { id: formId, trainerId },
     }),
@@ -22,6 +22,12 @@ export default async function EditEmbedFormPage({ params }: { params: Promise<{ 
       where: { trainerId },
       orderBy: { order: 'asc' },
       select: { id: true, label: true, type: true, required: true, appliesTo: true },
+    }),
+    // Saved templates the trainer can pick as this form's auto-reply.
+    prisma.emailTemplate.findMany({
+      where: { trainerId },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, category: true },
     }),
   ])
   if (!form) notFound()
@@ -44,7 +50,12 @@ export default async function EditEmbedFormPage({ params }: { params: Promise<{ 
           welcomeIntro: form.welcomeIntro,
           welcomeShowDiaryButton: form.welcomeShowDiaryButton,
           welcomeButtonLabel: form.welcomeButtonLabel,
+          autoReplyMode: form.autoReplyMode as 'OFF' | 'TEMPLATE' | 'CUSTOM',
+          autoReplyTemplateId: form.autoReplyTemplateId,
+          autoReplySubject: form.autoReplySubject,
+          autoReplyBody: form.autoReplyBody,
         }}
+        emailTemplates={emailTemplates}
         customFields={customFields.map(f => ({
           id: f.id,
           label: f.label,

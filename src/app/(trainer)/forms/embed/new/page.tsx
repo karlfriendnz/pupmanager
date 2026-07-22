@@ -13,11 +13,19 @@ export default async function NewEmbedFormPage() {
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
 
-  const customFields = await prisma.customField.findMany({
-    where: { trainerId },
-    orderBy: { order: 'asc' },
-    select: { id: true, label: true, type: true, required: true, appliesTo: true },
-  })
+  const [customFields, emailTemplates] = await Promise.all([
+    prisma.customField.findMany({
+      where: { trainerId },
+      orderBy: { order: 'asc' },
+      select: { id: true, label: true, type: true, required: true, appliesTo: true },
+    }),
+    // Saved templates the trainer can pick as this form's auto-reply.
+    prisma.emailTemplate.findMany({
+      where: { trainerId },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, category: true },
+    }),
+  ])
 
   return (
     <FormEditorPageChrome title="New embed form">
@@ -29,6 +37,7 @@ export default async function NewEmbedFormPage() {
           required: f.required,
           appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
         }))}
+        emailTemplates={emailTemplates}
       />
     </FormEditorPageChrome>
   )

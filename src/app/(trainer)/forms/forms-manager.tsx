@@ -39,6 +39,17 @@ interface EmbedForm {
   welcomeIntro: string | null
   welcomeShowDiaryButton: boolean
   welcomeButtonLabel: string | null
+  autoReplyMode: 'OFF' | 'TEMPLATE' | 'CUSTOM'
+  autoReplyTemplateId: string | null
+  autoReplySubject: string | null
+  autoReplyBody: string | null
+}
+
+// A saved email template the trainer can pick as a form's auto-reply.
+export interface EmailTemplateOption {
+  id: string
+  name: string
+  category: string | null
 }
 
 const DEFAULT_BUTTON_COLOR = '#2563eb' // Tailwind blue-600 — platform default
@@ -98,9 +109,11 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 export function EmbedFormEditor({
   initial,
   customFields,
+  emailTemplates = [],
 }: {
   initial?: EmbedForm
   customFields: CustomField[]
+  emailTemplates?: EmailTemplateOption[]
 }) {
   const router = useRouter()
   // Local URL helpers — only meaningful when initial exists. Computed
@@ -145,6 +158,10 @@ export function EmbedFormEditor({
   const [welcomeIntro, setWelcomeIntro] = useState(initial?.welcomeIntro ?? '')
   const [welcomeShowDiaryButton, setWelcomeShowDiaryButton] = useState(initial?.welcomeShowDiaryButton ?? true)
   const [welcomeButtonLabel, setWelcomeButtonLabel] = useState(initial?.welcomeButtonLabel ?? '')
+  const [autoReplyMode, setAutoReplyMode] = useState<'OFF' | 'TEMPLATE' | 'CUSTOM'>(initial?.autoReplyMode ?? 'OFF')
+  const [autoReplyTemplateId, setAutoReplyTemplateId] = useState(initial?.autoReplyTemplateId ?? '')
+  const [autoReplySubject, setAutoReplySubject] = useState(initial?.autoReplySubject ?? '')
+  const [autoReplyBody, setAutoReplyBody] = useState(initial?.autoReplyBody ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -193,6 +210,10 @@ export function EmbedFormEditor({
       welcomeIntro: welcomeIntro.trim() || null,
       welcomeShowDiaryButton,
       welcomeButtonLabel: welcomeButtonLabel.trim() || null,
+      autoReplyMode,
+      autoReplyTemplateId: autoReplyMode === 'TEMPLATE' ? (autoReplyTemplateId || null) : null,
+      autoReplySubject: autoReplyMode === 'CUSTOM' ? (autoReplySubject.trim() || null) : null,
+      autoReplyBody: autoReplyMode === 'CUSTOM' ? (autoReplyBody.trim() || null) : null,
     }
 
     const res = initial
@@ -436,6 +457,100 @@ export function EmbedFormEditor({
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
+          </div>
+
+          {/* Auto-reply — goes to the PERSON WHO FILLED IN THE FORM, the
+              moment they submit. Sits above the welcome email because it
+              fires first in the timeline (submit → auto-reply, later:
+              accept → welcome). Off by default so existing forms don't
+              suddenly start emailing. */}
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Auto-reply email</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Sent straight away to whoever fills in this form, so they aren&apos;t left wondering.
+                Use <code className="text-slate-500">{'{business}'}</code> and <code className="text-slate-500">{'{name}'}</code> to personalise.
+              </p>
+            </div>
+
+            {/* Three modes as segmented buttons — clearer than a dropdown
+                for a choice that changes what's below it. */}
+            <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl">
+              {([
+                { id: 'OFF' as const, label: "Don't send" },
+                { id: 'TEMPLATE' as const, label: 'Use a template' },
+                { id: 'CUSTOM' as const, label: 'Write my own' },
+              ]).map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setAutoReplyMode(m.id)}
+                  aria-pressed={autoReplyMode === m.id}
+                  className={`px-2 py-2 rounded-lg text-xs font-medium transition-all ${
+                    autoReplyMode === m.id
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
+            {autoReplyMode === 'TEMPLATE' && (
+              emailTemplates.length === 0 ? (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+                  You haven&apos;t saved any email templates yet — add one under Settings → Email
+                  templates, or choose &ldquo;Write my own&rdquo; instead.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Template</label>
+                  <select
+                    value={autoReplyTemplateId}
+                    onChange={e => setAutoReplyTemplateId(e.target.value)}
+                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Choose a template…</option>
+                    {emailTemplates.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.category ? `${t.category} · ${t.name}` : t.name}
+                      </option>
+                    ))}
+                  </select>
+                  {!autoReplyTemplateId && (
+                    <p className="text-xs text-slate-400">Nothing sends until you pick one.</p>
+                  )}
+                </div>
+              )
+            )}
+
+            {autoReplyMode === 'CUSTOM' && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Subject</label>
+                  <input
+                    value={autoReplySubject}
+                    onChange={e => setAutoReplySubject(e.target.value)}
+                    placeholder="Thanks for getting in touch with {business}"
+                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Message</label>
+                  <RichTextEditor theme="light" value={autoReplyBody} onChange={setAutoReplyBody} minHeight={120} />
+                  <p className="text-xs text-slate-400">
+                    Hi {'{name}'}, thanks for your enquiry — we&apos;ve got your details and will be in
+                    touch shortly.
+                  </p>
+                </div>
+                {(!autoReplySubject.trim() || !autoReplyBody.trim()) && (
+                  <p className="text-xs text-slate-400">
+                    Add both a subject and a message — until then nothing sends.
+                  </p>
+                )}
+              </>
+            )}
           </div>
 
           {/* Welcome email — sent when you accept an enquiry from this form
