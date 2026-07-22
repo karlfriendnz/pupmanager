@@ -37,6 +37,11 @@ jobs:
 
       - run: npm ci
 
+      # No postinstall hook generates it, so without this every request dies on
+      # "Cannot find module '@/generated/prisma'" and the web server never comes
+      # up. Same step the Tests workflow already has.
+      - run: npx prisma generate
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
