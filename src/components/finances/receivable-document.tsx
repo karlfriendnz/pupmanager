@@ -96,6 +96,10 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   const [saving, setSaving] = useState(false)
   const [draftLines, setDraftLines] = useState<DraftLine[]>([])
   const [copied, setCopied] = useState(false)
+  // Record a payment that arrived outside PupManager (bank transfer, cash).
+  // Lives on the shared document so it's reachable from the client's Invoices
+  // tab, the Overview card AND Finances — not just one of them.
+  const [payOpen, setPayOpen] = useState(false)
 
   const load = useCallback(async () => {
     const d = await fetch(`/api/trainer/finances/receivables/${summary.id}`).then(r => (r.ok ? r.json() : null)).catch(() => null)
@@ -222,6 +226,25 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 print:p-0 print:static print:block">
       {/* Backdrop — click to close (disabled mid-edit to avoid losing changes). */}
+      {payOpen && (
+        <RecordPaymentModal
+          invoice={{
+            id: view.id,
+            amountCents: view.amountCents,
+            amountPaidCents: view.amountPaidCents,
+            currency: view.currency,
+            description: view.description ?? null,
+          }}
+          onClose={() => setPayOpen(false)}
+          onDone={async () => {
+            setPayOpen(false)
+            setMsg('Payment recorded.')
+            onSent()
+            const d = await load()
+            if (d) setData(d)
+          }}
+        />
+      )}
       <div className="absolute inset-0 bg-slate-900/40 print:hidden" onClick={() => { if (!editing) onClose() }} />
 
       <div role="dialog" aria-modal="true" aria-label="Invoice" className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden print:max-h-none print:max-w-none print:rounded-none print:shadow-none print:overflow-visible">
@@ -251,6 +274,15 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
               <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50">
                 <Printer className="h-4 w-4" /> Print
               </button>
+              {payable && (
+                <button
+                  type="button"
+                  onClick={() => setPayOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <Check className="h-4 w-4" /> Record payment
+                </button>
+              )}
               {canSend && (
                 <button
                   type="button"
@@ -424,6 +456,130 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
               {msg && <p className="mt-4 text-sm text-slate-600 print:hidden">{msg}</p>}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Record a payment that arrived outside PupManager — a bank transfer, cash on
+// the day. Card payments come through Stripe and settle themselves; without
+// this, anything paid another way sat UNPAID for ever and the trainer's
+// finances under-reported what they'd actually been paid.
+export function RecordPaymentModal({
+  invoice,
+  onClose,
+  onDone,
+}: {
+  // Structural: satisfied by both the list summary (Rcv) and the detail
+  // (RcvDetail), so every surface can open it.
+  invoice: { id: string; amountCents: number; amountPaidCents: number; currency: string; description: string | null }
+  onClose: () => void
+  onDone: () => void
+}) {
+  const outstanding = invoice.amountCents - invoice.amountPaidCents
+  const [method, setMethod] = useState<'BANK_TRANSFER' | 'CASH' | 'OTHER'>('BANK_TRANSFER')
+  // Blank = the whole outstanding amount, which is the usual case.
+  const [amount, setAmount] = useState('')
+  const [reference, setReference] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit() {
+    setSaving(true); setError(null)
+    const dollars = amount.trim() ? Number(amount) : null
+    if (dollars !== null && (!Number.isFinite(dollars) || dollars <= 0)) {
+      setError('Enter a valid amount, or leave it blank to mark it paid in full.')
+      setSaving(false)
+      return
+    }
+    try {
+      const res = await fetch(`/api/trainer/finances/receivables/${invoice.id}/record-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method,
+          ...(dollars !== null ? { amountCents: Math.round(dollars * 100) } : {}),
+          reference: reference.trim() || null,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: unknown } | null
+        setError(typeof body?.error === 'string' ? body.error : 'Could not record that payment.')
+        return
+      }
+      onDone()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+      <div className="relative z-50 w-full max-w-sm rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="border-b border-slate-100 p-5">
+          <h2 className="font-semibold text-slate-900">Record a payment</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {invoice.description ?? 'Invoice'} · {money(outstanding, invoice.currency)} outstanding
+          </p>
+        </div>
+        <div className="flex flex-col gap-3 p-5">
+          {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">How did it arrive?</label>
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+              {([
+                { id: 'BANK_TRANSFER' as const, label: 'Bank transfer' },
+                { id: 'CASH' as const, label: 'Cash' },
+                { id: 'OTHER' as const, label: 'Other' },
+              ]).map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setMethod(m.id)}
+                  aria-pressed={method === m.id}
+                  className={`rounded-lg px-2 py-2 text-xs font-medium transition-all ${
+                    method === m.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Amount</label>
+            <input
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              inputMode="decimal"
+              placeholder={`Leave blank for the full ${money(outstanding, invoice.currency)}`}
+              className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Reference <span className="text-slate-400">(optional)</span>
+            </label>
+            <input
+              value={reference}
+              onChange={e => setReference(e.target.value)}
+              placeholder="e.g. ANZ 12 Aug, or a receipt number"
+              className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={submit}
+              disabled={saving}
+              className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-strong disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Record payment'}
+            </button>
+            <button type="button" onClick={onClose} className="px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-700">
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     </div>
