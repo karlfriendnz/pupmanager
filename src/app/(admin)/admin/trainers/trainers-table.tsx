@@ -4,6 +4,7 @@ import type { SubscriptionStatus } from '@/generated/prisma'
 import { ChevronRight } from 'lucide-react'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { TrainerRow } from './trainer-row'
+import { isPayingCustomer, lifecycleProfileFilter, type TrainerLifecycle } from '@/lib/trainer-lifecycle'
 
 // The canonical trainers table — used on the dedicated Trainers page and on the
 // admin dashboard so the two never drift apart. Desktop (md+) renders the full
@@ -12,22 +13,24 @@ import { TrainerRow } from './trainer-row'
 // stacked cards that tap through to the trainer's full view
 // (/admin/trainers/[id]).
 //
-// `q` filters by name/email (empty = no filter); `statuses` keeps only those
-// subscription statuses (undefined = all); `limit` caps the rows; `onlyNonPaying`
-// keeps just trainers without an ACTIVE (paying) subscription. `deactivated`
+// `q` filters by name/email (empty = no filter); `bucket` keeps only one
+// lifecycle bucket (undefined = all) — see lib/trainer-lifecycle, which treats a
+// subscribed trainer inside their carried-over trial window as PAYING, not a
+// trialist; `limit` caps the rows; `onlyNonPaying` keeps just trainers who
+// haven't started a plan. `deactivated`
 // filters soft-delete state: 'exclude' (default) hides deactivated accounts,
 // 'only' shows just them, 'all' ignores the flag. `internal` does the same for
 // PupManager-owned ("Ours") accounts.
 export async function TrainersTable({
   q = '',
-  statuses,
+  bucket,
   limit,
   onlyNonPaying = false,
   deactivated = 'exclude',
   internal = 'exclude',
 }: {
   q?: string
-  statuses?: SubscriptionStatus[]
+  bucket?: TrainerLifecycle
   limit?: number
   onlyNonPaying?: boolean
   deactivated?: 'exclude' | 'only' | 'all'
@@ -38,8 +41,10 @@ export async function TrainersTable({
     { name: { contains: q, mode: 'insensitive' } },
     { email: { contains: q, mode: 'insensitive' } },
   ] })
-  if (statuses && statuses.length) and.push({ trainerProfile: { subscriptionStatus: { in: statuses } } })
-  if (onlyNonPaying) and.push({ NOT: { trainerProfile: { subscriptionStatus: 'ACTIVE' } } })
+  if (bucket) and.push({ trainerProfile: lifecycleProfileFilter(bucket) })
+  // "Not yet paying" = hasn't completed checkout, so a carried-over-trial
+  // subscriber is correctly excluded here too.
+  if (onlyNonPaying) and.push({ trainerProfile: { stripeSubscriptionId: null } })
   if (deactivated === 'exclude') and.push({ deactivatedAt: null })
   if (deactivated === 'only') and.push({ deactivatedAt: { not: null } })
   if (internal === 'exclude') and.push({ NOT: { trainerProfile: { isInternal: true } } })
@@ -61,6 +66,8 @@ export async function TrainersTable({
           id: true,
           businessName: true,
           subscriptionStatus: true,
+          // Set only once checkout completes — the paying-customer signal.
+          stripeSubscriptionId: true,
           trialEndsAt: true,
           isInternal: true,
           signupCountry: true,
@@ -143,7 +150,7 @@ export async function TrainersTable({
               <div className="flex items-center gap-2 shrink-0">
                 {flag && <span aria-hidden className="text-sm leading-none" title={`Signed up in ${p.signupCountry}`}>{flag}</span>}
                 {graceActive && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-900 text-amber-300 shrink-0">Grace</span>}
-                {statusChip(p.subscriptionStatus, p.subscriptionPlan?.name ?? null)}
+                {statusChip(p.subscriptionStatus, p.stripeSubscriptionId, p.subscriptionPlan?.name ?? null)}
                 <ChevronRight className="h-4 w-4 text-slate-500 shrink-0" />
               </div>
             </Link>
@@ -229,14 +236,21 @@ function joinedLabel(d: Date | string): string {
   return `${get('day')} ${get('month')}, ${get('hour')}:${get('minute')} ${ap}`
 }
 
-function statusChip(status: string | null, planName: string | null) {
+function statusChip(status: string | null, stripeSubscriptionId: string | null, planName: string | null) {
+  // A trainer who has started a plan reads as a paying customer even while
+  // Stripe still reports `trialing` — we carry their remaining free-trial days
+  // into the subscription, so that window is part of a real, card-on-file plan.
+  const paying = isPayingCustomer({
+    subscriptionStatus: status as SubscriptionStatus | null,
+    stripeSubscriptionId,
+  })
   const cls =
-    status === 'ACTIVE' ? 'bg-green-900 text-green-300' :
+    paying ? 'bg-green-900 text-green-300' :
     status === 'TRIALING' ? 'bg-blue-900 text-blue-300' :
     'bg-slate-700 text-slate-400'
   const label =
+    paying ? (planName ?? 'Active') :
     status === 'TRIALING' ? 'Trial' :
-    status === 'ACTIVE' ? (planName ?? 'Active') :
     (status ?? 'No plan')
   return <span className={`text-[11px] px-1.5 py-0.5 rounded-full shrink-0 ${cls}`}>{label}</span>
 }

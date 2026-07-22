@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
-import type { SubscriptionStatus } from '@/generated/prisma'
+import { lifecycleProfileFilter, type TrainerLifecycle } from '@/lib/trainer-lifecycle'
 import { TrainersTable } from './trainers-table'
 import type { Metadata } from 'next'
 
@@ -9,11 +9,14 @@ export const metadata: Metadata = { title: 'Trainers' }
 // Lifecycle tabs over the trainers table. `statuses` undefined = no filter (All).
 // `ours` shows only PupManager-owned (internal) accounts; `inactive` shows only
 // soft-deleted accounts. All the lifecycle tabs exclude both.
-const TABS: { key: string; label: string; statuses?: SubscriptionStatus[]; ours?: boolean; inactive?: boolean }[] = [
-  { key: 'all',      label: 'All',              statuses: undefined },
-  { key: 'trial',    label: 'In Trial',         statuses: ['TRIALING'] },
-  { key: 'paying',   label: 'Paying customer',  statuses: ['ACTIVE', 'PAST_DUE'] },
-  { key: 'churned',  label: 'Churned',          statuses: ['CANCELLED'] },
+// `bucket` is a lifecycle bucket from lib/trainer-lifecycle (which knows that a
+// subscribed trainer inside their carried-over trial window is a PAYING
+// customer, not a trialist). undefined = no filter (All).
+const TABS: { key: string; label: string; bucket?: TrainerLifecycle; ours?: boolean; inactive?: boolean }[] = [
+  { key: 'all',      label: 'All',              bucket: undefined },
+  { key: 'trial',    label: 'In Trial',         bucket: 'trial' },
+  { key: 'paying',   label: 'Paying customer',  bucket: 'paying' },
+  { key: 'churned',  label: 'Churned',          bucket: 'churned' },
   { key: 'ours',     label: 'Ours',             ours: true },
   { key: 'inactive', label: 'Inactive',         inactive: true },
 ]
@@ -34,9 +37,9 @@ export default async function AdminTrainersPage({
   const real = { deactivatedAt: null, NOT: { trainerProfile: { isInternal: true } } }
   const [all, trial, paying, churned, ours, inactive] = await Promise.all([
     prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { isNot: null } } }),
-    prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { subscriptionStatus: 'TRIALING' } } }),
-    prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { subscriptionStatus: { in: ['ACTIVE', 'PAST_DUE'] } } } }),
-    prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: { subscriptionStatus: 'CANCELLED' } } }),
+    prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: lifecycleProfileFilter('trial') } }),
+    prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: lifecycleProfileFilter('paying') } }),
+    prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: lifecycleProfileFilter('churned') } }),
     prisma.user.count({ where: { role: 'TRAINER', deactivatedAt: null, trainerProfile: { isInternal: true } } }),
     prisma.user.count({ where: { role: 'TRAINER', deactivatedAt: { not: null }, trainerProfile: { isNot: null } } }),
   ])
@@ -91,7 +94,7 @@ export default async function AdminTrainersPage({
 
       <TrainersTable
         q={q}
-        statuses={current.statuses}
+        bucket={current.bucket}
         deactivated={current.inactive ? 'only' : 'exclude'}
         internal={current.ours ? 'only' : current.inactive ? 'all' : 'exclude'}
       />
