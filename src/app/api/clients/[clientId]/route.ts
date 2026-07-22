@@ -44,7 +44,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ clie
   //   • ClientProfile.dogId → Dog            (primary dog)
   // We detach the additional dogs first so the cascade succeeds, then
   // delete the User (which cascades through ClientProfile + tasks +
-  // packages + shares + messages + ...), and finally drop the dog rows
+  // packages + shares + ...), and finally drop the dog rows
   // themselves so a deleted client doesn't leave orphan pets behind.
   // TrainingSession.clientId is SetNull on the schema, so past sessions
   // stay on the calendar as un-attributed history — that's intentional.
@@ -64,6 +64,14 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ clie
     ...additionalDogIds,
   ]
 
+  // One person can be a client of SEVERAL trainers (ClientProfile is keyed on
+  // (userId, trainerId)). Deleting the User would take their relationship with
+  // every other trainer down too, so that only happens when this was their last
+  // one; otherwise we remove just this trainer's profile and leave the person be.
+  const otherProfiles = await prisma.clientProfile.count({
+    where: { userId: profile.userId, id: { not: access.client.id } },
+  })
+
   try {
     await prisma.$transaction(async tx => {
       if (additionalDogIds.length > 0) {
@@ -72,7 +80,20 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ clie
           data: { clientProfileId: null },
         })
       }
-      await tx.user.delete({ where: { id: profile.userId } })
+      // Message.senderId is RESTRICT, so any client who has EVER sent a message
+      // blocked the delete with a bare 500 ("Could not delete this client").
+      // Their messages have to go explicitly first — the clientId side cascades,
+      // but the sender side does not.
+      await tx.message.deleteMany({
+        where: otherProfiles > 0
+          ? { clientId: access.client.id }
+          : { OR: [{ clientId: access.client.id }, { senderId: profile.userId }] },
+      })
+      if (otherProfiles > 0) {
+        await tx.clientProfile.delete({ where: { id: access.client.id } })
+      } else {
+        await tx.user.delete({ where: { id: profile.userId } })
+      }
       if (dogIdsToDelete.length > 0) {
         await tx.dog.deleteMany({ where: { id: { in: dogIdsToDelete } } })
       }
