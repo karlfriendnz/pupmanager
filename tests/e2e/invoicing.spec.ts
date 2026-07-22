@@ -44,9 +44,12 @@ test.describe('invoicing — assign a priced package raises a receivable', () =>
     // Client profile → Overview "Unpaid invoices" card shows it…
     await page.goto(`/clients/${SEED.assignedClientId}`)
     await expect(page.getByRole('heading', { name: 'Unpaid invoices' })).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByRole('row', { name: /Priced Puppy Course/ })).toBeVisible({ timeout: 15_000 })
+    // The card is a tickable list (so several can be combined into one bill),
+    // not a table — hence listitem rather than row.
+    await expect(page.getByRole('listitem').filter({ hasText: 'Priced Puppy Course' }).first())
+      .toBeVisible({ timeout: 15_000 })
 
-    // …and the client's Invoices tab lists it too.
+    // …and the client's Invoices tab (still a table) lists it too.
     await page.getByRole('button', { name: 'Invoices' }).click()
     await expect(page.getByRole('row', { name: /Priced Puppy Course/ })).toBeVisible({ timeout: 15_000 })
   })

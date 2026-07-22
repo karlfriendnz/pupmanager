@@ -115,7 +115,9 @@ test.describe('starter field packs — owner happy path', () => {
     }
     await expect(page.getByText('0 fields selected')).toBeVisible()
 
-    await page.getByRole('button', { name: 'Vet clinic' }).click()
+    // exact: once the field exists there's also an "Edit field Vet clinic"
+    // button, and this spec re-runs against a shared DB.
+    await page.getByRole('button', { name: 'Vet clinic', exact: true }).click()
     await Promise.all([
       page.waitForResponse(r => r.url().includes('/api/custom-fields/packs') && r.request().method() === 'POST'),
       page.getByRole('button', { name: 'Add 1 field' }).click(),

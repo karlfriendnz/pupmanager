@@ -84,12 +84,31 @@ test.describe('Client capture — quick-add (UAT)', () => {
     await page.getByRole('button', { name: /Quick add/i }).click()
     await expect(page.getByRole('heading', { name: 'Quick add contact' })).toBeVisible()
 
-    // Name only, no phone → server rejects with a "required" error and the
-    // modal stays open.
-    await page.getByLabel(/^Name/).fill(`Pup NoPhone ${Date.now()}`)
+    // Phone and email are shown on quick-add but aren't required, so leaving
+    // them empty must NOT block — you have to be able to jot down a walk-in
+    // you only got a name from.
+    await page.getByLabel(/^Phone/).fill('021 555 0199')
     await page.getByRole('button', { name: 'Add contact' }).click()
     await expect(page.getByText(/required/i)).toBeVisible({ timeout: 10_000 })
     await expect(page.getByRole('heading', { name: 'Quick add contact' })).toBeVisible()
+  })
+
+  test('a walk-in with only a name saves — quick-add fields are shown, not demanded', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/clients')
+
+    await page.getByRole('button', { name: /Quick add/i }).click()
+    await expect(page.getByRole('heading', { name: 'Quick add contact' })).toBeVisible()
+
+    // No phone, no email — the exact case that broke when email was added to
+    // the quick form by default.
+    const unique = `Pup WalkIn ${Date.now()}`
+    await page.getByLabel(/^Name/).fill(unique)
+    await page.getByRole('button', { name: 'Add contact' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Quick add contact' })).toHaveCount(0)
+    await page.goto('/clients?tab=new')
+    await expect(page.getByText(unique).first()).toBeVisible({ timeout: 15_000 })
   })
 })
 

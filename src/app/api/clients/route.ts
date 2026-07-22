@@ -164,8 +164,16 @@ export async function POST(req: Request) {
     dogDob: !!primaryDog?.dob,
     dogNotes: !!primaryDog?.notes?.trim(),
   }
+  // quickAdd means "show this field on the quick form"; required means "you
+  // can't save without it". Quick-add validated against quickAdd alone, so
+  // every field shown there was silently mandatory — the moment email joined
+  // the quick form by default, a trainer could no longer jot down a walk-in
+  // they had no email address for. On the quick form a field is required only
+  // when it is both shown AND marked required.
   for (const f of CLIENT_FIELDS) {
-    const need = isQuick ? fieldConfig[f.key].quickAdd : fieldConfig[f.key].required
+    const need = isQuick
+      ? fieldConfig[f.key].quickAdd && fieldConfig[f.key].required
+      : fieldConfig[f.key].required
     if (need && !present[f.key]) {
       return NextResponse.json({ error: `${f.label} is required` }, { status: 400 })
     }
@@ -173,7 +181,7 @@ export async function POST(req: Request) {
   const customById = new Map(customFields.map(c => [c.id, c]))
   const hasCustom = (fieldId: string) => (data.customValues ?? []).some(v => v.fieldId === fieldId && v.value.trim() !== '')
   for (const cf of customFields) {
-    const need = isQuick ? cf.inQuickAdd : cf.required
+    const need = isQuick ? cf.inQuickAdd && cf.required : cf.required
     if (need && !hasCustom(cf.id)) {
       return NextResponse.json({ error: `${cf.label} is required` }, { status: 400 })
     }

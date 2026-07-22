@@ -128,21 +128,36 @@ describe('POST /api/clients — required-field enforcement (per company config)'
     expect(h.clientProfileCreate).not.toHaveBeenCalled()
   })
 
-  it('rejects quick create missing the other required fields (name + phone + email)', async () => {
+  it('rejects quick create with no name (the one field that is required)', async () => {
     grant()
-    // Quick-add captures email as well now, so a name-only create is rejected —
-    // whichever of the missing fields is reported first.
-    const res = await POST(req({ mode: 'quick', name: 'Jess' }))
+    const res = await POST(req({ mode: 'quick', phone: '021 000 0000' }))
     expect(res.status).toBe(400)
-    const body = await res.json()
-    expect(body.error).toMatch(/phone|email/i)
+    expect((await res.json()).error).toMatch(/name is required/i)
   })
 
-  it('rejects quick create that has a phone but no email', async () => {
+  // Quick-add shows phone and email by default, but showing a field is not the
+  // same as demanding it: you have to be able to jot down a walk-in you only
+  // caught the name of. Requiring every quick-add field is what broke this.
+  it('accepts a quick create with only a name', async () => {
     grant()
-    const res = await POST(req({ mode: 'quick', name: 'Jess', phone: '021 000 0000' }))
+    const res = await POST(req({ mode: 'quick', name: 'Jess' }))
+    expect(res.status).toBe(201)
+    expect(h.clientProfileCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('a custom field on quick-add is only demanded when it is also required', async () => {
+    grant()
+    h.customFieldFindMany.mockResolvedValue([
+      { id: 'cf1', label: 'Goal', required: false, inQuickAdd: true, appliesTo: 'OWNER' },
+    ])
+    expect((await POST(req({ mode: 'quick', name: 'Jess' }))).status).toBe(201)
+
+    h.customFieldFindMany.mockResolvedValue([
+      { id: 'cf1', label: 'Goal', required: true, inQuickAdd: true, appliesTo: 'OWNER' },
+    ])
+    const res = await POST(req({ mode: 'quick', name: 'Jess' }))
     expect(res.status).toBe(400)
-    expect((await res.json()).error).toMatch(/email/i)
+    expect((await res.json()).error).toMatch(/Goal is required/i)
   })
 
   it('enforces a custom field marked required', async () => {

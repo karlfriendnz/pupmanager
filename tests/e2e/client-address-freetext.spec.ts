@@ -30,9 +30,6 @@ test.describe('New client — typed address (no dropdown pick)', () => {
     const typedAddress = '37 Northside Drive, Invercargill'
 
     await page.getByPlaceholder('Jane Smith').fill(name)
-    // This seed's trainer requires a "Training goals" custom field (same as the
-    // customer's setup) — satisfy it so only the address behaviour is under test.
-    await page.locator('label:has-text("Training goals") ~ textarea').fill('Loose-lead walking')
     // Type the address but deliberately never select a Google suggestion —
     // exactly the customer's flow.
     await page.getByPlaceholder('Search address…').fill(typedAddress)
@@ -64,7 +61,6 @@ test.describe('New client — typed address (no dropdown pick)', () => {
     // Create a client to edit (typed address, no pick).
     await page.goto('/clients/invite')
     await page.getByPlaceholder('Jane Smith').fill(`Edit Addr ${Date.now()}`)
-    await page.locator('label:has-text("Training goals") ~ textarea').fill('Recall')
     await page.getByPlaceholder('Search address…').fill('12 First Street, Gore')
     await page.getByRole('button', { name: 'Create client' }).click()
     await page.waitForURL(

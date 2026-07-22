@@ -27,7 +27,8 @@ test.describe('my-availability booking wizard — client happy path', () => {
 
     // Step 1 — the trainer header + the "choose" step, with our self-bookable
     // package listed under 1-on-1 sessions.
-    await expect(page.getByText('E2E Dog School', { exact: true })).toBeVisible({ timeout: 15_000 })
+    // The name also sits in the client top bar, so scope to the page body.
+    await expect(page.getByRole('main').getByText('E2E Dog School', { exact: true })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByRole('heading', { name: 'What would you like to book?' })).toBeVisible()
     const sessionCard = page.getByRole('button', { name: /Self-Book Session/ })
     await expect(sessionCard).toBeVisible()
