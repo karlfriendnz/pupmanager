@@ -95,7 +95,12 @@ test.describe('Page smoke (unauth)', () => {
     })
   }
 
+  // Needs a reachable database: the page looks the form up and 404s on a miss,
+  // so with no DB it (correctly) 500s instead. Every other route here answers
+  // before touching Postgres, which is why this is the only one gated.
+  // `npm run smoke:prod` covers it against the real thing.
   test('GET /form/[unknown] → 404', async ({ request }) => {
+    test.skip(!process.env.DATABASE_URL?.startsWith('postgres'), 'needs a real database')
     const r = await request.get('/form/notarealid', { maxRedirects: 0 })
     expect(r.status()).toBe(404)
   })
