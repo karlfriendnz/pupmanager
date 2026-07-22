@@ -81,18 +81,47 @@ async function ensureProduct(def: ProductDef): Promise<string> {
   return p.id
 }
 
+// Stripe Price amounts are IMMUTABLE. When pricing.ts changes we can't edit the
+// existing Price — we mint a new one and move the lookup_key across, so
+// `pm_core_NZD` always names the current price and callers never learn a new id.
+//
+// This used to return the existing price whenever the lookup_key matched, which
+// meant re-running after a price change silently reused the OLD amount and
+// reported success. That's how the app came to display one number while Stripe
+// charged another.
 async function ensurePrice(productId: string, key: string, currency: CurrencyCode, amount: number): Promise<string> {
   const lookup_key = `pm_${key}_${currency}`
+  const wanted = Math.round(amount * 100) // all six currencies are 2-decimal
   const existing = await stripe.prices.list({ lookup_keys: [lookup_key], limit: 1 })
-  if (existing.data[0]) return existing.data[0].id
+  const current = existing.data[0]
+
+  if (current) {
+    if (current.unit_amount === wanted && current.active) return current.id
+    // Amount drifted from pricing.ts → supersede it.
+    console.log(
+      `  ↻ ${lookup_key}: ${(current.unit_amount ?? 0) / 100} → ${amount} (new price, lookup_key transferred)`,
+    )
+  }
+
   const price = await stripe.prices.create({
     product: productId,
     currency: currency.toLowerCase(),
-    unit_amount: Math.round(amount * 100), // all six currencies are 2-decimal
+    unit_amount: wanted,
     recurring: { interval: 'month' },
     lookup_key,
+    // Steals the key off the old price in the same call, so there's never a
+    // moment where the key points at nothing.
+    ...(current ? { transfer_lookup_key: true } : {}),
     metadata: { pmKey: key, pmCurrency: currency },
   })
+
+  // Archive the superseded price so it can't be picked up by a new checkout.
+  // Existing subscriptions keep referencing it until they're repointed — see
+  // scripts/repoint-subscriptions.ts — and archiving does NOT affect them.
+  if (current) {
+    await stripe.prices.update(current.id, { active: false })
+  }
+
   return price.id
 }
 
