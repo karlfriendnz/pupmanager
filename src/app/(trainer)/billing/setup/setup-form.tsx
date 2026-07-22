@@ -11,6 +11,8 @@ import {
   ADDONS,
   SEAT_PRICE,
   monthlyTotal,
+  weeklyFromMonthly,
+  formatWeekly,
   DEFAULT_CURRENCY,
   type CurrencyCode,
   type AddonId,
@@ -273,7 +275,7 @@ export function SetupForm({
             <div>
               <p className="text-sm font-semibold" style={{ color: 'var(--pm-ink-900)' }}>How many trainers?</p>
               <p className="text-[11px]" style={{ color: 'var(--pm-ink-500)' }}>
-                First trainer included · +{meta.symbol}{SEAT_PRICE[currency]}/mo each after
+                First trainer included · +{meta.symbol}{formatWeekly(weeklyFromMonthly(SEAT_PRICE[currency]))}/wk each after
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -333,7 +335,8 @@ export function SetupForm({
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
                     <span className="text-sm font-semibold tabular-nums" style={{ color: on ? 'var(--pm-brand-700)' : 'var(--pm-ink-700)' }}>
-                      +{meta.symbol}{a.price[currency]}
+                      +{meta.symbol}{formatWeekly(weeklyFromMonthly(a.price[currency]))}
+                      <span className="font-normal" style={{ color: 'var(--pm-ink-500)' }}>/wk</span>
                     </span>
                     <span
                       className="grid h-5 w-5 place-items-center rounded-md border text-xs"
@@ -359,10 +362,17 @@ export function SetupForm({
           <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--pm-ink-500)' }}>
             {locked ? 'Billed today' : 'Total after trial'}
           </p>
+          {/* Weekly headline + monthly underneath, matching pupmanager.com/pricing
+              ("less than your weekly coffee run"). Billing itself is unchanged —
+              still one monthly charge; this is presentation only, so the number
+              a trainer decided on is the number they see at checkout. */}
           <p className="mt-1 flex items-baseline gap-1">
             <span className="text-2xl font-semibold" style={{ color: 'var(--pm-ink-900)' }}>{meta.symbol}</span>
-            <span className="text-3xl font-bold tabular-nums" style={{ color: 'var(--pm-ink-900)' }}>{total}</span>
-            <span className="text-sm" style={{ color: 'var(--pm-ink-500)' }}>{meta.label} / month</span>
+            <span className="text-3xl font-bold tabular-nums" style={{ color: 'var(--pm-ink-900)' }}>{formatWeekly(weeklyFromMonthly(total))}</span>
+            <span className="text-sm" style={{ color: 'var(--pm-ink-500)' }}>{meta.label} / week</span>
+          </p>
+          <p className="text-xs" style={{ color: 'var(--pm-ink-500)' }}>
+            {locked ? 'Billed monthly at ' : 'Then billed monthly at '}{meta.symbol}{total}/mo
           </p>
           <p className="mt-1 text-xs" style={{ color: 'var(--pm-ink-500)' }}>
             {planName} · {seatCount} trainer{seatCount === 1 ? '' : 's'}

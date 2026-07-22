@@ -216,6 +216,20 @@ export const ADDONS: AddonDef[] = [
   },
 ]
 
+// Monthly → the friendly weekly figure the website quotes. Verbatim from
+// PricingWeekly.tsx `weeklyNum`: half-dollar steps under 20 so it reads like a
+// real price, whole numbers above. Keep the two in step — a trainer who sees
+// "$4.50/wk" on the pricing page must see the same at checkout.
+export function weeklyFromMonthly(monthly: number): number {
+  const w = monthly / WEEKS_PER_MONTH
+  return w < 20 ? Math.round(w * 2) / 2 : Math.round(w)
+}
+
+/** Format an already-weekly number, trimming ".00" (so 9 → "9", 4.5 → "4.50"). */
+export function formatWeekly(n: number): string {
+  return n % 1 === 0 ? String(n) : n.toFixed(2)
+}
+
 export function addonById(id: string): AddonDef | undefined {
   return ADDONS.find(a => a.id === id)
 }
