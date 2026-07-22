@@ -32,7 +32,9 @@ describe('addon nudge registry', () => {
     // opens Settings → Add-ons — free ones included. `defaultOn` cores are
     // already on and coming-soon ones can't be enabled, so both are excluded.
     // This is the invariant: adding an opt-in add-on without copy fails here.
-    const needsNudge = ADDONS.filter((a) => !a.defaultOn && !a.comingSoon).map((a) => a.id)
+    // `hidden` add-ons are built but not surfaced anywhere yet — no card, no
+    // nudge — so they need no promo copy until they're revealed.
+    const needsNudge = ADDONS.filter((a) => !a.defaultOn && !a.comingSoon && !a.hidden).map((a) => a.id)
     expect([...PROMOTABLE_ADDON_IDS].sort()).toEqual([...needsNudge].sort())
   })
 

@@ -332,24 +332,35 @@ export async function refreshBusyBlocksForConnection(connection: GoogleCalendarC
     return 0
   }
 
+  // Clear first, unconditionally: whatever happens below, stale blocks must go.
+  // A Google event the trainer deleted has to disappear from /schedule even if
+  // the rest of this call falls over.
+  await prisma.googleBusyBlock.deleteMany({ where: { membershipId: connection.membershipId } })
+
   // Drop the events PupManager itself pushed. We sync sessions OUT to Google and
   // then read the same calendar back for busy times, so without this every
   // session appears twice on /schedule: once as itself, once as a grey "busy"
   // strip over the top. It also made deletions look broken — delete the copy in
   // Google and the outbound sync recreates it, so the busy strip returns.
-  const ourEventIds = new Set(
-    (await prisma.trainingSession.findMany({
+  //
+  // Best-effort: if this lookup fails we fall back to storing everything, which
+  // is the old (duplicated) behaviour rather than an empty calendar.
+  let ourEventIds = new Set<string>()
+  try {
+    const ours = await prisma.trainingSession.findMany({
       where: {
         trainerId: connection.companyId,
         googleCalendarEventId: { not: null },
         scheduledAt: { gte: now, lte: until },
       },
       select: { googleCalendarEventId: true },
-    })).map(s => s.googleCalendarEventId!),
-  )
+    })
+    ourEventIds = new Set((ours ?? []).map(s => s.googleCalendarEventId!).filter(Boolean))
+  } catch (err) {
+    console.error('[google-calendar] own-event lookup failed', connection.membershipId, err)
+  }
   const external = events.filter(e => !e.id || !ourEventIds.has(e.id))
 
-  await prisma.googleBusyBlock.deleteMany({ where: { membershipId: connection.membershipId } })
   if (external.length === 0) return 0
   await prisma.googleBusyBlock.createMany({
     data: external.map((e) => ({

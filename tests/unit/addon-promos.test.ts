@@ -31,6 +31,8 @@ describe('add-on promo registry', () => {
     // The invariant: no add-on may fall through to a promo that isn't there.
     const missing = ADDONS
       .map((a) => a.id)
+      // Hidden add-ons render no card at all, so they can't render a dead one.
+      .filter((id) => !ADDONS.find((a) => a.id === id)?.hidden)
       .filter((id) => !ADDON_PROMO_IDS.includes(id) && !LINK_ONLY_IDS.includes(id))
 
     expect(
@@ -40,7 +42,7 @@ describe('add-on promo registry', () => {
   })
 
   it('every add-on has a hero image for its card and nudge', () => {
-    const missing = ADDONS.map((a) => a.id).filter((id) => !ADDON_PROMO_IMAGES[id])
+    const missing = ADDONS.filter((a) => !a.hidden).map((a) => a.id).filter((id) => !ADDON_PROMO_IMAGES[id])
 
     expect(missing, `add-ons with no promo image: ${missing.join(', ')}`).toEqual([])
   })

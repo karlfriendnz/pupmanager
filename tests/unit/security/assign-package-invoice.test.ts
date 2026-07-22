@@ -73,7 +73,12 @@ describe('assign package → receivable', () => {
     const res = await POST(req(baseBody), params)
     expect(res.status).toBe(201)
     expect(h.createInvoiceForAssignment).toHaveBeenCalledTimes(1)
-    expect(h.createInvoiceForAssignment).toHaveBeenCalledWith({ trainerId: 't-1', clientId: 'cp-1', sourceType: 'PACKAGE', clientPackageId: 'clp-new' })
+    // notifyClient:false — the "You're booked in" email below already carries
+    // the Pay now link, so the invoice must not email them a second time.
+    expect(h.createInvoiceForAssignment).toHaveBeenCalledWith({
+      trainerId: 't-1', clientId: 'cp-1', sourceType: 'PACKAGE', clientPackageId: 'clp-new',
+      notifyClient: false,
+    })
   })
 
   it('raises a receivable when markInvoiced:false', async () => {
