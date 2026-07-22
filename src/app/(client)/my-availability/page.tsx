@@ -145,20 +145,37 @@ export default async function MyAvailabilityPage() {
     orderBy: { startDate: 'asc' },
     include: {
       package: { select: { name: true, priceCents: true, specialPriceCents: true, allowDropIn: true, dropInPriceCents: true, capacity: true, allowWaitlist: true } },
-      enrollments: { where: { status: 'ENROLLED' }, select: { id: true } },
-      sessions: { where: { scheduledAt: { gte: now } }, orderBy: { scheduledAt: 'asc' }, select: { scheduledAt: true, durationMins: true, title: true } },
+      enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true } },
+      sessions: { where: { scheduledAt: { gte: now } }, orderBy: { scheduledAt: 'asc' }, select: { id: true, scheduledAt: true, durationMins: true, title: true } },
     },
   })
   const classes: WizardClass[] = openRuns.map(r => {
     const cap = r.capacity ?? r.package.capacity ?? null
+    // Full-course seats consume the run's capacity on every session; drop-ins
+    // consume a seat only on their one session. So per-session headcount is
+    // (full seats) + (drop-ins on that session), and capacity is checked per
+    // session — a term that's "full" can still have room in a given week.
+    const fullCount = r.enrollments.filter(e => e.type === 'FULL').length
+    const dropInsBySession = new Map<string, number>()
+    for (const e of r.enrollments) {
+      if (e.type === 'DROP_IN' && e.dropInSessionId) {
+        dropInsBySession.set(e.dropInSessionId, (dropInsBySession.get(e.dropInSessionId) ?? 0) + 1)
+      }
+    }
     return {
       id: r.id,
       name: r.name,
       scheduleNote: r.scheduleNote,
       packageName: r.package.name,
       nextSessionAt: r.sessions[0]?.scheduledAt.toISOString() ?? null,
-      sessions: r.sessions.map(s => ({ at: s.scheduledAt.toISOString(), durationMins: s.durationMins, title: s.title })),
-      seatsLeft: cap === null ? null : Math.max(0, cap - r.enrollments.length),
+      sessions: r.sessions.map(s => ({
+        id: s.id,
+        at: s.scheduledAt.toISOString(),
+        durationMins: s.durationMins,
+        title: s.title,
+        spacesLeft: cap === null ? null : Math.max(0, cap - fullCount - (dropInsBySession.get(s.id) ?? 0)),
+      })),
+      seatsLeft: cap === null ? null : Math.max(0, cap - fullCount),
       fullPriceCents: r.package.specialPriceCents ?? r.package.priceCents,
       allowDropIn: r.package.allowDropIn,
       dropInPerSessionCents: r.package.dropInPriceCents,

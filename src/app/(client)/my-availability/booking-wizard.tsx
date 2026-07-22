@@ -28,7 +28,9 @@ export interface WizardClass {
   scheduleNote: string | null
   packageName: string
   nextSessionAt: string | null
-  sessions: { at: string; durationMins: number; title: string }[]
+  // Upcoming sessions. spacesLeft is per-session (null = unlimited) so a drop-in
+  // can pick a single one — the same list doubles as the drop-in picker.
+  sessions: { id: string; at: string; durationMins: number; title: string; spacesLeft: number | null }[]
   seatsLeft: number | null
   fullPriceCents: number | null
   allowDropIn: boolean
@@ -142,6 +144,8 @@ export function BookingWizard(props: {
   // Class options state.
   const [dogId, setDogId] = useState<string | null>(defaultDogId)
   const [classType, setClassType] = useState<'FULL' | 'DROP_IN'>('FULL')
+  // The one session a drop-in is for (single-session model).
+  const [dropInSessionId, setDropInSessionId] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -195,6 +199,7 @@ export function BookingWizard(props: {
   function chooseClass(c: WizardClass) {
     setSelection({ kind: 'class', cls: c })
     setClassType('FULL')
+    setDropInSessionId(null)
     setDogId(defaultDogId)
     setError(null)
     setStep(2)
@@ -241,10 +246,11 @@ export function BookingWizard(props: {
         if (b.mode === 'payment' && b.url) { openExternal(b.url); return } // keep spinner while we leave for Stripe
         setDone(b.mode === 'booked' ? 'booked' : 'requested')
       } else if (selection?.kind === 'class') {
+        if (classType === 'DROP_IN' && !dropInSessionId) { setError('Pick which session to drop into.'); return }
         const res = await fetch(`/api/my/classes/${selection.cls.id}/enroll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: classType, dogId }),
+          body: JSON.stringify({ type: classType, dogId, sessionId: classType === 'DROP_IN' ? dropInSessionId : undefined }),
         })
         const b = await res.json().catch(() => ({}))
         if (!res.ok) { setError(typeof b.error === 'string' ? b.error : 'Could not join.'); return }
@@ -384,7 +390,9 @@ export function BookingWizard(props: {
           dogId={dogId}
           onDog={setDogId}
           classType={classType}
-          onType={setClassType}
+          onType={(t) => { setClassType(t); if (t === 'FULL') setDropInSessionId(null) }}
+          dropInSessionId={dropInSessionId}
+          onSessionPick={setDropInSessionId}
           onContinue={() => { setError(null); setStep(3) }}
         />
       )}
@@ -399,6 +407,7 @@ export function BookingWizard(props: {
           currency={currency}
           acceptPayments={acceptPayments}
           classType={classType}
+          dropInSessionId={dropInSessionId}
           dogName={dogs.find(d => d.id === dogId)?.name ?? null}
           saving={saving}
           error={error}
@@ -556,7 +565,7 @@ function SessionTimeStep({ pkg, availableDates, timeOptions, date, time, onDate,
 
 /* ============================ step 2 · class options ============================ */
 
-function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDog, classType, onType, onContinue }: {
+function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDog, classType, onType, dropInSessionId, onSessionPick, onContinue }: {
   tz: string
   cls: WizardClass
   currency: string | null
@@ -566,12 +575,18 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
   onDog: (id: string) => void
   classType: 'FULL' | 'DROP_IN'
   onType: (t: 'FULL' | 'DROP_IN') => void
+  dropInSessionId: string | null
+  onSessionPick: (id: string) => void
   onContinue: () => void
 }) {
   const isFull = cls.seatsLeft === 0
   const paidButNoPayments = !!cls.fullPriceCents && !acceptPayments
   const full = price(cls.fullPriceCents, currency)
   const drop = price(cls.dropInPerSessionCents, currency)
+  const dropping = classType === 'DROP_IN'
+  // Drop-ins pick one session; the whole class being "full" for the term
+  // doesn't block a single session that still has room.
+  const needsSession = dropping && !dropInSessionId
 
   return (
     <div className="flex flex-col gap-5">
@@ -579,25 +594,49 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
 
       <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 flex flex-col gap-2.5 text-sm">
         {cls.scheduleNote && <Row icon={<CalendarDays className="h-4 w-4" />} text={cls.scheduleNote} />}
-        {cls.seatsLeft != null && <Row icon={<Users className="h-4 w-4" />} text={isFull ? (cls.allowWaitlist ? 'Full — join the waitlist' : 'Full') : `${cls.seatsLeft} spot${cls.seatsLeft === 1 ? '' : 's'} left`} />}
+        {!dropping && cls.seatsLeft != null && <Row icon={<Users className="h-4 w-4" />} text={isFull ? (cls.allowWaitlist ? 'Full — join the waitlist' : 'Full') : `${cls.seatsLeft} spot${cls.seatsLeft === 1 ? '' : 's'} left`} />}
       </div>
 
+      {/* The one place a class's sessions are listed. Read-only for a full
+          course; the SAME list becomes the picker when dropping in — one
+          component, so the client never learns two different layouts. */}
       {cls.sessions.length > 0 && (
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
-            Session schedule <span className="text-slate-300">· {cls.sessions.length}</span>
+            {dropping ? 'Pick a session to drop into' : 'Session schedule'} <span className="text-slate-300">· {cls.sessions.length}</span>
           </p>
           <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
-            {cls.sessions.map((s, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-2.5 border-t border-slate-100 first:border-t-0">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-soft text-accent text-xs font-bold shrink-0 tabular-nums">{i + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-800">{fmtNextSession(s.at, tz)}</p>
-                  {s.title && <p className="text-xs text-slate-400 truncate">{s.title}</p>}
+            {cls.sessions.map((s, i) => {
+              const sessionFull = s.spacesLeft === 0
+              const selected = dropping && dropInSessionId === s.id
+              const rowInner = (
+                <>
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold shrink-0 tabular-nums ${selected ? 'bg-accent text-accent-fg' : 'bg-accent-soft text-accent'}`}>{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-800">{fmtNextSession(s.at, tz)}</p>
+                    {s.title && <p className="text-xs text-slate-400 truncate">{s.title}</p>}
+                  </div>
+                  {dropping
+                    ? <span className={`text-xs shrink-0 ${sessionFull ? 'text-rose-500' : 'text-emerald-600'}`}>{s.spacesLeft == null ? `${s.durationMins} min` : sessionFull ? 'Full' : `${s.spacesLeft} left`}</span>
+                    : <span className="text-xs text-slate-400 shrink-0">{s.durationMins} min</span>}
+                </>
+              )
+              return dropping ? (
+                <button
+                  key={s.id}
+                  type="button"
+                  disabled={sessionFull}
+                  onClick={() => onSessionPick(s.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 border-t border-slate-100 first:border-t-0 text-left transition-colors ${selected ? 'bg-accent-soft' : 'hover:bg-slate-50'} disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  {rowInner}
+                </button>
+              ) : (
+                <div key={s.id} className="flex items-center gap-3 px-4 py-2.5 border-t border-slate-100 first:border-t-0">
+                  {rowInner}
                 </div>
-                <span className="text-xs text-slate-400 shrink-0">{s.durationMins} min</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -615,7 +654,10 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
         </div>
       )}
 
-      {cls.allowDropIn && drop && !isFull && (
+      {/* Drop-in is offered whenever the class allows it and has a price —
+          per-session availability (above) decides what's bookable, not the
+          run being "full" for the whole term. */}
+      {cls.allowDropIn && drop && (
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">How would you like to join?</p>
           <div className="grid grid-cols-2 gap-2">
@@ -629,6 +671,10 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
         <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 text-sm text-slate-500">
           This class needs payment your trainer hasn&apos;t switched on yet — ask them to enrol you.
         </div>
+      ) : dropping ? (
+        <StickyCta disabled={needsSession} onClick={onContinue}>
+          {needsSession ? 'Pick a session above' : 'Continue'}
+        </StickyCta>
       ) : (
         <StickyCta disabled={isFull && !cls.allowWaitlist} onClick={onContinue}>
           {isFull ? (cls.allowWaitlist ? 'Continue to waitlist' : 'Class is full') : 'Continue'}
@@ -658,7 +704,7 @@ function TypeCard({ active, onClick, title, sub }: { active: boolean; onClick: (
 
 /* ============================ step 3 · confirm ============================ */
 
-function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dogName, saving, error, onConfirm }: {
+function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dropInSessionId, dogName, saving, error, onConfirm }: {
   tz: string
   selection: Selection
   date: string
@@ -666,6 +712,7 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
   currency: string | null
   acceptPayments: boolean
   classType: 'FULL' | 'DROP_IN'
+  dropInSessionId: string | null
   dogName: string | null
   saving: boolean
   error: string | null
@@ -674,8 +721,10 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
   const isSession = selection.kind === 'session'
   const pkg = selection.kind === 'session' ? selection.pkg : null
   const cls = selection.kind === 'class' ? selection.cls : null
+  const dropInSession = cls && classType === 'DROP_IN' ? cls.sessions.find(s => s.id === dropInSessionId) ?? null : null
 
-  const isFull = cls?.seatsLeft === 0
+  // A drop-in can't be "full" — it only exists once a session has room.
+  const isFull = classType === 'FULL' && cls?.seatsLeft === 0
   const priceCents = isSession ? pkg!.priceCents : (classType === 'DROP_IN' ? cls!.dropInPerSessionCents : cls!.fullPriceCents)
   const needsApproval = isSession && pkg!.selfBookRequiresApproval
   const priceLabel = price(priceCents, currency)
@@ -709,8 +758,10 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
           ) : (
             <>
               {cls!.scheduleNote && <SummaryRow label="Schedule" value={cls!.scheduleNote} />}
-              {fmtNextSession(cls!.nextSessionAt, tz) && <SummaryRow label="Starts" value={fmtNextSession(cls!.nextSessionAt, tz)!} />}
               <SummaryRow label="Type" value={classType === 'DROP_IN' ? 'Drop-in (single session)' : 'Full course'} />
+              {classType === 'DROP_IN'
+                ? dropInSession && <SummaryRow label="Session" value={fmtNextSession(dropInSession.at, tz) ?? ''} />
+                : fmtNextSession(cls!.nextSessionAt, tz) && <SummaryRow label="Starts" value={fmtNextSession(cls!.nextSessionAt, tz)!} />}
             </>
           )}
           {dogName && <SummaryRow label="Dog" value={dogName} />}

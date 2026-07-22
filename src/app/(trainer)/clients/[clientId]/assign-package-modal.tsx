@@ -52,6 +52,8 @@ export type ClassOption = {
   /** null = unlimited. */
   seatsLeft: number | null
   allowDropIn: boolean
+  /** Upcoming sessions, for the drop-in picker (spacesLeft is per-session). */
+  sessions: { id: string; label: string; spacesLeft: number | null }[]
 }
 
 // External `open` + `onOpenChange` make this controllable from the
@@ -156,19 +158,22 @@ function AssignModal({
   const [packageId, setPackageId] = useState(packages[0]?.id ?? '')
   const [classRunId, setClassRunId] = useState(classes[0]?.id ?? '')
   const [enrolType, setEnrolType] = useState<'FULL' | 'DROP_IN'>('FULL')
+  // The one session a drop-in is for (single-session model).
+  const [dropInSessionId, setDropInSessionId] = useState('')
   // Ask them to pay now, or raise the invoice quietly and chase it later.
   const [sendInvoice, setSendInvoice] = useState(true)
   const selectedClass = classes.find(c => c.id === classRunId) ?? null
 
   async function enrolInClass() {
     if (!classRunId) { setError('Pick a class.'); return }
+    if (enrolType === 'DROP_IN' && !dropInSessionId) { setError('Pick which session to drop into.'); return }
     setError(null)
     setSubmitting(true)
     try {
       const res = await fetch(`/api/class-runs/${classRunId}/enrollments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, dogId, type: enrolType, notify, sendInvoice }),
+        body: JSON.stringify({ clientId, dogId, type: enrolType, sessionId: enrolType === 'DROP_IN' ? dropInSessionId : undefined, notify, sendInvoice }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -355,7 +360,7 @@ function AssignModal({
                       <button
                         key={t}
                         type="button"
-                        onClick={() => setEnrolType(t)}
+                        onClick={() => { setEnrolType(t); if (t === 'FULL') setDropInSessionId('') }}
                         aria-pressed={enrolType === t}
                         className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                           enrolType === t ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
@@ -365,6 +370,30 @@ function AssignModal({
                       </button>
                     ))}
                   </div>
+
+                  {/* A drop-in is one session — pick which. Per-session spaces
+                      so a "full" term can still take a drop-in with room. */}
+                  {enrolType === 'DROP_IN' && (
+                    <div className="mt-2.5">
+                      <label className="text-sm font-medium text-slate-700 block mb-1.5">Which session?</label>
+                      {selectedClass.sessions.length === 0 ? (
+                        <p className="text-xs text-slate-400">No upcoming sessions to drop into.</p>
+                      ) : (
+                        <select
+                          value={dropInSessionId}
+                          onChange={e => setDropInSessionId(e.target.value)}
+                          className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">Pick a session…</option>
+                          {selectedClass.sessions.map(s => (
+                            <option key={s.id} value={s.id} disabled={s.spacesLeft === 0}>
+                              {s.label}{s.spacesLeft != null ? (s.spacesLeft === 0 ? ' — full' : ` — ${s.spacesLeft} left`) : ''}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

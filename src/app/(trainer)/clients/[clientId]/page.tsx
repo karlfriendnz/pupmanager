@@ -88,7 +88,8 @@ export default async function ClientDetailPage({
           select: {
             id: true, name: true, scheduleNote: true, startDate: true, capacity: true,
             package: { select: { capacity: true, allowDropIn: true } },
-            enrollments: { where: { status: 'ENROLLED' }, select: { id: true } },
+            enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true } },
+            sessions: { where: { scheduledAt: { gte: new Date() } }, orderBy: { scheduledAt: 'asc' }, select: { id: true, scheduledAt: true } },
           },
         })
       : Promise.resolve([]),
@@ -245,13 +246,27 @@ export default async function ClientDetailPage({
             }))}
             classes={openClasses.map(c => {
               const cap = c.capacity ?? c.package.capacity ?? null
+              // Per-session capacity: FULL seats count on every session, a
+              // drop-in only on its one session (see enrollInRun).
+              const fullCount = c.enrollments.filter(e => e.type === 'FULL').length
+              const dropInsBySession = new Map<string, number>()
+              for (const e of c.enrollments) {
+                if (e.type === 'DROP_IN' && e.dropInSessionId) {
+                  dropInsBySession.set(e.dropInSessionId, (dropInsBySession.get(e.dropInSessionId) ?? 0) + 1)
+                }
+              }
               return {
                 id: c.id,
                 name: c.name,
                 scheduleNote: c.scheduleNote,
                 startLabel: c.startDate.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' }),
-                seatsLeft: cap == null ? null : Math.max(0, cap - c.enrollments.length),
+                seatsLeft: cap == null ? null : Math.max(0, cap - fullCount),
                 allowDropIn: c.package.allowDropIn,
+                sessions: c.sessions.map(s => ({
+                  id: s.id,
+                  label: s.scheduledAt.toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }),
+                  spacesLeft: cap == null ? null : Math.max(0, cap - fullCount - (dropInsBySession.get(s.id) ?? 0)),
+                })),
               }
             })}
             availability={availabilitySlots.map(s => ({
