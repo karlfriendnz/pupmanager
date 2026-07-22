@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation'
 import { auth, signOut } from '@/lib/auth'
 import { AdminTabNav } from './admin-tab-nav'
 import { AdminBottomNav } from './admin-bottom-nav'
-import { AdminTopSearch } from './admin-top-search'
 import type { ReactNode } from 'react'
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
@@ -26,14 +25,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           <div className="min-w-0 hidden md:block">
             <AdminTabNav />
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Phone-only: the Businesses search lives below the tabs on that
-                page, which is off screen from every other admin view. */}
-            <AdminTopSearch />
-            <form action={async () => { 'use server'; await signOut({ redirectTo: '/login' }) }}>
-              <button type="submit" className="text-xs text-slate-400 hover:text-white">Sign out</button>
-            </form>
-          </div>
+          <form action={async () => { 'use server'; await signOut({ redirectTo: '/login' }) }} className="shrink-0">
+            <button type="submit" className="text-xs text-slate-400 hover:text-white">Sign out</button>
+          </form>
         </div>
       </header>
       {/* pb-24 (mobile) clears the fixed bottom nav; md:pb-6 restores normal
