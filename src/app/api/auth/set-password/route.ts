@@ -76,6 +76,15 @@ export async function POST(req: Request) {
       await tx.user.update({ where: { id: user.id }, data: { emailVerified: new Date() } })
     }
 
+    // Setting a password from an invite link is the acceptance step for any
+    // pending team membership. Nothing else set acceptedAt, so invited members
+    // sat as PENDING forever and lib/account-access (which only counts accepted
+    // memberships) would never grant them the trainer app.
+    await tx.trainerMembership.updateMany({
+      where: { userId: user.id, acceptedAt: null },
+      data: { acceptedAt: new Date() },
+    })
+
     // Burn the setup token so it can't be reused.
     await tx.verificationToken.delete({ where: { token } })
   })

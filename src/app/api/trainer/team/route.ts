@@ -100,12 +100,34 @@ export async function POST(req: Request) {
     }
   }
 
-  // One account per email. A person who already has a PupManager login (their
-  // own business, a client, or already on a team) can't be invited as a member
-  // here — that's a future "link existing account" flow.
-  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } })
+  // One login per email, but a person is not limited to one relationship: they
+  // can own a business, contract for another, and be somebody's client, all on
+  // the same account. So an existing user is LINKED to this business rather
+  // than refused (this is the "link existing account" flow the old 409 said was
+  // coming). Their existing role/name are never touched — access comes from the
+  // membership row, and lib/account-access derives what they can reach.
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, name: true },
+  })
+
+  // Already on THIS team — nothing to link, and re-inviting would violate the
+  // (companyId, userId) unique. Say so plainly instead of 500ing.
   if (existing) {
-    return NextResponse.json({ error: 'Someone with this email already has a PupManager account.' }, { status: 409 })
+    const alreadyMember = await prisma.trainerMembership.findUnique({
+      where: { companyId_userId: { companyId: ctx.companyId, userId: existing.id } },
+      select: { acceptedAt: true },
+    })
+    if (alreadyMember) {
+      return NextResponse.json(
+        {
+          error: alreadyMember.acceptedAt
+            ? 'They are already on your team.'
+            : 'They have already been invited — resend the invite instead.',
+        },
+        { status: 409 },
+      )
+    }
   }
 
   // Branding for the email + inviter name + seat allowance.
@@ -139,9 +161,14 @@ export async function POST(req: Request) {
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
   await prisma.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: { name, email, role: 'TRAINER', emailVerified: null },
-    })
+    // Link the existing person, or create them. Never clobber an existing
+    // user's role or name — a CLIENT who contracts for a business stays a
+    // CLIENT by default and gains trainer access via the membership below.
+    const user = existing
+      ? existing
+      : await tx.user.create({
+          data: { name, email, role: 'TRAINER', emailVerified: null },
+        })
     await tx.trainerMembership.create({
       data: {
         companyId: ctx.companyId,

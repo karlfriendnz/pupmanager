@@ -19,10 +19,19 @@ import { STEP_TO_MENU } from '@/lib/onboarding/path-step'
 import { getStreak } from '@/lib/trainer-streak'
 import { isPrivateRelayEmail } from '@/lib/auth-emails'
 import { countUnreadMessages } from '@/lib/unread-messages'
+import { getAccountAccess } from '@/lib/account-access'
 
 export default async function TrainerLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
-  if (!session || session.user.role !== 'TRAINER') redirect('/login')
+  if (!session) redirect('/login')
+  // Access is DERIVED, not read off User.role: a CLIENT-role user who
+  // contracts for a business (an accepted TrainerMembership) belongs here too.
+  // This is the real gate — the proxy's cookie check is only a routing hint,
+  // so a forged pm-profile cookie lands here and gets bounced.
+  if (session.user.role !== 'TRAINER') {
+    const { hasTrainerAccess } = await getAccountAccess(session.user.id)
+    if (!hasTrainerAccess) redirect('/home')
+  }
 
   // Email-verification gate. Credentials sign-ups can't reach here unverified
   // (authorize() blocks them), but Apple-native sign-ups mint a session

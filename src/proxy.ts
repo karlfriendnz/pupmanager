@@ -2,6 +2,7 @@ import NextAuth from 'next-auth'
 import { authConfig } from '@/lib/auth.config'
 import { NextResponse } from 'next/server'
 import { PREVIEW_COOKIE } from '@/lib/client-context'
+import { PROFILE_COOKIE } from '@/lib/account-access'
 
 const { auth } = NextAuth(authConfig)
 
@@ -72,11 +73,25 @@ export default auth((req) => {
 
   if (req.auth) {
     const role = req.auth.user?.role
+    // Which surface they're currently looking at. A person can hold both a
+    // trainer relationship and a client one (own a business, contract for
+    // another, be someone's client), and `role` only says where they LAND —
+    // not what they may reach. The cookie records the side they switched to.
+    //
+    // Middleware can't hit the DB, so this is a routing hint only: the (trainer)
+    // and (client) layouts re-derive real access from the database on every
+    // request (lib/account-access), so a forged cookie gets you a redirect, not
+    // access.
+    const profileSide = req.cookies.get(PROFILE_COOKIE)?.value
 
     // Root redirect by role
     if (pathname === '/') {
       if (role === 'ADMIN') return NextResponse.redirect(new URL('/admin', req.url))
-      if (role === 'CLIENT') return NextResponse.redirect(new URL('/home', req.url))
+      // Honour a deliberate switch to the client side even for a TRAINER.
+      if (profileSide === 'client') return NextResponse.redirect(new URL('/home', req.url))
+      if (role === 'CLIENT' && profileSide !== 'trainer') {
+        return NextResponse.redirect(new URL('/home', req.url))
+      }
       // TRAINER: fall through to app/page.tsx, which honours the trainer's chosen
       // landing page (dashboard or schedule) — middleware can't read that pref.
     }
@@ -95,8 +110,10 @@ export default auth((req) => {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
 
-    // Client trying to access trainer paths
-    if (role === 'CLIENT' && TRAINER_PATHS.some(p => pathname.startsWith(p))) {
+    // Client on trainer paths — allowed when they've switched to their trainer
+    // side (they contract for, or own, a business). The trainer layout verifies
+    // that for real against the DB.
+    if (role === 'CLIENT' && profileSide !== 'trainer' && TRAINER_PATHS.some(p => pathname.startsWith(p))) {
       return NextResponse.redirect(new URL('/home', req.url))
     }
 
@@ -105,7 +122,9 @@ export default auth((req) => {
     // back to the trainer dashboard.
     if (role === 'TRAINER' && CLIENT_PATHS.some(p => pathname.startsWith(p))) {
       const previewing = req.cookies.get(PREVIEW_COOKIE)?.value
-      if (!previewing) {
+      // …or when they've switched to their own client side (a trainer who is
+      // also somebody else's client). Verified for real in the client layout.
+      if (!previewing && profileSide !== 'client') {
         return NextResponse.redirect(new URL('/dashboard', req.url))
       }
     }
