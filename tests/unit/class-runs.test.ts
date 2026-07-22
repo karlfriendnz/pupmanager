@@ -12,6 +12,7 @@ import {
   seatsRemaining,
   decideEnrollment,
   dropInPriceCents,
+  classSessionSpaces,
   isClassRunPast,
 } from '../../src/lib/class-runs'
 
@@ -118,6 +119,36 @@ describe('decideEnrollment', () => {
   })
   it('rejects when full and no waitlist', () => {
     expect(decideEnrollment({ capacity: 10, enrolledCount: 10, allowWaitlist: false })).toBe('REJECTED_FULL')
+  })
+})
+
+describe('classSessionSpaces (per-session capacity)', () => {
+  const E = (over: Partial<{ type: 'FULL' | 'DROP_IN'; dropInSessionId: string | null }> = {}) =>
+    ({ type: 'FULL' as const, dropInSessionId: null, ...over })
+
+  it('unlimited capacity → every session unlimited', () => {
+    const s = classSessionSpaces(null, [E(), E({ type: 'DROP_IN', dropInSessionId: 's1' })])
+    expect(s.fullSeats).toBe(1)
+    expect(s.spacesLeftFor('s1')).toBeNull()
+  })
+
+  it('full seats consume every session; drop-ins only their own', () => {
+    // cap 3, two full-course + a drop-in on s2.
+    const s = classSessionSpaces(3, [E(), E(), E({ type: 'DROP_IN', dropInSessionId: 's2' })])
+    expect(s.fullSeats).toBe(2)
+    expect(s.spacesLeftFor('s1')).toBe(1) // 3 − 2 full
+    expect(s.spacesLeftFor('s2')).toBe(0) // 3 − 2 full − 1 drop-in
+  })
+
+  it('a session with room stays bookable even when another is full', () => {
+    const s = classSessionSpaces(2, [E({ type: 'DROP_IN', dropInSessionId: 's1' }), E({ type: 'DROP_IN', dropInSessionId: 's1' })])
+    expect(s.spacesLeftFor('s1')).toBe(0) // two drop-ins here
+    expect(s.spacesLeftFor('s2')).toBe(2) // untouched
+  })
+
+  it('never negative', () => {
+    const s = classSessionSpaces(1, [E(), E(), E()])
+    expect(s.spacesLeftFor('sX')).toBe(0)
   })
 })
 

@@ -3,6 +3,7 @@ import { PawPrint } from 'lucide-react'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
+import { classSessionSpaces } from '@/lib/class-runs'
 import { getClientAccess } from '@/lib/trainer-access'
 import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
@@ -246,26 +247,20 @@ export default async function ClientDetailPage({
             }))}
             classes={openClasses.map(c => {
               const cap = c.capacity ?? c.package.capacity ?? null
-              // Per-session capacity: FULL seats count on every session, a
-              // drop-in only on its one session (see enrollInRun).
-              const fullCount = c.enrollments.filter(e => e.type === 'FULL').length
-              const dropInsBySession = new Map<string, number>()
-              for (const e of c.enrollments) {
-                if (e.type === 'DROP_IN' && e.dropInSessionId) {
-                  dropInsBySession.set(e.dropInSessionId, (dropInsBySession.get(e.dropInSessionId) ?? 0) + 1)
-                }
-              }
+              // Same shared per-session-spaces helper the client wizard uses,
+              // so both views agree on what's bookable.
+              const spaces = classSessionSpaces(cap, c.enrollments)
               return {
                 id: c.id,
                 name: c.name,
                 scheduleNote: c.scheduleNote,
                 startLabel: c.startDate.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' }),
-                seatsLeft: cap == null ? null : Math.max(0, cap - fullCount),
+                seatsLeft: cap == null ? null : Math.max(0, cap - spaces.fullSeats),
                 allowDropIn: c.package.allowDropIn,
                 sessions: c.sessions.map(s => ({
                   id: s.id,
                   label: s.scheduledAt.toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }),
-                  spacesLeft: cap == null ? null : Math.max(0, cap - fullCount - (dropInsBySession.get(s.id) ?? 0)),
+                  spacesLeft: spaces.spacesLeftFor(s.id),
                 })),
               }
             })}

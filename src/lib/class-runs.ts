@@ -143,6 +143,30 @@ export async function sessionAttendeeCount(
   })
 }
 
+/** Per-session spaces for a run, computed once from its live enrolments — the
+ * single source of truth both the client wizard and the trainer assign modal
+ * read, so "spaces left this session" can never drift between the two views.
+ * capacity null = unlimited (spacesLeftFor returns null).
+ *
+ * Pure: hand it the enrolments you've already loaded; no DB round-trip. */
+export function classSessionSpaces(
+  capacity: number | null,
+  enrolments: { type: 'FULL' | 'DROP_IN'; dropInSessionId: string | null }[],
+): { fullSeats: number; spacesLeftFor: (sessionId: string) => number | null } {
+  const fullSeats = enrolments.filter(e => e.type === 'FULL').length
+  const dropInsBySession = new Map<string, number>()
+  for (const e of enrolments) {
+    if (e.type === 'DROP_IN' && e.dropInSessionId) {
+      dropInsBySession.set(e.dropInSessionId, (dropInsBySession.get(e.dropInSessionId) ?? 0) + 1)
+    }
+  }
+  return {
+    fullSeats,
+    spacesLeftFor: (sessionId) =>
+      capacity == null ? null : Math.max(0, capacity - fullSeats - (dropInsBySession.get(sessionId) ?? 0)),
+  }
+}
+
 /** The most-attended single session in a run (max headcount across sessions).
  * A FULL enrolment attends every session, so it must fit the busiest one. */
 async function busiestSessionHeadcount(classRunId: string, tx: Tx = prisma): Promise<number> {

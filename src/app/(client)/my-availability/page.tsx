@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { classSessionSpaces } from '@/lib/class-runs'
 import { getActiveClient } from '@/lib/client-context'
 import { todayInTz } from '@/lib/timezone'
 import { slotAppliesOnDate, isBlackoutDate } from '@/lib/availability'
@@ -151,17 +152,10 @@ export default async function MyAvailabilityPage() {
   })
   const classes: WizardClass[] = openRuns.map(r => {
     const cap = r.capacity ?? r.package.capacity ?? null
-    // Full-course seats consume the run's capacity on every session; drop-ins
-    // consume a seat only on their one session. So per-session headcount is
-    // (full seats) + (drop-ins on that session), and capacity is checked per
-    // session — a term that's "full" can still have room in a given week.
-    const fullCount = r.enrollments.filter(e => e.type === 'FULL').length
-    const dropInsBySession = new Map<string, number>()
-    for (const e of r.enrollments) {
-      if (e.type === 'DROP_IN' && e.dropInSessionId) {
-        dropInsBySession.set(e.dropInSessionId, (dropInsBySession.get(e.dropInSessionId) ?? 0) + 1)
-      }
-    }
+    // One source of truth for per-session spaces, shared with the trainer's
+    // assign modal (full seats count on every session, a drop-in only on its
+    // own — so a "full" term can still have room in a given week).
+    const spaces = classSessionSpaces(cap, r.enrollments)
     return {
       id: r.id,
       name: r.name,
@@ -173,9 +167,9 @@ export default async function MyAvailabilityPage() {
         at: s.scheduledAt.toISOString(),
         durationMins: s.durationMins,
         title: s.title,
-        spacesLeft: cap === null ? null : Math.max(0, cap - fullCount - (dropInsBySession.get(s.id) ?? 0)),
+        spacesLeft: spaces.spacesLeftFor(s.id),
       })),
-      seatsLeft: cap === null ? null : Math.max(0, cap - fullCount),
+      seatsLeft: cap === null ? null : Math.max(0, cap - spaces.fullSeats),
       fullPriceCents: r.package.specialPriceCents ?? r.package.priceCents,
       allowDropIn: r.package.allowDropIn,
       dropInPerSessionCents: r.package.dropInPriceCents,
