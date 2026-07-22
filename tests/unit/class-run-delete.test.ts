@@ -44,7 +44,14 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.guardPermission.mockResolvedValue({ trainerId: TRAINER, role: 'OWNER', permissions: [] })
   h.auth.mockResolvedValue({ user: { role: 'TRAINER', trainerId: TRAINER } })
-  h.runFindFirst.mockResolvedValue({ id: RUN, name: 'Spring Puppy Class' })
+  // The route reads run.sessions to collect mirrored Google event ids before
+  // the cascade wipes them, so the mock has to carry them. One synced session
+  // and one that never made it to Google, which is the realistic mix.
+  h.runFindFirst.mockResolvedValue({
+    id: RUN,
+    name: 'Spring Puppy Class',
+    sessions: [{ googleCalendarEventId: 'gcal_1' }, { googleCalendarEventId: null }],
+  })
   h.enrollmentFindMany.mockResolvedValue([])
   h.sessionDeleteMany.mockResolvedValue({ count: 6 })
   h.runDelete.mockResolvedValue({ id: RUN })

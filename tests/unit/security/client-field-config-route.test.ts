@@ -67,7 +67,9 @@ describe('GET /api/clients/field-config — company scoping', () => {
     h.trainerProfileFindUnique.mockResolvedValue({ clientFieldConfig: { email: { required: true } } })
     const res = await GET()
     const body = await res.json()
-    expect(body.config.email).toEqual({ required: true, quickAdd: false })
+    // quickAdd:true is the default (df79ba2 — quick-add captures email); the
+    // stored config only overrides `required` here.
+    expect(body.config.email).toEqual({ required: true, quickAdd: true })
     expect(body.config.name).toEqual({ required: true, quickAdd: true }) // default kept
     expect(body.customFields).toEqual([])
   })

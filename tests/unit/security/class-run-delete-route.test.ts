@@ -55,7 +55,11 @@ beforeEach(() => {
   h.auth.mockResolvedValue({ user: { role: 'TRAINER', trainerId: OWNER_CO } })
   // The route scopes the lookup by trainerId — a foreign tenant finds nothing.
   h.runFindFirst.mockImplementation(async ({ where }: { where: { id: string; trainerId: string } }) =>
-    where.id === RUN && where.trainerId === OWNER_CO ? { id: RUN, name: 'Spring Puppy Class' } : null,
+    where.id === RUN && where.trainerId === OWNER_CO
+      // sessions is selected by the route (mirrored Google event ids are
+      // collected before the cascade removes them).
+      ? { id: RUN, name: 'Spring Puppy Class', sessions: [] }
+      : null,
   )
   h.enrollmentFindMany.mockResolvedValue([])
   h.sessionDeleteMany.mockResolvedValue({ count: 6 })

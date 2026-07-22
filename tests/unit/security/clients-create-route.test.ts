@@ -128,12 +128,21 @@ describe('POST /api/clients — required-field enforcement (per company config)'
     expect(h.clientProfileCreate).not.toHaveBeenCalled()
   })
 
-  it('rejects quick create missing phone (default quick-add requires name+phone)', async () => {
+  it('rejects quick create missing the other required fields (name + phone + email)', async () => {
     grant()
+    // Quick-add captures email as well now, so a name-only create is rejected —
+    // whichever of the missing fields is reported first.
     const res = await POST(req({ mode: 'quick', name: 'Jess' }))
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toMatch(/phone/i)
+    expect(body.error).toMatch(/phone|email/i)
+  })
+
+  it('rejects quick create that has a phone but no email', async () => {
+    grant()
+    const res = await POST(req({ mode: 'quick', name: 'Jess', phone: '021 000 0000' }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/email/i)
   })
 
   it('enforces a custom field marked required', async () => {

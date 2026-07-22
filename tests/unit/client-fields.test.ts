@@ -13,7 +13,8 @@ describe('resolveClientFieldConfig — defaults', () => {
     // else off.
     expect(cfg.name).toEqual({ required: true, quickAdd: true })
     expect(cfg.phone).toEqual({ required: false, quickAdd: true })
-    expect(cfg.email).toEqual({ required: false, quickAdd: false })
+    // Email is captured by default in quick-add (df79ba2 — name + phone + email).
+    expect(cfg.email).toEqual({ required: false, quickAdd: true })
     expect(cfg.dogName).toEqual({ required: false, quickAdd: false })
   })
 
@@ -30,8 +31,8 @@ describe('resolveClientFieldConfig — defaults', () => {
   it('treats junk input (string / number / array) as empty config', () => {
     for (const junk of ['nope', 42, [], true]) {
       const cfg = resolveClientFieldConfig(junk as unknown)
-      expect(cfg.name.required).toBe(true) // falls back to defaults
-      expect(cfg.email.quickAdd).toBe(false)
+      expect(cfg.name.required).toBe(true)   // falls back to defaults
+      expect(cfg.email.quickAdd).toBe(true)  // …including email in quick-add
     }
   })
 })
@@ -56,8 +57,8 @@ describe('resolveClientFieldConfig — overrides', () => {
 
   it('ignores a non-boolean prop value and uses the default', () => {
     const cfg = resolveClientFieldConfig({ email: { required: 'yes', quickAdd: 1 } } as unknown)
-    // Non-boolean → default applies (email default is both false).
-    expect(cfg.email).toEqual({ required: false, quickAdd: false })
+    // Non-boolean → default applies (email: not required, but IS in quick-add).
+    expect(cfg.email).toEqual({ required: false, quickAdd: true })
   })
 
   it('ignores unknown field keys entirely', () => {
@@ -122,10 +123,12 @@ describe('resolved config drives required-field enforcement', () => {
     expect(missingRequired(cfg, { ...allEmpty, name: true }, 'full')).toBeNull()
   })
 
-  it('quick mode with defaults requires name + phone', () => {
+  it('quick mode with defaults requires name + phone + email', () => {
     const cfg = resolveClientFieldConfig(null)
-    expect(missingRequired(cfg, { ...allEmpty, name: true }, 'quick')).toBe('phone')
-    expect(missingRequired(cfg, { ...allEmpty, name: true, phone: true }, 'quick')).toBeNull()
+    // Quick-add captures email as well now, so all three are needed.
+    expect(missingRequired(cfg, { ...allEmpty, name: true }, 'quick')).not.toBeNull()
+    expect(missingRequired(cfg, { ...allEmpty, name: true, phone: true }, 'quick')).toBe('email')
+    expect(missingRequired(cfg, { ...allEmpty, name: true, phone: true, email: true }, 'quick')).toBeNull()
   })
 
   it('a config making email required is enforced in full mode', () => {
