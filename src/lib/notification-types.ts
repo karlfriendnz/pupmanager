@@ -350,8 +350,8 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
       title: "You're booked in",
       body: '{{trainerName}} added {{dogName}} to {{planName}}',
     },
-    placeholders: ['trainerName', 'dogName', 'planName', 'detail'],
-    sampleValues: { trainerName: 'Jess', dogName: 'Bailey', planName: 'Puppy Foundations', detail: '6 sessions · Thursdays 6pm' },
+    placeholders: ['trainerName', 'dogName', 'planName', 'detail', 'description'],
+    sampleValues: { trainerName: 'Jess', dogName: 'Bailey', planName: 'Puppy Foundations', detail: '6 sessions · Thursdays 6pm', description: 'Six weeks of the basics — sit, recall, loose-leash walking — for pups under 6 months.' },
   },
   CLIENT_SESSION_DIGEST: {
     type: 'CLIENT_SESSION_DIGEST',

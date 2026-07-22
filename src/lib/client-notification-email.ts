@@ -21,6 +21,9 @@ export interface ClientNotificationEmailArgs {
   body: string
   /** Optional muted sub-line, e.g. "6 sessions · Thursdays 6pm". */
   detail?: string | null
+  /** The package/class description the trainer wrote. Clients want to know what
+   *  they've actually been booked into — the name alone rarely says. */
+  description?: string | null
   /** Optional list of session date/times — rendered as a table (e.g. when a
    *  client is booked into a multi-session package/class). */
   sessions?: { when: string }[]
@@ -38,7 +41,7 @@ export interface RenderedClientNotification {
 }
 
 export function renderClientNotificationEmail(args: ClientNotificationEmailArgs): RenderedClientNotification {
-  const { trainer, title, body, detail, sessions, ctaLabel, ctaHref } = args
+  const { trainer, title, body, detail, description, sessions, ctaLabel, ctaHref } = args
 
   const displayName = trainer.user.name?.trim() || trainer.businessName
   const businessName = trainer.businessName
@@ -49,6 +52,7 @@ export function renderClientNotificationEmail(args: ClientNotificationEmailArgs)
   const safeTitle = escapeHtml(title)
   const safeBody = escapeHtml(body)
   const safeDetail = detail ? escapeHtml(detail) : null
+  const safeDescription = description?.trim() ? escapeHtml(description.trim()) : null
   const initial = escapeHtml(businessName.charAt(0).toUpperCase())
 
   // Multi-session table (only when 2+ sessions are passed).
@@ -88,6 +92,7 @@ export function renderClientNotificationEmail(args: ClientNotificationEmailArgs)
                 <h1 style="margin:0 0 8px;font-size:22px;line-height:1.3;font-weight:700;color:#0f172a;">${safeTitle}</h1>
                 <p style="margin:0;font-size:16px;line-height:1.6;color:#334155;">${safeBody}</p>
                 ${safeDetail ? `<p style="margin:8px 0 0;font-size:14px;color:#94a3b8;">${safeDetail}</p>` : ''}
+                ${safeDescription ? `<p style="margin:14px 0 0;padding:12px 14px;background:#f8fafc;border-left:3px solid ${accent};border-radius:6px;font-size:14px;line-height:1.55;color:#475569;">${safeDescription}</p>` : ''}
               </div>
               ${sessionTable ? `<div style="padding:4px 32px 0;">${sessionTable}</div>` : ''}
               <div style="padding:24px 32px 32px;text-align:center;">
@@ -118,7 +123,7 @@ export function renderClientNotificationEmail(args: ClientNotificationEmailArgs)
   return {
     subject: title,
     html,
-    text: `${title}\n\n${body}${detail ? `\n${detail}` : ''}\n\n${ctaLabel}: ${ctaHref}`,
+    text: `${title}\n\n${body}${detail ? `\n${detail}` : ''}${description?.trim() ? `\n\n${description.trim()}` : ''}\n\n${ctaLabel}: ${ctaHref}`,
     displayName,
     trainerEmail: trainer.user.email,
   }

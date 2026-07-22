@@ -77,7 +77,7 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
   // Real add-ons from pricing.ts (source of truth for name/blurb/price), each
   // carrying its current on/off state and longer modal copy. Free add-ons (e.g.
   // Timesheets) are always toggleable, shown as "Free", and ON by default.
-  const cards: AddonCard[] = ADDONS.filter((a) => !a.comingSoon).map((a) => ({
+  const cards: AddonCard[] = ADDONS.filter((a) => !a.comingSoon && !a.hidden).map((a) => ({
     id: a.id,
     name: a.name,
     blurb: a.description,
@@ -91,7 +91,7 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
   }))
 
   // Add-ons in pricing.ts but flagged comingSoon (e.g. AI) — preview cards.
-  const soonAddons: AddonCard[] = ADDONS.filter((a) => a.comingSoon).map((a) => ({
+  const soonAddons: AddonCard[] = ADDONS.filter((a) => a.comingSoon && !a.hidden).map((a) => ({
     id: a.id,
     name: a.name,
     blurb: a.description,

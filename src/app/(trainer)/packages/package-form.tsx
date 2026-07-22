@@ -169,6 +169,9 @@ export function PackageForm({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...rest,
+        // A single-session package has no cadence — store 0 rather than
+        // whatever was last typed into the (now hidden) weeks field.
+        weeksBetween: Number(values.sessionCount) === 1 ? 0 : values.weeksBetween,
         description: values.description || null,
         priceCents: dollarsToCents(price),
         specialPriceCents: dollarsToCents(specialPrice),
@@ -247,14 +250,18 @@ export function PackageForm({
         />
         <p className="text-[11px] text-slate-400 mt-1">0 = ongoing (you set an end date when assigning) · 1 = one-off (single session)</p>
       </div>
-      <Input
-        label="Weeks between"
-        type="number"
-        disabled={oneOff}
-        hint={oneOff ? "Not needed for a one-off — there's only one session." : undefined}
-        error={errors.weeksBetween?.message}
-        {...register('weeksBetween', { valueAsNumber: true })}
-      />
+      {/* A one-off has nothing to space out, so the field is hidden rather than
+          shown-but-disabled — a greyed-out box still reads as something you
+          ought to fill in. It stays registered (RHF keeps unmounted values), and
+          onSubmit forces 0 so the stored cadence matches reality. */}
+      {!oneOff && (
+        <Input
+          label="Weeks between"
+          type="number"
+          error={errors.weeksBetween?.message}
+          {...register('weeksBetween', { valueAsNumber: true })}
+        />
+      )}
 
       <Input
         label="Default duration (mins)"

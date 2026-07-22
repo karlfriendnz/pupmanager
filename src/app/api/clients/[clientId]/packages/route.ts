@@ -5,6 +5,7 @@ import { getClientAccess } from '@/lib/trainer-access'
 import { safeEvaluate } from '@/lib/achievements'
 import { notifyClient } from '@/lib/client-notify'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { resolveRequirePayment } from '@/lib/require-payment'
 import { z } from 'zod'
 
 // Returns the client's active package assignments. Used by the session
@@ -275,8 +276,9 @@ export async function POST(
   // per the trainer's settings. Never blocks the booking. Skipped when the
   // trainer marked it already-invoiced externally (Xero/QBO/cash) — otherwise
   // we'd raise a duplicate for something they've already billed.
+  let invoiceId: string | null = null
   if (!parsed.data.markInvoiced) {
-    await createInvoiceForAssignment({ trainerId, clientId, sourceType: 'PACKAGE', clientPackageId: created.id })
+    invoiceId = await createInvoiceForAssignment({ trainerId, clientId, sourceType: 'PACKAGE', clientPackageId: created.id })
   }
 
   // Notify the client they've been booked in — unless the trainer opted out or
@@ -284,9 +286,18 @@ export async function POST(
   if (parsed.data.notify !== false && sessionDates.some(d => d.getTime() > Date.now())) {
     const [clientProfile, trainer, dog] = await Promise.all([
       prisma.clientProfile.findUnique({ where: { id: clientId }, select: { userId: true } }),
-      prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { name: true, timezone: true } } } }),
+      prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, defaultRequirePayment: true, user: { select: { name: true, timezone: true } } } }),
       dogId ? prisma.dog.findUnique({ where: { id: dogId }, select: { name: true } }) : Promise.resolve(null),
     ])
+    // A "Pay now" button only makes sense when this package actually has to be
+    // paid for AND we raised an invoice they can pay against.
+    let payToken: string | null = null
+    if (invoiceId && resolveRequirePayment(pkg.requirePayment, trainer?.defaultRequirePayment ?? false)) {
+      payToken = (await prisma.invoice
+        .findUnique({ where: { id: invoiceId }, select: { payToken: true } })
+        .catch(() => null))?.payToken ?? null
+    }
+
     if (clientProfile?.userId) {
       // Session times render in the TRAINER's timezone (the sessions happen in
       // the trainer's locale) — never the server's UTC.
@@ -301,9 +312,14 @@ export async function POST(
           dogName: dog?.name ?? 'your dog',
           planName: pkg.name,
           detail: `${sessionDates.length} session${sessionDates.length === 1 ? '' : 's'}`,
+          // What they've actually been booked into — the name alone rarely says.
+          description: pkg.description ?? '',
         },
-        link: '/my-sessions',
-        ctaLabel: 'View your sessions',
+        // When this package has to be paid for, the useful button is "pay",
+        // not "look at your calendar". Falls back to the sessions view when
+        // there's nothing to pay (free package, or no invoice was raised).
+        link: payToken ? `/pay/${payToken}` : '/my-sessions',
+        ctaLabel: payToken ? 'Pay now' : 'View your sessions',
         sessions: sorted.map(d => ({ when: d.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) })),
       })
     }

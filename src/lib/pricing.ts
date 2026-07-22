@@ -82,6 +82,10 @@ export interface AddonDef {
   // touching Stripe and never appears at checkout (off until enabled, like every
   // add-on). Price is 0 in every currency.
   free?: boolean
+  // Built but not advertised yet: kept out of the Add-ons grid entirely (not
+  // even as a "coming soon" card) while the feature is finished off. Everything
+  // else still works, so a trainer who already has it on is unaffected.
+  hidden?: boolean
   // When true this add-on is ON by default (a core feature living on the Add-ons
   // page), enabled unless the trainer explicitly turns it off. Contrast the
   // usual "off until enabled" add-ons. Implies free.
@@ -177,6 +181,7 @@ export const ADDONS: AddonDef[] = [
   {
     id: 'dropins',
     name: 'Drop-in classes',
+    hidden: true,
     description: 'Sell single sessions of a class — one-off spots for people who can’t commit to the whole course, or regulars filling a gap.',
     // Free while the feature beds in: it only pays off once a trainer is
     // actually running classes, and charging for it up front would stop people

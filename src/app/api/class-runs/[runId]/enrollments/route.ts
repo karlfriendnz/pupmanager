@@ -5,6 +5,8 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { enrollInRun, ClassError } from '@/lib/class-runs'
 import { notifyClient } from '@/lib/client-notify'
+import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { resolveRequirePayment } from '@/lib/require-payment'
 import { dogBelongsToClient } from '@/lib/dog-access'
 
 // POST /api/class-runs/[runId]/enrollments
@@ -58,14 +60,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       source: 'TRAINER',
     })
 
+    // Raise the receivable, exactly as assigning a 1:1 package does. Class
+    // enrolments were the one priced thing that never produced an invoice, so
+    // there was nothing for the client to pay against and no pay link to send.
+    // Idempotent + best-effort; never blocks the enrolment.
+    const enrollmentId = (result as { enrollmentId?: string }).enrollmentId ?? null
+    let invoiceId: string | null = null
+    if (enrollmentId && (result as { status?: string }).status !== 'WAITLISTED') {
+      invoiceId = await createInvoiceForAssignment({
+        trainerId,
+        clientId: parsed.data.clientId,
+        sourceType: 'CLASS_ENROLLMENT',
+        classEnrollmentId: enrollmentId,
+      })
+    }
+
     // Tell the client they're in (skip waitlisted spots + the trainer opt-out).
     if (parsed.data.notify !== false && (result as { status?: string }).status !== 'WAITLISTED') {
       const [runDetail, clientUser, trainer, dog] = await Promise.all([
-        prisma.classRun.findUnique({ where: { id: runId }, select: { name: true, sessions: { where: { scheduledAt: { gte: new Date() } }, orderBy: { scheduledAt: 'asc' }, select: { scheduledAt: true } } } }),
+        prisma.classRun.findUnique({ where: { id: runId }, select: { name: true, requirePayment: true, package: { select: { description: true } }, sessions: { where: { scheduledAt: { gte: new Date() } }, orderBy: { scheduledAt: 'asc' }, select: { scheduledAt: true } } } }),
         prisma.clientProfile.findUnique({ where: { id: parsed.data.clientId }, select: { userId: true } }),
-        prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, user: { select: { name: true, timezone: true } } } }),
+        prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { businessName: true, defaultRequirePayment: true, user: { select: { name: true, timezone: true } } } }),
         parsed.data.dogId ? prisma.dog.findUnique({ where: { id: parsed.data.dogId }, select: { name: true } }) : Promise.resolve(null),
       ])
+      let payToken: string | null = null
+      if (invoiceId && runDetail && resolveRequirePayment(runDetail.requirePayment, trainer?.defaultRequirePayment ?? false)) {
+        payToken = (await prisma.invoice
+          .findUnique({ where: { id: invoiceId }, select: { payToken: true } })
+          .catch(() => null))?.payToken ?? null
+      }
+
       if (clientUser?.userId && runDetail) {
         // The class happens in the TRAINER's locale — render the times in the
         // trainer's timezone so a 3pm class never shows as UTC "3am".
@@ -79,9 +103,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
             dogName: dog?.name ?? 'your dog',
             planName: runDetail.name,
             detail: `${runDetail.sessions.length} session${runDetail.sessions.length === 1 ? '' : 's'}`,
+            // What the class actually is — the run name alone rarely says.
+            description: runDetail.package?.description ?? '',
           },
-          link: '/my-sessions',
-          ctaLabel: 'View your sessions',
+          // Pay-to-book classes get a "Pay now" button straight to the public
+          // pay page (no login). Everything else keeps the sessions view.
+          link: payToken ? `/pay/${payToken}` : '/my-sessions',
+          ctaLabel: payToken ? 'Pay now' : 'View your sessions',
           sessions: runDetail.sessions.map(s => ({ when: s.scheduledAt.toLocaleString('en-NZ', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) })),
         })
       }

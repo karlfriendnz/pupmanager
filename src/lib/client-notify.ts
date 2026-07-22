@@ -82,6 +82,7 @@ async function doNotify({ userId, trainerId, type, vars = {}, link, ctaLabel, se
         title,
         body,
         detail: vars.detail ?? null,
+        description: vars.description ?? null,
         sessions,
         ctaLabel: ctaLabel ?? 'Open in PupManager',
         ctaHref: `${APP_URL}${link ?? '/my-notifications'}`,
