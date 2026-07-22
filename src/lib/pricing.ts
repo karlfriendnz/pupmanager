@@ -1,8 +1,15 @@
 // Per-currency pricing for PupManager. Mirrored verbatim from the
-// marketing site's `pupmanager-marketing/src/components/PricingTiers.tsx`
-// so the in-app /billing/setup surface and the public /pricing page
-// always quote the same number for the same currency. **The website is
-// the source of truth — update PricingTiers.tsx and this file together.**
+// marketing site's `pupmanager-marketing/src/components/PricingWeekly.tsx`
+// (the component the live /pricing page renders) so the in-app
+// /billing/setup surface and the public /pricing page always quote the
+// same number for the same currency. **The website is the source of
+// truth — update PricingWeekly.tsx and this file together.**
+//
+// This file previously claimed to mirror `PricingTiers.tsx`, which the
+// site stopped rendering when pricing moved to the weekly model. The two
+// drifted apart unnoticed and the app quoted NZ$49/mo against an
+// advertised NZ$43 (and undercharged USD by $8), so Core is now DERIVED
+// from the same weekly figure the website leads with — see CORE_WEEKLY.
 //
 // Values are explicit per currency (no FX maths) — picked to land on
 // round numbers people recognise locally rather than pegging to a rate.
@@ -23,15 +30,28 @@ export const CURRENCIES: { code: CurrencyCode; symbol: string; label: string }[]
   { code: 'ZAR', symbol: 'R', label: 'ZAR' },
 ]
 
+// The website bills Core as a WEEKLY headline ("$10 / wk") and derives the
+// monthly figure beneath it. Keep the weekly number here as the primary
+// value and derive monthly the same way, so the two surfaces can't drift
+// again: any future change is a one-line edit in both files.
+export const WEEKS_PER_MONTH = 52 / 12 // 4.333…
+
 // Core software — every core feature, unlimited clients/dogs, one trainer.
-export const CORE_PRICE: Record<CurrencyCode, number> = {
-  AUD: 45,
-  NZD: 49,
-  GBP: 25,
-  CAD: 39,
-  USD: 35,
-  ZAR: 649,
+// Verbatim from PricingWeekly.tsx `baseWeekly`.
+export const CORE_WEEKLY: Record<CurrencyCode, number> = {
+  AUD: 10,
+  NZD: 10,
+  GBP: 5,
+  CAD: 10,
+  USD: 10,
+  ZAR: 150,
 }
+
+// Monthly Core price — derived, never hand-typed. Matches the "Billed
+// monthly at {symbol}{baseMonthly}/mo" line on the public pricing page.
+export const CORE_PRICE: Record<CurrencyCode, number> = Object.fromEntries(
+  (Object.keys(CORE_WEEKLY) as CurrencyCode[]).map(c => [c, Math.round(CORE_WEEKLY[c] * WEEKS_PER_MONTH)]),
+) as Record<CurrencyCode, number>
 
 // Extra trainer seats — billed per seat / month on top of Core. The
 // first trainer is included, so a trainer with `seatCount` trainers
