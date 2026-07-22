@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { prisma } from '@/lib/prisma'
+import { notifyConversion } from '@/lib/conversion-alert'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
 import { loadPriceIndex } from '@/lib/billing'
@@ -119,6 +120,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, sandbox
     },
   })
 
+  // Straight to active (no trial days left to carry) = they paid today.
+  // Someone still inside a carried-over trial stays `trialing` and is picked
+  // up later by handleSubscriptionChange when the trial converts.
+  if (mapStripeStatus(sub.status) === 'ACTIVE') {
+    await notifyConversion(trainerId)
+  }
+
   await syncTrainerAddons(trainerId, recon.activeAddons)
 }
 
@@ -155,6 +163,12 @@ async function handleSubscriptionChange(sub: Stripe.Subscription, deleted: boole
       ...(recon.periodEnd ? { currentPeriodEnd: recon.periodEnd } : {}),
     },
   })
+
+  // Trial ended and the first payment went through → tell the team. Fires at
+  // most once per business (guarded on convertedAt inside).
+  if (!deleted && mapStripeStatus(sub.status) === 'ACTIVE') {
+    await notifyConversion(trainerId)
+  }
 
   // A cancelled/deleted subscription has no live add-ons.
   await syncTrainerAddons(trainerId, deleted ? [] : recon.activeAddons)

@@ -10,7 +10,8 @@ function client(): Resend {
 export const PLATFORM_FROM = env.RESEND_FROM_EMAIL
 
 type SendArgs = {
-  to: string
+  /** One address, or several for an internal alert that goes to the team. */
+  to: string | string[]
   subject: string
   html: string
   // Plain-text fallback. Recommended for deliverability.

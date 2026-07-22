@@ -515,6 +515,13 @@ model TrainerProfile {
   // (Vercel's x-vercel-ip-country) at account creation. Null for older accounts
   // / signups without geo. Surfaced as a flag in /admin/trainers.
   signupCountry        String?
+  // First time this business became a PAYING customer (subscription went
+  // ACTIVE — i.e. money actually moved, not merely "started a plan while still
+  // inside the carried-over trial"). Set once and never cleared, so it doubles
+  // as the idempotency guard for the internal "someone converted" alert:
+  // Stripe fires customer.subscription.updated often and retries webhooks, and
+  // we only want to be told once.
+  convertedAt          DateTime?
   // Internal sales judgement of how likely this trainer is to convert to a
   // paying plan: NAH | MAYBE | YEAH | DEFINITELY. Null = not assessed yet.
   // Set by hand from the "Likely" column on /admin/trainers — never derived,
