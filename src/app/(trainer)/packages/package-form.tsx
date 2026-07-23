@@ -224,6 +224,14 @@ export function PackageForm({
     setAllowDropIn(k === 'dropin')
     if (k === 'oneoff') setRecurrenceRule('')
   }
+  // Add-mode wizard: one section per step (a drop-in has no pricing step).
+  // Editing shows every section on one page (stepped === false).
+  const stepKeys: string[] = ['kind', 'details', 'schedule', ...(kind === 'dropin' ? [] : ['pricing']), 'settings']
+  const [wstep, setWstep] = useState(0)
+  const clampedStep = Math.min(wstep, stepKeys.length - 1)
+  const currentKey = stepKeys[clampedStep]
+  const onSection = (k: string) => !stepped || currentKey === k
+  const isLastStep = clampedStep === stepKeys.length - 1
   const [allowWaitlist, setAllowWaitlist] = useState<boolean>(existing?.allowWaitlist ?? false)
   const [publicEnrollment, setPublicEnrollment] = useState<boolean>(existing?.publicEnrollment ?? false)
   // Client self-booking (independent of group classes).
@@ -232,7 +240,7 @@ export function PackageForm({
   const [clientSelfBook, setClientSelfBook] = useState<boolean>(existing?.clientSelfBook ?? false)
   const [selfBookRequiresApproval, setSelfBookRequiresApproval] = useState<boolean>(existing?.selfBookRequiresApproval ?? true)
   const [requirePayment, setRequirePayment] = useState<boolean | null>(existing?.requirePayment ?? null)
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, watch, trigger, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: existing
       ? {
@@ -356,8 +364,22 @@ export function PackageForm({
         />
       )}
 
-      {/* ── Step 1 · details ───────────────────────────────────────── */}
-      <SectionHeading step={stepped ? 1 : undefined} title="Details" />
+      {/* Wizard progress — only when adding. */}
+      {stepped && (
+        <div className="md:col-span-2 flex items-center gap-1.5 mb-1">
+          {stepKeys.map((k, i) => (
+            <div key={k} className="flex flex-1 items-center gap-1.5">
+              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${i < clampedStep ? 'bg-blue-600 text-white' : i === clampedStep ? 'bg-blue-600 text-white ring-4 ring-blue-100' : 'bg-slate-100 text-slate-400'}`}>{i + 1}</span>
+              {i < stepKeys.length - 1 && <span className={`h-0.5 flex-1 rounded ${i < clampedStep ? 'bg-blue-600' : 'bg-slate-200'}`} />}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Details ──────────────────────────────────────────────── */}
+      {onSection('details') && (
+      <>
+      <SectionHeading title="Details" />
 
       <div className="md:col-span-2">
         <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
@@ -371,10 +393,11 @@ export function PackageForm({
           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
+      </>
+      )}
 
-      {/* Kind chooser — only when ADDING (a wizard). Editing is one page and
-          skips this; the offering's kind is already set. */}
-      {stepped && (
+      {/* Kind chooser — its own wizard step when adding; hidden when editing. */}
+      {onSection('kind') && stepped && (
       <>
       <div className="md:col-span-2">
         <p className="text-sm font-medium text-slate-700 mb-2">What are you setting up?</p>
@@ -409,8 +432,10 @@ export function PackageForm({
       </>
       )}
 
-      {/* ── Step 2 · sessions & schedule ───────────────────────────── */}
-      <SectionHeading step={stepped ? 2 : undefined} title="Sessions & schedule" />
+      {/* ── Sessions & schedule ──────────────────────────────────── */}
+      {onSection('schedule') && (
+      <>
+      <SectionHeading title="Sessions & schedule" />
 
       {/* One schedule model everywhere: a run of N sessions every W weeks.
           1:1, group and drop-in all use it; only a one-off event has no cadence. */}
@@ -596,11 +621,13 @@ export function PackageForm({
           </div>
         </div>
       )}
+      </>
+      )}
 
-      {/* ── Step 3 · pricing — a drop-in prices per session, so no pricing step. */}
-      {kind !== 'dropin' && (
+      {/* ── Pricing — a drop-in prices per session, so no pricing step. ── */}
+      {kind !== 'dropin' && onSection('pricing') && (
       <>
-      <SectionHeading step={stepped ? 3 : undefined} title="Pricing" hint={
+      <SectionHeading title="Pricing" hint={
         kind === 'oneoff' ? 'What it costs to attend the event.'
           : kind === 'group' ? 'The full-course price.'
           : 'Leave blank for no set price.'
@@ -654,8 +681,10 @@ export function PackageForm({
       </>
       )}
 
-      {/* ── Settings (step 3 for drop-in, which has no pricing step). ── */}
-      <SectionHeading step={stepped ? (kind === 'dropin' ? 3 : 4) : undefined} title="Settings" />
+      {/* ── Settings ─────────────────────────────────────────────── */}
+      {onSection('settings') && (
+      <>
+      <SectionHeading title="Settings" />
 
       {/* Who delivers it — assignable per kind (drop-in assigns per session). */}
       {team.length > 1 && kind !== 'dropin' && (
@@ -816,11 +845,36 @@ export function PackageForm({
           </div>
         )}
       </div>
+      </>
+      )}
 
-      <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 mt-2">
-        <Button type="submit" loading={isSubmitting}>{existing ? 'Save changes' : 'Create offering'}</Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-        {existing && (
+      {/* Footer — wizard nav when adding, Save/Delete/Clone when editing. */}
+      {stepped ? (
+        <div className="md:col-span-2 flex items-center gap-2 pt-3 border-t border-slate-100 mt-2">
+          {clampedStep > 0 && (
+            <Button type="button" variant="ghost" onClick={() => setWstep(s => Math.max(0, s - 1))}>Back</Button>
+          )}
+          <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
+          <div className="ml-auto">
+            {isLastStep ? (
+              <Button type="submit" loading={isSubmitting}>Create offering</Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={async () => {
+                  if (currentKey === 'details' && !(await trigger('name'))) return
+                  setWstep(s => Math.min(stepKeys.length - 1, s + 1))
+                }}
+              >
+                Next
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 mt-2">
+          <Button type="submit" loading={isSubmitting}>Save changes</Button>
+          <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
           <div className="ml-auto flex items-center gap-2">
             <button type="button" onClick={handleClone} disabled={cloning} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
               {cloning ? 'Cloning…' : 'Clone'}
@@ -829,8 +883,8 @@ export function PackageForm({
               {deleting ? 'Deleting…' : 'Delete'}
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </form>
   )
 }
