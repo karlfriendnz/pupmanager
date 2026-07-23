@@ -107,8 +107,13 @@ export default async function MyAvailabilityPage() {
   if (!profile) redirect('/login')
 
   // Self-bookable 1-on-1 packages (mirrors GET /api/my/self-book).
+  // isGroup: false is load-bearing. A class or drop-in with self-booking on
+  // was landing here too, and the 1:1 flow then offered the trainer's open
+  // hours — "pick any Tuesday at 2pm" — for something that runs on its own
+  // fixed timetable. Group offerings are booked from the classes list below,
+  // by their real sessions.
   const rawPackages = await prisma.package.findMany({
-    where: { trainerId: profile.trainerId, clientSelfBook: true },
+    where: { trainerId: profile.trainerId, clientSelfBook: true, isGroup: false },
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
     select: {
       id: true, name: true, description: true, sessionCount: true, weeksBetween: true,

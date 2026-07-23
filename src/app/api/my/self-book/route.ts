@@ -54,8 +54,11 @@ export async function GET() {
   const ctx = await clientCtx()
   if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
+  // 1:1 only. A group offering runs on its own timetable — it's joined from
+  // the classes list, by picking real sessions, not by choosing an hour out of
+  // the trainer's diary.
   const packages = await prisma.package.findMany({
-    where: { trainerId: ctx.trainerId, clientSelfBook: true },
+    where: { trainerId: ctx.trainerId, clientSelfBook: true, isGroup: false },
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
     select: {
       id: true, name: true, description: true, sessionCount: true,
@@ -88,8 +91,12 @@ export async function POST(req: Request) {
   const parsed = schema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
+  // isGroup: false here too, not just on the list. Booking a class down this
+  // path would cut private 1:1 sessions off a shared timetable — the client
+  // would hold sessions nobody else in the class has, at an hour the class
+  // doesn't run, and never appear on its roster.
   const pkg = await prisma.package.findFirst({
-    where: { id: parsed.data.packageId, trainerId: ctx.trainerId, clientSelfBook: true },
+    where: { id: parsed.data.packageId, trainerId: ctx.trainerId, clientSelfBook: true, isGroup: false },
   })
   if (!pkg) return NextResponse.json({ error: 'Package not available' }, { status: 404 })
 
