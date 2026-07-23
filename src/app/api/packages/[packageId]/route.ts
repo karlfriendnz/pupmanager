@@ -24,6 +24,7 @@ const updateSchema = z.object({
   capacity: z.number().int().min(0).max(1000).nullable().optional(),
   allowDropIn: z.boolean().optional(),
   dropInPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  recurrenceRule: z.string().max(200).nullable().optional(),
   allowWaitlist: z.boolean().optional(),
   publicEnrollment: z.boolean().optional(),
   clientSelfBook: z.boolean().optional(),
@@ -85,6 +86,7 @@ export async function PATCH(
           capacity: null,
           allowDropIn: false,
           dropInPriceCents: null,
+          recurrenceRule: null,
           allowWaitlist: false,
           publicEnrollment: false,
         }

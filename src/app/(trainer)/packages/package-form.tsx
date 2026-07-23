@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { XeroAccountField } from '@/components/shared/xero-account-field'
 import { RequirePaymentField } from '@/components/shared/require-payment-field'
 import { BufferField } from '@/components/shared/buffer-field'
+import { RecurrenceField } from '@/components/shared/recurrence-field'
+import { cadenceFromRule } from '@/lib/recurrence'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { User, Users } from 'lucide-react'
@@ -50,6 +52,7 @@ export interface PkgRow {
   capacity?: number | null
   allowDropIn?: boolean
   dropInPriceCents?: number | null
+  recurrenceRule?: string | null
   allowWaitlist?: boolean
   publicEnrollment?: boolean
   clientSelfBook?: boolean
@@ -125,6 +128,7 @@ export function PackageForm({
   )
   const [allowDropIn, setAllowDropIn] = useState<boolean>(existing?.allowDropIn ?? false)
   const [dropInPrice, setDropInPrice] = useState<string>(centsToDollars(existing?.dropInPriceCents ?? null))
+  const [recurrenceRule, setRecurrenceRule] = useState<string>(existing?.recurrenceRule ?? '')
   const [allowWaitlist, setAllowWaitlist] = useState<boolean>(existing?.allowWaitlist ?? false)
   const [publicEnrollment, setPublicEnrollment] = useState<boolean>(existing?.publicEnrollment ?? false)
   // Client self-booking (independent of group classes).
@@ -197,14 +201,21 @@ export function PackageForm({
     // Convert the dollar-string price fields into cents before sending; the
     // server stores cents to dodge floating-point math.
     const { price, specialPrice, ...rest } = values
+    // A group/drop-in class is scheduled by its recurrence, so its cadence is
+    // DERIVED from the rule (the sessionCount/weeks inputs are hidden for it).
+    // A 1:1 package keeps the typed values.
+    const groupCadence = isGroup && recurrenceRule ? cadenceFromRule(recurrenceRule) : null
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...rest,
+        sessionCount: groupCadence ? groupCadence.sessionCount : values.sessionCount,
         // A single-session package has no cadence — store 0 rather than
         // whatever was last typed into the (now hidden) weeks field.
-        weeksBetween: Number(values.sessionCount) === 1 ? 0 : values.weeksBetween,
+        weeksBetween: groupCadence
+          ? groupCadence.weeksBetween
+          : Number(values.sessionCount) === 1 ? 0 : values.weeksBetween,
         description: values.description || null,
         priceCents: dollarsToCents(price),
         specialPriceCents: dollarsToCents(specialPrice),
@@ -216,6 +227,7 @@ export function PackageForm({
         capacity: isGroup && capacity.trim() ? Math.max(0, Math.floor(Number(capacity))) : null,
         allowDropIn: isGroup && allowDropIn,
         dropInPriceCents: isGroup && allowDropIn ? dollarsToCents(dropInPrice) : null,
+        recurrenceRule: isGroup && recurrenceRule ? recurrenceRule : null,
         allowWaitlist: isGroup && allowWaitlist,
         publicEnrollment: isGroup && publicEnrollment,
         clientSelfBook,
@@ -251,6 +263,7 @@ export function PackageForm({
         capacity: saved.capacity ?? null,
         allowDropIn: saved.allowDropIn ?? false,
         dropInPriceCents: saved.dropInPriceCents ?? null,
+        recurrenceRule: saved.recurrenceRule ?? null,
         allowWaitlist: saved.allowWaitlist ?? false,
         publicEnrollment: saved.publicEnrollment ?? false,
         clientSelfBook: saved.clientSelfBook ?? false,
@@ -283,8 +296,10 @@ export function PackageForm({
         />
       </div>
 
-      {/* ── Step 2 · kind — it shapes the fields below ─────────────── */}
-      <SectionHeading step={2} title="What are you setting up?" />
+      {/* Kind sits inside step 1 — name it, then say what it is. */}
+      <div className="md:col-span-2">
+        <p className="text-sm font-medium text-slate-700 mb-2">What are you setting up?</p>
+      </div>
 
       {existing ? (
         // Editing: changing kind is a deliberate CONVERSION (it moves the
@@ -386,31 +401,48 @@ export function PackageForm({
         </div>
       )}
 
-      {/* ── Step 3 · sessions & schedule ───────────────────────────── */}
-      <SectionHeading step={3} title="Sessions & schedule" />
+      {/* ── Step 2 · sessions & schedule ───────────────────────────── */}
+      <SectionHeading step={2} title="Sessions & schedule" />
 
-      <div>
-        <Input
-          label="Number of sessions"
-          type="number"
-          error={errors.sessionCount?.message}
-          {...register('sessionCount', { valueAsNumber: true })}
-        />
-        <p className="text-[11px] text-slate-400 mt-1">0 = ongoing (you set an end date when assigning) · 1 = one-off (single session)</p>
-      </div>
-      {/* A one-off has nothing to space out, so the field goes away — but via
-          `invisible`, not by unmounting: visibility:hidden keeps the grid cell
-          (nothing below jumps) while removing it from view AND from the tab
-          order. It stays registered, and onSubmit forces 0 so the stored
-          cadence matches reality. */}
-      <div className={oneOff ? 'invisible' : undefined} aria-hidden={oneOff}>
-        <Input
-          label="Weeks between"
-          type="number"
-          error={errors.weeksBetween?.message}
-          {...register('weeksBetween', { valueAsNumber: true })}
-        />
-      </div>
+      {/* One schedule definition, not two. A group class repeats on a
+          recurrence (how often + when it ends); a 1:1 package is a run of N
+          sessions every W weeks. Showing both was the redundancy. The 1:1
+          fields stay registered when hidden so their values still submit. */}
+      {isGroup ? (
+        <div className="md:col-span-2">
+          <label className="text-sm font-medium text-slate-700 block mb-1.5">How often does it run?</label>
+          <RecurrenceField value={recurrenceRule} onChange={setRecurrenceRule} />
+          <div className="hidden">
+            <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
+            <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />
+          </div>
+        </div>
+      ) : (
+        <>
+          <div>
+            <Input
+              label="Number of sessions"
+              type="number"
+              error={errors.sessionCount?.message}
+              {...register('sessionCount', { valueAsNumber: true })}
+            />
+            <p className="text-[11px] text-slate-400 mt-1">0 = ongoing (you set an end date when assigning) · 1 = one-off (single session)</p>
+          </div>
+          {/* A one-off has nothing to space out, so the field goes away — but via
+              `invisible`, not by unmounting: visibility:hidden keeps the grid cell
+              (nothing below jumps) while removing it from view AND from the tab
+              order. It stays registered, and onSubmit forces 0 so the stored
+              cadence matches reality. */}
+          <div className={oneOff ? 'invisible' : undefined} aria-hidden={oneOff}>
+            <Input
+              label="Weeks between"
+              type="number"
+              error={errors.weeksBetween?.message}
+              {...register('weeksBetween', { valueAsNumber: true })}
+            />
+          </div>
+        </>
+      )}
 
       <Input
         label="Default duration (mins)"
@@ -437,8 +469,8 @@ export function PackageForm({
         </div>
       </div>
 
-      {/* ── Step 4 · pricing ───────────────────────────────────────── */}
-      <SectionHeading step={4} title="Pricing" hint={isGroup ? 'The full-course price. Drop-in price is set above.' : 'Leave blank for no set price.'} />
+      {/* ── Step 3 · pricing ───────────────────────────────────────── */}
+      <SectionHeading step={3} title="Pricing" hint={isGroup ? 'The full-course price. Drop-in price is set above.' : 'Leave blank for no set price.'} />
 
       {/* Leave price blank for "no price set". The special price is independent
           and only shown when populated. */}
@@ -468,8 +500,8 @@ export function PackageForm({
         <RequirePaymentField value={requirePayment} onChange={setRequirePayment} />
       </div>
 
-      {/* ── Step 5 · booking & reminders ───────────────────────────── */}
-      <SectionHeading step={5} title="Booking & reminders" />
+      {/* ── Step 4 · settings ──────────────────────────────────────── */}
+      <SectionHeading step={4} title="Settings" />
 
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form</label>

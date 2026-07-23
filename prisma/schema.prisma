@@ -1538,10 +1538,14 @@ model Package {
   isGroup                  Boolean     @default(false)
   // Max enrolments per run (null = unlimited). A run may override this.
   capacity                 Int?
-  // Allow clients to join a run after it has started (rolling drop-in),
-  // paying per remaining session at dropInPriceCents.
+  // Allow clients to book a single session on its own (drop-in), at
+  // dropInPriceCents. Per-session capacity; see enrollInRun.
   allowDropIn              Boolean     @default(false)
   dropInPriceCents         Int?
+  // Repeating schedule for a class, as an iCalendar RRULE subset (e.g.
+  // "FREQ=WEEKLY;BYDAY=TU;COUNT=8"). null / "" = one-off. Drives session
+  // generation when a run is created. See lib/recurrence.ts.
+  recurrenceRule           String?
   // Full runs accept a waitlist that auto-promotes on withdrawal.
   allowWaitlist            Boolean     @default(false)
   // Exposed on the public embed surface for client self-enrolment.

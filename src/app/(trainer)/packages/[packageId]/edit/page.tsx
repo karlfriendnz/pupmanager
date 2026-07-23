@@ -61,6 +61,7 @@ export default async function EditPackagePage({
             capacity: pkg.capacity,
             allowDropIn: pkg.allowDropIn,
             dropInPriceCents: pkg.dropInPriceCents,
+            recurrenceRule: pkg.recurrenceRule,
             allowWaitlist: pkg.allowWaitlist,
             publicEnrollment: pkg.publicEnrollment,
             clientSelfBook: pkg.clientSelfBook,
