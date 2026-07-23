@@ -753,6 +753,64 @@ function TrainerTopBar({
   )
 }
 
+// Trainer phone top bar. On the dashboard it shows the trainer's brand (icon +
+// business name); on every other page it shows the page's back arrow + title
+// instead — pages portal their back button into #pm-topbar-back-mobile, and the
+// title comes from the page-title context. Search stays pinned on the right.
+// The slots render unconditionally so the portal target always exists on first
+// paint (matching the desktop bar).
+function TrainerMobileHeader({
+  trainerIcon,
+  trainerLogo,
+  businessName,
+  fallbackTitle,
+}: {
+  trainerIcon?: string | null
+  trainerLogo?: string | null
+  businessName?: string
+  fallbackTitle: string
+}) {
+  // A page's own title (via PageHeader) wins; otherwise fall back to the nav
+  // label for the route, so pages with a custom header (e.g. /schedule) still
+  // name themselves here.
+  const title = usePageTitle() ?? fallbackTitle
+  const pathname = usePathname()
+  const showTitle = !!title && pathname !== '/dashboard'
+  return (
+    <header
+      className="md:hidden sticky top-0 z-40 border-b border-slate-100 bg-white/95 backdrop-blur"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
+      <div className="flex h-14 items-center gap-2 px-3">
+        {/* Back slot — always present so the portal target exists on first paint. */}
+        <span id="pm-topbar-back-mobile" className="flex items-center empty:hidden" />
+        {showTitle ? (
+          <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">{title}</h1>
+        ) : (
+          <Link href="/dashboard" className="flex min-w-0 flex-1 items-center gap-2">
+            {trainerIcon ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={trainerIcon} alt="" className="h-8 w-8 rounded-lg object-contain shrink-0" />
+            ) : trainerLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={trainerLogo} alt="" className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100 shrink-0" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg shrink-0" />
+            )}
+            <span className="truncate font-semibold text-slate-900">{businessName ?? 'PupManager'}</span>
+          </Link>
+        )}
+        {/* Page-actions slot — always present (empty:hidden). */}
+        <span id="pm-topbar-actions-mobile" className="flex items-center gap-1.5 empty:hidden" />
+        {/* The same slide-out search as desktop — one implementation, so the
+            scope selector, type-ahead and keyboard handling can't diverge. */}
+        <TopBarControls variant="search" />
+      </div>
+    </header>
+  )
+}
+
 function TrainerShell({
   children,
   userName,
@@ -897,29 +955,7 @@ function TrainerShell({
           logo and business name, never "PupManager". Sticky (not fixed) so it
           occupies flow and no page needs new top padding; pads the safe-area
           inset so it clears the notch. */}
-      <header
-        className="md:hidden sticky top-0 z-40 border-b border-slate-100 bg-white/95 backdrop-blur"
-        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
-      >
-        <div className="flex h-14 items-center gap-2 px-3">
-          <Link href="/dashboard" className="flex min-w-0 flex-1 items-center gap-2">
-            {trainerIcon ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={trainerIcon} alt="" className="h-8 w-8 rounded-lg object-contain shrink-0" />
-            ) : trainerLogo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={trainerLogo} alt="" className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100 shrink-0" />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg shrink-0" />
-            )}
-            <span className="truncate font-semibold text-slate-900">{businessName ?? 'PupManager'}</span>
-          </Link>
-          {/* The same slide-out search as desktop — one implementation, so the
-              scope selector, type-ahead and keyboard handling can't diverge. */}
-          <TopBarControls variant="search" />
-        </div>
-      </header>
+      <TrainerMobileHeader trainerIcon={trainerIcon} trainerLogo={trainerLogo} businessName={businessName} fallbackTitle={navFallbackTitle} />
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
           Hidden inside Settings, which brings its own rail. */}
@@ -1147,7 +1183,9 @@ function TrainerShell({
           primary action. */}
       {pathname === '/dashboard' && <FloatingCreateButton canSell={canSell} currency={currency} />}
 
-      {/* Mobile bottom tab bar — 4 primary destinations + More */}
+      {/* Mobile bottom tab bar — 4 primary destinations + More. Hidden on the
+          offering wizard, whose own Back/Next bar owns the bottom of the phone. */}
+      {pathname !== '/packages/new' && (
       <nav
         className="md:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-slate-100 z-40"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
@@ -1197,6 +1235,7 @@ function TrainerShell({
           </button>
         </div>
       </nav>
+      )}
 
       {/* Mobile More sheet */}
       {moreOpen && (

@@ -851,7 +851,10 @@ export function PackageForm({
 
       {/* Footer — wizard nav when adding, Save/Delete/Clone when editing. */}
       {stepped ? (
-        <div className="md:col-span-2 flex items-center gap-2 pt-3 border-t border-slate-100 mt-2">
+        <>
+        {/* Spacer so the last fields clear the fixed mobile footer. */}
+        <div className="md:col-span-2 h-20 md:hidden" aria-hidden />
+        <div className="md:col-span-2 flex items-center gap-2 fixed inset-x-0 bottom-0 z-40 border-t border-slate-100 bg-white/95 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] backdrop-blur md:static md:z-auto md:mt-2 md:bg-transparent md:px-0 md:pb-0 md:backdrop-blur-none">
           {clampedStep > 0 && (
             <Button type="button" variant="ghost" onClick={() => setWstep(s => Math.max(0, s - 1))}>Back</Button>
           )}
@@ -872,6 +875,7 @@ export function PackageForm({
             )}
           </div>
         </div>
+        </>
       ) : (
         <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 mt-2">
           <Button type="submit" loading={isSubmitting}>Save changes</Button>

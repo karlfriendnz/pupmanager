@@ -1,6 +1,8 @@
+'use client'
+
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { SetPageTitle } from './page-title'
+import { SetPageTitle, useHasPageTitleShell } from './page-title'
 import { PageHeaderTopBarPortal } from './page-header-portal'
 
 // Either a Link (href) or a click handler (onClick — e.g. router.back() so
@@ -31,11 +33,16 @@ interface PageHeaderProps {
 //     <div className="p-4 md:p-8 w-full max-w-… mx-auto">…</div>
 //   </>
 export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) {
+  // In the trainer shell the phone top bar renders the title + back itself, so
+  // the in-page mobile header below would duplicate it — skip it there.
+  const shellOwnsMobileHeader = useHasPageTitleShell()
   return (
     <>
       <SetPageTitle title={title} />
       <PageHeaderTopBarPortal back={back} actions={actions} />
-      {/* Mobile-only in-page header (no top bar on mobile). */}
+      {/* Mobile-only in-page header — only when the shell's top bar doesn't
+          already show the page title (i.e. the client shell). */}
+      {!shellOwnsMobileHeader && (
       <div
         className="md:hidden sticky z-20 bg-white border-b border-slate-100 px-4"
         style={{
@@ -77,6 +84,7 @@ export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) 
           )}
         </div>
       </div>
+      )}
     </>
   )
 }

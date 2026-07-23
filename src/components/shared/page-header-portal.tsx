@@ -19,32 +19,39 @@ export function PageHeaderTopBarPortal({ back, actions }: { back?: BackLink; act
 
   const backSlot = document.getElementById('pm-topbar-back')
   const actionsSlot = document.getElementById('pm-topbar-actions')
+  // Mobile counterparts — the trainer phone top bar shows the page title, so it
+  // hosts the back arrow + actions there too (see app-shell mobile header).
+  const backSlotMobile = document.getElementById('pm-topbar-back-mobile')
+  const actionsSlotMobile = document.getElementById('pm-topbar-actions-mobile')
 
-  const backEl = back && (
-    back.onClick ? (
-      <button
-        type="button"
-        onClick={back.onClick}
-        aria-label={back.label ?? 'Back'}
-        className="-ml-1 grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-      </button>
-    ) : (
-      <Link
-        href={back.href ?? '#'}
-        aria-label={back.label ?? 'Back'}
-        className="-ml-1 grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-      </Link>
+  // A fresh back element per slot — the same React node can't be portalled twice.
+  const backEl = (cls: string) =>
+    back && (
+      back.onClick ? (
+        <button
+          type="button"
+          onClick={back.onClick}
+          aria-label={back.label ?? 'Back'}
+          className={cls}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+      ) : (
+        <Link href={back.href ?? '#'} aria-label={back.label ?? 'Back'} className={cls}>
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
+      )
     )
-  )
+
+  const deskCls = '-ml-1 grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors'
+  const mobCls = '-ml-1.5 grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors'
 
   return (
     <>
-      {backEl && backSlot && createPortal(backEl, backSlot)}
+      {back && backSlot && createPortal(backEl(deskCls), backSlot)}
       {actions && actionsSlot && createPortal(actions, actionsSlot)}
+      {back && backSlotMobile && createPortal(backEl(mobCls), backSlotMobile)}
+      {actions && actionsSlotMobile && createPortal(actions, actionsSlotMobile)}
     </>
   )
 }
