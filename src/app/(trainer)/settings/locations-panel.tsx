@@ -26,7 +26,7 @@ type Draft = {
 
 const blankDraft = (): Draft => ({ id: null, name: '', address: '', imageUrl: null, description: '' })
 
-export function LocationsPanel({ locations }: { locations: LocationRow[] }) {
+export function LocationsPanel({ locations, region }: { locations: LocationRow[]; region?: string }) {
   const router = useRouter()
   const [draft, setDraft] = useState<Draft | null>(null)
   const [saving, setSaving] = useState(false)
@@ -192,6 +192,7 @@ export function LocationsPanel({ locations }: { locations: LocationRow[] }) {
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Address</label>
             <PlaceAutocomplete
+              region={region}
               initialValue={draft.address}
               placeholder="Search for an address…"
               onTextChange={text => patch({ address: text })}

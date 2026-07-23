@@ -15,6 +15,7 @@ import { IntegrationTab } from './integration-tab'
 import { XeroTab } from './xero-tab'
 import { hasAddon } from '@/lib/billing'
 import { FormsManager } from '../forms/forms-manager'
+import { trainerRegionCode } from '@/lib/country'
 import { LocationsPanel } from './locations-panel'
 import type { Question } from '../forms/session/session-forms-manager'
 import { PageHeader } from '@/components/shared/page-header'
@@ -123,7 +124,7 @@ export default async function TrainerSettingsPage() {
           <TrainerSettingsForm user={user} profile={trainerProfile} />
         ) : undefined}
         notifications={<NotificationsPanel manageableMembers={manageableMembers} />}
-        locations={canEditSettings ? <LocationsPanel locations={locations} /> : undefined}
+        locations={canEditSettings ? <LocationsPanel locations={locations} region={trainerProfile ? trainerRegionCode(trainerProfile) : undefined} /> : undefined}
         integration={can('settings.edit', ctx.role, ctx.permissions) ? <IntegrationTab companyId={ctx.companyId} /> : undefined}
         addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
         team={<TeamPanel />}
