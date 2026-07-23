@@ -12,9 +12,10 @@ import { RecurrenceField } from '@/components/shared/recurrence-field'
 import { cadenceFromRule } from '@/lib/recurrence'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
 import { ImageUploadButton } from '@/components/image-uploader'
+import { DateTimePicker } from '@/components/shared/date-time-picker'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
-import { User, Users, CalendarDays, X } from 'lucide-react'
+import { User, Users, CalendarDays, X, ChevronDown, Check } from 'lucide-react'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
 
 export type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan'
@@ -138,7 +139,7 @@ export function PackageForm({
   // Class-only scheduling (lives on a ClassRun today — see the audit). Shown for
   // the class/drop-in/one-off kinds so this one form covers "when / where / who".
   // NOT yet wired to run creation — captured for review while we shape the form.
-  const [startAt, setStartAt] = useState<string>('')
+  const [startAt, setStartAt] = useState<Date | null>(null)
   const [location, setLocation] = useState<string>('')
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [scheduleNote, setScheduleNote] = useState<string>('')
@@ -146,6 +147,7 @@ export function PackageForm({
   // team endpoint returns membership ids). NOT yet wired to persistence.
   const [team, setTeam] = useState<{ id: string; name: string | null; title: string | null }[]>([])
   const [assignedIds, setAssignedIds] = useState<string[]>([])
+  const [assignOpen, setAssignOpen] = useState(false)
   useEffect(() => {
     let off = false
     fetch('/api/trainer/team')
@@ -341,30 +343,6 @@ export function PackageForm({
         />
       </div>
 
-      {/* Icon / cover image — for every kind (the offering's identity). */}
-      <div className="md:col-span-2">
-        <label className="text-sm font-medium text-slate-700 block mb-1.5">Image <span className="text-slate-400">(optional)</span></label>
-        {imageUrl ? (
-          <div className="relative inline-block">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageUrl} alt="" className="h-24 w-full max-w-[16rem] rounded-xl object-cover border border-slate-200" />
-            <button
-              type="button"
-              onClick={() => setImageUrl(null)}
-              className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 flex items-center justify-center shadow-sm"
-              aria-label="Remove image"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2.5">
-            <ImageUploadButton onUploaded={urls => { if (urls[0]) setImageUrl(urls[0]) }} />
-            <span className="text-xs text-slate-400">Add an icon or cover photo.</span>
-          </div>
-        )}
-      </div>
-
       {/* Kind sits inside step 1 — name it, then say what it is. */}
       <div className="md:col-span-2">
         <p className="text-sm font-medium text-slate-700 mb-2">What are you setting up?</p>
@@ -489,12 +467,7 @@ export function PackageForm({
           <label className="text-sm font-medium text-slate-700 block mb-1.5">
             {kind === 'oneoff' ? 'Date & time' : 'First session (date & time)'}
           </label>
-          <input
-            type="datetime-local"
-            value={startAt}
-            onChange={e => setStartAt(e.target.value)}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <DateTimePicker value={startAt} onChange={setStartAt} />
         </div>
       )}
 
@@ -636,29 +609,49 @@ export function PackageForm({
       {/* ── Step 4 · settings ──────────────────────────────────────── */}
       <SectionHeading step={4} title="Settings" />
 
-      {/* Who delivers it — assignable on every kind. Only worth showing when
-          there's a team to choose from. NOT yet wired to persistence. */}
+      {/* Who delivers it — assignable on every kind. Multi-select dropdown. */}
       {team.length > 1 && (
         <div className="md:col-span-2">
           <label className="text-sm font-medium text-slate-700 block mb-1.5">Assigned to <span className="text-slate-400">(optional)</span></label>
-          <div className="flex flex-wrap gap-1.5">
-            {team.map(m => {
-              const on = assignedIds.includes(m.id)
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setAssignedIds(prev => on ? prev.filter(x => x !== m.id) : [...prev, m.id])}
-                  className={`text-sm px-3 py-1.5 rounded-full border transition-colors ${
-                    on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                  }`}
-                >
-                  {m.name ?? 'Team member'}{m.title ? <span className="opacity-60"> · {m.title}</span> : null}
-                </button>
-              )
-            })}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setAssignOpen(o => !o)}
+              className="h-11 w-full flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-left hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <span className={`flex-1 truncate ${assignedIds.length ? 'text-slate-900' : 'text-slate-400'}`}>
+                {assignedIds.length === 0
+                  ? 'Anyone / unassigned'
+                  : assignedIds.length === 1
+                    ? (team.find(m => m.id === assignedIds[0])?.name ?? 'Team member')
+                    : `${assignedIds.length} team members`}
+              </span>
+              <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />
+            </button>
+            {assignOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setAssignOpen(false)} />
+                <div className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-lg shadow-slate-900/10">
+                  {team.map(m => {
+                    const on = assignedIds.includes(m.id)
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setAssignedIds(prev => on ? prev.filter(x => x !== m.id) : [...prev, m.id])}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className={`flex h-4 w-4 items-center justify-center rounded border ${on ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300'}`}>
+                          {on && <Check className="h-3 w-3" />}
+                        </span>
+                        <span className="text-slate-800">{m.name ?? 'Team member'}{m.title ? <span className="text-slate-400"> · {m.title}</span> : null}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">Tap to assign one or more team members.</p>
         </div>
       )}
 
@@ -750,6 +743,30 @@ export function PackageForm({
             />
           ))}
         </div>
+      </div>
+
+      {/* Image / icon — every kind, on the last step per request. */}
+      <div className="md:col-span-2">
+        <label className="text-sm font-medium text-slate-700 block mb-1.5">Image <span className="text-slate-400">(optional)</span></label>
+        {imageUrl ? (
+          <div className="relative inline-block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imageUrl} alt="" className="h-24 w-full max-w-[16rem] rounded-xl object-cover border border-slate-200" />
+            <button
+              type="button"
+              onClick={() => setImageUrl(null)}
+              className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 flex items-center justify-center shadow-sm"
+              aria-label="Remove image"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <ImageUploadButton onUploaded={urls => { if (urls[0]) setImageUrl(urls[0]) }} />
+            <span className="text-xs text-slate-400">Add an icon or cover photo.</span>
+          </div>
+        )}
       </div>
 
       <div className="md:col-span-2 flex gap-2 pt-2">
