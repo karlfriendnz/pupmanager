@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
+import { trainerRegionCode } from '@/lib/country'
 import { EditPackageForm } from './edit-package-form'
 import type { PackageColor } from '../../package-form'
 import type { Metadata } from 'next'
@@ -21,7 +22,7 @@ export default async function EditPackagePage({
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
 
-  const [pkg, sessionForms] = await Promise.all([
+  const [pkg, sessionForms, trainerProfile] = await Promise.all([
     prisma.package.findFirst({
       where: { id: packageId, trainerId },
       include: { _count: { select: { assignments: true } } },
@@ -31,7 +32,9 @@ export default async function EditPackagePage({
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
       select: { id: true, name: true },
     }),
+    prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { addressCountry: true, signupCountry: true } }),
   ])
+  const region = trainerProfile ? trainerRegionCode(trainerProfile) : undefined
 
   if (!pkg) notFound()
 
@@ -43,6 +46,7 @@ export default async function EditPackagePage({
       />
       <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
         <EditPackageForm
+          region={region}
           existing={{
             id: pkg.id,
             name: pkg.name,

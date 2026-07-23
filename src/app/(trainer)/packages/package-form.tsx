@@ -14,7 +14,7 @@ import { DateTimePicker } from '@/components/shared/date-time-picker'
 import { SessionSlotsEditor, newSlot, type SessionSlot } from '@/components/shared/session-slots'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
-import { User, Users, CalendarDays, X, ChevronDown, Check } from 'lucide-react'
+import { User, Users, CalendarDays, X, ChevronDown, Check, Plus } from 'lucide-react'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
 
 export type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan'
@@ -113,11 +113,14 @@ type FormValues = z.infer<typeof formSchema>
 export function PackageForm({
   existing,
   sessionForms,
+  region,
   onCancel,
   onSaved,
 }: {
   existing: PkgRow | null
   sessionForms: SessionFormOption[]
+  /** ISO country code for localising Google address suggestions. */
+  region?: string
   onCancel: () => void
   onSaved: (p: PkgRow, isNew: boolean) => void
 }) {
@@ -571,33 +574,67 @@ export function PackageForm({
         <>
           <div className="md:col-span-2">
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Location <span className="text-slate-400">(optional)</span></label>
-            {/* Pick a saved location (Settings → Locations) or type a one-off. */}
-            {savedLocations.length > 0 && (
-              <select
-                value={locationChoice}
-                onChange={e => {
-                  const v = e.target.value
-                  setLocationChoice(v)
-                  if (v === '' ) setLocation('')
-                  else if (v !== '__custom') {
-                    const loc = savedLocations.find(l => l.id === v)
-                    setLocation(loc?.address || loc?.name || '')
-                  }
-                }}
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+            {/* Pick a saved location, or "+" to type one (a name or a Google
+                address — both work) and optionally save it for next time. */}
+            <div className="flex gap-2 mb-2">
+              {savedLocations.length > 0 && (
+                <select
+                  value={locationChoice}
+                  onChange={e => {
+                    const v = e.target.value
+                    setLocationChoice(v)
+                    if (v === '') setLocation('')
+                    else if (v !== '__custom') {
+                      const loc = savedLocations.find(l => l.id === v)
+                      setLocation(loc?.address || loc?.name || '')
+                    }
+                  }}
+                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">No location</option>
+                  {savedLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  <option value="__custom">Type a location…</option>
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={() => { setLocationChoice('__custom'); setLocation('') }}
+                title="Add a new location"
+                className="h-11 shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 hover:border-blue-400 hover:text-blue-600"
               >
-                <option value="">No location</option>
-                {savedLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                <option value="__custom">Custom address…</option>
-              </select>
-            )}
+                <Plus className="h-4 w-4" /> New
+              </button>
+            </div>
             {(savedLocations.length === 0 || locationChoice === '__custom') && (
-              <PlaceAutocomplete
-                initialValue={location}
-                placeholder="e.g. Bethlehem Hall, or the field behind it"
-                onTextChange={setLocation}
-                onSelect={r => setLocation(r.address)}
-              />
+              <div className="flex flex-col gap-2">
+                <PlaceAutocomplete
+                  initialValue={location}
+                  placeholder="Type a name (e.g. Bayfair Reserve) or search an address"
+                  region={region}
+                  onTextChange={setLocation}
+                  onSelect={r => setLocation(r.address)}
+                />
+                {location.trim() && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const name = location.trim()
+                      const res = await fetch('/api/trainer/locations', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, address: name }),
+                      })
+                      if (res.ok) {
+                        const { location: loc } = await res.json()
+                        setSavedLocations(prev => [...prev, { id: loc.id, name: loc.name, address: loc.address }])
+                        setLocationChoice(loc.id)
+                      }
+                    }}
+                    className="self-start text-xs font-medium text-blue-600 hover:underline"
+                  >
+                    ＋ Save &ldquo;{location.trim()}&rdquo; to my locations
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </>

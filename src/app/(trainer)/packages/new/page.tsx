@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isConnectConfigured } from '@/lib/connect'
 import { PageHeader } from '@/components/shared/page-header'
+import { trainerRegionCode } from '@/lib/country'
 import { NewPackageForm } from './new-package-form'
 import type { Metadata } from 'next'
 
@@ -23,9 +24,11 @@ export default async function NewPackagePage() {
     }),
     prisma.trainerProfile.findUnique({
       where: { id: trainerId },
-      select: { connectChargesEnabled: true, sandboxBilling: true },
+      select: { connectChargesEnabled: true, sandboxBilling: true, addressCountry: true, signupCountry: true },
     }),
   ])
+  // Localise Google address suggestions to the trainer's country (global rule).
+  const region = trainer ? trainerRegionCode(trainer) : undefined
 
   // Whether to nudge Stripe Connect after a priced package is created. Only when
   // payments aren't already live AND the trainer can actually onboard right now
@@ -42,7 +45,7 @@ export default async function NewPackagePage() {
         back={{ href: '/packages', label: 'Back to packages' }}
       />
       <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
-        <NewPackageForm sessionForms={sessionForms} promptConnect={promptConnect} />
+        <NewPackageForm sessionForms={sessionForms} promptConnect={promptConnect} region={region} />
       </div>
     </>
   )
