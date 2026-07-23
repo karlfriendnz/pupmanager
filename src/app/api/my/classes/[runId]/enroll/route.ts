@@ -21,8 +21,11 @@ import { env } from '@/lib/env'
 
 const schema = z.object({
   type: z.enum(['FULL', 'DROP_IN']).optional(),
-  // Required for a DROP_IN: the single session they're booking.
+  // Required for a DROP_IN: the session(s) they're booking. sessionId is the
+  // original single form, still accepted; sessionIds books several sessions of
+  // the same class in one go — one enrolment, and one charge line, each.
   sessionId: z.string().min(1).optional(),
+  sessionIds: z.array(z.string().min(1)).min(1).max(52).optional(),
   dogId: z.string().min(1).nullable().optional(),
 })
 
@@ -65,28 +68,38 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   // A drop-in is one specific, still-to-come session. Resolve + validate it up
   // front so pricing, the capacity check and (for pay-to-confirm) the checkout
   // intent all point at the same session.
-  let dropInSessionId: string | null = null
-  // The schedule slot behind that session, when the class has one — it sets the
-  // session's own price and capacity.
-  let dropInSlot: { capacity: number | null; priceCents: number | null; specialPriceCents: number | null } | null = null
+  type Slot = { capacity: number | null; priceCents: number | null; specialPriceCents: number | null } | null
+  // The sessions being booked, each with the schedule slot behind it — the slot
+  // sets that session's own price and capacity, so a class can charge and cap
+  // differently on different days.
+  let dropIns: { id: string; scheduledAt: Date; slot: Slot }[] = []
   if (type === 'DROP_IN') {
     if (!run.package.allowDropIn) {
       return NextResponse.json({ error: 'This class doesn’t allow drop-ins.' }, { status: 400 })
     }
-    if (!parsed.data.sessionId) {
+    const wanted = parsed.data.sessionIds ?? (parsed.data.sessionId ? [parsed.data.sessionId] : [])
+    if (wanted.length === 0) {
       return NextResponse.json({ error: 'Pick which session to drop into.' }, { status: 400 })
     }
-    const sess = await prisma.trainingSession.findFirst({
-      where: { id: parsed.data.sessionId, classRunId: runId, status: 'UPCOMING', scheduledAt: { gte: new Date() } },
+    const found = await prisma.trainingSession.findMany({
+      where: { id: { in: wanted }, classRunId: runId, status: 'UPCOMING', scheduledAt: { gte: new Date() } },
+      orderBy: { scheduledAt: 'asc' },
       select: {
-        id: true,
+        id: true, scheduledAt: true,
         packageSessionSlot: { select: { capacity: true, priceCents: true, specialPriceCents: true } },
       },
     })
-    if (!sess) return NextResponse.json({ error: 'That session has already happened or isn’t part of this class.' }, { status: 400 })
-    dropInSessionId = sess.id
-    dropInSlot = sess.packageSessionSlot
+    // All or nothing on validity: a session that's gone means the list they
+    // were shown is stale, and half-booking it silently is worse than asking
+    // them to look again.
+    if (found.length !== new Set(wanted).size) {
+      return NextResponse.json({ error: 'One of those sessions has already happened or isn’t part of this class.' }, { status: 400 })
+    }
+    dropIns = found.map(s => ({ id: s.id, scheduledAt: s.scheduledAt, slot: s.packageSessionSlot }))
   }
+  // The first chosen session drives the single-session decisions below.
+  const dropInSessionId: string | null = dropIns[0]?.id ?? null
+  const dropInSlot: Slot = dropIns[0]?.slot ?? null
 
   // Default to the client's primary dog; only honour a supplied dog they own.
   const ownDogIds = new Set([profile.dogId, ...profile.dogs.map(d => d.id)].filter(Boolean) as string[])
@@ -95,35 +108,78 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     return NextResponse.json({ error: 'That dog isn’t on your account.' }, { status: 400 })
   }
 
-  // Already enrolled? (the unique index also enforces this.)
-  const existing = await prisma.classEnrollment.findFirst({
-    where: { classRunId: runId, clientId: profile.id, dogId: dogId ?? null },
-    select: { status: true },
-  })
-  if (existing && existing.status !== 'WITHDRAWN') {
-    return NextResponse.json({ error: 'You’re already enrolled in this class.' }, { status: 409 })
+  // Already booked? A FULL seat is one per client+dog for the whole run; a
+  // drop-in is per session, so only the sessions they already hold clash —
+  // booking two more Saturdays is a normal thing to do.
+  const mine = { classRunId: runId, clientId: profile.id, dogId: dogId ?? null }
+  if (type === 'FULL') {
+    const existing = await prisma.classEnrollment.findFirst({
+      where: { ...mine, status: { not: 'WITHDRAWN' } },
+      select: { status: true },
+    })
+    if (existing) {
+      return NextResponse.json({ error: 'You’re already enrolled in this class.' }, { status: 409 })
+    }
+  } else {
+    const clashes = await prisma.classEnrollment.findMany({
+      where: { ...mine, status: { not: 'WITHDRAWN' }, dropInSessionId: { in: dropIns.map(d => d.id) } },
+      select: { dropInSessionId: true },
+    })
+    if (clashes.length > 0) {
+      return NextResponse.json({ error: 'You’ve already booked one of those sessions.' }, { status: 409 })
+    }
+    // A full seat already covers every session — dropping in as well would
+    // charge them twice for a class they're in.
+    const full = await prisma.classEnrollment.findFirst({
+      where: { ...mine, status: { not: 'WITHDRAWN' }, dropInSessionId: null },
+      select: { id: true },
+    })
+    if (full) {
+      return NextResponse.json({ error: 'You’re already enrolled in this class.' }, { status: 409 })
+    }
   }
 
   // Price the enrolment. A drop-in is the price of the ONE session they picked
   // — its slot's, so a class can charge differently on different days; a full
   // seat is the whole-course price.
+  // Each chosen session is priced on its own slot, so several sessions is the
+  // sum of what each one costs — not one price times a quantity.
+  const perSession = dropIns.map(d => ({ ...d, price: sessionDropInPriceCents(d.slot, run.package) }))
   const price: number | null =
     type === 'FULL'
       ? (run.package.specialPriceCents ?? run.package.priceCents)
-      : sessionDropInPriceCents(dropInSlot, run.package)
+      : perSession.reduce<number | null>((sum, s) => s.price == null ? sum : (sum ?? 0) + s.price, null)
 
   // Pay-to-confirm only when there's a real seat to pay for. Capacity is
-  // per-session: a drop-in checks its one session (against that session's own
-  // cap, if its slot sets one); a full seat checks the run.
-  const seatDecision = decideEnrollment({
-    capacity: dropInSessionId
-      ? sessionCapacity(dropInSlot, run.capacity, run.package.capacity)
-      : effectiveCapacity(run.capacity, run.package.capacity),
-    enrolledCount: dropInSessionId
-      ? await sessionAttendeeCount(runId, dropInSessionId)
-      : await enrolledCount(runId),
-    allowWaitlist: run.package.allowWaitlist,
-  })
+  // per-session: each drop-in is checked against its own session (and that
+  // session's own cap, if its slot sets one); a full seat checks the run.
+  const decisions = await Promise.all(perSession.map(async s => ({
+    ...s,
+    decision: decideEnrollment({
+      capacity: sessionCapacity(s.slot, run.capacity, run.package.capacity),
+      enrolledCount: await sessionAttendeeCount(runId, s.id),
+      allowWaitlist: run.package.allowWaitlist,
+    }),
+  })))
+  // All or nothing again: charging for three sessions and seating them in two
+  // is the worst outcome here, so a full session sends them back to choose.
+  const rejected = decisions.filter(d => d.decision === 'REJECTED_FULL')
+  if (type === 'DROP_IN' && rejected.length > 0) {
+    return NextResponse.json({
+      error: rejected.length === decisions.length
+        ? 'That session is full.'
+        : `${rejected.length} of the sessions you picked are full — choose again.`,
+    }, { status: 409 })
+  }
+  const seatDecision = type === 'DROP_IN'
+    // Waitlisted only if every chosen session is; otherwise they're getting a
+    // real seat and the paid path applies.
+    ? (decisions.every(d => d.decision === 'WAITLISTED') ? 'WAITLISTED' : 'ENROLLED')
+    : decideEnrollment({
+        capacity: effectiveCapacity(run.capacity, run.package.capacity),
+        enrolledCount: await enrolledCount(runId),
+        allowWaitlist: run.package.allowWaitlist,
+      })
 
   // Whether a priced ENROLLED seat should be charged up front. Only meaningful
   // when the trainer can take cards — resolved below inside that guard.
@@ -159,16 +215,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
         connectAccountId: trainer.connectAccountId,
         clientId: profile.id,
         currency: trainer.payoutCurrency ?? 'nzd',
-        description: `${run.name}${type === 'DROP_IN' ? ' (drop-in)' : ''}`,
-        lines: [
-          {
-            kind: 'CLASS_ENROLLMENT',
-            description: `${run.name}${type === 'DROP_IN' ? ' (drop-in)' : ''}`,
-            unitAmount: price,
-            quantity: 1,
-            intent: { classRunId: runId, type, dogId: dogId ?? null, sessionId: dropInSessionId },
-          },
-        ],
+        description: `${run.name}${type === 'DROP_IN' ? ` (drop-in · ${perSession.length} session${perSession.length === 1 ? '' : 's'})` : ''}`,
+        // One line per session, each carrying its own intent — the connect
+        // webhook fulfils class lines one at a time, so this fans out into an
+        // enrolment per session once the payment lands. A single line with
+        // quantity 3 would pay for three and seat them once.
+        lines: type === 'DROP_IN'
+          ? perSession.map(s => ({
+              kind: 'CLASS_ENROLLMENT' as const,
+              description: `${run.name} (drop-in · ${s.scheduledAt.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' })})`,
+              unitAmount: s.price ?? 0,
+              quantity: 1,
+              intent: { classRunId: runId, type, dogId: dogId ?? null, sessionId: s.id },
+            }))
+          : [
+            {
+              kind: 'CLASS_ENROLLMENT' as const,
+              description: run.name,
+              unitAmount: price,
+              quantity: 1,
+              intent: { classRunId: runId, type, dogId: dogId ?? null, sessionId: null },
+            },
+          ],
         successUrl,
         cancelUrl,
       })
@@ -187,22 +255,31 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   // Free (or waitlist) enrolment — straight in. A priced pay-later enrolment
   // (require-payment off) also lands here: we enrol, then raise a receivable.
   try {
-    const result = await enrollInRun({ classRunId: runId, clientId: profile.id, dogId: dogId ?? null, type, sessionId: dropInSessionId, source: 'SELF_SERVE' })
-    if (payLater && result.status === 'ENROLLED') {
-      await prisma.classEnrollment.update({ where: { id: result.enrollmentId }, data: { invoicedAt: new Date() } }).catch(() => {})
-      await createInvoiceForAssignment({
-        trainerId: profile.trainerId,
-        clientId: profile.id,
-        sourceType: 'CLASS_ENROLLMENT',
-        classEnrollmentId: result.enrollmentId,
-        // They get the enrolment confirmation below — two emails seconds
-        // apart, both about the same booking, is worse than one.
-        notifyClient: false,
-      })
+    // One enrolment per chosen session (a FULL seat is a single pass with no
+    // session), each raising its own receivable on the pay-later path.
+    const targets: (string | null)[] = type === 'DROP_IN' ? perSession.map(s => s.id) : [null]
+    const results: { enrollmentId: string; status: 'ENROLLED' | 'WAITLISTED' }[] = []
+    for (const sid of targets) {
+      results.push(await enrollInRun({ classRunId: runId, clientId: profile.id, dogId: dogId ?? null, type, sessionId: sid, source: 'SELF_SERVE' }))
+    }
+    const result = results[0]
+    if (payLater) {
+      for (const r of results.filter(r => r.status === 'ENROLLED')) {
+        await prisma.classEnrollment.update({ where: { id: r.enrollmentId }, data: { invoicedAt: new Date() } }).catch(() => {})
+        await createInvoiceForAssignment({
+          trainerId: profile.trainerId,
+          clientId: profile.id,
+          sourceType: 'CLASS_ENROLLMENT',
+          classEnrollmentId: r.enrollmentId,
+          // They get the enrolment confirmation below — two emails seconds
+          // apart, both about the same booking, is worse than one.
+          notifyClient: false,
+        })
+      }
     }
     // Tell the trainer their client just enrolled (or joined the waitlist).
     if (trainerUserId) {
-      const detail = `${run.name}${type === 'DROP_IN' ? ' (drop-in)' : ''}${result.status === 'WAITLISTED' ? ' (waitlist)' : ''}`
+      const detail = `${run.name}${type === 'DROP_IN' ? ` (drop-in · ${results.length} session${results.length === 1 ? '' : 's'})` : ''}${result.status === 'WAITLISTED' ? ' (waitlist)' : ''}`
       await notifyTrainer(
         trainerUserId,
         'CLIENT_BOOKED_SESSION',
@@ -218,12 +295,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
         userId: active.userId,
         trainerId: profile.trainerId,
         type: 'CLIENT_ADDED_TO_PLAN',
-        vars: { trainerName: profile.trainer?.businessName ?? 'Your trainer', dogName: profile.dog?.name ?? '', planName: run.name, detail: type === 'DROP_IN' ? 'Drop-in' : '' },
+        vars: {
+          trainerName: profile.trainer?.businessName ?? 'Your trainer',
+          dogName: profile.dog?.name ?? '',
+          planName: run.name,
+          // One confirmation for the lot, saying how many they booked.
+          detail: type === 'DROP_IN' ? `Drop-in · ${results.length} session${results.length === 1 ? '' : 's'}` : '',
+        },
         link: '/my-sessions',
         ctaLabel: 'View your sessions',
       }).catch(err => console.error('[class enrol] client-confirm failed', err))
     }
-    return NextResponse.json({ ok: true, mode: result.status === 'WAITLISTED' ? 'waitlisted' : 'enrolled' }, { status: 201 })
+    return NextResponse.json({ ok: true, mode: result.status === 'WAITLISTED' ? 'waitlisted' : 'enrolled', booked: results.length }, { status: 201 })
   } catch (err) {
     if (err instanceof ClassError) {
       const status = err.code === 'FULL' || err.code === 'ALREADY_ENROLLED' || err.code === 'RUN_CLOSED' ? 409 : 400

@@ -138,9 +138,15 @@ export default async function MyAvailabilityPage() {
   // Open group classes the client can join themselves.
   const enrolled = await prisma.classEnrollment.findMany({
     where: { clientId: active.clientId, status: { in: ['ENROLLED', 'WAITLISTED', 'COMPLETED'] } },
-    select: { classRunId: true },
+    select: { classRunId: true, type: true, dropInSessionId: true },
   })
-  const enrolledRunIds = enrolled.map(e => e.classRunId)
+  // Only a FULL enrolment takes a class off the list — that one covers every
+  // session, so there's nothing left to book. A drop-in covers ONE session, so
+  // hiding the whole class after the first booking hid it from exactly the
+  // people most likely to come back for another week. The sessions they
+  // already hold are marked below instead.
+  const enrolledRunIds = enrolled.filter(e => e.type === 'FULL').map(e => e.classRunId)
+  const bookedSessionIds = new Set(enrolled.map(e => e.dropInSessionId).filter(Boolean) as string[])
   const now = new Date()
   const openRuns = await prisma.classRun.findMany({
     where: {
@@ -182,6 +188,9 @@ export default async function MyAvailabilityPage() {
         durationMins: s.durationMins,
         title: s.title,
         spacesLeft: spaces.spacesLeftFor(s.id, sessionCapacity(s.packageSessionSlot, r.capacity, r.package.capacity)),
+        // Already theirs — shown as booked in the picker rather than offered
+        // again and refused at checkout.
+        booked: bookedSessionIds.has(s.id),
         // What THIS session costs to drop into — a drop-in class can charge a
         // different price on different days.
         dropInPriceCents: sessionDropInPriceCents(s.packageSessionSlot, r.package),
