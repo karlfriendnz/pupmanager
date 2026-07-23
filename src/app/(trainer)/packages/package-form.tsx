@@ -586,77 +586,36 @@ export function PackageForm({
         </label>
       )}
 
-      {/* Where it meets — class-only (ClassRun.location). Not for drop-in
-          (each session card has its own location). */}
+      {/* Where it meets — same design as the drop-in session location: a
+          dropdown of saved locations + a "+" that opens the add-location popup. */}
       {kind !== 'onetoone' && kind !== 'dropin' && (
-        <>
-          <div className="md:col-span-2">
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Location <span className="text-slate-400">(optional)</span></label>
-            {/* Pick a saved location, or "+" to type one (a name or a Google
-                address — both work) and optionally save it for next time. */}
-            <div className="flex gap-2 mb-2">
-              {savedLocations.length > 0 && (
-                <select
-                  value={locationChoice}
-                  onChange={e => {
-                    const v = e.target.value
-                    setLocationChoice(v)
-                    if (v === '') setLocation('')
-                    else if (v !== '__custom') {
-                      const loc = savedLocations.find(l => l.id === v)
-                      setLocation(loc?.address || loc?.name || '')
-                    }
-                  }}
-                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">No location</option>
-                  {savedLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  <option value="__custom">Type a location…</option>
-                </select>
-              )}
-              <button
-                type="button"
-                onClick={() => setAddLocationOpen(true)}
-                title="Add a new location"
-                aria-label="Add a new location"
-                className="h-11 w-11 shrink-0 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:border-blue-400 hover:text-blue-600"
-              >
-                <Plus className="h-5 w-5" />
-              </button>
-            </div>
-            {(savedLocations.length === 0 || locationChoice === '__custom') && (
-              <div className="flex flex-col gap-2">
-                <PlaceAutocomplete
-                  initialValue={location}
-                  placeholder="Type a name (e.g. Bayfair Reserve) or search an address"
-                  region={region}
-                  onTextChange={setLocation}
-                  onSelect={r => setLocation(r.address)}
-                />
-                {location.trim() && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const name = location.trim()
-                      const res = await fetch('/api/trainer/locations', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name, address: name }),
-                      })
-                      if (res.ok) {
-                        const { location: loc } = await res.json()
-                        setSavedLocations(prev => [...prev, { id: loc.id, name: loc.name, address: loc.address }])
-                        setLocationChoice(loc.id)
-                      }
-                    }}
-                    className="self-start text-xs font-medium text-blue-600 hover:underline"
-                  >
-                    ＋ Save &ldquo;{location.trim()}&rdquo; to my locations
-                  </button>
-                )}
-              </div>
-            )}
+        <div className="md:col-span-2">
+          <label className="text-sm font-medium text-slate-700 block mb-1.5">Location <span className="text-slate-400">(optional)</span></label>
+          <div className="flex gap-2">
+            <select
+              value={locationChoice}
+              onChange={e => {
+                const v = e.target.value
+                setLocationChoice(v)
+                const loc = savedLocations.find(l => l.id === v)
+                setLocation(loc?.address || loc?.name || '')
+              }}
+              className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Choose location…</option>
+              {savedLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+            <button
+              type="button"
+              onClick={() => setAddLocationOpen(true)}
+              title="Add a new location"
+              aria-label="Add a new location"
+              className="h-11 w-11 shrink-0 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:border-blue-400 hover:text-blue-600"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
           </div>
-        </>
+        </div>
       )}
 
       {/* ── Step 3 · pricing — a drop-in prices per session, so no pricing step. */}

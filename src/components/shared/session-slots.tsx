@@ -7,7 +7,6 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from '@dnd-kit/utilities'
 import { RecurrenceField } from '@/components/shared/recurrence-field'
 import { bufferOptions } from '@/components/shared/buffer-field'
-import { RequirePaymentField } from '@/components/shared/require-payment-field'
 import { AddLocationModal } from '@/components/shared/add-location-modal'
 import { normalizeBufferMins } from '@/lib/buffer'
 
@@ -27,7 +26,7 @@ export type SessionSlot = {
   price: string // dollars as typed; '' = free — each session prices itself
   specialPrice: string // optional discounted price
   account: string // Xero account code
-  requirePayment: boolean | null // true/false/null(=use default) — same as class-level
+  requirePayment: boolean // true = require payment to book, false = don't
   assignedIds: string[] // team members running this session
   locationId: string // '' = none / inherit the class location
   repeat: string // iCalendar RRULE subset (see lib/recurrence.ts); '' = one-off
@@ -41,7 +40,7 @@ const DAYS = [
 const GAP_HELP = 'Time you need after each session — travel, clean-up, a breather. Nothing can be booked into it.'
 
 export function newSlot(): SessionSlot {
-  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 1, start: '15:00', end: '17:00', gap: '0', capacity: '', price: '', specialPrice: '', account: '', requirePayment: null, assignedIds: [], locationId: '', repeat: 'FREQ=WEEKLY' }
+  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 1, start: '15:00', end: '17:00', gap: '0', capacity: '', price: '', specialPrice: '', account: '', requirePayment: false, assignedIds: [], locationId: '', repeat: 'FREQ=WEEKLY' }
 }
 
 function Row({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
@@ -172,8 +171,18 @@ export function SessionSlotsEditor({
           </Row>
 
           <Row label="Payment">
-            <div className="max-w-[320px]">
-              <RequirePaymentField value={s.requirePayment} onChange={v => update(s.id, { requirePayment: v })} />
+            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl max-w-[280px]">
+              {([{ v: true, label: 'Require payment' }, { v: false, label: 'Don’t require' }] as const).map(o => (
+                <button
+                  key={String(o.v)}
+                  type="button"
+                  onClick={() => update(s.id, { requirePayment: o.v })}
+                  aria-pressed={s.requirePayment === o.v}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${s.requirePayment === o.v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  {o.label}
+                </button>
+              ))}
             </div>
           </Row>
 
