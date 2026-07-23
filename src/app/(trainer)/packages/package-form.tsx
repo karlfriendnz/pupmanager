@@ -10,9 +10,11 @@ import { RequirePaymentField } from '@/components/shared/require-payment-field'
 import { BufferField } from '@/components/shared/buffer-field'
 import { RecurrenceField } from '@/components/shared/recurrence-field'
 import { cadenceFromRule } from '@/lib/recurrence'
+import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
+import { ImageUploadButton } from '@/components/image-uploader'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
-import { User, Users, CalendarDays } from 'lucide-react'
+import { User, Users, CalendarDays, X } from 'lucide-react'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
 
 export type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan'
@@ -133,6 +135,13 @@ export function PackageForm({
   const [allowDropIn, setAllowDropIn] = useState<boolean>(existing?.allowDropIn ?? false)
   const [dropInPrice, setDropInPrice] = useState<string>(centsToDollars(existing?.dropInPriceCents ?? null))
   const [recurrenceRule, setRecurrenceRule] = useState<string>(existing?.recurrenceRule ?? '')
+  // Class-only scheduling (lives on a ClassRun today — see the audit). Shown for
+  // the class/drop-in/one-off kinds so this one form covers "when / where / who".
+  // NOT yet wired to run creation — captured for review while we shape the form.
+  const [startAt, setStartAt] = useState<string>('')
+  const [location, setLocation] = useState<string>('')
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [scheduleNote, setScheduleNote] = useState<string>('')
   // The offering kind drives the card selection + which schedule fields show.
   // It's a UI discriminator over the persisted flags: a one-off event is a
   // group with a single session and no recurrence.
@@ -434,6 +443,23 @@ export function PackageForm({
         </div>
       )}
 
+      {/* When / where / cover — unique to a scheduled class (these live on the
+          ClassRun today). Shown for the class kinds so this one form covers the
+          whole thing. Recurring classes call it the FIRST session's time. */}
+      {kind !== 'onetoone' && (
+        <div className="md:col-span-2">
+          <label className="text-sm font-medium text-slate-700 block mb-1.5">
+            {kind === 'oneoff' ? 'Date & time' : 'First session (date & time)'}
+          </label>
+          <input
+            type="datetime-local"
+            value={startAt}
+            onChange={e => setStartAt(e.target.value)}
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      )}
+
       <Input
         label="Default duration (mins)"
         type="number"
@@ -512,6 +538,49 @@ export function PackageForm({
             </label>
           )}
         </div>
+      )}
+
+      {/* Where it meets + a cover photo — class-only (ClassRun.location/imageUrl).
+          A schedule note ("Thursdays 4pm") only makes sense for a recurring one. */}
+      {kind !== 'onetoone' && (
+        <>
+          <div className="md:col-span-2">
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Location <span className="text-slate-400">(optional)</span></label>
+            <PlaceAutocomplete
+              initialValue={location}
+              placeholder="e.g. Bethlehem Hall, or the field behind it"
+              onTextChange={setLocation}
+              onSelect={r => setLocation(r.address)}
+            />
+          </div>
+
+          {(kind === 'group' || kind === 'dropin') && (
+            <Input label="Schedule note (optional)" placeholder="e.g. Thursdays 4:00pm" value={scheduleNote} onChange={e => setScheduleNote(e.target.value)} />
+          )}
+
+          <div className="md:col-span-2">
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Cover image <span className="text-slate-400">(optional)</span></label>
+            {imageUrl ? (
+              <div className="relative inline-block">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imageUrl} alt="" className="h-24 w-full max-w-[16rem] rounded-xl object-cover border border-slate-200" />
+                <button
+                  type="button"
+                  onClick={() => setImageUrl(null)}
+                  className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 flex items-center justify-center shadow-sm"
+                  aria-label="Remove image"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5">
+                <ImageUploadButton onUploaded={urls => { if (urls[0]) setImageUrl(urls[0]) }} />
+                <span className="text-xs text-slate-400">Add a cover photo.</span>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* ── Step 3 · pricing ───────────────────────────────────────── */}
