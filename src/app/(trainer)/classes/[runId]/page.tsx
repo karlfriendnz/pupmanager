@@ -116,6 +116,7 @@ export default async function ClassRunPage({
           type: e.type,
           waitlistPosition: e.waitlistPosition,
           source: e.source,
+          dropInSessionId: e.dropInSessionId,
           dropInSessionAt: e.dropInSession?.scheduledAt.toISOString() ?? null,
           dropInSessionIndex: e.joinedAtIndex,
           clientId: e.client.id,

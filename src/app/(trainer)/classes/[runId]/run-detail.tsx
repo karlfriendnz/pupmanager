@@ -55,6 +55,7 @@ type Enrollment = {
   waitlistPosition: number | null
   source: string
   /** DROP_IN only: the session this booking is for. */
+  dropInSessionId: string | null
   dropInSessionAt: string | null
   dropInSessionIndex: number | null
   clientId: string
@@ -421,6 +422,14 @@ export function RunDetail({
           clients={clients}
           allowDropIn={run.allowDropIn}
           sessions={sessions}
+          // Which sessions each client already holds, so the picker can show
+          // them as booked instead of letting you tick one and be refused.
+          bookedByClient={enrollments.reduce((m, e) => {
+            if (e.status === 'WITHDRAWN' || !e.dropInSessionId) return m
+            const set = m.get(e.clientId) ?? new Set<string>()
+            set.add(e.dropInSessionId)
+            return m.set(e.clientId, set)
+          }, new Map<string, Set<string>>())}
           // Only a FULL enrolment takes someone out of the running — they're
           // already in every session. Someone with drop-ins booked can still
           // be added to more, so they stay pickable.
@@ -707,6 +716,7 @@ function EnrolModal({
   clients,
   allowDropIn,
   sessions,
+  bookedByClient,
   existing,
   onClose,
   onDone,
@@ -715,6 +725,7 @@ function EnrolModal({
   clients: ClientOpt[]
   allowDropIn: boolean
   sessions: SessionRow[]
+  bookedByClient: Map<string, Set<string>>
   existing: Set<string>
   onClose: () => void
   onDone: () => void
@@ -740,6 +751,13 @@ function EnrolModal({
   // trip through this form, not three.
   const [sessionIds, setSessionIds] = useState<string[]>([])
   const upcoming = sessions.filter(s => s.status === 'UPCOMING' && new Date(s.scheduledAt).getTime() > Date.now())
+  // What this client already holds. Shown as booked rather than left tickable
+  // and refused on submit — the answer is already on screen.
+  const alreadyBooked = bookedByClient.get(clientId) ?? new Set<string>()
+  const bookable = upcoming.filter(s => !alreadyBooked.has(s.id))
+  // Changing client changes what's already booked, so a tick left over from
+  // the previous one could post a session this client can't take.
+  useEffect(() => { setSessionIds([]) }, [clientId])
   const [notify, setNotify] = useState(true)
   // Ask them to pay now, or raise the invoice quietly and chase it later.
   const [sendInvoice, setSendInvoice] = useState(true)
@@ -877,37 +895,50 @@ function EnrolModal({
                 <div>
                   <div className="flex items-baseline justify-between mb-1.5">
                     <label className="text-sm font-medium text-slate-700">Which sessions?</label>
-                    {upcoming.length > 0 && (
+                    {/* Select all means all they can still take — the ones
+                        they already hold aren't on offer. */}
+                    {bookable.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => setSessionIds(sessionIds.length === upcoming.length ? [] : upcoming.map(s => s.id))}
+                        onClick={() => setSessionIds(sessionIds.length === bookable.length ? [] : bookable.map(s => s.id))}
                         className="text-[11px] font-semibold text-blue-600 hover:underline"
                       >
-                        {sessionIds.length === upcoming.length ? 'Clear all' : 'Select all'}
+                        {sessionIds.length === bookable.length ? 'Clear all' : 'Select all'}
                       </button>
                     )}
                   </div>
                   {upcoming.length === 0 ? (
                     <p className="text-sm text-slate-500">No sessions still to come in this class.</p>
+                  ) : bookable.length === 0 ? (
+                    <p className="text-sm text-slate-500">They&apos;re already booked into every session still to come.</p>
                   ) : (
                     <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
                       {upcoming.map(s => {
+                        const booked = alreadyBooked.has(s.id)
                         const on = sessionIds.includes(s.id)
                         return (
                           <label
                             key={s.id}
-                            className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer ${on ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                            className={`flex items-center gap-2.5 px-3 py-2.5 ${
+                              booked ? 'bg-slate-50 cursor-default' : on ? 'bg-blue-50 cursor-pointer' : 'hover:bg-slate-50 cursor-pointer'
+                            }`}
                           >
                             <input
                               type="checkbox"
-                              checked={on}
+                              checked={booked || on}
+                              disabled={booked}
                               onChange={() => setSessionIds(prev => on ? prev.filter(x => x !== s.id) : [...prev, s.id])}
-                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:cursor-default disabled:opacity-60"
                             />
-                            <span className="min-w-0 flex-1 text-sm text-slate-700" suppressHydrationWarning>
+                            <span className={`min-w-0 flex-1 text-sm ${booked ? 'text-slate-400' : 'text-slate-700'}`} suppressHydrationWarning>
                               {new Date(s.scheduledAt).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
                             </span>
-                            <span className="shrink-0 text-sm tabular-nums text-slate-500" suppressHydrationWarning>
+                            {booked && (
+                              <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                                Already booked
+                              </span>
+                            )}
+                            <span className={`shrink-0 text-sm tabular-nums ${booked ? 'text-slate-400' : 'text-slate-500'}`} suppressHydrationWarning>
                               {new Date(s.scheduledAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
                             </span>
                           </label>
