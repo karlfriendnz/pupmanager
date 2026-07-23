@@ -352,55 +352,6 @@ export function PackageForm({
         </div>
       )}
 
-      {isGroup && (
-        <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3.5 flex flex-col gap-3">
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Capacity (optional)</label>
-            <input
-              type="number"
-              min={0}
-              value={capacity}
-              onChange={e => setCapacity(e.target.value)}
-              placeholder="Leave blank for unlimited"
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-[11px] text-slate-400 mt-1">Max in the room per session. A run can override this.</p>
-          </div>
-
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input type="checkbox" checked={allowDropIn} onChange={e => setAllowDropIn(e.target.checked)} className="h-4 w-4 mt-0.5" />
-            <span className="flex-1 min-w-0">
-              <span className="block text-sm font-medium text-slate-700">Allow drop-ins</span>
-              <span className="block text-[11px] text-slate-400 mt-0.5">Clients can book a single session on its own, at the per-session price below.</span>
-            </span>
-          </label>
-
-          {allowDropIn && (
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Drop-in price per session</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={dropInPrice}
-                onChange={e => setDropInPrice(e.target.value)}
-                placeholder="30"
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          )}
-
-          {PUBLIC_CLASS_ENROLLMENT_ENABLED && (
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input type="checkbox" checked={publicEnrollment} onChange={e => setPublicEnrollment(e.target.checked)} className="h-4 w-4 mt-0.5" />
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-slate-700">Let clients self-enrol from your embed form</span>
-                <span className="block text-[11px] text-slate-400 mt-0.5">Open runs show publicly; requests arrive as enquiries for you to accept.</span>
-              </span>
-            </label>
-          )}
-        </div>
-      )}
-
       {/* ── Step 2 · sessions & schedule ───────────────────────────── */}
       <SectionHeading step={2} title="Sessions & schedule" />
 
@@ -468,6 +419,61 @@ export function PackageForm({
           ))}
         </div>
       </div>
+
+      {/* Capacity is a class-only limit, so it sits with the schedule. */}
+      {isGroup && (
+        <div>
+          <label className="text-sm font-medium text-slate-700 block mb-1.5">Capacity (optional)</label>
+          <input
+            type="number"
+            min={0}
+            value={capacity}
+            onChange={e => setCapacity(e.target.value)}
+            placeholder="Leave blank for unlimited"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="text-[11px] text-slate-400 mt-1">Max in the room per session. A run can override this.</p>
+        </div>
+      )}
+
+      {/* Drop-in options live with the schedule — they're about how people join
+          a class's sessions. Drop-in price stays here (not in Pricing) so it
+          sits with its on/off switch. */}
+      {isGroup && (
+        <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3.5 flex flex-col gap-3">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" checked={allowDropIn} onChange={e => setAllowDropIn(e.target.checked)} className="h-4 w-4 mt-0.5" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium text-slate-700">Allow drop-ins</span>
+              <span className="block text-[11px] text-slate-400 mt-0.5">Clients can book a single session on its own, at the per-session price below.</span>
+            </span>
+          </label>
+
+          {allowDropIn && (
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Drop-in price per session</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={dropInPrice}
+                onChange={e => setDropInPrice(e.target.value)}
+                placeholder="30"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+
+          {PUBLIC_CLASS_ENROLLMENT_ENABLED && (
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={publicEnrollment} onChange={e => setPublicEnrollment(e.target.checked)} className="h-4 w-4 mt-0.5" />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-slate-700">Let clients self-enrol from your embed form</span>
+                <span className="block text-[11px] text-slate-400 mt-0.5">Open runs show publicly; requests arrive as enquiries for you to accept.</span>
+              </span>
+            </label>
+          )}
+        </div>
+      )}
 
       {/* ── Step 3 · pricing ───────────────────────────────────────── */}
       <SectionHeading step={3} title="Pricing" hint={isGroup ? 'The full-course price. Drop-in price is set above.' : 'Leave blank for no set price.'} />
