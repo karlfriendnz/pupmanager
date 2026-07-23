@@ -148,6 +148,20 @@ export function PackageForm({
   const [team, setTeam] = useState<{ id: string; name: string | null; title: string | null }[]>([])
   const [assignedIds, setAssignedIds] = useState<string[]>([])
   const [assignOpen, setAssignOpen] = useState(false)
+  // Saved locations to pick from (built in Settings → Locations). '' = none,
+  // a location id = that saved place, '__custom' = type a one-off address.
+  const [savedLocations, setSavedLocations] = useState<{ id: string; name: string; address: string | null }[]>([])
+  const [locationChoice, setLocationChoice] = useState<string>('')
+  useEffect(() => {
+    let off = false
+    fetch('/api/trainer/locations')
+      .then(r => (r.ok ? r.json() : null))
+      .then((d: { locations?: { id: string; name: string; address: string | null }[] } | null) => {
+        if (!off && d?.locations) setSavedLocations(d.locations.map(l => ({ id: l.id, name: l.name, address: l.address })))
+      })
+      .catch(() => {})
+    return () => { off = true }
+  }, [])
   useEffect(() => {
     let off = false
     fetch('/api/trainer/team')
@@ -557,12 +571,34 @@ export function PackageForm({
         <>
           <div className="md:col-span-2">
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Location <span className="text-slate-400">(optional)</span></label>
-            <PlaceAutocomplete
-              initialValue={location}
-              placeholder="e.g. Bethlehem Hall, or the field behind it"
-              onTextChange={setLocation}
-              onSelect={r => setLocation(r.address)}
-            />
+            {/* Pick a saved location (Settings → Locations) or type a one-off. */}
+            {savedLocations.length > 0 && (
+              <select
+                value={locationChoice}
+                onChange={e => {
+                  const v = e.target.value
+                  setLocationChoice(v)
+                  if (v === '' ) setLocation('')
+                  else if (v !== '__custom') {
+                    const loc = savedLocations.find(l => l.id === v)
+                    setLocation(loc?.address || loc?.name || '')
+                  }
+                }}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+              >
+                <option value="">No location</option>
+                {savedLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                <option value="__custom">Custom address…</option>
+              </select>
+            )}
+            {(savedLocations.length === 0 || locationChoice === '__custom') && (
+              <PlaceAutocomplete
+                initialValue={location}
+                placeholder="e.g. Bethlehem Hall, or the field behind it"
+                onTextChange={setLocation}
+                onSelect={r => setLocation(r.address)}
+              />
+            )}
           </div>
 
           {(kind === 'group' || kind === 'dropin') && (
