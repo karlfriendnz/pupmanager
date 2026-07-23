@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { classSessionSpaces } from '@/lib/class-runs'
+import { classSessionSpaces, sessionDropInPriceCents, sessionCapacity } from '@/lib/class-runs'
 import { getActiveClient } from '@/lib/client-context'
 import { todayInTz } from '@/lib/timezone'
 import { slotAppliesOnDate, isBlackoutDate } from '@/lib/availability'
@@ -147,7 +147,15 @@ export default async function MyAvailabilityPage() {
     include: {
       package: { select: { name: true, priceCents: true, specialPriceCents: true, allowDropIn: true, dropInPriceCents: true, capacity: true, allowWaitlist: true } },
       enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true } },
-      sessions: { where: { scheduledAt: { gte: now } }, orderBy: { scheduledAt: 'asc' }, select: { id: true, scheduledAt: true, durationMins: true, title: true } },
+      sessions: {
+        where: { scheduledAt: { gte: now } },
+        orderBy: { scheduledAt: 'asc' },
+        select: {
+          id: true, scheduledAt: true, durationMins: true, title: true,
+          // A drop-in class prices and caps each session on its own slot.
+          packageSessionSlot: { select: { capacity: true, priceCents: true, specialPriceCents: true } },
+        },
+      },
     },
   })
   const classes: WizardClass[] = openRuns.map(r => {
@@ -167,7 +175,10 @@ export default async function MyAvailabilityPage() {
         at: s.scheduledAt.toISOString(),
         durationMins: s.durationMins,
         title: s.title,
-        spacesLeft: spaces.spacesLeftFor(s.id),
+        spacesLeft: spaces.spacesLeftFor(s.id, sessionCapacity(s.packageSessionSlot, r.capacity, r.package.capacity)),
+        // What THIS session costs to drop into — a drop-in class can charge a
+        // different price on different days.
+        dropInPriceCents: sessionDropInPriceCents(s.packageSessionSlot, r.package),
       })),
       seatsLeft: cap === null ? null : Math.max(0, cap - spaces.fullSeats),
       fullPriceCents: r.package.specialPriceCents ?? r.package.priceCents,

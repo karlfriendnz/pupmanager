@@ -28,9 +28,17 @@ export interface WizardClass {
   scheduleNote: string | null
   packageName: string
   nextSessionAt: string | null
-  // Upcoming sessions. spacesLeft is per-session (null = unlimited) so a drop-in
-  // can pick a single one — the same list doubles as the drop-in picker.
-  sessions: { id: string; at: string; durationMins: number; title: string; spacesLeft: number | null }[]
+  // Upcoming sessions. spacesLeft and dropInPriceCents are per-session (a
+  // drop-in class can cap and price each day differently), so the same list
+  // doubles as the drop-in picker.
+  sessions: {
+    id: string
+    at: string
+    durationMins: number
+    title: string
+    spacesLeft: number | null
+    dropInPriceCents: number | null
+  }[]
   seatsLeft: number | null
   fullPriceCents: number | null
   allowDropIn: boolean
@@ -617,7 +625,17 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
                     {s.title && <p className="text-xs text-slate-400 truncate">{s.title}</p>}
                   </div>
                   {dropping
-                    ? <span className={`text-xs shrink-0 ${sessionFull ? 'text-rose-500' : 'text-emerald-600'}`}>{s.spacesLeft == null ? `${s.durationMins} min` : sessionFull ? 'Full' : `${s.spacesLeft} left`}</span>
+                    ? (
+                      // Price first (it's what they're deciding on), spaces under it.
+                      <span className="shrink-0 text-right">
+                        {price(s.dropInPriceCents, currency) && (
+                          <span className="block text-sm font-semibold text-slate-800">{price(s.dropInPriceCents, currency)}</span>
+                        )}
+                        <span className={`block text-xs ${sessionFull ? 'text-rose-500' : 'text-emerald-600'}`}>
+                          {s.spacesLeft == null ? `${s.durationMins} min` : sessionFull ? 'Full' : `${s.spacesLeft} left`}
+                        </span>
+                      </span>
+                    )
                     : <span className="text-xs text-slate-400 shrink-0">{s.durationMins} min</span>}
                 </>
               )
@@ -725,7 +743,13 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
 
   // A drop-in can't be "full" — it only exists once a session has room.
   const isFull = classType === 'FULL' && cls?.seatsLeft === 0
-  const priceCents = isSession ? pkg!.priceCents : (classType === 'DROP_IN' ? cls!.dropInPerSessionCents : cls!.fullPriceCents)
+  // A drop-in is charged at the price of the session they picked, which can
+  // differ session to session; fall back to the class's headline rate.
+  const priceCents = isSession
+    ? pkg!.priceCents
+    : classType === 'DROP_IN'
+      ? (dropInSession?.dropInPriceCents ?? cls!.dropInPerSessionCents)
+      : cls!.fullPriceCents
   const needsApproval = isSession && pkg!.selfBookRequiresApproval
   const priceLabel = price(priceCents, currency)
 

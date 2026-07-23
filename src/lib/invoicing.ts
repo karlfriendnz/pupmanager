@@ -6,7 +6,7 @@ import { estimateProcessingSurcharge } from './connect'
 import { ensureClientXeroContact } from './xero-sync'
 import { postPaymentThroughClearing, isSurchargeItem } from './xero-clearing'
 import { createXeroInvoice, fetchXeroInvoiceState } from './xero'
-import { dropInPriceCents } from './class-runs'
+import { sessionDropInPriceCents } from './class-runs'
 import { env } from './env'
 import { currencySymbol } from './money'
 
@@ -79,12 +79,15 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       description = cp.package.name
     } else if (input.sourceType === 'CLASS_ENROLLMENT') {
       // A class enrolment prices off the run's backing group package: a FULL seat
-      // is the package (special) price; a DROP_IN is the flat per-session
-      // drop-in price for the one session they're attending.
+      // is the package (special) price; a DROP_IN is the price of the ONE
+      // session they booked — its schedule slot's, so a drop-in class can charge
+      // more for a Saturday than a Tuesday, falling back to the package's flat
+      // drop-in rate for a classic class that just allows drop-ins.
       const enr = await prisma.classEnrollment.findFirst({
         where: { id: sourceId, clientId: input.clientId },
         select: {
           type: true, joinedAtIndex: true,
+          dropInSession: { select: { packageSessionSlot: { select: { priceCents: true, specialPriceCents: true } } } },
           classRun: {
             select: {
               name: true,
@@ -96,7 +99,7 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       if (!enr) return null
       const pkg = enr.classRun.package
       amountCents = enr.type === 'DROP_IN'
-        ? dropInPriceCents({ dropInPriceCents: pkg.dropInPriceCents })
+        ? sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)
         : (pkg.specialPriceCents ?? pkg.priceCents)
       description = enr.classRun.name + (enr.type === 'DROP_IN' ? ` (drop-in${enr.joinedAtIndex ? ` · session ${enr.joinedAtIndex}` : ''})` : '')
     } else {

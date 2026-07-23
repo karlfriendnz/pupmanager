@@ -1311,6 +1311,12 @@ model TrainingSession {
   // prospect, or confirmed request). Drives BEFORE/AFTER_SESSION automations.
   // SetNull so deleting the page leaves the session intact.
   bookingPageId        String?
+  // The drop-in schedule slot this session was generated from. Carries the
+  // session's own price, capacity, payment rule and Xero account, so a drop-in
+  // class can charge (and cap) each session differently. Null for every other
+  // kind of session. SetNull, not Cascade: re-editing the class's schedule must
+  // never delete sessions already in the diary.
+  packageSessionSlotId String?
   title                String
   description          String?       @db.Text
   scheduledAt          DateTime
@@ -1361,6 +1367,7 @@ model TrainingSession {
   attendance               SessionAttendance[]
   dropInEnrollments        ClassEnrollment[]       @relation("DropInSession")
   bookingPage              BookingPage?            @relation(fields: [bookingPageId], references: [id], onDelete: SetNull)
+  packageSessionSlot       PackageSessionSlot?     @relation(fields: [packageSessionSlotId], references: [id], onDelete: SetNull)
   automationSends          BookingAutomationSend[]
   paymentItem              PaymentItem?
   timeEntries              SessionTimeEntry[]
@@ -1377,6 +1384,7 @@ model TrainingSession {
   @@index([clientPackageId])
   @@index([classRunId])
   @@index([walkSeriesId])
+  @@index([packageSessionSlotId])
   @@map("training_sessions")
 }
 
@@ -1575,6 +1583,7 @@ model Package {
   trainer            TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   assignments        ClientPackage[]
   classRuns          ClassRun[]
+  sessionSlots       PackageSessionSlot[]
   waitlistEntries    WaitlistEntry[]
   bookingRequests    BookingRequest[]
   bookingPages       BookingPage[]
@@ -1583,6 +1592,53 @@ model Package {
   @@index([trainerId])
   @@index([defaultSessionFormId])
   @@map("packages")
+}
+
+// One repeating slot in a drop-in class's schedule — "Tuesdays 3–5pm at the
+// park, $25, 8 spaces". A drop-in offering is a list of these rather than the
+// single (sessionCount × weeksBetween) cadence the other kinds use, because
+// each slot prices, caps, staffs and locates itself: a class can run Tuesday
+// afternoons at one venue and every second Saturday at another, at different
+// prices. Expanding a slot's recurrenceRule produces the actual
+// TrainingSessions (see lib/recurrence.ts + createClassRun).
+model PackageSessionSlot {
+  id                    String   @id @default(cuid())
+  packageId             String
+  // Display / generation order — the order the cards appear in the editor.
+  order                 Int      @default(0)
+  // First occurrence. Null = start from the run's start date.
+  startDate             DateTime?
+  // 0 = Sunday … 6 = Saturday. The weekday the first occurrence lands on;
+  // the recurrenceRule then governs how it repeats from there.
+  day                   Int      @default(1)
+  // Local wall-clock "HH:mm" — a class meets at 3pm regardless of DST.
+  startTime             String   @default("15:00")
+  endTime               String   @default("17:00")
+  // Turnaround gap after each occurrence, snapshotted onto its sessions.
+  gapMins               Int      @default(0)
+  // Per-session capacity (null = inherit the run/package capacity).
+  capacity              Int?
+  // What ONE session of this slot costs. null = free.
+  priceCents            Int?
+  specialPriceCents     Int?
+  xeroAccountCode       String?
+  requirePayment        Boolean  @default(false)
+  locationId            String?
+  // iCalendar RRULE subset; '' / null = a single occurrence.
+  recurrenceRule        String?
+  // TrainerMembership ids running this slot's sessions.
+  assignedMembershipIds String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  package  Package           @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  location Location?         @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  sessions TrainingSession[]
+
+  @@index([packageId])
+  @@index([locationId])
+  @@map("package_session_slots")
 }
 
 model ClientPackage {
@@ -1912,6 +1968,7 @@ model Location {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   trainer     TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  sessionSlots PackageSessionSlot[]
 
   @@index([trainerId])
   @@map("locations")

@@ -67,7 +67,29 @@ export interface PkgRow {
   selfBookRequiresApproval?: boolean
   xeroAccountCode?: string | null
   requirePayment?: boolean | null
+  // A drop-in class's schedule slots, as stored. Optional so loaders that don't
+  // select them still satisfy the type — the form then starts with one blank.
+  sessionSlots?: StoredSlot[]
   assignments: number
+}
+
+/** A PackageSessionSlot as it comes back from the server (cents, ISO date). */
+export interface StoredSlot {
+  id: string
+  order: number
+  startDate: string | null
+  day: number
+  startTime: string
+  endTime: string
+  gapMins: number
+  capacity: number | null
+  priceCents: number | null
+  specialPriceCents: number | null
+  xeroAccountCode: string | null
+  requirePayment: boolean
+  locationId: string | null
+  recurrenceRule: string | null
+  assignedMembershipIds: string[]
 }
 
 export interface SessionFormOption {
@@ -90,6 +112,49 @@ const formSchema = z.object({
   specialPrice: z.string().optional(),
   color: z.enum(['blue', 'emerald', 'amber', 'rose', 'purple', 'orange', 'teal', 'indigo', 'pink', 'cyan']).nullable().optional(),
 })
+
+/** Stored slot → editor slot. Keeps the real id so a save updates in place
+ *  (and every session already generated off it keeps its price). */
+function storedToSlot(s: StoredSlot): SessionSlot {
+  return {
+    id: s.id,
+    startDate: s.startDate ? s.startDate.slice(0, 10) : '',
+    day: s.day,
+    start: s.startTime,
+    end: s.endTime,
+    gap: String(s.gapMins),
+    capacity: s.capacity == null ? '' : String(s.capacity),
+    price: centsToDollars(s.priceCents),
+    specialPrice: centsToDollars(s.specialPriceCents),
+    account: s.xeroAccountCode ?? '',
+    requirePayment: s.requirePayment,
+    assignedIds: s.assignedMembershipIds,
+    locationId: s.locationId ?? '',
+    repeat: s.recurrenceRule ?? '',
+  }
+}
+
+/** Editor slot → API payload. Ids the server doesn't recognise are treated as
+ *  new slots, so a locally-added card needs no special casing here. */
+function slotToPayload(s: SessionSlot) {
+  const cap = s.capacity.trim()
+  return {
+    id: s.id,
+    startDate: s.startDate || null,
+    day: s.day,
+    startTime: s.start,
+    endTime: s.end,
+    gapMins: Number(s.gap) || 0,
+    capacity: cap ? Math.max(0, Math.floor(Number(cap))) : null,
+    priceCents: dollarsToCents(s.price),
+    specialPriceCents: dollarsToCents(s.specialPrice),
+    xeroAccountCode: s.account || null,
+    requirePayment: s.requirePayment,
+    locationId: s.locationId || null,
+    recurrenceRule: s.repeat && s.repeat !== 'NONE' ? s.repeat : null,
+    assignedMembershipIds: s.assignedIds,
+  }
+}
 
 export function dollarsToCents(s: string | undefined): number | null {
   if (!s || !s.trim()) return null
@@ -173,7 +238,10 @@ export function PackageForm({
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [scheduleNote, setScheduleNote] = useState<string>('')
   // Drop-in classes define their weekly slots individually (day/time/location).
-  const [slots, setSlots] = useState<SessionSlot[]>([newSlot()])
+  // Editing hydrates them from the stored schedule so a save round-trips.
+  const [slots, setSlots] = useState<SessionSlot[]>(() =>
+    existing?.sessionSlots?.length ? existing.sessionSlots.map(storedToSlot) : [newSlot()],
+  )
   // Join link for a virtual session (Zoom/Meet); only when session type = Virtual.
   const [virtualLink, setVirtualLink] = useState<string>('')
   // Simple ticket tiers for a one-off event (name + price + capacity).
@@ -298,6 +366,10 @@ export function PackageForm({
         capacity: isGroup && capacity.trim() ? Math.max(0, Math.floor(Number(capacity))) : null,
         allowDropIn: isGroup && allowDropIn,
         dropInPriceCents: isGroup && allowDropIn ? dollarsToCents(dropInPrice) : null,
+        // A drop-in class IS its schedule — send the slots so each session
+        // keeps its own day, time, venue, staff, capacity and price. The server
+        // derives allowDropIn / the headline price from them.
+        ...(kind === 'dropin' && { sessionSlots: slots.map(slotToPayload) }),
         recurrenceRule: isGroup && recurrenceRule ? recurrenceRule : null,
         allowWaitlist: isGroup && allowWaitlist,
         publicEnrollment: isGroup && publicEnrollment,

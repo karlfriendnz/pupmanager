@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import {
   enrollInRun, ClassError, decideEnrollment, effectiveCapacity, enrolledCount,
-  sessionAttendeeCount, dropInPriceCents,
+  sessionAttendeeCount, sessionDropInPriceCents, sessionCapacity,
 } from '@/lib/class-runs'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
@@ -66,6 +66,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   // front so pricing, the capacity check and (for pay-to-confirm) the checkout
   // intent all point at the same session.
   let dropInSessionId: string | null = null
+  // The schedule slot behind that session, when the class has one — it sets the
+  // session's own price and capacity.
+  let dropInSlot: { capacity: number | null; priceCents: number | null; specialPriceCents: number | null } | null = null
   if (type === 'DROP_IN') {
     if (!run.package.allowDropIn) {
       return NextResponse.json({ error: 'This class doesn’t allow drop-ins.' }, { status: 400 })
@@ -75,10 +78,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     }
     const sess = await prisma.trainingSession.findFirst({
       where: { id: parsed.data.sessionId, classRunId: runId, status: 'UPCOMING', scheduledAt: { gte: new Date() } },
-      select: { id: true },
+      select: {
+        id: true,
+        packageSessionSlot: { select: { capacity: true, priceCents: true, specialPriceCents: true } },
+      },
     })
     if (!sess) return NextResponse.json({ error: 'That session has already happened or isn’t part of this class.' }, { status: 400 })
     dropInSessionId = sess.id
+    dropInSlot = sess.packageSessionSlot
   }
 
   // Default to the client's primary dog; only honour a supplied dog they own.
@@ -97,17 +104,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     return NextResponse.json({ error: 'You’re already enrolled in this class.' }, { status: 409 })
   }
 
-  // Price the enrolment. A drop-in is the flat per-session price for the one
-  // session; a full seat is the whole-course price.
+  // Price the enrolment. A drop-in is the price of the ONE session they picked
+  // — its slot's, so a class can charge differently on different days; a full
+  // seat is the whole-course price.
   const price: number | null =
     type === 'FULL'
       ? (run.package.specialPriceCents ?? run.package.priceCents)
-      : dropInPriceCents({ dropInPriceCents: run.package.dropInPriceCents })
+      : sessionDropInPriceCents(dropInSlot, run.package)
 
   // Pay-to-confirm only when there's a real seat to pay for. Capacity is
-  // per-session: a drop-in checks its one session; a full seat checks the run.
+  // per-session: a drop-in checks its one session (against that session's own
+  // cap, if its slot sets one); a full seat checks the run.
   const seatDecision = decideEnrollment({
-    capacity: effectiveCapacity(run.capacity, run.package.capacity),
+    capacity: dropInSessionId
+      ? sessionCapacity(dropInSlot, run.capacity, run.package.capacity)
+      : effectiveCapacity(run.capacity, run.package.capacity),
     enrolledCount: dropInSessionId
       ? await sessionAttendeeCount(runId, dropInSessionId)
       : await enrolledCount(runId),

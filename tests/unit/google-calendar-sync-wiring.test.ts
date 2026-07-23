@@ -58,6 +58,9 @@ describe('class-runs helpers surface the created/deleted session ids', () => {
     h.packageFindFirst.mockResolvedValue({
       id: 'pkg-1', sessionCount: 3, weeksBetween: 1, durationMins: 45,
       sessionType: 'IN_PERSON', bufferMins: 0,
+      // No drop-in schedule: this package uses the flat N-every-W-weeks cadence.
+      sessionSlots: [],
+      trainer: { user: { timezone: 'Pacific/Auckland' } },
     })
     const tx = {
       classRun: { create: vi.fn().mockResolvedValue({ id: 'run-1' }) },

@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
+import { slotSchema, replacePackageSlots, derivedDropInFields } from '@/lib/package-slots'
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -32,6 +33,9 @@ const updateSchema = z.object({
   xeroAccountCode: z.string().max(50).nullable().optional(),
   // Tri-state "require payment to book": null = inherit trainer default.
   requirePayment: z.boolean().nullable().optional(),
+  // A drop-in class's schedule, sent whole. Omitted = leave the stored slots
+  // alone; [] = clear them.
+  sessionSlots: z.array(slotSchema).max(50).optional(),
 })
 
 async function ownPackage(packageId: string, trainerId: string) {
@@ -89,6 +93,8 @@ export async function PATCH(
           recurrenceRule: null,
           allowWaitlist: false,
           publicEnrollment: false,
+          // A drop-in schedule is meaningless on a 1:1 package.
+          sessionSlots: { deleteMany: {} },
         }
       } else {
         const assigned = await prisma.clientPackage.count({ where: { packageId } })
@@ -102,9 +108,29 @@ export async function PATCH(
     }
   }
 
-  const pkg = await prisma.package.update({
-    where: { id: packageId },
-    data: { ...parsed.data, ...extra },
+  // Slots are a child table, not a column — keep them out of the package's own
+  // update payload and reconcile them separately. When they're sent, they also
+  // define the drop-in headline price, so it can't drift from the schedule.
+  const { sessionSlots, ...columns } = parsed.data
+  const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
+
+  const pkg = await prisma.$transaction(async (tx) => {
+    const updated = await tx.package.update({
+      where: { id: packageId },
+      data: {
+        ...columns,
+        ...(dropIn && {
+          allowDropIn: dropIn.allowDropIn,
+          dropInPriceCents: dropIn.dropInPriceCents,
+        }),
+        ...extra,
+      },
+    })
+    // `extra` already cleared them on a group→1:1 conversion.
+    if (sessionSlots && !('sessionSlots' in extra)) {
+      await replacePackageSlots(tx, packageId, trainerId, sessionSlots)
+    }
+    return updated
   })
   return NextResponse.json(pkg)
 }

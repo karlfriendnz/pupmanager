@@ -25,7 +25,11 @@ export default async function EditPackagePage({
   const [pkg, sessionForms, trainerProfile] = await Promise.all([
     prisma.package.findFirst({
       where: { id: packageId, trainerId },
-      include: { _count: { select: { assignments: true } } },
+      include: {
+        _count: { select: { assignments: true } },
+        // A drop-in class's schedule — the form edits these directly.
+        sessionSlots: { orderBy: { order: 'asc' } },
+      },
     }),
     prisma.sessionForm.findMany({
       where: { trainerId },
@@ -72,6 +76,10 @@ export default async function EditPackagePage({
             selfBookRequiresApproval: pkg.selfBookRequiresApproval,
             xeroAccountCode: pkg.xeroAccountCode,
             requirePayment: pkg.requirePayment,
+            sessionSlots: pkg.sessionSlots.map(s => ({
+              ...s,
+              startDate: s.startDate ? s.startDate.toISOString() : null,
+            })),
             assignments: pkg._count.assignments,
           }}
           sessionForms={sessionForms}

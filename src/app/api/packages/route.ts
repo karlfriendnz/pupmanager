@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
+import { slotSchema, replacePackageSlots, derivedDropInFields } from '@/lib/package-slots'
 
 const schema = z.object({
   name: z.string().min(1),
@@ -39,6 +40,10 @@ const schema = z.object({
   // Tri-state "require payment to book": null = inherit the trainer default,
   // true = pay up front, false = book now / pay later.
   requirePayment: z.boolean().nullable().optional(),
+  // A drop-in class's schedule: one entry per weekly slot, each pricing and
+  // capping itself. Present = this is a drop-in offering; its slots become the
+  // session series and override allowDropIn/dropInPriceCents.
+  sessionSlots: z.array(slotSchema).max(50).optional(),
 })
 
 export async function GET() {
@@ -77,34 +82,43 @@ export async function POST(req: Request) {
   })
   const nextOrder = (max._max.order ?? -1) + 1
 
-  const pkg = await prisma.package.create({
-    data: {
-      trainerId,
-      name: parsed.data.name,
-      description: parsed.data.description ?? null,
-      sessionCount: parsed.data.sessionCount,
-      weeksBetween: parsed.data.weeksBetween,
-      durationMins: parsed.data.durationMins,
-      bufferMins: parsed.data.bufferMins ?? 0,
-      sessionType: parsed.data.sessionType ?? 'IN_PERSON',
-      priceCents: parsed.data.priceCents ?? null,
-      specialPriceCents: parsed.data.specialPriceCents ?? null,
-      color: parsed.data.color ?? null,
-      defaultSessionFormId: parsed.data.defaultSessionFormId ?? null,
-      requireSessionNotes: parsed.data.requireSessionNotes ?? true,
-      isGroup: parsed.data.isGroup ?? false,
-      capacity: parsed.data.capacity ?? null,
-      allowDropIn: parsed.data.allowDropIn ?? false,
-      dropInPriceCents: parsed.data.dropInPriceCents ?? null,
-      recurrenceRule: parsed.data.recurrenceRule || null,
-      allowWaitlist: parsed.data.allowWaitlist ?? false,
-      publicEnrollment: parsed.data.publicEnrollment ?? false,
-      clientSelfBook: parsed.data.clientSelfBook ?? false,
-      selfBookRequiresApproval: parsed.data.selfBookRequiresApproval ?? true,
-      xeroAccountCode: parsed.data.xeroAccountCode || null,
-      requirePayment: parsed.data.requirePayment ?? null,
-      order: nextOrder,
-    },
+  // Slots are the source of truth for a drop-in's pricing, so derive the
+  // package-level headline fields from them rather than trusting the payload.
+  const slots = parsed.data.sessionSlots
+  const dropIn = slots ? derivedDropInFields(slots) : null
+
+  const pkg = await prisma.$transaction(async (tx) => {
+    const created = await tx.package.create({
+      data: {
+        trainerId,
+        name: parsed.data.name,
+        description: parsed.data.description ?? null,
+        sessionCount: parsed.data.sessionCount,
+        weeksBetween: parsed.data.weeksBetween,
+        durationMins: parsed.data.durationMins,
+        bufferMins: parsed.data.bufferMins ?? 0,
+        sessionType: parsed.data.sessionType ?? 'IN_PERSON',
+        priceCents: parsed.data.priceCents ?? null,
+        specialPriceCents: parsed.data.specialPriceCents ?? null,
+        color: parsed.data.color ?? null,
+        defaultSessionFormId: parsed.data.defaultSessionFormId ?? null,
+        requireSessionNotes: parsed.data.requireSessionNotes ?? true,
+        isGroup: parsed.data.isGroup ?? false,
+        capacity: parsed.data.capacity ?? null,
+        allowDropIn: dropIn ? dropIn.allowDropIn : (parsed.data.allowDropIn ?? false),
+        dropInPriceCents: dropIn ? dropIn.dropInPriceCents : (parsed.data.dropInPriceCents ?? null),
+        recurrenceRule: parsed.data.recurrenceRule || null,
+        allowWaitlist: parsed.data.allowWaitlist ?? false,
+        publicEnrollment: parsed.data.publicEnrollment ?? false,
+        clientSelfBook: parsed.data.clientSelfBook ?? false,
+        selfBookRequiresApproval: parsed.data.selfBookRequiresApproval ?? true,
+        xeroAccountCode: parsed.data.xeroAccountCode || null,
+        requirePayment: parsed.data.requirePayment ?? null,
+        order: nextOrder,
+      },
+    })
+    if (slots) await replacePackageSlots(tx, created.id, trainerId, slots)
+    return created
   })
   return NextResponse.json(pkg, { status: 201 })
 }

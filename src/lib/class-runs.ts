@@ -8,6 +8,8 @@
 import { prisma } from './prisma'
 import type { Prisma, PrismaClient } from '@/generated/prisma'
 import { effectiveBufferMins, normalizeBufferMins } from './buffer'
+import { expandRule, rollForwardToWeekday, OPEN_ENDED_OCCURRENCES } from './recurrence'
+import { zonedToUtc } from './timezone'
 
 // Re-exported so server code can keep importing it from here; the flag
 // itself lives in the client-safe feature-flags module.
@@ -34,6 +36,115 @@ export function generateSessionDates(
     out.push(d)
   }
   return out
+}
+
+// ─── Drop-in schedule slots ──────────────────────────────────────────────────
+
+/** The parts of a PackageSessionSlot the scheduler needs. Structural, so both
+ *  a DB row and a plain object from the API layer satisfy it. */
+export type ScheduleSlot = {
+  id: string
+  order: number
+  startDate: Date | null
+  day: number
+  startTime: string
+  endTime: string
+  gapMins: number
+  recurrenceRule: string | null
+  assignedMembershipIds: string[]
+}
+
+/** One session a slot will produce, ready to be written as a TrainingSession. */
+export type PlannedSession = {
+  slotId: string
+  scheduledAt: Date
+  durationMins: number
+  bufferMins: number
+  assignedMembershipId: string | null
+}
+
+/** Minutes from "HH:mm" to "HH:mm". An end at or before the start is read as
+ *  running past midnight (a 21:00–00:30 night class), never as zero/negative. */
+export function slotDurationMins(startTime: string, endTime: string): number {
+  const mins = (t: string) => {
+    const [h, m] = (t || '').split(':').map(Number)
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0)
+  }
+  const start = mins(startTime)
+  const end = mins(endTime)
+  const raw = end - start
+  return raw > 0 ? raw : raw + 24 * 60
+}
+
+/**
+ * Every session a drop-in class's slots produce, in chronological order.
+ *
+ * Each slot contributes its own series: the first occurrence is its startDate
+ * (or the run's) rolled forward to its weekday, then its recurrenceRule repeats
+ * from there. Times are wall-clock in the trainer's timezone — a class meets at
+ * 3pm whether or not the clocks have changed.
+ *
+ * Pure (given a tz): unit-tested in tests/unit/class-runs.test.ts.
+ */
+export function planSlotSessions(
+  slots: ScheduleSlot[],
+  opts: { runStart: Date; tz: string; maxPerSlot?: number },
+): PlannedSession[] {
+  const max = opts.maxPerSlot ?? OPEN_ENDED_OCCURRENCES
+  const out: PlannedSession[] = []
+
+  for (const slot of [...slots].sort((a, b) => a.order - b.order)) {
+    const anchor = rollForwardToWeekday(slot.startDate ?? opts.runStart, slot.day)
+    const duration = slotDurationMins(slot.startTime, slot.endTime)
+    const [h, m] = (slot.startTime || '00:00').split(':').map(Number)
+    for (const d of expandRule(slot.recurrenceRule ?? '', anchor, max)) {
+      out.push({
+        slotId: slot.id,
+        scheduledAt: zonedToUtc(
+          d.getFullYear(), d.getMonth() + 1, d.getDate(),
+          Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0,
+          opts.tz,
+        ),
+        durationMins: duration,
+        bufferMins: normalizeBufferMins(slot.gapMins),
+        // One session has one assigned trainer; extra names on the slot are
+        // co-runners we don't model yet, so the first is the owner.
+        assignedMembershipId: slot.assignedMembershipIds[0] ?? null,
+      })
+    }
+  }
+
+  return out.sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
+}
+
+/**
+ * What ONE session of a drop-in costs: the slot's own special price, then its
+ * price, falling back to the package's flat drop-in rate for classic group
+ * classes that just tick "allow drop-ins" and have no slots.
+ */
+export function sessionDropInPriceCents(
+  slot: { priceCents: number | null; specialPriceCents: number | null } | null | undefined,
+  pkg: { dropInPriceCents: number | null | undefined },
+): number | null {
+  if (slot) {
+    if (typeof slot.specialPriceCents === 'number') return slot.specialPriceCents
+    if (typeof slot.priceCents === 'number') return slot.priceCents
+  }
+  return dropInPriceCents({ dropInPriceCents: pkg.dropInPriceCents })
+}
+
+/**
+ * How many people fit in ONE session: its slot's capacity when the slot sets
+ * one, else the run/package capacity. Lets a class cap Saturdays at 6 and
+ * Tuesdays at 12.
+ */
+export function sessionCapacity(
+  slot: { capacity: number | null } | null | undefined,
+  runCapacity: number | null | undefined,
+  packageCapacity: number | null | undefined,
+): number | null {
+  if (slot && typeof slot.capacity === 'number') return slot.capacity
+  return effectiveCapacity(runCapacity, packageCapacity)
 }
 
 /** Per-run capacity override falls back to the package's, else unlimited. */
@@ -152,7 +263,13 @@ export async function sessionAttendeeCount(
 export function classSessionSpaces(
   capacity: number | null,
   enrolments: { type: 'FULL' | 'DROP_IN'; dropInSessionId: string | null }[],
-): { fullSeats: number; spacesLeftFor: (sessionId: string) => number | null } {
+): {
+  fullSeats: number
+  /** Spaces left in one session. `sessionCap` overrides the run capacity for
+   *  sessions whose drop-in slot sets its own (Saturdays 6, Tuesdays 12);
+   *  omit it to use the run/package capacity. */
+  spacesLeftFor: (sessionId: string, sessionCap?: number | null) => number | null
+} {
   const fullSeats = enrolments.filter(e => e.type === 'FULL').length
   const dropInsBySession = new Map<string, number>()
   for (const e of enrolments) {
@@ -162,8 +279,10 @@ export function classSessionSpaces(
   }
   return {
     fullSeats,
-    spacesLeftFor: (sessionId) =>
-      capacity == null ? null : Math.max(0, capacity - fullSeats - (dropInsBySession.get(sessionId) ?? 0)),
+    spacesLeftFor: (sessionId, sessionCap) => {
+      const cap = sessionCap === undefined ? capacity : sessionCap
+      return cap == null ? null : Math.max(0, cap - fullSeats - (dropInsBySession.get(sessionId) ?? 0))
+    },
   }
 }
 
@@ -198,11 +317,42 @@ export async function createClassRun(args: {
 }): Promise<{ id: string; sessionCount: number; createdSessionIds: string[] }> {
   const pkg = await prisma.package.findFirst({
     where: { id: args.packageId, trainerId: args.trainerId, isGroup: true },
+    include: {
+      sessionSlots: { include: { location: { select: { name: true, address: true } } } },
+      trainer: { select: { user: { select: { timezone: true } } } },
+    },
   })
   if (!pkg) throw new ClassError('PACKAGE_NOT_FOUND', 'Group package not found')
 
-  const dates = generateSessionDates(args.startDate, pkg.sessionCount, pkg.weeksBetween)
   const buffer = effectiveBufferMins(args.bufferMins, pkg.bufferMins)
+
+  // A drop-in class schedules itself from its slots (each with its own day,
+  // time, venue and gap); everything else uses the flat N-sessions-every-W-weeks
+  // cadence. Both end up as one chronological series on the run.
+  const tz = pkg.trainer.user?.timezone || 'Pacific/Auckland'
+  const planned = pkg.sessionSlots.length
+    ? planSlotSessions(pkg.sessionSlots, { runStart: args.startDate, tz })
+    : null
+  const rows = planned
+    ? planned.map((s) => {
+        const slot = pkg.sessionSlots.find((x) => x.id === s.slotId)
+        return {
+          scheduledAt: s.scheduledAt,
+          durationMins: s.durationMins,
+          bufferMins: s.bufferMins,
+          assignedMembershipId: s.assignedMembershipId,
+          packageSessionSlotId: s.slotId,
+          location: slot?.location?.address || slot?.location?.name || null,
+        }
+      })
+    : generateSessionDates(args.startDate, pkg.sessionCount, pkg.weeksBetween).map((d) => ({
+        scheduledAt: d,
+        durationMins: pkg.durationMins,
+        bufferMins: buffer,
+        assignedMembershipId: null,
+        packageSessionSlotId: null,
+        location: null as string | null,
+      }))
 
   return prisma.$transaction(async (tx) => {
     const run = await tx.classRun.create({
@@ -217,18 +367,16 @@ export async function createClassRun(args: {
       },
     })
     await tx.trainingSession.createMany({
-      data: dates.map((d, i) => ({
+      data: rows.map((r, i) => ({
         trainerId: args.trainerId,
         classRunId: run.id,
         sessionIndex: i + 1,
         title:
-          pkg.sessionCount > 1
-            ? `${args.name} — session ${i + 1}/${pkg.sessionCount}`
+          rows.length > 1
+            ? `${args.name} — session ${i + 1}/${rows.length}`
             : args.name,
-        scheduledAt: d,
-        durationMins: pkg.durationMins,
-        bufferMins: buffer,
         sessionType: pkg.sessionType,
+        ...r,
       })),
     })
     // createMany returns no ids — re-read them (visible inside this tx) so the
@@ -237,7 +385,7 @@ export async function createClassRun(args: {
       where: { classRunId: run.id },
       select: { id: true },
     })
-    return { id: run.id, sessionCount: dates.length, createdSessionIds: created.map((s) => s.id) }
+    return { id: run.id, sessionCount: rows.length, createdSessionIds: created.map((s) => s.id) }
   })
 }
 
@@ -518,6 +666,9 @@ export async function enrollInRun(args: {
     // A drop-in is one specific, still-to-come session of this run.
     let dropInSessionId: string | null = null
     let joinedAtIndex: number | null = null
+    // The chosen session's slot, when it came from a drop-in schedule — it caps
+    // that session on its own (Saturdays 6, Tuesdays 12).
+    let slotCapacity: { capacity: number | null } | null = null
     if (type === 'DROP_IN') {
       if (!run.package.allowDropIn) {
         throw new ClassError('NO_DROP_IN', 'This class does not allow drop-ins')
@@ -527,7 +678,10 @@ export async function enrollInRun(args: {
       }
       const sess = await tx.trainingSession.findFirst({
         where: { id: args.sessionId, classRunId: args.classRunId },
-        select: { id: true, sessionIndex: true, scheduledAt: true, status: true },
+        select: {
+          id: true, sessionIndex: true, scheduledAt: true, status: true,
+          packageSessionSlot: { select: { capacity: true } },
+        },
       })
       if (!sess) throw new ClassError('SESSION_NOT_FOUND', 'That session isn’t part of this class')
       if (sess.status !== 'UPCOMING' || sess.scheduledAt.getTime() <= Date.now()) {
@@ -535,6 +689,7 @@ export async function enrollInRun(args: {
       }
       dropInSessionId = sess.id
       joinedAtIndex = sess.sessionIndex
+      slotCapacity = sess.packageSessionSlot
     }
 
     // Re-enrolling after withdrawal reuses the row; a live enrolment is a
@@ -559,7 +714,10 @@ export async function enrollInRun(args: {
       type === 'DROP_IN'
         ? await sessionAttendeeCount(args.classRunId, dropInSessionId!, tx)
         : await busiestSessionHeadcount(args.classRunId, tx)
-    const capacity = effectiveCapacity(run.capacity, run.package.capacity)
+    const capacity =
+      type === 'DROP_IN'
+        ? sessionCapacity(slotCapacity, run.capacity, run.package.capacity)
+        : effectiveCapacity(run.capacity, run.package.capacity)
     const decision = decideEnrollment({
       capacity,
       enrolledCount: headcount,

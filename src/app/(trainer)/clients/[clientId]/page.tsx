@@ -3,7 +3,7 @@ import { PawPrint } from 'lucide-react'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
-import { classSessionSpaces } from '@/lib/class-runs'
+import { classSessionSpaces, sessionCapacity } from '@/lib/class-runs'
 import { getClientAccess } from '@/lib/trainer-access'
 import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
@@ -90,7 +90,12 @@ export default async function ClientDetailPage({
             id: true, name: true, scheduleNote: true, startDate: true, capacity: true,
             package: { select: { capacity: true, allowDropIn: true } },
             enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true } },
-            sessions: { where: { scheduledAt: { gte: new Date() } }, orderBy: { scheduledAt: 'asc' }, select: { id: true, scheduledAt: true } },
+            sessions: {
+              where: { scheduledAt: { gte: new Date() } },
+              orderBy: { scheduledAt: 'asc' },
+              // The slot carries this session's own cap for a drop-in class.
+              select: { id: true, scheduledAt: true, packageSessionSlot: { select: { capacity: true } } },
+            },
           },
         })
       : Promise.resolve([]),
@@ -260,7 +265,7 @@ export default async function ClientDetailPage({
                 sessions: c.sessions.map(s => ({
                   id: s.id,
                   label: s.scheduledAt.toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }),
-                  spacesLeft: spaces.spacesLeftFor(s.id),
+                  spacesLeft: spaces.spacesLeftFor(s.id, sessionCapacity(s.packageSessionSlot, c.capacity, c.package.capacity)),
                 })),
               }
             })}

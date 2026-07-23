@@ -16,13 +16,22 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth', () => ({ auth: h.auth }))
 vi.mock('@/lib/membership', () => ({ guardPermission: h.guardPermission }))
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+// The update runs inside a transaction (it may also reconcile the drop-in
+// schedule slots), so $transaction hands the callback a client exposing the
+// same mocked methods.
+vi.mock('@/lib/prisma', () => {
+  const tx = {
     package: { findFirst: h.pkgFindFirst, findUnique: h.pkgFindUnique, update: h.pkgUpdate },
     classRun: { count: h.classRunCount },
     clientPackage: { count: h.clientPackageCount },
-  },
-}))
+  }
+  return {
+    prisma: {
+      ...tx,
+      $transaction: (fn: (c: typeof tx) => unknown) => fn(tx),
+    },
+  }
+})
 
 import { PATCH } from '@/app/api/packages/[packageId]/route'
 
