@@ -327,28 +327,39 @@ export function PackageForm({
       ) : (
         // Creating: choose what this IS. Drop-in is a group class that takes
         // single-session bookings, so it presets isGroup + allowDropIn.
-        <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          {([
-            { key: 'onetoone', icon: User, label: '1:1 package', hint: 'One client at a time', on: () => { setIsGroup(false) } },
-            { key: 'group', icon: Users, label: 'Group class', hint: 'A cohort with a roster', on: () => { setIsGroup(true); setAllowDropIn(false) } },
-            { key: 'dropin', icon: Users, label: 'Drop-in classes', hint: 'Sold one session at a time', on: () => { setIsGroup(true); setAllowDropIn(true) } },
-          ] as const).map(o => {
-            const active = (o.key === 'onetoone' && !isGroup) || (o.key === 'group' && isGroup && !allowDropIn) || (o.key === 'dropin' && isGroup && allowDropIn)
-            const Icon = o.icon
-            return (
-              <button
-                key={o.key}
-                type="button"
-                onClick={o.on}
-                aria-pressed={active}
-                className={`rounded-2xl border p-4 text-left transition-all ${active ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:border-blue-200'}`}
-              >
-                <Icon className={`h-5 w-5 mb-2 ${active ? 'text-blue-600' : 'text-slate-400'}`} />
-                <span className={`block text-sm font-semibold ${active ? 'text-blue-900' : 'text-slate-800'}`}>{o.label}</span>
-                <span className="block text-[11px] text-slate-400 mt-0.5">{o.hint}</span>
-              </button>
-            )
-          })}
+        <div className="md:col-span-2 flex flex-col gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {([
+              { key: 'onetoone', icon: User, label: '1:1 package', hint: 'One client at a time', on: () => { setIsGroup(false) } },
+              { key: 'group', icon: Users, label: 'Group class', hint: 'A cohort with a roster', on: () => { setIsGroup(true); setAllowDropIn(false) } },
+              { key: 'dropin', icon: Users, label: 'Drop-in classes', hint: 'Sold one session at a time', on: () => { setIsGroup(true); setAllowDropIn(true) } },
+            ] as const).map(o => {
+              const active = (o.key === 'onetoone' && !isGroup) || (o.key === 'group' && isGroup && !allowDropIn) || (o.key === 'dropin' && isGroup && allowDropIn)
+              const Icon = o.icon
+              return (
+                <button
+                  key={o.key}
+                  type="button"
+                  onClick={o.on}
+                  aria-pressed={active}
+                  className={`rounded-2xl border p-4 text-left transition-all ${active ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:border-blue-200'}`}
+                >
+                  <Icon className={`h-5 w-5 mb-2 ${active ? 'text-blue-600' : 'text-slate-400'}`} />
+                  <span className={`block text-sm font-semibold ${active ? 'text-blue-900' : 'text-slate-800'}`}>{o.label}</span>
+                  <span className="block text-[11px] text-slate-400 mt-0.5">{o.hint}</span>
+                </button>
+              )
+            })}
+          </div>
+          {/* A sentence explaining the current choice, so the difference between
+              the three is clear before you commit to fields below. */}
+          <p className="text-xs text-slate-500 leading-relaxed rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
+            {!isGroup
+              ? 'A set of one-on-one sessions you assign to a single client. They get their own schedule and progress, and you bill them for the package.'
+              : allowDropIn
+                ? 'A class that people join one session at a time. They pay per session and pick which one to attend — ideal for casual regulars or filling a spare spot, without committing to the whole course.'
+                : 'A class that runs as a cohort: many clients share the one schedule and roster, enrol for the whole course, and you set a capacity for the room.'}
+          </p>
         </div>
       )}
 
