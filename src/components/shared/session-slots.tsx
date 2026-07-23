@@ -1,6 +1,7 @@
 'use client'
 
 import { Plus, X } from 'lucide-react'
+import { RecurrenceField } from '@/components/shared/recurrence-field'
 
 // Recurring session slots for a drop-in class: each row is one weekly (or
 // fortnightly) slot — name, day, start/end time, and its own location. Lets a
@@ -13,7 +14,7 @@ export type SessionSlot = {
   start: string // "HH:mm" (24h)
   end: string
   locationId: string // '' = none / inherit the class location
-  repeat: 'WEEKLY' | 'FORTNIGHTLY'
+  repeat: string // iCalendar RRULE subset (see lib/recurrence.ts); '' = one-off
 }
 
 const DAYS = [
@@ -22,7 +23,7 @@ const DAYS = [
 ]
 
 export function newSlot(): SessionSlot {
-  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, day: 2, start: '15:00', end: '17:00', locationId: '', repeat: 'WEEKLY' }
+  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, day: 2, start: '15:00', end: '17:00', locationId: '', repeat: 'FREQ=WEEKLY' }
 }
 
 export function SessionSlotsEditor({
@@ -42,7 +43,7 @@ export function SessionSlotsEditor({
   return (
     <div className="md:col-span-2 flex flex-col gap-2">
       {/* Column headers — hidden on mobile, where each row stacks with labels. */}
-      <div className="hidden lg:grid grid-cols-[1fr_0.9fr_0.9fr_1fr_1.3fr_auto] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+      <div className="hidden lg:grid grid-cols-[0.9fr_0.8fr_0.8fr_1.4fr_1.2fr_auto] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
         <span>Day</span><span>Start</span><span>End</span><span>Repeat</span><span>Location</span><span />
       </div>
 
@@ -53,7 +54,7 @@ export function SessionSlotsEditor({
       )}
 
       {value.map(s => (
-        <div key={s.id} className="grid grid-cols-2 lg:grid-cols-[1fr_0.9fr_0.9fr_1fr_1.3fr_auto] gap-2 items-center rounded-xl border border-slate-100 bg-slate-50/40 lg:bg-transparent lg:border-0 p-2 lg:p-0">
+        <div key={s.id} className="grid grid-cols-2 lg:grid-cols-[0.9fr_0.8fr_0.8fr_1.4fr_1.2fr_auto] gap-2 items-start rounded-xl border border-slate-100 bg-slate-50/40 lg:bg-transparent lg:border-0 p-2 lg:p-0">
           <label className="flex flex-col gap-1">
             <span className="lg:hidden text-[11px] font-medium text-slate-400">Day</span>
             <select value={s.day} onChange={e => update(s.id, { day: Number(e.target.value) })} className={cell}>
@@ -70,10 +71,8 @@ export function SessionSlotsEditor({
           </label>
           <label className="flex flex-col gap-1">
             <span className="lg:hidden text-[11px] font-medium text-slate-400">Repeat</span>
-            <select value={s.repeat} onChange={e => update(s.id, { repeat: e.target.value as SessionSlot['repeat'] })} className={cell}>
-              <option value="WEEKLY">Weekly</option>
-              <option value="FORTNIGHTLY">Every 2 weeks</option>
-            </select>
+            {/* Full recurrence picker per slot: Weekly / Monthly / Custom… */}
+            <RecurrenceField value={s.repeat} onChange={r => update(s.id, { repeat: r })} />
           </label>
           <label className="flex flex-col gap-1">
             <span className="lg:hidden text-[11px] font-medium text-slate-400">Location</span>
