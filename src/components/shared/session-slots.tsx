@@ -156,10 +156,12 @@ export function SessionSlotsEditor({
 
           <Row label="Pricing">
             <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <div className="grid grid-cols-3 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                <span>Price</span><span>Special</span><span>Account</span>
+              {/* The account column only exists when Xero is connected with a
+                  shortlist — same rule as the package-level picker. */}
+              <div className={`grid ${accounts.length ? 'grid-cols-3' : 'grid-cols-2'} bg-slate-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400`}>
+                <span>Price</span><span>Special</span>{accounts.length > 0 && <span>Account</span>}
               </div>
-              <div className="grid grid-cols-3 gap-2 p-2">
+              <div className={`grid ${accounts.length ? 'grid-cols-3' : 'grid-cols-2'} gap-2 p-2`}>
                 <div className="relative">
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
                   <input value={s.price} onChange={e => update(s.id, { price: e.target.value })} inputMode="decimal" placeholder="0.00" className="h-10 w-full rounded-lg border border-slate-200 pl-5 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -168,7 +170,25 @@ export function SessionSlotsEditor({
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
                   <input value={s.specialPrice} onChange={e => update(s.id, { specialPrice: e.target.value })} inputMode="decimal" placeholder="—" className="h-10 w-full rounded-lg border border-slate-200 pl-5 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-                <input value={s.account} onChange={e => update(s.id, { account: e.target.value })} list="session-xero-accounts" placeholder={accounts.length ? 'Search accounts' : 'Code'} className="h-10 w-full rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                {/* Pick from the shortlist, don't type a code against a
+                    native datalist — the browser draws that list itself and it
+                    looks nothing like the rest of the form. A code that isn't
+                    on the shortlist any more is kept as its own option so
+                    editing an old slot can't silently drop it. */}
+                {accounts.length > 0 && (
+                  <select
+                    value={s.account}
+                    onChange={e => update(s.id, { account: e.target.value })}
+                    aria-label="Xero income account"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Default</option>
+                    {accounts.map(a => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
+                    {s.account && !accounts.some(a => a.code === s.account) && (
+                      <option value={s.account}>{s.account}</option>
+                    )}
+                  </select>
+                )}
               </div>
             </div>
           </Row>
@@ -228,11 +248,6 @@ export function SessionSlotsEditor({
       ))}
       </SortableContext>
       </DndContext>
-
-      {/* Shared Xero-account autocomplete list for every row's Account field. */}
-      <datalist id="session-xero-accounts">
-        {accounts.map(a => <option key={a.code} value={a.code}>{a.name}</option>)}
-      </datalist>
 
       {addLocForSlot && (
         <AddLocationModal
