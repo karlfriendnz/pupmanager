@@ -183,15 +183,16 @@ export function OfferingTabs<T extends string>({
     // desktop — a two-tab bar stretched across 1200px reads as a header.
     //
     // The radii have to agree or the active pill reads as bulging out of its
-    // track: track radius (12) = pill radius (8) + the track's padding (4).
-    <div className="mb-1.5 flex gap-1 rounded-xl bg-slate-100 p-1 sm:inline-flex sm:self-start">
+    // track: track radius (16) = pill radius (10) + the track's padding (6).
+    // 4px of padding isn't enough — the active pill's shadow closes the gap.
+    <div className="mb-1.5 flex gap-1 rounded-2xl bg-slate-100 p-1.5 sm:inline-flex sm:self-start">
       {tabs.map(t => (
         <button
           key={t.id}
           type="button"
           onClick={() => onChange(t.id)}
           aria-pressed={value === t.id}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-all duration-150 ${
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-[10px] px-3.5 py-2 text-sm font-medium transition-all duration-150 ${
             value === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
           }`}
         >

@@ -8,6 +8,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
+import { CardHeading } from '@/components/shared/card-heading'
 import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info, Check, Send, FileText, AlertTriangle, Search } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
@@ -244,9 +245,7 @@ export function RunDetail({
           {/* Class details */}
           <Card>
             <CardBody className="py-5">
-              <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
-                <Info className="h-4 w-4 text-slate-400" /> Details
-              </h2>
+              <CardHeading icon={<Info className="h-4 w-4 text-slate-400" />}>Details</CardHeading>
               <div className="divide-y divide-slate-100">
                 {/* Read-only here, like every other fact on this card. It's
                     changed on the edit page, with the rest of the class. */}
@@ -300,10 +299,9 @@ export function RunDetail({
           {/* Sessions */}
           <Card>
             <CardBody className="py-5">
-              <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
-                <CalendarDays className="h-4 w-4 text-slate-400" /> Sessions
-                <span className="text-sm font-normal text-slate-500">({sessions.length})</span>
-              </h2>
+              <CardHeading icon={<CalendarDays className="h-4 w-4 text-slate-400" />} count={sessions.length}>
+                Sessions
+              </CardHeading>
               {sessions.length === 0 ? (
                 <p className="text-sm text-slate-500 py-2">No sessions scheduled.</p>
               ) : (
@@ -340,15 +338,17 @@ export function RunDetail({
       <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden lg:flex'}`}>
           <Card>
             <CardBody className="py-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-                  <Users className="h-4 w-4 text-slate-400" /> Clients
-                  <span className="text-sm font-normal text-slate-500">({seatsLabel})</span>
-                </h2>
-                <Button variant="secondary" onClick={() => setAdding(true)}>
-                  <UserPlus className="h-4 w-4" /> Enrol client
-                </Button>
-              </div>
+              <CardHeading
+                icon={<Users className="h-4 w-4 text-slate-400" />}
+                note={seatsLabel}
+                action={
+                  <Button variant="secondary" onClick={() => setAdding(true)}>
+                    <UserPlus className="h-4 w-4" /> Enrol client
+                  </Button>
+                }
+              >
+                Clients
+              </CardHeading>
 
               {enrollments.length === 0 ? (
                 <p className="text-sm text-slate-500 py-4 text-center">No one enrolled yet.</p>
@@ -357,7 +357,10 @@ export function RunDetail({
                   {/* Current / past as tabs rather than two stacked tables —
                       a long history of withdrawals shouldn't push who's
                       actually in the class off the bottom. */}
-                  <div className="mb-3 inline-flex gap-1 rounded-xl bg-slate-100 p-1">
+                  {/* Track padding 6px with a 10px pill inside a 16px track —
+                      at 4px the active pill's shadow closes the gap and it
+                      reads as bulging out of the track. */}
+                  <div className="mb-3 inline-flex gap-1 rounded-2xl bg-slate-100 p-1.5">
                     {([
                       { id: 'current' as const, label: 'Current', count: present.length },
                       { id: 'past' as const, label: 'Past', count: past.length },
@@ -367,7 +370,7 @@ export function RunDetail({
                         type="button"
                         onClick={() => setClientTab(t.id)}
                         aria-pressed={clientTab === t.id}
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                        className={`inline-flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-sm font-medium transition-all ${
                           clientTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                         }`}
                       >

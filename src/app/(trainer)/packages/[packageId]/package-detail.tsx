@@ -6,6 +6,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
+import { CardHeading } from '@/components/shared/card-heading'
 import { Info, Users, Pencil, Package as PackageIcon } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 
@@ -147,9 +148,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             {/* Package details */}
             <Card>
               <CardBody className="py-5">
-                <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
-                  <Info className="h-4 w-4 text-slate-400" /> Details
-                </h2>
+                <CardHeading icon={<Info className="h-4 w-4 text-slate-400" />}>Details</CardHeading>
                 <div className="divide-y divide-slate-100">
                   <Detail label="Type" value={pkg.isGroup ? 'Group class' : '1:1'} />
                   <Detail label="Sessions" value={pkg.sessionCount === 0 ? 'Ongoing' : String(pkg.sessionCount)} />
@@ -193,9 +192,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             {pkg.isGroup && (
               <Card>
                 <CardBody className="py-5">
-                  <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
-                    <Users className="h-4 w-4 text-slate-400" /> Class settings
-                  </h2>
+                  <CardHeading icon={<Users className="h-4 w-4 text-slate-400" />}>Class settings</CardHeading>
                   <div className="divide-y divide-slate-100">
                     <Detail label="Capacity" value={pkg.capacity != null ? String(pkg.capacity) : 'Unlimited'} />
                     <Detail label="Drop-ins" value={pkg.allowDropIn ? 'Allowed' : 'No'} />
@@ -220,10 +217,9 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
 
             <Card>
               <CardBody className="py-5">
-                <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
-                  <Users className="h-4 w-4 text-slate-400" /> Clients
-                  <span className="text-sm font-normal text-slate-500">({rows.length})</span>
-                </h2>
+                <CardHeading icon={<Users className="h-4 w-4 text-slate-400" />} count={rows.length}>
+                  Clients
+                </CardHeading>
 
                 {rows.length === 0 ? (
                   <div className="py-10 text-center text-slate-400">
@@ -235,7 +231,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                     {/* Current / past as tabs rather than two stacked tables —
                         a long history shouldn't push who's actually on the
                         package off the bottom. */}
-                    <div className="mb-3 inline-flex gap-1 rounded-xl bg-slate-100 p-1">
+                    <div className="mb-3 inline-flex gap-1 rounded-2xl bg-slate-100 p-1.5">
                       {([
                         { id: 'current' as const, label: 'Current', count: present.length },
                         { id: 'past' as const, label: 'Past', count: past.length },
@@ -245,7 +241,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                           type="button"
                           onClick={() => setClientTab(t.id)}
                           aria-pressed={clientTab === t.id}
-                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                          className={`inline-flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-sm font-medium transition-all ${
                             clientTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                           }`}
                         >
