@@ -144,6 +144,8 @@ export function PackageForm({
   const [scheduleNote, setScheduleNote] = useState<string>('')
   // Drop-in classes define their weekly slots individually (day/time/location).
   const [slots, setSlots] = useState<SessionSlot[]>([newSlot()])
+  // Join link for a virtual session (Zoom/Meet); only when session type = Virtual.
+  const [virtualLink, setVirtualLink] = useState<string>('')
   // Who delivers this — assignable for every kind. Fetched client-side (the
   // team endpoint returns membership ids). NOT yet wired to persistence.
   const [team, setTeam] = useState<{ id: string; name: string | null; title: string | null }[]>([])
@@ -481,7 +483,7 @@ export function PackageForm({
       )}
 
       <Input
-        label="Default duration (mins)"
+        label="Duration (mins)"
         type="number"
         error={errors.durationMins?.message}
         {...register('durationMins', { valueAsNumber: true })}
@@ -505,6 +507,20 @@ export function PackageForm({
         </div>
       </div>
 
+      {/* Join link — a virtual session needs somewhere to meet online. */}
+      {watch('sessionType') === 'VIRTUAL' && (
+        <div className="md:col-span-2">
+          <label className="text-sm font-medium text-slate-700 block mb-1.5">Virtual session link</label>
+          <input
+            type="url"
+            value={virtualLink}
+            onChange={e => setVirtualLink(e.target.value)}
+            placeholder="https://zoom.us/j/… or Google Meet link"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      )}
+
       {/* Capacity is a class-only limit, so it sits with the schedule. */}
       {isGroup && (
         <div>
@@ -521,32 +537,21 @@ export function PackageForm({
         </div>
       )}
 
-      {/* Drop-in options live with the schedule — they're about how people join
-          a class's sessions. Drop-in price stays here (not in Pricing) so it
-          sits with its on/off switch. Not for a one-off event (single sitting). */}
-      {(kind === 'group' || kind === 'dropin') && (
+      {/* Drop-in price — only for the drop-in kind (always allows drop-ins, so
+          no toggle). A group class no longer has this. */}
+      {kind === 'dropin' && (
         <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3.5 flex flex-col gap-3">
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input type="checkbox" checked={allowDropIn} onChange={e => setAllowDropIn(e.target.checked)} className="h-4 w-4 mt-0.5" />
-            <span className="flex-1 min-w-0">
-              <span className="block text-sm font-medium text-slate-700">Allow drop-ins</span>
-              <span className="block text-[11px] text-slate-400 mt-0.5">Clients can book a single session on its own, at the per-session price below.</span>
-            </span>
-          </label>
-
-          {allowDropIn && (
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Drop-in price per session</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={dropInPrice}
-                onChange={e => setDropInPrice(e.target.value)}
-                placeholder="30"
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          )}
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Drop-in price per session</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={dropInPrice}
+              onChange={e => setDropInPrice(e.target.value)}
+              placeholder="30"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
 
           {PUBLIC_CLASS_ENROLLMENT_ENABLED && (
             <label className="flex items-start gap-3 cursor-pointer">
@@ -595,10 +600,6 @@ export function PackageForm({
               />
             )}
           </div>
-
-          {(kind === 'group' || kind === 'dropin') && (
-            <Input label="Schedule note (optional)" placeholder="e.g. Thursdays 4:00pm" value={scheduleNote} onChange={e => setScheduleNote(e.target.value)} />
-          )}
         </>
       )}
 
