@@ -16,7 +16,6 @@ export type SessionSlot = {
   day: number // 0 = Sunday … 6 = Saturday
   start: string // "HH:mm" (24h)
   end: string
-  duration: string // mins
   gap: string // mins between this and the next session
   capacity: string // '' = unlimited
   locationId: string // '' = none / inherit the class location
@@ -31,7 +30,7 @@ const DAYS = [
 const GAP_HELP = 'Time you need after each session — travel, clean-up, a breather. Nothing can be booked into it.'
 
 export function newSlot(): SessionSlot {
-  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 2, start: '15:00', end: '17:00', duration: '60', gap: '0', capacity: '', locationId: '', repeat: 'FREQ=WEEKLY' }
+  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 2, start: '15:00', end: '17:00', gap: '0', capacity: '', locationId: '', repeat: 'FREQ=WEEKLY' }
 }
 
 function Row({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
@@ -83,28 +82,26 @@ export function SessionSlotsEditor({
             <X className="h-5 w-5" />
           </button>
 
-          <Row label="Starts from">
-            <input type="date" value={s.startDate} onChange={e => update(s.id, { startDate: e.target.value })} className={ctrl + ' max-w-[200px]'} />
-          </Row>
-
           <Row label="Day">
             <select value={s.day} onChange={e => update(s.id, { day: Number(e.target.value) })} className={ctrl + ' max-w-[220px]'}>
               {DAYS.map(d => <option key={d.v} value={d.v}>{d.label}</option>)}
             </select>
           </Row>
 
+          <Row label="Starts from">
+            <input type="date" value={s.startDate} onChange={e => update(s.id, { startDate: e.target.value })} className={ctrl + ' max-w-[200px]'} />
+          </Row>
+
           <Row label="Time">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
               <input type="time" value={s.start} onChange={e => update(s.id, { start: e.target.value })} className={ctrl + ' max-w-[140px]'} />
               <ArrowRight className="h-4 w-4 text-slate-300 shrink-0" />
               <input type="time" value={s.end} onChange={e => update(s.id, { end: e.target.value })} className={ctrl + ' max-w-[140px]'} />
-              <span className="ml-1 text-sm font-medium text-slate-500">Capacity</span>
-              <input type="number" min={1} value={s.capacity} onChange={e => update(s.id, { capacity: e.target.value })} placeholder="∞" className={ctrl + ' max-w-[90px] text-center'} />
             </div>
           </Row>
 
-          <Row label="Duration">
-            <input type="number" min={5} value={s.duration} onChange={e => update(s.id, { duration: e.target.value })} className={ctrl + ' max-w-[120px]'} />
+          <Row label="Capacity">
+            <input type="number" min={1} value={s.capacity} onChange={e => update(s.id, { capacity: e.target.value })} placeholder="∞ Unlimited" className={ctrl + ' max-w-[160px]'} />
           </Row>
 
           <Row label="Gap" help={GAP_HELP}>
