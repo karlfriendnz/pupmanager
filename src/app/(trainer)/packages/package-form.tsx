@@ -106,7 +106,7 @@ export function centsToDollars(cents: number | null): string {
 type FormValues = z.infer<typeof formSchema>
 
 /**
- * The shared package create/edit form. Used on the create page (/packages/new)
+ * The shared package create/edit form. Used on the create page (/offerings/new)
  * and the edit page (/packages/[packageId]/edit). Lays its fields out in a
  * responsive two-column grid (short inputs pair up; description, toggles and
  * the colour picker span both). Renders the fields + submit/cancel actions;

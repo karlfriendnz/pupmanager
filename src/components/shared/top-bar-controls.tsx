@@ -363,10 +363,10 @@ export function TopBarControls({
               role="menuitem"
               onClick={() => {
                 setAddOpen(false)
-                const href = pathname.startsWith('/classes') ? '/packages/new?kind=group'
-                  : pathname.startsWith('/drop-ins') ? '/packages/new?kind=dropin'
-                  : pathname.startsWith('/events') ? '/packages/new?kind=oneoff'
-                  : '/packages/new'
+                const href = pathname.startsWith('/classes') ? '/offerings/new?kind=group'
+                  : pathname.startsWith('/drop-ins') ? '/offerings/new?kind=dropin'
+                  : pathname.startsWith('/events') ? '/offerings/new?kind=oneoff'
+                  : '/offerings/new'
                 router.push(href)
               }}
               className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"

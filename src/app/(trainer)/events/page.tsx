@@ -37,7 +37,7 @@ export default async function EventsPage() {
                 Set up a one-off event on a single date — pick the time, add ticket
                 types and a capacity, and share the sign-up with your clients.
               </p>
-              <Link href="/packages/new?kind=oneoff" className="mt-5">
+              <Link href="/offerings/new?kind=oneoff" className="mt-5">
                 <Button>
                   <Plus className="h-4 w-4" /> New event
                 </Button>

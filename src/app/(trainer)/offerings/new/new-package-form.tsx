@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { PackageForm, type PkgRow, type SessionFormOption } from '../package-form'
+import { PackageForm, type PkgRow, type SessionFormOption } from '../../packages/package-form'
 
 /**
  * Page-mode wrapper around the shared PackageForm for creating a new package.

@@ -1202,7 +1202,7 @@ function TrainerShell({
 
       {/* Mobile bottom tab bar — 4 primary destinations + More. Hidden on the
           offering wizard, whose own Back/Next bar owns the bottom of the phone. */}
-      {pathname !== '/packages/new' && (
+      {pathname !== '/offerings/new' && (
       <nav
         className="md:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-slate-100 z-40"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}

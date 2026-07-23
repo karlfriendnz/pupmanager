@@ -40,10 +40,10 @@ export function FloatingCreateButton({
   // matching the desktop "+".
   const newOffering = () => {
     setOpen(false)
-    const href = pathname.startsWith('/classes') ? '/packages/new?kind=group'
-      : pathname.startsWith('/drop-ins') ? '/packages/new?kind=dropin'
-      : pathname.startsWith('/events') ? '/packages/new?kind=oneoff'
-      : '/packages/new'
+    const href = pathname.startsWith('/classes') ? '/offerings/new?kind=group'
+      : pathname.startsWith('/drop-ins') ? '/offerings/new?kind=dropin'
+      : pathname.startsWith('/events') ? '/offerings/new?kind=oneoff'
+      : '/offerings/new'
     router.push(href)
   }
 

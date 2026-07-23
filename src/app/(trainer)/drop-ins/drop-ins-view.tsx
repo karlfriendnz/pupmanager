@@ -51,7 +51,7 @@ export function DropInsView({ runs }: { runs: RunRow[] }) {
                   A drop-in class runs a set schedule that people can book one
                   session at a time — set the day, time and per-session price.
                 </p>
-                <Link href="/packages/new?kind=dropin" className="mt-4 inline-block">
+                <Link href="/offerings/new?kind=dropin" className="mt-4 inline-block">
                   <Button>
                     <Plus className="h-4 w-4" /> New drop-in class
                   </Button>
@@ -154,7 +154,7 @@ export function DropInsView({ runs }: { runs: RunRow[] }) {
 
           {/* Add sits at the BOTTOM of the list. */}
           <Link
-            href="/packages/new?kind=dropin"
+            href="/offerings/new?kind=dropin"
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 py-3.5 text-sm font-medium text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-600"
           >
             <CalendarDays className="h-4 w-4" /> New drop-in class
