@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { Card, CardBody } from '@/components/ui/card'
 import { PageHeader } from '@/components/shared/page-header'
@@ -34,6 +35,12 @@ type RecentRow = {
 
 export function DropInsView({ runs, recent }: { runs: RunRow[]; recent: RecentRow[] }) {
   const currency = useCurrency()
+  // Current = still has sessions left to drop into; Past = the run's sessions
+  // are all done, so nobody can drop in anymore.
+  const [tab, setTab] = useState<'current' | 'past'>('current')
+  const current = runs.filter(r => r.upcoming.length > 0)
+  const past = runs.filter(r => r.upcoming.length === 0)
+  const shown = tab === 'past' ? past : current
 
   return (
     <>
@@ -69,8 +76,39 @@ export function DropInsView({ runs, recent }: { runs: RunRow[]; recent: RecentRo
               </CardBody>
             </Card>
           ) : (
+            <>
+            <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-4">
+              {([
+                { id: 'current' as const, label: 'Current', count: current.length },
+                { id: 'past' as const, label: 'Past', count: past.length },
+              ]).map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
+                    tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {t.label}
+                  <span className={`min-w-5 px-1.5 text-[11px] font-semibold tabular-nums rounded-full ${
+                    tab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {t.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {shown.length === 0 ? (
+              <Card>
+                <CardBody>
+                  <p className="py-8 text-center text-sm text-slate-400">
+                    {tab === 'past' ? 'No past drop-in classes yet.' : 'No classes are currently taking drop-ins.'}
+                  </p>
+                </CardBody>
+              </Card>
+            ) : (
             <div className="flex flex-col gap-3">
-              {runs.map(r => (
+              {shown.map(r => (
                 <Link key={r.id} href={`/classes/${r.id}`} className="block">
                   <Card className="hover:border-blue-200 transition-colors">
                     <CardBody className="py-4">
@@ -126,6 +164,8 @@ export function DropInsView({ runs, recent }: { runs: RunRow[]; recent: RecentRo
                 </Link>
               ))}
             </div>
+            )}
+            </>
           )}
           {runs.length > 0 && (
             <Link
