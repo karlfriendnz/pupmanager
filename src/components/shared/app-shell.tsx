@@ -201,6 +201,11 @@ interface AppShellProps {
    * lands back on their dashboard without having to log in again.
    */
   previewExitHref?: string | null
+  /**
+   * Trainer shell only: where the top-bar logo links to — the trainer's chosen
+   * home page (Settings → landing page). Defaults to /dashboard.
+   */
+  homeHref?: string
 }
 
 // How often the nav badge re-checks the unread count (also refetches on window
@@ -680,6 +685,7 @@ function TrainerTopBar({
   trainerLogo,
   trainerIcon,
   businessName,
+  homeHref = '/dashboard',
   fallbackTitle,
   userName,
   userEmail,
@@ -695,6 +701,7 @@ function TrainerTopBar({
   trainerLogo?: string | null
   trainerIcon?: string | null
   businessName?: string | null
+  homeHref?: string
   fallbackTitle: string
   userName?: string | null
   userEmail?: string | null
@@ -708,8 +715,9 @@ function TrainerTopBar({
   const title = usePageTitle() ?? fallbackTitle
   return (
     <header className="hidden md:flex fixed top-0 inset-x-0 z-40 min-h-[3.5rem] items-center border-b border-slate-100 bg-white/85 backdrop-blur pt-[var(--app-safe-top)]">
-      {/* Logo zone — aligned to the sidebar width so it sits above it. */}
-      <div className={cn('flex items-center h-full shrink-0 border-r border-slate-100 transition-all duration-200 overflow-hidden', collapsed ? 'w-16 justify-center px-2' : 'w-64 gap-3 px-5')}>
+      {/* Logo zone — aligned to the sidebar width so it sits above it. Links to
+          the trainer's chosen home page. */}
+      <Link href={homeHref} aria-label="Home" className={cn('flex items-center h-full shrink-0 border-r border-slate-100 transition-all duration-200 overflow-hidden hover:bg-slate-50', collapsed ? 'w-16 justify-center px-2' : 'w-64 gap-3 px-5')}>
         {/* Logo fits inside a fixed square box (object-contain, never cropped),
             with the org name beside it when expanded. */}
         {trainerIcon ? (
@@ -727,7 +735,7 @@ function TrainerTopBar({
         {!collapsed && (
           <span className="font-semibold text-slate-900 truncate">{businessName ?? 'PupManager'}</span>
         )}
-      </div>
+      </Link>
       {/* Collapse toggle — just past the sidebar border. */}
       <button
         type="button"
@@ -764,11 +772,13 @@ function TrainerMobileHeader({
   trainerLogo,
   businessName,
   fallbackTitle,
+  homeHref,
 }: {
   trainerIcon?: string | null
   trainerLogo?: string | null
   businessName?: string
   fallbackTitle: string
+  homeHref: string
 }) {
   // A page's own title (via PageHeader) wins; otherwise fall back to the nav
   // label for the route, so pages with a custom header (e.g. /schedule) still
@@ -782,25 +792,25 @@ function TrainerMobileHeader({
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
       <div className="flex h-14 items-center gap-2 px-3">
+        {/* Logo — always top-left, links to the trainer's home page (Settings). */}
+        <Link href={homeHref} aria-label="Home" className="flex shrink-0 items-center">
+          {trainerIcon ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={trainerIcon} alt="" className="h-8 w-8 rounded-lg object-contain" />
+          ) : trainerLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={trainerLogo} alt="" className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg" />
+          )}
+        </Link>
         {/* Back slot — always present so the portal target exists on first paint. */}
         <span id="pm-topbar-back-mobile" className="flex items-center empty:hidden" />
-        {showTitle ? (
-          <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">{title}</h1>
-        ) : (
-          <Link href="/dashboard" className="flex min-w-0 flex-1 items-center gap-2">
-            {trainerIcon ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={trainerIcon} alt="" className="h-8 w-8 rounded-lg object-contain shrink-0" />
-            ) : trainerLogo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={trainerLogo} alt="" className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100 shrink-0" />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg shrink-0" />
-            )}
-            <span className="truncate font-semibold text-slate-900">{businessName ?? 'PupManager'}</span>
-          </Link>
-        )}
+        {/* On inner pages, the page name; on the dashboard, the business name. */}
+        <span className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">
+          {showTitle ? title : businessName ?? 'PupManager'}
+        </span>
         {/* Page-actions slot — always present (empty:hidden). */}
         <span id="pm-topbar-actions-mobile" className="flex items-center gap-1.5 empty:hidden" />
         {/* The same slide-out search as desktop — one implementation, so the
@@ -828,6 +838,7 @@ function TrainerShell({
   addonLockedHrefs = [],
   orgs = [],
   activeCompanyId = null,
+  homeHref = '/dashboard',
 }: AppShellProps) {
   const pathname = usePathname()
   // Nav filtered to what this user's role/permissions allow. Add-on items
@@ -938,6 +949,7 @@ function TrainerShell({
         trainerLogo={trainerLogo}
         trainerIcon={trainerIcon}
         businessName={businessName}
+        homeHref={homeHref}
         fallbackTitle={navFallbackTitle}
         userName={userName}
         userEmail={userEmail}
@@ -955,7 +967,7 @@ function TrainerShell({
           logo and business name, never "PupManager". Sticky (not fixed) so it
           occupies flow and no page needs new top padding; pads the safe-area
           inset so it clears the notch. */}
-      <TrainerMobileHeader trainerIcon={trainerIcon} trainerLogo={trainerLogo} businessName={businessName} fallbackTitle={navFallbackTitle} />
+      <TrainerMobileHeader trainerIcon={trainerIcon} trainerLogo={trainerLogo} businessName={businessName} fallbackTitle={navFallbackTitle} homeHref={homeHref} />
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
           Hidden inside Settings, which brings its own rail. */}

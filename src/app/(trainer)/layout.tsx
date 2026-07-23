@@ -166,6 +166,14 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     },
   })
 
+  // Where the top-bar logo links — the signed-in user's chosen landing page
+  // (Settings → Business). Per-user, so staff and owner can differ.
+  const me = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { landingPage: true },
+  })
+  const homeHref = me?.landingPage === 'schedule' ? '/schedule' : '/dashboard'
+
   // The top bar's "+" offers "New sale" only when the instant-sale add-on is on
   // AND this member may raise one. Presentation only — POST
   // /api/trainer/finances/receivables re-checks both.
@@ -246,6 +254,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       trainerLogo={tp?.logoUrl ?? null}
       trainerIcon={tp?.iconUrl ?? null}
       businessName={tp?.businessName ?? session.user.businessName}
+      homeHref={homeHref}
       highlightMenuHref={highlightMenuHref}
       completedStepKeys={completedStepKeys}
       unreadCounts={{ '/messages': unreadMessageCount, '/notifications': unreadNotifications }}
