@@ -138,13 +138,16 @@ export function RunDetail({
   const revenue = run.priceCents != null ? run.priceCents * billable : null
 
 
-  async function withdraw(enrollmentId: string) {
+  // Takes a list: a drop-in client is one row on the roster but can hold
+  // several bookings, and withdrawing them is one action, one refresh.
+  async function withdraw(enrollmentIds: string[]) {
     setError(null)
-    const res = await fetch(`/api/class-runs/${run.id}/enrollments/${enrollmentId}`, {
-      method: 'DELETE',
-    })
-    if (!res.ok) setError('Could not withdraw that enrolment.')
-    else router.refresh()
+    const results = await Promise.all(
+      enrollmentIds.map(id =>
+        fetch(`/api/class-runs/${run.id}/enrollments/${id}`, { method: 'DELETE' })),
+    )
+    if (results.some(r => !r.ok)) setError('Could not withdraw that enrolment.')
+    router.refresh()
   }
 
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
@@ -437,6 +440,84 @@ export function RunDetail({
   )
 }
 
+/** One roster row per client+dog, folding their bookings together. */
+type ClientGroup = {
+  key: string
+  ids: string[]
+  uninvoicedIds: string[]
+  clientId: string
+  clientName: string
+  dogName: string | null
+  dogPhotoUrl: string | null
+  status: EnrollStatus
+  waitlistPosition: number | null
+  selfServe: boolean
+  anyDropIn: boolean
+  /** Bookings still to come — the number that matters on a drop-in class. */
+  upcomingCount: number
+  attendedCount: number
+  markedCount: number
+  invoiceState: Enrollment['invoiceState']
+}
+
+/** Worst-first: one unpaid session is the thing a trainer needs to see, so it
+ *  wins over the paid ones sitting beside it. null (no invoice at all) is the
+ *  worst of the lot — there's nothing for the client to pay against. */
+function worstInvoiceState(states: Enrollment['invoiceState'][]): Enrollment['invoiceState'] {
+  if (states.some(s => s == null)) return null
+  if (states.some(s => s === 'UNSENT')) return 'UNSENT'
+  if (states.some(s => s === 'SENT')) return 'SENT'
+  if (states.some(s => s === 'PAID')) return 'PAID'
+  return 'CANCELLED'
+}
+
+function groupByClient(rows: Enrollment[]): ClientGroup[] {
+  const now = Date.now()
+  const out = new Map<string, ClientGroup>()
+  for (const e of rows) {
+    // Keyed on the dog too: the same owner bringing two dogs is two enrolments
+    // and genuinely two lines on the roster.
+    const key = `${e.clientId}|${e.dogName ?? ''}`
+    const g = out.get(key)
+    const isUpcoming = e.dropInSessionAt != null && new Date(e.dropInSessionAt).getTime() > now
+    if (!g) {
+      out.set(key, {
+        key,
+        ids: [e.id],
+        uninvoicedIds: e.invoiceState == null ? [e.id] : [],
+        clientId: e.clientId,
+        clientName: e.clientName,
+        dogName: e.dogName,
+        dogPhotoUrl: e.dogPhotoUrl,
+        status: e.status,
+        waitlistPosition: e.waitlistPosition,
+        selfServe: e.source === 'SELF_SERVE',
+        anyDropIn: e.type === 'DROP_IN',
+        upcomingCount: isUpcoming ? 1 : 0,
+        attendedCount: e.attendedCount,
+        markedCount: e.markedCount,
+        invoiceState: e.invoiceState,
+      })
+      continue
+    }
+    g.ids.push(e.id)
+    if (e.invoiceState == null) g.uninvoicedIds.push(e.id)
+    g.selfServe ||= e.source === 'SELF_SERVE'
+    g.anyDropIn ||= e.type === 'DROP_IN'
+    if (isUpcoming) g.upcomingCount++
+    g.attendedCount += e.attendedCount
+    g.markedCount += e.markedCount
+    g.waitlistPosition ??= e.waitlistPosition
+    // An enrolled booking outranks a waitlisted one in the status badge —
+    // "waitlisted" on someone who's confirmed for two sessions would be a lie.
+    if (e.status === 'ENROLLED') g.status = 'ENROLLED'
+  }
+  for (const g of out.values()) {
+    g.invoiceState = worstInvoiceState(rows.filter(r => g.ids.includes(r.id)).map(r => r.invoiceState))
+  }
+  return [...out.values()]
+}
+
 function EnrollTable({
   title,
   rows,
@@ -448,36 +529,42 @@ function EnrollTable({
   /** Omitted for the main roster — the card heading already names it. */
   title?: string
   rows: Enrollment[]
-  onWithdraw: (id: string) => void
+  onWithdraw: (ids: string[]) => void
   withdrawable: boolean
   runId: string
   /** The class takes drop-ins, so a row's kind is worth spelling out. */
   dropInClass: boolean
 }) {
   const router = useRouter()
+  // A client is ONE row, however many bookings they hold. A drop-in client with
+  // three Saturdays booked was three near-identical rows, which read as the
+  // roster having duplicated them.
+  const groups = groupByClient(rows)
   // One-click repair for a row showing "No invoice" — enrolments made before
   // class invoicing existed have nothing behind them, and hand-building one in
   // Finances is a slog. The endpoint is idempotent, so a double-click is safe.
-  const [invoicingId, setInvoicingId] = useState<string | null>(null)
-  async function createInvoice(enrollmentId: string) {
-    if (invoicingId) return
-    setInvoicingId(enrollmentId)
+  const [invoicingKey, setInvoicingKey] = useState<string | null>(null)
+  async function createInvoices(key: string, enrollmentIds: string[]) {
+    if (invoicingKey || enrollmentIds.length === 0) return
+    setInvoicingKey(key)
     try {
-      const res = await fetch(`/api/class-runs/${runId}/enrollments/${enrollmentId}/invoice`, { method: 'POST' })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null) as { error?: unknown } | null
+      const results = await Promise.all(enrollmentIds.map(id =>
+        fetch(`/api/class-runs/${runId}/enrollments/${id}/invoice`, { method: 'POST' })))
+      const bad = results.find(r => !r.ok)
+      if (bad) {
+        const body = await bad.json().catch(() => null) as { error?: unknown } | null
         alert(typeof body?.error === 'string' ? body.error : 'Could not create the invoice.')
         return
       }
       router.refresh()
     } finally {
-      setInvoicingId(null)
+      setInvoicingKey(null)
     }
   }
 
   return (
     <div>
-      {title && <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1 px-1">{title} ({rows.length})</p>}
+      {title && <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1 px-1">{title} ({groups.length})</p>}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -490,52 +577,42 @@ function EnrollTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {rows.map(e => (
-              <tr key={e.id} className="hover:bg-slate-50">
+            {groups.map(g => (
+              <tr key={g.key} className="hover:bg-slate-50">
                 <td className="py-2.5 px-1">
-                  <Link href={`/clients/${e.clientId}`} className="flex items-center gap-2.5 group">
-                    <ClientAvatar name={e.clientName} dogPhotoUrl={e.dogPhotoUrl} size="sm" />
+                  <Link href={`/clients/${g.clientId}`} className="flex items-center gap-2.5 group">
+                    <ClientAvatar name={g.clientName} dogPhotoUrl={g.dogPhotoUrl} size="sm" />
                     <span className="min-w-0">
-                      <span className="block font-medium text-slate-900 group-hover:text-blue-600 truncate">{e.clientName}</span>
-                      {/* What this row is, when it isn't just "enrolled".
-                          On a drop-in class the word "drop-in" says nothing —
-                          they all are — so a drop-in shows the session it's
-                          for, which is the thing that tells two bookings by
-                          the same client apart. A full-run enrolment mixed in
-                          with drop-ins IS worth naming. */}
-                      {(dropInClass || e.type === 'DROP_IN' || e.source === 'SELF_SERVE' || e.waitlistPosition != null) && (
+                      <span className="block font-medium text-slate-900 group-hover:text-blue-600 truncate">{g.clientName}</span>
+                      {(g.waitlistPosition != null || g.selfServe || (dropInClass && !g.anyDropIn)) && (
                         <span className="block text-[11px] text-slate-400">
-                          {e.waitlistPosition != null && `#${e.waitlistPosition} waitlist`}
-                          {e.type === 'DROP_IN' ? (
-                            <span className="text-amber-600" suppressHydrationWarning>
-                              {e.dropInSessionAt
-                                ? new Date(e.dropInSessionAt).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
-                                : e.dropInSessionIndex ? `Session ${e.dropInSessionIndex}` : 'Drop-in'}
-                            </span>
-                          ) : dropInClass ? (
-                            <span className="text-slate-500">Full run</span>
-                          ) : null}
-                          {e.source === 'SELF_SERVE' && ' · self-enrolled'}
+                          {g.waitlistPosition != null && `#${g.waitlistPosition} waitlist`}
+                          {/* A full-run enrolment on a class that takes
+                              drop-ins is the exception worth naming. */}
+                          {dropInClass && !g.anyDropIn && <span className="text-slate-500">Full run</span>}
+                          {g.selfServe && ' · self-enrolled'}
                         </span>
                       )}
                       {/* Billing state at a glance — the roster is where a
                           trainer notices someone hasn't been invoiced, not the
-                          finances tab. Withdrawn rows have nothing to bill. */}
-                      {e.status !== 'WITHDRAWN' && (
+                          finances tab. Withdrawn rows have nothing to bill.
+                          Across several bookings it's the worst state that
+                          matters: one unpaid session is the thing to chase. */}
+                      {g.status !== 'WITHDRAWN' && (
                         <span className="block mt-0.5">
-                          {e.invoiceState === 'PAID' ? (
+                          {g.invoiceState === 'PAID' ? (
                             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
                               <Check className="h-3 w-3" /> Paid
                             </span>
-                          ) : e.invoiceState === 'SENT' ? (
+                          ) : g.invoiceState === 'SENT' ? (
                             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-600">
                               <Send className="h-3 w-3" /> Invoice sent
                             </span>
-                          ) : e.invoiceState === 'UNSENT' ? (
+                          ) : g.invoiceState === 'UNSENT' ? (
                             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400">
                               <FileText className="h-3 w-3" /> Invoice not sent
                             </span>
-                          ) : e.invoiceState === 'CANCELLED' ? (
+                          ) : g.invoiceState === 'CANCELLED' ? (
                             <span className="text-[11px] font-medium text-slate-400">Invoice cancelled</span>
                           ) : (
                             // The repair: enrolments made before class
@@ -547,11 +624,11 @@ function EnrollTable({
                               </span>
                               <button
                                 type="button"
-                                onClick={ev => { ev.preventDefault(); ev.stopPropagation(); createInvoice(e.id) }}
-                                disabled={invoicingId === e.id}
+                                onClick={ev => { ev.preventDefault(); ev.stopPropagation(); createInvoices(g.key, g.uninvoicedIds) }}
+                                disabled={invoicingKey === g.key}
                                 className="text-[11px] font-semibold text-blue-600 hover:underline disabled:opacity-50"
                               >
-                                {invoicingId === e.id ? 'Creating…' : 'Create'}
+                                {invoicingKey === g.key ? 'Creating…' : 'Create'}
                               </button>
                             </span>
                           )}
@@ -560,22 +637,28 @@ function EnrollTable({
                     </span>
                   </Link>
                 </td>
-                <td className="py-2.5 px-1 text-slate-600">{e.dogName ?? '—'}</td>
+                <td className="py-2.5 px-1 text-slate-600">{g.dogName ?? '—'}</td>
                 <td className="py-2.5 px-1">
-                  <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${ENROLL_BADGE[e.status]}`}>
-                    {e.status.toLowerCase()}
+                  <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${ENROLL_BADGE[g.status]}`}>
+                    {g.status.toLowerCase()}
                   </span>
                 </td>
+                {/* On a drop-in class the useful number isn't attendance yet —
+                    it's how many sessions they're booked into from here. */}
                 <td className="py-2.5 px-1 text-slate-600 tabular-nums">
-                  {e.markedCount > 0 ? `${e.attendedCount} / ${e.markedCount}` : '—'}
+                  {g.upcomingCount > 0
+                    ? `${g.upcomingCount} upcoming`
+                    : g.markedCount > 0
+                      ? `${g.attendedCount} / ${g.markedCount}`
+                      : '—'}
                 </td>
                 {withdrawable && (
                   <td className="py-2.5 px-1 text-right">
                     <button
-                      onClick={() => onWithdraw(e.id)}
+                      onClick={() => onWithdraw(g.ids)}
                       className="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"
                     >
-                      {e.status === 'WAITLISTED' ? 'Remove' : 'Withdraw'}
+                      {g.status === 'WAITLISTED' ? 'Remove' : g.ids.length > 1 ? `Withdraw all (${g.ids.length})` : 'Withdraw'}
                     </button>
                   </td>
                 )}
