@@ -454,7 +454,7 @@ export function PackageForm({
         // its own start date, time, duration, gap, capacity, location and
         // recurrence. RHF cadence fields kept registered (unused for this kind).
         <div className="md:col-span-2">
-          <SessionSlotsEditor value={slots} onChange={setSlots} locations={savedLocations.map(l => ({ id: l.id, name: l.name }))} />
+          <SessionSlotsEditor value={slots} onChange={setSlots} locations={savedLocations.map(l => ({ id: l.id, name: l.name }))} team={team} />
           <div className="hidden">
             <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
             <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />
@@ -652,10 +652,12 @@ export function PackageForm({
         </>
       )}
 
-      {/* ── Step 3 · pricing ───────────────────────────────────────── */}
+      {/* ── Step 3 · pricing — a drop-in prices per session, so no pricing step. */}
+      {kind !== 'dropin' && (
+      <>
       <SectionHeading step={3} title="Pricing" hint={
         kind === 'oneoff' ? 'What it costs to attend the event.'
-          : kind === 'group' || kind === 'dropin' ? 'The full-course price. Drop-in price is set above.'
+          : kind === 'group' ? 'The full-course price.'
           : 'Leave blank for no set price.'
       } />
 
@@ -704,12 +706,14 @@ export function PackageForm({
       <div className="md:col-span-2">
         <RequirePaymentField value={requirePayment} onChange={setRequirePayment} />
       </div>
+      </>
+      )}
 
-      {/* ── Step 4 · settings ──────────────────────────────────────── */}
-      <SectionHeading step={4} title="Settings" />
+      {/* ── Settings (step 3 for drop-in, which has no pricing step). ── */}
+      <SectionHeading step={kind === 'dropin' ? 3 : 4} title="Settings" />
 
-      {/* Who delivers it — assignable on every kind. Multi-select dropdown. */}
-      {team.length > 1 && (
+      {/* Who delivers it — assignable per kind (drop-in assigns per session). */}
+      {team.length > 1 && kind !== 'dropin' && (
         <div className="md:col-span-2">
           <label className="text-sm font-medium text-slate-700 block mb-1.5">Assigned to <span className="text-slate-400">(optional)</span></label>
           <div className="relative">
