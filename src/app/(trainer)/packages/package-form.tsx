@@ -379,11 +379,17 @@ export function PackageForm({
       {/* ── Start: name + what ───────────────────────────────────── */}
       {onSection('start') && (
       <>
+      {stepped && (
+        <StepInstruction>
+          Give your offering a clear name your clients will recognise, then pick
+          what kind it is. Your choice sets up the right options in the next steps.
+        </StepInstruction>
+      )}
       {/* Name + description sit at the top of the step. */}
       {!stepped && <SectionHeading title="Details" />}
 
       <div className="md:col-span-2">
-        <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
+        <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" autoFocus={stepped} error={errors.name?.message} {...register('name')} />
       </div>
 
       <div className="md:col-span-2">
@@ -437,6 +443,18 @@ export function PackageForm({
       {onSection('schedule') && (
       <>
       <SectionHeading title="Sessions & schedule" />
+
+      {stepped && (
+        <StepInstruction>
+          {kind === 'oneoff'
+            ? 'Set the single date and time your event runs, plus where it takes place.'
+            : kind === 'dropin'
+            ? 'Add each session people can drop into. Give every one its own day, time, capacity, price and location — duplicate or reorder them as needed.'
+            : kind === 'group'
+            ? 'Set when the class runs — the first session’s date and time, how many sessions, and how many weeks apart — plus capacity and location.'
+            : 'Set how long each session lasts and how many are in the package.'}
+        </StepInstruction>
+      )}
 
       {/* One schedule model everywhere: a run of N sessions every W weeks.
           1:1, group and drop-in all use it; only a one-off event has no cadence. */}
@@ -634,6 +652,14 @@ export function PackageForm({
           : 'Leave blank for no set price.'
       } />
 
+      {stepped && (
+        <StepInstruction>
+          {kind === 'oneoff'
+            ? 'Add the ticket types people can buy — name each one and set its price and how many are available.'
+            : 'Set the price clients pay. Add a special price to show a discount next to it, or leave it blank if there’s no set price.'}
+        </StepInstruction>
+      )}
+
       {/* A one-off event sells tickets (name + price + capacity); everything
           else has a single price (+ optional special). RHF price fields stay
           registered for events so their values still submit harmlessly. */}
@@ -686,6 +712,14 @@ export function PackageForm({
       {onSection('settings') && (
       <>
       <SectionHeading title="Settings" />
+
+      {stepped && (
+        <StepInstruction>
+          The finishing touches — who runs it, a colour and image to spot it at a
+          glance, and how booking and notes work. All optional; you can change
+          them any time.
+        </StepInstruction>
+      )}
 
       {/* Who delivers it — assignable per kind (drop-in assigns per session). */}
       {team.length > 1 && kind !== 'dropin' && (
@@ -897,6 +931,16 @@ export function PackageForm({
 /** A numbered section divider that spans the form's 2-col grid — breaks the
  * long form into clear, ordered steps without turning it into a multi-page
  * wizard (the whole thing still saves in one go). */
+// A short "what to do on this step" banner, shown at the top of each wizard
+// step (add flow only) so a first-timer always knows what the step is for.
+function StepInstruction({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="md:col-span-2 -mt-1 rounded-xl border border-blue-100 bg-blue-50/60 px-3.5 py-2.5 text-xs leading-relaxed text-slate-600">
+      {children}
+    </p>
+  )
+}
+
 function SectionHeading({ step, title, hint }: { step?: number; title: string; hint?: string }) {
   return (
     <div className="md:col-span-2 flex items-center gap-3 pt-3 first:pt-0 border-t border-slate-100 first:border-0 mt-1 first:mt-0">
