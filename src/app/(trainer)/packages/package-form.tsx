@@ -504,9 +504,11 @@ export function PackageForm({
           show them here. */}
       {kind !== 'onetoone' && kind !== 'dropin' && (
         <div className="md:col-span-2">
-          <label className="text-sm font-medium text-slate-700 block mb-1.5">
-            {kind === 'oneoff' ? 'Date & time' : 'First session (date & time)'}
-          </label>
+          {/* One-off shows its own Date/Time sub-labels (stacked); the group's
+              first-session field keeps the single label. */}
+          {kind !== 'oneoff' && (
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">First session (date &amp; time)</label>
+          )}
           <DateTimePicker value={startAt} onChange={setStartAt} stacked={kind === 'oneoff'} />
         </div>
       )}

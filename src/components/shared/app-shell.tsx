@@ -77,7 +77,7 @@ const TRAINER_NAV: NavItem[] = [
 const NAV_SECTION_LABEL: Record<NavSection, string | null> = {
   overview: null,
   clients: 'Clients',
-  programs: 'Programs',
+  programs: 'Offerings',
   business: 'Business',
   system: null,
 }

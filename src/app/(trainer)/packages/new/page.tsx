@@ -44,7 +44,7 @@ export default async function NewPackagePage() {
         title="New package"
         back={{ href: '/packages', label: 'Back to packages' }}
       />
-      <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
+      <div className="p-4 md:p-8 w-full max-w-[872px] mx-auto">
         <NewPackageForm sessionForms={sessionForms} promptConnect={promptConnect} region={region} />
       </div>
     </>
