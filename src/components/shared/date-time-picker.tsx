@@ -21,9 +21,12 @@ function sameDay(a: Date, b: Date) {
 export function DateTimePicker({
   value,
   onChange,
+  stacked = false,
 }: {
   value: Date | null
   onChange: (d: Date | null) => void
+  /** Stack the date (full width) over a labelled time field. */
+  stacked?: boolean
 }) {
   const [dateOpen, setDateOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -43,6 +46,26 @@ export function DateTimePicker({
   }
 
   const fieldCls = 'h-11 flex-1 min-w-0 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-left hover:border-slate-300 focus-within:ring-2 focus-within:ring-blue-500'
+
+  if (stacked) {
+    return (
+      <div ref={wrapRef} className="flex flex-col gap-2">
+        {/* Date — full width */}
+        <div className="relative">
+          <button type="button" onClick={() => setDateOpen(o => !o)} className={fieldCls + ' w-full focus:outline-none'}>
+            <span className={value ? 'text-slate-900 flex-1' : 'text-slate-400 flex-1'}>{value ? fmtDate(value) : 'Pick a date'}</span>
+            <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
+          </button>
+          {dateOpen && <MonthGrid selected={value} onPick={pickDay} />}
+        </div>
+        {/* Time — labelled, full width */}
+        <div>
+          <label className="text-sm font-medium text-slate-500 block mb-1">Time</label>
+          <TimeWheel value={value} onChange={onChange} fieldCls={fieldCls} />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div ref={wrapRef} className="flex items-stretch gap-2">
