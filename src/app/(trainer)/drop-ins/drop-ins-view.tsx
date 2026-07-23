@@ -4,7 +4,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Card, CardBody } from '@/components/ui/card'
 import { PageHeader } from '@/components/shared/page-header'
-import { Ticket, Users, ChevronRight, CalendarDays } from 'lucide-react'
+import { Ticket, Users, ChevronRight, CalendarDays, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 
@@ -22,21 +23,11 @@ type RunRow = {
   upcoming: { id: string; index: number | null; label: string }[]
 }
 
-type RecentRow = {
-  id: string
-  status: string
-  runId: string
-  runName: string
-  clientName: string
-  dogName: string | null
-  joinedAtIndex: number | null
-  whenLabel: string
-}
-
-export function DropInsView({ runs, recent }: { runs: RunRow[]; recent: RecentRow[] }) {
+export function DropInsView({ runs }: { runs: RunRow[] }) {
   const currency = useCurrency()
   // Current = still has sessions left to drop into; Past = the run's sessions
-  // are all done, so nobody can drop in anymore.
+  // are all done, so nobody can drop in anymore. Same Current/Past split as
+  // Group Classes.
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const current = runs.filter(r => r.upcoming.length > 0)
   const past = runs.filter(r => r.upcoming.length === 0)
@@ -49,64 +40,59 @@ export function DropInsView({ runs, recent }: { runs: RunRow[]; recent: RecentRo
         subtitle="Single sessions of a class, sold one at a time — for people who can't commit to a whole course, or regulars filling a gap."
       />
 
-      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto flex flex-col gap-8">
-        <section>
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
-            Classes taking drop-ins
-          </h2>
+      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+        {runs.length === 0 ? (
+          <Card>
+            <CardBody>
+              <div className="text-center py-10 px-4">
+                <Ticket className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-600 font-medium">No classes are taking drop-ins</p>
+                <p className="text-sm text-slate-400 mt-1 max-w-md mx-auto">
+                  A drop-in class runs a set schedule that people can book one
+                  session at a time — set the day, time and per-session price.
+                </p>
+                <Link href="/packages/new?kind=dropin" className="mt-4 inline-block">
+                  <Button>
+                    <Plus className="h-4 w-4" /> New drop-in class
+                  </Button>
+                </Link>
+              </div>
+            </CardBody>
+          </Card>
+        ) : (
+          <>
+          {/* Current / Past — same pill-tab bar as Group Classes. */}
+          <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-4">
+            {([
+              { id: 'current' as const, label: 'Current', count: current.length },
+              { id: 'past' as const, label: 'Past', count: past.length },
+            ]).map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
+                  tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {t.label}
+                <span className={`min-w-5 px-1.5 text-[11px] font-semibold tabular-nums rounded-full ${
+                  tab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {t.count}
+                </span>
+              </button>
+            ))}
+          </div>
 
-          {runs.length === 0 ? (
+          {shown.length === 0 ? (
             <Card>
               <CardBody>
-                <div className="text-center py-10 px-4">
-                  <Ticket className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-600 font-medium">No classes are taking drop-ins</p>
-                  <p className="text-sm text-slate-400 mt-1 max-w-md mx-auto">
-                    Drop-ins are switched on per program. Open a group program, tick
-                    &ldquo;Allow drop-ins&rdquo; and set a per-session price — any class running
-                    from it will show up here.
-                  </p>
-                  <Link
-                    href="/packages"
-                    className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:underline"
-                  >
-                    Go to programs <ChevronRight className="h-4 w-4" />
-                  </Link>
-                </div>
+                <p className="py-8 text-center text-sm text-slate-400">
+                  {tab === 'past' ? 'No past drop-in classes yet.' : 'No classes are currently taking drop-ins.'}
+                </p>
               </CardBody>
             </Card>
           ) : (
-            <>
-            <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-4">
-              {([
-                { id: 'current' as const, label: 'Current', count: current.length },
-                { id: 'past' as const, label: 'Past', count: past.length },
-              ]).map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
-                    tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  {t.label}
-                  <span className={`min-w-5 px-1.5 text-[11px] font-semibold tabular-nums rounded-full ${
-                    tab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
-                  }`}>
-                    {t.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-            {shown.length === 0 ? (
-              <Card>
-                <CardBody>
-                  <p className="py-8 text-center text-sm text-slate-400">
-                    {tab === 'past' ? 'No past drop-in classes yet.' : 'No classes are currently taking drop-ins.'}
-                  </p>
-                </CardBody>
-              </Card>
-            ) : (
             <div className="flex flex-col gap-3">
               {shown.map(r => (
                 <Link key={r.id} href={`/classes/${r.id}`} className="block">
@@ -164,62 +150,17 @@ export function DropInsView({ runs, recent }: { runs: RunRow[]; recent: RecentRo
                 </Link>
               ))}
             </div>
-            )}
-            </>
           )}
-          {runs.length > 0 && (
-            <Link
-              href="/packages/new?kind=dropin"
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 py-3.5 text-sm font-medium text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-600"
-            >
-              <CalendarDays className="h-4 w-4" /> New drop-in class
-            </Link>
-          )}
-        </section>
 
-        <section>
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
-            Recent drop-ins
-          </h2>
-          {recent.length === 0 ? (
-            <Card>
-              <CardBody>
-                <p className="text-sm text-slate-400 py-6 text-center">
-                  Nobody has dropped in yet. Add one from a class&apos;s roster — pick
-                  &ldquo;Drop-in&rdquo; instead of the full course.
-                </p>
-              </CardBody>
-            </Card>
-          ) : (
-            <Card>
-              <CardBody className="p-0">
-                <ul className="divide-y divide-slate-100">
-                  {recent.map(e => (
-                    <li key={e.id}>
-                      <Link
-                        href={`/classes/${e.runId}`}
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors"
-                      >
-                        <CalendarDays className="h-4 w-4 text-slate-300 flex-shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-slate-900 truncate">
-                            {e.clientName}
-                            {e.dogName && <span className="text-slate-400"> · {e.dogName}</span>}
-                          </p>
-                          <p className="text-xs text-slate-500 truncate">
-                            {e.runName}
-                            {e.joinedAtIndex != null && ` · joined at session ${e.joinedAtIndex}`}
-                          </p>
-                        </div>
-                        <span className="text-xs text-slate-400 flex-shrink-0">{e.whenLabel}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </CardBody>
-            </Card>
-          )}
-        </section>
+          {/* Add sits at the BOTTOM of the list. */}
+          <Link
+            href="/packages/new?kind=dropin"
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 py-3.5 text-sm font-medium text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-600"
+          >
+            <CalendarDays className="h-4 w-4" /> New drop-in class
+          </Link>
+          </>
+        )}
       </div>
     </>
   )

@@ -45,22 +45,6 @@ export default async function DropInsPage() {
     },
   })
 
-  // Recent drop-in enrolments across all runs — the "who's dropping in" view.
-  const recent = await prisma.classEnrollment.findMany({
-    where: { type: 'DROP_IN', classRun: { trainerId } },
-    orderBy: { enrolledAt: 'desc' },
-    take: 20,
-    select: {
-      id: true,
-      status: true,
-      enrolledAt: true,
-      joinedAtIndex: true,
-      classRun: { select: { id: true, name: true } },
-      client: { select: { id: true, user: { select: { name: true } } } },
-      dog: { select: { name: true } },
-    },
-  })
-
   return (
     <DropInsView
       runs={runs.map(r => {
@@ -84,16 +68,6 @@ export default async function DropInsPage() {
           })),
         }
       })}
-      recent={recent.map(e => ({
-        id: e.id,
-        status: e.status,
-        runId: e.classRun.id,
-        runName: e.classRun.name,
-        clientName: e.client.user.name ?? 'Client',
-        dogName: e.dog?.name ?? null,
-        joinedAtIndex: e.joinedAtIndex,
-        whenLabel: formatDate(e.enrolledAt),
-      }))}
     />
   )
 }
