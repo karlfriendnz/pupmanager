@@ -10,6 +10,7 @@ import { RequirePaymentField } from '@/components/shared/require-payment-field'
 import { BufferField } from '@/components/shared/buffer-field'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
+import { User, Users } from 'lucide-react'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
 
 export type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan'
@@ -263,8 +264,114 @@ export function PackageForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+    <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
       {error && <div className="md:col-span-2"><Alert variant="error">{error}</Alert></div>}
+
+      {/* ── Step 1 · kind first — it shapes everything below ────────── */}
+      <SectionHeading step={1} title="What are you setting up?" />
+
+      {existing ? (
+        // Editing: changing kind is a deliberate CONVERSION (it moves the
+        // package between two halves of the system and is refused once it's in
+        // use), so it keeps its own button + round-trip, separate from Save.
+        <div className="md:col-span-2 rounded-xl border border-slate-200 px-3.5 py-3 flex items-start gap-3">
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-semibold text-slate-800">{isGroup ? 'Group class' : '1:1 package'}</span>
+            <span className="block text-xs text-slate-400 mt-0.5">
+              {isGroup
+                ? 'Runs as cohorts — one shared schedule, many clients, a roster and capacity.'
+                : 'Assigned to one client at a time, with their own sessions.'}
+            </span>
+            {convertError && <span className="block text-[11px] font-medium mt-1.5 text-red-600">{convertError}</span>}
+          </span>
+          <button
+            type="button"
+            onClick={handleConvert}
+            disabled={converting}
+            className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {converting ? 'Converting…' : isGroup ? 'Convert to 1:1 package' : 'Convert to group class'}
+          </button>
+        </div>
+      ) : (
+        // Creating: choose what this IS. Drop-in is a group class that takes
+        // single-session bookings, so it presets isGroup + allowDropIn.
+        <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          {([
+            { key: 'onetoone', icon: User, label: '1:1 package', hint: 'One client at a time', on: () => { setIsGroup(false) } },
+            { key: 'group', icon: Users, label: 'Group class', hint: 'A cohort with a roster', on: () => { setIsGroup(true); setAllowDropIn(false) } },
+            { key: 'dropin', icon: Users, label: 'Drop-in classes', hint: 'Sold one session at a time', on: () => { setIsGroup(true); setAllowDropIn(true) } },
+          ] as const).map(o => {
+            const active = (o.key === 'onetoone' && !isGroup) || (o.key === 'group' && isGroup && !allowDropIn) || (o.key === 'dropin' && isGroup && allowDropIn)
+            const Icon = o.icon
+            return (
+              <button
+                key={o.key}
+                type="button"
+                onClick={o.on}
+                aria-pressed={active}
+                className={`rounded-2xl border p-4 text-left transition-all ${active ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:border-blue-200'}`}
+              >
+                <Icon className={`h-5 w-5 mb-2 ${active ? 'text-blue-600' : 'text-slate-400'}`} />
+                <span className={`block text-sm font-semibold ${active ? 'text-blue-900' : 'text-slate-800'}`}>{o.label}</span>
+                <span className="block text-[11px] text-slate-400 mt-0.5">{o.hint}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {isGroup && (
+        <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3.5 flex flex-col gap-3">
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Capacity (optional)</label>
+            <input
+              type="number"
+              min={0}
+              value={capacity}
+              onChange={e => setCapacity(e.target.value)}
+              placeholder="Leave blank for unlimited"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">Max in the room per session. A run can override this.</p>
+          </div>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" checked={allowDropIn} onChange={e => setAllowDropIn(e.target.checked)} className="h-4 w-4 mt-0.5" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium text-slate-700">Allow drop-ins</span>
+              <span className="block text-[11px] text-slate-400 mt-0.5">Clients can book a single session on its own, at the per-session price below.</span>
+            </span>
+          </label>
+
+          {allowDropIn && (
+            <div>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Drop-in price per session</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={dropInPrice}
+                onChange={e => setDropInPrice(e.target.value)}
+                placeholder="30"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+
+          {PUBLIC_CLASS_ENROLLMENT_ENABLED && (
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={publicEnrollment} onChange={e => setPublicEnrollment(e.target.checked)} className="h-4 w-4 mt-0.5" />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-slate-700">Let clients self-enrol from your embed form</span>
+                <span className="block text-[11px] text-slate-400 mt-0.5">Open runs show publicly; requests arrive as enquiries for you to accept.</span>
+              </span>
+            </label>
+          )}
+        </div>
+      )}
+
+      {/* ── Step 2 · the details ───────────────────────────────────── */}
+      <SectionHeading step={2} title="The details" />
 
       <div className="md:col-span-2">
         <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
@@ -327,8 +434,11 @@ export function PackageForm({
         </div>
       </div>
 
-      {/* Pricing — leave price blank for "no price set". The special price
-          is independent and only shown when populated. */}
+      {/* ── Step 3 · pricing ───────────────────────────────────────── */}
+      <SectionHeading step={3} title="Pricing" hint={isGroup ? 'The full-course price. Drop-in price is set above.' : 'Leave blank for no set price.'} />
+
+      {/* Leave price blank for "no price set". The special price is independent
+          and only shown when populated. */}
       <Input
         label="Price"
         type="text"
@@ -354,6 +464,9 @@ export function PackageForm({
       <div className="md:col-span-2">
         <RequirePaymentField value={requirePayment} onChange={setRequirePayment} />
       </div>
+
+      {/* ── Step 4 · booking & reminders ───────────────────────────── */}
+      <SectionHeading step={4} title="Booking & reminders" />
 
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form</label>
@@ -384,116 +497,6 @@ export function PackageForm({
           </span>
         </span>
       </label>
-
-      {/* ─── 1:1 vs group class ──────────────────────────────────── */}
-      {existing ? (
-        // Editing: changing type is a deliberate CONVERSION, not a field you
-        // flick while editing something else — it moves the package between two
-        // halves of the system and is refused outright once it's in use. So it
-        // gets its own button and its own round-trip, separate from Save.
-        <div className="md:col-span-2 rounded-xl border border-slate-200 px-3 py-2.5 flex items-start gap-3">
-          <span className="flex-1 min-w-0">
-            <span className="block text-sm font-medium text-slate-700">
-              {isGroup ? 'Group class' : '1:1 package'}
-            </span>
-            <span className="block text-[11px] text-slate-400 mt-0.5">
-              {isGroup
-                ? 'Runs as cohorts — one shared schedule, many clients, a roster and capacity.'
-                : 'Assigned to one client at a time, with their own sessions.'}
-            </span>
-            {convertError && (
-              <span className="block text-[11px] font-medium mt-1.5 text-red-600">{convertError}</span>
-            )}
-          </span>
-          <button
-            type="button"
-            onClick={handleConvert}
-            disabled={converting}
-            className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            {converting ? 'Converting…' : isGroup ? 'Convert to 1:1 package' : 'Convert to group class'}
-          </button>
-        </div>
-      ) : (
-        // Creating: nothing to convert yet — they're choosing what this IS.
-        <div className="md:col-span-2">
-          <span className="block text-sm font-medium text-slate-700 mb-1.5">What kind of package is this?</span>
-          <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
-            {([
-              { group: false, label: '1:1 package', hint: 'One client at a time' },
-              { group: true, label: 'Group class', hint: 'Cohorts with a roster' },
-            ]).map(o => (
-              <button
-                key={o.label}
-                type="button"
-                onClick={() => setIsGroup(o.group)}
-                aria-pressed={isGroup === o.group}
-                className={`px-3 py-2 rounded-lg text-left transition-all ${
-                  isGroup === o.group ? 'bg-white shadow-sm' : 'hover:bg-white/50'
-                }`}
-              >
-                <span className={`block text-sm font-medium ${isGroup === o.group ? 'text-slate-900' : 'text-slate-500'}`}>{o.label}</span>
-                <span className="block text-[11px] text-slate-400">{o.hint}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {isGroup && (
-        <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3 flex flex-col gap-3">
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Capacity (optional)</label>
-            <input
-              type="number"
-              min={0}
-              value={capacity}
-              onChange={e => setCapacity(e.target.value)}
-              placeholder="Leave blank for unlimited"
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-[11px] text-slate-400 mt-1">Max enrolments per run. A run can override this.</p>
-          </div>
-
-          {/* "Allow a waitlist when full" removed from the form on request. The
-              allowWaitlist field itself stays — the enrolment engine still reads
-              it, and the state is still initialised from (and saved back with)
-              the package, so an existing package's setting round-trips
-              untouched rather than being silently cleared on the next edit. */}
-
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input type="checkbox" checked={allowDropIn} onChange={e => setAllowDropIn(e.target.checked)} className="h-4 w-4 mt-0.5" />
-            <span className="flex-1 min-w-0">
-              <span className="block text-sm font-medium text-slate-700">Allow drop-ins after the class starts</span>
-              <span className="block text-[11px] text-slate-400 mt-0.5">Clients can join mid-run, charged per remaining session.</span>
-            </span>
-          </label>
-
-          {allowDropIn && (
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Drop-in price per session</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={dropInPrice}
-                onChange={e => setDropInPrice(e.target.value)}
-                placeholder="30"
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          )}
-
-          {PUBLIC_CLASS_ENROLLMENT_ENABLED && (
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input type="checkbox" checked={publicEnrollment} onChange={e => setPublicEnrollment(e.target.checked)} className="h-4 w-4 mt-0.5" />
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-slate-700">Let clients self-enrol from your embed form</span>
-                <span className="block text-[11px] text-slate-400 mt-0.5">Open runs show publicly; requests arrive as enquiries for you to accept.</span>
-              </span>
-            </label>
-          )}
-        </div>
-      )}
 
       {/* ─── Client self-booking ─────────────────────────────────── */}
       <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
@@ -560,5 +563,20 @@ export function PackageForm({
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
       </div>
     </form>
+  )
+}
+
+/** A numbered section divider that spans the form's 2-col grid — breaks the
+ * long form into clear, ordered steps without turning it into a multi-page
+ * wizard (the whole thing still saves in one go). */
+function SectionHeading({ step, title, hint }: { step: number; title: string; hint?: string }) {
+  return (
+    <div className="md:col-span-2 flex items-center gap-3 pt-3 first:pt-0 border-t border-slate-100 first:border-0 mt-1 first:mt-0">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white text-sm font-bold">{step}</span>
+      <div className="min-w-0">
+        <h2 className="text-base font-semibold text-slate-900 leading-tight">{title}</h2>
+        {hint && <p className="text-[11px] text-slate-400 leading-tight mt-0.5">{hint}</p>}
+      </div>
+    </div>
   )
 }
