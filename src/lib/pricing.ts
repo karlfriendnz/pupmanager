@@ -65,7 +65,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins'
+export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins' | 'events'
 
 export interface AddonDef {
   id: AddonId
@@ -201,6 +201,15 @@ export const ADDONS: AddonDef[] = [
     description: 'Run class cohorts with shared sessions and enrolments. Turn off if you only do 1:1 work.',
     free: true,
     defaultOn: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
+    id: 'events',
+    name: 'Events',
+    // Free while it beds in — a paid tier is a one-line change here plus a
+    // Stripe run once it's proven. Off until the trainer switches it on.
+    description: 'Run one-off events — workshops, seminars and meet-ups — that clients book a ticket for, with capacity and a guest list.',
+    free: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
   {
