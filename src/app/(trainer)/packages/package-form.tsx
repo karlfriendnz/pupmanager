@@ -226,7 +226,7 @@ export function PackageForm({
   }
   // Add-mode wizard: one section per step (a drop-in has no pricing step).
   // Editing shows every section on one page (stepped === false).
-  const stepKeys: string[] = ['kind', 'details', 'schedule', ...(kind === 'dropin' ? [] : ['pricing']), 'settings']
+  const stepKeys: string[] = ['start', 'schedule', ...(kind === 'dropin' ? [] : ['pricing']), 'settings']
   const [wstep, setWstep] = useState(0)
   const clampedStep = Math.min(wstep, stepKeys.length - 1)
   const currentKey = stepKeys[clampedStep]
@@ -376,28 +376,11 @@ export function PackageForm({
         </div>
       )}
 
-      {/* ── Details ──────────────────────────────────────────────── */}
-      {onSection('details') && (
+      {/* ── Start: what + name ───────────────────────────────────── */}
+      {onSection('start') && (
       <>
-      <SectionHeading title="Details" />
-
-      <div className="md:col-span-2">
-        <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
-      </div>
-
-      <div className="md:col-span-2">
-        <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
-        <textarea
-          {...register('description')}
-          rows={3}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-      </>
-      )}
-
-      {/* Kind chooser — its own wizard step when adding; hidden when editing. */}
-      {onSection('kind') && stepped && (
+      {/* Kind chooser — shown when adding; hidden when editing (locked in). */}
+      {stepped && (
       <>
       <div className="md:col-span-2">
         <p className="text-sm font-medium text-slate-700 mb-2">What are you setting up?</p>
@@ -428,6 +411,24 @@ export function PackageForm({
               </button>
             )
           })}
+      </div>
+      </>
+      )}
+
+      {/* Name + description live on the same tab as the kind chooser. */}
+      {!stepped && <SectionHeading title="Details" />}
+
+      <div className="md:col-span-2">
+        <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
+        <textarea
+          {...register('description')}
+          rows={3}
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
       </div>
       </>
       )}
@@ -862,7 +863,7 @@ export function PackageForm({
               <Button
                 type="button"
                 onClick={async () => {
-                  if (currentKey === 'details' && !(await trigger('name'))) return
+                  if (currentKey === 'start' && !(await trigger('name'))) return
                   setWstep(s => Math.min(stepKeys.length - 1, s + 1))
                 }}
               >
