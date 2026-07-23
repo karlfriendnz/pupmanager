@@ -11,7 +11,7 @@ import {
   Home, LogOut, ShoppingBag, CalendarPlus,
   MoreHorizontal, X, Inbox, GraduationCap,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
-  BarChart3, Clock, Navigation, FileText, MessagesSquare, Megaphone, Lock, ClipboardList,
+  BarChart3, Clock, Navigation, FileText, Megaphone, Lock, ClipboardList,
   Download,
   type LucideIcon, Ticket,} from 'lucide-react'
 import { InstagramIcon } from '@/components/icons/instagram-icon'
@@ -43,14 +43,13 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, section: 'overview' },
 
   { href: '/clients',      label: 'Clients',      icon: Users,           section: 'clients' },
+  { href: '/enquiries',    label: 'Enquiries',    icon: Inbox,           section: 'clients', child: true },
   { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
   { href: '/clients/waitlist', label: 'Waitlist', icon: ClipboardList,   section: 'clients', child: true },
   { href: '/schedule',     label: 'Schedule',     icon: Calendar,        section: 'clients' },
   { href: '/schedule/route',       label: 'Route', icon: Navigation,     section: 'clients', child: true },
-  { href: '/communication', label: 'Communication', icon: MessagesSquare, section: 'clients', group: true },
-  { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'clients', child: true },
-  { href: '/enquiries',    label: 'Enquiries',    icon: Inbox,           section: 'clients', child: true },
-  { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'clients', child: true },
+  { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'clients' },
+  { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'clients' },
   { href: '/lead-magnets', label: 'Lead magnets', icon: Download,        section: 'clients', child: true },
   { href: '/instagram',    label: 'Instagram link', icon: InstagramIcon as unknown as LucideIcon, section: 'clients', child: true },
   { href: '/email-templates', label: 'Email templates', icon: Mail,       section: 'clients', child: true },
