@@ -9,7 +9,6 @@ import { Plus, X } from 'lucide-react'
 
 export type SessionSlot = {
   id: string
-  name: string
   day: number // 0 = Sunday … 6 = Saturday
   start: string // "HH:mm" (24h)
   end: string
@@ -23,7 +22,7 @@ const DAYS = [
 ]
 
 export function newSlot(): SessionSlot {
-  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, name: '', day: 2, start: '15:00', end: '17:00', locationId: '', repeat: 'WEEKLY' }
+  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, day: 2, start: '15:00', end: '17:00', locationId: '', repeat: 'WEEKLY' }
 }
 
 export function SessionSlotsEditor({
@@ -43,8 +42,8 @@ export function SessionSlotsEditor({
   return (
     <div className="md:col-span-2 flex flex-col gap-2">
       {/* Column headers — hidden on mobile, where each row stacks with labels. */}
-      <div className="hidden lg:grid grid-cols-[1.4fr_1fr_0.9fr_0.9fr_1fr_1.3fr_auto] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        <span>Name</span><span>Day</span><span>Start</span><span>End</span><span>Repeat</span><span>Location</span><span />
+      <div className="hidden lg:grid grid-cols-[1fr_0.9fr_0.9fr_1fr_1.3fr_auto] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        <span>Day</span><span>Start</span><span>End</span><span>Repeat</span><span>Location</span><span />
       </div>
 
       {value.length === 0 && (
@@ -54,11 +53,7 @@ export function SessionSlotsEditor({
       )}
 
       {value.map(s => (
-        <div key={s.id} className="grid grid-cols-2 lg:grid-cols-[1.4fr_1fr_0.9fr_0.9fr_1fr_1.3fr_auto] gap-2 items-center rounded-xl border border-slate-100 bg-slate-50/40 lg:bg-transparent lg:border-0 p-2 lg:p-0">
-          <label className="flex flex-col gap-1 col-span-2 lg:col-span-1">
-            <span className="lg:hidden text-[11px] font-medium text-slate-400">Name</span>
-            <input value={s.name} onChange={e => update(s.id, { name: e.target.value })} placeholder="Optional" className={cell} />
-          </label>
+        <div key={s.id} className="grid grid-cols-2 lg:grid-cols-[1fr_0.9fr_0.9fr_1fr_1.3fr_auto] gap-2 items-center rounded-xl border border-slate-100 bg-slate-50/40 lg:bg-transparent lg:border-0 p-2 lg:p-0">
           <label className="flex flex-col gap-1">
             <span className="lg:hidden text-[11px] font-medium text-slate-400">Day</span>
             <select value={s.day} onChange={e => update(s.id, { day: Number(e.target.value) })} className={cell}>
