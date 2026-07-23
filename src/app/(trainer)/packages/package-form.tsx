@@ -11,6 +11,7 @@ import { BufferField } from '@/components/shared/buffer-field'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { DateTimePicker } from '@/components/shared/date-time-picker'
+import { SessionSlotsEditor, newSlot, type SessionSlot } from '@/components/shared/session-slots'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { User, Users, CalendarDays, X, ChevronDown, Check } from 'lucide-react'
@@ -141,6 +142,8 @@ export function PackageForm({
   const [location, setLocation] = useState<string>('')
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [scheduleNote, setScheduleNote] = useState<string>('')
+  // Drop-in classes define their weekly slots individually (day/time/location).
+  const [slots, setSlots] = useState<SessionSlot[]>([newSlot()])
   // Who delivers this — assignable for every kind. Fetched client-side (the
   // team endpoint returns membership ids). NOT yet wired to persistence.
   const [team, setTeam] = useState<{ id: string; name: string | null; title: string | null }[]>([])
@@ -418,6 +421,18 @@ export function PackageForm({
           <p className="text-xs text-slate-500 rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
             A single event on one date. Set its date &amp; time below.
           </p>
+          <div className="hidden">
+            <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
+            <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />
+          </div>
+        </div>
+      ) : kind === 'dropin' ? (
+        // Drop-in classes run on their own set of weekly slots (day/time/place),
+        // each repeating weekly or fortnightly. The sessions are generated from
+        // these. RHF cadence fields kept registered (unused for this kind).
+        <div className="md:col-span-2">
+          <label className="text-sm font-medium text-slate-700 block mb-1.5">When does it run?</label>
+          <SessionSlotsEditor value={slots} onChange={setSlots} locations={savedLocations.map(l => ({ id: l.id, name: l.name }))} />
           <div className="hidden">
             <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
             <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />
