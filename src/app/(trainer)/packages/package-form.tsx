@@ -12,10 +12,14 @@ import { RecurrenceField } from '@/components/shared/recurrence-field'
 import { cadenceFromRule } from '@/lib/recurrence'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
-import { User, Users } from 'lucide-react'
+import { User, Users, CalendarDays } from 'lucide-react'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
 
 export type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan'
+
+// The four things a trainer can create. A UI-level discriminator over the
+// persisted Package flags (isGroup / allowDropIn / sessionCount / recurrence).
+type OfferingKind = 'onetoone' | 'group' | 'dropin' | 'oneoff'
 
 const COLOR_OPTIONS: { id: PackageColor; label: string; swatch: string }[] = [
   { id: 'blue',    label: 'Blue',    swatch: 'bg-blue-500' },
@@ -129,6 +133,21 @@ export function PackageForm({
   const [allowDropIn, setAllowDropIn] = useState<boolean>(existing?.allowDropIn ?? false)
   const [dropInPrice, setDropInPrice] = useState<string>(centsToDollars(existing?.dropInPriceCents ?? null))
   const [recurrenceRule, setRecurrenceRule] = useState<string>(existing?.recurrenceRule ?? '')
+  // The offering kind drives the card selection + which schedule fields show.
+  // It's a UI discriminator over the persisted flags: a one-off event is a
+  // group with a single session and no recurrence.
+  const [kind, setKind] = useState<OfferingKind>(() => {
+    if (!existing?.isGroup) return 'onetoone'
+    if (existing.allowDropIn) return 'dropin'
+    if (existing.sessionCount === 1 && !existing.recurrenceRule) return 'oneoff'
+    return 'group'
+  })
+  function selectKind(k: OfferingKind) {
+    setKind(k)
+    setIsGroup(k !== 'onetoone')
+    setAllowDropIn(k === 'dropin')
+    if (k === 'oneoff') setRecurrenceRule('')
+  }
   const [allowWaitlist, setAllowWaitlist] = useState<boolean>(existing?.allowWaitlist ?? false)
   const [publicEnrollment, setPublicEnrollment] = useState<boolean>(existing?.publicEnrollment ?? false)
   // Client self-booking (independent of group classes).
@@ -201,21 +220,24 @@ export function PackageForm({
     // Convert the dollar-string price fields into cents before sending; the
     // server stores cents to dodge floating-point math.
     const { price, specialPrice, ...rest } = values
-    // A group/drop-in class is scheduled by its recurrence, so its cadence is
-    // DERIVED from the rule (the sessionCount/weeks inputs are hidden for it).
-    // A 1:1 package keeps the typed values.
-    const groupCadence = isGroup && recurrenceRule ? cadenceFromRule(recurrenceRule) : null
+    // Cadence per kind:
+    //  · one-off event → exactly 1 session, no cadence
+    //  · group / drop-in class → DERIVED from the recurrence rule
+    //  · 1:1 package → the typed values
+    const groupCadence = (kind === 'group' || kind === 'dropin') && recurrenceRule
+      ? cadenceFromRule(recurrenceRule) : null
+    const sessionCount = kind === 'oneoff' ? 1 : groupCadence ? groupCadence.sessionCount : values.sessionCount
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...rest,
-        sessionCount: groupCadence ? groupCadence.sessionCount : values.sessionCount,
+        sessionCount,
         // A single-session package has no cadence — store 0 rather than
         // whatever was last typed into the (now hidden) weeks field.
         weeksBetween: groupCadence
           ? groupCadence.weeksBetween
-          : Number(values.sessionCount) === 1 ? 0 : values.weeksBetween,
+          : Number(sessionCount) === 1 ? 0 : values.weeksBetween,
         description: values.description || null,
         priceCents: dollarsToCents(price),
         specialPriceCents: dollarsToCents(specialPrice),
@@ -327,19 +349,20 @@ export function PackageForm({
       ) : (
         // Creating: choose what this IS. Drop-in is a group class that takes
         // single-session bookings, so it presets isGroup + allowDropIn.
-        <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           {([
-            { key: 'onetoone', icon: User, label: '1:1 package', desc: 'One-on-one sessions you assign to a single client, on their own schedule.', on: () => { setIsGroup(false) } },
-            { key: 'group', icon: Users, label: 'Group class', desc: 'A cohort shares one schedule and roster and enrols for the whole course.', on: () => { setIsGroup(true); setAllowDropIn(false) } },
-            { key: 'dropin', icon: Users, label: 'Drop-in classes', desc: 'People join one session at a time and pay per session — great for casual regulars.', on: () => { setIsGroup(true); setAllowDropIn(true) } },
+            { key: 'onetoone', icon: User, label: '1:1 package', desc: 'One-on-one sessions you assign to a single client, on their own schedule.' },
+            { key: 'group', icon: Users, label: 'Group class', desc: 'A cohort shares one schedule and roster and enrols for the whole course.' },
+            { key: 'dropin', icon: Users, label: 'Drop-in classes', desc: 'People join one session at a time and pay per session — great for casual regulars.' },
+            { key: 'oneoff', icon: CalendarDays, label: 'One-off event', desc: 'A single event on one date — a workshop or seminar people sign up to.' },
           ] as const).map(o => {
-            const active = (o.key === 'onetoone' && !isGroup) || (o.key === 'group' && isGroup && !allowDropIn) || (o.key === 'dropin' && isGroup && allowDropIn)
+            const active = kind === o.key
             const Icon = o.icon
             return (
               <button
                 key={o.key}
                 type="button"
-                onClick={o.on}
+                onClick={() => selectKind(o.key)}
                 aria-pressed={active}
                 className={`rounded-2xl border p-4 text-left transition-all ${active ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:border-blue-200'}`}
               >
@@ -359,16 +382,19 @@ export function PackageForm({
           recurrence (how often + when it ends); a 1:1 package is a run of N
           sessions every W weeks. Showing both was the redundancy. The 1:1
           fields stay registered when hidden so their values still submit. */}
-      {isGroup ? (
+      {kind === 'oneoff' ? (
+        // A single event has no cadence — its date & time are set when you
+        // schedule it. Keep the RHF fields registered (submit forces 1 session).
         <div className="md:col-span-2">
-          <label className="text-sm font-medium text-slate-700 block mb-1.5">How often does it run?</label>
-          <RecurrenceField value={recurrenceRule} onChange={setRecurrenceRule} />
+          <p className="text-xs text-slate-500 rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
+            A single event on one date. You&apos;ll set its date and time when you put it on the schedule.
+          </p>
           <div className="hidden">
             <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
             <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />
           </div>
         </div>
-      ) : (
+      ) : kind === 'onetoone' ? (
         <>
           <div>
             <Input
@@ -393,6 +419,16 @@ export function PackageForm({
             />
           </div>
         </>
+      ) : (
+        // Group / drop-in classes repeat on a recurrence.
+        <div className="md:col-span-2">
+          <label className="text-sm font-medium text-slate-700 block mb-1.5">How often does it run?</label>
+          <RecurrenceField value={recurrenceRule} onChange={setRecurrenceRule} />
+          <div className="hidden">
+            <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
+            <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />
+          </div>
+        </div>
       )}
 
       <Input
@@ -438,8 +474,8 @@ export function PackageForm({
 
       {/* Drop-in options live with the schedule — they're about how people join
           a class's sessions. Drop-in price stays here (not in Pricing) so it
-          sits with its on/off switch. */}
-      {isGroup && (
+          sits with its on/off switch. Not for a one-off event (single sitting). */}
+      {(kind === 'group' || kind === 'dropin') && (
         <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3.5 flex flex-col gap-3">
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={allowDropIn} onChange={e => setAllowDropIn(e.target.checked)} className="h-4 w-4 mt-0.5" />
@@ -476,7 +512,11 @@ export function PackageForm({
       )}
 
       {/* ── Step 3 · pricing ───────────────────────────────────────── */}
-      <SectionHeading step={3} title="Pricing" hint={isGroup ? 'The full-course price. Drop-in price is set above.' : 'Leave blank for no set price.'} />
+      <SectionHeading step={3} title="Pricing" hint={
+        kind === 'oneoff' ? 'What it costs to attend the event.'
+          : kind === 'group' || kind === 'dropin' ? 'The full-course price. Drop-in price is set above.'
+          : 'Leave blank for no set price.'
+      } />
 
       {/* Leave price blank for "no price set". The special price is independent
           and only shown when populated. */}
