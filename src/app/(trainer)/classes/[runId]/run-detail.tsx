@@ -731,7 +731,13 @@ function EnrolModal({
   onDone: () => void
 }) {
   const candidates = clients.filter(c => !existing.has(c.name))
-  const [clientId, setClientId] = useState(candidates[0]?.id ?? '')
+  // Two steps: WHO, then WHAT. All of it on one panel outgrew the viewport
+  // once a drop-in class listed its sessions — the Enrol button ended up below
+  // the fold with nothing to scroll.
+  const [step, setStep] = useState<1 | 2>(1)
+  // Nobody is picked up front: a pre-selected first name is the wrong client
+  // by default, and one stray Enter enrols them.
+  const [clientId, setClientId] = useState('')
   const [search, setSearch] = useState('')
   // Match on the client's name OR their dog's — trainers routinely remember
   // "Teddy's owner" rather than the owner's surname.
@@ -740,11 +746,7 @@ function EnrolModal({
     ? candidates.filter(c =>
         c.name.toLowerCase().includes(q) || (c.dogName ?? '').toLowerCase().includes(q))
     : candidates
-  // Keep the selection valid as the list narrows, so Enrol can't submit
-  // someone who's been filtered away.
-  useEffect(() => {
-    if (visible.length > 0 && !visible.some(c => c.id === clientId)) setClientId(visible[0].id)
-  }, [visible, clientId])
+  const chosen = candidates.find(c => c.id === clientId) ?? null
   const [type, setType] = useState<'FULL' | 'DROP_IN'>('FULL')
   // Which sessions a drop-in is being booked into. A drop-in is per session,
   // so this is a multi-select — booking someone into three Saturdays is one
@@ -769,6 +771,12 @@ function EnrolModal({
     setError(null)
     if (!clientId) {
       setError('Pick a client.')
+      setStep(1)
+      return
+    }
+    // Enter on step 1 must not enrol — it means "I've picked, move on".
+    if (step === 1) {
+      setStep(2)
       return
     }
     if (type === 'DROP_IN' && sessionIds.length === 0) {
@@ -815,14 +823,24 @@ function EnrolModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900">Enrol a client</h2>
-          <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
+      {/* Capped height with its own scroll, so the footer is always reachable
+          however many sessions the class has. */}
+      <div className="relative z-50 flex max-h-[85vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-5">
+          <div className="min-w-0">
+            <h2 className="font-semibold text-slate-900">Enrol a client</h2>
+            {candidates.length > 0 && (
+              <p className="text-[11px] text-slate-400">
+                {step === 1 ? 'Step 1 of 2 · Who' : 'Step 2 of 2 · What they’re booked into'}
+              </p>
+            )}
+          </div>
+          <button type="button" onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <form onSubmit={submit} className="p-5 flex flex-col gap-3">
+        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-5">
           {error && <Alert variant="error">{error}</Alert>}
           {candidates.length === 0 ? (
             <p className="text-sm text-slate-500">
@@ -830,41 +848,69 @@ function EnrolModal({
                 ? "You don't have any clients yet — add a client first, then enrol them here."
                 : 'Every active client is already enrolled.'}
             </p>
+          ) : step === 1 ? (
+            <>
+              {/* Type to narrow, click to choose. A native <select> can't show
+                  a dog beside the owner or a tick on the chosen row, and at a
+                  few hundred clients it's unscannable. */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search clients or dogs…"
+                  aria-label="Search clients"
+                  autoFocus
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              {visible.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-500">No client matches &ldquo;{search}&rdquo;.</p>
+              ) : (
+                <div className="-mx-1 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200">
+                  {visible.map(c => {
+                    const on = c.id === clientId
+                    const held = bookedByClient.get(c.id)?.size ?? 0
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        // Choosing IS the step — no separate Next click for
+                        // the common case of picking the person you searched.
+                        onClick={() => { setClientId(c.id); setStep(2) }}
+                        className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left ${on ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-slate-800">{c.name}</span>
+                          {c.dogName && <span className="block truncate text-[11px] text-slate-400">{c.dogName}</span>}
+                        </span>
+                        {held > 0 && (
+                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                            {held} booked
+                          </span>
+                        )}
+                        {on && <Check className="h-4 w-4 shrink-0 text-blue-600" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </>
           ) : (
             <>
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1.5">Client</label>
-                {/* A bare <select> is unusable once a trainer has a few hundred
-                    clients — you can't scan for a name. Filter first, then
-                    pick. The box only appears when there's enough to warrant
-                    it. */}
-                {candidates.length > 8 && (
-                  <div className="relative mb-2">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <input
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
-                      placeholder="Search clients or dogs…"
-                      aria-label="Search clients"
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                )}
-                <select
-                  value={clientId}
-                  onChange={e => setClientId(e.target.value)}
-                  size={visible.length > 8 ? 8 : undefined}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {/* Who this is for, and a way back to change it. */}
+              <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-slate-800">{chosen?.name}</span>
+                  {chosen?.dogName && <span className="block truncate text-[11px] text-slate-400">{chosen.dogName}</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="shrink-0 text-[11px] font-semibold text-blue-600 hover:underline"
                 >
-                  {visible.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}{c.dogName ? ` · ${c.dogName}` : ''}
-                    </option>
-                  ))}
-                </select>
-                {visible.length === 0 && (
-                  <p className="text-[11px] text-slate-400 mt-1">No client matches &ldquo;{search}&rdquo;.</p>
-                )}
+                  Change
+                </button>
               </div>
               {allowDropIn && (
                 <div>
@@ -979,12 +1025,31 @@ function EnrolModal({
                   </span>
                 </span>
               </label>
-              <div className="flex gap-2 pt-2">
-                <Button type="submit" loading={saving}>Enrol</Button>
-                <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-              </div>
             </>
           )}
+        </div>
+
+        {/* Pinned: the action stays reachable no matter how long the session
+            list runs. */}
+        {candidates.length > 0 && (
+          <div className="flex shrink-0 items-center gap-2 border-t border-slate-100 p-4">
+            {step === 2 ? (
+              <>
+                <Button type="button" variant="ghost" onClick={() => setStep(1)}>Back</Button>
+                <div className="ml-auto">
+                  <Button type="submit" loading={saving}>Enrol</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+                <div className="ml-auto">
+                  <Button type="submit" disabled={!clientId}>Next</Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         </form>
       </div>
     </div>
