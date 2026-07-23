@@ -54,6 +54,9 @@ type Enrollment = {
   invoiceState: 'PAID' | 'SENT' | 'UNSENT' | 'CANCELLED' | null
   waitlistPosition: number | null
   source: string
+  /** DROP_IN only: the session this booking is for. */
+  dropInSessionAt: string | null
+  dropInSessionIndex: number | null
   clientId: string
   clientName: string
   dogName: string | null
@@ -118,8 +121,16 @@ export function RunDetail({
   const waitlisted = enrollments.filter(e => e.status === 'WAITLISTED')
   const present = enrollments.filter(e => e.status === 'ENROLLED' || e.status === 'WAITLISTED')
   const past = enrollments.filter(e => e.status === 'WITHDRAWN' || e.status === 'COMPLETED')
-  const seatsLabel =
-    run.capacity == null ? `${enrolled.length} enrolled` : `${enrolled.length} / ${run.capacity}`
+  // On a drop-in class a row is a BOOKING, not a person — the same client can
+  // hold several — so counting rows as "5 enrolled" reads as five people and
+  // makes the repeated names look like duplicates. Capacity is per session
+  // there too, so a "5 / 8" against the whole run would be wrong as well.
+  const dropInPeople = new Set(enrolled.map(e => e.clientId)).size
+  const seatsLabel = run.allowDropIn
+    ? `${dropInPeople} client${dropInPeople === 1 ? '' : 's'} · ${enrolled.length} booking${enrolled.length === 1 ? '' : 's'}`
+    : run.capacity == null
+      ? `${enrolled.length} enrolled`
+      : `${enrolled.length} / ${run.capacity}`
 
   // Revenue estimate: full price per non-withdrawn enrolment (drop-ins excluded
   // from the headline — their per-session pricing is computed elsewhere).
@@ -386,11 +397,11 @@ export function RunDetail({
 
                   {clientTab === 'current' ? (
                     present.length > 0
-                      ? <EnrollTable rows={present} onWithdraw={withdraw} withdrawable runId={run.id} />
+                      ? <EnrollTable rows={present} onWithdraw={withdraw} withdrawable runId={run.id} dropInClass={run.allowDropIn} />
                       : <p className="text-sm text-slate-500 py-4 text-center">No one currently enrolled.</p>
                   ) : (
                     past.length > 0
-                      ? <EnrollTable rows={past} onWithdraw={withdraw} withdrawable={false} runId={run.id} />
+                      ? <EnrollTable rows={past} onWithdraw={withdraw} withdrawable={false} runId={run.id} dropInClass={run.allowDropIn} />
                       : <p className="text-sm text-slate-500 py-4 text-center">No past clients.</p>
                   )}
                 </>
@@ -432,6 +443,7 @@ function EnrollTable({
   onWithdraw,
   withdrawable,
   runId,
+  dropInClass,
 }: {
   /** Omitted for the main roster — the card heading already names it. */
   title?: string
@@ -439,6 +451,8 @@ function EnrollTable({
   onWithdraw: (id: string) => void
   withdrawable: boolean
   runId: string
+  /** The class takes drop-ins, so a row's kind is worth spelling out. */
+  dropInClass: boolean
 }) {
   const router = useRouter()
   // One-click repair for a row showing "No invoice" — enrolments made before
@@ -483,10 +497,24 @@ function EnrollTable({
                     <ClientAvatar name={e.clientName} dogPhotoUrl={e.dogPhotoUrl} size="sm" />
                     <span className="min-w-0">
                       <span className="block font-medium text-slate-900 group-hover:text-blue-600 truncate">{e.clientName}</span>
-                      {(e.type === 'DROP_IN' || e.source === 'SELF_SERVE' || e.waitlistPosition != null) && (
+                      {/* What this row is, when it isn't just "enrolled".
+                          On a drop-in class the word "drop-in" says nothing —
+                          they all are — so a drop-in shows the session it's
+                          for, which is the thing that tells two bookings by
+                          the same client apart. A full-run enrolment mixed in
+                          with drop-ins IS worth naming. */}
+                      {(dropInClass || e.type === 'DROP_IN' || e.source === 'SELF_SERVE' || e.waitlistPosition != null) && (
                         <span className="block text-[11px] text-slate-400">
                           {e.waitlistPosition != null && `#${e.waitlistPosition} waitlist`}
-                          {e.type === 'DROP_IN' && <span className="text-amber-600"> · drop-in</span>}
+                          {e.type === 'DROP_IN' ? (
+                            <span className="text-amber-600" suppressHydrationWarning>
+                              {e.dropInSessionAt
+                                ? new Date(e.dropInSessionAt).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })
+                                : e.dropInSessionIndex ? `Session ${e.dropInSessionIndex}` : 'Drop-in'}
+                            </span>
+                          ) : dropInClass ? (
+                            <span className="text-slate-500">Full run</span>
+                          ) : null}
                           {e.source === 'SELF_SERVE' && ' · self-enrolled'}
                         </span>
                       )}

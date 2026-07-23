@@ -34,6 +34,10 @@ export default async function ClassRunPage({
             client: { select: { id: true, user: { select: { name: true } } } },
             dog: { select: { id: true, name: true, photoUrl: true } },
             attendance: { select: { status: true } },
+            // Which session a drop-in is for. A client can hold several, so
+            // without this the roster shows the same name twice with nothing
+            // to tell the two bookings apart.
+            dropInSession: { select: { scheduledAt: true } },
           },
         },
         assignedTrainers: {
@@ -112,6 +116,8 @@ export default async function ClassRunPage({
           type: e.type,
           waitlistPosition: e.waitlistPosition,
           source: e.source,
+          dropInSessionAt: e.dropInSession?.scheduledAt.toISOString() ?? null,
+          dropInSessionIndex: e.joinedAtIndex,
           clientId: e.client.id,
           clientName: e.client.user.name ?? 'Unnamed client',
           dogName: e.dog?.name ?? null,
