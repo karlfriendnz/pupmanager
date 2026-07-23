@@ -217,7 +217,10 @@ export function BookingWizard(props: {
   }
   function chooseClass(c: WizardClass) {
     setSelection({ kind: 'class', cls: c })
-    setClassType('FULL')
+    // A drop-in class is SOLD per session, so that's the state it opens in —
+    // the picker is the page. "All of them" is Select all, not a separate
+    // full-course mode the client has to find first.
+    setClassType(c.allowDropIn && c.dropInPerSessionCents != null ? 'DROP_IN' : 'FULL')
     setDropInSessionIds([])
     setDogId(defaultDogId)
     setError(null)
@@ -292,7 +295,7 @@ export function BookingWizard(props: {
       waitlisted: { title: "You're on the waitlist", sub: `${businessName} will be in touch the moment a spot opens up.` },
     }
     return (
-      <Shell businessName={businessName} initials={initials} step={null}>
+      <Shell step={null}>
         <div className="flex flex-col items-center text-center py-10">
           <div className="h-16 w-16 rounded-full bg-accent-soft flex items-center justify-center">
             <CheckCircle2 className="h-8 w-8 text-accent" />
@@ -311,7 +314,7 @@ export function BookingWizard(props: {
   }
 
   return (
-    <Shell businessName={businessName} initials={initials} step={nothingToBook ? null : step} onBack={step > 1 ? back : undefined}>
+    <Shell step={nothingToBook ? null : step} onBack={step > 1 ? back : undefined}>
       {/* ---------- STEP 1 · choose ---------- */}
       {step === 1 && (
         nothingToBook ? (
@@ -409,9 +412,9 @@ export function BookingWizard(props: {
           dogId={dogId}
           onDog={setDogId}
           classType={classType}
-          onType={(t) => { setClassType(t); if (t === 'FULL') setDropInSessionIds([]) }}
           dropInSessionIds={dropInSessionIds}
           onSessionToggle={toggleSession}
+          onSessionsSet={setDropInSessionIds}
           onContinue={() => { setError(null); setStep(3) }}
         />
       )}
@@ -439,9 +442,10 @@ export function BookingWizard(props: {
 
 /* ============================ layout shell ============================ */
 
-function Shell({ businessName, initials, step, onBack, children }: {
-  businessName: string
-  initials: string
+// No business name or logo here — the app shell around this page already
+// carries both, and repeating them pushed the actual booking below the fold.
+// Only the back arrow survives, and only when there's somewhere to go back to.
+function Shell({ step, onBack, children }: {
   step: 1 | 2 | 3 | null
   onBack?: () => void
   children: React.ReactNode
@@ -449,24 +453,14 @@ function Shell({ businessName, initials, step, onBack, children }: {
   const labels = ['Choose', 'Details', 'Confirm']
   return (
     <div className="px-4 pt-5 pb-10 max-w-xl mx-auto w-full">
-      <div className="flex items-center gap-3">
-        {onBack ? (
-          <button onClick={onBack} aria-label="Back" className="-ml-1.5 flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100">
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-        ) : (
-          <div className="h-11 w-11 rounded-2xl bg-accent text-accent-fg flex items-center justify-center text-sm font-bold shadow-[0_4px_14px_rgba(15,31,36,0.12)]">
-            {initials}
-          </div>
-        )}
-        <div className="min-w-0">
-          <p className="text-[15px] font-bold text-slate-900 leading-tight truncate">{businessName}</p>
-          <p className="text-xs text-slate-400">Book a session or class</p>
-        </div>
-      </div>
+      {onBack && (
+        <button onClick={onBack} aria-label="Back" className="-ml-1.5 mb-1 flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100">
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      )}
 
       {step !== null && (
-        <div className="mt-5 flex items-center gap-2" aria-hidden="true">
+        <div className="flex items-center gap-2" aria-hidden="true">
           {labels.map((label, i) => {
             const n = (i + 1) as 1 | 2 | 3
             const active = n === step
@@ -588,7 +582,7 @@ function SessionTimeStep({ pkg, availableDates, timeOptions, date, time, onDate,
 
 /* ============================ step 2 · class options ============================ */
 
-function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDog, classType, onType, dropInSessionIds, onSessionToggle, onContinue }: {
+function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDog, classType, dropInSessionIds, onSessionToggle, onSessionsSet, onContinue }: {
   tz: string
   cls: WizardClass
   currency: string | null
@@ -597,19 +591,22 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
   dogId: string | null
   onDog: (id: string) => void
   classType: 'FULL' | 'DROP_IN'
-  onType: (t: 'FULL' | 'DROP_IN') => void
   dropInSessionIds: string[]
   onSessionToggle: (id: string) => void
+  /** Replace the whole selection — Select all / Clear all. */
+  onSessionsSet: (ids: string[]) => void
   onContinue: () => void
 }) {
   const isFull = cls.seatsLeft === 0
   const paidButNoPayments = !!cls.fullPriceCents && !acceptPayments
-  const full = price(cls.fullPriceCents, currency)
   const drop = price(cls.dropInPerSessionCents, currency)
   const dropping = classType === 'DROP_IN'
-  // Drop-ins pick one session; the whole class being "full" for the term
-  // doesn't block a single session that still has room.
+  // Drop-ins pick sessions; the whole class being "full" for the term doesn't
+  // block a single session that still has room.
   const needsSession = dropping && dropInSessionIds.length === 0
+  // What's actually on offer: not already theirs, and not full.
+  const bookable = cls.sessions.filter(s => !s.booked && s.spacesLeft !== 0)
+  const allPicked = bookable.length > 0 && dropInSessionIds.length === bookable.length
 
   return (
     <div className="flex flex-col gap-5">
@@ -625,31 +622,29 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
         </div>
       )}
 
-      {/* First, because it decides what the list below IS: a read-only
-          schedule for the full course, or a picker when dropping in. Asking it
-          after the list meant scrolling past twelve sessions to find out you
-          could have been choosing among them.
-          Offered whenever the class allows drop-ins and has a price —
-          per-session availability decides what's bookable, not the run being
-          "full" for the whole term. */}
-      {cls.allowDropIn && drop && (
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">How would you like to join?</p>
-          <div className="grid grid-cols-2 gap-2">
-            <TypeCard active={classType === 'FULL'} onClick={() => onType('FULL')} title="Full course" sub={full ?? 'All sessions'} />
-            <TypeCard active={classType === 'DROP_IN'} onClick={() => onType('DROP_IN')} title="Drop in" sub={drop ? `${drop}/session` : 'One session'} />
-          </div>
-        </div>
-      )}
-
       {/* The one place a class's sessions are listed. Read-only for a full
           course; the SAME list becomes the picker when dropping in — one
           component, so the client never learns two different layouts. */}
       {cls.sessions.length > 0 && (
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
-            {dropping ? 'Pick the sessions you want' : 'Session schedule'} <span className="text-slate-300">· {cls.sessions.length}</span>
-          </p>
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+              {dropping ? 'Pick the sessions you want' : 'Session schedule'} <span className="text-slate-300">· {cls.sessions.length}</span>
+            </p>
+            {/* Taking the whole course IS ticking every session — one control
+                rather than a separate full-course mode to find first. Only
+                what's actually bookable: sessions they hold or that are full
+                aren't on offer. */}
+            {dropping && bookable.length > 0 && (
+              <button
+                type="button"
+                onClick={() => onSessionsSet(allPicked ? [] : bookable.map(s => s.id))}
+                className="shrink-0 text-xs font-semibold text-accent hover:underline"
+              >
+                {allPicked ? 'Clear all' : `Select all ${bookable.length}`}
+              </button>
+            )}
+          </div>
           <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
             {cls.sessions.map((s, i) => {
               const sessionFull = s.spacesLeft === 0
@@ -731,7 +726,7 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
       ) : dropping ? (
         <StickyCta disabled={needsSession} onClick={onContinue}>
           {needsSession
-            ? 'Pick a session above'
+            ? 'Pick your sessions above'
             : `Continue · ${dropInSessionIds.length} session${dropInSessionIds.length === 1 ? '' : 's'}`}
         </StickyCta>
       ) : (
@@ -749,15 +744,6 @@ function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
       <span className="text-accent">{icon}</span>
       <span>{text}</span>
     </div>
-  )
-}
-
-function TypeCard({ active, onClick, title, sub }: { active: boolean; onClick: () => void; title: string; sub: string }) {
-  return (
-    <button onClick={onClick} className={`rounded-2xl border p-3.5 text-left transition-colors ${active ? 'border-accent bg-accent-soft' : 'border-slate-200 bg-white hover:border-accent/40'}`}>
-      <span className={`block text-sm font-bold ${active ? 'text-accent' : 'text-slate-900'}`}>{title}</span>
-      <span className="block text-xs text-slate-500 mt-0.5">{sub}</span>
-    </button>
   )
 }
 
