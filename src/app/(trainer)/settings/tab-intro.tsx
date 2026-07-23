@@ -54,6 +54,16 @@ export const TAB_INTRO: Record<string, TabIntroCopy> = {
       'On Forms, preview your intake form and publish it when it looks right.',
     ],
   },
+  locations: {
+    title: 'Locations',
+    blurb:
+      'The places you work from — a training field, a hall you hire, a park you meet at. Save each one once, then pick it when you set up a package, class or session instead of retyping the address.',
+    steps: [
+      'Add a location: give it a name and search for its address.',
+      'Add a photo and any notes — parking, gate codes, where to meet.',
+      'Pick it later when you create a package, class or session.',
+    ],
+  },
   integration: {
     title: 'Connect Website',
     blurb:

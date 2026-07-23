@@ -15,6 +15,7 @@ import { IntegrationTab } from './integration-tab'
 import { XeroTab } from './xero-tab'
 import { hasAddon } from '@/lib/billing'
 import { FormsManager } from '../forms/forms-manager'
+import { LocationsPanel } from './locations-panel'
 import type { Question } from '../forms/session/session-forms-manager'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
@@ -56,6 +57,17 @@ export default async function TrainerSettingsPage() {
   })
 
   if (!user || !trainerProfile) redirect('/login')
+
+  // Locations library — the reusable places the trainer picks from when creating
+  // packages/classes/sessions. Only fetched for members who can edit settings
+  // (the tab won't render for anyone else; the API re-authorises every write).
+  const locations = canEditSettings
+    ? await prisma.location.findMany({
+        where: { trainerId: trainerProfile.id },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, name: true, address: true, imageUrl: true, description: true },
+      })
+    : []
 
   // Forms data is only needed for the Forms tab — skip the queries for members
   // who can't manage forms (the tab won't render for them). Lead-capture (embed)
@@ -111,6 +123,7 @@ export default async function TrainerSettingsPage() {
           <TrainerSettingsForm user={user} profile={trainerProfile} />
         ) : undefined}
         notifications={<NotificationsPanel manageableMembers={manageableMembers} />}
+        locations={canEditSettings ? <LocationsPanel locations={locations} /> : undefined}
         integration={can('settings.edit', ctx.role, ctx.permissions) ? <IntegrationTab companyId={ctx.companyId} /> : undefined}
         addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
         team={<TeamPanel />}

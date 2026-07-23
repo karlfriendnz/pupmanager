@@ -669,6 +669,7 @@ model TrainerProfile {
   todos              TrainerTodo[]
   xeroConnection     XeroConnection?
   linkPage           LinkPage?
+  locations          Location[]
 
   @@map("trainer_profiles")
 }
@@ -1888,6 +1889,28 @@ model TrainerBadgeAward {
   @@unique([trainerId, badgeKey])
   @@index([trainerId])
   @@map("trainer_badge_awards")
+}
+
+// ─── Locations library ────────────────────────────────────────────────────────
+
+// A reusable place the trainer works from — a training field, a client's home
+// area, a hall they hire. Kept as a small library the trainer curates once, then
+// picks from when creating packages, classes, sessions etc. so they don't retype
+// the same address every time.
+model Location {
+  id          String  @id @default(cuid())
+  trainerId   String
+  name        String
+  address     String? // free text / Google-picked address
+  imageUrl    String?
+  description String? @db.Text
+  order       Int     @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  trainer     TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId])
+  @@map("locations")
 }
 
 // ─── Session report forms ─────────────────────────────────────────────────────
