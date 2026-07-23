@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   CalendarPlus, GraduationCap, Clock, Users, Video, MapPin, Check, CheckCircle2,
   Loader2, ChevronLeft, ArrowRight, CalendarDays, Repeat,
@@ -162,27 +162,32 @@ export function BookingWizard(props: {
   const pkg = selection?.kind === 'session' ? selection.pkg : null
   const cls = selection?.kind === 'class' ? selection.cls : null
 
-  // Days in the window that can hold this package's first session.
+  // Bookable start times on a given day — always dropping any that have already
+  // been and gone. The past-filter belongs HERE, not just on the chosen day:
+  // otherwise today keeps being offered after its last slot has passed, the day
+  // auto-selects, no time can, and the wizard dead-ends on "Pick a time" with
+  // nothing to pick. (Only reproducible late in the trainer's day.)
+  const startTimesFor = useCallback((dateStr: string) => {
+    if (!pkg) return []
+    const now = Date.now()
+    return enumerateStartTimes(availability.slots, dateStr, pkg.durationMins, availability.blackouts, STEP_MINS, availability.busy, pkg.bufferMins)
+      .filter(t => new Date(toUtcIso(dateStr, t, tz)).getTime() > now)
+  }, [pkg, availability, tz])
+
+  // Days in the window that can still hold this package's first session.
   const availableDates = useMemo(() => {
     if (!pkg) return []
     const today = todayInTz(tz)
     const out: string[] = []
     for (let i = 0; i < DAYS_AHEAD; i++) {
       const dateStr = addDayStr(today, i)
-      if (enumerateStartTimes(availability.slots, dateStr, pkg.durationMins, availability.blackouts, STEP_MINS, availability.busy, pkg.bufferMins).length > 0) {
-        out.push(dateStr)
-      }
+      if (startTimesFor(dateStr).length > 0) out.push(dateStr)
     }
     return out
-  }, [pkg, availability, tz])
+  }, [pkg, tz, startTimesFor])
 
-  // Valid start times for the chosen day, dropping any already in the past.
-  const timeOptions = useMemo(() => {
-    if (!pkg || !date) return []
-    const now = Date.now()
-    return enumerateStartTimes(availability.slots, date, pkg.durationMins, availability.blackouts, STEP_MINS, availability.busy, pkg.bufferMins)
-      .filter(t => new Date(toUtcIso(date, t, tz)).getTime() > now)
-  }, [pkg, date, availability, tz])
+  // Valid start times for the chosen day.
+  const timeOptions = useMemo(() => (date ? startTimesFor(date) : []), [date, startTimesFor])
 
   // Keep the selected day valid as the package changes.
   useEffect(() => {

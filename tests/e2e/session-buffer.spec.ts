@@ -54,7 +54,10 @@ test('a session’s buffer blocks bookings and renders as part of its block on t
     await login(page, SEED.owner.email, SEED.owner.password)
 
     // ── 1. The trainer control exists where packages are edited ───────────────
-    await page.goto('/packages/new')
+    // The EDIT page, not /offerings/new: adding is a step-by-step wizard whose
+    // first step doesn't show this field, while editing lays out every section
+    // on one page. Same control, and it doesn't move when the wizard does.
+    await page.goto(`/packages/${SEED.invoicing.pricedPackageId}/edit`)
     await expect(page.getByLabel('Gap before the next session')).toBeVisible()
 
     // ── 2. The buffer renders as a continuation of ITS event block ────────────
