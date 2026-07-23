@@ -135,7 +135,11 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             there's only room for one at a time. */}
         <div className="grid grid-cols-1 lg:grid-cols-2 lg:items-start gap-5">
 
-          <div className={`flex flex-col gap-5 ${tab === 'details' ? '' : 'hidden lg:flex'}`}>
+          {/* On a phone these are two tabs — one at a time. From lg they're the
+              two columns, both on screen, and the tab state stops mattering.
+              Spelled out rather than `flex … hidden lg:flex`, which leans on
+              which display utility Tailwind happens to emit last. */}
+          <div className={tab === 'details' ? 'flex flex-col gap-5' : 'hidden lg:flex lg:flex-col lg:gap-5'}>
 
             {/* No cover image here — an image belongs to a scheduled class
                 run, not to the package definition behind it. */}
@@ -201,17 +205,18 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                 </CardBody>
               </Card>
             )}
-          </div>
 
-          <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden lg:flex'}`}>
-
-            {/* Stats strip — how the package is actually selling. */}
+            {/* How the package is actually selling. Sits under the details it
+                describes rather than over the client list. */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Stat label="Clients" value={String(rows.length)} />
               <Stat label="Active now" value={String(present.length)} />
               <Stat label="Completed" value={String(completedCount)} />
               <Stat label="Avg sessions" value={avgSessionsUsed.toFixed(1)} />
             </div>
+          </div>
+
+          <div className={tab === 'clients' ? 'flex flex-col gap-5' : 'hidden lg:flex lg:flex-col lg:gap-5'}>
 
             <Card>
               <CardBody className="py-5">
