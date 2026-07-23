@@ -7,7 +7,7 @@ import { trainerRegionCode } from '@/lib/country'
 import { NewPackageForm } from './new-package-form'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'New package' }
+export const metadata: Metadata = { title: 'New offering' }
 
 const KINDS = ['onetoone', 'group', 'dropin', 'oneoff'] as const
 type OfferingKind = (typeof KINDS)[number]
@@ -46,8 +46,8 @@ export default async function NewPackagePage({ searchParams }: { searchParams: P
   return (
     <>
       <PageHeader
-        title="New package"
-        back={{ href: '/packages', label: 'Back to packages' }}
+        title="New offering"
+        back={{ href: '/packages', label: 'Back to offerings' }}
       />
       <div className="p-4 md:p-8 w-full max-w-[872px] mx-auto">
         <NewPackageForm sessionForms={sessionForms} promptConnect={promptConnect} region={region} initialKind={initialKind} />
