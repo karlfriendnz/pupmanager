@@ -615,10 +615,32 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
     <div className="flex flex-col gap-5">
       <StepIntro title={cls.name} sub={cls.packageName} />
 
-      <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 flex flex-col gap-2.5 text-sm">
-        {cls.scheduleNote && <Row icon={<CalendarDays className="h-4 w-4" />} text={cls.scheduleNote} />}
-        {!dropping && cls.seatsLeft != null && <Row icon={<Users className="h-4 w-4" />} text={isFull ? (cls.allowWaitlist ? 'Full — join the waitlist' : 'Full') : `${cls.seatsLeft} spot${cls.seatsLeft === 1 ? '' : 's'} left`} />}
-      </div>
+      {/* Only when there's something to put in it. A class with no schedule
+          note and no capacity has neither row, and the card was rendering as
+          an empty white box above the schedule. */}
+      {(cls.scheduleNote || (!dropping && cls.seatsLeft != null)) && (
+        <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 flex flex-col gap-2.5 text-sm">
+          {cls.scheduleNote && <Row icon={<CalendarDays className="h-4 w-4" />} text={cls.scheduleNote} />}
+          {!dropping && cls.seatsLeft != null && <Row icon={<Users className="h-4 w-4" />} text={isFull ? (cls.allowWaitlist ? 'Full — join the waitlist' : 'Full') : `${cls.seatsLeft} spot${cls.seatsLeft === 1 ? '' : 's'} left`} />}
+        </div>
+      )}
+
+      {/* First, because it decides what the list below IS: a read-only
+          schedule for the full course, or a picker when dropping in. Asking it
+          after the list meant scrolling past twelve sessions to find out you
+          could have been choosing among them.
+          Offered whenever the class allows drop-ins and has a price —
+          per-session availability decides what's bookable, not the run being
+          "full" for the whole term. */}
+      {cls.allowDropIn && drop && (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">How would you like to join?</p>
+          <div className="grid grid-cols-2 gap-2">
+            <TypeCard active={classType === 'FULL'} onClick={() => onType('FULL')} title="Full course" sub={full ?? 'All sessions'} />
+            <TypeCard active={classType === 'DROP_IN'} onClick={() => onType('DROP_IN')} title="Drop in" sub={drop ? `${drop}/session` : 'One session'} />
+          </div>
+        </div>
+      )}
 
       {/* The one place a class's sessions are listed. Read-only for a full
           course; the SAME list becomes the picker when dropping in — one
@@ -698,19 +720,6 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
                 {d.name}
               </button>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* Drop-in is offered whenever the class allows it and has a price —
-          per-session availability (above) decides what's bookable, not the
-          run being "full" for the whole term. */}
-      {cls.allowDropIn && drop && (
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">How would you like to join?</p>
-          <div className="grid grid-cols-2 gap-2">
-            <TypeCard active={classType === 'FULL'} onClick={() => onType('FULL')} title="Full course" sub={full ?? 'All sessions'} />
-            <TypeCard active={classType === 'DROP_IN'} onClick={() => onType('DROP_IN')} title="Drop in" sub={drop ? `${drop}/session` : 'One session'} />
           </div>
         </div>
       )}
