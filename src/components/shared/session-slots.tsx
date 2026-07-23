@@ -30,7 +30,7 @@ const DAYS = [
 const GAP_HELP = 'Time you need after each session — travel, clean-up, a breather. Nothing can be booked into it.'
 
 export function newSlot(): SessionSlot {
-  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 2, start: '15:00', end: '17:00', gap: '0', capacity: '', locationId: '', repeat: 'FREQ=WEEKLY' }
+  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 1, start: '15:00', end: '17:00', gap: '0', capacity: '', locationId: '', repeat: 'FREQ=WEEKLY' }
 }
 
 function Row({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
