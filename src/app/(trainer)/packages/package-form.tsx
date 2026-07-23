@@ -8,8 +8,6 @@ import { Button } from '@/components/ui/button'
 import { XeroAccountField } from '@/components/shared/xero-account-field'
 import { RequirePaymentField } from '@/components/shared/require-payment-field'
 import { BufferField } from '@/components/shared/buffer-field'
-import { RecurrenceField } from '@/components/shared/recurrence-field'
-import { cadenceFromRule } from '@/lib/recurrence'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { DateTimePicker } from '@/components/shared/date-time-picker'
@@ -259,24 +257,18 @@ export function PackageForm({
     // Convert the dollar-string price fields into cents before sending; the
     // server stores cents to dodge floating-point math.
     const { price, specialPrice, ...rest } = values
-    // Cadence per kind:
-    //  · one-off event → exactly 1 session, no cadence
-    //  · group / drop-in class → DERIVED from the recurrence rule
-    //  · 1:1 package → the typed values
-    const groupCadence = (kind === 'group' || kind === 'dropin') && recurrenceRule
-      ? cadenceFromRule(recurrenceRule) : null
-    const sessionCount = kind === 'oneoff' ? 1 : groupCadence ? groupCadence.sessionCount : values.sessionCount
+    // One cadence model for all kinds: N sessions every W weeks (a one-off
+    // event is just 1 session, no cadence).
+    const sessionCount = kind === 'oneoff' ? 1 : values.sessionCount
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...rest,
         sessionCount,
-        // A single-session package has no cadence — store 0 rather than
+        // A single-session offering has no cadence — store 0 rather than
         // whatever was last typed into the (now hidden) weeks field.
-        weeksBetween: groupCadence
-          ? groupCadence.weeksBetween
-          : Number(sessionCount) === 1 ? 0 : values.weeksBetween,
+        weeksBetween: Number(sessionCount) === 1 ? 0 : values.weeksBetween,
         description: values.description || null,
         priceCents: dollarsToCents(price),
         specialPriceCents: dollarsToCents(specialPrice),
@@ -417,23 +409,21 @@ export function PackageForm({
       {/* ── Step 2 · sessions & schedule ───────────────────────────── */}
       <SectionHeading step={2} title="Sessions & schedule" />
 
-      {/* One schedule definition, not two. A group class repeats on a
-          recurrence (how often + when it ends); a 1:1 package is a run of N
-          sessions every W weeks. Showing both was the redundancy. The 1:1
-          fields stay registered when hidden so their values still submit. */}
+      {/* One schedule model everywhere: a run of N sessions every W weeks.
+          1:1, group and drop-in all use it; only a one-off event has no cadence. */}
       {kind === 'oneoff' ? (
-        // A single event has no cadence — its date & time are set when you
-        // schedule it. Keep the RHF fields registered (submit forces 1 session).
+        // A single event has no cadence — its date & time are set below.
+        // Keep the RHF fields registered (submit forces 1 session).
         <div className="md:col-span-2">
           <p className="text-xs text-slate-500 rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
-            A single event on one date. You&apos;ll set its date and time when you put it on the schedule.
+            A single event on one date. Set its date &amp; time below.
           </p>
           <div className="hidden">
             <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
             <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />
           </div>
         </div>
-      ) : kind === 'onetoone' ? (
+      ) : (
         <>
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Number of sessions</label>
@@ -461,16 +451,6 @@ export function PackageForm({
             />
           </div>
         </>
-      ) : (
-        // Group / drop-in classes repeat on a recurrence.
-        <div className="md:col-span-2">
-          <label className="text-sm font-medium text-slate-700 block mb-1.5">How often does it run?</label>
-          <RecurrenceField value={recurrenceRule} onChange={setRecurrenceRule} />
-          <div className="hidden">
-            <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
-            <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />
-          </div>
-        </div>
       )}
 
       {/* When / where / cover — unique to a scheduled class (these live on the
