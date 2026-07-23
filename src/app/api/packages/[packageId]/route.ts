@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
+import { syncOfferingRun } from '@/lib/class-runs'
 import {
   slotSchema, replacePackageSlots, derivedDropInFields,
   ticketTierSchema, replaceTicketTiers,
@@ -41,6 +42,13 @@ const updateSchema = z.object({
   sessionSlots: z.array(slotSchema).max(50).optional(),
   // A one-off event's ticket types, sent whole. Omitted = leave them alone.
   ticketTiers: z.array(ticketTierSchema).max(20).optional(),
+  // Presentation of the scheduled class behind this offering. Applied to its
+  // run when it has exactly one (see syncOfferingRun). Rescheduling is NOT here
+  // — that lives on the class itself, behind the attendance guard.
+  scheduleNote: z.string().max(120).nullable().optional(),
+  location: z.string().max(200).nullable().optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  assignedMembershipIds: z.array(z.string()).max(50).optional(),
 })
 
 async function ownPackage(packageId: string, trainerId: string) {
@@ -116,7 +124,11 @@ export async function PATCH(
   // Slots are a child table, not a column — keep them out of the package's own
   // update payload and reconcile them separately. When they're sent, they also
   // define the drop-in headline price, so it can't drift from the schedule.
-  const { sessionSlots, ticketTiers, ...columns } = parsed.data
+  const {
+    sessionSlots, ticketTiers,
+    scheduleNote, location, imageUrl, assignedMembershipIds,
+    ...columns
+  } = parsed.data
   const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
 
   const pkg = await prisma.$transaction(async (tx) => {
@@ -136,6 +148,16 @@ export async function PATCH(
       await replacePackageSlots(tx, packageId, trainerId, sessionSlots)
     }
     if (ticketTiers) await replaceTicketTiers(tx, packageId, ticketTiers)
+
+    // Editing the offering edits the class it was scheduled as — otherwise the
+    // venue on screen and the venue clients are told differ, silently. (A 1:1
+    // package has no run; syncOfferingRun also no-ops on a multi-cohort one.)
+    if (updated.isGroup) {
+      await syncOfferingRun(tx, packageId, trainerId, {
+        name: columns.name,
+        scheduleNote, location, imageUrl, assignedMembershipIds,
+      })
+    }
     return updated
   })
   return NextResponse.json(pkg)

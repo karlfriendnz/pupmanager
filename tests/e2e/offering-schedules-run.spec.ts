@@ -223,3 +223,116 @@ test.describe('an offering with a start date is scheduled', () => {
     }
   })
 })
+
+test.describe('editing a scheduled offering moves the class', () => {
+  test('venue, note, cover and staff round-trip to the run and its sessions', async ({ page }) => {
+    const prisma = await makePrisma()
+    const cleanup: Array<() => Promise<unknown>> = []
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      const created = await page.request.post('/api/packages', {
+        data: {
+          name: 'E2E Editable Class',
+          sessionCount: 3, weeksBetween: 1, durationMins: 60,
+          isGroup: true,
+          startAt: inDays(12).toISOString(),
+          scheduleNote: 'Mondays 5pm',
+          location: 'Old Field',
+        },
+      })
+      expect(created.status(), await created.text()).toBe(201)
+      const { id: pkgId, classRunId } = await created.json()
+      cleanup.push(() => prisma.package.delete({ where: { id: pkgId } }).catch(() => {}))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId } }).catch(() => {}))
+
+      // Backdate one session so we can prove history is left alone.
+      const sessions = await prisma.trainingSession.findMany({
+        where: { classRunId }, orderBy: { scheduledAt: 'asc' }, select: { id: true },
+      })
+      await prisma.trainingSession.update({
+        where: { id: sessions[0].id },
+        data: { scheduledAt: inDays(-3) },
+      })
+
+      const patched = await page.request.patch(`/api/packages/${pkgId}`, {
+        data: {
+          name: 'E2E Renamed Class',
+          scheduleNote: 'Wednesdays 6pm',
+          location: 'New Field',
+          imageUrl: 'https://example.com/new-cover.jpg',
+        },
+      })
+      expect(patched.status(), await patched.text()).toBe(200)
+
+      const run = await prisma.classRun.findUnique({ where: { id: classRunId } })
+      expect(run!.name).toBe('E2E Renamed Class')
+      expect(run!.scheduleNote).toBe('Wednesdays 6pm')
+      expect(run!.location).toBe('New Field')
+      expect(run!.imageUrl).toBe('https://example.com/new-cover.jpg')
+
+      const after = await prisma.trainingSession.findMany({
+        where: { classRunId }, orderBy: { scheduledAt: 'asc' },
+        select: { id: true, location: true, title: true },
+      })
+      // The session that has already happened keeps where it was actually held.
+      expect(after[0].location).toBe('Old Field')
+      // The ones still to come moved.
+      expect(after.slice(1).every(s => s.location === 'New Field')).toBe(true)
+      // Titles follow the new name.
+      expect(after.every(s => s.title.startsWith('E2E Renamed Class'))).toBe(true)
+
+      // And the renamed class reads correctly on the list.
+      await page.goto('/classes')
+      await expect(page.getByText('E2E Renamed Class')).toBeVisible({ timeout: 15_000 })
+    } finally {
+      for (const fn of cleanup.reverse()) await fn()
+      await prisma.$disconnect()
+    }
+  })
+
+  test('a package running several cohorts keeps them out of the offering form', async ({ page }) => {
+    const prisma = await makePrisma()
+    const cleanup: Array<() => Promise<unknown>> = []
+    try {
+      const owner = await prisma.user.findUnique({ where: { email: SEED.owner.email }, select: { id: true } })
+      const trainer = await prisma.trainerProfile.findFirst({ where: { userId: owner!.id }, select: { id: true } })
+
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      const created = await page.request.post('/api/packages', {
+        data: {
+          name: 'E2E Multi-cohort', sessionCount: 2, weeksBetween: 1, durationMins: 60,
+          isGroup: true, startAt: inDays(12).toISOString(), location: 'Field A',
+        },
+      })
+      const { id: pkgId, classRunId } = await created.json()
+      cleanup.push(() => prisma.package.delete({ where: { id: pkgId } }).catch(() => {}))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: classRunId } }).catch(() => {}))
+
+      // A second cohort off the same offering (the autumn intake).
+      const second = await prisma.classRun.create({
+        data: {
+          trainerId: trainer!.id, packageId: pkgId, name: 'E2E Multi-cohort',
+          startDate: inDays(90), location: 'Field B',
+        },
+      })
+      cleanup.push(() => prisma.classRun.delete({ where: { id: second.id } }).catch(() => {}))
+
+      const patched = await page.request.patch(`/api/packages/${pkgId}`, {
+        data: { location: 'Field C' },
+      })
+      expect(patched.status()).toBe(200)
+
+      // Neither cohort moved — with two runs the form can't say which you meant,
+      // so they stay under the control of their own class pages.
+      expect((await prisma.classRun.findUnique({ where: { id: classRunId } }))!.location).toBe('Field A')
+      expect((await prisma.classRun.findUnique({ where: { id: second.id } }))!.location).toBe('Field B')
+    } finally {
+      for (const fn of cleanup.reverse()) await fn()
+      await prisma.$disconnect()
+    }
+  })
+})

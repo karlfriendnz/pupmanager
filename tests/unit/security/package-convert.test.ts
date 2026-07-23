@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   pkgFindUnique: vi.fn(),
   pkgUpdate: vi.fn(),
   classRunCount: vi.fn(),
+  classRunFindMany: vi.fn(),
   clientPackageCount: vi.fn(),
 }))
 
@@ -22,7 +23,9 @@ vi.mock('@/lib/membership', () => ({ guardPermission: h.guardPermission }))
 vi.mock('@/lib/prisma', () => {
   const tx = {
     package: { findFirst: h.pkgFindFirst, findUnique: h.pkgFindUnique, update: h.pkgUpdate },
-    classRun: { count: h.classRunCount },
+    // A group package's update also keeps its scheduled run in step
+    // (syncOfferingRun); no runs here, so it finds nothing to do.
+    classRun: { count: h.classRunCount, findMany: h.classRunFindMany },
     clientPackage: { count: h.clientPackageCount },
   }
   return {
@@ -48,6 +51,7 @@ beforeEach(() => {
   h.auth.mockResolvedValue({ user: { role: 'TRAINER', id: 'u', trainerId: 'tr_me' } })
   h.pkgFindFirst.mockResolvedValue({ id: 'pkg_1' }) // ownPackage passes
   h.classRunCount.mockResolvedValue(0)
+  h.classRunFindMany.mockResolvedValue([])
   h.clientPackageCount.mockResolvedValue(0)
   h.pkgUpdate.mockImplementation(async ({ data }) => ({ id: 'pkg_1', ...data }))
 })

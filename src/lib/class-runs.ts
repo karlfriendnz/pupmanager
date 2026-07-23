@@ -531,6 +531,90 @@ export async function createClassWithPackage(args: {
 }
 
 /**
+ * Keep a scheduled offering's run in step when the offering itself is edited.
+ *
+ * Only when the package has exactly ONE run. The offerings form and the class
+ * are the same thing to a trainer who created it through the wizard, so editing
+ * the venue there must move the class. A package with several cohorts is a
+ * different story — the form can't say which one you meant — so those are left
+ * alone and managed per-run on /classes/[runId].
+ *
+ * Presentation only: name, note, venue, cover, staff. Rescheduling (dates,
+ * count, cadence) stays in updateClass, which refuses to move sessions that
+ * already have attendance recorded.
+ *
+ * Returns the run it touched, or null when it deliberately did nothing.
+ */
+export async function syncOfferingRun(
+  tx: Tx,
+  packageId: string,
+  trainerId: string,
+  fields: {
+    name?: string
+    scheduleNote?: string | null
+    location?: string | null
+    imageUrl?: string | null
+    assignedMembershipIds?: string[]
+  },
+): Promise<{ id: string } | null> {
+  const runs = await tx.classRun.findMany({
+    where: { packageId, trainerId },
+    select: { id: true, name: true, location: true },
+  })
+  if (runs.length !== 1) return null
+  const run = runs[0]
+
+  const nameChanged = fields.name !== undefined && fields.name !== run.name
+  const venueChanged = fields.location !== undefined && (fields.location?.trim() || null) !== run.location
+
+  await tx.classRun.update({
+    where: { id: run.id },
+    data: {
+      ...(nameChanged && { name: fields.name }),
+      ...(fields.scheduleNote !== undefined && { scheduleNote: fields.scheduleNote?.trim() || null }),
+      ...(fields.location !== undefined && { location: fields.location?.trim() || null }),
+      ...(fields.imageUrl !== undefined && { imageUrl: fields.imageUrl }),
+    },
+  })
+
+  if (venueChanged) {
+    // Sessions carry their own venue. Move the ones still to come; sessions
+    // that have already happened keep the address they were actually held at,
+    // and a drop-in slot's sessions keep the venue their slot named.
+    await tx.trainingSession.updateMany({
+      where: {
+        classRunId: run.id,
+        packageSessionSlotId: null,
+        scheduledAt: { gte: new Date() },
+      },
+      data: { location: fields.location?.trim() || null },
+    })
+  }
+
+  if (nameChanged) {
+    // Session titles are built from the class name ("Puppy — session 2/6").
+    const sessions = await tx.trainingSession.findMany({
+      where: { classRunId: run.id },
+      select: { id: true, sessionIndex: true },
+      orderBy: { scheduledAt: 'asc' },
+    })
+    for (const s of sessions) {
+      await tx.trainingSession.update({
+        where: { id: s.id },
+        data: {
+          title: sessions.length > 1
+            ? `${fields.name} — session ${s.sessionIndex ?? 1}/${sessions.length}`
+            : fields.name!,
+        },
+      })
+    }
+  }
+
+  await setRunTrainers(run.id, trainerId, fields.assignedMembershipIds, tx)
+  return { id: run.id }
+}
+
+/**
  * Edit a class. Settings (name, price, capacity, duration, format, schedule
  * note) always apply. Changing the *schedule* (start/cadence/weeks) rebuilds
  * the session series — but only when no attendance has been recorded yet, so

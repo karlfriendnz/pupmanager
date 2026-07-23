@@ -29,6 +29,18 @@ export default async function EditPackagePage({
         _count: { select: { assignments: true } },
         // A drop-in class's schedule — the form edits these directly.
         sessionSlots: { orderBy: { order: 'asc' } },
+        // A one-off event's ticket types.
+        ticketTiers: { orderBy: { order: 'asc' } },
+        // The class this offering was scheduled as. Exactly one run means the
+        // form can edit that class's venue/cover/staff; several means cohorts
+        // are managed per-run and the form leaves them alone.
+        classRuns: {
+          orderBy: { startDate: 'asc' },
+          select: {
+            id: true, scheduleNote: true, location: true, imageUrl: true,
+            assignedTrainers: { select: { membershipId: true } },
+          },
+        },
       },
     }),
     prisma.sessionForm.findMany({
@@ -41,6 +53,10 @@ export default async function EditPackagePage({
   const region = trainerProfile ? trainerRegionCode(trainerProfile) : undefined
 
   if (!pkg) notFound()
+
+  // Only a single-run offering is edited as "the class" here; a package with
+  // several cohorts keeps its runs out of this form.
+  const run = pkg.classRuns.length === 1 ? pkg.classRuns[0] : null
 
   return (
     <>
@@ -80,6 +96,13 @@ export default async function EditPackagePage({
               ...s,
               startDate: s.startDate ? s.startDate.toISOString() : null,
             })),
+            ticketTiers: pkg.ticketTiers,
+            classRunId: run?.id ?? null,
+            runCount: pkg.classRuns.length,
+            scheduleNote: run?.scheduleNote ?? null,
+            location: run?.location ?? null,
+            imageUrl: run?.imageUrl ?? null,
+            assignedMembershipIds: run?.assignedTrainers.map(t => t.membershipId) ?? [],
             assignments: pkg._count.assignments,
           }}
           sessionForms={sessionForms}

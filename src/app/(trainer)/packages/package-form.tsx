@@ -70,7 +70,26 @@ export interface PkgRow {
   // A drop-in class's schedule slots, as stored. Optional so loaders that don't
   // select them still satisfy the type — the form then starts with one blank.
   sessionSlots?: StoredSlot[]
+  ticketTiers?: StoredTier[]
+  // The class this offering is scheduled as, when it has exactly one run — the
+  // form then edits that class's venue/cover/staff too, and sends rescheduling
+  // to the class page (which knows not to move sessions people have attended).
+  classRunId?: string | null
+  runCount?: number
+  scheduleNote?: string | null
+  location?: string | null
+  imageUrl?: string | null
+  assignedMembershipIds?: string[]
   assignments: number
+}
+
+/** A PackageTicketTier as it comes back from the server (cents). */
+export interface StoredTier {
+  id: string
+  name: string
+  priceCents: number | null
+  capacity: number | null
+  xeroAccountCode: string | null
 }
 
 /** A PackageSessionSlot as it comes back from the server (cents, ISO date). */
@@ -131,6 +150,17 @@ function storedToSlot(s: StoredSlot): SessionSlot {
     assignedIds: s.assignedMembershipIds,
     locationId: s.locationId ?? '',
     repeat: s.recurrenceRule ?? '',
+  }
+}
+
+/** Stored tier → editor tier. Keeps the real id so a save updates in place. */
+function storedToTier(t: StoredTier): TicketTier {
+  return {
+    id: t.id,
+    name: t.name,
+    account: t.xeroAccountCode ?? '',
+    price: centsToDollars(t.priceCents),
+    capacity: t.capacity == null ? '' : String(t.capacity),
   }
 }
 
@@ -234,9 +264,11 @@ export function PackageForm({
   // the class/drop-in/one-off kinds so this one form covers "when / where / who".
   // NOT yet wired to run creation — captured for review while we shape the form.
   const [startAt, setStartAt] = useState<Date | null>(null)
-  const [location, setLocation] = useState<string>('')
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
-  const [scheduleNote, setScheduleNote] = useState<string>('')
+  // True when this offering is already in the diary as exactly one class.
+  const scheduled = !!existing?.classRunId
+  const [location, setLocation] = useState<string>(existing?.location ?? '')
+  const [imageUrl, setImageUrl] = useState<string | null>(existing?.imageUrl ?? null)
+  const [scheduleNote, setScheduleNote] = useState<string>(existing?.scheduleNote ?? '')
   // Drop-in classes define their weekly slots individually (day/time/location).
   // Editing hydrates them from the stored schedule so a save round-trips.
   const [slots, setSlots] = useState<SessionSlot[]>(() =>
@@ -245,11 +277,13 @@ export function PackageForm({
   // Join link for a virtual session (Zoom/Meet); only when session type = Virtual.
   const [virtualLink, setVirtualLink] = useState<string>('')
   // Simple ticket tiers for a one-off event (name + price + capacity).
-  const [tickets, setTickets] = useState<TicketTier[]>([newTier()])
+  const [tickets, setTickets] = useState<TicketTier[]>(() =>
+    existing?.ticketTiers?.length ? existing.ticketTiers.map(storedToTier) : [newTier()],
+  )
   // Who delivers this — assignable for every kind. Fetched client-side (the
   // team endpoint returns membership ids). NOT yet wired to persistence.
   const [team, setTeam] = useState<{ id: string; name: string | null; title: string | null }[]>([])
-  const [assignedIds, setAssignedIds] = useState<string[]>([])
+  const [assignedIds, setAssignedIds] = useState<string[]>(existing?.assignedMembershipIds ?? [])
   const [assignOpen, setAssignOpen] = useState(false)
   // Saved locations to pick from (built in Settings → Locations). '' = none,
   // a location id = that saved place, '__custom' = type a one-off address.
@@ -385,8 +419,11 @@ export function PackageForm({
         // that run's sessions, so it appears on /classes (or /events) at once.
         // Only on create — rescheduling an existing class is its own flow, with
         // the "don't move sessions that already have attendance" guard.
-        ...(!existing && isGroup && startAt && {
-          startAt: startAt.toISOString(),
+        ...(!existing && isGroup && startAt && { startAt: startAt.toISOString() }),
+        // Venue / note / cover / staff belong to the scheduled class. Sent on
+        // create AND edit — on edit the server applies them to the run, which
+        // is the whole reason they're on this form.
+        ...(isGroup && {
           scheduleNote: scheduleNote || null,
           location: location || null,
           imageUrl,
@@ -624,7 +661,19 @@ export function PackageForm({
           {kind !== 'oneoff' && (
             <label className="text-sm font-medium text-slate-700 block mb-1.5">First session (date &amp; time)</label>
           )}
-          <DateTimePicker value={startAt} onChange={setStartAt} stacked={kind === 'oneoff'} />
+          {scheduled ? (
+            // Already in the diary. Moving it has to go through the class page,
+            // which refuses to shift sessions people have already attended —
+            // so offer the link rather than a picker that can't do the job.
+            <p className="text-sm text-slate-500">
+              Scheduled — {existing?.scheduleNote || 'see the class for dates'}.{' '}
+              <a href={`/classes/${existing!.classRunId}`} className="font-medium text-blue-600 hover:underline">
+                Change the dates on the class
+              </a>
+            </p>
+          ) : (
+            <DateTimePicker value={startAt} onChange={setStartAt} stacked={kind === 'oneoff'} />
+          )}
         </div>
       )}
 
