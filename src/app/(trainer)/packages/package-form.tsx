@@ -397,19 +397,22 @@ export function PackageForm({
       ) : kind === 'onetoone' ? (
         <>
           <div>
-            <Input
-              label="Number of sessions"
-              type="number"
-              error={errors.sessionCount?.message}
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Number of sessions</label>
+            <select
               {...register('sessionCount', { valueAsNumber: true })}
-            />
-            <p className="text-[11px] text-slate-400 mt-1">0 = ongoing (you set an end date when assigning) · 1 = one-off (single session)</p>
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={1}>One-off (single session)</option>
+              {Array.from({ length: 19 }, (_, i) => i + 2).map(n => (
+                <option key={n} value={n}>{n} sessions</option>
+              ))}
+              <option value={0}>Ongoing (no fixed end)</option>
+            </select>
           </div>
-          {/* A one-off has nothing to space out, so the field goes away — but via
-              `invisible`, not by unmounting: visibility:hidden keeps the grid cell
-              (nothing below jumps) while removing it from view AND from the tab
-              order. It stays registered, and onSubmit forces 0 so the stored
-              cadence matches reality. */}
+          {/* Weeks-between only matters once there's more than one session, so it
+              appears the moment they pick anything other than One-off. `invisible`
+              (not unmounting) keeps the grid cell so nothing below jumps, and the
+              field stays registered so its value still submits. */}
           <div className={oneOff ? 'invisible' : undefined} aria-hidden={oneOff}>
             <Input
               label="Weeks between"
