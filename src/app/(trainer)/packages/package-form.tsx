@@ -435,12 +435,25 @@ export function PackageForm({
           </div>
         </div>
       ) : kind === 'dropin' ? (
-        // Drop-in classes run on their own set of weekly slots (day/time/place),
-        // each repeating weekly or fortnightly. The sessions are generated from
-        // these. RHF cadence fields kept registered (unused for this kind).
-        <div className="md:col-span-2">
-          <label className="text-sm font-medium text-slate-700 block mb-1.5">When does it run?</label>
-          <SessionSlotsEditor value={slots} onChange={setSlots} locations={savedLocations.map(l => ({ id: l.id, name: l.name }))} />
+        // Drop-in classes run on their own set of weekly slots (day/time/place).
+        // First-date / duration / gap live here in the session box (per request),
+        // so everything about "when it runs" is in one place. RHF cadence fields
+        // kept registered (unused for this kind).
+        <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/40 p-4 flex flex-col gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-3">
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Starts from</label>
+              <DateTimePicker value={startAt} onChange={setStartAt} />
+            </div>
+            <Input label="Duration (mins)" type="number" error={errors.durationMins?.message} {...register('durationMins', { valueAsNumber: true })} />
+            <div className="sm:col-span-2">
+              <BufferField id="dropin-buffer" value={bufferMins} onChange={setBufferMins} />
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Sessions</label>
+            <SessionSlotsEditor value={slots} onChange={setSlots} locations={savedLocations.map(l => ({ id: l.id, name: l.name }))} />
+          </div>
           <div className="hidden">
             <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
             <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />
@@ -479,7 +492,9 @@ export function PackageForm({
       {/* When / where / cover — unique to a scheduled class (these live on the
           ClassRun today). Shown for the class kinds so this one form covers the
           whole thing. Recurring classes call it the FIRST session's time. */}
-      {kind !== 'onetoone' && (
+      {/* Drop-in keeps these inside its session box (above); other class kinds
+          show them here. */}
+      {kind !== 'onetoone' && kind !== 'dropin' && (
         <div className="md:col-span-2">
           <label className="text-sm font-medium text-slate-700 block mb-1.5">
             {kind === 'oneoff' ? 'Date & time' : 'First session (date & time)'}
@@ -488,16 +503,20 @@ export function PackageForm({
         </div>
       )}
 
-      <Input
-        label="Duration (mins)"
-        type="number"
-        error={errors.durationMins?.message}
-        {...register('durationMins', { valueAsNumber: true })}
-      />
+      {kind !== 'dropin' && (
+        <Input
+          label="Duration (mins)"
+          type="number"
+          error={errors.durationMins?.message}
+          {...register('durationMins', { valueAsNumber: true })}
+        />
+      )}
 
       {/* Turnaround gap after each session — travel, clean-up, reset. Blocked
           out on the calendar so nothing can be booked into it. */}
-      <BufferField id="package-buffer" value={bufferMins} onChange={setBufferMins} />
+      {kind !== 'dropin' && (
+        <BufferField id="package-buffer" value={bufferMins} onChange={setBufferMins} />
+      )}
 
       <div>
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Session type</label>
