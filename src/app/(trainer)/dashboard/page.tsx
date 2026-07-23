@@ -11,7 +11,6 @@ import { SessionRowCard } from '@/components/shared/session-row-card'
 import { PageHeader } from '@/components/shared/page-header'
 import { WaitlistNudge } from '@/components/shared/waitlist-nudge'
 import { BookingRequestsPanel } from '@/components/shared/booking-requests-panel'
-import { StreakChip } from '@/components/shared/streak-chip'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { TodoBrainDumpPanel } from './todo-braindump-panel'
 import { hasAddon, getEnabledAddons } from '@/lib/billing'
@@ -316,15 +315,12 @@ export default async function DashboardPage({
       <PageHeader
         title={`Good ${getGreeting(tz)}, ${session.user.name?.split(' ')[0] ?? 'there'} 👋`}
         actions={
-          <>
-            <TrialBanner
-              placement="header"
-              status={brandingProfile?.subscriptionStatus ?? 'TRIALING'}
-              trialEndsAt={brandingProfile?.trialEndsAt ?? null}
-              hasSubscription={!!brandingProfile?.stripeSubscriptionId}
-            />
-            <StreakChip trainerId={trainerId} />
-          </>
+          <TrialBanner
+            placement="header"
+            status={brandingProfile?.subscriptionStatus ?? 'TRIALING'}
+            trialEndsAt={brandingProfile?.trialEndsAt ?? null}
+            hasSubscription={!!brandingProfile?.stripeSubscriptionId}
+          />
         }
       />
       <div className="p-4 md:p-8 w-full">
