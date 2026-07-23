@@ -15,3 +15,18 @@ export async function syncClassSessions(sessionIds: string[]) {
     // Non-critical
   }
 }
+
+/**
+ * Best-effort: remove class sessions from the trainer's Google Calendar after
+ * a reschedule has deleted them. Same posture as the push above — a calendar
+ * that couldn't be reached must never fail the save.
+ */
+export async function removeClassEvents(companyId: string, eventIds: string[]) {
+  if (eventIds.length === 0) return
+  try {
+    const { deleteGoogleEvents } = await import('./google-calendar-sync')
+    await deleteGoogleEvents(companyId, eventIds)
+  } catch {
+    // Non-critical
+  }
+}

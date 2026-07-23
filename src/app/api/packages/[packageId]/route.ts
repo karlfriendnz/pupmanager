@@ -4,7 +4,8 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
-import { syncOfferingRun } from '@/lib/class-runs'
+import { syncOfferingRun, ClassError } from '@/lib/class-runs'
+import { syncClassSessions, removeClassEvents } from '@/lib/class-session-sync'
 import {
   slotSchema, replacePackageSlots, derivedDropInFields,
   ticketTierSchema, replaceTicketTiers,
@@ -42,9 +43,10 @@ const updateSchema = z.object({
   sessionSlots: z.array(slotSchema).max(50).optional(),
   // A one-off event's ticket types, sent whole. Omitted = leave them alone.
   ticketTiers: z.array(ticketTierSchema).max(20).optional(),
-  // Presentation of the scheduled class behind this offering. Applied to its
-  // run when it has exactly one (see syncOfferingRun). Rescheduling is NOT here
-  // — that lives on the class itself, behind the attendance guard.
+  // The scheduled class behind this offering — applied to its run when it has
+  // exactly one (see syncOfferingRun). This form edits the WHOLE class, dates
+  // included; moving them is refused once attendance has been recorded.
+  startAt: z.string().datetime().optional(),
   scheduleNote: z.string().max(120).nullable().optional(),
   location: z.string().max(200).nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
@@ -126,12 +128,19 @@ export async function PATCH(
   // define the drop-in headline price, so it can't drift from the schedule.
   const {
     sessionSlots, ticketTiers,
-    scheduleNote, location, imageUrl, assignedMembershipIds,
+    scheduleNote, location, imageUrl, assignedMembershipIds, startAt,
     ...columns
   } = parsed.data
   const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
 
-  const pkg = await prisma.$transaction(async (tx) => {
+  // Sessions the schedule change created / removed, mirrored to Google after
+  // the transaction commits.
+  let createdSessionIds: string[] = []
+  let deletedEventIds: string[] = []
+
+  let pkg
+  try {
+  pkg = await prisma.$transaction(async (tx) => {
     const updated = await tx.package.update({
       where: { id: packageId },
       data: {
@@ -153,13 +162,37 @@ export async function PATCH(
     // venue on screen and the venue clients are told differ, silently. (A 1:1
     // package has no run; syncOfferingRun also no-ops on a multi-cohort one.)
     if (updated.isGroup) {
-      await syncOfferingRun(tx, packageId, trainerId, {
+      const synced = await syncOfferingRun(tx, packageId, trainerId, {
         name: columns.name,
         scheduleNote, location, imageUrl, assignedMembershipIds,
+        // The schedule too: this form edits the whole class, so changing the
+        // date or the number of sessions has to move the sessions themselves.
+        ...(startAt && { startDate: new Date(startAt) }),
+        sessionCount: columns.sessionCount,
+        weeksBetween: columns.weeksBetween,
+        durationMins: columns.durationMins,
+        bufferMins: columns.bufferMins,
+        sessionType: columns.sessionType,
       })
+      if (synced) {
+        createdSessionIds = synced.createdSessionIds
+        deletedEventIds = synced.deletedEventIds
+      }
     }
     return updated
   })
+  } catch (e) {
+    // Refusing to move a class people have already attended is an answer the
+    // trainer can act on, not a server error.
+    if (e instanceof ClassError && e.code === 'HAS_ATTENDANCE') {
+      return NextResponse.json({ error: e.message }, { status: 409 })
+    }
+    throw e
+  }
+
+  if (createdSessionIds.length) await syncClassSessions(createdSessionIds)
+  if (deletedEventIds.length) await removeClassEvents(trainerId, deletedEventIds)
+
   return NextResponse.json(pkg)
 }
 

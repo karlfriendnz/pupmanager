@@ -37,8 +37,11 @@ export default async function EditPackagePage({
         classRuns: {
           orderBy: { startDate: 'asc' },
           select: {
-            id: true, scheduleNote: true, location: true, imageUrl: true,
+            id: true, startDate: true, scheduleNote: true, location: true, imageUrl: true,
             assignedTrainers: { select: { membershipId: true } },
+            // Once anyone has been marked present the dates are fixed, so the
+            // form shows them read-only rather than offering a move it'd refuse.
+            _count: { select: { sessions: true } },
           },
         },
       },
@@ -57,12 +60,26 @@ export default async function EditPackagePage({
   // Only a single-run offering is edited as "the class" here; a package with
   // several cohorts keeps its runs out of this form.
   const run = pkg.classRuns.length === 1 ? pkg.classRuns[0] : null
+  const hasAttendance = run
+    ? (await prisma.sessionAttendance.count({ where: { session: { classRunId: run.id } } })) > 0
+    : false
+
+  // Name the thing you're editing, and send Back where you came from — the
+  // class itself when it's scheduled, else its list.
+  const isEvent = pkg.isGroup && pkg.sessionCount === 1 && !pkg.recurrenceRule
+  const kindLabel = !pkg.isGroup ? 'package' : pkg.allowDropIn ? 'drop-in class' : isEvent ? 'event' : 'class'
+  const back = run
+    ? { href: `/classes/${run.id}`, label: `Back to ${pkg.name}` }
+    : !pkg.isGroup ? { href: '/packages', label: 'Back to packages' }
+    : pkg.allowDropIn ? { href: '/drop-ins', label: 'Back to drop-ins' }
+    : isEvent ? { href: '/events', label: 'Back to events' }
+    : { href: '/classes', label: 'Back to classes' }
 
   return (
     <>
       <PageHeader
-        title="Edit package"
-        back={{ href: '/packages', label: 'Back to packages' }}
+        title={`Edit ${kindLabel}`}
+        back={back}
       />
       <div className="p-4 md:p-8 w-full max-w-[872px] mx-auto">
         <EditPackageForm
@@ -99,6 +116,8 @@ export default async function EditPackagePage({
             ticketTiers: pkg.ticketTiers,
             classRunId: run?.id ?? null,
             runCount: pkg.classRuns.length,
+            startAtIso: run?.startDate.toISOString() ?? null,
+            hasAttendance,
             scheduleNote: run?.scheduleNote ?? null,
             location: run?.location ?? null,
             imageUrl: run?.imageUrl ?? null,

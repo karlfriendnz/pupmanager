@@ -76,6 +76,10 @@ export interface PkgRow {
   // to the class page (which knows not to move sessions people have attended).
   classRunId?: string | null
   runCount?: number
+  /** When the class starts. Editing this moves the whole series. */
+  startAtIso?: string | null
+  /** Someone has been marked present, so the dates can no longer move. */
+  hasAttendance?: boolean
   scheduleNote?: string | null
   location?: string | null
   imageUrl?: string | null
@@ -263,9 +267,10 @@ export function PackageForm({
   // Class-only scheduling (lives on a ClassRun today — see the audit). Shown for
   // the class/drop-in/one-off kinds so this one form covers "when / where / who".
   // NOT yet wired to run creation — captured for review while we shape the form.
-  const [startAt, setStartAt] = useState<Date | null>(null)
+  const [startAt, setStartAt] = useState<Date | null>(existing?.startAtIso ? new Date(existing.startAtIso) : null)
   // True when this offering is already in the diary as exactly one class.
   const scheduled = !!existing?.classRunId
+  const hasAttendance = !!existing?.hasAttendance
   const [location, setLocation] = useState<string>(existing?.location ?? '')
   const [imageUrl, setImageUrl] = useState<string | null>(existing?.imageUrl ?? null)
   const [scheduleNote, setScheduleNote] = useState<string>(existing?.scheduleNote ?? '')
@@ -422,7 +427,10 @@ export function PackageForm({
         // that run's sessions, so it appears on /classes (or /events) at once.
         // Only on create — rescheduling an existing class is its own flow, with
         // the "don't move sessions that already have attendance" guard.
-        ...(!existing && isGroup && startAt && { startAt: startAt.toISOString() }),
+        // The start date. On create it schedules the class; on edit it MOVES
+        // it — the server rebuilds the sessions, and refuses once anyone has
+        // been marked present.
+        ...(isGroup && startAt && !hasAttendance && { startAt: startAt.toISOString() }),
         // Venue / note / cover / staff belong to the scheduled class. Sent on
         // create AND edit — on edit the server applies them to the run, which
         // is the whole reason they're on this form.
@@ -661,18 +669,13 @@ export function PackageForm({
           {kind !== 'oneoff' && (
             <label className="text-sm font-medium text-slate-700 block mb-1.5">First session (date &amp; time)</label>
           )}
-          {scheduled ? (
-            // Already in the diary. Moving it has to go through the class page,
-            // which refuses to shift sessions people have already attended —
-            // so offer the link rather than a picker that can't do the job.
-            <p className="text-sm text-slate-500">
-              Scheduled — {existing?.scheduleNote || 'see the class for dates'}.{' '}
-              <a href={`/classes/${existing!.classRunId}`} className="font-medium text-blue-600 hover:underline">
-                Change the dates on the class
-              </a>
+          <DateTimePicker value={startAt} onChange={setStartAt} stacked={kind === 'oneoff'} />
+          {scheduled && (
+            <p className="mt-1.5 text-xs text-slate-400">
+              {hasAttendance
+                ? 'Attendance has been recorded, so the dates are fixed. Cancel this class and create a new one to move it.'
+                : 'Changing the date, how many sessions or how far apart rebuilds this class’s sessions.'}
             </p>
-          ) : (
-            <DateTimePicker value={startAt} onChange={setStartAt} stacked={kind === 'oneoff'} />
           )}
         </div>
       )}

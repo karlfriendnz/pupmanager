@@ -13,6 +13,9 @@ const h = vi.hoisted(() => ({
   sessionUpdate: vi.fn(),
   sessionUpdateMany: vi.fn(),
   membershipFindMany: vi.fn(),
+  attendanceCount: vi.fn(),
+  sessionDeleteMany: vi.fn(),
+  sessionCreateMany: vi.fn(),
   runTrainerDeleteMany: vi.fn(),
   runTrainerCreateMany: vi.fn(),
 }))
@@ -28,13 +31,29 @@ const tx = {
     findMany: h.sessionFindMany,
     update: h.sessionUpdate,
     updateMany: h.sessionUpdateMany,
+    deleteMany: h.sessionDeleteMany,
+    createMany: h.sessionCreateMany,
   },
+  sessionAttendance: { count: h.attendanceCount },
   trainerMembership: { findMany: h.membershipFindMany },
   classRunTrainer: { deleteMany: h.runTrainerDeleteMany, createMany: h.runTrainerCreateMany },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any
 
-const RUN = { id: 'run-1', name: 'Puppy Class', location: 'The Park' }
+const PKG = { sessionCount: 6, weeksBetween: 1, durationMins: 60, bufferMins: 0, sessionType: 'IN_PERSON' as const }
+const RUN = {
+  id: 'run-1',
+  name: 'Puppy Class',
+  location: 'The Park',
+  startDate: new Date('2026-08-04T05:00:00.000Z'),
+  bufferMins: null,
+  package: PKG,
+  // No packageSessionSlotId → an ordinary cadence-scheduled class.
+  sessions: [
+    { id: 's1', sessionIndex: 1, googleCalendarEventId: 'evt-1', packageSessionSlotId: null },
+    { id: 's2', sessionIndex: 2, googleCalendarEventId: null, packageSessionSlotId: null },
+  ],
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -44,6 +63,9 @@ beforeEach(() => {
   h.sessionUpdate.mockResolvedValue({})
   h.sessionUpdateMany.mockResolvedValue({ count: 0 })
   h.membershipFindMany.mockResolvedValue([])
+  h.attendanceCount.mockResolvedValue(0)
+  h.sessionDeleteMany.mockResolvedValue({ count: 0 })
+  h.sessionCreateMany.mockResolvedValue({})
 })
 
 describe('syncOfferingRun', () => {
@@ -71,7 +93,7 @@ describe('syncOfferingRun', () => {
 
   it('moves the venue onto the run and its UPCOMING sessions only', async () => {
     const res = await syncOfferingRun(tx, 'pkg1', 'tr1', { location: 'The New Field' })
-    expect(res).toEqual({ id: 'run-1' })
+    expect(res?.id).toBe('run-1')
     expect(h.runUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'run-1' }, data: expect.objectContaining({ location: 'The New Field' }) }),
     )
@@ -140,5 +162,73 @@ describe('syncOfferingRun', () => {
   it('leaves staff untouched when the field is not sent', async () => {
     await syncOfferingRun(tx, 'pkg1', 'tr1', { location: 'X' })
     expect(h.runTrainerDeleteMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('syncOfferingRun — rescheduling', () => {
+  const NEW_START = new Date('2026-09-01T05:00:00.000Z')
+
+  it('rebuilds the series when the start date moves', async () => {
+    const res = await syncOfferingRun(tx, 'pkg1', 'tr1', { startDate: NEW_START, sessionCount: 6, weeksBetween: 1 })
+    expect(h.runUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ startDate: NEW_START }) }),
+    )
+    expect(h.sessionDeleteMany).toHaveBeenCalledWith({ where: { classRunId: 'run-1' } })
+    const rows = h.sessionCreateMany.mock.calls[0][0].data
+    expect(rows).toHaveLength(6)
+    expect(rows[0].scheduledAt).toEqual(NEW_START)
+    // A week apart, and titled off the class name.
+    expect(rows[1].scheduledAt.getTime() - rows[0].scheduledAt.getTime()).toBe(7 * 864e5)
+    expect(rows[0].title).toBe('Puppy Class — session 1/6')
+    // The old mirrored events come back so the caller can clear the calendar.
+    expect(res?.deletedEventIds).toEqual(['evt-1'])
+  })
+
+  it('rebuilds when only the number of sessions changes', async () => {
+    await syncOfferingRun(tx, 'pkg1', 'tr1', { sessionCount: 8 })
+    expect(h.sessionCreateMany.mock.calls[0][0].data).toHaveLength(8)
+  })
+
+  it('rebuilds when only the spacing changes', async () => {
+    await syncOfferingRun(tx, 'pkg1', 'tr1', { weeksBetween: 2 })
+    const rows = h.sessionCreateMany.mock.calls[0][0].data
+    expect(rows[1].scheduledAt.getTime() - rows[0].scheduledAt.getTime()).toBe(14 * 864e5)
+  })
+
+  it('leaves the series alone when the schedule is unchanged', async () => {
+    await syncOfferingRun(tx, 'pkg1', 'tr1', {
+      startDate: RUN.startDate, sessionCount: 6, weeksBetween: 1, location: 'The New Field',
+    })
+    expect(h.sessionDeleteMany).not.toHaveBeenCalled()
+    expect(h.sessionCreateMany).not.toHaveBeenCalled()
+    // …but the venue change still lands.
+    expect(h.sessionUpdateMany).toHaveBeenCalled()
+  })
+
+  it('REFUSES to move a class that has attendance recorded', async () => {
+    // The rebuild deletes the old series, which would take the register with it.
+    h.attendanceCount.mockResolvedValue(3)
+    await expect(
+      syncOfferingRun(tx, 'pkg1', 'tr1', { startDate: NEW_START }),
+    ).rejects.toMatchObject({ code: 'HAS_ATTENDANCE' })
+    expect(h.sessionDeleteMany).not.toHaveBeenCalled()
+    expect(h.runUpdate).not.toHaveBeenCalled()
+  })
+
+  it('never rebuilds a drop-in class — its series comes from its slots', async () => {
+    h.runFindMany.mockResolvedValue([{
+      ...RUN,
+      sessions: [{ id: 's1', sessionIndex: 1, googleCalendarEventId: null, packageSessionSlotId: 'slot-1' }],
+    }])
+    await syncOfferingRun(tx, 'pkg1', 'tr1', { startDate: NEW_START, sessionCount: 12 })
+    expect(h.sessionDeleteMany).not.toHaveBeenCalled()
+    expect(h.sessionCreateMany).not.toHaveBeenCalled()
+  })
+
+  it('a rebuild writes the new venue onto the fresh sessions, not twice', async () => {
+    await syncOfferingRun(tx, 'pkg1', 'tr1', { startDate: NEW_START, location: 'The New Field' })
+    expect(h.sessionCreateMany.mock.calls[0][0].data[0].location).toBe('The New Field')
+    // The separate "move upcoming sessions" pass would be redundant here.
+    expect(h.sessionUpdateMany).not.toHaveBeenCalled()
   })
 })

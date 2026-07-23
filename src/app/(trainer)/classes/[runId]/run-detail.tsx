@@ -9,7 +9,7 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info, Check, Send, FileText, AlertTriangle, Search } from 'lucide-react'
-import { ClassFormModal, type TeamMemberOption } from '../class-form-modal'
+import { type TeamMemberOption } from '../class-form-modal'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 
@@ -19,6 +19,8 @@ type EnrollStatus = 'ENROLLED' | 'WAITLISTED' | 'WITHDRAWN' | 'COMPLETED'
 type AssignedTrainer = { membershipId: string; name: string; title: string | null }
 type Run = {
   id: string
+  /** The offering behind this class — where the full-page editor lives. */
+  packageId: string
   name: string
   scheduleNote: string | null
   location: string | null
@@ -88,7 +90,6 @@ export function RunDetail({
   const [tab, setTab] = useState<Tab>('details')
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
-  const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -168,8 +169,11 @@ export function RunDetail({
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Tab bar */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-6 max-w-xs">
+      {/* Tabs and the class controls share one line — status, Delete and Edit
+          all sit beside the tabs rather than on a row of their own. Wraps on a
+          narrow phone. */}
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl max-w-xs">
         {tabs.map(t => {
           const Icon = t.icon
           return (
@@ -194,19 +198,8 @@ export function RunDetail({
         })}
       </div>
 
-      {tab === 'details' ? (
-        <>
-          {/* Class controls */}
-          <div className="flex items-center justify-between gap-2 mb-4">
-            <select
-              value={run.status}
-              onChange={e => setStatus(e.target.value as RunStatus)}
-              className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(s => (
-                <option key={s} value={s}>{s.toLowerCase()}</option>
-              ))}
-            </select>
+      {tab === 'details' && (
+        <div className="ml-auto flex items-center gap-2">
             <div className="flex items-center gap-2">
               {!confirmingDelete ? (
                 <button
@@ -238,11 +231,20 @@ export function RunDetail({
                   </button>
                 </div>
               )}
-              <Button variant="secondary" onClick={() => setEditing(true)}>
-                <Pencil className="h-4 w-4" /> Edit
-              </Button>
+              {/* The whole class is edited on one full page — the same form,
+                  in the same order, as the wizard that created it. */}
+              <Link href={`/packages/${run.packageId}/edit`}>
+                <Button variant="secondary">
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+              </Link>
             </div>
-          </div>
+        </div>
+      )}
+      </div>
+
+      {tab === 'details' ? (
+        <>
 
           {run.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -257,6 +259,22 @@ export function RunDetail({
           <Card className="mb-5">
             <CardBody className="py-5">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                {/* Status sits with the other class details rather than off in
+                    the toolbar — it's a property of the class, and editable in
+                    place. */}
+                <div className="min-w-0">
+                  <label htmlFor="class-status" className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</label>
+                  <select
+                    id="class-status"
+                    value={run.status}
+                    onChange={e => setStatus(e.target.value as RunStatus)}
+                    className="mt-0.5 block w-full -ml-2 rounded-lg border border-transparent bg-transparent px-2 py-0.5 text-sm font-medium text-slate-800 hover:border-slate-200 hover:bg-white focus:border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(st => (
+                      <option key={st} value={st}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>
+                    ))}
+                  </select>
+                </div>
                 <Detail label="Schedule" value={run.scheduleNote || 'Weekly'} />
                 <Detail label="Starts" value={new Date(run.startDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} />
                 <Detail label="Sessions" value={String(sessions.length)} />
@@ -372,51 +390,6 @@ export function RunDetail({
         </>
       )}
 
-      {editing && (
-        <ClassFormModal
-          mode="edit"
-          runId={run.id}
-          canReschedule={!run.hasAttendance}
-          teamMembers={teamMembers}
-          initial={{
-            name: run.name,
-            startDateIso: run.startDate,
-            weeksBetween: run.weeksBetween,
-            sessionCount: run.sessionCount,
-            durationMins: run.durationMins,
-            bufferMins: run.bufferMins,
-            sessionType: run.sessionType,
-            priceCents: run.priceCents,
-            capacity: run.capacity,
-            scheduleNote: run.scheduleNote,
-            location: run.location,
-            description: run.description,
-            defaultSessionFormId: run.defaultSessionFormId,
-            imageUrl: run.imageUrl,
-            assignedMembershipIds: run.assignedMembershipIds,
-            requirePayment: run.requirePayment,
-          }}
-          onClose={() => setEditing(false)}
-          onSaved={() => {
-            setEditing(false)
-            router.refresh()
-          }}
-        />
-      )}
-
-      {adding && (
-        <EnrolModal
-          runId={run.id}
-          clients={clients}
-          allowDropIn={run.allowDropIn}
-          existing={new Set(enrollments.filter(e => e.status !== 'WITHDRAWN').map(e => e.clientName))}
-          onClose={() => setAdding(false)}
-          onDone={() => {
-            setAdding(false)
-            router.refresh()
-          }}
-        />
-      )}
 
       </div>
     </>

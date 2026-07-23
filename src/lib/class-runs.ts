@@ -539,11 +539,13 @@ export async function createClassWithPackage(args: {
  * different story — the form can't say which one you meant — so those are left
  * alone and managed per-run on /classes/[runId].
  *
- * Presentation only: name, note, venue, cover, staff. Rescheduling (dates,
- * count, cadence) stays in updateClass, which refuses to move sessions that
- * already have attendance recorded.
+ * Covers presentation (name, note, venue, cover, staff) AND the schedule
+ * (start, how many, how far apart). A schedule change rebuilds the session
+ * series, and is refused outright once attendance has been recorded — we never
+ * silently delete a session someone was marked present at.
  *
- * Returns the run it touched, or null when it deliberately did nothing.
+ * Returns the run it touched — with the ids the caller needs to mirror to
+ * Google Calendar — or null when it deliberately did nothing.
  */
 export async function syncOfferingRun(
   tx: Tx,
@@ -555,17 +557,49 @@ export async function syncOfferingRun(
     location?: string | null
     imageUrl?: string | null
     assignedMembershipIds?: string[]
+    /** Schedule. Provide all three to move the series; omit to leave it be. */
+    startDate?: Date
+    sessionCount?: number
+    weeksBetween?: number
+    durationMins?: number
+    bufferMins?: number
+    sessionType?: 'IN_PERSON' | 'VIRTUAL'
   },
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; createdSessionIds: string[]; deletedEventIds: string[] } | null> {
   const runs = await tx.classRun.findMany({
     where: { packageId, trainerId },
-    select: { id: true, name: true, location: true },
+    select: {
+      id: true, name: true, location: true, startDate: true, bufferMins: true,
+      package: { select: { sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true } },
+      sessions: { select: { id: true, sessionIndex: true, googleCalendarEventId: true, packageSessionSlotId: true } },
+    },
   })
   if (runs.length !== 1) return null
   const run = runs[0]
 
   const nameChanged = fields.name !== undefined && fields.name !== run.name
   const venueChanged = fields.location !== undefined && (fields.location?.trim() || null) !== run.location
+
+  // A drop-in class's series comes from its slots, not from this cadence — its
+  // rebuild belongs to the slot editor, so leave those runs' sessions alone.
+  const isSlotScheduled = run.sessions.some(s => s.packageSessionSlotId)
+  const scheduleChanged =
+    !isSlotScheduled &&
+    ((fields.startDate !== undefined && fields.startDate.getTime() !== run.startDate.getTime()) ||
+      (fields.sessionCount !== undefined && fields.sessionCount !== run.package.sessionCount) ||
+      (fields.weeksBetween !== undefined && fields.weeksBetween !== run.package.weeksBetween))
+
+  if (scheduleChanged) {
+    // Never move sessions people have already been marked present at — the
+    // rebuild deletes the old series, and that would take the register with it.
+    const attended = await tx.sessionAttendance.count({ where: { session: { classRunId: run.id } } })
+    if (attended > 0) {
+      throw new ClassError(
+        'HAS_ATTENDANCE',
+        "Can't change the dates of a class that already has attendance recorded. Change the other details, or cancel this class and create a new one.",
+      )
+    }
+  }
 
   await tx.classRun.update({
     where: { id: run.id },
@@ -574,10 +608,49 @@ export async function syncOfferingRun(
       ...(fields.scheduleNote !== undefined && { scheduleNote: fields.scheduleNote?.trim() || null }),
       ...(fields.location !== undefined && { location: fields.location?.trim() || null }),
       ...(fields.imageUrl !== undefined && { imageUrl: fields.imageUrl }),
+      ...(scheduleChanged && fields.startDate && { startDate: fields.startDate }),
     },
   })
 
-  if (venueChanged) {
+  let createdSessionIds: string[] = []
+  let deletedEventIds: string[] = []
+
+  if (scheduleChanged) {
+    // Capture the mirrored Google events before the rows go, so the caller can
+    // remove them from the calendar after the transaction commits.
+    deletedEventIds = run.sessions.map(s => s.googleCalendarEventId).filter((id): id is string => !!id)
+
+    const name = fields.name ?? run.name
+    const count = fields.sessionCount ?? run.package.sessionCount
+    const weeks = fields.weeksBetween ?? run.package.weeksBetween
+    const duration = fields.durationMins ?? run.package.durationMins
+    const buffer = effectiveBufferMins(fields.bufferMins, run.package.bufferMins)
+    const venue = fields.location !== undefined ? (fields.location?.trim() || null) : run.location
+
+    await tx.trainingSession.deleteMany({ where: { classRunId: run.id } })
+    const dates = generateSessionDates(fields.startDate ?? run.startDate, count, weeks)
+    await tx.trainingSession.createMany({
+      data: dates.map((d, i) => ({
+        trainerId,
+        classRunId: run.id,
+        sessionIndex: i + 1,
+        title: dates.length > 1 ? `${name} — session ${i + 1}/${dates.length}` : name,
+        scheduledAt: d,
+        durationMins: duration,
+        bufferMins: buffer,
+        sessionType: fields.sessionType ?? run.package.sessionType,
+        location: venue,
+      })),
+    })
+    const created = await tx.trainingSession.findMany({
+      where: { classRunId: run.id },
+      select: { id: true },
+    })
+    createdSessionIds = created.map(s => s.id)
+  }
+
+  // A rebuild already wrote the venue and the titles onto the fresh sessions.
+  if (venueChanged && !scheduleChanged) {
     // Sessions carry their own venue. Move the ones still to come; sessions
     // that have already happened keep the address they were actually held at,
     // and a drop-in slot's sessions keep the venue their slot named.
@@ -591,7 +664,7 @@ export async function syncOfferingRun(
     })
   }
 
-  if (nameChanged) {
+  if (nameChanged && !scheduleChanged) {
     // Session titles are built from the class name ("Puppy — session 2/6").
     const sessions = await tx.trainingSession.findMany({
       where: { classRunId: run.id },
@@ -611,7 +684,7 @@ export async function syncOfferingRun(
   }
 
   await setRunTrainers(run.id, trainerId, fields.assignedMembershipIds, tx)
-  return { id: run.id }
+  return { id: run.id, createdSessionIds, deletedEventIds }
 }
 
 /**
