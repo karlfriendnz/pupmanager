@@ -13,7 +13,7 @@ import {
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, Megaphone, Lock, ClipboardList,
   Download,
-  type LucideIcon, Ticket,} from 'lucide-react'
+  type LucideIcon, Ticket, ExternalLink,} from 'lucide-react'
 import { InstagramIcon } from '@/components/icons/instagram-icon'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
@@ -62,6 +62,7 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/achievements', label: 'Achievements', icon: Trophy,          section: 'programs' },
 
   { href: '/finances',     label: 'Finances',     icon: Wallet,          section: 'business' },
+  { href: '/finances/stripe', label: 'Stripe dashboard', icon: ExternalLink, section: 'business', child: true },
   { href: '/timesheets',   label: 'Timesheets',   icon: Clock,           section: 'business' },
   { href: '/reports',      label: 'Reports',      icon: BarChart3,       section: 'business' },
   // Add-ons + Integration now live as tabs inside Settings (top-right cog).
