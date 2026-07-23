@@ -14,6 +14,10 @@ interface PageHeaderProps {
   subtitle?: React.ReactNode
   back?: BackLink
   actions?: React.ReactNode
+  // Rendered inline on the RIGHT of the in-page description row (trainer shell),
+  // e.g. a page's primary "New …" button. Stays put even when the description
+  // text is hidden via the "Show page descriptions" setting.
+  descriptionActions?: React.ReactNode
 }
 
 // Shared page header used across the trainer app.
@@ -32,7 +36,7 @@ interface PageHeaderProps {
 //     <PageHeader … />
 //     <div className="p-4 md:p-8 w-full max-w-… mx-auto">…</div>
 //   </>
-export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, back, actions, descriptionActions }: PageHeaderProps) {
   // In the trainer shell the phone top bar renders the title + back itself, so
   // the in-page mobile header below would duplicate it — skip it there.
   const shellOwnsMobileHeader = useHasPageTitleShell()
@@ -45,9 +49,14 @@ export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) 
           title (no subtitle), so the description renders here in-flow, on every
           viewport, below the bar. Trainers can hide it in Settings. Client shell
           keeps its own subtitle in the mobile header above, so skip it there. */}
-      {shellOwnsMobileHeader && showHelp && subtitle && (
-        <div className="px-4 md:px-8 pt-3 md:pt-5">
-          <p className="text-sm text-slate-500">{subtitle}</p>
+      {shellOwnsMobileHeader && ((showHelp && subtitle) || descriptionActions) && (
+        <div className="px-4 md:px-8 pt-3 md:pt-5 flex items-center gap-3">
+          {showHelp && subtitle ? (
+            <p className="text-sm text-slate-500 flex-1 min-w-0">{subtitle}</p>
+          ) : (
+            <div className="flex-1" />
+          )}
+          {descriptionActions && <div className="flex-shrink-0">{descriptionActions}</div>}
         </div>
       )}
       {/* Mobile-only in-page header — only when the shell's top bar doesn't

@@ -137,6 +137,15 @@ export function PackagesView({
         </DndContext>
       )}
 
+      {packages.length > 0 && (
+        <Link
+          href="/packages/new"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 py-3.5 text-sm font-medium text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-600"
+        >
+          <Plus className="h-4 w-4" /> New package
+        </Link>
+      )}
+
       {/* Sortable row defined inline — closes over edit/delete handlers via props. */}
 
       </div>

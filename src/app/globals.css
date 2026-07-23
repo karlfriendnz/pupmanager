@@ -280,3 +280,12 @@ button, a, [role="button"] {
 .tiptap-light a { color: var(--accent, #0d9488); }
 .tiptap-light.is-editor-empty:first-child::before,
 .tiptap-light p.is-editor-empty:first-child::before { color: #94a3b8; }
+
+/* Wide screens: stop centering page content — hug the left instead. Each page
+   wraps its content in `max-w-… mx-auto` as a direct child of the trainer
+   <main>; above 1600px we override the auto side-margins to left-align it, so
+   the layout doesn't float in a sea of whitespace on large monitors. Inner
+   `mx-auto` (cards, empty states) is untouched — it isn't a direct child. */
+@media (min-width: 1600px) {
+  .pm-main > .mx-auto { margin-left: 0; margin-right: auto; }
+}

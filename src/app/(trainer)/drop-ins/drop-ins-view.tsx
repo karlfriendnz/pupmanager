@@ -127,6 +127,14 @@ export function DropInsView({ runs, recent }: { runs: RunRow[]; recent: RecentRo
               ))}
             </div>
           )}
+          {runs.length > 0 && (
+            <Link
+              href="/packages/new?kind=dropin"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 py-3.5 text-sm font-medium text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-600"
+            >
+              <CalendarDays className="h-4 w-4" /> New drop-in class
+            </Link>
+          )}
         </section>
 
         <section>

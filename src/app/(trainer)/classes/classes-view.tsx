@@ -53,14 +53,7 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
         subtitle="Run a class — pick the day, time and how many weeks. Clients enrol into one shared timetable with a roster, capacity and waitlist."
       />
 
-      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl">
-      {runs.length > 0 && (
-        <div className="mb-4 flex justify-end">
-          <Button onClick={() => setShowCreate(true)}>
-            <Plus className="h-4 w-4" /> New class
-          </Button>
-        </div>
-      )}
+      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       {runs.length === 0 ? (
         <Card>
           <CardBody>
@@ -171,6 +164,14 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
           ))}
         </div>
         )}
+        {/* Add sits at the BOTTOM of the list. */}
+        <button
+          type="button"
+          onClick={() => setShowCreate(true)}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 py-3.5 text-sm font-medium text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-600"
+        >
+          <Plus className="h-4 w-4" /> New class
+        </button>
         </>
       )}
 
