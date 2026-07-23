@@ -267,8 +267,24 @@ export function PackageForm({
     <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
       {error && <div className="md:col-span-2"><Alert variant="error">{error}</Alert></div>}
 
-      {/* ── Step 1 · kind first — it shapes everything below ────────── */}
-      <SectionHeading step={1} title="What are you setting up?" />
+      {/* ── Step 1 · details ───────────────────────────────────────── */}
+      <SectionHeading step={1} title="Details" />
+
+      <div className="md:col-span-2">
+        <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
+        <textarea
+          {...register('description')}
+          rows={3}
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      {/* ── Step 2 · kind — it shapes the fields below ─────────────── */}
+      <SectionHeading step={2} title="What are you setting up?" />
 
       {existing ? (
         // Editing: changing kind is a deliberate CONVERSION (it moves the
@@ -370,21 +386,8 @@ export function PackageForm({
         </div>
       )}
 
-      {/* ── Step 2 · the details ───────────────────────────────────── */}
-      <SectionHeading step={2} title="The details" />
-
-      <div className="md:col-span-2">
-        <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
-      </div>
-
-      <div className="md:col-span-2">
-        <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
-        <textarea
-          {...register('description')}
-          rows={3}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
+      {/* ── Step 3 · sessions & schedule ───────────────────────────── */}
+      <SectionHeading step={3} title="Sessions & schedule" />
 
       <div>
         <Input
@@ -434,8 +437,8 @@ export function PackageForm({
         </div>
       </div>
 
-      {/* ── Step 3 · pricing ───────────────────────────────────────── */}
-      <SectionHeading step={3} title="Pricing" hint={isGroup ? 'The full-course price. Drop-in price is set above.' : 'Leave blank for no set price.'} />
+      {/* ── Step 4 · pricing ───────────────────────────────────────── */}
+      <SectionHeading step={4} title="Pricing" hint={isGroup ? 'The full-course price. Drop-in price is set above.' : 'Leave blank for no set price.'} />
 
       {/* Leave price blank for "no price set". The special price is independent
           and only shown when populated. */}
@@ -465,8 +468,8 @@ export function PackageForm({
         <RequirePaymentField value={requirePayment} onChange={setRequirePayment} />
       </div>
 
-      {/* ── Step 4 · booking & reminders ───────────────────────────── */}
-      <SectionHeading step={4} title="Booking & reminders" />
+      {/* ── Step 5 · booking & reminders ───────────────────────────── */}
+      <SectionHeading step={5} title="Booking & reminders" />
 
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form</label>
