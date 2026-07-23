@@ -454,7 +454,14 @@ export function PackageForm({
         // its own start date, time, duration, gap, capacity, location and
         // recurrence. RHF cadence fields kept registered (unused for this kind).
         <div className="md:col-span-2">
-          <SessionSlotsEditor value={slots} onChange={setSlots} locations={savedLocations.map(l => ({ id: l.id, name: l.name }))} team={team} />
+          <SessionSlotsEditor
+            value={slots}
+            onChange={setSlots}
+            locations={savedLocations.map(l => ({ id: l.id, name: l.name }))}
+            team={team}
+            region={region}
+            onLocationCreated={loc => setSavedLocations(prev => [...prev, { id: loc.id, name: loc.name, address: loc.address }])}
+          />
           <div className="hidden">
             <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
             <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />

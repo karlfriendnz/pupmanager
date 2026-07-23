@@ -7,6 +7,8 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from '@dnd-kit/utilities'
 import { RecurrenceField } from '@/components/shared/recurrence-field'
 import { bufferOptions } from '@/components/shared/buffer-field'
+import { RequirePaymentField } from '@/components/shared/require-payment-field'
+import { AddLocationModal } from '@/components/shared/add-location-modal'
 import { normalizeBufferMins } from '@/lib/buffer'
 
 // Session slots for a drop-in class, as a card per slot (not a cramped table).
@@ -25,7 +27,7 @@ export type SessionSlot = {
   price: string // dollars as typed; '' = free — each session prices itself
   specialPrice: string // optional discounted price
   account: string // Xero account code
-  requirePayment: boolean // must pay up front to book this session
+  requirePayment: boolean | null // true/false/null(=use default) — same as class-level
   assignedIds: string[] // team members running this session
   locationId: string // '' = none / inherit the class location
   repeat: string // iCalendar RRULE subset (see lib/recurrence.ts); '' = one-off
@@ -39,7 +41,7 @@ const DAYS = [
 const GAP_HELP = 'Time you need after each session — travel, clean-up, a breather. Nothing can be booked into it.'
 
 export function newSlot(): SessionSlot {
-  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 1, start: '15:00', end: '17:00', gap: '0', capacity: '', price: '', specialPrice: '', account: '', requirePayment: false, assignedIds: [], locationId: '', repeat: 'FREQ=WEEKLY' }
+  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 1, start: '15:00', end: '17:00', gap: '0', capacity: '', price: '', specialPrice: '', account: '', requirePayment: null, assignedIds: [], locationId: '', repeat: 'FREQ=WEEKLY' }
 }
 
 function Row({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
@@ -66,19 +68,35 @@ export function SessionSlotsEditor({
   onChange,
   locations,
   team = [],
+  region,
+  onLocationCreated,
 }: {
   value: SessionSlot[]
   onChange: (slots: SessionSlot[]) => void
   locations: { id: string; name: string }[]
   team?: { id: string; name: string | null; title: string | null }[]
+  region?: string
+  onLocationCreated?: (loc: { id: string; name: string; address: string | null }) => void
 }) {
+  // Xero accounts for the per-session Account autocomplete (fetched once).
+  const [accounts, setAccounts] = useState<{ code: string; name: string }[]>([])
+  useEffect(() => {
+    let live = true
+    fetch('/api/xero/shortlist').then(r => (r.ok ? r.json() : null)).then((d: { accounts?: { code: string; name: string }[] } | null) => {
+      if (live && d?.accounts) setAccounts(d.accounts)
+    }).catch(() => {})
+    return () => { live = false }
+  }, [])
+  // Which slot (if any) is adding a new location via the popup.
+  const [addLocForSlot, setAddLocForSlot] = useState<string | null>(null)
   function update(id: string, patch: Partial<SessionSlot>) {
     onChange(value.map(s => (s.id === id ? { ...s, ...patch } : s)))
   }
   function duplicate(id: string) {
     const i = value.findIndex(s => s.id === id)
     if (i < 0) return
-    const copy = { ...value[i], id: `${Date.now()}-${Math.round(Math.random() * 1e6)}` }
+    // Deep-copy the array field so the clone doesn't share state with the source.
+    const copy = { ...value[i], assignedIds: [...value[i].assignedIds], id: `${Date.now()}-${Math.round(Math.random() * 1e6)}` }
     onChange([...value.slice(0, i + 1), copy, ...value.slice(i + 1)])
   }
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
@@ -148,16 +166,15 @@ export function SessionSlotsEditor({
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
                   <input value={s.specialPrice} onChange={e => update(s.id, { specialPrice: e.target.value })} inputMode="decimal" placeholder="—" className="h-10 w-full rounded-lg border border-slate-200 pl-5 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-                <input value={s.account} onChange={e => update(s.id, { account: e.target.value })} placeholder="Code" className="h-10 w-full rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input value={s.account} onChange={e => update(s.id, { account: e.target.value })} list="session-xero-accounts" placeholder={accounts.length ? 'Search accounts' : 'Code'} className="h-10 w-full rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
           </Row>
 
           <Row label="Payment">
-            <label className="flex items-center gap-2.5 cursor-pointer h-11">
-              <input type="checkbox" checked={s.requirePayment} onChange={e => update(s.id, { requirePayment: e.target.checked })} className="h-4 w-4" />
-              <span className="text-sm text-slate-700">Require payment to book</span>
-            </label>
+            <div className="max-w-[320px]">
+              <RequirePaymentField value={s.requirePayment} onChange={v => update(s.id, { requirePayment: v })} />
+            </div>
           </Row>
 
           <Row label="Gap" help={GAP_HELP}>
@@ -171,10 +188,21 @@ export function SessionSlotsEditor({
           </Row>
 
           <Row label="Location">
-            <select value={s.locationId} onChange={e => update(s.id, { locationId: e.target.value })} className={ctrl}>
-              <option value="">Class location</option>
-              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
+            <div className="flex gap-2">
+              <select value={s.locationId} onChange={e => update(s.id, { locationId: e.target.value })} className={ctrl + ' flex-1'}>
+                <option value="">Choose location…</option>
+                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+              <button
+                type="button"
+                onClick={() => setAddLocForSlot(s.id)}
+                title="Add a new location"
+                aria-label="Add a new location"
+                className="h-11 w-11 shrink-0 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:border-blue-400 hover:text-blue-600"
+              >
+                <Plus className="h-5 w-5" />
+              </button>
+            </div>
           </Row>
 
             {team.length > 0 && (
@@ -188,6 +216,23 @@ export function SessionSlotsEditor({
       ))}
       </SortableContext>
       </DndContext>
+
+      {/* Shared Xero-account autocomplete list for every row's Account field. */}
+      <datalist id="session-xero-accounts">
+        {accounts.map(a => <option key={a.code} value={a.code}>{a.name}</option>)}
+      </datalist>
+
+      {addLocForSlot && (
+        <AddLocationModal
+          region={region}
+          onClose={() => setAddLocForSlot(null)}
+          onCreated={loc => {
+            onLocationCreated?.(loc)
+            update(addLocForSlot, { locationId: loc.id })
+            setAddLocForSlot(null)
+          }}
+        />
+      )}
 
       <button
         type="button"
