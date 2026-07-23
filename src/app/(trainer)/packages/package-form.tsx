@@ -12,6 +12,7 @@ import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { DateTimePicker } from '@/components/shared/date-time-picker'
 import { SessionSlotsEditor, newSlot, type SessionSlot } from '@/components/shared/session-slots'
+import { TicketTiersEditor, newTier, type TicketTier } from '@/components/shared/ticket-tiers'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { User, Users, CalendarDays, X, ChevronDown, Check, Plus } from 'lucide-react'
@@ -149,6 +150,8 @@ export function PackageForm({
   const [slots, setSlots] = useState<SessionSlot[]>([newSlot()])
   // Join link for a virtual session (Zoom/Meet); only when session type = Virtual.
   const [virtualLink, setVirtualLink] = useState<string>('')
+  // Simple ticket tiers for a one-off event (name + price + capacity).
+  const [tickets, setTickets] = useState<TicketTier[]>([newTier()])
   // Who delivers this — assignable for every kind. Fetched client-side (the
   // team endpoint returns membership ids). NOT yet wired to persistence.
   const [team, setTeam] = useState<{ id: string; name: string | null; title: string | null }[]>([])
@@ -647,22 +650,40 @@ export function PackageForm({
           : 'Leave blank for no set price.'
       } />
 
-      {/* Leave price blank for "no price set". The special price is independent
-          and only shown when populated. */}
-      <Input
-        label="Price"
-        type="text"
-        inputMode="decimal"
-        placeholder="120"
-        {...register('price')}
-      />
-      <Input
-        label="Special price (optional)"
-        type="text"
-        inputMode="decimal"
-        placeholder="—"
-        {...register('specialPrice')}
-      />
+      {/* A one-off event sells tickets (name + price + capacity); everything
+          else has a single price (+ optional special). RHF price fields stay
+          registered for events so their values still submit harmlessly. */}
+      {kind === 'oneoff' ? (
+        <>
+          <div className="md:col-span-2">
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Tickets</label>
+            <TicketTiersEditor value={tickets} onChange={setTickets} />
+          </div>
+          <div className="hidden">
+            <input {...register('price')} />
+            <input {...register('specialPrice')} />
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Leave price blank for "no price set". The special price is
+              independent and only shown when populated. */}
+          <Input
+            label="Price"
+            type="text"
+            inputMode="decimal"
+            placeholder="120"
+            {...register('price')}
+          />
+          <Input
+            label="Special price (optional)"
+            type="text"
+            inputMode="decimal"
+            placeholder="—"
+            {...register('specialPrice')}
+          />
+        </>
+      )}
 
       {/* Sits with the price — required when Xero is connected so revenue posts
           to the right account. Renders nothing when Xero isn't set up. */}
