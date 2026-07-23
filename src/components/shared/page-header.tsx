@@ -47,7 +47,7 @@ export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) 
           keeps its own subtitle in the mobile header above, so skip it there. */}
       {shellOwnsMobileHeader && showHelp && subtitle && (
         <div className="px-4 md:px-8 pt-3 md:pt-5">
-          <p className="text-sm text-slate-500 max-w-3xl">{subtitle}</p>
+          <p className="text-sm text-slate-500">{subtitle}</p>
         </div>
       )}
       {/* Mobile-only in-page header — only when the shell's top bar doesn't
