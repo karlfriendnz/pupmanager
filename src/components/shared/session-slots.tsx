@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Plus, X, ArrowRight, Info, ChevronDown, Check } from 'lucide-react'
+import { Plus, X, ArrowRight, Info, ChevronDown, Check, Copy, GripVertical } from 'lucide-react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { RecurrenceField } from '@/components/shared/recurrence-field'
 import { bufferOptions } from '@/components/shared/buffer-field'
 import { normalizeBufferMins } from '@/lib/buffer'
@@ -20,6 +23,9 @@ export type SessionSlot = {
   gap: string // mins between this and the next session
   capacity: string // '' = unlimited
   price: string // dollars as typed; '' = free — each session prices itself
+  specialPrice: string // optional discounted price
+  account: string // Xero account code
+  requirePayment: boolean // must pay up front to book this session
   assignedIds: string[] // team members running this session
   locationId: string // '' = none / inherit the class location
   repeat: string // iCalendar RRULE subset (see lib/recurrence.ts); '' = one-off
@@ -33,7 +39,7 @@ const DAYS = [
 const GAP_HELP = 'Time you need after each session — travel, clean-up, a breather. Nothing can be booked into it.'
 
 export function newSlot(): SessionSlot {
-  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 1, start: '15:00', end: '17:00', gap: '0', capacity: '', price: '', assignedIds: [], locationId: '', repeat: 'FREQ=WEEKLY' }
+  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 1, start: '15:00', end: '17:00', gap: '0', capacity: '', price: '', specialPrice: '', account: '', requirePayment: false, assignedIds: [], locationId: '', repeat: 'FREQ=WEEKLY' }
 }
 
 function Row({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
@@ -69,6 +75,20 @@ export function SessionSlotsEditor({
   function update(id: string, patch: Partial<SessionSlot>) {
     onChange(value.map(s => (s.id === id ? { ...s, ...patch } : s)))
   }
+  function duplicate(id: string) {
+    const i = value.findIndex(s => s.id === id)
+    if (i < 0) return
+    const copy = { ...value[i], id: `${Date.now()}-${Math.round(Math.random() * 1e6)}` }
+    onChange([...value.slice(0, i + 1), copy, ...value.slice(i + 1)])
+  }
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const from = value.findIndex(s => s.id === active.id)
+    const to = value.findIndex(s => s.id === over.id)
+    if (from >= 0 && to >= 0) onChange(arrayMove(value, from, to))
+  }
   const ctrl = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
 
   return (
@@ -78,16 +98,19 @@ export function SessionSlotsEditor({
         <span className="text-xs font-semibold text-slate-500">{value.length} {value.length === 1 ? 'time' : 'times'}</span>
       </div>
 
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={value.map(s => s.id)} strategy={verticalListSortingStrategy}>
       {value.map(s => (
-        <div key={s.id} className="relative rounded-2xl border border-slate-200 bg-white p-4 flex flex-col gap-3 shadow-[0_1px_8px_rgba(15,31,36,0.04)]">
-          <button
-            type="button"
-            onClick={() => onChange(value.filter(x => x.id !== s.id))}
-            className="absolute top-3 right-3 text-slate-300 hover:text-red-500"
-            aria-label="Remove this session"
-          >
-            <X className="h-5 w-5" />
-          </button>
+        <SortableSlot key={s.id} id={s.id}>
+          {handle => (
+          <div className="relative rounded-2xl border border-slate-200 bg-white p-4 pl-9 flex flex-col gap-3 shadow-[0_1px_8px_rgba(15,31,36,0.04)]">
+            <button type="button" {...handle.attributes} {...handle.listeners} className="absolute top-4 left-2.5 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing touch-none" aria-label="Drag to reorder">
+              <GripVertical className="h-5 w-5" />
+            </button>
+            <div className="absolute top-3 right-3 flex items-center gap-1.5">
+              <button type="button" onClick={() => duplicate(s.id)} className="text-slate-300 hover:text-blue-600" aria-label="Duplicate this session"><Copy className="h-4 w-4" /></button>
+              <button type="button" onClick={() => onChange(value.filter(x => x.id !== s.id))} className="text-slate-300 hover:text-red-500" aria-label="Remove this session"><X className="h-5 w-5" /></button>
+            </div>
 
           <Row label="Day">
             <select value={s.day} onChange={e => update(s.id, { day: Number(e.target.value) })} className={ctrl + ' max-w-[220px]'}>
@@ -111,11 +134,30 @@ export function SessionSlotsEditor({
             <input type="number" min={1} value={s.capacity} onChange={e => update(s.id, { capacity: e.target.value })} placeholder="∞ Unlimited" className={ctrl + ' max-w-[160px]'} />
           </Row>
 
-          <Row label="Price">
-            <div className="relative max-w-[160px]">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
-              <input value={s.price} onChange={e => update(s.id, { price: e.target.value })} inputMode="decimal" placeholder="0.00" className={ctrl + ' pl-6'} />
+          <Row label="Pricing">
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="grid grid-cols-3 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                <span>Price</span><span>Special</span><span>Account</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 p-2">
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
+                  <input value={s.price} onChange={e => update(s.id, { price: e.target.value })} inputMode="decimal" placeholder="0.00" className="h-10 w-full rounded-lg border border-slate-200 pl-5 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
+                  <input value={s.specialPrice} onChange={e => update(s.id, { specialPrice: e.target.value })} inputMode="decimal" placeholder="—" className="h-10 w-full rounded-lg border border-slate-200 pl-5 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <input value={s.account} onChange={e => update(s.id, { account: e.target.value })} placeholder="Code" className="h-10 w-full rounded-lg border border-slate-200 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
             </div>
+          </Row>
+
+          <Row label="Payment">
+            <label className="flex items-center gap-2.5 cursor-pointer h-11">
+              <input type="checkbox" checked={s.requirePayment} onChange={e => update(s.id, { requirePayment: e.target.checked })} className="h-4 w-4" />
+              <span className="text-sm text-slate-700">Require payment to book</span>
+            </label>
           </Row>
 
           <Row label="Gap" help={GAP_HELP}>
@@ -135,13 +177,17 @@ export function SessionSlotsEditor({
             </select>
           </Row>
 
-          {team.length > 0 && (
-            <Row label="Assigned to">
-              <AssignSelect team={team} value={s.assignedIds} onChange={ids => update(s.id, { assignedIds: ids })} />
-            </Row>
+            {team.length > 0 && (
+              <Row label="Assigned to">
+                <AssignSelect team={team} value={s.assignedIds} onChange={ids => update(s.id, { assignedIds: ids })} />
+              </Row>
+            )}
+          </div>
           )}
-        </div>
+        </SortableSlot>
       ))}
+      </SortableContext>
+      </DndContext>
 
       <button
         type="button"
@@ -152,6 +198,25 @@ export function SessionSlotsEditor({
       </button>
     </div>
   )
+}
+
+// One draggable session card. Render-prop hands the drag handle's attributes +
+// listeners to the caller so the handle can live wherever it wants in the card.
+function SortableSlot({
+  id,
+  children,
+}: {
+  id: string
+  children: (h: { attributes: ReturnType<typeof useSortable>['attributes']; listeners: ReturnType<typeof useSortable>['listeners'] }) => React.ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style: React.CSSProperties = {
+    transform: transform ? CSS.Transform.toString(transform) : undefined,
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  }
+  return <div ref={setNodeRef} style={style}>{children({ attributes, listeners })}</div>
 }
 
 // Compact multi-select of team members, for a session's "Assigned to".
