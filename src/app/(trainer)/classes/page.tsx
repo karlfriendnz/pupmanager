@@ -35,7 +35,7 @@ export default async function ClassesPage({
       },
       orderBy: { startDate: 'desc' },
       include: {
-        package: { select: { name: true, capacity: true } },
+        package: { select: { id: true, name: true, description: true, capacity: true, durationMins: true, priceCents: true, specialPriceCents: true } },
         _count: { select: { sessions: true } },
         // Last session drives the current/past split — a run isn't "past" just
         // because it started a while ago, only once its final session has been.
@@ -69,8 +69,13 @@ export default async function ClassesPage({
     <ClassesView
       runs={runs.map(r => ({
         id: r.id,
+        packageId: r.package.id,
         name: r.name,
+        description: r.package.description,
         scheduleNote: r.scheduleNote,
+        location: r.location,
+        durationMins: r.package.durationMins,
+        priceCents: r.package.specialPriceCents ?? r.package.priceCents,
         // Pre-format on the server so the card renders one stable string — a raw
         // toLocaleDateString() in the client component formats in the server's
         // timezone during SSR and the browser's on hydration, which mismatched.

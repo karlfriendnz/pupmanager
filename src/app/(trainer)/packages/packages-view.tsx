@@ -2,14 +2,18 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Card, CardBody } from '@/components/ui/card'
-import { Plus, Package as PackageIcon, Pencil, Trash2, GripVertical, Copy } from 'lucide-react'
+import {
+  Package as PackageIcon, Pencil, Trash2, GripVertical, Copy,
+  Repeat, Clock, Video, MapPin, Users,
+} from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 import { type PackageColor, type PkgRow } from './package-form'
 import { formatMoney } from '@/lib/money'
+import {
+  OfferingCard, OfferingEmpty, AddOfferingLink, OfferingPage,
+  type OfferingFact, type OfferingBadge,
+} from '@/components/shared/offering-card'
 import {
   DndContext,
   PointerSensor,
@@ -106,49 +110,43 @@ export function PackagesView({
 
   return (
     <>
-      {/* Creating happens from the top control-bar "+" (New offering). */}
-      <PageHeader title="1:1 Packages" subtitle="Bundles of sessions you assign to a client in one go — set the count, spacing and price once." />
-      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+      <PageHeader
+        title="1:1 Packages"
+        subtitle="Bundles of sessions you assign to a client in one go — set the count, spacing and price once."
+      />
+      <OfferingPage>
+        {packages.length === 0 ? (
+          <OfferingEmpty
+            icon={<PackageIcon className="h-6 w-6" />}
+            title="No packages yet"
+            body="A package is a bundle of 1:1 sessions you assign to a client in one go — set the count, spacing and price once, then reuse it."
+            action={{ href: '/offerings/new', label: 'New package' }}
+          />
+        ) : (
+          <>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={packages.map(p => p.id)} strategy={verticalListSortingStrategy}>
+                <div className="flex flex-col gap-2.5">
+                  {packages.map(p => (
+                    <SortablePackageRow
+                      key={p.id}
+                      pkg={p}
+                      currency={currency}
+                      showHandle={packages.length > 1}
+                      onEdit={() => router.push(`/packages/${p.id}/edit`)}
+                      onDuplicate={() => handleDuplicate(p.id)}
+                      onDelete={() => handleDelete(p.id)}
+                      duplicating={duplicating === p.id}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
 
-      {packages.length === 0 ? (
-        <Card>
-          <CardBody className="py-12 text-center text-slate-400">
-            <PackageIcon className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">No packages yet. Create your first one to get started.</p>
-          </CardBody>
-        </Card>
-      ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={packages.map(p => p.id)} strategy={verticalListSortingStrategy}>
-            <div className="flex flex-col gap-2">
-              {packages.map(p => (
-                <SortablePackageRow
-                  key={p.id}
-                  pkg={p}
-                  currency={currency}
-                  showHandle={packages.length > 1}
-                  onEdit={() => router.push(`/packages/${p.id}/edit`)}
-                  onDuplicate={() => handleDuplicate(p.id)}
-                  onDelete={() => handleDelete(p.id)}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-      )}
-
-      {packages.length > 0 && (
-        <Link
-          href="/offerings/new"
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 py-3.5 text-sm font-medium text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-600"
-        >
-          <Plus className="h-4 w-4" /> New package
-        </Link>
-      )}
-
-      {/* Sortable row defined inline — closes over edit/delete handlers via props. */}
-
-      </div>
+            <AddOfferingLink href="/offerings/new" label="New package" />
+          </>
+        )}
+      </OfferingPage>
 
       {connectName && (
         <ConnectPaymentsModal onClose={() => router.replace('/packages')} currency={currency} />
@@ -157,9 +155,8 @@ export function PackagesView({
   )
 }
 
-// Sortable package row — wraps the existing card layout with a drag handle
-// and useSortable. Drag handle only appears when there's more than one
-// package (nothing to reorder when there's one).
+// Drag handle only appears when there's more than one package (nothing to
+// reorder when there's one).
 function SortablePackageRow({
   pkg: p,
   currency,
@@ -167,6 +164,7 @@ function SortablePackageRow({
   onEdit,
   onDuplicate,
   onDelete,
+  duplicating,
 }: {
   pkg: PkgRow
   currency: string
@@ -174,9 +172,8 @@ function SortablePackageRow({
   onEdit: () => void
   onDuplicate: () => void
   onDelete: () => void
+  duplicating: boolean
 }) {
-  const formatPrice = (cents: number | null): string | null =>
-    cents === null || cents === undefined ? null : formatMoney(cents, currency)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.id })
   const style = {
     transform: transform ? CSS.Transform.toString(transform) : undefined,
@@ -184,88 +181,63 @@ function SortablePackageRow({
     opacity: isDragging ? 0.5 : 1,
   }
 
+  const badges: OfferingBadge[] = []
+  if (p.specialPriceCents != null && p.priceCents != null) {
+    badges.push({ label: formatMoney(p.specialPriceCents, currency), tone: 'good' })
+    badges.push({ label: formatMoney(p.priceCents, currency), tone: 'muted', strike: true })
+  } else if (p.priceCents != null) {
+    badges.push({ label: formatMoney(p.priceCents, currency), tone: 'accent' })
+  }
+
   return (
     <div ref={setNodeRef} style={style}>
-      <Card className="hover:border-blue-100 transition-colors">
-        <CardBody className="px-4 py-3">
-          <div className="flex items-start gap-3">
-            {showHandle && (
-              <button
-                type="button"
-                {...attributes}
-                {...listeners}
-                className="mt-1.5 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing"
-                aria-label="Drag to reorder"
-              >
-                <GripVertical className="h-4 w-4" />
-              </button>
-            )}
-
-            <Link
-              href={`/packages/${p.id}`}
-              className="flex items-start gap-3 flex-1 min-w-0 text-left cursor-pointer"
-            >
-            <div className={`flex h-10 w-10 items-center justify-center rounded-xl flex-shrink-0 ${packageIconClasses(p.color)}`}>
-              <PackageIcon className="h-5 w-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <p className="font-semibold text-slate-900">{p.name}</p>
-                {p.priceCents !== null && (
-                  <span className="text-sm font-medium text-slate-700">
-                    {p.specialPriceCents !== null ? (
-                      <>
-                        <span className="text-emerald-600">{formatPrice(p.specialPriceCents)}</span>
-                        <span className="text-slate-400 line-through ml-1.5 text-xs">{formatPrice(p.priceCents)}</span>
-                      </>
-                    ) : (
-                      formatPrice(p.priceCents)
-                    )}
-                  </span>
-                )}
-              </div>
-              {p.description && <p className="text-sm text-slate-500 mt-0.5">{p.description}</p>}
-              {/* Meta as flowing text (not flex items) so it wraps naturally on a
-                  phone instead of each part — and the '·' separators — dropping
-                  onto their own line. */}
-              <p className="text-xs text-slate-400 mt-1.5">
-                {[
-                  p.sessionCount === 0 ? 'Ongoing' : `${p.sessionCount} sessions`,
-                  p.weeksBetween === 0 ? 'No spacing' : `every ${p.weeksBetween} week${p.weeksBetween > 1 ? 's' : ''}`,
-                  `${p.durationMins} min`,
-                  p.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person',
-                ].join(' · ')}
-                {p.assignments > 0 && <> · <span className="text-blue-600">{p.assignments} assigned</span></>}
-              </p>
-            </div>
-            </Link>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <button
-                onClick={onEdit}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                aria-label="Edit"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-              <button
-                onClick={onDuplicate}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                aria-label="Duplicate"
-                title="Duplicate"
-              >
-                <Copy className="h-4 w-4" />
-              </button>
-              <button
-                onClick={onDelete}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                aria-label="Delete"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
+      <OfferingCard
+        href={`/packages/${p.id}`}
+        title={p.name}
+        description={p.description}
+        tile={{ icon: <PackageIcon className="h-5 w-5" />, className: packageIconClasses(p.color) }}
+        badges={badges}
+        facts={packageFacts(p)}
+        dragHandle={showHandle ? (
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            aria-label="Drag to reorder"
+            className="mt-2 cursor-grab touch-none text-slate-300 hover:text-slate-500 active:cursor-grabbing"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        ) : undefined}
+        actions={[
+          { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: onEdit },
+          { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: onDuplicate, disabled: duplicating },
+          { icon: <Trash2 className="h-4 w-4" />, label: 'Delete', onClick: onDelete, tone: 'danger' },
+        ]}
+      />
     </div>
   )
+}
+
+function packageFacts(p: PkgRow): OfferingFact[] {
+  const facts: OfferingFact[] = [
+    {
+      icon: <Repeat className="h-3.5 w-3.5" />,
+      label: p.sessionCount === 0
+        ? 'Ongoing'
+        : `${p.sessionCount} session${p.sessionCount === 1 ? '' : 's'}${p.weeksBetween > 0 ? `, every ${p.weeksBetween} week${p.weeksBetween > 1 ? 's' : ''}` : ''}`,
+    },
+    { icon: <Clock className="h-3.5 w-3.5" />, label: `${p.durationMins} min` },
+    p.sessionType === 'VIRTUAL'
+      ? { icon: <Video className="h-3.5 w-3.5" />, label: 'Virtual' }
+      : { icon: <MapPin className="h-3.5 w-3.5" />, label: 'In person' },
+  ]
+  if (p.assignments > 0) {
+    facts.push({
+      icon: <Users className="h-3.5 w-3.5" />,
+      label: `${p.assignments} assigned`,
+      tone: 'good',
+    })
+  }
+  return facts
 }

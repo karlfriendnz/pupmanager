@@ -31,7 +31,8 @@ export default async function EventsPage() {
     include: {
       package: {
         select: {
-          name: true, capacity: true, priceCents: true, specialPriceCents: true,
+          id: true, name: true, description: true, capacity: true, durationMins: true,
+          priceCents: true, specialPriceCents: true,
           ticketTiers: { orderBy: { order: 'asc' }, select: { id: true, name: true, priceCents: true, capacity: true } },
         },
       },
@@ -48,7 +49,10 @@ export default async function EventsPage() {
         const at = r.sessions[0]?.scheduledAt ?? r.startDate
         return {
           id: r.id,
+          packageId: r.package.id,
           name: r.name,
+          description: r.package.description,
+          durationMins: r.package.durationMins,
           whenLabel: formatDate(at),
           location: r.location,
           imageUrl: r.imageUrl,

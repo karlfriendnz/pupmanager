@@ -334,6 +334,9 @@ export function PackageForm({
   const currentKey = stepKeys[clampedStep]
   const onSection = (k: string) => !stepped || currentKey === k
   const isLastStep = clampedStep === stepKeys.length - 1
+  // Cards carry their step number in both modes, so the one-page edit reads as
+  // the same ordered steps you filled in when you created it.
+  const stepNo = (k: string) => stepKeys.indexOf(k) + 1
   const [allowWaitlist, setAllowWaitlist] = useState<boolean>(existing?.allowWaitlist ?? false)
   const [publicEnrollment, setPublicEnrollment] = useState<boolean>(existing?.publicEnrollment ?? false)
   // Client self-booking (independent of group classes).
@@ -479,7 +482,9 @@ export function PackageForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+    // Sections are full-width cards now; the two-column grid lives INSIDE each
+    // card, so the page is a simple stack whatever the screen width.
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
       {error && <div className="md:col-span-2"><Alert variant="error">{error}</Alert></div>}
 
       {addLocationOpen && (
@@ -509,15 +514,11 @@ export function PackageForm({
 
       {/* ── Start: name + what ───────────────────────────────────── */}
       {onSection('start') && (
-      <>
-      {stepped && (
-        <StepInstruction>
-          Give your offering a clear name your clients will recognise, then pick
-          what kind it is. Your choice sets up the right options in the next steps.
-        </StepInstruction>
-      )}
-      {/* Name + description sit at the top of the step. */}
-      {!stepped && <SectionHeading title="Details" />}
+      <SectionCard
+        step={stepNo('start')}
+        title="Details"
+        intro="Give your offering a clear name your clients will recognise, then pick what kind it is. Your choice sets up the right options in the next steps."
+      >
 
       <div className="md:col-span-2">
         <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" autoFocus={stepped} error={errors.name?.message} {...register('name')} />
@@ -567,25 +568,24 @@ export function PackageForm({
       </div>
       </>
       )}
-      </>
+      </SectionCard>
       )}
 
       {/* ── Sessions & schedule ──────────────────────────────────── */}
       {onSection('schedule') && (
-      <>
-      <SectionHeading title="Sessions & schedule" />
-
-      {stepped && (
-        <StepInstruction>
-          {kind === 'oneoff'
+      <SectionCard
+        step={stepNo('schedule')}
+        title="Sessions &amp; schedule"
+        intro={
+          kind === 'oneoff'
             ? 'Set the single date and time your event runs, plus where it takes place.'
             : kind === 'dropin'
             ? 'Add each session people can drop into. Give every one its own day, time, capacity, price and location — duplicate or reorder them as needed.'
             : kind === 'group'
             ? 'Set when the class runs — the first session’s date and time, how many sessions, and how many weeks apart — plus capacity and location.'
-            : 'Set how long each session lasts and how many are in the package.'}
-        </StepInstruction>
-      )}
+            : 'Set how long each session lasts and how many are in the package.'
+        }
+      >
 
       {/* One schedule model everywhere: a run of N sessions every W weeks.
           1:1, group and drop-in all use it; only a one-off event has no cadence. */}
@@ -752,6 +752,20 @@ export function PackageForm({
         </label>
       )}
 
+      {/* The human cadence, in the trainer's own words. It's what the class
+          card and the client's booking screen both show, so it's worth being
+          able to write ("Tuesdays 6pm") rather than having it inferred. */}
+      {kind !== 'onetoone' && kind !== 'dropin' && (
+        <div className="md:col-span-2">
+          <Input
+            label="Schedule note (optional)"
+            placeholder="e.g. Tuesdays 6:00pm"
+            value={scheduleNote}
+            onChange={e => setScheduleNote(e.target.value)}
+          />
+        </div>
+      )}
+
       {/* Where it meets — same design as the drop-in session location: a
           dropdown of saved locations + a "+" that opens the add-location popup. */}
       {kind !== 'onetoone' && kind !== 'dropin' && (
@@ -783,25 +797,25 @@ export function PackageForm({
           </div>
         </div>
       )}
-      </>
+      </SectionCard>
       )}
 
       {/* ── Pricing — a drop-in prices per session, so no pricing step. ── */}
       {kind !== 'dropin' && onSection('pricing') && (
-      <>
-      <SectionHeading title="Pricing" hint={
-        kind === 'oneoff' ? 'What it costs to attend the event.'
-          : kind === 'group' ? 'The full-course price.'
-          : 'Leave blank for no set price.'
-      } />
-
-      {stepped && (
-        <StepInstruction>
-          {kind === 'oneoff'
+      <SectionCard
+        step={stepNo('pricing')}
+        title="Pricing"
+        hint={
+          kind === 'oneoff' ? 'What it costs to attend the event.'
+            : kind === 'group' ? 'The full-course price.'
+            : 'Leave blank for no set price.'
+        }
+        intro={
+          kind === 'oneoff'
             ? 'Add the ticket types people can buy — name each one and set its price and how many are available.'
-            : 'Set the price clients pay. Add a special price to show a discount next to it, or leave it blank if there’s no set price.'}
-        </StepInstruction>
-      )}
+            : 'Set the price clients pay. Add a special price to show a discount next to it, or leave it blank if there’s no set price.'
+        }
+      >
 
       {/* A one-off event sells tickets (name + price + capacity); everything
           else has a single price (+ optional special). RHF price fields stay
@@ -848,21 +862,16 @@ export function PackageForm({
       <div className="md:col-span-2">
         <RequirePaymentField value={requirePayment} onChange={setRequirePayment} />
       </div>
-      </>
+      </SectionCard>
       )}
 
       {/* ── Settings ─────────────────────────────────────────────── */}
       {onSection('settings') && (
-      <>
-      <SectionHeading title="Settings" />
-
-      {stepped && (
-        <StepInstruction>
-          The finishing touches — who runs it, a colour and image to spot it at a
-          glance, and how booking and notes work. All optional; you can change
-          them any time.
-        </StepInstruction>
-      )}
+      <SectionCard
+        step={stepNo('settings')}
+        title="Settings"
+        intro="The finishing touches — who runs it, a colour and image to spot it at a glance, and how booking and notes work. All optional; you can change them any time."
+      >
 
       {/* Who delivers it — assignable per kind (drop-in assigns per session). */}
       {team.length > 1 && kind !== 'dropin' && (
@@ -1023,7 +1032,7 @@ export function PackageForm({
           </div>
         )}
       </div>
-      </>
+      </SectionCard>
       )}
 
       {/* Footer — wizard nav when adding, Save/Delete/Clone when editing. */}
@@ -1054,7 +1063,12 @@ export function PackageForm({
         </div>
         </>
       ) : (
-        <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 mt-2">
+        <>
+        {/* Spacer so the last card clears the pinned mobile action bar. */}
+        <div className="h-20 md:hidden" aria-hidden />
+        {/* Save stays in reach on a phone — you shouldn't have to scroll a long
+            form back to the bottom to keep a change. */}
+        <div className="fixed inset-x-0 bottom-0 z-40 flex flex-wrap items-center gap-2 border-t border-slate-100 bg-white/95 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] backdrop-blur md:static md:z-auto md:mt-1 md:rounded-2xl md:border md:bg-white md:p-4 md:backdrop-blur-none md:shadow-[0_1px_8px_rgba(15,31,36,0.04)]">
           <Button type="submit" loading={isSubmitting}>Save changes</Button>
           <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
           <div className="ml-auto flex items-center gap-2">
@@ -1066,34 +1080,52 @@ export function PackageForm({
             </button>
           </div>
         </div>
+        </>
       )}
     </form>
   )
 }
 
-/** A numbered section divider that spans the form's 2-col grid — breaks the
- * long form into clear, ordered steps without turning it into a multi-page
- * wizard (the whole thing still saves in one go). */
-// A short "what to do on this step" banner, shown at the top of each wizard
-// step (add flow only) so a first-timer always knows what the step is for.
-function StepInstruction({ children }: { children: React.ReactNode }) {
+/**
+ * One step of the offering form, as a card.
+ *
+ * The wizard shows a single card at a time; editing shows every card stacked on
+ * one page. Same numbered header, same intro copy, same fields in the same
+ * order — so the form you learn while creating is the form you come back to,
+ * and everything about an offering is reachable without hunting through tabs.
+ */
+function SectionCard({
+  step,
+  title,
+  hint,
+  intro,
+  children,
+}: {
+  step: number
+  title: string
+  hint?: string
+  intro?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
-    <p className="md:col-span-2 -mt-1 rounded-xl border border-blue-100 bg-blue-50/60 px-3.5 py-2.5 text-xs leading-relaxed text-slate-600">
-      {children}
-    </p>
-  )
-}
-
-function SectionHeading({ step, title, hint }: { step?: number; title: string; hint?: string }) {
-  return (
-    <div className="md:col-span-2 flex items-center gap-3 pt-3 first:pt-0 border-t border-slate-100 first:border-0 mt-1 first:mt-0">
-      {step != null && (
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white text-sm font-bold">{step}</span>
-      )}
-      <div className="min-w-0">
-        <h2 className="text-base font-semibold text-slate-900 leading-tight">{title}</h2>
-        {hint && <p className="text-[11px] text-slate-400 leading-tight mt-0.5">{hint}</p>}
+    <section className="md:col-span-2 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_8px_rgba(15,31,36,0.04)] md:p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+          {step}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold leading-tight text-slate-900">{title}</h2>
+          {hint && <p className="mt-0.5 text-xs leading-tight text-slate-400">{hint}</p>}
+        </div>
       </div>
-    </div>
+
+      {intro && (
+        <p className="mt-3 rounded-xl bg-blue-50/70 px-3.5 py-2.5 text-sm leading-relaxed text-slate-600">
+          {intro}
+        </p>
+      )}
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">{children}</div>
+    </section>
   )
 }
