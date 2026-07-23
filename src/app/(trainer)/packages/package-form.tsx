@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -142,6 +142,20 @@ export function PackageForm({
   const [location, setLocation] = useState<string>('')
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [scheduleNote, setScheduleNote] = useState<string>('')
+  // Who delivers this — assignable for every kind. Fetched client-side (the
+  // team endpoint returns membership ids). NOT yet wired to persistence.
+  const [team, setTeam] = useState<{ id: string; name: string | null; title: string | null }[]>([])
+  const [assignedIds, setAssignedIds] = useState<string[]>([])
+  useEffect(() => {
+    let off = false
+    fetch('/api/trainer/team')
+      .then(r => (r.ok ? r.json() : null))
+      .then((d: { members?: { id: string; name: string | null; title: string | null; status?: string }[] } | null) => {
+        if (!off && d?.members) setTeam(d.members.filter(m => m.status === 'ACTIVE').map(m => ({ id: m.id, name: m.name, title: m.title })))
+      })
+      .catch(() => {})
+    return () => { off = true }
+  }, [])
   // The offering kind drives the card selection + which schedule fields show.
   // It's a UI discriminator over the persisted flags: a one-off event is a
   // group with a single session and no recurrence.
@@ -325,6 +339,30 @@ export function PackageForm({
           rows={3}
           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+      </div>
+
+      {/* Icon / cover image — for every kind (the offering's identity). */}
+      <div className="md:col-span-2">
+        <label className="text-sm font-medium text-slate-700 block mb-1.5">Image <span className="text-slate-400">(optional)</span></label>
+        {imageUrl ? (
+          <div className="relative inline-block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imageUrl} alt="" className="h-24 w-full max-w-[16rem] rounded-xl object-cover border border-slate-200" />
+            <button
+              type="button"
+              onClick={() => setImageUrl(null)}
+              className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 flex items-center justify-center shadow-sm"
+              aria-label="Remove image"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <ImageUploadButton onUploaded={urls => { if (urls[0]) setImageUrl(urls[0]) }} />
+            <span className="text-xs text-slate-400">Add an icon or cover photo.</span>
+          </div>
+        )}
       </div>
 
       {/* Kind sits inside step 1 — name it, then say what it is. */}
@@ -540,8 +578,8 @@ export function PackageForm({
         </div>
       )}
 
-      {/* Where it meets + a cover photo — class-only (ClassRun.location/imageUrl).
-          A schedule note ("Thursdays 4pm") only makes sense for a recurring one. */}
+      {/* Where it meets — class-only (ClassRun.location). A schedule note
+          ("Thursdays 4pm") only makes sense for a recurring class. */}
       {kind !== 'onetoone' && (
         <>
           <div className="md:col-span-2">
@@ -557,29 +595,6 @@ export function PackageForm({
           {(kind === 'group' || kind === 'dropin') && (
             <Input label="Schedule note (optional)" placeholder="e.g. Thursdays 4:00pm" value={scheduleNote} onChange={e => setScheduleNote(e.target.value)} />
           )}
-
-          <div className="md:col-span-2">
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Cover image <span className="text-slate-400">(optional)</span></label>
-            {imageUrl ? (
-              <div className="relative inline-block">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={imageUrl} alt="" className="h-24 w-full max-w-[16rem] rounded-xl object-cover border border-slate-200" />
-                <button
-                  type="button"
-                  onClick={() => setImageUrl(null)}
-                  className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 flex items-center justify-center shadow-sm"
-                  aria-label="Remove image"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2.5">
-                <ImageUploadButton onUploaded={urls => { if (urls[0]) setImageUrl(urls[0]) }} />
-                <span className="text-xs text-slate-400">Add a cover photo.</span>
-              </div>
-            )}
-          </div>
         </>
       )}
 
@@ -620,6 +635,32 @@ export function PackageForm({
 
       {/* ── Step 4 · settings ──────────────────────────────────────── */}
       <SectionHeading step={4} title="Settings" />
+
+      {/* Who delivers it — assignable on every kind. Only worth showing when
+          there's a team to choose from. NOT yet wired to persistence. */}
+      {team.length > 1 && (
+        <div className="md:col-span-2">
+          <label className="text-sm font-medium text-slate-700 block mb-1.5">Assigned to <span className="text-slate-400">(optional)</span></label>
+          <div className="flex flex-wrap gap-1.5">
+            {team.map(m => {
+              const on = assignedIds.includes(m.id)
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setAssignedIds(prev => on ? prev.filter(x => x !== m.id) : [...prev, m.id])}
+                  className={`text-sm px-3 py-1.5 rounded-full border transition-colors ${
+                    on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  {m.name ?? 'Team member'}{m.title ? <span className="opacity-60"> · {m.title}</span> : null}
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">Tap to assign one or more team members.</p>
+        </div>
+      )}
 
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form</label>
