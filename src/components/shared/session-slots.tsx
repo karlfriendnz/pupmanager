@@ -171,14 +171,14 @@ export function SessionSlotsEditor({
           </Row>
 
           <Row label="Payment">
-            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl max-w-[280px]">
+            <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-xl">
               {([{ v: true, label: 'Require payment' }, { v: false, label: 'Don’t require' }] as const).map(o => (
                 <button
                   key={String(o.v)}
                   type="button"
                   onClick={() => update(s.id, { requirePayment: o.v })}
                   aria-pressed={s.requirePayment === o.v}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${s.requirePayment === o.v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`whitespace-nowrap px-3 py-2 rounded-lg text-sm font-medium transition-all ${s.requirePayment === o.v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                   {o.label}
                 </button>

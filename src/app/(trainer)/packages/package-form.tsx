@@ -408,10 +408,10 @@ export function PackageForm({
         // single-session bookings, so it presets isGroup + allowDropIn.
         <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           {([
-            { key: 'onetoone', icon: User, label: '1 on 1 session', desc: 'One-on-one sessions you assign to a single client, on their own schedule.' },
-            { key: 'group', icon: Users, label: 'Group class', desc: 'A cohort shares one schedule and roster and enrols for the whole course.' },
-            { key: 'dropin', icon: Users, label: 'Drop-in classes', desc: 'People join one session at a time and pay per session — great for casual regulars.' },
-            { key: 'oneoff', icon: CalendarDays, label: 'One-off event', desc: 'A single event on one date — a workshop or seminar people sign up to.' },
+            { key: 'onetoone', icon: User, label: '1-on-1 session', desc: 'One-on-one sessions you book with a single client — grooming, a training session, a consult.' },
+            { key: 'group', icon: Users, label: 'Group class', desc: 'A cohort shares one schedule and roster and signs up for the whole course.' },
+            { key: 'dropin', icon: Users, label: 'Drop-in sessions', desc: 'People join one session at a time and pay per session — great for casual regulars.' },
+            { key: 'oneoff', icon: CalendarDays, label: 'One-off event', desc: 'A single event on one date — a workshop, seminar or meet-up people sign up to.' },
           ] as const).map(o => {
             const active = kind === o.key
             const Icon = o.icon
