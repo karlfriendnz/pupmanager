@@ -548,32 +548,16 @@ export function PackageForm({
         </div>
       )}
 
-      {/* Drop-in price — only for the drop-in kind (always allows drop-ins, so
-          no toggle). A group class no longer has this. */}
-      {kind === 'dropin' && (
-        <div className="md:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3.5 flex flex-col gap-3">
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Drop-in price per session</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={dropInPrice}
-              onChange={e => setDropInPrice(e.target.value)}
-              placeholder="30"
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {PUBLIC_CLASS_ENROLLMENT_ENABLED && (
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input type="checkbox" checked={publicEnrollment} onChange={e => setPublicEnrollment(e.target.checked)} className="h-4 w-4 mt-0.5" />
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-slate-700">Let clients self-enrol from your embed form</span>
-                <span className="block text-[11px] text-slate-400 mt-0.5">Open runs show publicly; requests arrive as enquiries for you to accept.</span>
-              </span>
-            </label>
-          )}
-        </div>
+      {/* Self-enrol option (feature-flagged) for the drop-in kind. The old
+          "Drop-in price per session" field was removed on request. */}
+      {kind === 'dropin' && PUBLIC_CLASS_ENROLLMENT_ENABLED && (
+        <label className="md:col-span-2 flex items-start gap-3 cursor-pointer rounded-xl border border-slate-200 px-3 py-2.5">
+          <input type="checkbox" checked={publicEnrollment} onChange={e => setPublicEnrollment(e.target.checked)} className="h-4 w-4 mt-0.5" />
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-medium text-slate-700">Let clients self-enrol from your embed form</span>
+            <span className="block text-[11px] text-slate-400 mt-0.5">Open runs show publicly; requests arrive as enquiries for you to accept.</span>
+          </span>
+        </label>
       )}
 
       {/* Where it meets — class-only (ClassRun.location). A schedule note
