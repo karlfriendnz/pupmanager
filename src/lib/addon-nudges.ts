@@ -59,6 +59,11 @@ export const NUDGE_COPY: Record<string, { title: string; body: string; ctaLabel:
     body: 'A to-do list and brain-dump on your dashboard — get it out of your head before it’s lost.',
     ctaLabel: 'Set up To-dos',
   },
+  events: {
+    title: 'Run a workshop or meet-up',
+    body: 'Put on a one-off event, set how many can come and let clients book a ticket themselves.',
+    ctaLabel: 'Set up Events',
+  },
   googlecalendar: {
     title: 'Sync your Google Calendar',
     body: 'See your sessions and classes in Google Calendar and never double-book again.',

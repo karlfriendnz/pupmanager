@@ -61,6 +61,19 @@ const PROMOS: Record<string, Cfg> = {
     ],
     benefits: ['Branded badges', 'Clients share wins', 'Free marketing'],
   },
+  events: {
+    title: 'Run a one-off event',
+    description: 'Workshops, seminars and meet-ups clients book a ticket for.',
+    // Shares the classes photo until it has its own — an event is the same
+    // picture (a group of owners and dogs somewhere).
+    image: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%', translateX: '28%' },
+    steps: [
+      { icon: <CalendarDays className={I} />, label: 'Pick a date' },
+      { icon: <Tag className={I} />, label: 'Set tickets' },
+      { icon: <Users className={I} />, label: 'They book' },
+    ],
+    benefits: ['Cap the numbers', 'A guest list you can check off', 'Paid or free'],
+  },
   xero: {
     title: 'Reconcile in Xero',
     description: 'Invoices and payments, straight into your own Xero.',
