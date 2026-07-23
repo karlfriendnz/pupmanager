@@ -53,7 +53,14 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
         subtitle="Run a class — pick the day, time and how many weeks. Clients enrol into one shared timetable with a roster, capacity and waitlist."
       />
 
-      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl">
+      {runs.length > 0 && (
+        <div className="mb-4 flex justify-end">
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" /> New class
+          </Button>
+        </div>
+      )}
       {runs.length === 0 ? (
         <Card>
           <CardBody>
