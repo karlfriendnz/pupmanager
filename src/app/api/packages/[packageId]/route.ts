@@ -102,12 +102,13 @@ export async function PATCH(
         }
         // Group-only settings are meaningless on a 1:1 package — clear them
         // here too, not just in the form, so any caller converts cleanly.
+        // allowWaitlist is NOT one of them: a full 1:1 package can keep a
+        // waitlist just as a class can.
         extra = {
           capacity: null,
           allowDropIn: false,
           dropInPriceCents: null,
           recurrenceRule: null,
-          allowWaitlist: false,
           publicEnrollment: false,
           // A drop-in schedule is meaningless on a 1:1 package.
           sessionSlots: { deleteMany: {} },

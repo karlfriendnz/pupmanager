@@ -30,9 +30,14 @@ export async function POST(req: Request) {
   if (parsed.data.packageId) {
     const pkg = await prisma.package.findFirst({
       where: { id: parsed.data.packageId, trainerId: profile.trainerId },
-      select: { id: true },
+      select: { id: true, allowWaitlist: true },
     })
     if (!pkg) return NextResponse.json({ error: 'Package not found' }, { status: 404 })
+    // The client UI hides the button, but a trainer who turned the waitlist
+    // off shouldn't collect entries against that package regardless.
+    if (!pkg.allowWaitlist) {
+      return NextResponse.json({ error: 'This package has no waitlist' }, { status: 403 })
+    }
   }
 
   // Don't stack duplicate active entries for the same client.

@@ -113,7 +113,7 @@ export default async function MyAvailabilityPage() {
     select: {
       id: true, name: true, description: true, sessionCount: true, weeksBetween: true,
       durationMins: true, bufferMins: true, sessionType: true, priceCents: true,
-      specialPriceCents: true, selfBookRequiresApproval: true,
+      specialPriceCents: true, selfBookRequiresApproval: true, allowWaitlist: true,
     },
   })
   const packages: WizardPackage[] = rawPackages.map(p => ({
@@ -127,6 +127,7 @@ export default async function MyAvailabilityPage() {
     sessionType: p.sessionType as 'IN_PERSON' | 'VIRTUAL',
     priceCents: p.specialPriceCents ?? p.priceCents,
     selfBookRequiresApproval: p.selfBookRequiresApproval,
+    allowWaitlist: p.allowWaitlist,
   }))
 
   // Open group classes the client can join themselves.

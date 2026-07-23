@@ -82,16 +82,24 @@ describe('PATCH /api/packages/[packageId] — converting 1:1 ↔ group', () => {
     expect(h.pkgUpdate).not.toHaveBeenCalled()
   })
 
-  // Capacity/waitlist/drop-in are meaningless on a 1:1 package, and a stale
-  // capacity would silently cap a package that shouldn't have one.
+  // Capacity/drop-in/public-enrolment are meaningless on a 1:1 package, and a
+  // stale capacity would silently cap a package that shouldn't have one.
   it('clears the group-only settings when converting back to 1:1', async () => {
     h.pkgFindUnique.mockResolvedValue({ isGroup: true })
     const res = await patch({ isGroup: false })
     expect(res.status).toBe(200)
     expect(h.pkgUpdate.mock.calls[0][0].data).toMatchObject({
       isGroup: false, capacity: null, allowDropIn: false,
-      dropInPriceCents: null, allowWaitlist: false, publicEnrollment: false,
+      dropInPriceCents: null, publicEnrollment: false,
     })
+  })
+
+  // …but a waitlist is NOT group-only. A full 1:1 package can keep one, so the
+  // conversion must not quietly switch it off.
+  it('keeps the waitlist when converting back to 1:1', async () => {
+    h.pkgFindUnique.mockResolvedValue({ isGroup: true })
+    await patch({ isGroup: false })
+    expect(h.pkgUpdate.mock.calls[0][0].data).not.toHaveProperty('allowWaitlist')
   })
 
   // An ordinary edit must not pay for the conversion checks.

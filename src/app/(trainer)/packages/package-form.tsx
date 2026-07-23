@@ -385,6 +385,13 @@ export function PackageForm({
       setError('Choose a Xero income account for this package.')
       return
     }
+    // Slot times start blank so nobody publishes a guessed hour by accident —
+    // which means catching the blanks here, with a sentence, rather than
+    // letting the server reject the shape.
+    if (kind === 'dropin' && slots.some(s => !s.start || !s.end)) {
+      setError('Give every session a start and finish time.')
+      return
+    }
     const url = existing ? `/api/packages/${existing.id}` : '/api/packages'
     const method = existing ? 'PATCH' : 'POST'
     // Convert the dollar-string price fields into cents before sending; the
@@ -447,7 +454,7 @@ export function PackageForm({
           assignedMembershipIds: assignedIds,
         }),
         recurrenceRule: isGroup && recurrenceRule ? recurrenceRule : null,
-        allowWaitlist: isGroup && allowWaitlist,
+        allowWaitlist,
         publicEnrollment: isGroup && publicEnrollment,
         clientSelfBook,
         selfBookRequiresApproval,
@@ -973,6 +980,23 @@ export function PackageForm({
           <span className="block text-sm font-medium text-slate-700">Send a follow-up reminder for session notes</span>
           <span className="block text-[11px] text-slate-400 mt-0.5">
             Sends a push near the end of each session in this package nudging you to write notes. Turn off for drop-in classes or anything that doesn&apos;t need a follow-up.
+          </span>
+        </span>
+      </label>
+
+      <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={allowWaitlist}
+          onChange={e => setAllowWaitlist(e.target.checked)}
+          className="h-4 w-4 mt-0.5"
+        />
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-medium text-slate-700">Keep a waitlist when this is full</span>
+          <span className="block text-[11px] text-slate-400 mt-0.5">
+            {kind === 'onetoone'
+              ? 'People can register interest once you have no room, so you can offer them a spot when one frees up.'
+              : 'Once every place is taken, people can join a waitlist instead of being turned away — and are enrolled automatically when someone withdraws.'}
           </span>
         </span>
       </label>

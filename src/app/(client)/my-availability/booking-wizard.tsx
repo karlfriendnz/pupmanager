@@ -20,6 +20,7 @@ export interface WizardPackage {
   sessionType: 'IN_PERSON' | 'VIRTUAL'
   priceCents: number | null
   selfBookRequiresApproval: boolean
+  allowWaitlist: boolean
 }
 
 export interface WizardClass {
@@ -525,9 +526,13 @@ function SessionTimeStep({ pkg, availableDates, timeOptions, date, time, onDate,
       {noDays ? (
         <div className="rounded-2xl bg-slate-50 border border-slate-100 p-5 text-center">
           <p className="text-sm text-slate-600">No open times in the next four weeks.</p>
-          <button onClick={onWaitlist} disabled={saving} className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 text-sm font-medium px-4 py-2 hover:bg-white disabled:opacity-50">
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}Join the waitlist instead
-          </button>
+          {/* Only offer the waitlist if the trainer keeps one for this package —
+              otherwise it's a promise of a call-back nobody agreed to make. */}
+          {pkg.allowWaitlist && (
+            <button onClick={onWaitlist} disabled={saving} className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 text-sm font-medium px-4 py-2 hover:bg-white disabled:opacity-50">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}Join the waitlist instead
+            </button>
+          )}
         </div>
       ) : (
         <>
