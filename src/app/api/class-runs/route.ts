@@ -5,19 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { createClassRun, createClassWithPackage, ClassError } from '@/lib/class-runs'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
-
-// Best-effort: mirror a class's freshly-created sessions onto the trainer's
-// Google Calendar. Unassigned class sessions route to the company owner's
-// connection (the sync engine's built-in fallback). Never breaks the create.
-async function syncClassSessions(sessionIds: string[]) {
-  if (sessionIds.length === 0) return
-  try {
-    const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
-    await syncSessionsToGoogle(sessionIds)
-  } catch {
-    // Non-critical
-  }
-}
+import { syncClassSessions } from '@/lib/class-session-sync'
 
 // GET  /api/class-runs        — every run for the trainer (+ enrolled count)
 // POST /api/class-runs        — create a run + its shared session series

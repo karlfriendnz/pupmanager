@@ -18,11 +18,18 @@ const h = vi.hoisted(() => ({
   slotCreate: vi.fn(),
   slotUpdate: vi.fn(),
   slotDeleteMany: vi.fn(),
+  tierFindMany: vi.fn(),
+  tierCreate: vi.fn(),
+  tierUpdate: vi.fn(),
+  tierDeleteMany: vi.fn(),
 }))
 
 vi.mock('@/generated/prisma', () => ({}))
 
-import { replacePackageSlots, derivedDropInFields, type SlotInput } from '@/lib/package-slots'
+import {
+  replacePackageSlots, derivedDropInFields, runStartFromSlots,
+  replaceTicketTiers, type SlotInput, type TicketTierInput,
+} from '@/lib/package-slots'
 
 const MINE = 'trainer-mine'
 const THEIRS = 'trainer-theirs'
@@ -37,6 +44,12 @@ const tx = {
     create: h.slotCreate,
     update: h.slotUpdate,
     deleteMany: h.slotDeleteMany,
+  },
+  packageTicketTier: {
+    findMany: h.tierFindMany,
+    create: h.tierCreate,
+    update: h.tierUpdate,
+    deleteMany: h.tierDeleteMany,
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any
@@ -54,6 +67,10 @@ beforeEach(() => {
   h.slotCreate.mockImplementation(async ({ data }: { data: { packageId: string } }) => ({ id: 'new-slot', ...data }))
   h.slotUpdate.mockResolvedValue({})
   h.slotDeleteMany.mockResolvedValue({ count: 0 })
+  h.tierFindMany.mockResolvedValue([])
+  h.tierCreate.mockImplementation(async ({ data }: { data: { packageId: string } }) => ({ id: 'new-tier', ...data }))
+  h.tierUpdate.mockResolvedValue({})
+  h.tierDeleteMany.mockResolvedValue({ count: 0 })
   // Only MINE's location exists under this trainer.
   h.locationFindMany.mockImplementation(async ({ where }: { where: { id: { in: string[] }; trainerId: string } }) =>
     where.trainerId === MINE ? where.id.in.filter((id) => id === 'loc-mine').map((id) => ({ id })) : [],
@@ -189,5 +206,69 @@ describe('derivedDropInFields (the server, not the form, sets the headline price
   it('always turns drop-ins on — having a schedule IS being a drop-in class', () => {
     expect(derivedDropInFields([]).allowDropIn).toBe(true)
     expect(derivedDropInFields([slot()]).allowDropIn).toBe(true)
+  })
+})
+
+describe('runStartFromSlots (a drop-in has no start-date field of its own)', () => {
+  it('takes the earliest "Starts from" across the slots', () => {
+    const d = runStartFromSlots([
+      slot({ startDate: '2026-09-10' }),
+      slot({ startDate: '2026-08-04' }),
+      slot({ startDate: '2026-10-01' }),
+    ])
+    expect(d?.toISOString()).toBe('2026-08-04T00:00:00.000Z')
+  })
+
+  it('ignores slots that name no date', () => {
+    expect(runStartFromSlots([slot(), slot({ startDate: '2026-08-04' })])?.toISOString())
+      .toBe('2026-08-04T00:00:00.000Z')
+  })
+
+  it('null when nothing names a date — the caller starts from today', () => {
+    // Without this fallback a drop-in would save with no run at all, which is
+    // exactly what made drop-in classes invisible to clients.
+    expect(runStartFromSlots([slot(), slot()])).toBeNull()
+    expect(runStartFromSlots([])).toBeNull()
+  })
+})
+
+describe('replaceTicketTiers', () => {
+  const tier = (over: Partial<TicketTierInput> = {}): TicketTierInput => ({ name: 'General', ...over })
+
+  it('creates tiers in payload order', async () => {
+    h.tierFindMany.mockResolvedValue([])
+    await replaceTicketTiers(tx, 'pkg1', [tier({ name: 'Early bird', priceCents: 4000 }), tier({ priceCents: 6000 })])
+    expect(h.tierCreate.mock.calls.map(c => [c[0].data.name, c[0].data.order]))
+      .toEqual([['Early bird', 0], ['General', 1]])
+  })
+
+  it('updates a tier in place, keeping its id', async () => {
+    // Id stability matters here too: an enrolment may reference the tier.
+    h.tierFindMany.mockResolvedValue([{ id: 'tier-a' }])
+    await replaceTicketTiers(tx, 'pkg1', [tier({ id: 'tier-a', priceCents: 5000 })])
+    expect(h.tierUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'tier-a' }, data: expect.objectContaining({ priceCents: 5000 }) }),
+    )
+    expect(h.tierCreate).not.toHaveBeenCalled()
+  })
+
+  it('drops blank rows — the editor always shows one empty tier', async () => {
+    h.tierFindMany.mockResolvedValue([])
+    await replaceTicketTiers(tx, 'pkg1', [tier({ name: '  ' }), tier({ name: 'General' })])
+    expect(h.tierCreate).toHaveBeenCalledTimes(1)
+    expect(h.tierCreate.mock.calls[0][0].data.name).toBe('General')
+  })
+
+  it('deletes tiers the payload dropped, scoped to this package', async () => {
+    h.tierFindMany.mockResolvedValue([{ id: 'tier-a' }, { id: 'tier-b' }])
+    await replaceTicketTiers(tx, 'pkg1', [tier({ id: 'tier-a' })])
+    expect(h.tierDeleteMany).toHaveBeenCalledWith({ where: { id: { in: ['tier-b'] }, packageId: 'pkg1' } })
+  })
+
+  it('a free tier stores 0, an unpriced one stores null', async () => {
+    h.tierFindMany.mockResolvedValue([])
+    await replaceTicketTiers(tx, 'pkg1', [tier({ name: 'Free', priceCents: 0 }), tier({ name: 'TBC' })])
+    expect(h.tierCreate.mock.calls[0][0].data.priceCents).toBe(0)
+    expect(h.tierCreate.mock.calls[1][0].data.priceCents).toBeNull()
   })
 })

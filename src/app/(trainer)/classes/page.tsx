@@ -3,14 +3,19 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isConnectConfigured } from '@/lib/connect'
 import { hasAddon } from '@/lib/billing'
-import { isClassRunPast } from '@/lib/class-runs'
+import { isClassRunPast, ONE_OFF_EVENT_PACKAGE } from '@/lib/class-runs'
 import { formatDate } from '@/lib/utils'
 import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Group Classes' }
 
-export default async function ClassesPage() {
+export default async function ClassesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ connect?: string }>
+}) {
+  const { connect } = await searchParams
   const session = await auth()
   if (!session) redirect('/login')
   const trainerId = session.user.trainerId
@@ -18,9 +23,16 @@ export default async function ClassesPage() {
   // Gated by the Group classes add-on (default-on; hidden + blocked when off).
   if (!(await hasAddon(trainerId, 'classes'))) redirect('/settings?tab=addons')
 
-  const [runs, teamMembers, trainer] = await Promise.all([
+  const [runs, trainer] = await Promise.all([
     prisma.classRun.findMany({
-      where: { trainerId },
+      // Recurring group classes only. Drop-in classes and one-off events are
+      // ClassRuns too, but they have their own pages — without this they'd be
+      // listed here as well, and every one of them three times over.
+      where: {
+        trainerId,
+        package: { allowDropIn: false },
+        NOT: { package: ONE_OFF_EVENT_PACKAGE },
+      },
       orderBy: { startDate: 'desc' },
       include: {
         package: { select: { name: true, capacity: true } },
@@ -33,11 +45,6 @@ export default async function ClassesPage() {
           include: { membership: { select: { user: { select: { name: true } } } } },
         },
       },
-    }),
-    prisma.trainerMembership.findMany({
-      where: { companyId: trainerId },
-      select: { id: true, title: true, role: true, user: { select: { name: true } } },
-      orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
     }),
     prisma.trainerProfile.findUnique({
       where: { id: trainerId },
@@ -79,13 +86,7 @@ export default async function ClassesPage() {
           now,
         ),
       }))}
-      teamMembers={teamMembers.map(m => ({
-        id: m.id,
-        name: m.user.name ?? 'Team member',
-        title: m.title,
-        isOwner: m.role === 'OWNER',
-      }))}
-      promptConnect={promptConnect}
+      connectName={promptConnect ? (connect ?? null) : null}
       currency={currency}
     />
   )

@@ -90,6 +90,14 @@ export default async function globalSetup() {
     await prisma.billingItem.create({
       data: { id: 'classes', kind: 'ADDON', name: 'Group classes', description: 'Class cohorts and enrolments', priceMonthly: 0, sortOrder: 5, isActive: true },
     })
+    // Events is free but off-by-default — /events redirects to the Add-ons tab
+    // without it, so enable it for the events specs (same shape as timesheets).
+    await prisma.billingItem.create({
+      data: { id: 'events', kind: 'ADDON', name: 'Events', description: 'One-off events with tickets', priceMonthly: 0, sortOrder: 6, isActive: true },
+    })
+    await prisma.trainerAddon.create({
+      data: { trainerId: profile.id, itemId: 'events', active: true },
+    })
 
     // An accepted MANAGER + STAFF member (with passwords) so permission specs
     // can sign in as them. Members have a membership, no TrainerProfile.

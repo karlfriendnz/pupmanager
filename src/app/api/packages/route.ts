@@ -4,7 +4,12 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
-import { slotSchema, replacePackageSlots, derivedDropInFields } from '@/lib/package-slots'
+import {
+  slotSchema, replacePackageSlots, derivedDropInFields, runStartFromSlots,
+  ticketTierSchema, replaceTicketTiers,
+} from '@/lib/package-slots'
+import { createClassRunIn } from '@/lib/class-runs'
+import { syncClassSessions } from '@/lib/class-session-sync'
 
 const schema = z.object({
   name: z.string().min(1),
@@ -44,6 +49,17 @@ const schema = z.object({
   // capping itself. Present = this is a drop-in offering; its slots become the
   // session series and override allowDropIn/dropInPriceCents.
   sessionSlots: z.array(slotSchema).max(50).optional(),
+  // Scheduling. A group offering (class / drop-in / one-off event) saved with a
+  // start date is SCHEDULED as well as defined: it gets its first ClassRun and
+  // that run's sessions, so it shows up on /classes or /events straight away.
+  // Omit startAt to define the offering without putting it in the diary yet.
+  startAt: z.string().datetime().optional(),
+  scheduleNote: z.string().max(120).nullable().optional(),
+  location: z.string().max(200).nullable().optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  assignedMembershipIds: z.array(z.string()).max(50).optional(),
+  // What a one-off event sells: "Early bird $40 cap 20", "General $60".
+  ticketTiers: z.array(ticketTierSchema).max(20).optional(),
 })
 
 export async function GET() {
@@ -87,6 +103,17 @@ export async function POST(req: Request) {
   const slots = parsed.data.sessionSlots
   const dropIn = slots ? derivedDropInFields(slots) : null
 
+  // When to schedule the first run from. A class/event names its start date
+  // outright; a drop-in doesn't have one field for it — each slot carries its
+  // own "Starts from" — so fall back to the earliest of those, then to today.
+  const startAt = parsed.data.startAt
+    ? new Date(parsed.data.startAt)
+    : slots?.length
+      ? (runStartFromSlots(slots) ?? new Date())
+      : null
+  let runId: string | null = null
+  let createdSessionIds: string[] = []
+
   const pkg = await prisma.$transaction(async (tx) => {
     const created = await tx.package.create({
       data: {
@@ -118,7 +145,33 @@ export async function POST(req: Request) {
       },
     })
     if (slots) await replacePackageSlots(tx, created.id, trainerId, slots)
+    if (parsed.data.ticketTiers) await replaceTicketTiers(tx, created.id, parsed.data.ticketTiers)
+
+    // Defining a group offering with a start date also SCHEDULES it — same
+    // transaction, so we can never end up with a class that has no run (and
+    // therefore never appears on /classes or /events).
+    if (created.isGroup && startAt) {
+      const run = await createClassRunIn(tx, {
+        trainerId,
+        packageId: created.id,
+        name: created.name,
+        startDate: startAt,
+        scheduleNote: parsed.data.scheduleNote ?? null,
+        capacity: parsed.data.capacity ?? null,
+        imageUrl: parsed.data.imageUrl ?? null,
+        location: parsed.data.location ?? null,
+        assignedMembershipIds: parsed.data.assignedMembershipIds,
+        requirePayment: parsed.data.requirePayment ?? null,
+      })
+      runId = run.id
+      createdSessionIds = run.createdSessionIds
+    }
     return created
   })
-  return NextResponse.json(pkg, { status: 201 })
+
+  // Mirror the new sessions to Google Calendar post-commit, like every other
+  // session-creating path.
+  if (createdSessionIds.length) await syncClassSessions(createdSessionIds)
+
+  return NextResponse.json({ ...pkg, classRunId: runId }, { status: 201 })
 }

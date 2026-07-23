@@ -56,6 +56,73 @@ export function derivedDropInFields(slots: SlotInput[]): {
   }
 }
 
+export const ticketTierSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1).max(80),
+  priceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  capacity: z.number().int().min(0).max(100_000).nullable().optional(),
+  xeroAccountCode: z.string().max(50).nullable().optional(),
+})
+
+export type TicketTierInput = z.infer<typeof ticketTierSchema>
+
+/**
+ * Make the stored ticket tiers for `packageId` match `tiers` exactly. Same
+ * keep-the-id reconcile as the schedule slots, so a tier a client has already
+ * bought against isn't silently replaced by a new row on the next save.
+ * Unnamed tiers are dropped — the editor starts with a blank row.
+ */
+export async function replaceTicketTiers(
+  tx: Tx,
+  packageId: string,
+  tiers: TicketTierInput[],
+): Promise<void> {
+  const wanted = tiers.filter((t) => t.name.trim())
+  const existing = await tx.packageTicketTier.findMany({ where: { packageId }, select: { id: true } })
+  const existingIds = new Set(existing.map((t) => t.id))
+
+  const fields = (t: TicketTierInput, order: number) => ({
+    order,
+    name: t.name.trim(),
+    priceCents: t.priceCents ?? null,
+    capacity: t.capacity ?? null,
+    xeroAccountCode: t.xeroAccountCode || null,
+  })
+
+  const keptIds: string[] = []
+  for (const [i, t] of wanted.entries()) {
+    if (t.id && existingIds.has(t.id)) {
+      await tx.packageTicketTier.update({ where: { id: t.id }, data: fields(t, i) })
+      keptIds.push(t.id)
+    } else {
+      const created = await tx.packageTicketTier.create({ data: { packageId, ...fields(t, i) } })
+      keptIds.push(created.id)
+    }
+  }
+
+  const stale = [...existingIds].filter((id) => !keptIds.includes(id))
+  if (stale.length) {
+    await tx.packageTicketTier.deleteMany({ where: { id: { in: stale }, packageId } })
+  }
+}
+
+/**
+ * When a drop-in class's first run should start: the earliest "Starts from"
+ * across its slots. Null when no slot names one — the caller then starts from
+ * today, so a schedule with only days and times still lands in the diary.
+ *
+ * A drop-in has no start-date field of its own (each slot carries one), so
+ * without this it would save with no run at all — and a class with no run is
+ * invisible to clients, which is the exact failure this whole area had.
+ */
+export function runStartFromSlots(slots: SlotInput[]): Date | null {
+  const dates = slots
+    .map((s) => s.startDate)
+    .filter((d): d is string => !!d)
+    .sort()
+  return dates.length ? new Date(`${dates[0]}T00:00:00.000Z`) : null
+}
+
 /**
  * Make the stored slots for `packageId` match `slots` exactly.
  *

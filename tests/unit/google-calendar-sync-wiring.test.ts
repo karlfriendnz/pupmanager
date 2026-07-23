@@ -62,8 +62,13 @@ describe('class-runs helpers surface the created/deleted session ids', () => {
       sessionSlots: [],
       trainer: { user: { timezone: 'Pacific/Auckland' } },
     })
+    // The package is read INSIDE the transaction now, so a route that has just
+    // created it can schedule its run in the same one.
     const tx = {
+      package: { findFirst: h.packageFindFirst },
       classRun: { create: vi.fn().mockResolvedValue({ id: 'run-1' }) },
+      classRunTrainer: { deleteMany: vi.fn(), createMany: vi.fn() },
+      trainerMembership: { findMany: vi.fn().mockResolvedValue([]) },
       trainingSession: {
         createMany: vi.fn().mockResolvedValue({}),
         findMany: vi.fn().mockResolvedValue([{ id: 's1' }, { id: 's2' }, { id: 's3' }]),

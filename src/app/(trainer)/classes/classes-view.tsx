@@ -1,13 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { PageHeader } from '@/components/shared/page-header'
 import { Plus, GraduationCap, Users, ChevronRight } from 'lucide-react'
-import { ClassFormModal, type TeamMemberOption } from './class-form-modal'
 import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 
 type RunRow = {
@@ -31,12 +29,12 @@ const STATUS_STYLE: Record<RunRow['status'], string> = {
   CANCELLED: 'bg-red-50 text-red-600',
 }
 
-export function ClassesView({ runs, teamMembers = [], promptConnect = false, currency = 'NZD' }: { runs: RunRow[]; teamMembers?: TeamMemberOption[]; promptConnect?: boolean; currency?: string }) {
-  const router = useRouter()
-  const [showCreate, setShowCreate] = useState(false)
-  // Set (to the new class's name) when a priced class was just created and we
-  // want to pop the connect-Stripe modal over the (refreshed) list.
-  const [connectName, setConnectName] = useState<string | null>(null)
+// Creating a class lives in the offerings wizard (/offerings/new?kind=group) —
+// the one place a class is defined AND scheduled. This list only links to it.
+export function ClassesView({ runs, connectName: initialConnectName = null, currency = 'NZD' }: { runs: RunRow[]; connectName?: string | null; currency?: string }) {
+  // Set (to the new class's name) when the wizard bounced back here after
+  // creating a priced class and Stripe isn't connected yet.
+  const [connectName, setConnectName] = useState<string | null>(initialConnectName)
   const [tab, setTab] = useState<'current' | 'past'>('current')
 
   // Server hands the list back newest-start-first. Current classes read better
@@ -63,9 +61,11 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
               <p className="text-sm text-slate-400 mt-1 max-w-sm mx-auto">
                 Create your first class — e.g. &ldquo;Puppy Class, Thursdays 4pm for 6 weeks&rdquo;.
               </p>
-              <Button className="mt-4" onClick={() => setShowCreate(true)}>
-                <Plus className="h-4 w-4" /> New class
-              </Button>
+              <Link href="/offerings/new?kind=group" className="mt-4 inline-block">
+                <Button>
+                  <Plus className="h-4 w-4" /> New class
+                </Button>
+              </Link>
             </div>
           </CardBody>
         </Card>
@@ -109,9 +109,11 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
                     : 'Every class you have has finished. Start a new one to fill the calendar.'}
                 </p>
                 {tab === 'current' && (
-                  <Button className="mt-4" onClick={() => setShowCreate(true)}>
-                    <Plus className="h-4 w-4" /> New class
-                  </Button>
+                  <Link href="/offerings/new?kind=group" className="mt-4 inline-block">
+                    <Button>
+                      <Plus className="h-4 w-4" /> New class
+                    </Button>
+                  </Link>
                 )}
               </div>
             </CardBody>
@@ -165,34 +167,13 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
         </div>
         )}
         {/* Add sits at the BOTTOM of the list. */}
-        <button
-          type="button"
-          onClick={() => setShowCreate(true)}
+        <Link
+          href="/offerings/new?kind=group"
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 py-3.5 text-sm font-medium text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-600"
         >
           <Plus className="h-4 w-4" /> New class
-        </button>
+        </Link>
         </>
-      )}
-
-      {showCreate && (
-        <ClassFormModal
-          mode="create"
-          teamMembers={teamMembers}
-          promptConnect={promptConnect}
-          onClose={() => setShowCreate(false)}
-          onSaved={() => {
-            setShowCreate(false)
-            router.refresh()
-          }}
-          onConnectPrompt={(name) => {
-            // Close the create modal, refresh so the new class shows in the
-            // list, then pop the connect-Stripe modal over it.
-            setShowCreate(false)
-            router.refresh()
-            setConnectName(name)
-          }}
-        />
       )}
 
       {connectName && (

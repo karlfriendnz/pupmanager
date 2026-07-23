@@ -370,6 +370,28 @@ export function PackageForm({
         // keeps its own day, time, venue, staff, capacity and price. The server
         // derives allowDropIn / the headline price from them.
         ...(kind === 'dropin' && { sessionSlots: slots.map(slotToPayload) }),
+        // What a one-off event sells. Blank rows are dropped server-side.
+        ...(kind === 'oneoff' && {
+          ticketTiers: tickets.map(t => ({
+            id: t.id,
+            name: t.name,
+            priceCents: dollarsToCents(t.price),
+            capacity: t.capacity.trim() ? Math.max(0, Math.floor(Number(t.capacity))) : null,
+            xeroAccountCode: t.account || null,
+          })),
+        }),
+        // Scheduling. A group offering saved with a start date is put in the
+        // diary as well as defined: the server creates its first class run and
+        // that run's sessions, so it appears on /classes (or /events) at once.
+        // Only on create — rescheduling an existing class is its own flow, with
+        // the "don't move sessions that already have attendance" guard.
+        ...(!existing && isGroup && startAt && {
+          startAt: startAt.toISOString(),
+          scheduleNote: scheduleNote || null,
+          location: location || null,
+          imageUrl,
+          assignedMembershipIds: assignedIds,
+        }),
         recurrenceRule: isGroup && recurrenceRule ? recurrenceRule : null,
         allowWaitlist: isGroup && allowWaitlist,
         publicEnrollment: isGroup && publicEnrollment,

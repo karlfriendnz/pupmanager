@@ -4,7 +4,10 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
-import { slotSchema, replacePackageSlots, derivedDropInFields } from '@/lib/package-slots'
+import {
+  slotSchema, replacePackageSlots, derivedDropInFields,
+  ticketTierSchema, replaceTicketTiers,
+} from '@/lib/package-slots'
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -36,6 +39,8 @@ const updateSchema = z.object({
   // A drop-in class's schedule, sent whole. Omitted = leave the stored slots
   // alone; [] = clear them.
   sessionSlots: z.array(slotSchema).max(50).optional(),
+  // A one-off event's ticket types, sent whole. Omitted = leave them alone.
+  ticketTiers: z.array(ticketTierSchema).max(20).optional(),
 })
 
 async function ownPackage(packageId: string, trainerId: string) {
@@ -111,7 +116,7 @@ export async function PATCH(
   // Slots are a child table, not a column — keep them out of the package's own
   // update payload and reconcile them separately. When they're sent, they also
   // define the drop-in headline price, so it can't drift from the schedule.
-  const { sessionSlots, ...columns } = parsed.data
+  const { sessionSlots, ticketTiers, ...columns } = parsed.data
   const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
 
   const pkg = await prisma.$transaction(async (tx) => {
@@ -130,6 +135,7 @@ export async function PATCH(
     if (sessionSlots && !('sessionSlots' in extra)) {
       await replacePackageSlots(tx, packageId, trainerId, sessionSlots)
     }
+    if (ticketTiers) await replaceTicketTiers(tx, packageId, ticketTiers)
     return updated
   })
   return NextResponse.json(pkg)

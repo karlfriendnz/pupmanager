@@ -38,6 +38,22 @@ export function generateSessionDates(
   return out
 }
 
+/**
+ * The backing-package shape of a one-off EVENT: a group offering that runs once
+ * and doesn't repeat. An event is a ClassRun like any other — same cohort,
+ * roster, capacity and invoicing machinery, just a single session — so what
+ * makes it an "event" rather than a "class" is only this shape.
+ *
+ * Shared because two pages must agree on it exactly: /events selects it and
+ * /classes excludes it. If they ever drift, runs get listed twice or vanish.
+ */
+export const ONE_OFF_EVENT_PACKAGE = {
+  isGroup: true,
+  allowDropIn: false,
+  sessionCount: 1,
+  recurrenceRule: null,
+} as const
+
 // ─── Drop-in schedule slots ──────────────────────────────────────────────────
 
 /** The parts of a PackageSessionSlot the scheduler needs. Structural, so both
@@ -299,12 +315,7 @@ async function busiestSessionHeadcount(classRunId: string, tx: Tx = prisma): Pro
   return fulls + maxDropIns
 }
 
-/**
- * Create a ClassRun and its shared session series in one transaction.
- * Sessions carry classRunId + 1-based sessionIndex and no clientId —
- * attendance is per-enrollee via SessionAttendance.
- */
-export async function createClassRun(args: {
+export type CreateRunArgs = {
   trainerId: string
   packageId: string
   name: string
@@ -314,8 +325,39 @@ export async function createClassRun(args: {
   // Per-run override of the package's "gap before the next session".
   // undefined/null = inherit the package's bufferMins.
   bufferMins?: number | null
-}): Promise<{ id: string; sessionCount: number; createdSessionIds: string[] }> {
-  const pkg = await prisma.package.findFirst({
+  /** Cover image for the run (Vercel Blob URL). */
+  imageUrl?: string | null
+  /** Where the class meets. Copied onto every generated session. */
+  location?: string | null
+  /** TrainerMembership ids (of this company) running this class. */
+  assignedMembershipIds?: string[]
+  /** Tri-state "require payment to enrol": null = inherit the trainer default. */
+  requirePayment?: boolean | null
+}
+
+/**
+ * Create a ClassRun and its shared session series in one transaction.
+ * Sessions carry classRunId + 1-based sessionIndex and no clientId —
+ * attendance is per-enrollee via SessionAttendance.
+ */
+export async function createClassRun(
+  args: CreateRunArgs,
+): Promise<{ id: string; sessionCount: number; createdSessionIds: string[] }> {
+  return prisma.$transaction((tx) => createClassRunIn(tx, args))
+}
+
+/**
+ * The body of createClassRun, against a caller-supplied client — so a route
+ * that has just created the package inside its own transaction can schedule the
+ * run in that SAME transaction, instead of committing a package and then
+ * possibly failing to give it a run (Prisma has no nested interactive
+ * transactions, so the caller must own the outer one).
+ */
+export async function createClassRunIn(
+  tx: Tx,
+  args: CreateRunArgs,
+): Promise<{ id: string; sessionCount: number; createdSessionIds: string[] }> {
+  const pkg = await tx.package.findFirst({
     where: { id: args.packageId, trainerId: args.trainerId, isGroup: true },
     include: {
       sessionSlots: { include: { location: { select: { name: true, address: true } } } },
@@ -351,42 +393,45 @@ export async function createClassRun(args: {
         bufferMins: buffer,
         assignedMembershipId: null,
         packageSessionSlotId: null,
-        location: null as string | null,
+        // The run's venue, unless a slot named its own above.
+        location: args.location?.trim() || null,
       }))
 
-  return prisma.$transaction(async (tx) => {
-    const run = await tx.classRun.create({
-      data: {
-        trainerId: args.trainerId,
-        packageId: pkg.id,
-        name: args.name,
-        scheduleNote: args.scheduleNote ?? null,
-        startDate: args.startDate,
-        capacity: args.capacity ?? null,
-        bufferMins: args.bufferMins ?? null,
-      },
-    })
-    await tx.trainingSession.createMany({
-      data: rows.map((r, i) => ({
-        trainerId: args.trainerId,
-        classRunId: run.id,
-        sessionIndex: i + 1,
-        title:
-          rows.length > 1
-            ? `${args.name} — session ${i + 1}/${rows.length}`
-            : args.name,
-        sessionType: pkg.sessionType,
-        ...r,
-      })),
-    })
-    // createMany returns no ids — re-read them (visible inside this tx) so the
-    // caller can mirror just these sessions to Google Calendar post-commit.
-    const created = await tx.trainingSession.findMany({
-      where: { classRunId: run.id },
-      select: { id: true },
-    })
-    return { id: run.id, sessionCount: rows.length, createdSessionIds: created.map((s) => s.id) }
+  const run = await tx.classRun.create({
+    data: {
+      trainerId: args.trainerId,
+      packageId: pkg.id,
+      name: args.name,
+      scheduleNote: args.scheduleNote?.trim() || null,
+      startDate: args.startDate,
+      capacity: args.capacity ?? null,
+      bufferMins: args.bufferMins ?? null,
+      imageUrl: args.imageUrl ?? null,
+      location: args.location?.trim() || null,
+      requirePayment: args.requirePayment ?? null,
+    },
   })
+  await tx.trainingSession.createMany({
+    data: rows.map((r, i) => ({
+      trainerId: args.trainerId,
+      classRunId: run.id,
+      sessionIndex: i + 1,
+      title:
+        rows.length > 1
+          ? `${args.name} — session ${i + 1}/${rows.length}`
+          : args.name,
+      sessionType: pkg.sessionType,
+      ...r,
+    })),
+  })
+  await setRunTrainers(run.id, args.trainerId, args.assignedMembershipIds, tx)
+  // createMany returns no ids — re-read them (visible inside this tx) so the
+  // caller can mirror just these sessions to Google Calendar post-commit.
+  const created = await tx.trainingSession.findMany({
+    where: { classRunId: run.id },
+    select: { id: true },
+  })
+  return { id: run.id, sessionCount: rows.length, createdSessionIds: created.map((s) => s.id) }
 }
 
 /**

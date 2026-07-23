@@ -1584,6 +1584,7 @@ model Package {
   assignments        ClientPackage[]
   classRuns          ClassRun[]
   sessionSlots       PackageSessionSlot[]
+  ticketTiers        PackageTicketTier[]
   waitlistEntries    WaitlistEntry[]
   bookingRequests    BookingRequest[]
   bookingPages       BookingPage[]
@@ -1639,6 +1640,27 @@ model PackageSessionSlot {
   @@index([packageId])
   @@index([locationId])
   @@map("package_session_slots")
+}
+
+// A ticket type for a one-off event — "Early bird $40, cap 20" / "General $60".
+// Lives on the Package (the event's definition) rather than the run, the same
+// way price and capacity do; a run inherits whatever the event sells.
+model PackageTicketTier {
+  id              String  @id @default(cuid())
+  packageId       String
+  order           Int     @default(0)
+  name            String
+  priceCents      Int?    // null / 0 = free
+  capacity        Int?    // null = unlimited
+  xeroAccountCode String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@index([packageId])
+  @@map("package_ticket_tiers")
 }
 
 model ClientPackage {
