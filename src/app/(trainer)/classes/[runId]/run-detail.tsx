@@ -85,6 +85,7 @@ export function RunDetail({
   const formatPrice = (cents: number | null): string =>
     cents === null || cents === undefined ? '—' : formatMoney(cents, currency)
   const [tab, setTab] = useState<Tab>('details')
+  const [clientTab, setClientTab] = useState<'current' | 'past'>('current')
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -236,13 +237,16 @@ export function RunDetail({
             <img
               src={run.imageUrl}
               alt={run.name}
-              className="w-full h-40 sm:h-52 object-cover rounded-2xl border border-slate-200 mb-5"
+              className="w-full h-40 sm:h-52 object-cover rounded-2xl border border-slate-200"
             />
           )}
 
           {/* Class details */}
-          <Card className="mb-5">
+          <Card>
             <CardBody className="py-5">
+              <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-3">
+                <Info className="h-4 w-4 text-slate-400" /> Details
+              </h2>
               <div className="divide-y divide-slate-100">
                 {/* Read-only here, like every other fact on this card. It's
                     changed on the edit page, with the rest of the class. */}
@@ -305,19 +309,25 @@ export function RunDetail({
               ) : (
                 <ul className="divide-y divide-slate-100">
                   {sessions.map(s => (
-                    <li key={s.id} className="flex items-center gap-4 py-2.5">
-                      <p className="w-24 shrink-0 text-sm font-medium text-slate-900">Session {s.sessionIndex ?? '—'}</p>
-                      <p className="min-w-0 flex-1 text-sm text-slate-600" suppressHydrationWarning>
-                        {new Date(s.scheduledAt).toLocaleDateString([], { dateStyle: 'medium' })}
-                      </p>
-                      <p className="w-20 shrink-0 text-sm tabular-nums text-slate-600" suppressHydrationWarning>
-                        {new Date(s.scheduledAt).toLocaleTimeString([], { timeStyle: 'short' })}
-                      </p>
+                    <li key={s.id}>
+                      {/* The whole row is the link — the "Open" button was a
+                          small target for something the entire row means. */}
                       <Link
                         href={`/classes/${run.id}/sessions/${s.id}`}
-                        className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                        className="flex items-center gap-4 rounded-lg py-2.5 px-2 -mx-2 hover:bg-slate-50"
                       >
-                        <ClipboardCheck className="h-4 w-4" /> Open
+                        <p className="w-24 shrink-0 text-sm font-medium text-slate-900">Session {s.sessionIndex ?? '—'}</p>
+                        <p className="min-w-0 flex-1 text-sm text-slate-600" suppressHydrationWarning>
+                          {new Date(s.scheduledAt).toLocaleDateString([], { dateStyle: 'medium' })}
+                        </p>
+                        {/* Explicit hour12 — the browser locale renders 19:00
+                            here, and trainers read their day in am/pm. */}
+                        <p className="w-24 shrink-0 text-sm tabular-nums text-slate-600" suppressHydrationWarning>
+                          {new Date(s.scheduledAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                        </p>
+                        <span className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-medium text-slate-600">
+                          <ClipboardCheck className="h-4 w-4" /> Open
+                        </span>
                       </Link>
                     </li>
                   ))}
@@ -344,13 +354,41 @@ export function RunDetail({
                 <p className="text-sm text-slate-500 py-4 text-center">No one enrolled yet.</p>
               ) : (
                 <>
-                  {present.length > 0 && (
-                    <EnrollTable rows={present} onWithdraw={withdraw} withdrawable runId={run.id} />
-                  )}
-                  {past.length > 0 && (
-                    <div className="mt-5">
-                      <EnrollTable title="Past clients" rows={past} onWithdraw={withdraw} withdrawable={false} runId={run.id} />
-                    </div>
+                  {/* Current / past as tabs rather than two stacked tables —
+                      a long history of withdrawals shouldn't push who's
+                      actually in the class off the bottom. */}
+                  <div className="mb-3 inline-flex gap-1 rounded-xl bg-slate-100 p-1">
+                    {([
+                      { id: 'current' as const, label: 'Current', count: present.length },
+                      { id: 'past' as const, label: 'Past', count: past.length },
+                    ]).map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setClientTab(t.id)}
+                        aria-pressed={clientTab === t.id}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                          clientTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        {t.label}
+                        <span className={`min-w-4 rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${
+                          clientTab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+                        }`}>
+                          {t.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {clientTab === 'current' ? (
+                    present.length > 0
+                      ? <EnrollTable rows={present} onWithdraw={withdraw} withdrawable runId={run.id} />
+                      : <p className="text-sm text-slate-500 py-4 text-center">No one currently enrolled.</p>
+                  ) : (
+                    past.length > 0
+                      ? <EnrollTable rows={past} onWithdraw={withdraw} withdrawable={false} runId={run.id} />
+                      : <p className="text-sm text-slate-500 py-4 text-center">No past clients.</p>
                   )}
                 </>
               )}

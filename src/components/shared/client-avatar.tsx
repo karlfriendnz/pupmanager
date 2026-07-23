@@ -30,7 +30,10 @@ export function ClientAvatar({
       <img
         src={dogPhotoUrl}
         alt={name ?? 'Client'}
-        className={`${dim} flex-shrink-0 rounded-full object-cover bg-slate-100 ${className}`}
+        // `block`, not the default inline: an inline img sits on the text
+        // baseline and reserves descender space under it, so a row with a photo
+        // came out taller than the same row with initials (which is a flex box).
+        className={`${dim} block flex-shrink-0 rounded-full object-cover bg-slate-100 ${className}`}
       />
     )
   }
