@@ -1805,7 +1805,11 @@ model ClassEnrollment {
   attendance    SessionAttendance[]
   paymentItem   PaymentItem?
 
-  @@unique([classRunId, clientId, dogId])
+  // dropInSessionId is part of the key so a client can drop into SEVERAL
+  // sessions of the same run — one row each. A FULL enrolment leaves it null
+  // and is still one-per-client-and-dog, which enrollInRun enforces in code
+  // (Postgres treats NULLs as distinct, so the index alone can't).
+  @@unique([classRunId, clientId, dogId, dropInSessionId])
   @@index([classRunId])
   @@index([clientId])
   @@index([dropInSessionId])

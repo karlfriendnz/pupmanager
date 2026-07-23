@@ -406,7 +406,13 @@ export function RunDetail({
           runId={run.id}
           clients={clients}
           allowDropIn={run.allowDropIn}
-          existing={new Set(enrollments.filter(e => e.status !== 'WITHDRAWN').map(e => e.clientName))}
+          sessions={sessions}
+          // Only a FULL enrolment takes someone out of the running — they're
+          // already in every session. Someone with drop-ins booked can still
+          // be added to more, so they stay pickable.
+          existing={new Set(
+            enrollments.filter(e => e.status !== 'WITHDRAWN' && e.type === 'FULL').map(e => e.clientName),
+          )}
           onClose={() => setAdding(false)}
           onDone={() => {
             setAdding(false)
@@ -589,6 +595,7 @@ function EnrolModal({
   runId,
   clients,
   allowDropIn,
+  sessions,
   existing,
   onClose,
   onDone,
@@ -596,6 +603,7 @@ function EnrolModal({
   runId: string
   clients: ClientOpt[]
   allowDropIn: boolean
+  sessions: SessionRow[]
   existing: Set<string>
   onClose: () => void
   onDone: () => void
@@ -616,6 +624,11 @@ function EnrolModal({
     if (visible.length > 0 && !visible.some(c => c.id === clientId)) setClientId(visible[0].id)
   }, [visible, clientId])
   const [type, setType] = useState<'FULL' | 'DROP_IN'>('FULL')
+  // Which sessions a drop-in is being booked into. A drop-in is per session,
+  // so this is a multi-select — booking someone into three Saturdays is one
+  // trip through this form, not three.
+  const [sessionIds, setSessionIds] = useState<string[]>([])
+  const upcoming = sessions.filter(s => s.status === 'UPCOMING' && new Date(s.scheduledAt).getTime() > Date.now())
   const [notify, setNotify] = useState(true)
   // Ask them to pay now, or raise the invoice quietly and chase it later.
   const [sendInvoice, setSendInvoice] = useState(true)
@@ -629,17 +642,39 @@ function EnrolModal({
       setError('Pick a client.')
       return
     }
+    if (type === 'DROP_IN' && sessionIds.length === 0) {
+      setError('Pick at least one session to drop into.')
+      return
+    }
     const c = clients.find(x => x.id === clientId)
     setSaving(true)
     try {
       const res = await fetch(`/api/class-runs/${runId}/enrollments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, dogId: c?.dogId ?? null, type, notify, sendInvoice }),
+        body: JSON.stringify({
+          clientId,
+          dogId: c?.dogId ?? null,
+          type,
+          ...(type === 'DROP_IN' && { sessionIds }),
+          notify,
+          sendInvoice,
+        }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(body.error ?? 'Could not enrol that client.')
+        return
+      }
+      // Some of the chosen sessions can be full while others go through —
+      // say which, rather than closing as if it all worked.
+      const failed = (body.results ?? []).filter((r: { error?: string }) => r.error)
+      if (failed.length > 0) {
+        const names = failed
+          .map((r: { sessionId: string | null }) => upcoming.find(s => s.id === r.sessionId))
+          .filter(Boolean)
+          .map((s: SessionRow) => new Date(s.scheduledAt).toLocaleDateString([], { dateStyle: 'medium' }))
+        setError(`Booked ${body.booked} of ${sessionIds.length}. Couldn’t book ${names.join(', ')} — ${failed[0].error}`)
         return
       }
       onDone()
@@ -721,6 +756,59 @@ function EnrolModal({
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* A drop-in is per session, so which ones is the whole question.
+                  Tick as many as they're coming to — each is booked and billed
+                  on its own. */}
+              {allowDropIn && type === 'DROP_IN' && (
+                <div>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <label className="text-sm font-medium text-slate-700">Which sessions?</label>
+                    {upcoming.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSessionIds(sessionIds.length === upcoming.length ? [] : upcoming.map(s => s.id))}
+                        className="text-[11px] font-semibold text-blue-600 hover:underline"
+                      >
+                        {sessionIds.length === upcoming.length ? 'Clear all' : 'Select all'}
+                      </button>
+                    )}
+                  </div>
+                  {upcoming.length === 0 ? (
+                    <p className="text-sm text-slate-500">No sessions still to come in this class.</p>
+                  ) : (
+                    <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
+                      {upcoming.map(s => {
+                        const on = sessionIds.includes(s.id)
+                        return (
+                          <label
+                            key={s.id}
+                            className={`flex items-center gap-2.5 px-3 py-2.5 cursor-pointer ${on ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() => setSessionIds(prev => on ? prev.filter(x => x !== s.id) : [...prev, s.id])}
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <span className="min-w-0 flex-1 text-sm text-slate-700" suppressHydrationWarning>
+                              {new Date(s.scheduledAt).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
+                            </span>
+                            <span className="shrink-0 text-sm tabular-nums text-slate-500" suppressHydrationWarning>
+                              {new Date(s.scheduledAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {sessionIds.length > 0 && (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {sessionIds.length} session{sessionIds.length === 1 ? '' : 's'} — billed per session.
+                    </p>
+                  )}
                 </div>
               )}
               <label className="flex items-center gap-2.5 cursor-pointer pt-1">

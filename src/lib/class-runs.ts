@@ -898,19 +898,50 @@ export async function enrollInRun(args: {
     }
 
     // Re-enrolling after withdrawal reuses the row; a live enrolment is a
-    // conflict (the unique index also enforces this at the DB level).
-    // findFirst, not findUnique: the @@unique includes nullable dogId, and
-    // SQL NULLs aren't equal — Prisma's compound-unique selector can't
-    // express "dogId IS NULL". A plain equality where handles both cases.
+    // conflict. What counts as "the same enrolment" differs by type: a FULL
+    // enrolment is one per client+dog for the whole run, while a drop-in is
+    // per session — the same client can drop into several sessions of the run,
+    // so only a live row for THAT session clashes.
+    //
+    // findFirst, not findUnique: the @@unique includes nullable columns, and
+    // SQL NULLs aren't equal — Prisma's compound-unique selector can't express
+    // "dogId IS NULL". A plain equality where handles both cases.
+    const mine = {
+      classRunId: args.classRunId,
+      clientId: args.clientId,
+      dogId: args.dogId ?? null,
+    }
     const existing = await tx.classEnrollment.findFirst({
-      where: {
-        classRunId: args.classRunId,
-        clientId: args.clientId,
-        dogId: args.dogId ?? null,
-      },
+      where: { ...mine, dropInSessionId },
     })
     if (existing && existing.status !== 'WITHDRAWN') {
-      throw new ClassError('ALREADY_ENROLLED', 'Already enrolled in this class')
+      throw new ClassError(
+        'ALREADY_ENROLLED',
+        type === 'DROP_IN' ? 'Already booked into that session' : 'Already enrolled in this class',
+      )
+    }
+    // A FULL enrolment already puts them in every session, so a drop-in on top
+    // of it would double-book and double-bill them.
+    if (type === 'DROP_IN') {
+      const full = await tx.classEnrollment.findFirst({
+        where: { ...mine, dropInSessionId: null, status: { not: 'WITHDRAWN' } },
+      })
+      if (full) {
+        throw new ClassError('ALREADY_ENROLLED', 'They’re already enrolled in the whole class')
+      }
+    }
+    // …and the same the other way round: taking the whole run while they hold
+    // drop-in bookings would bill those sessions twice.
+    if (type === 'FULL') {
+      const drops = await tx.classEnrollment.count({
+        where: { ...mine, dropInSessionId: { not: null }, status: { not: 'WITHDRAWN' } },
+      })
+      if (drops > 0) {
+        throw new ClassError(
+          'ALREADY_ENROLLED',
+          'They already have drop-in sessions booked — withdraw those first.',
+        )
+      }
     }
 
     // Capacity is per-session. FULL must fit the busiest session (it's in every
