@@ -11,6 +11,7 @@ import { BufferField } from '@/components/shared/buffer-field'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { DateTimePicker } from '@/components/shared/date-time-picker'
+import { AddLocationModal } from '@/components/shared/add-location-modal'
 import { SessionSlotsEditor, newSlot, type SessionSlot } from '@/components/shared/session-slots'
 import { TicketTiersEditor, newTier, type TicketTier } from '@/components/shared/ticket-tiers'
 import { Input } from '@/components/ui/input'
@@ -161,6 +162,7 @@ export function PackageForm({
   // a location id = that saved place, '__custom' = type a one-off address.
   const [savedLocations, setSavedLocations] = useState<{ id: string; name: string; address: string | null }[]>([])
   const [locationChoice, setLocationChoice] = useState<string>('')
+  const [addLocationOpen, setAddLocationOpen] = useState(false)
   useEffect(() => {
     let off = false
     fetch('/api/trainer/locations')
@@ -343,6 +345,19 @@ export function PackageForm({
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
       {error && <div className="md:col-span-2"><Alert variant="error">{error}</Alert></div>}
+
+      {addLocationOpen && (
+        <AddLocationModal
+          region={region}
+          onClose={() => setAddLocationOpen(false)}
+          onCreated={loc => {
+            setSavedLocations(prev => [...prev, { id: loc.id, name: loc.name, address: loc.address }])
+            setLocationChoice(loc.id)
+            setLocation(loc.address || loc.name)
+            setAddLocationOpen(false)
+          }}
+        />
+      )}
 
       {/* ── Step 1 · details ───────────────────────────────────────── */}
       <SectionHeading step={1} title="Details" />
@@ -594,7 +609,7 @@ export function PackageForm({
               )}
               <button
                 type="button"
-                onClick={() => { setLocationChoice('__custom'); setLocation('') }}
+                onClick={() => setAddLocationOpen(true)}
                 title="Add a new location"
                 aria-label="Add a new location"
                 className="h-11 w-11 shrink-0 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:border-blue-400 hover:text-blue-600"
