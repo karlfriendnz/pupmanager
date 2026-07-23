@@ -116,6 +116,7 @@ export function PackageForm({
   existing,
   sessionForms,
   region,
+  initialKind,
   onCancel,
   onSaved,
 }: {
@@ -123,6 +124,8 @@ export function PackageForm({
   sessionForms: SessionFormOption[]
   /** ISO country code for localising Google address suggestions. */
   region?: string
+  /** Pre-select the kind when creating (from the "+" menu on a specific page). */
+  initialKind?: OfferingKind
   onCancel: () => void
   onSaved: (p: PkgRow, isNew: boolean) => void
 }) {
@@ -153,12 +156,13 @@ export function PackageForm({
   const [requireSessionNotes, setRequireSessionNotes] = useState<boolean>(existing?.requireSessionNotes ?? true)
   // Turnaround gap blocked out after each session of this package.
   const [bufferMins, setBufferMins] = useState<number>(existing?.bufferMins ?? 0)
-  // Group-class config — extra state (not RHF fields).
-  const [isGroup, setIsGroup] = useState<boolean>(existing?.isGroup ?? false)
+  // Group-class config — extra state (not RHF fields). New offerings can be
+  // pre-set to a kind via the "+" menu (initialKind).
+  const [isGroup, setIsGroup] = useState<boolean>(existing?.isGroup ?? (initialKind != null && initialKind !== 'onetoone'))
   const [capacity, setCapacity] = useState<string>(
     existing?.capacity != null ? String(existing.capacity) : '',
   )
-  const [allowDropIn, setAllowDropIn] = useState<boolean>(existing?.allowDropIn ?? false)
+  const [allowDropIn, setAllowDropIn] = useState<boolean>(existing?.allowDropIn ?? (initialKind === 'dropin'))
   const [dropInPrice, setDropInPrice] = useState<string>(centsToDollars(existing?.dropInPriceCents ?? null))
   const [recurrenceRule, setRecurrenceRule] = useState<string>(existing?.recurrenceRule ?? '')
   // Class-only scheduling (lives on a ClassRun today — see the audit). Shown for
@@ -208,7 +212,8 @@ export function PackageForm({
   // It's a UI discriminator over the persisted flags: a one-off event is a
   // group with a single session and no recurrence.
   const [kind, setKind] = useState<OfferingKind>(() => {
-    if (!existing?.isGroup) return 'onetoone'
+    if (!existing) return initialKind ?? 'onetoone'
+    if (!existing.isGroup) return 'onetoone'
     if (existing.allowDropIn) return 'dropin'
     if (existing.sessionCount === 1 && !existing.recurrenceRule) return 'oneoff'
     return 'group'

@@ -47,14 +47,10 @@ export function ClassesView({ runs, teamMembers = [], promptConnect = false, cur
 
   return (
     <>
+      {/* Creating happens from the top control-bar "+" (New offering). */}
       <PageHeader
         title="Group Classes"
         subtitle="Run a class — pick the day, time and how many weeks. Clients enrol into one shared timetable with a roster, capacity and waitlist."
-        actions={
-          <Button onClick={() => setShowCreate(true)}>
-            <Plus className="h-4 w-4" /> New class
-          </Button>
-        }
       />
 
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">

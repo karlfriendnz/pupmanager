@@ -9,7 +9,12 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'New package' }
 
-export default async function NewPackagePage() {
+const KINDS = ['onetoone', 'group', 'dropin', 'oneoff'] as const
+type OfferingKind = (typeof KINDS)[number]
+
+export default async function NewPackagePage({ searchParams }: { searchParams: Promise<{ kind?: string }> }) {
+  const sp = await searchParams
+  const initialKind = KINDS.includes(sp.kind as OfferingKind) ? (sp.kind as OfferingKind) : undefined
   const session = await auth()
   if (!session) redirect('/login')
 
@@ -45,7 +50,7 @@ export default async function NewPackagePage() {
         back={{ href: '/packages', label: 'Back to packages' }}
       />
       <div className="p-4 md:p-8 w-full max-w-[872px] mx-auto">
-        <NewPackageForm sessionForms={sessionForms} promptConnect={promptConnect} region={region} />
+        <NewPackageForm sessionForms={sessionForms} promptConnect={promptConnect} region={region} initialKind={initialKind} />
       </div>
     </>
   )

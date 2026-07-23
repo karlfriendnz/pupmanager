@@ -106,15 +106,8 @@ export function PackagesView({
 
   return (
     <>
-      <PageHeader
-        title="1:1 Packages"
-        actions={
-          <Button size="sm" onClick={() => router.push('/packages/new')}>
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">New package</span>
-          </Button>
-        }
-      />
+      {/* Creating happens from the top control-bar "+" (New offering). */}
+      <PageHeader title="1:1 Packages" />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       <p className="text-sm text-slate-500 mb-4">
         Bundles of sessions you can assign to clients in one go.

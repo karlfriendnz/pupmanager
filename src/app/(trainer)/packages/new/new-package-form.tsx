@@ -13,10 +13,12 @@ import { PackageForm, type PkgRow, type SessionFormOption } from '../package-for
 export function NewPackageForm({
   sessionForms,
   region,
+  initialKind,
   promptConnect,
 }: {
   sessionForms: SessionFormOption[]
   region?: string
+  initialKind?: 'onetoone' | 'group' | 'dropin' | 'oneoff'
   promptConnect: boolean
 }) {
   const router = useRouter()
@@ -36,6 +38,7 @@ export function NewPackageForm({
       existing={null}
       sessionForms={sessionForms}
       region={region}
+      initialKind={initialKind}
       onCancel={() => router.push('/packages')}
       onSaved={handleSaved}
     />

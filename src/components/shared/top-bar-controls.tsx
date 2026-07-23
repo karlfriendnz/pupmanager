@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
-import { Search, HelpCircle, Settings, LogOut, ChevronDown, Flame, Bell, Plus, UserPlus, Receipt, X } from 'lucide-react'
+import { Search, HelpCircle, Settings, LogOut, ChevronDown, Flame, Bell, Plus, UserPlus, Receipt, X, Package, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { signOutWithPush } from '@/lib/sign-out'
 import { OrgSwitcher } from './org-switcher'
@@ -355,15 +355,40 @@ export function TopBarControls({
         {addOpen && (
           <div
             role="menu"
-            className="absolute right-0 mt-2 w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
+            className="absolute right-0 mt-2 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
           >
+            {/* New offering — defaults to the "what are you setting up?" chooser,
+                but pre-picks the kind when you're on a specific offering page. */}
+            <button
+              role="menuitem"
+              onClick={() => {
+                setAddOpen(false)
+                const href = pathname.startsWith('/classes') ? '/packages/new?kind=group'
+                  : pathname.startsWith('/drop-ins') ? '/packages/new?kind=dropin'
+                  : '/packages/new'
+                router.push(href)
+              }}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              <Package className="h-4 w-4 text-slate-400" />
+              New offering
+            </button>
+            <div className="my-1 border-t border-slate-100" />
             <button
               role="menuitem"
               onClick={() => { setAddOpen(false); router.push('/clients?new=1') }}
               className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
             >
+              <Zap className="h-4 w-4 text-slate-400" />
+              Quick client
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => { setAddOpen(false); router.push('/clients/invite') }}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
+            >
               <UserPlus className="h-4 w-4 text-slate-400" />
-              New client
+              Full client
             </button>
             {canSell && (
               <button
