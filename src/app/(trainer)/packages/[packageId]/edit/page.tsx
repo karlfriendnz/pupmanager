@@ -37,7 +37,7 @@ export default async function EditPackagePage({
         classRuns: {
           orderBy: { startDate: 'asc' },
           select: {
-            id: true, startDate: true, scheduleNote: true, location: true, imageUrl: true,
+            id: true, startDate: true, status: true, scheduleNote: true, location: true, imageUrl: true,
             assignedTrainers: { select: { membershipId: true } },
             // Once anyone has been marked present the dates are fixed, so the
             // form shows them read-only rather than offering a move it'd refuse.
@@ -81,7 +81,7 @@ export default async function EditPackagePage({
         title={`Edit ${kindLabel}`}
         back={back}
       />
-      <div className="p-4 md:p-8 w-full max-w-[872px] mx-auto">
+      <div className="p-4 md:p-8 w-full max-w-[872px] mx-auto pm-centered">
         <EditPackageForm
           region={region}
           existing={{
@@ -118,6 +118,7 @@ export default async function EditPackagePage({
             runCount: pkg.classRuns.length,
             startAtIso: run?.startDate.toISOString() ?? null,
             hasAttendance,
+            runStatus: run?.status,
             scheduleNote: run?.scheduleNote ?? null,
             location: run?.location ?? null,
             imageUrl: run?.imageUrl ?? null,

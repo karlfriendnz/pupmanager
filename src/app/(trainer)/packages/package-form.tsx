@@ -80,6 +80,8 @@ export interface PkgRow {
   startAtIso?: string | null
   /** Someone has been marked present, so the dates can no longer move. */
   hasAttendance?: boolean
+  /** The scheduled class's lifecycle state. */
+  runStatus?: 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
   scheduleNote?: string | null
   location?: string | null
   imageUrl?: string | null
@@ -271,6 +273,9 @@ export function PackageForm({
   // True when this offering is already in the diary as exactly one class.
   const scheduled = !!existing?.classRunId
   const hasAttendance = !!existing?.hasAttendance
+  const [runStatus, setRunStatus] = useState<'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'>(
+    existing?.runStatus ?? 'SCHEDULED',
+  )
   const [location, setLocation] = useState<string>(existing?.location ?? '')
   const [imageUrl, setImageUrl] = useState<string | null>(existing?.imageUrl ?? null)
   const [scheduleNote, setScheduleNote] = useState<string>(existing?.scheduleNote ?? '')
@@ -435,6 +440,7 @@ export function PackageForm({
         // create AND edit — on edit the server applies them to the run, which
         // is the whole reason they're on this form.
         ...(isGroup && {
+          ...(scheduled && { status: runStatus }),
           scheduleNote: scheduleNote || null,
           location: location || null,
           imageUrl,
@@ -753,6 +759,25 @@ export function PackageForm({
             <span className="block text-[11px] text-slate-400 mt-0.5">Open runs show publicly; requests arrive as enquiries for you to accept.</span>
           </span>
         </label>
+      )}
+
+      {/* Where this class is up to. Only meaningful once it's in the diary —
+          an unscheduled offering has no run to have a status. */}
+      {scheduled && (
+        <div>
+          <label htmlFor="run-status" className="text-sm font-medium text-slate-700 block mb-1.5">Status</label>
+          <select
+            id="run-status"
+            value={runStatus}
+            onChange={e => setRunStatus(e.target.value as typeof runStatus)}
+            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(st => (
+              <option key={st} value={st}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-[11px] text-slate-400">Completed and cancelled classes move to the Past tab.</p>
+        </div>
       )}
 
       {/* The human cadence, in the trainer's own words. It's what the class

@@ -9,7 +9,6 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info, Check, Send, FileText, AlertTriangle, Search } from 'lucide-react'
-import { type TeamMemberOption } from '../class-form-modal'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 
@@ -75,13 +74,11 @@ export function RunDetail({
   sessions,
   enrollments,
   clients,
-  teamMembers,
 }: {
   run: Run
   sessions: SessionRow[]
   enrollments: Enrollment[]
   clients: ClientOpt[]
-  teamMembers: TeamMemberOption[]
 }) {
   const router = useRouter()
   const currency = useCurrency()
@@ -121,28 +118,12 @@ export function RunDetail({
   const past = enrollments.filter(e => e.status === 'WITHDRAWN' || e.status === 'COMPLETED')
   const seatsLabel =
     run.capacity == null ? `${enrolled.length} enrolled` : `${enrolled.length} / ${run.capacity}`
-  const spotsLeft = run.capacity == null ? null : Math.max(0, run.capacity - enrolled.length)
-
-  // Attendance rate across every marked roster cell for the run.
-  const totalMarked = enrollments.reduce((s, e) => s + e.markedCount, 0)
-  const totalAttended = enrollments.reduce((s, e) => s + e.attendedCount, 0)
-  const attendanceRate = totalMarked > 0 ? Math.round((totalAttended / totalMarked) * 100) : null
 
   // Revenue estimate: full price per non-withdrawn enrolment (drop-ins excluded
   // from the headline — their per-session pricing is computed elsewhere).
   const billable = enrollments.filter(e => e.status !== 'WITHDRAWN' && e.type === 'FULL').length
   const revenue = run.priceCents != null ? run.priceCents * billable : null
 
-  async function setStatus(status: RunStatus) {
-    setError(null)
-    const res = await fetch(`/api/class-runs/${run.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
-    if (!res.ok) setError('Could not update the class status.')
-    else router.refresh()
-  }
 
   async function withdraw(enrollmentId: string) {
     setError(null)
@@ -162,17 +143,61 @@ export function RunDetail({
     <>
       <PageHeader
         title={run.name}
-        subtitle={run.scheduleNote ? `${run.scheduleNote} · ${seatsLabel}` : seatsLabel}
         back={{ href: '/classes', label: 'Classes' }}
+        // Delete / Edit belong with the other page-level controls in the top
+        // bar, not floating above the content.
+        actions={
+          <div className="flex items-center gap-2">
+            {!confirmingDelete ? (
+              <button
+                onClick={() => setConfirmingDelete(true)}
+                title="Delete class"
+                className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+              >
+                <Trash2 className="h-4 w-4 text-rose-500" />
+                <span className="hidden sm:inline">Delete</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-600 hidden sm:inline">Delete this class?</span>
+                <button
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={deleting}
+                  aria-label="Cancel"
+                  className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
+                >
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Yes, delete
+                </button>
+              </div>
+            )}
+            {/* The whole class is edited on one full page — the same form, in
+                the same order, as the wizard that created it. */}
+            <Link href={`/packages/${run.packageId}/edit`}>
+              <Button variant="secondary">
+                <Pencil className="h-4 w-4" /> <span className="hidden sm:inline">Edit</span>
+              </Button>
+            </Link>
+          </div>
+        }
       />
 
-      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+      {/* Full width — two columns of detail need the room, and capping it
+          wastes half a wide monitor. */}
+      <div className="p-4 md:p-8 w-full">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Tabs and the class controls share one line — status, Delete and Edit
-          all sit beside the tabs rather than on a row of their own. Wraps on a
-          narrow phone. */}
-      <div className="flex flex-wrap items-center gap-2 mb-6">
+      {/* Tabs are phone-only — a wide screen shows both columns at once, so
+          switching between them would be switching between two things already
+          on screen. Delete/Edit live in the top control bar. */}
+      <div className="flex flex-wrap items-center gap-2 mb-6 lg:hidden">
       <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl max-w-xs">
         {tabs.map(t => {
           const Icon = t.icon
@@ -197,54 +222,14 @@ export function RunDetail({
           )
         })}
       </div>
-
-      {tab === 'details' && (
-        <div className="ml-auto flex items-center gap-2">
-            <div className="flex items-center gap-2">
-              {!confirmingDelete ? (
-                <button
-                  onClick={() => setConfirmingDelete(true)}
-                  title="Delete class"
-                  className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-                >
-                  <Trash2 className="h-4 w-4 text-rose-500" />
-                  <span>Delete</span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-slate-600 hidden sm:inline">Delete this class?</span>
-                  <button
-                    onClick={() => setConfirmingDelete(false)}
-                    disabled={deleting}
-                    aria-label="Cancel"
-                    className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
-                  >
-                    {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    Yes, delete
-                  </button>
-                </div>
-              )}
-              {/* The whole class is edited on one full page — the same form,
-                  in the same order, as the wizard that created it. */}
-              <Link href={`/packages/${run.packageId}/edit`}>
-                <Button variant="secondary">
-                  <Pencil className="h-4 w-4" /> Edit
-                </Button>
-              </Link>
-            </div>
-        </div>
-      )}
       </div>
 
-      {tab === 'details' ? (
-        <>
+      {/* Two columns on a wide screen: the class on the left (what it is, then
+          its sessions), the people on the right. The tabs still switch on a
+          phone, where there's only room for one at a time. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 lg:items-start gap-5">
+
+      <div className={`flex flex-col gap-5 ${tab === 'details' ? '' : 'hidden lg:flex'}`}>
 
           {run.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -258,29 +243,27 @@ export function RunDetail({
           {/* Class details */}
           <Card className="mb-5">
             <CardBody className="py-5">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                {/* Status sits with the other class details rather than off in
-                    the toolbar — it's a property of the class, and editable in
-                    place. */}
-                <div className="min-w-0">
-                  <label htmlFor="class-status" className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</label>
-                  <select
-                    id="class-status"
-                    value={run.status}
-                    onChange={e => setStatus(e.target.value as RunStatus)}
-                    className="mt-0.5 block w-full -ml-2 rounded-lg border border-transparent bg-transparent px-2 py-0.5 text-sm font-medium text-slate-800 hover:border-slate-200 hover:bg-white focus:border-slate-200 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(st => (
-                      <option key={st} value={st}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="divide-y divide-slate-100">
+                {/* Read-only here, like every other fact on this card. It's
+                    changed on the edit page, with the rest of the class. */}
+                <Detail label="Status" value={run.status.charAt(0) + run.status.slice(1).toLowerCase()} />
                 <Detail label="Schedule" value={run.scheduleNote || 'Weekly'} />
                 <Detail label="Starts" value={new Date(run.startDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} />
-                <Detail label="Sessions" value={String(sessions.length)} />
                 <Detail label="Length" value={`${run.durationMins} min`} />
                 <Detail label="Format" value={run.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'} />
-                <Detail label="Price" value={formatPrice(run.priceCents)} />
+                <Detail
+                  label="Waitlist"
+                  value={run.allowWaitlist
+                    ? (waitlisted.length > 0 ? `Enabled, ${waitlisted.length}` : 'Enabled')
+                    : 'Off'}
+                />
+                {run.allowDropIn && <Detail label="Drop-ins" value="Allowed" />}
+                {/* Price and revenue read together — what one seat costs, and
+                    what the class has sold — so they share a row. */}
+                <DetailPair
+                  label="Price" value={formatPrice(run.priceCents)}
+                  label2="Revenue" value2={revenue != null ? formatPrice(revenue) : '—'}
+                />
                 {run.location && <Detail label="Location" value={run.location} />}
               </div>
               {/* The description is what clients are sent when they're booked
@@ -307,13 +290,6 @@ export function RunDetail({
                   </div>
                 </div>
               )}
-              {(run.allowDropIn || run.allowWaitlist) && (
-                <p className="text-xs text-slate-400 mt-3">
-                  {run.allowDropIn && 'Drop-ins allowed'}
-                  {run.allowDropIn && run.allowWaitlist && ' · '}
-                  {run.allowWaitlist && 'Waitlist enabled'}
-                </p>
-              )}
             </CardBody>
           </Card>
 
@@ -329,11 +305,14 @@ export function RunDetail({
               ) : (
                 <ul className="divide-y divide-slate-100">
                   {sessions.map(s => (
-                    <li key={s.id} className="flex items-center gap-3 py-2.5">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-900">Session {s.sessionIndex ?? '—'}</p>
-                        <p className="text-xs text-slate-500" suppressHydrationWarning>{new Date(s.scheduledAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
-                      </div>
+                    <li key={s.id} className="flex items-center gap-4 py-2.5">
+                      <p className="w-24 shrink-0 text-sm font-medium text-slate-900">Session {s.sessionIndex ?? '—'}</p>
+                      <p className="min-w-0 flex-1 text-sm text-slate-600" suppressHydrationWarning>
+                        {new Date(s.scheduledAt).toLocaleDateString([], { dateStyle: 'medium' })}
+                      </p>
+                      <p className="w-20 shrink-0 text-sm tabular-nums text-slate-600" suppressHydrationWarning>
+                        {new Date(s.scheduledAt).toLocaleTimeString([], { timeStyle: 'short' })}
+                      </p>
                       <Link
                         href={`/classes/${run.id}/sessions/${s.id}`}
                         className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-medium text-slate-600 hover:bg-slate-100"
@@ -346,19 +325,9 @@ export function RunDetail({
               )}
             </CardBody>
           </Card>
-        </>
-      ) : (
-        <>
-          {/* Stats strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-            <Stat label="Capacity" value={run.capacity != null ? String(run.capacity) : '∞'} />
-            <Stat label="Enrolled" value={String(enrolled.length)} />
-            <Stat label="Waitlisted" value={String(waitlisted.length)} />
-            <Stat label="Spots left" value={spotsLeft != null ? String(spotsLeft) : '∞'} />
-            <Stat label="Attendance" value={attendanceRate != null ? `${attendanceRate}%` : '—'} />
-            <Stat label="Revenue" value={revenue != null ? formatPrice(revenue) : '—'} />
-          </div>
+      </div>
 
+      <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden lg:flex'}`}>
           <Card>
             <CardBody className="py-5">
               <div className="flex items-center justify-between mb-3">
@@ -376,7 +345,7 @@ export function RunDetail({
               ) : (
                 <>
                   {present.length > 0 && (
-                    <EnrollTable title="Current roster" rows={present} onWithdraw={withdraw} withdrawable runId={run.id} />
+                    <EnrollTable rows={present} onWithdraw={withdraw} withdrawable runId={run.id} />
                   )}
                   {past.length > 0 && (
                     <div className="mt-5">
@@ -387,9 +356,23 @@ export function RunDetail({
               )}
             </CardBody>
           </Card>
-        </>
-      )}
+      </div>
 
+      </div>
+
+      {adding && (
+        <EnrolModal
+          runId={run.id}
+          clients={clients}
+          allowDropIn={run.allowDropIn}
+          existing={new Set(enrollments.filter(e => e.status !== 'WITHDRAWN').map(e => e.clientName))}
+          onClose={() => setAdding(false)}
+          onDone={() => {
+            setAdding(false)
+            router.refresh()
+          }}
+        />
+      )}
 
       </div>
     </>
@@ -403,7 +386,8 @@ function EnrollTable({
   withdrawable,
   runId,
 }: {
-  title: string
+  /** Omitted for the main roster — the card heading already names it. */
+  title?: string
   rows: Enrollment[]
   onWithdraw: (id: string) => void
   withdrawable: boolean
@@ -432,7 +416,7 @@ function EnrollTable({
 
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1 px-1">{title} ({rows.length})</p>
+      {title && <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1 px-1">{title} ({rows.length})</p>}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -529,25 +513,34 @@ function EnrollTable({
   )
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+/** Two facts on one row, each keeping the label-left shape. */
+function DetailPair({
+  label, value, label2, value2,
+}: { label: string; value: string; label2: string; value2: string }) {
   return (
-    <div className="min-w-0">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-      {/* Dates render in the viewer's locale/timezone, which differs from the
-          server's UTC SSR — suppress the expected hydration text mismatch. */}
-      <p className="text-sm font-medium text-slate-800 mt-0.5 truncate" suppressHydrationWarning>{value}</p>
+    <div className="flex flex-col gap-2.5 py-2.5 first:pt-0 last:pb-0 sm:flex-row sm:gap-4">
+      <div className="flex flex-1 items-baseline gap-4">
+        <p className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+        <p className="min-w-0 flex-1 text-sm font-medium text-slate-800">{value}</p>
+      </div>
+      <div className="flex flex-1 items-baseline gap-4">
+        <p className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400 sm:w-auto">{label2}</p>
+        <p className="min-w-0 flex-1 text-sm font-medium text-slate-800">{value2}</p>
+      </div>
     </div>
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+/** One fact about the class: label on the left, value beside it — the same
+ *  shape as the session rows below, and it never truncates the value. */
+function Detail({ label, value }: { label: string; value: string }) {
   return (
-    <Card>
-      <CardBody className="py-3 px-4">
-        <p className="text-xl font-semibold text-slate-900 tabular-nums">{value}</p>
-        <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      </CardBody>
-    </Card>
+    <div className="flex items-baseline gap-4 py-2.5 first:pt-0 last:pb-0">
+      <p className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      {/* Dates render in the viewer's locale/timezone, which differs from the
+          server's UTC SSR — suppress the expected hydration text mismatch. */}
+      <p className="min-w-0 flex-1 text-sm font-medium text-slate-800" suppressHydrationWarning>{value}</p>
+    </div>
   )
 }
 

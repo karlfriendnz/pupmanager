@@ -47,6 +47,7 @@ const updateSchema = z.object({
   // exactly one (see syncOfferingRun). This form edits the WHOLE class, dates
   // included; moving them is refused once attendance has been recorded.
   startAt: z.string().datetime().optional(),
+  status: z.enum(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED']).optional(),
   scheduleNote: z.string().max(120).nullable().optional(),
   location: z.string().max(200).nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
@@ -128,7 +129,7 @@ export async function PATCH(
   // define the drop-in headline price, so it can't drift from the schedule.
   const {
     sessionSlots, ticketTiers,
-    scheduleNote, location, imageUrl, assignedMembershipIds, startAt,
+    scheduleNote, location, imageUrl, assignedMembershipIds, startAt, status,
     ...columns
   } = parsed.data
   const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
@@ -164,7 +165,7 @@ export async function PATCH(
     if (updated.isGroup) {
       const synced = await syncOfferingRun(tx, packageId, trainerId, {
         name: columns.name,
-        scheduleNote, location, imageUrl, assignedMembershipIds,
+        scheduleNote, location, imageUrl, assignedMembershipIds, status,
         // The schedule too: this form edits the whole class, so changing the
         // date or the number of sessions has to move the sessions themselves.
         ...(startAt && { startDate: new Date(startAt) }),

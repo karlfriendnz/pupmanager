@@ -49,7 +49,7 @@ export default async function NewPackagePage({ searchParams }: { searchParams: P
         title="New offering"
         back={{ href: '/packages', label: 'Back to offerings' }}
       />
-      <div className="p-4 md:p-8 w-full max-w-[872px] mx-auto">
+      <div className="p-4 md:p-8 w-full max-w-[872px] mx-auto pm-centered">
         <NewPackageForm sessionForms={sessionForms} promptConnect={promptConnect} region={region} initialKind={initialKind} />
       </div>
     </>

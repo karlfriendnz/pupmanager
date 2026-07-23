@@ -557,6 +557,8 @@ export async function syncOfferingRun(
     location?: string | null
     imageUrl?: string | null
     assignedMembershipIds?: string[]
+    /** Where the class is up to — SCHEDULED / RUNNING / COMPLETED / CANCELLED. */
+    status?: 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
     /** Schedule. Provide all three to move the series; omit to leave it be. */
     startDate?: Date
     sessionCount?: number
@@ -608,6 +610,7 @@ export async function syncOfferingRun(
       ...(fields.scheduleNote !== undefined && { scheduleNote: fields.scheduleNote?.trim() || null }),
       ...(fields.location !== undefined && { location: fields.location?.trim() || null }),
       ...(fields.imageUrl !== undefined && { imageUrl: fields.imageUrl }),
+      ...(fields.status !== undefined && { status: fields.status }),
       ...(scheduleChanged && fields.startDate && { startDate: fields.startDate }),
     },
   })

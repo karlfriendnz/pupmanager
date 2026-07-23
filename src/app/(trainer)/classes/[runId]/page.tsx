@@ -19,7 +19,7 @@ export default async function ClassRunPage({
   const { runId } = await params
   // attendanceCount filters by classRunId === runId (the param), so it doesn't
   // depend on the run lookup — fan all of these out in parallel.
-  const [run, attendanceCount, enrolmentInvoices, clients, teamMembers] = await Promise.all([
+  const [run, attendanceCount, enrolmentInvoices, clients] = await Promise.all([
     prisma.classRun.findFirst({
       where: { id: runId, trainerId },
       include: {
@@ -56,12 +56,6 @@ export default async function ClassRunPage({
         dog: { select: { id: true, name: true } },
       },
       orderBy: { user: { name: 'asc' } },
-    }),
-    // Team members of this company (trainerId === companyId) for the assign UI.
-    prisma.trainerMembership.findMany({
-      where: { companyId: trainerId },
-      select: { id: true, title: true, role: true, user: { select: { name: true } } },
-      orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
     }),
   ])
   if (!run) notFound()
@@ -136,12 +130,6 @@ export default async function ClassRunPage({
         name: c.user.name ?? 'Unnamed client',
         dogId: c.dog?.id ?? null,
         dogName: c.dog?.name ?? null,
-      }))}
-      teamMembers={teamMembers.map(m => ({
-        id: m.id,
-        name: m.user.name ?? 'Team member',
-        title: m.title,
-        isOwner: m.role === 'OWNER',
       }))}
     />
   )

@@ -288,4 +288,8 @@ button, a, [role="button"] {
    `mx-auto` (cards, empty states) is untouched — it isn't a direct child. */
 @media (min-width: 1600px) {
   .pm-main > .mx-auto { margin-left: 0; margin-right: auto; }
+  /* …except a form. A narrow single-column form pinned to the left edge of a
+     wide monitor reads as broken rather than deliberate, so `pm-centered`
+     opts back in to real centering. */
+  .pm-main > .mx-auto.pm-centered { margin-left: auto; margin-right: auto; }
 }
