@@ -504,19 +504,23 @@ export function PackageForm({
         <BufferField id="package-buffer" value={bufferMins} onChange={setBufferMins} />
       )}
 
-      <div>
-        <label className="text-sm font-medium text-slate-700 block mb-1.5">Session type</label>
-        <div className="flex gap-2">
-          {(['IN_PERSON', 'VIRTUAL'] as const).map(t => (
-            <label key={t} className="flex-1">
-              <input type="radio" value={t} className="sr-only peer" {...register('sessionType')} />
-              <div className="text-center py-2 rounded-xl border border-slate-200 text-sm cursor-pointer peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 transition-colors">
-                {t === 'IN_PERSON' ? '📍 In person' : '💻 Virtual'}
-              </div>
-            </label>
-          ))}
+      {/* Drop-in classes carry their own per-session details in the cards, so
+          the class-level type / capacity / location are hidden for them. */}
+      {kind !== 'dropin' && (
+        <div>
+          <label className="text-sm font-medium text-slate-700 block mb-1.5">Session type</label>
+          <div className="flex gap-2">
+            {(['IN_PERSON', 'VIRTUAL'] as const).map(t => (
+              <label key={t} className="flex-1">
+                <input type="radio" value={t} className="sr-only peer" {...register('sessionType')} />
+                <div className="text-center py-2 rounded-xl border border-slate-200 text-sm cursor-pointer peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 transition-colors">
+                  {t === 'IN_PERSON' ? '📍 In person' : '💻 Virtual'}
+                </div>
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Join link — a virtual session needs somewhere to meet online. */}
       {watch('sessionType') === 'VIRTUAL' && (
@@ -533,7 +537,7 @@ export function PackageForm({
       )}
 
       {/* Capacity is a class-only limit, so it sits with the schedule. */}
-      {isGroup && (
+      {isGroup && kind !== 'dropin' && (
         <div>
           <label className="text-sm font-medium text-slate-700 block mb-1.5">Capacity (optional)</label>
           <input
@@ -560,9 +564,9 @@ export function PackageForm({
         </label>
       )}
 
-      {/* Where it meets — class-only (ClassRun.location). A schedule note
-          ("Thursdays 4pm") only makes sense for a recurring class. */}
-      {kind !== 'onetoone' && (
+      {/* Where it meets — class-only (ClassRun.location). Not for drop-in
+          (each session card has its own location). */}
+      {kind !== 'onetoone' && kind !== 'dropin' && (
         <>
           <div className="md:col-span-2">
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Location <span className="text-slate-400">(optional)</span></label>
@@ -592,9 +596,10 @@ export function PackageForm({
                 type="button"
                 onClick={() => { setLocationChoice('__custom'); setLocation('') }}
                 title="Add a new location"
-                className="h-11 shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 hover:border-blue-400 hover:text-blue-600"
+                aria-label="Add a new location"
+                className="h-11 w-11 shrink-0 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:border-blue-400 hover:text-blue-600"
               >
-                <Plus className="h-4 w-4" /> New
+                <Plus className="h-5 w-5" />
               </button>
             </div>
             {(savedLocations.length === 0 || locationChoice === '__custom') && (
