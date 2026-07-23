@@ -126,6 +126,27 @@ export function PackageForm({
   onCancel: () => void
   onSaved: (p: PkgRow, isNew: boolean) => void
 }) {
+  // Editing an existing offering drops the wizard chrome: no step numbers, no
+  // "What are you setting up?" chooser — just the fields, plus Delete/Clone.
+  const stepped = !existing
+  const [deleting, setDeleting] = useState(false)
+  const [cloning, setCloning] = useState(false)
+  async function handleDelete() {
+    if (!existing || deleting) return
+    if (!confirm('Delete this offering? This can’t be undone.')) return
+    setDeleting(true)
+    const res = await fetch(`/api/packages/${existing.id}`, { method: 'DELETE' })
+    if (res.ok) window.location.href = '/packages'
+    else { setError('Could not delete this offering.'); setDeleting(false) }
+  }
+  async function handleClone() {
+    if (!existing || cloning) return
+    setCloning(true)
+    const res = await fetch(`/api/packages/${existing.id}/clone`, { method: 'POST' })
+    const body = await res.json().catch(() => null) as { id?: string } | null
+    if (res.ok && body?.id) window.location.href = `/packages/${body.id}/edit`
+    else { setError('Could not clone this offering.'); setCloning(false) }
+  }
   const [error, setError] = useState<string | null>(null)
   const [color, setColor] = useState<PackageColor | null>(existing?.color ?? null)
   const [defaultSessionFormId, setDefaultSessionFormId] = useState<string | null>(existing?.defaultSessionFormId ?? null)
@@ -228,35 +249,6 @@ export function PackageForm({
   // Convert 1:1 ↔ group. Its own request because the server refuses the change
   // while the package is in use and explains why — a message worth showing
   // rather than folding into a generic save failure.
-  const [converting, setConverting] = useState(false)
-  const [convertError, setConvertError] = useState<string | null>(null)
-  async function handleConvert() {
-    if (!existing || converting) return
-    const target = !isGroup
-    const msg = target
-      ? 'Convert this into a group class? It will run as cohorts with a roster and capacity.'
-      : 'Convert this back into a 1:1 package? Capacity, waitlist and drop-in settings will be cleared.'
-    if (!confirm(msg)) return
-    setConverting(true)
-    setConvertError(null)
-    try {
-      const res = await fetch(`/api/packages/${existing.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isGroup: target }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null) as { error?: unknown } | null
-        setConvertError(typeof body?.error === 'string' ? body.error : 'Could not convert this package.')
-        return
-      }
-      setIsGroup(target)
-      if (!target) { setCapacity(''); setAllowDropIn(false); setAllowWaitlist(false); setPublicEnrollment(false) }
-    } finally {
-      setConverting(false)
-    }
-  }
-
   async function onSubmit(values: FormValues) {
     setError(null)
     // When Xero is connected with a curated shortlist, the income account is
@@ -360,7 +352,7 @@ export function PackageForm({
       )}
 
       {/* ── Step 1 · details ───────────────────────────────────────── */}
-      <SectionHeading step={1} title="Details" />
+      <SectionHeading step={stepped ? 1 : undefined} title="Details" />
 
       <div className="md:col-span-2">
         <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" error={errors.name?.message} {...register('name')} />
@@ -375,38 +367,17 @@ export function PackageForm({
         />
       </div>
 
-      {/* Kind sits inside step 1 — name it, then say what it is. */}
+      {/* Kind chooser — only when ADDING (a wizard). Editing is one page and
+          skips this; the offering's kind is already set. */}
+      {stepped && (
+      <>
       <div className="md:col-span-2">
         <p className="text-sm font-medium text-slate-700 mb-2">What are you setting up?</p>
       </div>
 
-      {existing ? (
-        // Editing: changing kind is a deliberate CONVERSION (it moves the
-        // package between two halves of the system and is refused once it's in
-        // use), so it keeps its own button + round-trip, separate from Save.
-        <div className="md:col-span-2 rounded-xl border border-slate-200 px-3.5 py-3 flex items-start gap-3">
-          <span className="flex-1 min-w-0">
-            <span className="block text-sm font-semibold text-slate-800">{isGroup ? 'Group class' : '1:1 package'}</span>
-            <span className="block text-xs text-slate-400 mt-0.5">
-              {isGroup
-                ? 'Runs as cohorts — one shared schedule, many clients, a roster and capacity.'
-                : 'Assigned to one client at a time, with their own sessions.'}
-            </span>
-            {convertError && <span className="block text-[11px] font-medium mt-1.5 text-red-600">{convertError}</span>}
-          </span>
-          <button
-            type="button"
-            onClick={handleConvert}
-            disabled={converting}
-            className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            {converting ? 'Converting…' : isGroup ? 'Convert to 1:1 package' : 'Convert to group class'}
-          </button>
-        </div>
-      ) : (
-        // Creating: choose what this IS. Drop-in is a group class that takes
-        // single-session bookings, so it presets isGroup + allowDropIn.
-        <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+      {/* Choose what this IS. Drop-in is a group class that takes single-session
+          bookings, so it presets isGroup + allowDropIn. */}
+      <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           {([
             { key: 'onetoone', icon: User, label: '1-on-1 session', desc: 'One-on-one sessions you book with a single client — grooming, a training session, a consult.' },
             { key: 'group', icon: Users, label: 'Group class', desc: 'A cohort shares one schedule and roster and signs up for the whole course.' },
@@ -429,11 +400,12 @@ export function PackageForm({
               </button>
             )
           })}
-        </div>
+      </div>
+      </>
       )}
 
       {/* ── Step 2 · sessions & schedule ───────────────────────────── */}
-      <SectionHeading step={2} title="Sessions & schedule" />
+      <SectionHeading step={stepped ? 2 : undefined} title="Sessions & schedule" />
 
       {/* One schedule model everywhere: a run of N sessions every W weeks.
           1:1, group and drop-in all use it; only a one-off event has no cadence. */}
@@ -623,7 +595,7 @@ export function PackageForm({
       {/* ── Step 3 · pricing — a drop-in prices per session, so no pricing step. */}
       {kind !== 'dropin' && (
       <>
-      <SectionHeading step={3} title="Pricing" hint={
+      <SectionHeading step={stepped ? 3 : undefined} title="Pricing" hint={
         kind === 'oneoff' ? 'What it costs to attend the event.'
           : kind === 'group' ? 'The full-course price.'
           : 'Leave blank for no set price.'
@@ -678,7 +650,7 @@ export function PackageForm({
       )}
 
       {/* ── Settings (step 3 for drop-in, which has no pricing step). ── */}
-      <SectionHeading step={kind === 'dropin' ? 3 : 4} title="Settings" />
+      <SectionHeading step={stepped ? (kind === 'dropin' ? 3 : 4) : undefined} title="Settings" />
 
       {/* Who delivers it — assignable per kind (drop-in assigns per session). */}
       {team.length > 1 && kind !== 'dropin' && (
@@ -840,9 +812,19 @@ export function PackageForm({
         )}
       </div>
 
-      <div className="md:col-span-2 flex gap-2 pt-2">
-        <Button type="submit" loading={isSubmitting}>{existing ? 'Save changes' : 'Create package'}</Button>
+      <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 mt-2">
+        <Button type="submit" loading={isSubmitting}>{existing ? 'Save changes' : 'Create offering'}</Button>
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
+        {existing && (
+          <div className="ml-auto flex items-center gap-2">
+            <button type="button" onClick={handleClone} disabled={cloning} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+              {cloning ? 'Cloning…' : 'Clone'}
+            </button>
+            <button type="button" onClick={handleDelete} disabled={deleting} className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3.5 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        )}
       </div>
     </form>
   )
@@ -851,10 +833,12 @@ export function PackageForm({
 /** A numbered section divider that spans the form's 2-col grid — breaks the
  * long form into clear, ordered steps without turning it into a multi-page
  * wizard (the whole thing still saves in one go). */
-function SectionHeading({ step, title, hint }: { step: number; title: string; hint?: string }) {
+function SectionHeading({ step, title, hint }: { step?: number; title: string; hint?: string }) {
   return (
     <div className="md:col-span-2 flex items-center gap-3 pt-3 first:pt-0 border-t border-slate-100 first:border-0 mt-1 first:mt-0">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white text-sm font-bold">{step}</span>
+      {step != null && (
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white text-sm font-bold">{step}</span>
+      )}
       <div className="min-w-0">
         <h2 className="text-base font-semibold text-slate-900 leading-tight">{title}</h2>
         {hint && <p className="text-[11px] text-slate-400 leading-tight mt-0.5">{hint}</p>}
