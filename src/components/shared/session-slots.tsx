@@ -39,8 +39,11 @@ const DAYS = [
 
 const GAP_HELP = 'Time you need after each session — travel, clean-up, a breather. Nothing can be booked into it.'
 
+/** A blank slot. The times start empty rather than at a guessed 3–5pm: a
+ *  prefilled time reads as a real one, and a trainer who doesn't notice it
+ *  publishes a session at an hour they never chose. */
 export function newSlot(): SessionSlot {
-  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 1, start: '15:00', end: '17:00', gap: '0', capacity: '', price: '', specialPrice: '', account: '', requirePayment: false, assignedIds: [], locationId: '', repeat: 'FREQ=WEEKLY' }
+  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 1, start: '', end: '', gap: '0', capacity: '', price: '', specialPrice: '', account: '', requirePayment: false, assignedIds: [], locationId: '', repeat: 'FREQ=WEEKLY' }
 }
 
 function Row({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {

@@ -47,16 +47,26 @@ export function RequirePaymentField({
       <div className="flex flex-wrap gap-1.5">
         {options.map(opt => {
           const on = opt.val === value
+          // On "Use my default", the option that default resolves to is what
+          // will actually happen — so it's shown as in force too, softly, and
+          // the trainer doesn't have to read the bracket to know which it is.
+          const inEffect = value === null && trainerDefault != null && opt.val === trainerDefault
           return (
             <button
               key={String(opt.val)}
               type="button"
               onClick={() => onChange(opt.val)}
-              className={`text-sm px-3 py-1.5 rounded-full border transition-colors ${
-                on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'
+              aria-pressed={on}
+              className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border transition-colors ${
+                on
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : inEffect
+                    ? 'border-blue-200 bg-blue-50/60 text-blue-600'
+                    : 'border-slate-200 text-slate-600 hover:border-slate-300'
               }`}
             >
               {opt.label}
+              {inEffect && <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-400">in effect</span>}
             </button>
           )
         })}
