@@ -26,7 +26,7 @@ export default async function AchievementsPage() {
 
   return (
     <>
-      <PageHeader title="Achievements" />
+      <PageHeader title="Achievements" subtitle="Badges and milestones dogs earn as they train, to keep clients motivated." />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
       <p className="text-sm text-slate-500 mb-6">
         Build a catalogue of badges your clients can earn — first session completed, off-leash recall, 30-day streak, anything that fits your programme.

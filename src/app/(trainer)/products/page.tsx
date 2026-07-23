@@ -22,7 +22,7 @@ export default async function ProductsPage() {
 
   return (
     <>
-      <PageHeader title="Products" />
+      <PageHeader title="Products" subtitle="One-off things you sell alongside training — gear, food, toys and add-ons." />
       <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
       <p className="text-sm text-slate-500 mb-6">
         Sell physical items and digital downloads to your clients.

@@ -746,7 +746,7 @@ export function LibraryBrowser({ initialTypes, clients }: Props) {
 
   return (
     <>
-      <PageHeader title="Library" />
+      <PageHeader title="Library" subtitle="Reusable session templates you can drop into any client's plan." />
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
 
       {!selectedTypeId && <TypesView />}

@@ -54,7 +54,7 @@ export default async function TrainerSettingsPage() {
 
   const user = await prisma.user.findUnique({
     where: { id: ctx.userId },
-    select: { name: true, email: true, timezone: true, notifyEmail: true, notifyPush: true, landingPage: true },
+    select: { name: true, email: true, timezone: true, notifyEmail: true, notifyPush: true, landingPage: true, showPageHelp: true },
   })
 
   if (!user || !trainerProfile) redirect('/login')

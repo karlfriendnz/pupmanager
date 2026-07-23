@@ -8,6 +8,7 @@ import { can, type PermissionKey } from '@/lib/permissions'
 import { getEnabledAddons } from '@/lib/billing'
 import type { AddonId } from '@/lib/pricing'
 import { AppShell } from '@/components/shared/app-shell'
+import { PageHelpProvider } from '@/components/shared/page-title'
 import { ShieldAlert } from 'lucide-react'
 import { BookingConflictProvider } from '@/components/schedule/booking-conflict-dialog'
 import { CurrencyProvider } from '@/components/currency-context'
@@ -170,9 +171,10 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // (Settings → Business). Per-user, so staff and owner can differ.
   const me = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { landingPage: true },
+    select: { landingPage: true, showPageHelp: true },
   })
   const homeHref = me?.landingPage === 'schedule' ? '/schedule' : '/dashboard'
+  const showPageHelp = me?.showPageHelp ?? true
 
   // The top bar's "+" offers "New sale" only when the instant-sale add-on is on
   // AND this member may raise one. Presentation only — POST
@@ -246,6 +248,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   }
 
   return (
+    <PageHelpProvider show={showPageHelp}>
     <AppShell
       role="TRAINER"
       streak={streak}
@@ -295,5 +298,6 @@ export default async function TrainerLayout({ children }: { children: React.Reac
         <BookingConflictProvider>{children}</BookingConflictProvider>
       </CurrencyProvider>
     </AppShell>
+    </PageHelpProvider>
   )
 }

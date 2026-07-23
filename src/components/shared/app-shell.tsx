@@ -773,12 +773,16 @@ function TrainerMobileHeader({
   businessName,
   fallbackTitle,
   homeHref,
+  canSell = false,
+  currency = 'nzd',
 }: {
   trainerIcon?: string | null
   trainerLogo?: string | null
   businessName?: string
   fallbackTitle: string
   homeHref: string
+  canSell?: boolean
+  currency?: string
 }) {
   // A page's own title (via PageHeader) wins; otherwise fall back to the nav
   // label for the route, so pages with a custom header (e.g. /schedule) still
@@ -813,6 +817,8 @@ function TrainerMobileHeader({
         </span>
         {/* Page-actions slot — always present (empty:hidden). */}
         <span id="pm-topbar-actions-mobile" className="flex items-center gap-1.5 empty:hidden" />
+        {/* Create "+" — the phone counterpart to the desktop control bar's. */}
+        <FloatingCreateButton canSell={canSell} currency={currency} />
         {/* The same slide-out search as desktop — one implementation, so the
             scope selector, type-ahead and keyboard handling can't diverge. */}
         <TopBarControls variant="search" />
@@ -967,7 +973,7 @@ function TrainerShell({
           logo and business name, never "PupManager". Sticky (not fixed) so it
           occupies flow and no page needs new top padding; pads the safe-area
           inset so it clears the notch. */}
-      <TrainerMobileHeader trainerIcon={trainerIcon} trainerLogo={trainerLogo} businessName={businessName} fallbackTitle={navFallbackTitle} homeHref={homeHref} />
+      <TrainerMobileHeader trainerIcon={trainerIcon} trainerLogo={trainerLogo} businessName={businessName} fallbackTitle={navFallbackTitle} homeHref={homeHref} canSell={canSell} currency={currency} />
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
           Hidden inside Settings, which brings its own rail. */}
@@ -1190,10 +1196,8 @@ function TrainerShell({
           own safe-area-inset-top. Pages without a sticky bar fall back
           to the <main> safe-area pad below. */}
 
-      {/* Mobile "+" — the phone counterpart to the desktop control bar's, which
-          is hidden below md. Dashboard only, so it never covers another page's
-          primary action. */}
-      {pathname === '/dashboard' && <FloatingCreateButton canSell={canSell} currency={currency} />}
+      {/* The mobile "+" now lives in the top bar (TrainerMobileHeader), matching
+          the desktop control bar, so it's reachable from every page. */}
 
       {/* Mobile bottom tab bar — 4 primary destinations + More. Hidden on the
           offering wizard, whose own Back/Next bar owns the bottom of the phone. */}

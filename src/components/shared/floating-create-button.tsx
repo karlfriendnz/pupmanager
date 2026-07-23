@@ -3,16 +3,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Plus, Receipt, UserPlus, Package, Zap } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { SaleComposer } from './sale-composer'
 
 // The mobile "+" — the phone counterpart to the desktop control bar's "+".
 //
-// The desktop control bar is `hidden md:flex`, so its "+" is invisible on a
-// phone. This is the phone answer, and it offers the SAME choices (New
-// offering / Quick client / Full client / New sale) so the two stay in step.
-// It floats above the bottom nav on the dashboard only, rather than following
-// every page, so it never sits on top of a page's own primary action.
+// Lives in the mobile top bar (TrainerMobileHeader), NOT as a floating dashboard
+// button, so it's reachable from every page just like the desktop one. Offers
+// the SAME choices (New offering / Quick client / Full client / New sale) so the
+// two bars stay in step. Opening it lays a blurred scrim over the page so the
+// choices stand out.
 export function FloatingCreateButton({
   canSell = false,
   currency = 'nzd',
@@ -59,35 +58,31 @@ export function FloatingCreateButton({
         />
       )}
 
-      {/* Sits above the bottom bar (h-16) plus the safe-area inset, so it
-          clears the nav and the home indicator on a notched phone. */}
-      <div
-        ref={ref}
-        className="md:hidden fixed right-4 z-50 flex flex-col items-end gap-2"
-        style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom, 0px) + 1rem)' }}
-      >
-        {open && (
-          <div className="flex flex-col items-end gap-2 animate-pm-fade">
-            <FabAction icon={<Package className="h-4 w-4" />} label="New offering" onClick={newOffering} />
-            <FabAction icon={<Zap className="h-4 w-4" />} label="Quick client" onClick={() => { setOpen(false); router.push('/clients?new=1') }} />
-            <FabAction icon={<UserPlus className="h-4 w-4" />} label="Full client" onClick={() => { setOpen(false); router.push('/clients/invite') }} />
-            {canSell && (
-              <FabAction icon={<Receipt className="h-4 w-4" />} label="New sale" onClick={() => { setOpen(false); setSaleOpen(true) }} />
-            )}
-          </div>
-        )}
-
+      <div ref={ref} className="relative z-50 shrink-0">
         <button
           onClick={() => setOpen((v) => !v)}
           aria-label="Create"
+          aria-haspopup="menu"
           aria-expanded={open}
-          className={cn(
-            'flex h-14 w-14 items-center justify-center rounded-full bg-[var(--pm-brand-600)] text-white shadow-lg transition-transform active:scale-95',
-            open && 'rotate-45',
-          )}
+          className="grid h-9 w-9 place-items-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
         >
-          <Plus className="h-6 w-6" />
+          <Plus className="h-[18px] w-[18px]" />
         </button>
+
+        {open && (
+          <div
+            role="menu"
+            className="absolute right-0 mt-2 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white py-1 shadow-xl animate-pm-fade"
+          >
+            <MenuItem icon={<Package className="h-4 w-4 text-slate-400" />} label="New offering" onClick={newOffering} />
+            <div className="my-1 border-t border-slate-100" />
+            <MenuItem icon={<Zap className="h-4 w-4 text-slate-400" />} label="Quick client" onClick={() => { setOpen(false); router.push('/clients?new=1') }} />
+            <MenuItem icon={<UserPlus className="h-4 w-4 text-slate-400" />} label="Full client" onClick={() => { setOpen(false); router.push('/clients/invite') }} />
+            {canSell && (
+              <MenuItem icon={<Receipt className="h-4 w-4 text-slate-400" />} label="New sale" onClick={() => { setOpen(false); setSaleOpen(true) }} />
+            )}
+          </div>
+        )}
       </div>
 
       <SaleComposer open={saleOpen} onClose={() => setSaleOpen(false)} currency={currency} />
@@ -95,13 +90,14 @@ export function FloatingCreateButton({
   )
 }
 
-function FabAction({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+function MenuItem({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
     <button
+      role="menuitem"
       onClick={onClick}
-      className="flex items-center gap-2 rounded-full bg-white py-2.5 pl-4 pr-5 text-sm font-medium text-slate-700 shadow-lg active:bg-slate-50"
+      className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-slate-50"
     >
-      <span className="text-slate-400">{icon}</span>
+      {icon}
       {label}
     </button>
   )

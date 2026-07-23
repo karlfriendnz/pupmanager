@@ -80,7 +80,7 @@ export default async function ReportsPage({
 
   return (
     <>
-      <PageHeader title="Reports" />
+      <PageHeader title="Reports" subtitle="See how your business is doing — clients, revenue and activity over time." />
       <div className="p-4 md:p-8 w-full max-w-6xl mx-auto">
         <ReportsExplorer
           reports={reports}

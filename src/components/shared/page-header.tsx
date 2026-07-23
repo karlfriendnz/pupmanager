@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { SetPageTitle, useHasPageTitleShell } from './page-title'
+import { SetPageTitle, useHasPageTitleShell, usePageHelp } from './page-title'
 import { PageHeaderTopBarPortal } from './page-header-portal'
 
 // Either a Link (href) or a click handler (onClick — e.g. router.back() so
@@ -36,10 +36,20 @@ export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) 
   // In the trainer shell the phone top bar renders the title + back itself, so
   // the in-page mobile header below would duplicate it — skip it there.
   const shellOwnsMobileHeader = useHasPageTitleShell()
+  const showHelp = usePageHelp()
   return (
     <>
       <SetPageTitle title={title} />
       <PageHeaderTopBarPortal back={back} actions={actions} />
+      {/* One-line "what this page is" helper. The trainer top bar shows only the
+          title (no subtitle), so the description renders here in-flow, on every
+          viewport, below the bar. Trainers can hide it in Settings. Client shell
+          keeps its own subtitle in the mobile header above, so skip it there. */}
+      {shellOwnsMobileHeader && showHelp && subtitle && (
+        <div className="px-4 md:px-8 pt-3 md:pt-5">
+          <p className="text-sm text-slate-500 max-w-3xl">{subtitle}</p>
+        </div>
+      )}
       {/* Mobile-only in-page header — only when the shell's top bar doesn't
           already show the page title (i.e. the client shell). */}
       {!shellOwnsMobileHeader && (

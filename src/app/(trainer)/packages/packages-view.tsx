@@ -107,11 +107,8 @@ export function PackagesView({
   return (
     <>
       {/* Creating happens from the top control-bar "+" (New offering). */}
-      <PageHeader title="1:1 Packages" />
+      <PageHeader title="1:1 Packages" subtitle="Bundles of sessions you assign to a client in one go — set the count, spacing and price once." />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
-      <p className="text-sm text-slate-500 mb-4">
-        Bundles of sessions you can assign to clients in one go.
-      </p>
 
       {packages.length === 0 ? (
         <Card>

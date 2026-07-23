@@ -108,6 +108,10 @@ model User {
   // Universal to any user (trainer or client); set via the email unsubscribe
   // link. The in-app bell announcement is never suppressed by this.
   productEmailOptOut Boolean @default(false)
+  // Show the one-line "what this page is" helper text under each page's title.
+  // On by default for newcomers; trainers can turn it off in Settings once the
+  // app is familiar.
+  showPageHelp Boolean @default(true)
 
   // Soft delete. When set, the account is "deactivated" — blocked from signing
   // in — but all its data is retained. Admins deactivate/reactivate from
