@@ -1,5 +1,6 @@
 'use client'
 
+import { Info } from 'lucide-react'
 import { normalizeBufferMins } from '@/lib/buffer'
 
 // The trainer-facing control for a package's / class's turnaround gap — the
@@ -41,8 +42,15 @@ export function BufferField({
   const mins = normalizeBufferMins(value)
   return (
     <div>
-      <label htmlFor={id} className="text-sm font-medium text-slate-700 block mb-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1.5">
         Gap before the next session
+        {/* Help moved into an info bubble (hover/tap) to keep the field compact. */}
+        <span className="group relative inline-flex">
+          <Info className="h-3.5 w-3.5 text-slate-400 cursor-help" aria-label={help} />
+          <span className="pointer-events-none absolute left-1/2 bottom-full z-20 mb-1.5 hidden -translate-x-1/2 w-56 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[11px] font-normal leading-snug text-white shadow-lg group-hover:block">
+            {help}
+          </span>
+        </span>
       </label>
       <select
         id={id}
@@ -54,7 +62,6 @@ export function BufferField({
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
-      <p className="text-[11px] text-slate-400 mt-1">{help}</p>
     </div>
   )
 }

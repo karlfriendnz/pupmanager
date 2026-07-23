@@ -9,12 +9,13 @@ import { Plus, X } from 'lucide-react'
 export type TicketTier = {
   id: string
   name: string
+  account: string // Xero account code (optional; blank until Xero is wired)
   price: string // dollars as typed; '' = free
   capacity: string // '' = unlimited
 }
 
 export function newTier(): TicketTier {
-  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, name: '', price: '', capacity: '' }
+  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, name: '', account: '', price: '', capacity: '' }
 }
 
 export function TicketTiersEditor({
@@ -31,15 +32,19 @@ export function TicketTiersEditor({
 
   return (
     <div className="md:col-span-2 flex flex-col gap-2">
-      <div className="hidden sm:grid grid-cols-[1.6fr_1fr_1fr_auto] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        <span>Ticket name</span><span>Price</span><span>Capacity</span><span />
+      <div className="hidden sm:grid grid-cols-[1.4fr_1.2fr_0.9fr_0.9fr_auto] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        <span>Ticket name</span><span>Account</span><span>Price</span><span>Capacity</span><span />
       </div>
 
       {value.map(t => (
-        <div key={t.id} className="grid grid-cols-2 sm:grid-cols-[1.6fr_1fr_1fr_auto] gap-2 items-center rounded-xl border border-slate-100 bg-slate-50/40 sm:bg-transparent sm:border-0 p-2 sm:p-0">
+        <div key={t.id} className="grid grid-cols-2 sm:grid-cols-[1.4fr_1.2fr_0.9fr_0.9fr_auto] gap-2 items-center rounded-xl border border-slate-100 bg-slate-50/40 sm:bg-transparent sm:border-0 p-2 sm:p-0">
           <label className="flex flex-col gap-1 col-span-2 sm:col-span-1">
             <span className="sm:hidden text-[11px] font-medium text-slate-400">Ticket name</span>
             <input value={t.name} onChange={e => update(t.id, { name: e.target.value })} placeholder="e.g. General, VIP" className={cell} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="sm:hidden text-[11px] font-medium text-slate-400">Account</span>
+            <input value={t.account} onChange={e => update(t.id, { account: e.target.value })} placeholder="Account code" className={cell} />
           </label>
           <label className="flex flex-col gap-1">
             <span className="sm:hidden text-[11px] font-medium text-slate-400">Price</span>

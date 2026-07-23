@@ -1,17 +1,23 @@
 'use client'
 
-import { Plus, X, ArrowRight } from 'lucide-react'
+import { Plus, X, ArrowRight, Info } from 'lucide-react'
 import { RecurrenceField } from '@/components/shared/recurrence-field'
+import { bufferOptions } from '@/components/shared/buffer-field'
+import { normalizeBufferMins } from '@/lib/buffer'
 
-// Session slots for a drop-in class, as a card per slot (not a cramped table):
-// each slot is a day + start/end time + its own location + a recurrence. Lets a
-// class run Tuesdays 3–5pm at one park and every 2nd Saturday somewhere else.
+// Session slots for a drop-in class, as a card per slot (not a cramped table).
+// Each card is a WHOLE session: its own start date, time, duration, gap,
+// capacity, location and recurrence. Lets a class run Tuesdays 3–5pm at one
+// park and every 2nd Saturday somewhere else.
 
 export type SessionSlot = {
   id: string
+  startDate: string // "YYYY-MM-DD" — first occurrence
   day: number // 0 = Sunday … 6 = Saturday
   start: string // "HH:mm" (24h)
   end: string
+  duration: string // mins
+  gap: string // mins between this and the next session
   capacity: string // '' = unlimited
   locationId: string // '' = none / inherit the class location
   repeat: string // iCalendar RRULE subset (see lib/recurrence.ts); '' = one-off
@@ -22,14 +28,24 @@ const DAYS = [
   { v: 4, label: 'Thursday' }, { v: 5, label: 'Friday' }, { v: 6, label: 'Saturday' }, { v: 0, label: 'Sunday' },
 ]
 
+const GAP_HELP = 'Time you need after each session — travel, clean-up, a breather. Nothing can be booked into it.'
+
 export function newSlot(): SessionSlot {
-  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, day: 2, start: '15:00', end: '17:00', capacity: '', locationId: '', repeat: 'FREQ=WEEKLY' }
+  return { id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`, startDate: '', day: 2, start: '15:00', end: '17:00', duration: '60', gap: '0', capacity: '', locationId: '', repeat: 'FREQ=WEEKLY' }
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-      <span className="w-20 shrink-0 text-sm font-medium text-slate-500">{label}</span>
+      <span className="w-24 shrink-0 text-sm font-medium text-slate-500 flex items-center gap-1.5">
+        {label}
+        {help && (
+          <span className="group relative inline-flex">
+            <Info className="h-3.5 w-3.5 text-slate-400 cursor-help" aria-label={help} />
+            <span className="pointer-events-none absolute left-1/2 bottom-full z-20 mb-1.5 hidden -translate-x-1/2 w-56 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[11px] font-normal leading-snug text-white shadow-lg group-hover:block">{help}</span>
+          </span>
+        )}
+      </span>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
   )
@@ -67,6 +83,10 @@ export function SessionSlotsEditor({
             <X className="h-5 w-5" />
           </button>
 
+          <Row label="Starts from">
+            <input type="date" value={s.startDate} onChange={e => update(s.id, { startDate: e.target.value })} className={ctrl + ' max-w-[200px]'} />
+          </Row>
+
           <Row label="Day">
             <select value={s.day} onChange={e => update(s.id, { day: Number(e.target.value) })} className={ctrl + ' max-w-[220px]'}>
               {DAYS.map(d => <option key={d.v} value={d.v}>{d.label}</option>)}
@@ -79,13 +99,18 @@ export function SessionSlotsEditor({
               <ArrowRight className="h-4 w-4 text-slate-300 shrink-0" />
               <input type="time" value={s.end} onChange={e => update(s.id, { end: e.target.value })} className={ctrl + ' max-w-[140px]'} />
               <span className="ml-1 text-sm font-medium text-slate-500">Capacity</span>
-              <input
-                type="number" min={1} value={s.capacity}
-                onChange={e => update(s.id, { capacity: e.target.value })}
-                placeholder="∞"
-                className={ctrl + ' max-w-[90px] text-center'}
-              />
+              <input type="number" min={1} value={s.capacity} onChange={e => update(s.id, { capacity: e.target.value })} placeholder="∞" className={ctrl + ' max-w-[90px] text-center'} />
             </div>
+          </Row>
+
+          <Row label="Duration">
+            <input type="number" min={5} value={s.duration} onChange={e => update(s.id, { duration: e.target.value })} className={ctrl + ' max-w-[120px]'} />
+          </Row>
+
+          <Row label="Gap" help={GAP_HELP}>
+            <select value={String(normalizeBufferMins(Number(s.gap) || 0))} onChange={e => update(s.id, { gap: e.target.value })} className={ctrl + ' max-w-[220px]'}>
+              {bufferOptions(normalizeBufferMins(Number(s.gap) || 0)).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           </Row>
 
           <Row label="Repeat">

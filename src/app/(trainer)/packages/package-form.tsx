@@ -217,7 +217,7 @@ export function PackageForm({
           price: centsToDollars(existing.priceCents),
           specialPrice: centsToDollars(existing.specialPriceCents),
         }
-      : { sessionCount: 3, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', price: '', specialPrice: '' },
+      : { sessionCount: 1, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', price: '', specialPrice: '' },
   })
 
   // A one-off package — a single session, no cadence. "Weeks between" is moot.
@@ -435,25 +435,11 @@ export function PackageForm({
           </div>
         </div>
       ) : kind === 'dropin' ? (
-        // Drop-in classes run on their own set of weekly slots (day/time/place).
-        // First-date / duration / gap live here in the session box (per request),
-        // so everything about "when it runs" is in one place. RHF cadence fields
-        // kept registered (unused for this kind).
-        <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/40 p-4 flex flex-col gap-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-3">
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Starts from</label>
-              <DateTimePicker value={startAt} onChange={setStartAt} />
-            </div>
-            <Input label="Duration (mins)" type="number" error={errors.durationMins?.message} {...register('durationMins', { valueAsNumber: true })} />
-            <div className="sm:col-span-2">
-              <BufferField id="dropin-buffer" value={bufferMins} onChange={setBufferMins} />
-            </div>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Sessions</label>
-            <SessionSlotsEditor value={slots} onChange={setSlots} locations={savedLocations.map(l => ({ id: l.id, name: l.name }))} />
-          </div>
+        // Drop-in classes are a set of self-contained session cards — each with
+        // its own start date, time, duration, gap, capacity, location and
+        // recurrence. RHF cadence fields kept registered (unused for this kind).
+        <div className="md:col-span-2">
+          <SessionSlotsEditor value={slots} onChange={setSlots} locations={savedLocations.map(l => ({ id: l.id, name: l.name }))} />
           <div className="hidden">
             <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
             <input type="number" {...register('weeksBetween', { valueAsNumber: true })} />
