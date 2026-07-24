@@ -51,6 +51,8 @@ vi.mock('@/lib/prisma', () => ({
     productRequest: { findFirst: h.productRequestFindFirst, create: h.productRequestCreate },
     classEnrollment: { findFirst: h.classEnrollmentFindFirst, update: h.classEnrollmentUpdate },
     trainingSession: { findFirst: h.trainingSessionFindFirst },
+    // The enrol route quotes discounts (none configured here → no change to the amounts).
+    discount: { findMany: vi.fn(() => []) },
     $transaction: h.transaction,
   },
 }))

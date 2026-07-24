@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import {
-  enrollInRun, ClassError, decideEnrollment, effectiveCapacity, enrolledCount,
+  enrollInRun, ClassError, effectiveCapacity, enrolledCount,
   sessionAttendeeCount, sessionDropInPriceCents, sessionCapacity,
 } from '@/lib/class-runs'
 import { createConnectCheckout } from '@/lib/connect-checkout'
@@ -13,11 +13,14 @@ import { resolveRequirePayment } from '@/lib/require-payment'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { notifyClient } from '@/lib/client-notify'
+import { quoteOfferingDiscount, scaleLinesToNet } from '@/lib/discounts/quote'
 import { env } from '@/lib/env'
 
 // Client self-enrolment into a group class run. Free classes (or trainers not
 // taking payments) enrol straight away; a priced class with payments on is
-// pay-to-confirm — the connect webhook enrols on success.
+// pay-to-confirm — the connect webhook enrols on success. Supports booking
+// several dogs at once (dogIds) and applies the offering's discounts to the
+// charge.
 
 const schema = z.object({
   type: z.enum(['FULL', 'DROP_IN']).optional(),
@@ -27,6 +30,9 @@ const schema = z.object({
   sessionId: z.string().min(1).optional(),
   sessionIds: z.array(z.string().min(1)).min(1).max(52).optional(),
   dogId: z.string().min(1).nullable().optional(),
+  // Book several dogs in one go — each dog becomes its own enrolment (and its
+  // own charge line) per chosen session. Falls back to the single dogId.
+  dogIds: z.array(z.string().min(1)).min(1).max(20).optional(),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ runId: string }> }) {
@@ -38,7 +44,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     where: { id: active.clientId },
     select: {
       id: true, trainerId: true, dogId: true, dogs: { select: { id: true } },
-      // Names + trainer routing for the "client booked" notification.
       user: { select: { name: true } },
       dog: { select: { name: true } },
       trainer: { select: { businessName: true, user: { select: { id: true } } } },
@@ -65,13 +70,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   const parsed = schema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
   const type = parsed.data.type ?? 'FULL'
-  // A drop-in is one specific, still-to-come session. Resolve + validate it up
-  // front so pricing, the capacity check and (for pay-to-confirm) the checkout
-  // intent all point at the same session.
+
   type Slot = { capacity: number | null; priceCents: number | null; specialPriceCents: number | null } | null
-  // The sessions being booked, each with the schedule slot behind it — the slot
-  // sets that session's own price and capacity, so a class can charge and cap
-  // differently on different days.
   let dropIns: { id: string; scheduledAt: Date; slot: Slot }[] = []
   if (type === 'DROP_IN') {
     if (!run.package.allowDropIn) {
@@ -89,47 +89,45 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
         packageSessionSlot: { select: { capacity: true, priceCents: true, specialPriceCents: true } },
       },
     })
-    // All or nothing on validity: a session that's gone means the list they
-    // were shown is stale, and half-booking it silently is worse than asking
-    // them to look again.
     if (found.length !== new Set(wanted).size) {
       return NextResponse.json({ error: 'One of those sessions has already happened or isn’t part of this class.' }, { status: 400 })
     }
     dropIns = found.map(s => ({ id: s.id, scheduledAt: s.scheduledAt, slot: s.packageSessionSlot }))
   }
-  // The first chosen session drives the single-session decisions below.
-  const dropInSessionId: string | null = dropIns[0]?.id ?? null
-  const dropInSlot: Slot = dropIns[0]?.slot ?? null
 
-  // Default to the client's primary dog; only honour a supplied dog they own.
+  // One or more dogs. Multi-dog uses dogIds; the single-dog path (dogId /
+  // primary) is unchanged, so an existing single-dog booking behaves exactly as
+  // before (dogs = [that one dog], dogCount = 1).
   const ownDogIds = new Set([profile.dogId, ...profile.dogs.map(d => d.id)].filter(Boolean) as string[])
-  const dogId = parsed.data.dogId ?? profile.dogId
-  if (parsed.data.dogId && !ownDogIds.has(parsed.data.dogId)) {
-    return NextResponse.json({ error: 'That dog isn’t on your account.' }, { status: 400 })
+  const dogs: (string | null)[] = parsed.data.dogIds
+    ? [...new Set(parsed.data.dogIds)]
+    : [parsed.data.dogId ?? profile.dogId ?? null]
+  for (const d of dogs) {
+    if (d && !ownDogIds.has(d)) return NextResponse.json({ error: 'That dog isn’t on your account.' }, { status: 400 })
   }
+  const dogCount = dogs.length
+  // For the "already booked?" queries: match the real dog ids, or the null-dog
+  // row when the client is booking without a specific dog.
+  const nonNullDogs = dogs.filter((d): d is string => !!d)
+  const dogWhere = nonNullDogs.length > 0 ? { dogId: { in: nonNullDogs } } : { dogId: null }
+  const mine = { classRunId: runId, clientId: profile.id, ...dogWhere }
 
-  // Already booked? A FULL seat is one per client+dog for the whole run; a
-  // drop-in is per session, so only the sessions they already hold clash —
-  // booking two more Saturdays is a normal thing to do.
-  const mine = { classRunId: runId, clientId: profile.id, dogId: dogId ?? null }
   if (type === 'FULL') {
     const existing = await prisma.classEnrollment.findFirst({
       where: { ...mine, status: { not: 'WITHDRAWN' } },
-      select: { status: true },
+      select: { id: true },
     })
     if (existing) {
-      return NextResponse.json({ error: 'You’re already enrolled in this class.' }, { status: 409 })
+      return NextResponse.json({ error: dogCount > 1 ? 'One of those dogs is already enrolled in this class.' : 'You’re already enrolled in this class.' }, { status: 409 })
     }
   } else {
     const clashes = await prisma.classEnrollment.findMany({
       where: { ...mine, status: { not: 'WITHDRAWN' }, dropInSessionId: { in: dropIns.map(d => d.id) } },
-      select: { dropInSessionId: true },
+      select: { id: true },
     })
     if (clashes.length > 0) {
-      return NextResponse.json({ error: 'You’ve already booked one of those sessions.' }, { status: 409 })
+      return NextResponse.json({ error: 'One of those dogs already has one of those sessions booked.' }, { status: 409 })
     }
-    // A full seat already covers every session — dropping in as well would
-    // charge them twice for a class they're in.
     const full = await prisma.classEnrollment.findFirst({
       where: { ...mine, status: { not: 'WITHDRAWN' }, dropInSessionId: null },
       select: { id: true },
@@ -139,62 +137,58 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     }
   }
 
-  // Price the enrolment. A drop-in is the price of the ONE session they picked
-  // — its slot's, so a class can charge differently on different days; a full
-  // seat is the whole-course price.
-  // Each chosen session is priced on its own slot, so several sessions is the
-  // sum of what each one costs — not one price times a quantity.
+  // Price per dog. A drop-in is the sum of its chosen sessions' slot prices; a
+  // full seat is the whole-course price. The booking total is this × dogCount.
   const perSession = dropIns.map(d => ({ ...d, price: sessionDropInPriceCents(d.slot, run.package) }))
-  const price: number | null =
+  const perDogPrice: number | null =
     type === 'FULL'
       ? (run.package.specialPriceCents ?? run.package.priceCents)
       : perSession.reduce<number | null>((sum, s) => s.price == null ? sum : (sum ?? 0) + s.price, null)
 
-  // Pay-to-confirm only when there's a real seat to pay for. Capacity is
-  // per-session: each drop-in is checked against its own session (and that
-  // session's own cap, if its slot sets one); a full seat checks the run.
-  const decisions = await Promise.all(perSession.map(async s => ({
-    ...s,
-    decision: decideEnrollment({
-      capacity: sessionCapacity(s.slot, run.capacity, run.package.capacity),
-      enrolledCount: await sessionAttendeeCount(runId, s.id),
-      allowWaitlist: run.package.allowWaitlist,
-    }),
-  })))
-  // All or nothing again: charging for three sessions and seating them in two
-  // is the worst outcome here, so a full session sends them back to choose.
-  const rejected = decisions.filter(d => d.decision === 'REJECTED_FULL')
+  // Capacity is per-session and must seat EVERY dog being booked. seatsFor gives
+  // how many still fit; a session that can't take all the dogs blocks the lot
+  // (or waitlists it, if the class allows a waitlist).
+  const seatsFor = (capacity: number | null, enrolled: number) => (capacity == null ? Infinity : Math.max(0, capacity - enrolled))
+  const decisions = await Promise.all(perSession.map(async s => {
+    const seats = seatsFor(sessionCapacity(s.slot, run.capacity, run.package.capacity), await sessionAttendeeCount(runId, s.id))
+    return { ...s, fits: seats >= dogCount }
+  }))
+  const rejected = decisions.filter(d => !d.fits && !run.package.allowWaitlist)
   if (type === 'DROP_IN' && rejected.length > 0) {
     return NextResponse.json({
       error: rejected.length === decisions.length
-        ? 'That session is full.'
-        : `${rejected.length} of the sessions you picked are full — choose again.`,
+        ? (dogCount > 1 ? 'That session can’t take that many dogs.' : 'That session is full.')
+        : `${rejected.length} of the sessions you picked can’t take ${dogCount > 1 ? 'that many dogs' : 'another booking'} — choose again.`,
     }, { status: 409 })
   }
-  const seatDecision = type === 'DROP_IN'
-    // Waitlisted only if every chosen session is; otherwise they're getting a
-    // real seat and the paid path applies.
-    ? (decisions.every(d => d.decision === 'WAITLISTED') ? 'WAITLISTED' : 'ENROLLED')
-    : decideEnrollment({
-        capacity: effectiveCapacity(run.capacity, run.package.capacity),
-        enrolledCount: await enrolledCount(runId),
-        allowWaitlist: run.package.allowWaitlist,
-      })
 
-  // Whether a priced ENROLLED seat should be charged up front. Only meaningful
-  // when the trainer can take cards — resolved below inside that guard.
+  let seatDecision: 'ENROLLED' | 'WAITLISTED' | 'REJECTED_FULL'
+  if (type === 'DROP_IN') {
+    seatDecision = decisions.every(d => d.fits) ? 'ENROLLED' : 'WAITLISTED'
+  } else {
+    const seats = seatsFor(effectiveCapacity(run.capacity, run.package.capacity), await enrolledCount(runId))
+    seatDecision = seats >= dogCount ? 'ENROLLED' : run.package.allowWaitlist ? 'WAITLISTED' : 'REJECTED_FULL'
+  }
+
+  // Discount the offering's rules give this booking (0 when none apply). Reduces
+  // the charge only — a booking with no configured discounts is unchanged.
+  const perDogAmounts = type === 'DROP_IN' ? perSession.map(s => s.price ?? 0) : [perDogPrice ?? 0]
+  const dates = perSession.map(s => s.scheduledAt.toISOString())
+  const grossTotal = (perDogPrice ?? 0) * dogCount
+  const { discountTotal } = grossTotal > 0
+    ? await quoteOfferingDiscount({ trainerId: profile.trainerId, packageId: run.packageId, dogCount, perDogAmounts, dates })
+    : { discountTotal: 0 }
+
+  // Pay-to-confirm only when there's a real seat to pay for.
   let payLater = false
-  if (price && price > 0 && seatDecision === 'ENROLLED') {
+  if (grossTotal > 0 && seatDecision === 'ENROLLED') {
     const trainer = await prisma.trainerProfile.findUnique({
       where: { id: profile.trainerId },
       select: { acceptPaymentsEnabled: true, connectChargesEnabled: true, connectAccountId: true, payoutCurrency: true, sandboxBilling: true, defaultRequirePayment: true },
     })
     if (!trainer?.acceptPaymentsEnabled || !trainer.connectChargesEnabled || !trainer.connectAccountId) {
-      // Payments off — unchanged.
       return NextResponse.json({ error: 'This class needs payment, which your trainer hasn’t enabled yet.' }, { status: 409 })
     }
-    // Require-payment off for this class → enrol now, invoice later (fall through
-    // to the enrolment below instead of Stripe checkout).
     if (!resolveRequirePayment(run.requirePayment, trainer.defaultRequirePayment)) {
       payLater = true
     }
@@ -203,64 +197,70 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       return NextResponse.json({ error: 'Payments are not configured yet' }, { status: 503 })
     }
     if (!payLater) {
-      // Enrolment now only ever starts from the availability wizard, so land on
-      // the client's Sessions timeline (where the new class shows) on success,
-      // and back on the wizard if they cancel.
       const appUrl = env.NEXT_PUBLIC_APP_URL
       const successUrl = `${appUrl}/my-sessions?booked=1`
       const cancelUrl = `${appUrl}/my-availability?enrol=cancelled`
+      const fmtDay = (d: Date) => d.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' })
+
+      // One line per dog × chosen session, each carrying its own intent — the
+      // connect webhook fulfils class lines one at a time, so this fans out into
+      // an enrolment per (dog, session) once the payment lands.
+      type Line = { kind: 'CLASS_ENROLLMENT'; description: string; unitAmount: number; quantity: number; intent: { classRunId: string; type: 'FULL' | 'DROP_IN'; dogId: string | null; sessionId: string | null } }
+      const grossLines: Line[] = dogs.flatMap((dog): Line[] =>
+        type === 'DROP_IN'
+          ? perSession.map(s => ({
+              kind: 'CLASS_ENROLLMENT' as const,
+              description: `${run.name} (drop-in · ${fmtDay(s.scheduledAt)})`,
+              unitAmount: s.price ?? 0,
+              quantity: 1,
+              intent: { classRunId: runId, type, dogId: dog ?? null, sessionId: s.id },
+            }))
+          : [{
+              kind: 'CLASS_ENROLLMENT' as const,
+              description: run.name,
+              unitAmount: perDogPrice ?? 0,
+              quantity: 1,
+              intent: { classRunId: runId, type, dogId: dog ?? null, sessionId: null },
+            }],
+      )
+      // Spread the discount across the lines so the total charged (and the
+      // platform fee, computed from the line totals) is the discounted net.
+      const scaled = scaleLinesToNet(grossLines.map(l => l.unitAmount), discountTotal)
+      const lines = grossLines.map((l, i) => ({ ...l, unitAmount: scaled[i] }))
+
+      const bookedLabel = `${type === 'DROP_IN' ? `drop-in · ${perSession.length} session${perSession.length === 1 ? '' : 's'}` : 'full'}${dogCount > 1 ? ` · ${dogCount} dogs` : ''}`
       const { url } = await createConnectCheckout({
         sandbox,
         trainerId: profile.trainerId,
         connectAccountId: trainer.connectAccountId,
         clientId: profile.id,
         currency: trainer.payoutCurrency ?? 'nzd',
-        description: `${run.name}${type === 'DROP_IN' ? ` (drop-in · ${perSession.length} session${perSession.length === 1 ? '' : 's'})` : ''}`,
-        // One line per session, each carrying its own intent — the connect
-        // webhook fulfils class lines one at a time, so this fans out into an
-        // enrolment per session once the payment lands. A single line with
-        // quantity 3 would pay for three and seat them once.
-        lines: type === 'DROP_IN'
-          ? perSession.map(s => ({
-              kind: 'CLASS_ENROLLMENT' as const,
-              description: `${run.name} (drop-in · ${s.scheduledAt.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' })})`,
-              unitAmount: s.price ?? 0,
-              quantity: 1,
-              intent: { classRunId: runId, type, dogId: dogId ?? null, sessionId: s.id },
-            }))
-          : [
-            {
-              kind: 'CLASS_ENROLLMENT' as const,
-              description: run.name,
-              unitAmount: price,
-              quantity: 1,
-              intent: { classRunId: runId, type, dogId: dogId ?? null, sessionId: null },
-            },
-          ],
+        description: `${run.name} (${bookedLabel})`,
+        lines,
         successUrl,
         cancelUrl,
       })
       if (!url) return NextResponse.json({ error: 'Could not start checkout' }, { status: 502 })
       return NextResponse.json({ ok: true, mode: 'payment', url }, { status: 201 })
     }
-    // payLater: fall through to the enrolment below, then raise a receivable.
+    // payLater: fall through to the enrolment below, then raise receivables.
   }
 
-  // A priced class with no seat free can't be paid for — fall through to a free
-  // waitlist if the package allows one; otherwise the enrol below rejects.
-  if (price && price > 0 && seatDecision === 'REJECTED_FULL') {
+  if (grossTotal > 0 && seatDecision === 'REJECTED_FULL') {
     return NextResponse.json({ error: 'This class is full.' }, { status: 409 })
   }
 
   // Free (or waitlist) enrolment — straight in. A priced pay-later enrolment
   // (require-payment off) also lands here: we enrol, then raise a receivable.
   try {
-    // One enrolment per chosen session (a FULL seat is a single pass with no
-    // session), each raising its own receivable on the pay-later path.
+    // One enrolment per dog × chosen session (a FULL seat is a single pass with
+    // no session), each raising its own receivable on the pay-later path.
     const targets: (string | null)[] = type === 'DROP_IN' ? perSession.map(s => s.id) : [null]
     const results: { enrollmentId: string; status: 'ENROLLED' | 'WAITLISTED' }[] = []
-    for (const sid of targets) {
-      results.push(await enrollInRun({ classRunId: runId, clientId: profile.id, dogId: dogId ?? null, type, sessionId: sid, source: 'SELF_SERVE' }))
+    for (const dog of dogs) {
+      for (const sid of targets) {
+        results.push(await enrollInRun({ classRunId: runId, clientId: profile.id, dogId: dog ?? null, type, sessionId: sid, source: 'SELF_SERVE' }))
+      }
     }
     const result = results[0]
     if (payLater) {
@@ -271,15 +271,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
           clientId: profile.id,
           sourceType: 'CLASS_ENROLLMENT',
           classEnrollmentId: r.enrollmentId,
-          // They get the enrolment confirmation below — two emails seconds
-          // apart, both about the same booking, is worse than one.
           notifyClient: false,
         })
       }
     }
-    // Tell the trainer their client just enrolled (or joined the waitlist).
     if (trainerUserId) {
-      const detail = `${run.name}${type === 'DROP_IN' ? ` (drop-in · ${results.length} session${results.length === 1 ? '' : 's'})` : ''}${result.status === 'WAITLISTED' ? ' (waitlist)' : ''}`
+      const dogsLabel = dogCount > 1 ? ` · ${dogCount} dogs` : ''
+      const detail = `${run.name}${type === 'DROP_IN' ? ` (drop-in · ${perSession.length} session${perSession.length === 1 ? '' : 's'})` : ''}${dogsLabel}${result.status === 'WAITLISTED' ? ' (waitlist)' : ''}`
       await notifyTrainer(
         trainerUserId,
         'CLIENT_BOOKED_SESSION',
@@ -288,8 +286,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
         profile.trainerId,
       )
     }
-    // Confirm to the client (in-app + email per their prefs) — a real seat only,
-    // not a waitlist spot.
     if (result.status === 'ENROLLED') {
       await notifyClient({
         userId: active.userId,
@@ -299,8 +295,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
           trainerName: profile.trainer?.businessName ?? 'Your trainer',
           dogName: profile.dog?.name ?? '',
           planName: run.name,
-          // One confirmation for the lot, saying how many they booked.
-          detail: type === 'DROP_IN' ? `Drop-in · ${results.length} session${results.length === 1 ? '' : 's'}` : '',
+          detail: `${type === 'DROP_IN' ? `Drop-in · ${perSession.length} session${perSession.length === 1 ? '' : 's'}` : ''}${dogCount > 1 ? `${type === 'DROP_IN' ? ' · ' : ''}${dogCount} dogs` : ''}`.trim(),
         },
         link: '/my-sessions',
         ctaLabel: 'View your sessions',

@@ -36,19 +36,20 @@ describe('POST /api/my/classes/[runId]/enroll — several drop-in sessions', () 
   // Capacity is per session; charging for three and seating two is the worst
   // outcome, so a full session sends them back rather than part-booking.
   it('checks every chosen session for room and refuses if any is full', () => {
-    expect(route).toContain('const rejected = decisions.filter(d => d.decision === ')
-    expect(route).toContain('are full — choose again')
+    // Each session's remaining seats must cover every dog being booked.
+    expect(route).toContain('const rejected = decisions.filter(d => !d.fits && !run.package.allowWaitlist)')
+    expect(route).toContain('— choose again')
   })
 
   // One Stripe line per session, each carrying its own intent: the connect
   // webhook fulfils class lines one at a time, so a single line with
   // quantity 3 would take the money and seat them once.
-  it('emits one checkout line per session, each with its own session intent', () => {
-    const idx = route.indexOf('lines: type === ')
+  it('emits one checkout line per dog × session, each with its own session intent', () => {
+    const idx = route.indexOf('const grossLines: Line[] = dogs.flatMap(')
     expect(idx).toBeGreaterThan(-1)
     const block = route.slice(idx, idx + 900)
     expect(block).toContain('perSession.map(s => ({')
-    expect(block).toContain('intent: { classRunId: runId, type, dogId: dogId ?? null, sessionId: s.id }')
+    expect(block).toContain('intent: { classRunId: runId, type, dogId: dog ?? null, sessionId: s.id }')
   })
 
   // The free / pay-later path fans out the same way.
@@ -61,11 +62,26 @@ describe('POST /api/my/classes/[runId]/enroll — several drop-in sessions', () 
   // more Saturdays is normal. A FULL seat is still one per client and dog.
   it('scopes the already-booked check to the chosen sessions', () => {
     expect(route).toContain('dropInSessionId: { in: dropIns.map(d => d.id) }')
-    expect(route).toContain('You’ve already booked one of those sessions.')
+    expect(route).toContain('One of those dogs already has one of those sessions booked.')
   })
 
   it('still refuses a drop-in on top of a full enrolment', () => {
     expect(route).toContain('dropInSessionId: null')
     expect(route).toContain('You’re already enrolled in this class.')
+  })
+
+  // Several dogs in one booking: each dog × session is its own line/enrolment,
+  // and capacity must seat every dog.
+  it('books several dogs in one pass', () => {
+    expect(route).toContain('dogIds: z.array(z.string().min(1)).min(1).max(20).optional()')
+    expect(route).toContain('const grossLines: Line[] = dogs.flatMap(')
+    expect(route).toContain('return { ...s, fits: seats >= dogCount }')
+  })
+
+  // The offering's discounts reduce the charge, spread across the lines so the
+  // total and the platform fee stay correct.
+  it('applies the offering discounts to the charge', () => {
+    expect(route).toContain('quoteOfferingDiscount({')
+    expect(route).toContain('scaleLinesToNet(grossLines.map(l => l.unitAmount), discountTotal)')
   })
 })
