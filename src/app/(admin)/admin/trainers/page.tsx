@@ -13,7 +13,6 @@ export const metadata: Metadata = { title: 'Trainers' }
 // subscribed trainer inside their carried-over trial window is a PAYING
 // customer, not a trialist). undefined = no filter (All).
 const TABS: { key: string; label: string; bucket?: TrainerLifecycle; ours?: boolean; inactive?: boolean }[] = [
-  { key: 'all',      label: 'All',              bucket: undefined },
   { key: 'trial',    label: 'In Trial',         bucket: 'trial' },
   { key: 'paying',   label: 'Paying customer',  bucket: 'paying' },
   { key: 'churned',  label: 'Churned',          bucket: 'churned' },
@@ -26,7 +25,7 @@ export default async function AdminTrainersPage({
 }: {
   searchParams: Promise<{ q?: string; tab?: string }>
 }) {
-  const { q = '', tab = 'all' } = await searchParams
+  const { q = '', tab = 'trial' } = await searchParams
   const current = TABS.find(t => t.key === tab) ?? TABS[0]
 
   // Lifecycle counts cover real, active accounts: not deactivated and not
