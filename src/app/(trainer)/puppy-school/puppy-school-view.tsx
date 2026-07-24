@@ -24,7 +24,7 @@ export function PuppySchoolView({ schools, board }: { schools: PuppySchoolSummar
         }
       />
 
-      <div className="p-4 md:p-8 w-full">
+      <div className="p-4 md:p-8 w-full flex-1 min-h-0 flex flex-col">
         {creating ? (
           <div>
             {schools.length > 0 && (
@@ -39,7 +39,7 @@ export function PuppySchoolView({ schools, board }: { schools: PuppySchoolSummar
             <PuppySchoolSetup />
           </div>
         ) : (
-          <>
+          <div className="flex-1 min-h-0 flex flex-col">
             {/* Schools list + this-week stat */}
             <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
               <div className="flex flex-wrap items-center gap-2">
@@ -55,7 +55,7 @@ export function PuppySchoolView({ schools, board }: { schools: PuppySchoolSummar
             </div>
 
             <WeekBoardGrid board={board} />
-          </>
+          </div>
         )}
       </div>
     </>
@@ -73,8 +73,8 @@ function WeekBoardGrid({ board }: { board: WeekBoard }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-3">
-      <div className="grid gap-1.5 min-w-[640px]" style={{ gridTemplateColumns: `100px repeat(${board.columns.length}, minmax(78px, 1fr))` }}>
+    <div className="flex flex-1 min-h-0 flex-col overflow-x-auto rounded-2xl border border-slate-200 bg-white p-3">
+      <div className="grid flex-1 gap-1.5 min-w-[640px]" style={{ gridTemplateColumns: `100px repeat(${board.columns.length}, minmax(78px, 1fr))`, gridTemplateRows: `auto repeat(${board.parts.length}, minmax(3.5rem, 1fr))` }}>
         {/* Header row */}
         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 px-1 flex items-end pb-1">Part</div>
         {board.columns.map(c => (
