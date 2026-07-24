@@ -77,12 +77,14 @@ export function CommsFlowEditor({ runId, clients = [] }: { runId: string; client
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const [s, t] = await Promise.all([
-      fetch(base).then(r => (r.ok ? r.json() : [])).catch(() => []),
-      fetch('/api/trainer/comms-flow-templates').then(r => (r.ok ? r.json() : [])).catch(() => []),
-    ])
-    setSteps(s)
-    setTemplates(t)
+    try {
+      const [sRes, tRes] = await Promise.all([fetch(base), fetch('/api/trainer/comms-flow-templates')])
+      if (!sRes.ok) { setError('Couldn’t load messages. If you just updated, restart the dev server.'); setSteps([]); return }
+      setSteps(await sRes.json())
+      setTemplates(tRes.ok ? await tRes.json() : [])
+    } catch {
+      setError('Couldn’t reach the server.'); setSteps([])
+    }
   }, [base])
   useEffect(() => { load() }, [load])
 
