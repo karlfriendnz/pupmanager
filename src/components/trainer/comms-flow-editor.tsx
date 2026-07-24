@@ -6,6 +6,7 @@
 // message. Starter reminders and saveable/reusable templates in one tap.
 import { useState, useEffect, useCallback } from 'react'
 import { Bell, Mail, Smartphone, Plus, Trash2, Loader2, Star, Check, Sparkles, Save, Pencil, X } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
 
 type Channel = 'PUSH' | 'EMAIL' | 'IN_APP'
 type Direction = 'BEFORE_SESSION' | 'AFTER_SESSION'
@@ -251,9 +252,7 @@ function StepRow({ step, onEdit, onDelete, onToggle, busy }: { step: Step; onEdi
         <p className="text-xs text-slate-500 truncate">{step.body}</p>
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        <button onClick={onToggle} disabled={busy} title={step.enabled ? 'Turn off' : 'Turn on'} className={`relative w-9 h-5 rounded-full transition-colors ${step.enabled ? 'bg-blue-600' : 'bg-slate-300'} disabled:opacity-60`}>
-          <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${step.enabled ? 'right-0.5' : 'left-0.5'}`} />
-        </button>
+        <Switch checked={step.enabled} onChange={onToggle} disabled={busy} onColor="bg-blue-600" aria-label={step.enabled ? 'Turn off' : 'Turn on'} />
         <button onClick={onEdit} disabled={busy} title="Edit" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-60"><Pencil className="h-4 w-4" /></button>
         <button onClick={onDelete} disabled={busy} title="Delete" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-60"><Trash2 className="h-4 w-4" /></button>
       </div>
@@ -340,9 +339,7 @@ function StepEditor({ draft, clients, busy, onPatch, onToggleChannel, onSave, on
 
       {/* IMPORTANT */}
       <label className="flex items-start gap-2.5 cursor-pointer">
-        <button onClick={() => onPatch({ important: !draft.important })} className={`mt-0.5 relative w-9 h-5 rounded-full shrink-0 transition-colors ${draft.important ? 'bg-amber-500' : 'bg-slate-300'}`}>
-          <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${draft.important ? 'right-0.5' : 'left-0.5'}`} />
-        </button>
+        <Switch checked={draft.important} onChange={() => onPatch({ important: !draft.important })} onColor="bg-amber-500" className="mt-0.5" aria-label="Mark important" />
         <span className="text-sm text-slate-700"><span className="font-medium inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 text-amber-500" /> Mark important</span><br /><span className="text-xs text-slate-500">Always send, even if the client muted their notifications. Use for cancellations or venue changes.</span></span>
       </label>
 

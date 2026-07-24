@@ -9,6 +9,7 @@ import { Percent, Tag, Loader2, Plus, Trash2, Pencil, Check, X, Star } from 'luc
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol } from '@/lib/money'
 import { DISCOUNT_PRESETS } from '@/lib/discounts/presets'
+import { Switch } from '@/components/ui/switch'
 
 type ModifierType = 'PERCENT' | 'FLAT' | 'REPLACE'
 type ApplyTo = 'per_item' | 'per_person' | 'cheapest_item' | 'most_expensive_item' | 'order_total'
@@ -167,7 +168,7 @@ export function DiscountManager({ packageId }: { packageId: string }) {
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <button onClick={() => toggle(d)} disabled={busy} title={d.isActive ? 'Turn off' : 'Turn on'} className={`relative w-9 h-5 rounded-full transition-colors ${d.isActive ? 'bg-teal-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${d.isActive ? 'right-0.5' : 'left-0.5'}`} /></button>
+                <Switch checked={d.isActive} onChange={() => toggle(d)} disabled={busy} onColor="bg-teal-600" aria-label={d.isActive ? 'Turn off' : 'Turn on'} />
                 <button onClick={() => { setDraft({ ...d }); setEditingId(d.id) }} disabled={busy} title="Edit" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
                 <button onClick={() => remove(d.id)} disabled={busy} title="Delete" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
               </div>

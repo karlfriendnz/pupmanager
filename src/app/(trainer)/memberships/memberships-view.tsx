@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
+import { Switch } from '@/components/ui/switch'
 
 type Kind = 'PACKAGE' | 'CLASS' | 'PRODUCT'
 type Cadence = 'ONE_OFF' | 'RECURRING'
@@ -191,10 +192,10 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
             </div>
 
             <div className="p-5 flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                <button onClick={() => patch({ published: !draft.published })} className={`relative w-10 h-6 rounded-full transition-colors ${draft.published ? 'bg-violet-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${draft.published ? 'right-0.5' : 'left-0.5'}`} /></button>
+              <div className="flex items-center gap-2 text-sm text-slate-700">
+                <Switch checked={draft.published} onChange={() => patch({ published: !draft.published })} onColor="bg-violet-600" aria-label="Published" />
                 Published (buyable on your booking page)
-              </label>
+              </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => setDraft(null)} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm rounded-lg text-slate-600 hover:bg-slate-100"><X className="h-4 w-4" /> Cancel</button>
                 <button onClick={save} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save</button>
@@ -220,7 +221,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                   <p className="text-xs text-slate-500 mt-0.5">{m.items.map(offeringName).join(' · ') || 'No items yet'}{m.purchases > 0 ? ` · ${m.purchases} sold` : ''}</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => togglePublished(m)} disabled={busy} title={m.published ? 'Unpublish' : 'Publish'} className={`relative w-9 h-5 rounded-full ${m.published ? 'bg-violet-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${m.published ? 'right-0.5' : 'left-0.5'}`} /></button>
+                  <Switch checked={m.published} onChange={() => togglePublished(m)} disabled={busy} onColor="bg-violet-600" aria-label={m.published ? 'Unpublish' : 'Publish'} />
                   <button onClick={() => startEdit(m)} title="Edit" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
                   <button onClick={() => remove(m.id)} disabled={busy} title="Delete" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
                 </div>
