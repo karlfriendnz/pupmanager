@@ -84,7 +84,7 @@ export function PuppySchoolSetup() {
         }),
       })
       if (!res.ok) { setError('Could not create the school — please check the fields and try again.'); return }
-      router.push('/puppy-school')
+      router.push('/doggy-daycare')
       router.refresh()
     } catch {
       setError('Something went wrong — please try again.')

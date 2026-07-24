@@ -112,7 +112,7 @@ async function main() {
   }
 
   console.log(`✓ "${PKG_NAME}" created — ${sessions.length} sessions this week, ${bookings} bookings across ${DOGS.length} dogs.`)
-  console.log(`  Open http://localhost:7777/puppy-school (log in as ${email}).`)
+  console.log(`  Open http://localhost:7777/doggy-daycare (log in as ${email}).`)
 }
 
 main()
