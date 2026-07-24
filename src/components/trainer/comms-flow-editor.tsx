@@ -67,8 +67,10 @@ function preview(body: string): string {
   return PLACEHOLDERS.reduce((acc, p) => acc.split(p).join(SAMPLE[p]), body)
 }
 
-export function CommsFlowEditor({ runId, clients = [] }: { runId: string; clients?: ClientOpt[] }) {
-  const base = `/api/trainer/class-runs/${runId}/comms-flow`
+export function CommsFlowEditor({ runId, packageId, clients = [] }: { runId?: string; packageId?: string; clients?: ClientOpt[] }) {
+  // Scoped to a class run (group / drop-in / event / puppy school) or a 1:1
+  // package. The two API trees mirror each other.
+  const base = runId ? `/api/trainer/class-runs/${runId}/comms-flow` : `/api/trainer/packages/${packageId}/comms-flow`
   const [steps, setSteps] = useState<Step[] | null>(null)
   const [templates, setTemplates] = useState<TemplateSummary[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -142,7 +144,7 @@ export function CommsFlowEditor({ runId, clients = [] }: { runId: string; client
   async function saveAsTemplate() {
     const name = window.prompt('Name this template (e.g. "Standard class reminders")')?.trim()
     if (!name) return
-    const res = await api('/api/trainer/comms-flow-templates', { method: 'POST', body: JSON.stringify({ name, runId }) })
+    const res = await api('/api/trainer/comms-flow-templates', { method: 'POST', body: JSON.stringify({ name, ...(runId ? { runId } : { packageId }) }) })
     if (res) load()
   }
 

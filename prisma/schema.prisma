@@ -1595,6 +1595,7 @@ model Package {
   ticketTiers        PackageTicketTier[]
   waitlistEntries    WaitlistEntry[]
   discounts          Discount[]
+  commsFlowSteps     CommsFlowStep[]
   bookingRequests    BookingRequest[]
   bookingPages       BookingPage[]
   defaultSessionForm SessionForm?     @relation("PackageDefaultSessionForm", fields: [defaultSessionFormId], references: [id], onDelete: SetNull)
@@ -2819,7 +2820,12 @@ enum CommsFlowAudience {
 // with {{name}} {{dog}} {{time}} {{date}} {{class}} {{business}} {{location}}.
 model CommsFlowStep {
   id              String                @id @default(cuid())
-  classRunId      String
+  // A step attaches to exactly ONE offering: a ClassRun (group class / drop-in /
+  // event / puppy school — recipients are its enrolments) OR a Package (a 1:1
+  // package — recipients are the client on each generated session). The API
+  // enforces that exactly one is set.
+  classRunId      String?
+  packageId       String?
   direction       CommsFlowDirection    @default(BEFORE_SESSION)
   offsetMinutes   Int                   @default(1440)
   channels        NotificationChannel[]
@@ -2837,10 +2843,12 @@ model CommsFlowStep {
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
-  classRun ClassRun        @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  classRun ClassRun?       @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  package  Package?        @relation(fields: [packageId], references: [id], onDelete: Cascade)
   sends    CommsFlowSend[]
 
   @@index([classRunId])
+  @@index([packageId])
   @@map("comms_flow_steps")
 }
 

@@ -152,3 +152,26 @@ describe('processCommsFlows', () => {
     expect(h.sendEmail).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('processCommsFlows — 1:1 package scope', () => {
+  it("sends to each session's own client (no enrolments involved)", async () => {
+    h.stepFindMany.mockResolvedValue([{
+      id: 'pstep', classRunId: null, packageId: 'pkg1',
+      direction: 'BEFORE_SESSION', offsetMinutes: 1440, channels: ['IN_APP'],
+      audience: 'ENROLLED', customClientIds: [], important: false,
+      title: 'Hi {{name}} & {{dog}}', body: '{{class}} at {{time}}',
+      classRun: null, package: { name: 'Puppy 101', trainer },
+    }])
+    // The package branch queries sessions with the client + dog attached.
+    h.sessionFindMany.mockResolvedValue([
+      { id: 'ps1', scheduledAt: SESSION_AT, dog: { name: 'Rex' }, client: { user: { id: 'u9', name: 'Pat', email: 'pat@x.com', notifyPush: true, productEmailOptOut: false } } },
+    ])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.enrollmentFindMany).not.toHaveBeenCalled() // packages have no enrolments
+    expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({ userId: 'u9', title: 'Hi Pat & Rex' })
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'pstep', sessionId: 'ps1', userId: 'u9' } })
+  })
+})

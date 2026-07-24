@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { CardHeading } from '@/components/shared/card-heading'
-import { Info, Users, Pencil, Package as PackageIcon } from 'lucide-react'
+import { Info, Users, Pencil, Package as PackageIcon, Bell } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
+import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 
-type Tab = 'details' | 'clients'
+type Tab = 'details' | 'clients' | 'messages'
 
 export type PackageInfo = {
   id: string
@@ -80,6 +81,9 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: rows.length > 0 ? rows.length : undefined },
+    // 1:1 packages can send automated session reminders; group packages run
+    // through their class page instead.
+    ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Messages', icon: Bell }] : []),
   ]
 
   return (
@@ -271,6 +275,17 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           </div>
 
         </div>
+
+        {/* Automated session reminders for this 1:1 package — full width. Phone
+            tab; always shown below the columns on a wide screen. */}
+        {!pkg.isGroup && (
+          <div className={`mt-6 ${tab === 'messages' ? '' : 'hidden lg:block'}`}>
+            <CommsFlowEditor
+              packageId={pkg.id}
+              clients={Array.from(new Map(clients.map(c => [c.clientId, { id: c.clientId, name: c.clientName }])).values())}
+            />
+          </div>
+        )}
       </div>
     </>
   )

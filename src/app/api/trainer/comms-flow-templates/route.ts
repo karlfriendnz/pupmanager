@@ -25,7 +25,12 @@ export async function GET() {
   )
 }
 
-const saveSchema = z.object({ name: z.string().trim().min(1).max(120), runId: z.string() })
+// Save from a class run OR a 1:1 package — exactly one.
+const saveSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  runId: z.string().optional(),
+  packageId: z.string().optional(),
+}).refine(d => !!d.runId !== !!d.packageId, { message: 'Provide exactly one of runId / packageId' })
 
 export async function POST(req: Request) {
   const ctx = await guardPermission('classes.manage')
@@ -33,16 +38,16 @@ export async function POST(req: Request) {
 
   const parsed = saveSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  const { runId, packageId } = parsed.data
 
-  // The run must be the trainer's, and it must have steps to save.
-  const run = await prisma.classRun.findFirst({
-    where: { id: parsed.data.runId, trainerId: ctx.companyId },
-    select: { id: true },
-  })
-  if (!run) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  // The offering must be the trainer's, and it must have steps to save.
+  const owned = runId
+    ? await prisma.classRun.findFirst({ where: { id: runId, trainerId: ctx.companyId }, select: { id: true } })
+    : await prisma.package.findFirst({ where: { id: packageId, trainerId: ctx.companyId }, select: { id: true } })
+  if (!owned) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const steps = await prisma.commsFlowStep.findMany({
-    where: { classRunId: parsed.data.runId },
+    where: runId ? { classRunId: runId } : { packageId },
     orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
     select: {
       direction: true, offsetMinutes: true, channels: true, audience: true,

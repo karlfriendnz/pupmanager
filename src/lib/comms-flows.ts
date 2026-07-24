@@ -160,95 +160,99 @@ async function deliver(args: {
  * AFTER_SESSION fires once now is past session + offset (bounded to 30 days so
  * old sessions never reopen). Dedup is the unique (step, session, user) row.
  */
+const TRAINER_BRAND_SELECT = {
+  businessName: true, logoUrl: true, emailAccentColor: true,
+  user: { select: { name: true, email: true, timezone: true } },
+} as const
+const RECIPIENT_USER_SELECT = { id: true, name: true, email: true, notifyPush: true, productEmailOptOut: true } as const
+
+type SessionRecipients = { scheduledAt: Date; byUser: Map<string, { user: RecipientUser; dogs: string[] }> }
+
 export async function processCommsFlows(now: Date = new Date()): Promise<{ steps: number; sent: number }> {
   const steps = await prisma.commsFlowStep.findMany({
     where: { enabled: true, channels: { isEmpty: false } },
     include: {
-      classRun: {
-        select: {
-          name: true,
-          location: true,
-          trainer: {
-            select: {
-              businessName: true,
-              logoUrl: true,
-              emailAccentColor: true,
-              user: { select: { name: true, email: true, timezone: true } },
-            },
-          },
-        },
-      },
+      classRun: { select: { name: true, location: true, trainer: { select: TRAINER_BRAND_SELECT } } },
+      package: { select: { name: true, trainer: { select: TRAINER_BRAND_SELECT } } },
     },
   })
 
   let sent = 0
   for (const step of steps) {
+    // A step is scoped to a ClassRun (group class / drop-in / event / puppy
+    // school) OR a Package (a 1:1 package). Skip a step whose owner was deleted.
+    const owner = step.classRunId ? step.classRun : step.packageId ? step.package : null
+    if (!owner) continue
+    const tz = owner.trainer.user.timezone ?? 'Pacific/Auckland'
+    const trainer: TrainerBrand = owner.trainer
+    const className = owner.name
+    const location = step.classRunId ? (step.classRun?.location ?? '') : ''
     const offsetMs = step.offsetMinutes * 60_000
-    const tz = step.classRun.trainer.user.timezone ?? 'Pacific/Auckland'
-    const trainer: TrainerBrand = step.classRun.trainer
 
     const scheduledWhere =
       step.direction === 'BEFORE_SESSION'
         ? { gte: now, lte: new Date(now.getTime() + offsetMs) }
         : { lte: new Date(now.getTime() - offsetMs), gte: new Date(now.getTime() - offsetMs - 30 * DAY_MS) }
 
-    const sessions = await prisma.trainingSession.findMany({
-      where: { classRunId: step.classRunId, scheduledAt: scheduledWhere },
-      select: { id: true, scheduledAt: true },
-    })
-    if (sessions.length === 0) continue
+    // Build, per session, the map of recipient user → their dog name(s). For a
+    // run that comes from its enrolments; for a 1:1 package each session has its
+    // own single client.
+    const perSession = new Map<string, SessionRecipients>()
 
-    // Everyone on the run in an allowed status (CUSTOM narrows to picked clients).
-    const statuses = step.audience === 'ENROLLED_AND_WAITLIST' ? ['ENROLLED', 'WAITLISTED'] : ['ENROLLED']
-    const enrollments = await prisma.classEnrollment.findMany({
-      where: {
-        classRunId: step.classRunId,
-        status: { in: statuses as ('ENROLLED' | 'WAITLISTED')[] },
-        ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
-      },
-      select: {
-        dropInSessionId: true,
-        dog: { select: { name: true } },
-        client: {
-          select: {
-            user: {
-              select: { id: true, name: true, email: true, notifyPush: true, productEmailOptOut: true },
-            },
-          },
+    if (step.classRunId) {
+      const sessions = await prisma.trainingSession.findMany({
+        where: { classRunId: step.classRunId, scheduledAt: scheduledWhere },
+        select: { id: true, scheduledAt: true },
+      })
+      if (sessions.length === 0) continue
+      // Everyone on the run in an allowed status (CUSTOM narrows to picked clients).
+      const statuses = step.audience === 'ENROLLED_AND_WAITLIST' ? ['ENROLLED', 'WAITLISTED'] : ['ENROLLED']
+      const enrollments = await prisma.classEnrollment.findMany({
+        where: {
+          classRunId: step.classRunId,
+          status: { in: statuses as ('ENROLLED' | 'WAITLISTED')[] },
+          ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
         },
-      },
-    })
+        select: { dropInSessionId: true, dog: { select: { name: true } }, client: { select: { user: { select: RECIPIENT_USER_SELECT } } } },
+      })
+      for (const s of sessions) {
+        // FULL enrolments (dropInSessionId null) attend every session; a drop-in
+        // only its one. Dedup by user, collecting their dog name(s).
+        const byUser = new Map<string, { user: RecipientUser; dogs: string[] }>()
+        for (const e of enrollments) {
+          if (e.dropInSessionId && e.dropInSessionId !== s.id) continue
+          const u = e.client?.user
+          if (!u?.id) continue
+          const entry = byUser.get(u.id) ?? { user: u, dogs: [] }
+          if (e.dog?.name && !entry.dogs.includes(e.dog.name)) entry.dogs.push(e.dog.name)
+          byUser.set(u.id, entry)
+        }
+        if (byUser.size) perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser })
+      }
+    } else {
+      // 1:1 package: each session belongs to one client. CUSTOM narrows to picked clients.
+      const sessions = await prisma.trainingSession.findMany({
+        where: {
+          clientPackage: { packageId: step.packageId! },
+          scheduledAt: scheduledWhere,
+          ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
+        },
+        select: { id: true, scheduledAt: true, dog: { select: { name: true } }, client: { select: { user: { select: RECIPIENT_USER_SELECT } } } },
+      })
+      for (const s of sessions) {
+        const u = s.client?.user
+        if (!u?.id) continue
+        perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser: new Map([[u.id, { user: u, dogs: s.dog?.name ? [s.dog.name] : [] }]]) })
+      }
+    }
 
+    if (perSession.size === 0) continue
     const link = '/my-sessions'
 
-    for (const s of sessions) {
-      // Recipients for THIS session: FULL enrolments (dropInSessionId null) plus
-      // any drop-in enrolment whose one session is this one. Dedup by user, and
-      // collect their dog name(s) for the {{dog}} placeholder.
-      const byUser = new Map<string, { user: RecipientUser; dogs: string[] }>()
-      for (const e of enrollments) {
-        if (e.dropInSessionId && e.dropInSessionId !== s.id) continue
-        const u = e.client?.user
-        if (!u?.id) continue
-        const entry = byUser.get(u.id) ?? { user: u, dogs: [] }
-        if (e.dog?.name && !entry.dogs.includes(e.dog.name)) entry.dogs.push(e.dog.name)
-        byUser.set(u.id, entry)
-      }
-      if (byUser.size === 0) continue
-
-      const already = await prisma.commsFlowSend.findMany({
-        where: { stepId: step.id, sessionId: s.id },
-        select: { userId: true },
-      })
+    for (const [sessionId, { scheduledAt, byUser }] of perSession) {
+      const already = await prisma.commsFlowSend.findMany({ where: { stepId: step.id, sessionId }, select: { userId: true } })
       const alreadySent = new Set(already.map(a => a.userId))
-
-      const vars0 = {
-        time: fmtTime(s.scheduledAt, tz),
-        date: fmtDate(s.scheduledAt, tz),
-        class: step.classRun.name,
-        business: trainer.businessName,
-        location: step.classRun.location ?? '',
-      }
+      const vars0 = { time: fmtTime(scheduledAt, tz), date: fmtDate(scheduledAt, tz), class: className, business: trainer.businessName, location }
 
       for (const [userId, { user, dogs }] of byUser) {
         if (alreadySent.has(userId)) continue
@@ -257,9 +261,7 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
         await deliver({ channels: step.channels, important: step.important, user, trainer, title, body, link })
         // Record the send. Unique (stepId, sessionId, userId) guards a concurrent
         // tick from double-sending — swallow the conflict if it races.
-        await prisma.commsFlowSend
-          .create({ data: { stepId: step.id, sessionId: s.id, userId } })
-          .catch(() => {})
+        await prisma.commsFlowSend.create({ data: { stepId: step.id, sessionId, userId } }).catch(() => {})
         sent++
       }
     }
