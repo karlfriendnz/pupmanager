@@ -34,7 +34,7 @@ export function PuppySchoolView({ schools, board, scheduleDays }: { schools: Pup
   return (
     <>
       <PageHeader
-        title="Puppy School"
+        title="Doggy Daycare"
         actions={
           schools.length > 0 && !creating ? (
             <button onClick={() => setCreating(true)} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg bg-teal-600 text-white hover:bg-teal-700">
@@ -53,7 +53,7 @@ export function PuppySchoolView({ schools, board, scheduleDays }: { schools: Pup
               </button>
             )}
             <div className="mb-5">
-              <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2"><Dog className="h-5 w-5 text-teal-600" /> {schools.length === 0 ? 'Start your puppy school' : 'Add a puppy school'}</h2>
+              <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2"><Dog className="h-5 w-5 text-teal-600" /> {schools.length === 0 ? 'Start your doggy daycare' : 'Add a doggy daycare'}</h2>
               <p className="text-sm text-slate-500 mt-0.5">Split the day into parts parents can book — mornings, afternoons, or however you run it.</p>
             </div>
             <PuppySchoolSetup />

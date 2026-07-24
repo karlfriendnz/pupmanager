@@ -214,11 +214,11 @@ export const ADDONS: AddonDef[] = [
   },
   {
     id: 'puppyschool',
-    name: 'Puppy School',
+    name: 'Doggy Daycare',
     // Free while it beds in — like classes/events. Off until the trainer
-    // switches it on; enabling it unlocks the Puppy School workspace (a
+    // switches it on; enabling it unlocks the Doggy Daycare workspace (a
     // day-parted, ongoing daycare offering with its own week board).
-    description: 'Run a puppy school or daycare — split each day into bookable parts, take rolling day-part bookings, and manage the day from a live week board.',
+    description: 'Run a doggy daycare — split each day into bookable parts, take rolling day-part bookings, and manage the day from a live week board.',
     free: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },

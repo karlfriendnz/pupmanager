@@ -75,7 +75,7 @@ const PROMOS: Record<string, Cfg> = {
     benefits: ['Cap the numbers', 'A guest list you can check off', 'Paid or free'],
   },
   puppyschool: {
-    title: 'Run a puppy school',
+    title: 'Run a doggy daycare',
     description: 'A day-parted daycare parents book on a rolling basis.',
     // Shares the classes/events photo until it has its own — a group of owners
     // and dogs is the same picture.

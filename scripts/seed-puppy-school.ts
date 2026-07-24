@@ -12,7 +12,7 @@ import { replacePackageSlots } from '../src/lib/package-slots'
 import { createClassRunIn } from '../src/lib/class-runs'
 
 const prisma = scriptPrisma()
-const PKG_NAME = 'Waggy Tails Puppy School (demo)'
+const PKG_NAME = 'Waggy Tails Doggy Daycare (demo)'
 const DOGS = ['Bailey', 'Max', 'Coco', 'Rosie', 'Ziggy', 'Bandit', 'Nala', 'Milo']
 
 function mondayISO(): string {
@@ -43,8 +43,9 @@ async function main() {
     await prisma.clientProfile.deleteMany({ where: { id: { in: seedProfileIds } } })
   }
   if (seedUserIds.length) await prisma.user.deleteMany({ where: { id: { in: seedUserIds } } })
-  const prior = await prisma.package.findFirst({ where: { trainerId, name: PKG_NAME }, select: { id: true } })
-  if (prior) {
+  // Any prior demo school (old or new name).
+  const priors = await prisma.package.findMany({ where: { trainerId, isPuppySchool: true, name: { contains: '(demo)' } }, select: { id: true } })
+  for (const prior of priors) {
     await prisma.classRun.deleteMany({ where: { packageId: prior.id } }) // cascades sessions + enrolments
     await prisma.packageSessionSlot.deleteMany({ where: { packageId: prior.id } })
     await prisma.package.delete({ where: { id: prior.id } })

@@ -6,7 +6,7 @@ import { hasAddon } from '@/lib/billing'
 import { listPuppySchools, getPuppySchoolWeek } from '@/lib/puppy-school'
 import { PuppySchoolView } from './puppy-school-view'
 
-export const metadata: Metadata = { title: 'Puppy School' }
+export const metadata: Metadata = { title: 'Doggy Daycare' }
 
 // The Puppy School workspace home: a live week board of day-part occupancy,
 // plus setup. Gated by the puppyschool add-on (off until the trainer enables

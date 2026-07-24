@@ -65,9 +65,9 @@ export const NUDGE_COPY: Record<string, { title: string; body: string; ctaLabel:
     ctaLabel: 'Set up Events',
   },
   puppyschool: {
-    title: 'Run a puppy school or daycare',
+    title: 'Run a doggy daycare',
     body: 'Split each day into bookable parts, take rolling day-part bookings and run the day from a live week board.',
-    ctaLabel: 'Set up Puppy School',
+    ctaLabel: 'Set up Doggy Daycare',
   },
   googlecalendar: {
     title: 'Sync your Google Calendar',

@@ -101,7 +101,7 @@ export function PuppySchoolSetup() {
         {/* Name */}
         <div className="p-5">
           <label className="block text-sm font-medium text-slate-700 mb-1.5 flex items-center gap-1.5"><PawPrint className="h-4 w-4 text-teal-600" /> School name</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Waggy Tails Puppy School" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Waggy Tails Doggy Daycare" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
         </div>
 
         {/* Parts of the day — each with its own days */}
@@ -149,7 +149,7 @@ export function PuppySchoolSetup() {
 
       <div className="mt-5 flex justify-end">
         <button onClick={create} disabled={saving || !canCreate} className="inline-flex items-center gap-2 h-11 px-5 text-sm font-semibold rounded-xl bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <PawPrint className="h-4 w-4" />} Create puppy school
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <PawPrint className="h-4 w-4" />} Create doggy daycare
         </button>
       </div>
     </div>
