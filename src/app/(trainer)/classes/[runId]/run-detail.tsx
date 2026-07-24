@@ -9,12 +9,13 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { CardHeading } from '@/components/shared/card-heading'
-import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info, Check, Send, FileText, AlertTriangle, Search, Bell } from 'lucide-react'
+import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info, Check, Send, FileText, AlertTriangle, Search, Bell, Tag } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
+import { DiscountManager } from '@/components/trainer/discount-manager'
 
-type Tab = 'details' | 'clients' | 'messages'
+type Tab = 'details' | 'clients' | 'messages' | 'discounts'
 type RunStatus = 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
 type EnrollStatus = 'ENROLLED' | 'WAITLISTED' | 'WITHDRAWN' | 'COMPLETED'
 type AssignedTrainer = { membershipId: string; name: string; title: string | null }
@@ -156,6 +157,7 @@ export function RunDetail({
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: enrollments.length > 0 ? enrollments.length : undefined },
     { id: 'messages', label: 'Messages', icon: Bell },
+    { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
 
   return (
@@ -431,6 +433,12 @@ export function RunDetail({
             ).values(),
           )}
         />
+      </div>
+
+      {/* Discounts — the system-wide engine, attached to this offering's package.
+          Phone tab; always shown below on a wide screen. */}
+      <div className={`mt-6 ${tab === 'discounts' ? '' : 'hidden lg:block'}`}>
+        <DiscountManager packageId={run.packageId} />
       </div>
 
       {adding && (
