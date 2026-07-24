@@ -1,23 +1,26 @@
 'use client'
 
 // Dead-simple Puppy School setup. The Holiday-Programme idea: don't make the
-// trainer build every day — define the day ONCE as a few parts (Morning /
-// Afternoon…), pick which weekdays the school runs, and we stamp each part
-// across every chosen day. Each part becomes a bookable session slot.
+// trainer build every day — define the day as a few parts (Morning / Afternoon…)
+// and pick which weekdays EACH part runs on. Each part becomes a bookable
+// session slot per day it runs, so parts can differ day to day (e.g. mornings
+// every weekday, afternoons only Mon/Wed/Fri).
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Loader2, Sun, PawPrint } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol } from '@/lib/money'
 
-interface Part { key: string; name: string; start: string; end: string; price: string; capacity: string }
+interface Part { key: string; name: string; start: string; end: string; price: string; capacity: string; days: number[] }
 
 const WEEKDAYS: { d: number; label: string }[] = [
   { d: 1, label: 'Mon' }, { d: 2, label: 'Tue' }, { d: 3, label: 'Wed' },
   { d: 4, label: 'Thu' }, { d: 5, label: 'Fri' }, { d: 6, label: 'Sat' }, { d: 0, label: 'Sun' },
 ]
+const WEEKDAYS_ONLY = [1, 2, 3, 4, 5]
 let seq = 0
-const newPart = (name = '', start = '09:00', end = '12:00'): Part => ({ key: `p${seq++}`, name, start, end, price: '', capacity: '8' })
+const newPart = (name = '', start = '09:00', end = '12:00', days: number[] = WEEKDAYS_ONLY): Part =>
+  ({ key: `p${seq++}`, name, start, end, price: '', capacity: '8', days: [...days] })
 
 function todayISO(): string {
   const n = new Date()
@@ -30,27 +33,28 @@ export function PuppySchoolSetup() {
   const sym = currencySymbol(currency)
 
   const [name, setName] = useState('')
-  const [days, setDays] = useState<Set<number>>(new Set([1, 2, 3, 4, 5]))
   const [parts, setParts] = useState<Part[]>([newPart('Morning', '09:00', '12:00'), newPart('Afternoon', '13:00', '17:00')])
   const [startFrom, setStartFrom] = useState(todayISO())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const toggleDay = (d: number) => setDays(prev => { const n = new Set(prev); n.has(d) ? n.delete(d) : n.add(d); return n })
   const patchPart = (key: string, p: Partial<Part>) => setParts(prev => prev.map(x => (x.key === key ? { ...x, ...p } : x)))
   const removePart = (key: string) => setParts(prev => prev.filter(x => x.key !== key))
+  const togglePartDay = (key: string, d: number) => setParts(prev => prev.map(x =>
+    x.key === key ? { ...x, days: x.days.includes(d) ? x.days.filter(v => v !== d) : [...x.days, d] } : x))
+  // New parts inherit the previous part's days — the common case (same days) stays one tap.
+  const addPart = () => setParts(prev => [...prev, newPart('', '13:00', '17:00', prev[prev.length - 1]?.days ?? WEEKDAYS_ONLY)])
 
-  const validParts = parts.filter(p => p.start && p.end && p.end > p.start)
-  const canСreate = name.trim() && days.size > 0 && validParts.length > 0 && !!startFrom
+  const validParts = parts.filter(p => p.start && p.end && p.end > p.start && p.days.length > 0)
+  const canCreate = !!name.trim() && validParts.length > 0 && !!startFrom
 
   async function create() {
     setError(null)
-    if (days.size === 0) return setError('Pick at least one day the school runs.')
-    if (validParts.length === 0) return setError('Add at least one part of the day (with an end time after the start).')
+    if (validParts.length === 0) return setError('Add at least one part with an end time after the start and at least one day.')
 
-    // Stamp each part across every chosen weekday → one session slot each.
+    // Each part → one session slot per weekday it runs on.
     const sessionSlots = validParts.flatMap(part =>
-      [...days].sort().map(day => ({
+      [...part.days].sort().map(day => ({
         day,
         startTime: part.start,
         endTime: part.end,
@@ -100,40 +104,39 @@ export function PuppySchoolSetup() {
           <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Waggy Tails Puppy School" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
         </div>
 
-        {/* Days */}
-        <div className="p-5">
-          <div className="text-sm font-medium text-slate-700 mb-2">Which days does it run?</div>
-          <div className="flex flex-wrap gap-1.5">
-            {WEEKDAYS.map(({ d, label }) => {
-              const on = days.has(d)
-              return (
-                <button key={d} onClick={() => toggleDay(d)} className={`h-9 px-3.5 rounded-lg text-sm font-medium border ${on ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>{label}</button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Parts of the day */}
+        {/* Parts of the day — each with its own days */}
         <div className="p-5">
           <div className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-1.5"><Sun className="h-4 w-4 text-amber-500" /> Parts of the day</div>
-          <p className="text-xs text-slate-500 mb-3">Split the day however you like — parents book the parts they want. Each part repeats on every day above.</p>
-          <div className="flex flex-col gap-2">
+          <p className="text-xs text-slate-500 mb-3">Split the day however you like — parents book the parts they want. Pick which days <em>each</em> part runs, so parts can differ day to day.</p>
+          <div className="flex flex-col gap-2.5">
             {parts.map(part => (
-              <div key={part.key} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 p-2.5">
-                <input value={part.name} onChange={e => patchPart(part.key, { name: e.target.value })} placeholder="Name (e.g. Morning)" className="h-9 flex-1 min-w-[8rem] rounded-lg border border-slate-200 px-2.5 text-sm" />
-                <input type="time" value={part.start} onChange={e => patchPart(part.key, { start: e.target.value })} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" />
-                <span className="text-slate-400 text-sm">→</span>
-                <input type="time" value={part.end} onChange={e => patchPart(part.key, { end: e.target.value })} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" />
-                <div className="relative">
-                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{sym}</span>
-                  <input value={part.price} onChange={e => patchPart(part.key, { price: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="Price" className="h-9 w-20 rounded-lg border border-slate-200 pl-6 pr-2 text-sm" />
+              <div key={part.key} className="rounded-xl border border-slate-200 p-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input value={part.name} onChange={e => patchPart(part.key, { name: e.target.value })} placeholder="Name (e.g. Morning)" className="h-9 flex-1 min-w-[8rem] rounded-lg border border-slate-200 px-2.5 text-sm" />
+                  <input type="time" value={part.start} onChange={e => patchPart(part.key, { start: e.target.value })} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" />
+                  <span className="text-slate-400 text-sm">→</span>
+                  <input type="time" value={part.end} onChange={e => patchPart(part.key, { end: e.target.value })} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" />
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{sym}</span>
+                    <input value={part.price} onChange={e => patchPart(part.key, { price: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="Price" className="h-9 w-20 rounded-lg border border-slate-200 pl-6 pr-2 text-sm" />
+                  </div>
+                  <input value={part.capacity} onChange={e => patchPart(part.key, { capacity: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" placeholder="Cap" title="Max dogs" className="h-9 w-16 rounded-lg border border-slate-200 px-2 text-sm" />
+                  <button onClick={() => removePart(part.key)} disabled={parts.length === 1} title="Remove" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
                 </div>
-                <input value={part.capacity} onChange={e => patchPart(part.key, { capacity: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" placeholder="Cap" title="Max dogs" className="h-9 w-16 rounded-lg border border-slate-200 px-2 text-sm" />
-                <button onClick={() => removePart(part.key)} disabled={parts.length === 1} title="Remove" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
+                {/* Per-part weekdays */}
+                <div className="flex flex-wrap items-center gap-1 mt-2">
+                  <span className="text-[11px] text-slate-400 mr-1">Runs</span>
+                  {WEEKDAYS.map(({ d, label }) => {
+                    const on = part.days.includes(d)
+                    return (
+                      <button key={d} onClick={() => togglePartDay(part.key, d)} className={`h-7 px-2.5 rounded-md text-xs font-medium border ${on ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>{label}</button>
+                    )
+                  })}
+                </div>
               </div>
             ))}
           </div>
-          <button onClick={() => setParts(prev => [...prev, newPart()])} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50"><Plus className="h-4 w-4" /> Add a part</button>
+          <button onClick={addPart} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50"><Plus className="h-4 w-4" /> Add a part</button>
         </div>
 
         {/* Start from */}
@@ -145,7 +148,7 @@ export function PuppySchoolSetup() {
       </div>
 
       <div className="mt-5 flex justify-end">
-        <button onClick={create} disabled={saving || !canСreate} className="inline-flex items-center gap-2 h-11 px-5 text-sm font-semibold rounded-xl bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50">
+        <button onClick={create} disabled={saving || !canCreate} className="inline-flex items-center gap-2 h-11 px-5 text-sm font-semibold rounded-xl bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <PawPrint className="h-4 w-4" />} Create puppy school
         </button>
       </div>
