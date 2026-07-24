@@ -9,11 +9,12 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { CardHeading } from '@/components/shared/card-heading'
-import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info, Check, Send, FileText, AlertTriangle, Search } from 'lucide-react'
+import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loader2, Info, Check, Send, FileText, AlertTriangle, Search, Bell } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
+import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 
-type Tab = 'details' | 'clients'
+type Tab = 'details' | 'clients' | 'messages'
 type RunStatus = 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
 type EnrollStatus = 'ENROLLED' | 'WAITLISTED' | 'WITHDRAWN' | 'COMPLETED'
 type AssignedTrainer = { membershipId: string; name: string; title: string | null }
@@ -154,6 +155,7 @@ export function RunDetail({
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: enrollments.length > 0 ? enrollments.length : undefined },
+    { id: 'messages', label: 'Messages', icon: Bell },
   ]
 
   return (
@@ -414,6 +416,21 @@ export function RunDetail({
           </Card>
       </div>
 
+      </div>
+
+      {/* Automated messages — full width. On a phone it's the "Messages" tab; on
+          a wide screen it sits below the two columns, always visible. */}
+      <div className={`mt-6 ${tab === 'messages' ? '' : 'hidden lg:block'}`}>
+        <CommsFlowEditor
+          runId={run.id}
+          clients={Array.from(
+            new Map(
+              enrollments
+                .filter(e => e.status !== 'WITHDRAWN')
+                .map(e => [e.clientId, { id: e.clientId, name: e.clientName }]),
+            ).values(),
+          )}
+        />
       </div>
 
       {adding && (
