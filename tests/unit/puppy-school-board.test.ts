@@ -45,7 +45,8 @@ describe('getPuppySchoolWeek', () => {
     expect(board.parts.map(p => p.key)).toEqual(['09:00'])
 
     const cell = board.cells['09:00']['2026-08-05']
-    expect(cell).toEqual({ booked: 2, capacity: 8, waitlist: 1 })
+    expect(cell).toMatchObject({ booked: 2, capacity: 8, waitlist: 1 })
+    expect(cell.attendees).toHaveLength(2) // the FULL + the drop-in dog
     expect(board.totalBooked).toBe(2)
   })
 

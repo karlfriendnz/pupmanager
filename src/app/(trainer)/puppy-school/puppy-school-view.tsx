@@ -104,11 +104,22 @@ function PartRow({ label, cells }: { label: string; cells: (import('@/lib/puppy-
               <span className={`font-mono text-xs font-semibold ${full ? 'text-amber-600' : 'text-teal-700'}`}>
                 {cell.booked}{cell.capacity != null ? `/${cell.capacity}` : ''}
               </span>
+              {cell.waitlist > 0 && <span className="font-mono text-[9.5px] text-amber-600">+{cell.waitlist} wait</span>}
             </div>
             <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
               <div className={`h-full rounded-full ${full ? 'bg-amber-500' : 'bg-teal-500'}`} style={{ width: `${pct}%` }} />
             </div>
-            {cell.waitlist > 0 && <span className="font-mono text-[9.5px] text-amber-600">+{cell.waitlist} wait</span>}
+            {/* Who's coming — the dogs booked into this session (owner on hover). */}
+            {cell.attendees.length > 0 && (
+              <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5 pr-0.5">
+                {cell.attendees.map((a, j) => (
+                  <div key={j} title={a.owner ? `${a.dog} · ${a.owner}` : a.dog} className="flex items-center gap-1 truncate rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-700">
+                    <span aria-hidden className="text-[10px]">🐕</span>
+                    <span className="truncate">{a.dog}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )
       })}

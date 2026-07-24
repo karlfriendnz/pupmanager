@@ -54,7 +54,8 @@ export async function listPuppySchools(trainerId: string): Promise<PuppySchoolSu
   }))
 }
 
-export interface WeekBoardCell { booked: number; capacity: number | null; waitlist: number }
+export interface BoardAttendee { dog: string; owner: string }
+export interface WeekBoardCell { booked: number; capacity: number | null; waitlist: number; attendees: BoardAttendee[] }
 export interface WeekBoard {
   tz: string
   columns: { key: string; label: string }[]
@@ -104,17 +105,30 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
   const runIds = [...new Set(sessions.map(s => s.classRunId).filter((x): x is string => !!x))]
   const enrollments = await prisma.classEnrollment.findMany({
     where: { classRunId: { in: runIds }, status: { in: ['ENROLLED', 'WAITLISTED'] } },
-    select: { classRunId: true, status: true, type: true, dropInSessionId: true },
+    select: {
+      classRunId: true, status: true, type: true, dropInSessionId: true,
+      dog: { select: { name: true } },
+      client: { select: { user: { select: { name: true } } } },
+    },
   })
 
   // FULL enrolments attend every session of their run; drop-ins only their one.
   const fullEnrolled = new Map<string, number>(), fullWait = new Map<string, number>()
   const dropEnrolled = new Map<string, number>(), dropWait = new Map<string, number>()
+  // Who's coming: FULL enrolees by run, drop-ins by their session.
+  const fullAttendees = new Map<string, BoardAttendee[]>()
+  const dropAttendees = new Map<string, BoardAttendee[]>()
   const bump = (m: Map<string, number>, k: string | null) => { if (k) m.set(k, (m.get(k) ?? 0) + 1) }
+  const addAtt = (m: Map<string, BoardAttendee[]>, k: string | null, e: (typeof enrollments)[number]) => {
+    if (!k) return
+    const list = m.get(k) ?? []
+    list.push({ dog: e.dog?.name ?? 'Dog', owner: e.client?.user?.name ?? '' })
+    m.set(k, list)
+  }
   for (const e of enrollments) {
     const enrolled = e.status === 'ENROLLED'
-    if (e.type === 'FULL') bump(enrolled ? fullEnrolled : fullWait, e.classRunId)
-    else bump(enrolled ? dropEnrolled : dropWait, e.dropInSessionId)
+    if (e.type === 'FULL') { bump(enrolled ? fullEnrolled : fullWait, e.classRunId); if (enrolled) addAtt(fullAttendees, e.classRunId, e) }
+    else { bump(enrolled ? dropEnrolled : dropWait, e.dropInSessionId); if (enrolled) addAtt(dropAttendees, e.dropInSessionId, e) }
   }
 
   const partLabels = new Map<string, string>()
@@ -128,8 +142,12 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
     const capacity = s.packageSessionSlot?.capacity ?? s.classRun?.capacity ?? s.classRun?.package.capacity ?? null
     const booked = (s.classRunId ? fullEnrolled.get(s.classRunId) ?? 0 : 0) + (dropEnrolled.get(s.id) ?? 0)
     const waitlist = (s.classRunId ? fullWait.get(s.classRunId) ?? 0 : 0) + (dropWait.get(s.id) ?? 0)
+    const attendees = [
+      ...(s.classRunId ? fullAttendees.get(s.classRunId) ?? [] : []),
+      ...(dropAttendees.get(s.id) ?? []),
+    ]
     totalBooked += booked
-    ;(cells[partKey] ??= {})[colKey] = { booked, capacity, waitlist }
+    ;(cells[partKey] ??= {})[colKey] = { booked, capacity, waitlist, attendees }
   }
 
   const partsArr = [...partLabels.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, label]) => ({ key, label }))
