@@ -1551,6 +1551,11 @@ model Package {
   // shared session series that many clients enrol into. isGroup=false
   // packages keep the 1:1 ClientPackage path untouched.
   isGroup                  Boolean     @default(false)
+  // A puppy school / daycare: an ongoing, day-parted group offering run from
+  // the Puppy School workspace. Implies isGroup + allowDropIn (each day-part is
+  // a session a parent books like a drop-in) + sessionCount 0 (ongoing). The
+  // flag lets the workspace and the week board find these without heuristics.
+  isPuppySchool            Boolean     @default(false)
   // Max enrolments per run (null = unlimited). A run may override this.
   capacity                 Int?
   // Allow clients to book a single session on its own (drop-in), at

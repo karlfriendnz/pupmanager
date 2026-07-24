@@ -65,7 +65,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins' | 'events'
+export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins' | 'events' | 'puppyschool'
 
 export interface AddonDef {
   id: AddonId
@@ -209,6 +209,16 @@ export const ADDONS: AddonDef[] = [
     // Free while it beds in — a paid tier is a one-line change here plus a
     // Stripe run once it's proven. Off until the trainer switches it on.
     description: 'Run one-off events — workshops, seminars and meet-ups — that clients book a ticket for, with capacity and a guest list.',
+    free: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
+    id: 'puppyschool',
+    name: 'Puppy School',
+    // Free while it beds in — like classes/events. Off until the trainer
+    // switches it on; enabling it unlocks the Puppy School workspace (a
+    // day-parted, ongoing daycare offering with its own week board).
+    description: 'Run a puppy school or daycare — split each day into bookable parts, take rolling day-part bookings, and manage the day from a live week board.',
     free: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
