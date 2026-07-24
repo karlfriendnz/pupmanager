@@ -95,6 +95,14 @@ button, a, [role="button"] {
   min-width: 44px;
 }
 
+/* …but a switch sizes itself (an on/off pill), so exempt it from the 44px min —
+   otherwise it gets forced into a 44×44 square and rounds into a circle. Use
+   the shared <Switch> (role="switch") for every toggle. */
+[role="switch"] {
+  min-height: 0;
+  min-width: 0;
+}
+
 /* Hide scrollbars on horizontal carousels while keeping the scroll behaviour */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
