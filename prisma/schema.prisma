@@ -662,6 +662,7 @@ model TrainerProfile {
   classRuns          ClassRun[]
   commsFlowTemplates CommsFlowTemplate[]
   discounts          Discount[]
+  memberships        Membership[]
   waitlistEntries    WaitlistEntry[]
   bookingRequests    BookingRequest[]
   activityWeeks      TrainerActivityWeek[]
@@ -2346,6 +2347,7 @@ enum PurchasableKind {
   SESSION // → single TrainingSession (booking-page slot)
   PRODUCT // → Product purchase
   CLASS_ENROLLMENT // → ClassEnrollment (group / drop-in)
+  MEMBERSHIP // → a combo membership: fulfilment grants each included item + writes MembershipPurchase
 }
 
 // Tracks whether a Payment's invoice has been mirrored into the trainer's Xero
@@ -2929,6 +2931,111 @@ model Discount {
   @@index([trainerId])
   @@index([packageId])
   @@map("discounts")
+}
+
+// ─── Combo memberships ───────────────────────────────────────────────────────
+// A trainer bundles several offerings (1:1 packages, a class place, products)
+// into one purchasable membership, sold at a bundle price. On payment the
+// connect webhook grants every included item. Phase 1 is ONE_OFF; RECURRING
+// (with minTermCount + earlyTermFeeCents) rides on the off-session mandate
+// layer, shared with puppy-school recurring billing.
+
+enum MembershipCadence {
+  ONE_OFF
+  RECURRING
+}
+
+enum MembershipInterval {
+  WEEK
+  FORTNIGHT
+  MONTH
+}
+
+// What an included line points at. Puppy-school inclusion is just a CLASS item
+// pointing at the puppy school's run.
+enum MembershipItemKind {
+  PACKAGE // a 1:1 package → assigned as a ClientPackage (×quantity)
+  CLASS // a class run → enrol the buyer (or a request, if the class needs approval)
+  PRODUCT // a shop product → a product order (×quantity)
+}
+
+enum MembershipPurchaseStatus {
+  ACTIVE
+  CANCELLED
+  LAPSED
+}
+
+model Membership {
+  id                String              @id @default(cuid())
+  trainerId         String
+  name              String
+  description       String?             @db.Text
+  imageUrl          String?
+  priceCents        Int
+  cadence           MembershipCadence   @default(ONE_OFF)
+  interval          MembershipInterval? // for RECURRING
+  // Recurring minimum commitment in cycles (0 = cancel any time) + an optional
+  // early-termination fee if they leave within it.
+  minTermCount      Int                 @default(0)
+  earlyTermFeeCents Int?
+  published         Boolean             @default(false)
+  // Public URL slug for the booking-page storefront (unique per trainer).
+  slug              String?
+  order             Int                 @default(0)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  trainer   TrainerProfile       @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  items     MembershipItem[]
+  purchases MembershipPurchase[]
+
+  @@unique([trainerId, slug])
+  @@index([trainerId])
+  @@map("memberships")
+}
+
+// One included offering. The offering ids are plain references (no FK) so a
+// membership survives an offering being reshuffled; fulfilment resolves + skips
+// anything that has since vanished.
+model MembershipItem {
+  id               String             @id @default(cuid())
+  membershipId     String
+  kind             MembershipItemKind
+  packageId        String? // PACKAGE
+  classRunId       String? // CLASS
+  productId        String? // PRODUCT
+  quantity         Int                @default(1)
+  // Recurring only: re-grant this item each renewal (products) vs one-time.
+  regrantOnRenewal Boolean            @default(false)
+  order            Int                @default(0)
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId])
+  @@map("membership_items")
+}
+
+model MembershipPurchase {
+  id               String                   @id @default(cuid())
+  membershipId     String
+  trainerId        String
+  clientId         String
+  status           MembershipPurchaseStatus @default(ACTIVE)
+  purchasedAt      DateTime                 @default(now())
+  currentPeriodEnd DateTime? // RECURRING
+  committedUntil   DateTime? // end of the minimum term
+  // The settled Payment that bought it.
+  paymentId        String?
+  sandbox          Boolean                  @default(false)
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId])
+  @@index([trainerId])
+  @@index([clientId])
+  @@map("membership_purchases")
 }
 
 // ─── Trainer-defined Achievements ────────────────────────────────────────────

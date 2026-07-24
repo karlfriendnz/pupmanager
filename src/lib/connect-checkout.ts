@@ -16,7 +16,7 @@ import { platformFeeAmount, estimateProcessingSurcharge } from './connect'
 // webhook can resolve it by metadata.paymentId on success; nothing is fulfilled
 // here — fulfilment happens when the payment actually succeeds.
 
-export type PurchasableKind = 'PACKAGE' | 'SESSION' | 'PRODUCT' | 'CLASS_ENROLLMENT'
+export type PurchasableKind = 'PACKAGE' | 'SESSION' | 'PRODUCT' | 'CLASS_ENROLLMENT' | 'MEMBERSHIP'
 
 export interface CheckoutLine {
   kind: PurchasableKind
