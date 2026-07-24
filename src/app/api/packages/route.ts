@@ -33,6 +33,10 @@ const schema = z.object({
   // Group-class config. isGroup flips this package from the 1:1
   // ClientPackage path to the ClassRun (cohort) path.
   isGroup: z.boolean().optional(),
+  // A puppy school / daycare offering: day-parted, ongoing, run from the Puppy
+  // School workspace. Implies isGroup + allowDropIn (each day-part books like a
+  // drop-in session).
+  isPuppySchool: z.boolean().optional(),
   capacity: z.number().int().min(0).max(1000).nullable().optional(),
   allowDropIn: z.boolean().optional(),
   dropInPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
@@ -131,6 +135,7 @@ export async function POST(req: Request) {
         defaultSessionFormId: parsed.data.defaultSessionFormId ?? null,
         requireSessionNotes: parsed.data.requireSessionNotes ?? true,
         isGroup: parsed.data.isGroup ?? false,
+        isPuppySchool: parsed.data.isPuppySchool ?? false,
         capacity: parsed.data.capacity ?? null,
         allowDropIn: dropIn ? dropIn.allowDropIn : (parsed.data.allowDropIn ?? false),
         dropInPriceCents: dropIn ? dropIn.dropInPriceCents : (parsed.data.dropInPriceCents ?? null),

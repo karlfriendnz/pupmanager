@@ -123,6 +123,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     '/products': 'shop',
     '/achievements': 'achievements',
     '/events': 'events',
+    '/puppy-school': 'puppyschool',
   }
   const enabledAddons = ctx ? await getEnabledAddons(ctx.companyId) : new Set<string>()
   const addonLockedHrefs = Object.entries(ADDON_NAV)
