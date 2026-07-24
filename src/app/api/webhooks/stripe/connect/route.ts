@@ -8,6 +8,7 @@ import { readAccountFlags, stripeProcessingFeeFrom } from '@/lib/connect'
 import { materializeBooking } from '@/lib/booking-page'
 import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automations'
 import { enrollInRun } from '@/lib/class-runs'
+import { fulfilMembershipInTx, enrolMembershipClasses } from '@/lib/memberships'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { notifyClient } from '@/lib/client-notify'
 import { sendEmail } from '@/lib/email'
@@ -203,6 +204,8 @@ async function markPaidAndFulfil(
   const booked: { bookingPageId: string; slotAt: Date }[] = []
   const collisions: Date[] = []
   const classItems: { itemId: string; intent: ClassIntent }[] = []
+  // Membership class places to enrol post-commit (enrollInRun opens its own tx).
+  const membershipClassGrants: { classRunId: string }[] = []
   // Session ids created by paid bookings — mirrored to Google after the commit.
   const syncSessionIds: string[] = []
   let didFulfil = false
@@ -261,6 +264,20 @@ async function markPaidAndFulfil(
         // enrollInRun runs its own transaction (capacity/waitlist logic), so it
         // can't nest here — defer to a post-commit step.
         classItems.push({ itemId: item.id, intent: (item.intent ?? {}) as ClassIntent })
+      } else if (item.kind === 'MEMBERSHIP') {
+        // A combo membership: grant its packages + products in-tx and record the
+        // MembershipPurchase; its class places enrol post-commit.
+        const mIntent = (item.intent ?? {}) as { membershipId?: string }
+        if (mIntent.membershipId) {
+          const { classGrants } = await fulfilMembershipInTx(tx, {
+            membershipId: mIntent.membershipId,
+            trainerId: payment.trainerId,
+            clientId: payment.clientId,
+            paymentId: payment.id,
+            sandbox: payment.sandbox,
+          })
+          membershipClassGrants.push(...classGrants)
+        }
       }
     }
   })
@@ -280,6 +297,9 @@ async function markPaidAndFulfil(
   }
   if (didFulfil && classItems.length && payment.clientId) {
     await fulfilClassEnrolments(payment.trainerId, payment.clientId, classItems)
+  }
+  if (didFulfil && membershipClassGrants.length && payment.clientId) {
+    await enrolMembershipClasses(membershipClassGrants, payment.clientId)
   }
 
   // Settle the receivable Invoice this payment was for (public pay page), or —
