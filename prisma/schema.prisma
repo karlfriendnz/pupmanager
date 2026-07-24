@@ -661,6 +661,7 @@ model TrainerProfile {
   achievements       Achievement[]
   classRuns          ClassRun[]
   commsFlowTemplates CommsFlowTemplate[]
+  discounts          Discount[]
   waitlistEntries    WaitlistEntry[]
   bookingRequests    BookingRequest[]
   activityWeeks      TrainerActivityWeek[]
@@ -1593,6 +1594,7 @@ model Package {
   sessionSlots       PackageSessionSlot[]
   ticketTiers        PackageTicketTier[]
   waitlistEntries    WaitlistEntry[]
+  discounts          Discount[]
   bookingRequests    BookingRequest[]
   bookingPages       BookingPage[]
   defaultSessionForm SessionForm?     @relation("PackageDefaultSessionForm", fields: [defaultSessionFormId], references: [id], onDelete: SetNull)
@@ -2874,6 +2876,51 @@ model CommsFlowTemplate {
 
   @@index([trainerId])
   @@map("comms_flow_templates")
+}
+
+// ─── System-wide discounts ───────────────────────────────────────────────────
+// A trainer-authored, condition-based discount evaluated by src/lib/discounts.
+// Attaches to one Package (any offering — class/drop-in/event/puppy-school/1:1)
+// via packageId, or is trainer-wide (packageId null) and available to any
+// offering. modifierValue is cents for FLAT/REPLACE, a percent for PERCENT.
+
+enum DiscountModifierType {
+  PERCENT // % off
+  FLAT // fixed amount off (cents)
+  REPLACE // set the price to this amount (cents)
+}
+
+model Discount {
+  id            String               @id @default(cuid())
+  trainerId     String
+  // Which offering this attaches to. Null = a trainer-wide discount usable by
+  // any offering (the evaluator is offering-agnostic).
+  packageId     String?
+  name          String
+  // Client-facing label ("Whole-day rate"); falls back to name.
+  formText      String?
+  modifierType  DiscountModifierType
+  modifierValue Int
+  // per_item | per_person | cheapest_item | most_expensive_item | order_total.
+  applyTo       String               @default("order_total")
+  // DiscountCondition[] JSON — see src/lib/discounts/evaluate.ts.
+  conditions    Json                 @default("[]")
+  isActive      Boolean              @default(true)
+  validFrom     DateTime?
+  expiresAt     DateTime?
+  // Optional usage cap (atomic claim on redemption, like FM's booking-discount-claim).
+  maxUses       Int?
+  usesCount     Int                  @default(0)
+  order         Int                  @default(0)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  package Package?       @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId])
+  @@index([packageId])
+  @@map("discounts")
 }
 
 // ─── Trainer-defined Achievements ────────────────────────────────────────────
