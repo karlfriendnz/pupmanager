@@ -53,7 +53,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ member
     description: membership.name,
     lines: [{ kind: 'MEMBERSHIP', description: membership.name, unitAmount: membership.priceCents, quantity: 1, intent: { membershipId: membership.id } }],
     successUrl: `${appUrl}/my-sessions?membership=1`,
-    cancelUrl: `${appUrl}/memberships?cancelled=1`,
+    cancelUrl: `${appUrl}/my-memberships?cancelled=1`,
   })
   if (!url) return NextResponse.json({ error: 'Could not start checkout' }, { status: 502 })
   return NextResponse.json({ ok: true, mode: 'payment', url }, { status: 201 })
