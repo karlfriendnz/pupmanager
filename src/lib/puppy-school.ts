@@ -54,7 +54,7 @@ export async function listPuppySchools(trainerId: string): Promise<PuppySchoolSu
   }))
 }
 
-export interface BoardAttendee { dog: string; owner: string }
+export interface BoardAttendee { dogId: string; dog: string; owner: string; clientId: string; photoUrl: string | null }
 export interface WeekBoardCell { booked: number; capacity: number | null; waitlist: number; attendees: BoardAttendee[] }
 export interface WeekBoard {
   tz: string
@@ -62,6 +62,8 @@ export interface WeekBoard {
   parts: { key: string; label: string }[]
   cells: Record<string, Record<string, WeekBoardCell>>
   totalBooked: number
+  /** Column key for today (if it falls in this week), for highlighting. */
+  todayKey: string
 }
 
 /**
@@ -87,6 +89,7 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
     return { key: `${c.getUTCFullYear()}-${pad(c.getUTCMonth() + 1)}-${pad(c.getUTCDate())}`, label: `${DOW[i]} ${c.getUTCDate()}` }
   })
   const colByKey = new Map(columns.map(c => [c.key, c.key]))
+  const todayKey = tzDateKey(now, tz)
 
   // Sessions across the window (generous bounds; filtered to the 7 columns by key).
   const sessions = await prisma.trainingSession.findMany({
@@ -100,15 +103,15 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
       classRun: { select: { capacity: true, package: { select: { capacity: true } } } },
     },
   })
-  if (sessions.length === 0) return { tz, columns, parts: [], cells: {}, totalBooked: 0 }
+  if (sessions.length === 0) return { tz, columns, parts: [], cells: {}, totalBooked: 0, todayKey }
 
   const runIds = [...new Set(sessions.map(s => s.classRunId).filter((x): x is string => !!x))]
   const enrollments = await prisma.classEnrollment.findMany({
     where: { classRunId: { in: runIds }, status: { in: ['ENROLLED', 'WAITLISTED'] } },
     select: {
       classRunId: true, status: true, type: true, dropInSessionId: true,
-      dog: { select: { name: true } },
-      client: { select: { user: { select: { name: true } } } },
+      dog: { select: { id: true, name: true, photoUrl: true } },
+      client: { select: { id: true, user: { select: { name: true } } } },
     },
   })
 
@@ -122,7 +125,7 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
   const addAtt = (m: Map<string, BoardAttendee[]>, k: string | null, e: (typeof enrollments)[number]) => {
     if (!k) return
     const list = m.get(k) ?? []
-    list.push({ dog: e.dog?.name ?? 'Dog', owner: e.client?.user?.name ?? '' })
+    list.push({ dogId: e.dog?.id ?? '', dog: e.dog?.name ?? 'Dog', owner: e.client?.user?.name ?? '', clientId: e.client?.id ?? '', photoUrl: e.dog?.photoUrl ?? null })
     m.set(k, list)
   }
   for (const e of enrollments) {
@@ -151,5 +154,5 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
   }
 
   const partsArr = [...partLabels.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, label]) => ({ key, label }))
-  return { tz, columns, parts: partsArr, cells, totalBooked }
+  return { tz, columns, parts: partsArr, cells, totalBooked, todayKey }
 }
