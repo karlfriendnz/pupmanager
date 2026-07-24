@@ -219,7 +219,16 @@ async function syncTrainerAddons(
 
   const activeIds = activeAddons.map(a => a.itemId)
   await prisma.trainerAddon.updateMany({
-    where: { trainerId, active: true, itemId: { notIn: activeIds.length ? activeIds : ['__none__'] } },
+    // Never sweep away admin comp grants — they're intentionally NOT Stripe
+    // line items, so they'd always look "missing" from the live subscription.
+    // Free-add-on toggles (also not on Stripe) are likewise left alone.
+    where: {
+      trainerId,
+      active: true,
+      grantedByAdmin: false,
+      stripeSubscriptionItemId: { not: null },
+      itemId: { notIn: activeIds.length ? activeIds : ['__none__'] },
+    },
     data: { active: false, stripeSubscriptionItemId: null },
   })
 }

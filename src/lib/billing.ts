@@ -136,14 +136,22 @@ export async function loadBillingConfig(): Promise<BillingConfig> {
 export async function getEnabledAddons(trainerId: string): Promise<Set<string>> {
   const rows = await prisma.trainerAddon.findMany({
     where: { trainerId },
-    select: { itemId: true, active: true },
+    select: { itemId: true, active: true, expiresAt: true },
   })
-  const explicit = new Map(rows.map((r) => [r.itemId, r.active]))
+  const now = Date.now()
+  // An admin comp grant lapses at expiresAt: past that, the row still exists
+  // (active:true) but no longer grants access — the add-on silently gates off.
+  const explicit = new Map(rows.map((r) => [r.itemId, r.active && !isExpired(r.expiresAt, now)]))
   const enabled = new Set<string>()
   for (const [id, active] of explicit) if (active) enabled.add(id)
   // Default-on add-ons count as enabled unless explicitly disabled.
   for (const id of DEFAULT_ON_ADDON_IDS) if (explicit.get(id) !== false) enabled.add(id)
   return enabled
+}
+
+/** A grant's expiry has passed. Null expiresAt = never lapses. */
+function isExpired(expiresAt: Date | null, now = Date.now()): boolean {
+  return expiresAt != null && expiresAt.getTime() <= now
 }
 
 /**
@@ -153,9 +161,9 @@ export async function getEnabledAddons(trainerId: string): Promise<Set<string>> 
 export async function hasAddon(trainerId: string, addonId: string): Promise<boolean> {
   const row = await prisma.trainerAddon.findUnique({
     where: { trainerId_itemId: { trainerId, itemId: addonId } },
-    select: { active: true },
+    select: { active: true, expiresAt: true },
   })
-  if (row) return row.active
+  if (row) return row.active && !isExpired(row.expiresAt)
   return DEFAULT_ON_ADDON_IDS.includes(addonId as never)
 }
 

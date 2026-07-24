@@ -2311,6 +2311,19 @@ model TrainerAddon {
   // False = toggled off but row kept for history. The active set drives
   // feature gating + billing.
   active                   Boolean @default(true)
+  // Admin-granted free comp: the trainer gets the add-on at no cost for a
+  // preview/promo window. Never billed (skipped in the Stripe path) and
+  // protected from the webhook's reconciliation sweep, which would otherwise
+  // deactivate any row that isn't a live subscription line item.
+  grantedByAdmin           Boolean @default(false)
+  // When the access lapses. Null = no expiry (a permanent comp or a normal
+  // paid/free toggle). Once past, gating treats the row as inactive — the
+  // add-on silently switches off, the trainer is never charged.
+  expiresAt                DateTime?
+  // When the "your trial ends soon" reminder went out for the CURRENT expiresAt.
+  // Reset to null whenever the admin changes the expiry, so an extended grant
+  // re-arms the reminder. The cron only emails when this is null.
+  expiryReminderSentAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

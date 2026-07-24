@@ -25,6 +25,8 @@ import { SampleDataBanner } from './sample-data-banner'
 import { CountryPrompt } from './country-prompt'
 import { XeroAutoReconcile } from './xero-auto-reconcile'
 import { TrialBanner } from '../trial-banner'
+import { AddonCompBanner } from '../addon-comp-banner'
+import { activeAddonComps } from '@/lib/addon-grants'
 import { initTrainerOnboarding } from '@/lib/onboarding/init'
 import { getOnboardingState } from '@/lib/onboarding/state'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
@@ -310,6 +312,10 @@ export default async function DashboardPage({
     : false
   const isDevPreview = process.env.NODE_ENV === 'development'
 
+  // Active admin comps (free add-on trials) with a future expiry → the
+  // "X days left" strip at the top of the dashboard.
+  const addonComps = session.user.trainerId ? await activeAddonComps(session.user.trainerId) : []
+
   return (
     <>
       <PageHeader
@@ -324,6 +330,8 @@ export default async function DashboardPage({
         }
       />
       <div className="p-4 md:p-8 w-full">
+        {/* Free add-on trial (admin comp) countdown — self-clears at expiry. */}
+        <AddonCompBanner comps={addonComps} />
         {/* iOS/Android only: prompt for a country when we couldn't capture it
             from the IP at signup. Hidden on web and once one is set. */}
         <CountryPrompt hasCountry={!!brandingProfile?.signupCountry} />

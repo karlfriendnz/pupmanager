@@ -57,12 +57,17 @@ export default async function AdminTrainerDetailPage({
   const p = user.trainerProfile
 
   // Same live-derived signals the table used, now computed once for the detail.
-  const [sampleCount, fab, report, notes, tasks] = await Promise.all([
+  const [sampleCount, fab, report, notes, tasks, addonGrants] = await Promise.all([
     prisma.clientProfile.count({ where: { trainerId: p.id, isSample: true } }),
     getOnboardingFabState(p.id),
     getTrainerEmailReport(p.id),
     prisma.adminTrainerNote.findMany({ where: { trainerId: p.id }, orderBy: { createdAt: 'desc' }, take: 100 }),
     prisma.adminTrainerTask.findMany({ where: { trainerId: p.id }, orderBy: [{ done: 'asc' }, { createdAt: 'desc' }] }),
+    // Admin comp grants for this trainer (free add-on previews with an expiry).
+    prisma.trainerAddon.findMany({
+      where: { trainerId: p.id, grantedByAdmin: true, active: true },
+      select: { itemId: true, expiresAt: true },
+    }),
   ])
   const done = fab.steps.filter(s => s.status === 'completed').length
   const total = fab.totalSteps
@@ -148,6 +153,7 @@ export default async function AdminTrainerDetailPage({
         seatCount={p.seatCount}
         isInternal={p.isInternal}
         deactivatedAt={user.deactivatedAt ? user.deactivatedAt.toISOString() : null}
+        addonGrants={addonGrants.map(g => ({ itemId: g.itemId, expiresAt: g.expiresAt ? g.expiresAt.toISOString() : null }))}
       />
 
       {/* Onboarding & trial email history */}

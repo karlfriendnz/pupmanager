@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Check, X, AlertTriangle, Trash2, Ban, RotateCcw, Loader2 } from 'lucide-react'
+import { Check, X, AlertTriangle, Trash2, Ban, RotateCcw, Loader2, Gift } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
+import { ADDONS } from '@/lib/pricing'
 
 // All the mutating controls for a single trainer, laid out as full-page cards.
 // These call the same /api/admin/trainers/[id] endpoints the old inline table
@@ -22,6 +23,22 @@ type Props = {
   seatCount: number
   isInternal: boolean
   deactivatedAt: string | null
+  // Active admin comp grants: free add-on previews with an optional expiry.
+  addonGrants: { itemId: string; expiresAt: string | null }[]
+}
+
+// Add-ons an admin can comp — everything in the catalog except coming-soon
+// previews (which aren't usable yet).
+const GRANTABLE_ADDONS = ADDONS.filter(a => !a.comingSoon).map(a => ({ id: a.id, name: a.name }))
+
+const DAY_MS = 24 * 60 * 60 * 1000
+// yyyy-mm-dd N days from now, for the default expiry date input.
+function dateInputValue(daysFromNow: number): string {
+  return new Date(Date.now() + daysFromNow * DAY_MS).toISOString().slice(0, 10)
+}
+// Whole days until an ISO instant (rounded up); negative once past.
+function daysUntil(iso: string): number {
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / DAY_MS)
 }
 
 const card = 'rounded-2xl border border-slate-700 bg-slate-800 p-5'
@@ -47,6 +64,40 @@ export function TrainerDetailActions(props: Props) {
   const [showHardDelete, setShowHardDelete] = useState(false)
   const [confirmText, setConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
+
+  // Add-on comps.
+  const grantedIds = new Set(props.addonGrants.map(g => g.itemId))
+  const ungranted = GRANTABLE_ADDONS.filter(a => !grantedIds.has(a.id))
+  const [newAddon, setNewAddon] = useState('')
+  const [newExpiry, setNewExpiry] = useState(dateInputValue(30))
+  const [noExpiry, setNoExpiry] = useState(false)
+  const [grantingId, setGrantingId] = useState<string | null>(null)
+
+  // Grant / extend / revoke a comp. expiresAtISO null = no expiry; active:false
+  // revokes. Posts to the dedicated addons route (never touches Stripe).
+  async function grant(itemId: string, active: boolean, expiresAtISO: string | null) {
+    setGrantingId(itemId)
+    setError(null)
+    try {
+      const res = await fetch(`/api/admin/trainers/${props.id}/addons`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId, active, expiresAt: expiresAtISO }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to update add-on')
+      }
+      router.refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update add-on')
+    } finally {
+      setGrantingId(null)
+    }
+  }
+
+  // End-of-day ISO for a yyyy-mm-dd date input, so a comp lasts the whole day.
+  const endOfDayISO = (ymd: string) => new Date(`${ymd}T23:59:59`).toISOString()
 
   // Shared PATCH helper — every subscription/account action funnels through it.
   async function patch(body: Record<string, unknown>, setBusy: (b: boolean) => void, fail: string) {
@@ -187,6 +238,82 @@ export function TrainerDetailActions(props: Props) {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Add-on comps — free previews with an expiry */}
+      <div className={card}>
+        <h2 className={cardTitle}>Add-on comps (free trials)</h2>
+        <p className="text-sm text-slate-400 mb-4">
+          Switch an add-on on for free so they can try it — no charge. It silently
+          switches off at the expiry date, and they get an email 2 days before it ends.
+        </p>
+
+        {props.addonGrants.length > 0 ? (
+          <ul className="flex flex-col gap-2 mb-4">
+            {props.addonGrants.map(g => {
+              const name = GRANTABLE_ADDONS.find(a => a.id === g.itemId)?.name ?? g.itemId
+              const left = g.expiresAt ? daysUntil(g.expiresAt) : null
+              const busy = grantingId === g.itemId
+              return (
+                <li key={g.itemId} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-700 bg-slate-900/50 px-3 py-2.5">
+                  <span className="text-sm font-medium text-slate-200">{name}</span>
+                  {g.expiresAt == null ? (
+                    <span className="text-xs text-slate-400">No expiry</span>
+                  ) : left! <= 0 ? (
+                    <span className="text-xs text-rose-300">Expired</span>
+                  ) : (
+                    <span className={`text-xs ${left! <= 3 ? 'text-amber-300' : 'text-emerald-300'}`}>
+                      {left} day{left === 1 ? '' : 's'} left · ends {formatDate(new Date(g.expiresAt))}
+                    </span>
+                  )}
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      onClick={() => grant(g.itemId, true, new Date((g.expiresAt ? new Date(g.expiresAt).getTime() : Date.now()) + 30 * DAY_MS).toISOString())}
+                      disabled={busy}
+                      className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 h-8 rounded-lg disabled:opacity-50">
+                      {busy ? '…' : '+30 days'}
+                    </button>
+                    <button
+                      onClick={() => grant(g.itemId, false, null)}
+                      disabled={busy}
+                      className="inline-flex items-center gap-1 text-xs text-rose-300 hover:text-rose-200 px-3 h-8 rounded-lg border border-rose-500/40 disabled:opacity-50">
+                      <X className="h-3 w-3" /> Revoke
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p className="text-sm text-slate-500 mb-4">No comped add-ons.</p>
+        )}
+
+        {ungranted.length > 0 && (
+          <div className="flex flex-wrap items-end gap-3 border-t border-slate-700/60 pt-4">
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="text-slate-400 text-xs">Add-on</span>
+              <select value={newAddon} onChange={e => setNewAddon(e.target.value)}
+                className="h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Choose…</option>
+                {ungranted.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="text-slate-400 text-xs">Expires</span>
+              <input type="date" value={newExpiry} disabled={noExpiry} onChange={e => setNewExpiry(e.target.value)}
+                className="h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-slate-400 h-10 select-none">
+              <input type="checkbox" checked={noExpiry} onChange={e => setNoExpiry(e.target.checked)} className="accent-blue-500" /> No expiry
+            </label>
+            <button
+              onClick={() => grant(newAddon, true, noExpiry ? null : endOfDayISO(newExpiry))}
+              disabled={!newAddon || grantingId === newAddon}
+              className="inline-flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 h-10 rounded-lg disabled:opacity-50">
+              {grantingId === newAddon ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />} Grant free
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Account type */}
