@@ -153,7 +153,11 @@ export function BookingWizard(props: {
   const [time, setTime] = useState('')
 
   // Class options state.
-  const [dogId, setDogId] = useState<string | null>(defaultDogId)
+  // One or more dogs — book several into the same class/sessions at once.
+  const [dogIds, setDogIds] = useState<string[]>(defaultDogId ? [defaultDogId] : [])
+  const dogId = dogIds[0] ?? null // primary, for single-dog displays
+  const toggleDog = (id: string) =>
+    setDogIds(prev => (prev.includes(id) ? (prev.length > 1 ? prev.filter(x => x !== id) : prev) : [...prev, id]))
   const [classType, setClassType] = useState<'FULL' | 'DROP_IN'>('FULL')
   // Which sessions a drop-in is for. Several at once: someone coming to three
   // Saturdays shouldn't pay for them one checkout at a time.
@@ -222,7 +226,7 @@ export function BookingWizard(props: {
     // full-course mode the client has to find first.
     setClassType(c.allowDropIn && c.dropInPerSessionCents != null ? 'DROP_IN' : 'FULL')
     setDropInSessionIds([])
-    setDogId(defaultDogId)
+    setDogIds(defaultDogId ? [defaultDogId] : [])
     setError(null)
     setStep(2)
   }
@@ -272,7 +276,7 @@ export function BookingWizard(props: {
         const res = await fetch(`/api/my/classes/${selection.cls.id}/enroll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: classType, dogId, sessionIds: classType === 'DROP_IN' ? dropInSessionIds : undefined }),
+          body: JSON.stringify({ type: classType, ...(dogIds.length ? { dogIds } : {}), sessionIds: classType === 'DROP_IN' ? dropInSessionIds : undefined }),
         })
         const b = await res.json().catch(() => ({}))
         if (!res.ok) { setError(typeof b.error === 'string' ? b.error : 'Could not join.'); return }
@@ -409,8 +413,8 @@ export function BookingWizard(props: {
           currency={currency}
           acceptPayments={acceptPayments}
           dogs={dogs}
-          dogId={dogId}
-          onDog={setDogId}
+          dogIds={dogIds}
+          onToggleDog={toggleDog}
           classType={classType}
           dropInSessionIds={dropInSessionIds}
           onSessionToggle={toggleSession}
@@ -430,7 +434,7 @@ export function BookingWizard(props: {
           acceptPayments={acceptPayments}
           classType={classType}
           dropInSessionIds={dropInSessionIds}
-          dogName={dogs.find(d => d.id === dogId)?.name ?? null}
+          dogName={dogIds.length ? dogs.filter(d => dogIds.includes(d.id)).map(d => d.name).join(', ') : (dogs.find(d => d.id === dogId)?.name ?? null)}
           saving={saving}
           error={error}
           onConfirm={confirm}
@@ -582,14 +586,14 @@ function SessionTimeStep({ pkg, availableDates, timeOptions, date, time, onDate,
 
 /* ============================ step 2 · class options ============================ */
 
-function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDog, classType, dropInSessionIds, onSessionToggle, onSessionsSet, onContinue }: {
+function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogIds, onToggleDog, classType, dropInSessionIds, onSessionToggle, onSessionsSet, onContinue }: {
   tz: string
   cls: WizardClass
   currency: string | null
   acceptPayments: boolean
   dogs: { id: string; name: string }[]
-  dogId: string | null
-  onDog: (id: string) => void
+  dogIds: string[]
+  onToggleDog: (id: string) => void
   classType: 'FULL' | 'DROP_IN'
   dropInSessionIds: string[]
   onSessionToggle: (id: string) => void
@@ -708,10 +712,10 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogId, onDo
 
       {dogs.length > 1 && (
         <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Which dog?</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Which dogs? <span className="font-normal normal-case text-slate-400">Tap more than one to book them together</span></p>
           <div className="flex flex-wrap gap-2">
             {dogs.map(d => (
-              <button key={d.id} onClick={() => onDog(d.id)} className={`rounded-xl px-4 py-2 text-sm font-semibold border transition-colors ${d.id === dogId ? 'bg-accent border-accent text-accent-fg' : 'bg-white border-slate-200 text-slate-700 hover:border-accent/40'}`}>
+              <button key={d.id} onClick={() => onToggleDog(d.id)} className={`rounded-xl px-4 py-2 text-sm font-semibold border transition-colors ${dogIds.includes(d.id) ? 'bg-accent border-accent text-accent-fg' : 'bg-white border-slate-200 text-slate-700 hover:border-accent/40'}`}>
                 {d.name}
               </button>
             ))}
