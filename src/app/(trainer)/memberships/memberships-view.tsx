@@ -1,0 +1,234 @@
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { PageHeader } from '@/components/shared/page-header'
+import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag } from 'lucide-react'
+import { useCurrency } from '@/components/currency-context'
+import { currencySymbol, formatMoney } from '@/lib/money'
+
+type Kind = 'PACKAGE' | 'CLASS' | 'PRODUCT'
+type Cadence = 'ONE_OFF' | 'RECURRING'
+type Interval = 'WEEK' | 'FORTNIGHT' | 'MONTH'
+interface Offering { id: string; name: string; priceCents?: number }
+interface Offerings { packages: Offering[]; classRuns: Offering[]; products: Offering[] }
+interface MItem { kind: Kind; packageId: string | null; classRunId: string | null; productId: string | null; quantity: number; regrantOnRenewal: boolean }
+interface Membership {
+  id: string; name: string; description: string | null; priceCents: number
+  cadence: Cadence; interval: Interval | null; minTermCount: number; earlyTermFeeCents: number | null
+  published: boolean; purchases: number; items: MItem[]
+}
+
+interface DraftItem { key: string; kind: Kind; id: string; quantity: number; regrantOnRenewal: boolean }
+interface Draft {
+  id: string | null; name: string; description: string; price: string; cadence: Cadence
+  interval: Interval; minTermCount: string; earlyTermFee: string; published: boolean; items: DraftItem[]
+}
+
+let seq = 0
+const KINDS: { k: Kind; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { k: 'PACKAGE', label: '1:1 package', Icon: GraduationCap },
+  { k: 'CLASS', label: 'Class place', Icon: Users },
+  { k: 'PRODUCT', label: 'Product', Icon: ShoppingBag },
+]
+
+export function MembershipsView({ memberships, offerings, currency: initialCurrency }: { memberships: Membership[]; offerings: Offerings; currency: string }) {
+  const router = useRouter()
+  const currency = useCurrency() ?? initialCurrency
+  const sym = currencySymbol(currency)
+
+  const [list, setList] = useState(memberships)
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function offeringsFor(k: Kind): Offering[] {
+    return k === 'PACKAGE' ? offerings.packages : k === 'CLASS' ? offerings.classRuns : offerings.products
+  }
+  function offeringName(it: MItem): string {
+    const id = it.packageId ?? it.classRunId ?? it.productId
+    return offeringsFor(it.kind).find(o => o.id === id)?.name ?? '(removed)'
+  }
+
+  function startNew() {
+    setError(null)
+    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [] })
+  }
+  function startEdit(m: Membership) {
+    setError(null)
+    setDraft({
+      id: m.id, name: m.name, description: m.description ?? '', price: (m.priceCents / 100).toString(),
+      cadence: m.cadence, interval: m.interval ?? 'MONTH', minTermCount: String(m.minTermCount), earlyTermFee: m.earlyTermFeeCents != null ? (m.earlyTermFeeCents / 100).toString() : '',
+      published: m.published,
+      items: m.items.map(i => ({ key: `k${seq++}`, kind: i.kind, id: i.packageId ?? i.classRunId ?? i.productId ?? '', quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal })),
+    })
+  }
+
+  const patch = (p: Partial<Draft>) => setDraft(d => (d ? { ...d, ...p } : d))
+  const addItem = () => patch({ items: [...draft!.items, { key: `k${seq++}`, kind: 'PACKAGE', id: '', quantity: 1, regrantOnRenewal: false }] })
+  const patchItem = (key: string, p: Partial<DraftItem>) => patch({ items: draft!.items.map(it => (it.key === key ? { ...it, ...p } : it)) })
+  const removeItem = (key: string) => patch({ items: draft!.items.filter(it => it.key !== key) })
+
+  // "Normally" = sum of the included offerings' own prices (classes have no
+  // standalone price here, so they don't add to it).
+  const partsTotal = draft ? draft.items.reduce((s, it) => {
+    const price = offeringsFor(it.kind).find(o => o.id === it.id)?.priceCents ?? 0
+    return s + price * it.quantity
+  }, 0) : 0
+  const priceCents = draft ? Math.round((Number(draft.price) || 0) * 100) : 0
+  const saving = partsTotal - priceCents
+
+  async function save() {
+    if (!draft) return
+    if (!draft.name.trim()) return setError('Give the membership a name.')
+    const items = draft.items.filter(it => it.id).map(it => ({
+      kind: it.kind,
+      packageId: it.kind === 'PACKAGE' ? it.id : undefined,
+      classRunId: it.kind === 'CLASS' ? it.id : undefined,
+      productId: it.kind === 'PRODUCT' ? it.id : undefined,
+      quantity: it.quantity,
+      regrantOnRenewal: it.regrantOnRenewal,
+    }))
+    const body = {
+      name: draft.name.trim(), description: draft.description.trim() || null, priceCents,
+      cadence: draft.cadence,
+      interval: draft.cadence === 'RECURRING' ? draft.interval : null,
+      minTermCount: draft.cadence === 'RECURRING' ? Number(draft.minTermCount) || 0 : 0,
+      earlyTermFeeCents: draft.cadence === 'RECURRING' && draft.earlyTermFee.trim() ? Math.round(Number(draft.earlyTermFee) * 100) : null,
+      published: draft.published, items,
+    }
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch(draft.id ? `/api/trainer/memberships/${draft.id}` : '/api/trainer/memberships', {
+        method: draft.id ? 'PATCH' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      })
+      if (!res.ok) { setError('Could not save — check the fields and try again.'); return }
+      setDraft(null); router.refresh()
+    } catch { setError('Something went wrong.') } finally { setBusy(false) }
+  }
+
+  async function remove(id: string) {
+    setBusy(true)
+    const res = await fetch(`/api/trainer/memberships/${id}`, { method: 'DELETE' })
+    setBusy(false)
+    if (res.ok) setList(prev => prev.filter(m => m.id !== id))
+  }
+  async function togglePublished(m: Membership) {
+    setList(prev => prev.map(x => (x.id === m.id ? { ...x, published: !x.published } : x)))
+    await fetch(`/api/trainer/memberships/${m.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ published: !m.published }) })
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Memberships"
+        actions={!draft ? (
+          <button onClick={startNew} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">New membership</span></button>
+        ) : undefined}
+      />
+      <div className="p-4 md:p-8 w-full max-w-3xl">
+        {error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2">{error}</div>}
+
+        {draft ? (
+          <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+            <div className="p-5 flex flex-col gap-3">
+              <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Membership name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
+              <textarea value={draft.description} onChange={e => patch({ description: e.target.value })} rows={2} placeholder="What's in it / who it's for (optional)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{sym}</span>
+                  <input value={draft.price} onChange={e => patch({ price: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="Price" className="h-10 w-32 rounded-lg border border-slate-200 pl-6 pr-2 text-sm" />
+                </div>
+                <div className="inline-flex rounded-lg bg-slate-100 border border-slate-200 p-0.5">
+                  {(['ONE_OFF', 'RECURRING'] as Cadence[]).map(c => (
+                    <button key={c} onClick={() => patch({ cadence: c })} className={`px-3 h-9 text-sm font-medium rounded-md ${draft.cadence === c ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{c === 'ONE_OFF' ? 'One-off' : 'Recurring'}</button>
+                  ))}
+                </div>
+              </div>
+              {draft.cadence === 'RECURRING' && (
+                <div className="rounded-lg bg-violet-50/60 border border-violet-100 p-3 flex flex-col gap-2">
+                  <p className="text-xs text-violet-700">Recurring memberships can be configured now but aren&#39;t purchasable until automatic billing ships.</p>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-slate-500">Every</span>
+                    <select value={draft.interval} onChange={e => patch({ interval: e.target.value as Interval })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                      <option value="WEEK">week</option><option value="FORTNIGHT">fortnight</option><option value="MONTH">month</option>
+                    </select>
+                    <span className="text-slate-500">· min term</span>
+                    <input value={draft.minTermCount} onChange={e => patch({ minTermCount: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" className="h-9 w-14 rounded-lg border border-slate-200 px-2 text-sm" title="cycles (0 = none)" />
+                    <span className="text-slate-500">cycles · early-term fee</span>
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">{sym}</span>
+                      <input value={draft.earlyTermFee} onChange={e => patch({ earlyTermFee: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="0" className="h-9 w-20 rounded-lg border border-slate-200 pl-5 pr-2 text-sm" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Included items */}
+            <div className="p-5">
+              <div className="text-sm font-medium text-slate-700 mb-2">What&#39;s included</div>
+              <div className="flex flex-col gap-2">
+                {draft.items.map(it => (
+                  <div key={it.key} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 p-2.5">
+                    <select value={it.kind} onChange={e => patchItem(it.key, { kind: e.target.value as Kind, id: '' })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                      {KINDS.map(k => <option key={k.k} value={k.k}>{k.label}</option>)}
+                    </select>
+                    <select value={it.id} onChange={e => patchItem(it.key, { id: e.target.value })} className="h-9 flex-1 min-w-[10rem] rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                      <option value="">Choose…</option>
+                      {offeringsFor(it.kind).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
+                    <span className="text-slate-400 text-sm">×</span>
+                    <input value={it.quantity} onChange={e => patchItem(it.key, { quantity: Math.max(1, Number(e.target.value.replace(/[^0-9]/g, '')) || 1) })} inputMode="numeric" className="h-9 w-14 rounded-lg border border-slate-200 px-2 text-sm" />
+                    <button onClick={() => removeItem(it.key)} title="Remove" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={addItem} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50"><Plus className="h-4 w-4" /> Add item</button>
+              {saving > 0 && priceCents > 0 && (
+                <p className="mt-3 text-sm text-emerald-700">Buyers save {formatMoney(saving, currency)} vs buying the parts separately.</p>
+              )}
+            </div>
+
+            <div className="p-5 flex items-center justify-between">
+              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <button onClick={() => patch({ published: !draft.published })} className={`relative w-10 h-6 rounded-full transition-colors ${draft.published ? 'bg-violet-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${draft.published ? 'right-0.5' : 'left-0.5'}`} /></button>
+                Published (buyable on your booking page)
+              </label>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setDraft(null)} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm rounded-lg text-slate-600 hover:bg-slate-100"><X className="h-4 w-4" /> Cancel</button>
+                <button onClick={save} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save</button>
+              </div>
+            </div>
+          </div>
+        ) : list.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
+            <div className="mx-auto w-11 h-11 rounded-full bg-violet-50 flex items-center justify-center mb-3"><Ticket className="h-5 w-5 text-violet-600" /></div>
+            <p className="text-sm text-slate-600 mb-4">Bundle your packages, classes and products into a membership clients buy in one go.</p>
+            <button onClick={startNew} className="inline-flex items-center gap-1.5 h-10 px-4 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> New membership</button>
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {list.map(m => (
+              <li key={m.id} className={`rounded-xl border border-slate-200 bg-white p-4 flex items-start gap-3 ${m.published ? '' : 'opacity-70'}`}>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-semibold text-slate-900">{m.name}</span>
+                    <span className="text-violet-700 font-medium text-sm">{formatMoney(m.priceCents, currency)}{m.cadence === 'RECURRING' ? ` / ${m.interval?.toLowerCase()}` : ''}</span>
+                    {!m.published && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">Draft</span>}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">{m.items.map(offeringName).join(' · ') || 'No items yet'}{m.purchases > 0 ? ` · ${m.purchases} sold` : ''}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => togglePublished(m)} disabled={busy} title={m.published ? 'Unpublish' : 'Publish'} className={`relative w-9 h-5 rounded-full ${m.published ? 'bg-violet-600' : 'bg-slate-300'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${m.published ? 'right-0.5' : 'left-0.5'}`} /></button>
+                  <button onClick={() => startEdit(m)} title="Edit" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
+                  <button onClick={() => remove(m.id)} disabled={busy} title="Delete" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  )
+}

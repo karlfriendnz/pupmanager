@@ -59,6 +59,7 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/drop-ins',     label: 'Drop-ins',     icon: Ticket,           section: 'programs' },
   { href: '/events',       label: 'Events',       icon: CalendarPlus,    section: 'programs' },
   { href: '/puppy-school', label: 'Puppy School', icon: Dog,             section: 'programs' },
+  { href: '/memberships',  label: 'Memberships',  icon: Ticket,          section: 'programs' },
   { href: '/templates',    label: 'Library',      icon: Layers,          section: 'programs' },
   { href: '/products',     label: 'Products',     icon: ShoppingBag,     section: 'programs' },
   { href: '/achievements', label: 'Achievements', icon: Trophy,          section: 'programs' },
