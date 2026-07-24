@@ -74,6 +74,19 @@ const PROMOS: Record<string, Cfg> = {
     ],
     benefits: ['Cap the numbers', 'A guest list you can check off', 'Paid or free'],
   },
+  puppyschool: {
+    title: 'Run a puppy school',
+    description: 'A day-parted daycare parents book on a rolling basis.',
+    // Shares the classes/events photo until it has its own — a group of owners
+    // and dogs is the same picture.
+    image: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%', translateX: '28%' },
+    steps: [
+      { icon: <CalendarDays className={I} />, label: 'Split the day' },
+      { icon: <Users className={I} />, label: 'They book parts' },
+      { icon: <Check className={I} />, label: 'Run the board' },
+    ],
+    benefits: ['Book by the part or full day', 'Per-part capacity', 'A live week board'],
+  },
   xero: {
     title: 'Reconcile in Xero',
     description: 'Invoices and payments, straight into your own Xero.',
