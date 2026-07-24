@@ -215,18 +215,17 @@ export function RunDetail({
       <div className="p-4 md:p-8 w-full">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Tabs are phone-only — a wide screen shows both columns at once, so
-          switching between them would be switching between two things already
-          on screen. Delete/Edit live in the top control bar. */}
-      <div className="flex flex-wrap items-center gap-2 mb-6 lg:hidden">
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl max-w-xs">
+      {/* One tab at a time, full width, on every screen size. Delete/Edit live
+          in the top control bar. Scrolls sideways on a narrow phone. */}
+      <div className="mb-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-2xl">
         {tabs.map(t => {
           const Icon = t.icon
           return (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`relative flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
+              className={`relative shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
                 tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
@@ -245,12 +244,10 @@ export function RunDetail({
       </div>
       </div>
 
-      {/* Two columns on a wide screen: the class on the left (what it is, then
-          its sessions), the people on the right. The tabs still switch on a
-          phone, where there's only room for one at a time. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 lg:items-start gap-5">
+      {/* One tab's content at a time, full width, on every screen size. */}
+      <div>
 
-      <div className={`flex flex-col gap-5 ${tab === 'details' ? '' : 'hidden lg:flex'}`}>
+      <div className={`flex flex-col gap-5 ${tab === 'details' ? '' : 'hidden'}`}>
 
           {run.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -354,7 +351,7 @@ export function RunDetail({
           </Card>
       </div>
 
-      <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden lg:flex'}`}>
+      <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden'}`}>
           <Card>
             <CardBody className="py-5">
               <CardHeading
@@ -420,9 +417,8 @@ export function RunDetail({
 
       </div>
 
-      {/* Automated messages — full width. On a phone it's the "Messages" tab; on
-          a wide screen it sits below the two columns, always visible. */}
-      <div className={`mt-6 ${tab === 'messages' ? '' : 'hidden lg:block'}`}>
+      {/* Automated messages — full-width "Messages" tab. */}
+      <div className={tab === 'messages' ? '' : 'hidden'}>
         <CommsFlowEditor
           runId={run.id}
           clients={Array.from(
@@ -435,9 +431,8 @@ export function RunDetail({
         />
       </div>
 
-      {/* Discounts — the system-wide engine, attached to this offering's package.
-          Phone tab; always shown below on a wide screen. */}
-      <div className={`mt-6 ${tab === 'discounts' ? '' : 'hidden lg:block'}`}>
+      {/* Discounts — the system-wide engine, attached to this offering's package. */}
+      <div className={tab === 'discounts' ? '' : 'hidden'}>
         <DiscountManager packageId={run.packageId} />
       </div>
 

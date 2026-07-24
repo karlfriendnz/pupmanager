@@ -105,18 +105,17 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           wastes half a wide monitor. Same shape as a class page. */}
       <div className="p-4 md:p-8 w-full">
 
-        {/* Tabs are phone-only — a wide screen shows both columns at once, so
-            switching between them would be switching between two things
-            already on screen. */}
-        <div className="flex flex-wrap items-center gap-2 mb-6 lg:hidden">
-          <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl max-w-xs">
+        {/* One tab at a time, full width, on every screen size. Scrolls
+            sideways on a narrow phone. */}
+        <div className="mb-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-2xl">
             {tabs.map(t => {
               const Icon = t.icon
               return (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`relative flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
+                  className={`relative shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
                     tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
@@ -135,16 +134,10 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           </div>
         </div>
 
-        {/* Two columns on a wide screen: the package on the left (what it is),
-            the people on the right. The tabs still switch on a phone, where
-            there's only room for one at a time. */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 lg:items-start gap-5">
+        {/* One tab's content at a time, full width, on every screen size. */}
+        <div>
 
-          {/* On a phone these are two tabs — one at a time. From lg they're the
-              two columns, both on screen, and the tab state stops mattering.
-              Spelled out rather than `flex … hidden lg:flex`, which leans on
-              which display utility Tailwind happens to emit last. */}
-          <div className={tab === 'details' ? 'flex flex-col gap-5' : 'hidden lg:flex lg:flex-col lg:gap-5'}>
+          <div className={tab === 'details' ? 'flex flex-col gap-5' : 'hidden'}>
 
             {/* No cover image here — an image belongs to a scheduled class
                 run, not to the package definition behind it. */}
@@ -217,7 +210,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             </div>
           </div>
 
-          <div className={tab === 'clients' ? 'flex flex-col gap-5' : 'hidden lg:flex lg:flex-col lg:gap-5'}>
+          <div className={tab === 'clients' ? 'flex flex-col gap-5' : 'hidden'}>
 
             <Card>
               <CardBody className="py-5">
@@ -279,7 +272,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
         {/* Automated session reminders for this 1:1 package — full width. Phone
             tab; always shown below the columns on a wide screen. */}
         {!pkg.isGroup && (
-          <div className={`mt-6 ${tab === 'messages' ? '' : 'hidden lg:block'}`}>
+          <div className={tab === 'messages' ? '' : 'hidden'}>
             <CommsFlowEditor
               packageId={pkg.id}
               clients={Array.from(new Map(clients.map(c => [c.clientId, { id: c.clientId, name: c.clientName }])).values())}
