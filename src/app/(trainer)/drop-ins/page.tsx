@@ -42,7 +42,9 @@ export default async function DropInsPage() {
 
   const [runs, trainer] = await Promise.all([
     prisma.classRun.findMany({
-      where: { trainerId, package: { allowDropIn: true } },
+      // Puppy schools are drop-in-flagged (each day-part books like a drop-in)
+      // but live in their own workspace, so keep them off the drop-ins list.
+      where: { trainerId, package: { allowDropIn: true, isPuppySchool: false } },
       orderBy: { startDate: 'asc' },
       include: {
         package: {
