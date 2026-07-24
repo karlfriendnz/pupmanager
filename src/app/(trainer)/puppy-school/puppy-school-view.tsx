@@ -261,9 +261,9 @@ function PartRow({ label, cells, todayKey, onDogEnter, onDogLeave }: {
                     key={j}
                     onMouseEnter={e => onDogEnter(a, e.currentTarget)}
                     onMouseLeave={onDogLeave}
-                    className="flex items-center gap-1 truncate rounded bg-white border border-slate-200 px-1 py-0.5 text-[11px] text-slate-700 cursor-default hover:border-teal-300 hover:bg-teal-50/40"
+                    className="flex items-center gap-2 truncate rounded-lg bg-white border border-slate-200 px-1.5 py-1 text-[13px] text-slate-700 cursor-default hover:border-teal-300 hover:bg-teal-50/40"
                   >
-                    <DogAvatar att={a} sizeClass="h-4 w-4" />
+                    <DogAvatar att={a} sizeClass="h-8 w-8" />
                     <span className="truncate">{a.dog}</span>
                   </div>
                 ))}
