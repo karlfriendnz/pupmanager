@@ -1,8 +1,10 @@
 'use client'
 
-// A proper on/off switch. Uses inline-flex + shrink-0 + a translated thumb so it
-// can never collapse into a circle when it sits next to a label in a flex row
-// (the failure mode of the old hand-rolled `relative w-9 h-5` toggles).
+// A proper pill on/off switch. NOTE: globals.css forces every <button> to a
+// 44×44 minimum touch target — which turns a small rounded toggle into a circle.
+// The inline minWidth/minHeight:0 overrides that (inline styles beat the
+// stylesheet), so this always renders as a pill. Use this everywhere instead of
+// hand-rolling a `relative w-9 h-5 rounded-full` toggle.
 export function Switch({
   checked,
   onChange,
@@ -27,11 +29,10 @@ export function Switch({
       aria-label={ariaLabel}
       disabled={disabled}
       onClick={onChange}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${checked ? onColor : 'bg-slate-300'} ${className}`}
+      style={{ minWidth: 0, minHeight: 0 }}
+      className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${checked ? `justify-end ${onColor}` : 'justify-start bg-slate-300'} ${className}`}
     >
-      <span
-        className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-[1.125rem]' : 'translate-x-0.5'}`}
-      />
+      <span className="h-5 w-5 rounded-full bg-white shadow-sm transition-transform" />
     </button>
   )
 }
