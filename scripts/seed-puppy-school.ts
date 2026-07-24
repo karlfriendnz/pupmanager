@@ -24,10 +24,11 @@ function mondayISO(): string {
 }
 
 async function main() {
-  const user = await prisma.user.findUnique({ where: { email: 'trainer@demo.co.nz' }, select: { id: true } })
-  if (!user) throw new Error('Dev trainer trainer@demo.co.nz not found — run `npm run db:seed:dev` first.')
+  const email = process.argv[2] || 'trainer@demo.co.nz'
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } })
+  if (!user) throw new Error(`Trainer ${email} not found in the LOCAL dev DB — this script never touches prod.`)
   const trainer = await prisma.trainerProfile.findFirst({ where: { userId: user.id }, select: { id: true } })
-  if (!trainer) throw new Error('Trainer profile for trainer@demo.co.nz not found.')
+  if (!trainer) throw new Error(`No trainer profile for ${email} in the local dev DB.`)
   const trainerId = trainer.id
 
   // ── clean up any prior run of this seed ──────────────────────────────────
@@ -96,7 +97,7 @@ async function main() {
   let bookings = 0
   for (let i = 0; i < DOGS.length; i++) {
     const u = await prisma.user.create({ data: { email: `puppyseed${i}@demo.local`, name: `${DOGS[i]}'s Owner`, role: 'CLIENT' } })
-    const profile = await prisma.clientProfile.create({ data: { userId: u.id, trainerId, status: 'ACTIVE' } })
+    const profile = await prisma.clientProfile.create({ data: { userId: u.id, trainerId, status: 'ACTIVE', phone: `021 555 0${i}${i}0` } })
     const dog = await prisma.dog.create({ data: { name: DOGS[i], clientProfileId: profile.id } })
     await prisma.clientProfile.update({ where: { id: profile.id }, data: { dogId: dog.id } })
     // Book each dog into a spread of this week's sessions (drop-in).
@@ -110,7 +111,7 @@ async function main() {
   }
 
   console.log(`✓ "${PKG_NAME}" created — ${sessions.length} sessions this week, ${bookings} bookings across ${DOGS.length} dogs.`)
-  console.log('  Open http://localhost:7777/puppy-school (log in as trainer@demo.co.nz).')
+  console.log(`  Open http://localhost:7777/puppy-school (log in as ${email}).`)
 }
 
 main()

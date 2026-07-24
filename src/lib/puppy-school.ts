@@ -54,7 +54,7 @@ export async function listPuppySchools(trainerId: string): Promise<PuppySchoolSu
   }))
 }
 
-export interface BoardAttendee { dogId: string; dog: string; owner: string; clientId: string; photoUrl: string | null }
+export interface BoardAttendee { dogId: string; dog: string; owner: string; clientId: string; photoUrl: string | null; phone: string | null }
 export interface WeekBoardCell { booked: number; capacity: number | null; waitlist: number; attendees: BoardAttendee[] }
 export interface WeekBoard {
   tz: string
@@ -111,7 +111,7 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
     select: {
       classRunId: true, status: true, type: true, dropInSessionId: true,
       dog: { select: { id: true, name: true, photoUrl: true } },
-      client: { select: { id: true, user: { select: { name: true } } } },
+      client: { select: { id: true, phone: true, user: { select: { name: true } } } },
     },
   })
 
@@ -125,7 +125,7 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
   const addAtt = (m: Map<string, BoardAttendee[]>, k: string | null, e: (typeof enrollments)[number]) => {
     if (!k) return
     const list = m.get(k) ?? []
-    list.push({ dogId: e.dog?.id ?? '', dog: e.dog?.name ?? 'Dog', owner: e.client?.user?.name ?? '', clientId: e.client?.id ?? '', photoUrl: e.dog?.photoUrl ?? null })
+    list.push({ dogId: e.dog?.id ?? '', dog: e.dog?.name ?? 'Dog', owner: e.client?.user?.name ?? '', clientId: e.client?.id ?? '', photoUrl: e.dog?.photoUrl ?? null, phone: e.client?.phone ?? null })
     m.set(k, list)
   }
   for (const e of enrollments) {

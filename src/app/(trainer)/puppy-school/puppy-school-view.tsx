@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Dog, Plus, X, CalendarDays, SlidersHorizontal, User, MessageSquare, Loader2 } from 'lucide-react'
+import { Dog, Plus, X, CalendarDays, SlidersHorizontal, User, MessageSquare, Phone, Loader2 } from 'lucide-react'
 import { PuppySchoolSetup } from '@/components/trainer/puppy-school-setup'
 import type { PuppySchoolSummary, WeekBoard, WeekBoardCell, BoardAttendee } from '@/lib/puppy-school'
 
@@ -206,6 +206,9 @@ function WeekBoardGrid({ board, columns, daysByDog, colLabel }: { board: WeekBoa
             <div className="text-[11px] text-slate-500 mb-2">In this week: <span className="text-slate-700">{pop.days.join(', ')}</span></div>
           )}
           <div className="flex flex-col gap-1">
+            {pop.att.phone && (
+              <a href={`tel:${pop.att.phone}`} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><Phone className="h-4 w-4 text-slate-400" /> {pop.att.phone}</a>
+            )}
             {pop.att.clientId && (
               <>
                 <Link href={`/clients/${pop.att.clientId}`} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><User className="h-4 w-4 text-slate-400" /> Owner details</Link>
