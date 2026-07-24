@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 // Client actions for the Payments panel. The heavy lifting (account create,
@@ -106,20 +107,13 @@ function ConnectToggle({ initial, field, label }: { initial: boolean; field: 'ac
   }
 
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
+    <Switch
+      checked={on}
+      onChange={toggle}
       disabled={saving}
-      onClick={toggle}
-      // minHeight inline: the app's global `button { min-height:44px }` is
-      // unlayered, so it beats Tailwind's layered min-h-* by cascade layer.
-      style={{ minHeight: 0 }}
-      className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:opacity-40 ${on ? 'justify-end bg-emerald-500' : 'justify-start bg-slate-300'}`}
-    >
-      <span className="block h-5 w-5 rounded-full bg-white shadow" />
-    </button>
+      onColor="bg-emerald-500"
+      aria-label={label}
+    />
   )
 }
 
@@ -153,18 +147,13 @@ export function AutoSendInvoicesToggle({ initial }: { initial: boolean }) {
   }
 
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label="Send invoices automatically"
+    <Switch
+      checked={on}
+      onChange={toggle}
       disabled={saving}
-      onClick={toggle}
-      style={{ minHeight: 0 }}
-      className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:opacity-40 ${on ? 'justify-end bg-emerald-500' : 'justify-start bg-slate-300'}`}
-    >
-      <span className="block h-5 w-5 rounded-full bg-white shadow" />
-    </button>
+      onColor="bg-emerald-500"
+      aria-label="Send invoices automatically"
+    />
   )
 }
 
@@ -198,18 +187,13 @@ export function DefaultRequirePaymentToggle({ initial }: { initial: boolean }) {
   }
 
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label="Require payment to book by default"
+    <Switch
+      checked={on}
+      onChange={toggle}
       disabled={saving}
-      onClick={toggle}
-      style={{ minHeight: 0 }}
-      className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:opacity-40 ${on ? 'justify-end bg-emerald-500' : 'justify-start bg-slate-300'}`}
-    >
-      <span className="block h-5 w-5 rounded-full bg-white shadow" />
-    </button>
+      onColor="bg-emerald-500"
+      aria-label="Require payment to book by default"
+    />
   )
 }
 

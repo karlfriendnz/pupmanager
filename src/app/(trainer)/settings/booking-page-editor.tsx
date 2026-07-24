@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Check, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { Switch } from '@/components/ui/switch'
 import type { BookingPageRow, AutomationRow, AutomationTrigger, PkgOption } from './booking-pages-manager'
 
 const DAYS: { n: number; label: string }[] = [
@@ -508,19 +509,13 @@ function AutomationCard({
 
 function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
+    <Switch
+      checked={checked}
+      onChange={() => onChange(!checked)}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
-      // minHeight inline beats the unlayered global `button { min-height:44px }`.
-      style={{ minHeight: 0 }}
-      className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors disabled:opacity-40 ${checked ? 'justify-end bg-blue-600' : 'justify-start bg-slate-300'}`}
-    >
-      <span className="block h-5 w-5 rounded-full bg-white shadow" />
-    </button>
+      onColor="bg-blue-600"
+      aria-label={label}
+    />
   )
 }
 

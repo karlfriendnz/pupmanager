@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
+import { Switch } from '@/components/ui/switch'
 import { Plus, X } from 'lucide-react'
 
 const schema = z.object({
@@ -177,12 +178,12 @@ export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string 
       <Card>
         <CardBody className="pt-6 flex flex-col gap-4">
           <label className="flex items-center gap-3 cursor-pointer">
-            <div
-              onClick={() => setSendInvite(v => !v)}
-              className={`relative w-10 h-6 rounded-full transition-colors ${sendInvite ? 'bg-blue-600' : 'bg-slate-200'}`}
-            >
-              <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${sendInvite ? 'translate-x-4' : 'translate-x-0'}`} />
-            </div>
+            <Switch
+              checked={sendInvite}
+              onChange={() => setSendInvite(v => !v)}
+              onColor="bg-blue-600"
+              aria-label="Send invitation email"
+            />
             <div>
               <p className="text-sm font-medium text-slate-800">Send invitation email</p>
               <p className="text-xs text-slate-400">{sendInvite ? 'Client will receive a login link by email' : 'Client will be added without being notified'}</p>
