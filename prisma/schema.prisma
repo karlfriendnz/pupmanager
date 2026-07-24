@@ -660,6 +660,7 @@ model TrainerProfile {
   products           Product[]
   achievements       Achievement[]
   classRuns          ClassRun[]
+  commsFlowTemplates CommsFlowTemplate[]
   waitlistEntries    WaitlistEntry[]
   bookingRequests    BookingRequest[]
   activityWeeks      TrainerActivityWeek[]
@@ -1369,6 +1370,7 @@ model TrainingSession {
   bookingPage              BookingPage?            @relation(fields: [bookingPageId], references: [id], onDelete: SetNull)
   packageSessionSlot       PackageSessionSlot?     @relation(fields: [packageSessionSlotId], references: [id], onDelete: SetNull)
   automationSends          BookingAutomationSend[]
+  commsFlowSends           CommsFlowSend[]
   paymentItem              PaymentItem?
   timeEntries              SessionTimeEntry[]
 
@@ -1750,6 +1752,7 @@ model ClassRun {
   sessions         TrainingSession[]
   enrollments      ClassEnrollment[]
   assignedTrainers ClassRunTrainer[]
+  commsFlowSteps   CommsFlowStep[]
 
   @@index([trainerId])
   @@index([packageId])
@@ -2783,6 +2786,89 @@ model BookingAutomationSend {
   @@unique([automationId, sessionId])
   @@index([sessionId])
   @@map("booking_automation_sends")
+}
+
+// ─── Automated communication flows (per class / drop-in / event) ─────────────
+// A trainer builds a flow of timed messages relative to each session of a
+// ClassRun — "3 days before → push", "15 min before → push", "2 hours after →
+// in-app". Every group offering (class, drop-in, event) materialises as a
+// ClassRun with TrainingSessions, so the flow attaches to the run. The
+// comms-flows cron scans sessions and sends each due step once per recipient.
+
+enum CommsFlowDirection {
+  BEFORE_SESSION // offsetMinutes before session start
+  AFTER_SESSION // offsetMinutes after session start
+}
+
+// Who a step reaches within the run's enrolments.
+enum CommsFlowAudience {
+  ENROLLED // ENROLLED enrolments only (default)
+  ENROLLED_AND_WAITLIST // also WAITLISTED
+  CUSTOM // only the clients in customClientIds
+}
+
+// One timed message in a class/drop-in/event's flow. channels reuses the
+// notification channel enum (push / email / in-app). title/body are plain text
+// with {{name}} {{dog}} {{time}} {{date}} {{class}} {{business}} {{location}}.
+model CommsFlowStep {
+  id              String                @id @default(cuid())
+  classRunId      String
+  direction       CommsFlowDirection    @default(BEFORE_SESSION)
+  offsetMinutes   Int                   @default(1440)
+  channels        NotificationChannel[]
+  audience        CommsFlowAudience     @default(ENROLLED)
+  // Client ids (ClientProfile.id) this step targets when audience = CUSTOM.
+  customClientIds String[]              @default([])
+  // Overrides a client's channel opt-out so the message always delivers
+  // (cancellations, venue changes). Off by default — routine reminders respect
+  // the client's mute (User.notifyPush / User.productEmailOptOut).
+  important       Boolean               @default(false)
+  title           String
+  body            String                @db.Text
+  enabled         Boolean               @default(true)
+  order           Int                   @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  classRun ClassRun        @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  sends    CommsFlowSend[]
+
+  @@index([classRunId])
+  @@map("comms_flow_steps")
+}
+
+// One row per (step, session, recipient) already sent — dedups the */5 cron so
+// each message reaches each client exactly once even if ticks overlap.
+model CommsFlowSend {
+  id        String   @id @default(cuid())
+  stepId    String
+  sessionId String
+  userId    String // the recipient's User.id
+  sentAt    DateTime @default(now())
+
+  step    CommsFlowStep   @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([stepId, sessionId, userId])
+  @@index([sessionId])
+  @@map("comms_flow_sends")
+}
+
+// A trainer-owned, reusable flow saved as a template so it can be dropped onto
+// another offering of the same type in one click. `steps` is a JSON array of
+// { direction, offsetMinutes, channels, audience, important, title, body }.
+model CommsFlowTemplate {
+  id        String   @id @default(cuid())
+  trainerId String
+  name      String
+  steps     Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId])
+  @@map("comms_flow_templates")
 }
 
 // ─── Trainer-defined Achievements ────────────────────────────────────────────
