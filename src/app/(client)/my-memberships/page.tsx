@@ -30,11 +30,19 @@ export default async function ClientMembershipsPage() {
     if (it.productId) prodIds.push(it.productId)
   }
   const [pkgs, runs, prods] = await Promise.all([
-    pkgIds.length ? prisma.package.findMany({ where: { id: { in: pkgIds } }, select: { id: true, name: true } }) : [],
-    runIds.length ? prisma.classRun.findMany({ where: { id: { in: runIds } }, select: { id: true, name: true } }) : [],
-    prodIds.length ? prisma.product.findMany({ where: { id: { in: prodIds } }, select: { id: true, name: true } }) : [],
+    pkgIds.length ? prisma.package.findMany({ where: { id: { in: pkgIds } }, select: { id: true, name: true, description: true } }) : [],
+    runIds.length ? prisma.classRun.findMany({ where: { id: { in: runIds } }, select: { id: true, name: true, imageUrl: true, package: { select: { description: true } } } }) : [],
+    prodIds.length ? prisma.product.findMany({ where: { id: { in: prodIds } }, select: { id: true, name: true, imageUrl: true, description: true } }) : [],
   ])
   const nameOf = new Map<string, string>([...pkgs, ...runs, ...prods].map(x => [x.id, x.name]))
+  // Packages carry no image; class runs + products do. A class run's blurb comes
+  // from its package; packages & products carry their own.
+  const imgOf = new Map<string, string | null>([...runs, ...prods].map(x => [x.id, x.imageUrl ?? null]))
+  const descOf = new Map<string, string | null>([
+    ...pkgs.map(x => [x.id, x.description ?? null] as const),
+    ...runs.map(x => [x.id, x.package?.description ?? null] as const),
+    ...prods.map(x => [x.id, x.description ?? null] as const),
+  ])
 
   return (
     <ClientMembershipsView
@@ -44,7 +52,13 @@ export default async function ClientMembershipsPage() {
         items: m.items
           .map(it => {
             const id = it.packageId ?? it.classRunId ?? it.productId
-            return { label: id ? nameOf.get(id) ?? '' : '', quantity: it.quantity }
+            // Per-item override wins; otherwise pull in the offering's own.
+            return {
+              label: id ? nameOf.get(id) ?? '' : '',
+              quantity: it.quantity,
+              imageUrl: it.imageUrl ?? (id ? imgOf.get(id) ?? null : null),
+              description: it.description ?? (id ? descOf.get(id) ?? null : null),
+            }
           })
           .filter(x => x.label),
       }))}

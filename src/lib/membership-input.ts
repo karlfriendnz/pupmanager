@@ -9,6 +9,9 @@ const itemSchema = z.object({
   productId: z.string().nullable().optional(),
   quantity: z.number().int().min(1).max(50).default(1),
   regrantOnRenewal: z.boolean().optional(),
+  // Optional presentation overrides — null/absent = use the offering's own.
+  imageUrl: z.string().url().nullable().optional(),
+  description: z.string().max(2000).nullable().optional(),
 }).refine(
   i => (i.kind === 'PACKAGE' && !!i.packageId) || (i.kind === 'CLASS' && !!i.classRunId) || (i.kind === 'PRODUCT' && !!i.productId),
   { message: 'Each item needs a matching offering' },
@@ -62,6 +65,8 @@ export function itemRows(membershipId: string, items: MembershipItemInput[]) {
     productId: i.kind === 'PRODUCT' ? i.productId! : null,
     quantity: i.quantity,
     regrantOnRenewal: i.regrantOnRenewal ?? false,
+    imageUrl: i.imageUrl ?? null,
+    description: i.description ?? null,
     order: idx,
   }))
 }

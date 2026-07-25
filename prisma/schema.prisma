@@ -3021,6 +3021,12 @@ model MembershipItem {
   // Recurring only: re-grant this item each renewal (products) vs one-time.
   regrantOnRenewal Boolean            @default(false)
   order            Int                @default(0)
+  // Optional per-item presentation overrides for the storefront. Null = fall
+  // back to the linked offering's own image/description (products & class runs
+  // carry an imageUrl; all three carry a description). Lets a trainer give a
+  // bundled item its own picture/blurb without changing the offering itself.
+  imageUrl         String?
+  description      String?            @db.Text
 
   membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
 

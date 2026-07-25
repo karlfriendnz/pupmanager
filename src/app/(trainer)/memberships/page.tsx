@@ -21,9 +21,9 @@ export default async function MembershipsPage() {
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
       include: { items: { orderBy: { order: 'asc' } }, _count: { select: { purchases: true } } },
     }),
-    prisma.package.findMany({ where: { trainerId, isGroup: false }, orderBy: { name: 'asc' }, select: { id: true, name: true, priceCents: true, specialPriceCents: true } }),
-    prisma.classRun.findMany({ where: { trainerId, status: { not: 'CANCELLED' } }, orderBy: { startDate: 'desc' }, select: { id: true, name: true } }),
-    prisma.product.findMany({ where: { trainerId }, orderBy: { name: 'asc' }, select: { id: true, name: true, priceCents: true } }),
+    prisma.package.findMany({ where: { trainerId, isGroup: false }, orderBy: { name: 'asc' }, select: { id: true, name: true, priceCents: true, specialPriceCents: true, description: true } }),
+    prisma.classRun.findMany({ where: { trainerId, status: { not: 'CANCELLED' } }, orderBy: { startDate: 'desc' }, select: { id: true, name: true, imageUrl: true, package: { select: { description: true } } } }),
+    prisma.product.findMany({ where: { trainerId }, orderBy: { name: 'asc' }, select: { id: true, name: true, priceCents: true, imageUrl: true, description: true } }),
     prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { payoutCurrency: true } }),
   ])
 
@@ -33,12 +33,12 @@ export default async function MembershipsPage() {
         id: m.id, name: m.name, description: m.description, priceCents: m.priceCents,
         cadence: m.cadence, interval: m.interval, minTermCount: m.minTermCount, earlyTermFeeCents: m.earlyTermFeeCents,
         published: m.published, purchases: m._count.purchases,
-        items: m.items.map(i => ({ kind: i.kind, packageId: i.packageId, classRunId: i.classRunId, productId: i.productId, quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal })),
+        items: m.items.map(i => ({ kind: i.kind, packageId: i.packageId, classRunId: i.classRunId, productId: i.productId, quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl, description: i.description })),
       }))}
       offerings={{
-        packages: packages.map(p => ({ id: p.id, name: p.name, priceCents: (p.specialPriceCents ?? p.priceCents) ?? undefined })),
-        classRuns,
-        products: products.map(p => ({ id: p.id, name: p.name, priceCents: p.priceCents ?? undefined })),
+        packages: packages.map(p => ({ id: p.id, name: p.name, priceCents: (p.specialPriceCents ?? p.priceCents) ?? undefined, description: p.description ?? null })),
+        classRuns: classRuns.map(r => ({ id: r.id, name: r.name, imageUrl: r.imageUrl ?? null, description: r.package?.description ?? null })),
+        products: products.map(p => ({ id: p.id, name: p.name, priceCents: p.priceCents ?? undefined, imageUrl: p.imageUrl ?? null, description: p.description ?? null })),
       }}
       currency={trainer?.payoutCurrency ?? 'nzd'}
     />

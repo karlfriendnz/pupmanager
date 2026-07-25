@@ -5,7 +5,7 @@ import { RichText } from '@/components/shared/rich-text'
 import { Ticket, Loader2, Check } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 
-interface Item { label: string; quantity: number }
+interface Item { label: string; quantity: number; imageUrl?: string | null; description?: string | null }
 interface M { id: string; name: string; description: string | null; priceCents: number; items: Item[] }
 
 export function ClientMembershipsView({ memberships, currency }: { memberships: M[]; currency: string }) {
@@ -46,9 +46,20 @@ export function ClientMembershipsView({ memberships, currency }: { memberships: 
                 <span className="text-lg font-bold text-violet-700 whitespace-nowrap">{formatMoney(m.priceCents, currency)}</span>
               </div>
               {m.items.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-1.5">
+                <ul className="mt-3 flex flex-col gap-2.5">
                   {m.items.map((it, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm text-slate-700"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> {it.quantity > 1 ? `${it.quantity}× ` : ''}{it.label}</li>
+                    <li key={i} className="flex items-start gap-2.5">
+                      {it.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={it.imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover border border-slate-200 shrink-0" />
+                      ) : (
+                        <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-700">{it.quantity > 1 ? `${it.quantity}× ` : ''}{it.label}</p>
+                        {it.description && <RichText html={it.description} className="text-xs text-slate-500" />}
+                      </div>
+                    </li>
                   ))}
                 </ul>
               )}

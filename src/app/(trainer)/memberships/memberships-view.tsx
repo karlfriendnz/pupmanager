@@ -4,9 +4,10 @@ import { useState } from 'react'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
+import { ImageUploadButton } from '@/components/image-uploader'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag } from 'lucide-react'
+import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { Switch } from '@/components/ui/switch'
@@ -14,16 +15,16 @@ import { Switch } from '@/components/ui/switch'
 type Kind = 'PACKAGE' | 'CLASS' | 'PRODUCT'
 type Cadence = 'ONE_OFF' | 'RECURRING'
 type Interval = 'WEEK' | 'FORTNIGHT' | 'MONTH'
-interface Offering { id: string; name: string; priceCents?: number }
+interface Offering { id: string; name: string; priceCents?: number; imageUrl?: string | null; description?: string | null }
 interface Offerings { packages: Offering[]; classRuns: Offering[]; products: Offering[] }
-interface MItem { kind: Kind; packageId: string | null; classRunId: string | null; productId: string | null; quantity: number; regrantOnRenewal: boolean }
+interface MItem { kind: Kind; packageId: string | null; classRunId: string | null; productId: string | null; quantity: number; regrantOnRenewal: boolean; imageUrl?: string | null; description?: string | null }
 interface Membership {
   id: string; name: string; description: string | null; priceCents: number
   cadence: Cadence; interval: Interval | null; minTermCount: number; earlyTermFeeCents: number | null
   published: boolean; purchases: number; items: MItem[]
 }
 
-interface DraftItem { key: string; kind: Kind; id: string; quantity: number; regrantOnRenewal: boolean }
+interface DraftItem { key: string; kind: Kind; id: string; quantity: number; regrantOnRenewal: boolean; imageUrl: string | null; description: string }
 interface Draft {
   id: string | null; name: string; description: string; price: string; cadence: Cadence
   interval: Interval; minTermCount: string; earlyTermFee: string; published: boolean; items: DraftItem[]
@@ -31,8 +32,9 @@ interface Draft {
 
 // Live preview of the membership as it appears in the client Memberships
 // storefront (mirrors ClientMembershipsView's card), fed from the builder draft.
+interface PreviewItem { label: string; quantity: number; imageUrl?: string | null; description?: string | null }
 function MembershipPreviewCard({ name, description, priceCents, recurring, interval, items, currency }: {
-  name: string; description: string; priceCents: number; recurring: boolean; interval: Interval; items: { label: string; quantity: number }[]; currency: string
+  name: string; description: string; priceCents: number; recurring: boolean; interval: Interval; items: PreviewItem[]; currency: string
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -46,9 +48,20 @@ function MembershipPreviewCard({ name, description, priceCents, recurring, inter
         <span className="text-lg font-bold text-violet-700 whitespace-nowrap">{formatMoney(priceCents, currency)}{recurring ? ` / ${interval.toLowerCase()}` : ''}</span>
       </div>
       {items.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-1.5">
+        <ul className="mt-3 flex flex-col gap-2.5">
           {items.map((it, i) => (
-            <li key={i} className="flex items-center gap-2 text-sm text-slate-700"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> {it.quantity > 1 ? `${it.quantity}× ` : ''}{it.label}</li>
+            <li key={i} className="flex items-start gap-2.5">
+              {it.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={it.imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover border border-slate-200 shrink-0" />
+              ) : (
+                <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm text-slate-700">{it.quantity > 1 ? `${it.quantity}× ` : ''}{it.label}</p>
+                {it.description && <RichText html={it.description} className="text-xs text-slate-500" />}
+              </div>
+            </li>
           ))}
         </ul>
       )}
@@ -73,10 +86,14 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Which included item's image/blurb panel is expanded (by key).
+  const [openItem, setOpenItem] = useState<string | null>(null)
 
   function offeringsFor(k: Kind): Offering[] {
     return k === 'PACKAGE' ? offerings.packages : k === 'CLASS' ? offerings.classRuns : offerings.products
   }
+  // The offering an item points at — the source of its default image/blurb.
+  const offeringOf = (it: DraftItem): Offering | undefined => offeringsFor(it.kind).find(o => o.id === it.id)
   function offeringName(it: MItem): string {
     const id = it.packageId ?? it.classRunId ?? it.productId
     return offeringsFor(it.kind).find(o => o.id === id)?.name ?? '(removed)'
@@ -92,12 +109,12 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       id: m.id, name: m.name, description: m.description ?? '', price: (m.priceCents / 100).toString(),
       cadence: m.cadence, interval: m.interval ?? 'MONTH', minTermCount: String(m.minTermCount), earlyTermFee: m.earlyTermFeeCents != null ? (m.earlyTermFeeCents / 100).toString() : '',
       published: m.published,
-      items: m.items.map(i => ({ key: `k${seq++}`, kind: i.kind, id: i.packageId ?? i.classRunId ?? i.productId ?? '', quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal })),
+      items: m.items.map(i => ({ key: `k${seq++}`, kind: i.kind, id: i.packageId ?? i.classRunId ?? i.productId ?? '', quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl ?? null, description: i.description ?? '' })),
     })
   }
 
   const patch = (p: Partial<Draft>) => setDraft(d => (d ? { ...d, ...p } : d))
-  const addItem = () => patch({ items: [...draft!.items, { key: `k${seq++}`, kind: 'PACKAGE', id: '', quantity: 1, regrantOnRenewal: false }] })
+  const addItem = () => patch({ items: [...draft!.items, { key: `k${seq++}`, kind: 'PACKAGE', id: '', quantity: 1, regrantOnRenewal: false, imageUrl: null, description: '' }] })
   const patchItem = (key: string, p: Partial<DraftItem>) => patch({ items: draft!.items.map(it => (it.key === key ? { ...it, ...p } : it)) })
   const removeItem = (key: string) => patch({ items: draft!.items.filter(it => it.key !== key) })
 
@@ -120,6 +137,8 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       productId: it.kind === 'PRODUCT' ? it.id : undefined,
       quantity: it.quantity,
       regrantOnRenewal: it.regrantOnRenewal,
+      imageUrl: it.imageUrl || null,
+      description: it.description.trim() || null,
     }))
     const body = {
       name: draft.name.trim(), description: draft.description.trim() || null, priceCents,
@@ -202,20 +221,64 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
             <div className="p-5">
               <div className="text-sm font-medium text-slate-700 mb-2">What&#39;s included</div>
               <div className="flex flex-col gap-2">
-                {draft.items.map(it => (
-                  <div key={it.key} className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 p-2.5">
-                    <select value={it.kind} onChange={e => patchItem(it.key, { kind: e.target.value as Kind, id: '' })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
-                      {KINDS.map(k => <option key={k.k} value={k.k}>{k.label}</option>)}
-                    </select>
-                    <select value={it.id} onChange={e => patchItem(it.key, { id: e.target.value })} className="h-9 flex-1 min-w-[10rem] rounded-lg border border-slate-200 bg-white px-2 text-sm">
-                      <option value="">Choose…</option>
-                      {offeringsFor(it.kind).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                    </select>
-                    <span className="text-slate-400 text-sm">×</span>
-                    <input value={it.quantity} onChange={e => patchItem(it.key, { quantity: Math.max(1, Number(e.target.value.replace(/[^0-9]/g, '')) || 1) })} inputMode="numeric" className="h-9 w-14 rounded-lg border border-slate-200 px-2 text-sm" />
-                    <button onClick={() => removeItem(it.key)} title="Remove" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
-                  </div>
-                ))}
+                {draft.items.map(it => {
+                  const off = offeringOf(it)
+                  const resolvedImg = it.imageUrl ?? off?.imageUrl ?? null
+                  const open = openItem === it.key
+                  const customised = !!it.imageUrl || !!it.description.trim()
+                  return (
+                    <div key={it.key} className="rounded-xl border border-slate-200">
+                      <div className="flex flex-wrap items-center gap-2 p-2.5">
+                        <select value={it.kind} onChange={e => patchItem(it.key, { kind: e.target.value as Kind, id: '', imageUrl: null, description: '' })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                          {KINDS.map(k => <option key={k.k} value={k.k}>{k.label}</option>)}
+                        </select>
+                        <select value={it.id} onChange={e => patchItem(it.key, { id: e.target.value })} className="h-9 flex-1 min-w-[10rem] rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                          <option value="">Choose…</option>
+                          {offeringsFor(it.kind).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                        </select>
+                        <span className="text-slate-400 text-sm">×</span>
+                        <input value={it.quantity} onChange={e => patchItem(it.key, { quantity: Math.max(1, Number(e.target.value.replace(/[^0-9]/g, '')) || 1) })} inputMode="numeric" className="h-9 w-14 rounded-lg border border-slate-200 px-2 text-sm" />
+                        {/* Optional image + blurb for this item (pulls the offering's own by default). */}
+                        <button type="button" onClick={() => setOpenItem(open ? null : it.key)} disabled={!it.id} title="Image & description"
+                          className={`p-1.5 rounded-lg disabled:opacity-40 ${open || customised ? 'text-teal-600 bg-teal-50' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'}`}>
+                          <ImageIcon className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => removeItem(it.key)} title="Remove" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                      {open && it.id && (
+                        <div className="border-t border-slate-100 p-3 flex flex-col gap-3 bg-slate-50/60">
+                          <div className="flex items-start gap-3">
+                            <div className="h-16 w-16 rounded-lg border border-slate-200 bg-white overflow-hidden shrink-0 grid place-items-center text-slate-300">
+                              {resolvedImg
+                                ? // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={resolvedImg} alt="" className="h-full w-full object-cover" />
+                                : <ImageIcon className="h-5 w-5" />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs text-slate-500 mb-1.5">
+                                {it.imageUrl ? 'Custom image' : off?.imageUrl ? 'Using the offering’s image' : 'This offering has no image — add one'}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <ImageUploadButton onUploaded={urls => urls[0] && patchItem(it.key, { imageUrl: urls[0] })} />
+                                {it.imageUrl && <button type="button" onClick={() => patchItem(it.key, { imageUrl: null })} className="text-xs text-slate-500 hover:text-rose-600">Use offering’s image</button>}
+                              </div>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">Description {it.description.trim() ? '(custom)' : off?.description ? '— leave empty to use the offering’s' : ''}</p>
+                            <RichTextEditor value={it.description} onChange={html => patchItem(it.key, { description: isRichTextEmpty(html) ? '' : html })} key={it.key} minHeight={80} theme="light" />
+                            {!it.description.trim() && off?.description && (
+                              <div className="mt-1.5">
+                                <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-0.5">Pulls in the offering’s description</p>
+                                <RichText html={off.description} className="text-xs text-slate-500" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
               <button onClick={addItem} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50"><Plus className="h-4 w-4" /> Add item</button>
               {saving > 0 && priceCents > 0 && (
@@ -244,7 +307,10 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
               priceCents={priceCents}
               recurring={draft.cadence === 'RECURRING'}
               interval={draft.interval}
-              items={draft.items.filter(it => it.id).map(it => ({ label: offeringsFor(it.kind).find(o => o.id === it.id)?.name ?? '…', quantity: it.quantity }))}
+              items={draft.items.filter(it => it.id).map(it => {
+                const off = offeringOf(it)
+                return { label: off?.name ?? '…', quantity: it.quantity, imageUrl: it.imageUrl ?? off?.imageUrl ?? null, description: it.description.trim() || off?.description || null }
+              })}
               currency={currency}
             />
           </div>
