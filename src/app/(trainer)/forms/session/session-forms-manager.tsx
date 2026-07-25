@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { Plus, Trash2, GripVertical, ChevronUp, ChevronDown, Link2 } from 'lucide-react'
 import { ImageUploadButton } from '@/components/image-uploader'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty } from '@/lib/rich-text'
 
 // The question model + its pure helpers now live in @/lib/session-form-builder
 // (shared with the new two-pane builder modal, and unit-tested there).
@@ -294,11 +296,11 @@ export function SessionFormEditor({
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
             <p className="text-[11px] text-slate-400 mb-1.5">Internal — shown to you when picking the form. Not seen by the client.</p>
-            <textarea
+            <RichTextEditor
               value={description}
-              onChange={e => setDescription(e.target.value)}
-              rows={2}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={html => setDescription(isRichTextEmpty(html) ? '' : html)}
+              minHeight={120}
+              theme="light"
             />
           </div>
 

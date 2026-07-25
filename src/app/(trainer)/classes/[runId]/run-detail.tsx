@@ -158,7 +158,7 @@ export function RunDetail({
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: enrollments.length > 0 ? enrollments.length : undefined },
-    { id: 'messages', label: 'Messages', icon: Bell },
+    { id: 'messages', label: 'Reminders & messages', icon: Bell },
     { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
 
@@ -217,10 +217,9 @@ export function RunDetail({
       <div className="p-4 md:p-8 w-full">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Tabs only on phones/tablets, where two columns won't fit. On desktop
-          both panels sit side by side (details left, clients right), so the
-          tab bar is hidden. Scrolls sideways on a narrow phone. */}
-      <div className="mb-6 lg:hidden overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Tabs — Details, Clients, Reminders & messages, Discounts. Scrolls
+          sideways on a narrow phone. */}
+      <div className="mb-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-2xl">
         {tabs.map(t => {
           const Icon = t.icon
@@ -247,12 +246,11 @@ export function RunDetail({
       </div>
       </div>
 
-      {/* Desktop: two columns — details (+ sessions) left, clients right.
-          Mobile/tablet: one tab at a time (hidden lg:flex keeps the inactive
-          panel hidden on small screens but always shown on desktop). */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+      {/* Details tab: what you're selling (left, 2/3) + a compact clients
+          snapshot (right, 1/3). The full roster lives under the Clients tab. */}
+      <div className={tab === 'details' ? 'grid grid-cols-1 lg:grid-cols-3 gap-5 items-start' : 'hidden'}>
 
-      <div className={`flex flex-col gap-5 ${tab === 'details' ? '' : 'hidden lg:flex'}`}>
+      <div className="lg:col-span-2 flex flex-col gap-5">
 
           {run.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -356,7 +354,45 @@ export function RunDetail({
           </Card>
       </div>
 
-      <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden lg:flex'}`}>
+        {/* Compact clients snapshot — the "small version" on the Details tab. */}
+        <div className="flex flex-col gap-5">
+          <Card>
+            <CardBody className="py-5">
+              <CardHeading
+                icon={<Users className="h-4 w-4 text-slate-400" />}
+                note={seatsLabel}
+                action={<Button variant="secondary" onClick={() => setAdding(true)}><UserPlus className="h-4 w-4" /> Enrol</Button>}
+              >
+                Clients
+              </CardHeading>
+              {present.length === 0 ? (
+                <p className="text-sm text-slate-500 py-4 text-center">No one enrolled yet.</p>
+              ) : (
+                <>
+                  <ul className="divide-y divide-slate-100">
+                    {present.slice(0, 6).map(e => (
+                      <li key={e.id} className="flex items-center gap-2.5 py-2">
+                        <span className="h-8 w-8 rounded-full bg-slate-100 text-slate-500 grid place-items-center text-xs font-semibold shrink-0">{e.clientName.charAt(0).toUpperCase()}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-slate-900 truncate">{e.clientName}</p>
+                          {e.dogName && <p className="text-xs text-slate-500 truncate">{e.dogName}</p>}
+                        </div>
+                        {e.status === 'WAITLISTED' && <span className="text-[11px] text-amber-600 shrink-0">Waitlist</span>}
+                      </li>
+                    ))}
+                  </ul>
+                  {enrollments.length > 6 && (
+                    <button type="button" onClick={() => setTab('clients')} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">View all {enrollments.length} →</button>
+                  )}
+                </>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+
+      {/* Clients tab — the full roster (current / past). */}
+      <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden'}`}>
           <Card>
             <CardBody className="py-5">
               <CardHeading
@@ -420,9 +456,7 @@ export function RunDetail({
           </Card>
       </div>
 
-      </div>
-
-      {/* Automated messages — full-width "Messages" tab. */}
+      {/* Reminders & messages tab — automated comms for this class. */}
       <div className={tab === 'messages' ? '' : 'hidden'}>
         <CommsFlowEditor
           runId={run.id}

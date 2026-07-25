@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty, richTextToPlain } from '@/lib/rich-text'
 import type { FormRow as SessionFormRow } from './session/session-forms-manager'
 import { SessionFormBuilderModal } from './session/session-form-builder-modal'
 import { CustomFieldsManager } from '../settings/custom-fields-manager'
@@ -342,12 +343,11 @@ export function EmbedFormEditor({
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-slate-700">Description (optional)</label>
-              <textarea
+              <RichTextEditor
                 value={description}
-                onChange={e => setDescription(e.target.value)}
-                rows={2}
-                placeholder="A short intro shown at the top of the form"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                onChange={html => setDescription(isRichTextEmpty(html) ? '' : html)}
+                minHeight={120}
+                theme="light"
               />
             </div>
           </div>
@@ -950,7 +950,7 @@ export function FormsManager({
                     {f.isActive ? 'Published' : 'Draft'}
                   </span>
                 </div>
-                {f.description && <p className="text-sm text-slate-400 truncate mt-0.5">{f.description}</p>}
+                {!isRichTextEmpty(f.description) && <p className="text-sm text-slate-400 truncate mt-0.5">{richTextToPlain(f.description)}</p>}
                 <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap">
                   <span>{f.questions.length} question{f.questions.length === 1 ? '' : 's'}</span>
                   {f.responses > 0 && <><span>·</span><span className="text-blue-600">{f.responses} filled</span></>}
@@ -1010,7 +1010,7 @@ export function FormsManager({
                           {f.isActive ? 'Published' : 'Draft'}
                         </span>
                       </div>
-                      {f.description && <p className="text-sm text-slate-400 truncate mt-0.5">{f.description}</p>}
+                      {!isRichTextEmpty(f.description) && <p className="text-sm text-slate-400 truncate mt-0.5">{richTextToPlain(f.description)}</p>}
                       <p className="text-xs text-slate-400 mt-1">
                         {f.fieldCount} field{f.fieldCount === 1 ? '' : 's'}
                       </p>

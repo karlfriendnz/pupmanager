@@ -9,6 +9,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { compressImageFile } from '@/lib/compress-image'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import { LeadMagnetPreview } from './lead-magnet-preview'
 
 interface Branding { businessName: string; logoUrl: string | null; accent: string }
@@ -329,7 +331,7 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
                 <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. 5 tips for a calm puppy" maxLength={140} className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
               </Field>
               <Field label="Short description" hint="Shown on the sign-up page.">
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} maxLength={2000} className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
+                <RichTextEditor value={description ?? ''} onChange={html => setDescription(isRichTextEmpty(html) ? '' : html)} minHeight={120} theme="light" />
               </Field>
               <Field label="The download" hint="PDF, doc or image — up to 50 MB.">
                 {fileUrl ? (
@@ -402,7 +404,7 @@ function MagnetEditor({ magnet, branding, onClose, onSaved }: { magnet: Magnet |
               </Field>
               <Field label="Delivery email" hint="Customise the email that sends the download. Leave blank for the default.">
                 <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} onFocus={() => setPreviewMode('email')} placeholder="Subject — e.g. Your free puppy guide 🐾" maxLength={200} className="mb-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
-                <textarea value={emailIntro} onChange={(e) => setEmailIntro(e.target.value)} onFocus={() => setPreviewMode('email')} rows={3} maxLength={4000} placeholder="Message above the download button…" className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
+                <RichTextEditor value={emailIntro ?? ''} onChange={html => setEmailIntro(isRichTextEmpty(html) ? '' : html)} minHeight={120} theme="light" />
               </Field>
               <label className="flex items-center gap-2.5">
                 <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded border-slate-300" />

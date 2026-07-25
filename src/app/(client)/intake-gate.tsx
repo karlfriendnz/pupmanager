@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
+import { RichText } from '@/components/shared/rich-text'
 
 interface CustomField {
   id: string
@@ -387,9 +388,7 @@ export function IntakeGate({ businessName, trainerLogoUrl, customFields, section
             {currentStep.title && (
               <h2 className="font-semibold text-slate-900 text-lg -mt-2">{currentStep.title}</h2>
             )}
-            {currentStep.description && (
-              <p className="text-sm text-slate-500 -mt-1 leading-relaxed">{currentStep.description}</p>
-            )}
+            <RichText html={currentStep.description} className="text-sm text-slate-500 -mt-1 leading-relaxed" />
             {/* System fields (name/email/phone) — only the ones the
                 trainer assigned to THIS step's section render here.
                 Email is read-only because the client signed in with

@@ -50,6 +50,8 @@ import {
   type LinkButtonType,
 } from '@/lib/link-page'
 import { compressImageFile } from '@/lib/compress-image'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import { LinkPageView } from '../../l/[slug]/link-page-view'
 
 interface Brand {
@@ -475,17 +477,14 @@ export function InstagramEditor({
             />
             <div className="flex flex-col gap-1.5">
               <label htmlFor="bio" className="text-sm font-medium text-slate-700">Bio</label>
-              <textarea
-                id="bio"
+              <RichTextEditor
                 value={bio}
-                maxLength={300}
-                rows={3}
-                placeholder="A friendly line about what you do."
-                onChange={(e) => {
-                  setBio(e.target.value)
+                onChange={(html) => {
+                  setBio(isRichTextEmpty(html) ? '' : html)
                   markDirty()
                 }}
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                minHeight={120}
+                theme="light"
               />
             </div>
           </div>

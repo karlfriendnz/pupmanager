@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { buildLinkButtons, buildSocialLinks, type LinkButtonType } from '@/lib/link-page'
+import { richTextToPlain } from '@/lib/rich-text'
 import { LinkPageView } from './link-page-view'
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -36,7 +37,7 @@ export async function generateMetadata({
   })
   if (!trainer || !trainer.linkPage) return { title: 'Link in bio' }
   const title = trainer.businessName || 'Link in bio'
-  const description = trainer.linkPage.headline || trainer.linkPage.bio || `Book with ${title} and find all their links.`
+  const description = trainer.linkPage.headline || richTextToPlain(trainer.linkPage.bio) || `Book with ${title} and find all their links.`
   return {
     title,
     description,

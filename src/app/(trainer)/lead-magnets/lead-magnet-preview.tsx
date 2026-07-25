@@ -1,5 +1,7 @@
 'use client'
 
+import { richTextToPlain } from '@/lib/rich-text'
+
 // Live preview for the lead-magnet editor — a scaled-down render of the chosen
 // landing layout (classic / split / minimal / none) or the delivery email,
 // driven by the editor's current form state. Approximates the public page in
@@ -70,7 +72,7 @@ function PreviewShell({ children, style }: { children: React.ReactNode; style?: 
 export function LeadMagnetPreview(p: PreviewProps) {
   const { accent, businessName, logoUrl } = p
   const title = p.title.trim() || 'Your free download'
-  const intro = p.intro.trim()
+  const intro = richTextToPlain(p.intro)
   const form = <MiniForm accent={accent} consentText={p.consentText} showLabels={p.showFieldLabels} />
 
   // ── Email preview ──
@@ -82,7 +84,7 @@ export function LeadMagnetPreview(p: PreviewProps) {
           <div className="px-4 pt-4 text-center"><div className="flex justify-center"><PreviewLogo logoUrl={logoUrl} accent={accent} businessName={businessName} size={36} /></div><p className="mt-1.5 text-[10px] font-semibold">{businessName}</p></div>
           <div className="px-4 pb-4 pt-2 text-left">
             <p className="text-[10px] text-slate-700">Hi there,</p>
-            <p className="mt-1 text-[10px] leading-snug text-slate-600">{p.emailIntro.trim() || `Thanks for signing up — here's your copy of ${title}.`}</p>
+            <p className="mt-1 text-[10px] leading-snug text-slate-600">{richTextToPlain(p.emailIntro) || `Thanks for signing up — here's your copy of ${title}.`}</p>
             <div className="mx-auto mt-3 flex h-8 w-[150px] items-center justify-center rounded-lg text-[10px] font-semibold text-white" style={{ background: `linear-gradient(135deg, ${accent}, ${shade(accent)})` }}>Download {title.slice(0, 14)}</div>
           </div>
           <div className="border-t border-slate-100 bg-slate-50 px-4 py-2 text-[8px] text-slate-400">Subject: <span className="text-slate-600">{p.emailSubject.trim() || `Your free download: ${title}`}</span></div>

@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Trophy, Pencil, Trash2, X, Plus } from 'lucide-react'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty, richTextToPlain } from '@/lib/rich-text'
 
 type Color = 'blue' | 'emerald' | 'amber' | 'rose' | 'violet' | 'sky' | 'orange' | 'teal' | 'pink' | 'slate'
 
@@ -223,7 +225,8 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
             // (the auto-generated seed badges set both to the same sentence, so
             // the card was printing it twice — once normal, once uppercase).
             const norm = (s: string) => s.toLowerCase().replace(/[.\s]+/g, ' ').trim()
-            const showDesc = a.description && norm(a.description) !== norm(triggerLine)
+            const descPlain = a.description ? richTextToPlain(a.description) : ''
+            const showDesc = descPlain && norm(descPlain) !== norm(triggerLine)
             return (
               <li key={a.id} className={`relative rounded-2xl bg-white border border-slate-100 shadow-sm p-4 ring-1 ${tone.ring} ${isEditing ? 'opacity-50 pointer-events-none' : ''}`}>
                 <div className="flex items-start gap-3">
@@ -240,7 +243,7 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
                       </span>
                     </div>
                     {showDesc && (
-                      <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{a.description}</p>
+                      <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{descPlain}</p>
                     )}
                     <p className="text-[10px] text-slate-400 mt-1.5 uppercase tracking-wide font-medium">
                       {triggerLine}
@@ -298,7 +301,7 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-slate-900 truncate">{draftName.trim() || 'Untitled achievement'}</p>
-              <p className="text-xs text-slate-500 truncate">{draftDesc.trim() || 'Description shows up here'}</p>
+              <p className="text-xs text-slate-500 truncate">{isRichTextEmpty(draftDesc) ? 'Description shows up here' : richTextToPlain(draftDesc)}</p>
             </div>
           </div>
 
@@ -313,13 +316,12 @@ export function AchievementsManager({ initial }: { initial: Achievement[] }) {
           />
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Description</label>
-            <textarea
-              value={draftDesc}
-              onChange={e => setDraftDesc(e.target.value)}
-              rows={2}
-              maxLength={500}
-              placeholder="What earns this badge?"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            <RichTextEditor
+              key={editingId ?? 'new'}
+              value={draftDesc ?? ''}
+              onChange={html => setDraftDesc(isRichTextEmpty(html) ? '' : html)}
+              minHeight={120}
+              theme="light"
             />
           </div>
 

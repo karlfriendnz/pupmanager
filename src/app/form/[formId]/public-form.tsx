@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { CheckCircle, AlertCircle } from 'lucide-react'
+import { RichText } from '@/components/shared/rich-text'
 
 interface CustomField {
   id: string
@@ -131,9 +132,7 @@ export function PublicForm({
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-start py-10 px-4">
       <div className="w-full max-w-lg">
-        {description && (
-          <p className="text-slate-500 text-sm mb-6">{description}</p>
-        )}
+        <RichText html={description} className="text-slate-500 text-sm mb-6" />
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           {/* Always-shown fields */}

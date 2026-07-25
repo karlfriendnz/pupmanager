@@ -1,6 +1,7 @@
 import { Calendar, Link2, Globe, Mail, Phone, LogIn, Gift, MessageSquare } from 'lucide-react'
 import type { LinkButton, LinkButtonIcon, SocialLink } from '@/lib/link-page'
 import { linkPageFontStack } from '@/lib/link-page'
+import { RichText } from '@/components/shared/rich-text'
 
 // Shared presentational component for the "link in bio" page. Rendered by the
 // public page (server) AND the in-app editor's live preview (client) so the
@@ -132,9 +133,10 @@ export function LinkPageView({
         {headline && (
           <p className={`mt-1 text-[15px] font-medium ${onDark ? 'text-white/90' : 'text-slate-700'}`}>{headline}</p>
         )}
-        {bio && (
-          <p className={`mt-2 whitespace-pre-line text-sm leading-relaxed ${onDark ? 'text-white/80' : 'text-slate-500'}`}>{bio}</p>
-        )}
+        <RichText
+          html={bio}
+          className={`mt-2 whitespace-pre-line text-sm leading-relaxed ${onDark ? 'text-white/80' : 'text-slate-500'}`}
+        />
 
         <div className="mt-7 flex w-full flex-col gap-3">
           {buttons.map((b) => {

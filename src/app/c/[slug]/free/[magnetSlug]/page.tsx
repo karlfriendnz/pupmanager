@@ -2,6 +2,8 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
+import { RichText } from '@/components/shared/rich-text'
+import { richTextToPlain } from '@/lib/rich-text'
 import { PublicLeadMagnetForm } from './public-lead-magnet-form'
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -30,8 +32,8 @@ export async function generateMetadata({
   if (!m || !trainer) return { title: 'Free download' }
   return {
     title: `${m.title} — ${trainer.businessName}`,
-    description: m.description ?? `Get your free copy of ${m.title} from ${trainer.businessName}.`,
-    openGraph: { title: m.title, description: m.description ?? undefined },
+    description: m.description ? richTextToPlain(m.description) : `Get your free copy of ${m.title} from ${trainer.businessName}.`,
+    openGraph: { title: m.title, description: m.description ? richTextToPlain(m.description) : undefined },
   }
 }
 
@@ -102,7 +104,7 @@ export default async function PublicLeadMagnetPage({
           >
             <span className="text-xs font-bold uppercase tracking-widest text-white/80">Free download</span>
             {showTitle && <h1 className="text-2xl font-bold leading-tight">{headline}</h1>}
-            {intro && <p className="text-sm leading-relaxed text-white/90">{intro}</p>}
+            <RichText html={intro} theme="dark" className="text-sm leading-relaxed text-white/90" />
             {showHeader && <div className="mt-2 text-sm font-medium text-white/80">{business}</div>}
           </div>
           <div className="p-7">
@@ -122,7 +124,7 @@ export default async function PublicLeadMagnetPage({
         <div className="mx-auto w-full max-w-md rounded-3xl border border-slate-100 bg-white p-8 text-center shadow-sm">
           <span className="inline-block rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide" style={{ background: tint(accent), color: accent }}>Free download</span>
           {showTitle && <h1 className="mt-3 text-3xl font-extrabold leading-tight text-slate-900">{headline}</h1>}
-          {intro && <p className="mt-2 text-sm leading-relaxed text-slate-600">{intro}</p>}
+          <RichText html={intro} className="mt-2 text-sm leading-relaxed text-slate-600" />
           <div className="mt-5 text-left">{form}</div>
           {showHeader && <p className="mt-4 text-xs font-medium text-slate-400">{business}</p>}
         </div>
@@ -137,7 +139,7 @@ export default async function PublicLeadMagnetPage({
       <main className={isEmbed ? 'p-2' : 'min-h-screen bg-white px-4 py-10'}>
         <div className="mx-auto w-full max-w-md">
           {showTitle && headline && <h1 className="text-lg font-semibold text-slate-900">{headline}</h1>}
-          {intro && <p className="mt-1 text-sm text-slate-600">{intro}</p>}
+          <RichText html={intro} className="mt-1 text-sm text-slate-600" />
           <div className={(showTitle && headline) || intro ? 'mt-4' : ''}>
             <PublicLeadMagnetForm
               slug={slug}
@@ -175,7 +177,7 @@ export default async function PublicLeadMagnetPage({
           )}
           <div className="px-6 pb-6 pt-4">
             {showTitle && <h1 className="text-xl font-bold leading-tight text-slate-900">{headline}</h1>}
-            {intro && <p className="mt-2 text-sm leading-relaxed text-slate-600">{intro}</p>}
+            <RichText html={intro} className="mt-2 text-sm leading-relaxed text-slate-600" />
             <div className="mt-5">{form}</div>
           </div>
         </div>
