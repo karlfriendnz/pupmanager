@@ -179,6 +179,20 @@ export default async function ClientLayout({ children }: { children: React.React
   // shop shortcut) when the trainer hasn't enabled it.
   const shopEnabled = (await getEnabledAddons(clientProfile.trainer.id)).has('shop')
 
+  // Memberships are only worth a nav entry when this trainer actually sells one
+  // — otherwise every client sees an empty "Memberships" page. Gate on there
+  // being at least one published, buyable (one-off) membership.
+  const hasMemberships = active.isPreview
+    ? true
+    : (await prisma.membership.count({
+        where: { trainerId: clientProfile.trainer.id, published: true, cadence: 'ONE_OFF' },
+      })) > 0
+
+  // Build the hidden-nav list from the gates above.
+  const hiddenClientNav: string[] = []
+  if (!shopEnabled) hiddenClientNav.push('/my-shop')
+  if (!hasMemberships) hiddenClientNav.push('/my-memberships')
+
   return (
     <div style={themeStyle}>
       {banner}
@@ -198,7 +212,7 @@ export default async function ClientLayout({ children }: { children: React.React
         clientNavHints={showPreviewOnboarding}
         unreadCounts={{ '/my-messages': unreadMessageCount, '/home': unreadMessageCount }}
         unreadTotal={unreadMessageCount}
-        hiddenNavHrefs={shopEnabled ? undefined : ['/my-shop']}
+        hiddenNavHrefs={hiddenClientNav.length ? hiddenClientNav : undefined}
       >
         <CurrencyProvider currency={clientProfile.trainer.payoutCurrency ?? 'nzd'}>
           {children}

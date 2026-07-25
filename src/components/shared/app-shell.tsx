@@ -104,6 +104,7 @@ const CLIENT_MENU = [
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-shop', label: 'Shop', icon: ShoppingBag },
+  { href: '/my-memberships', label: 'Memberships', icon: Ticket },
   { href: '/my-invoices', label: 'Invoices', icon: FileText },
   { href: '/my-achievements', label: 'Achievements', icon: Trophy },
   { href: '/my-dogs', label: 'My dogs', icon: Dog },
