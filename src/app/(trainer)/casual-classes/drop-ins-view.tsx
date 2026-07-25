@@ -51,16 +51,16 @@ export function DropInsView({ runs, currency = 'NZD' }: { runs: RunRow[]; curren
   return (
     <>
       <PageHeader
-        title="Drop-in Classes"
+        title="Casual Classes"
         subtitle="Classes people book one session at a time — set the day, time and per-session price, and they pick the week that suits."
       />
       <OfferingPage>
         {runs.length === 0 ? (
           <OfferingEmpty
             icon={<Ticket className="h-6 w-6" />}
-            title="No drop-in classes yet"
-            body="A drop-in class runs a set schedule that people can book one session at a time — set the day, time and per-session price."
-            action={{ href: '/offerings/new?kind=dropin', label: 'New drop-in class' }}
+            title="No casual classes yet"
+            body="A casual class runs a set schedule that people can book one session at a time — set the day, time and per-session price."
+            action={{ href: '/offerings/new?kind=dropin', label: 'New casual class' }}
           />
         ) : (
           <>
@@ -76,10 +76,10 @@ export function DropInsView({ runs, currency = 'NZD' }: { runs: RunRow[]; curren
             {shown.length === 0 ? (
               <OfferingTabEmpty
                 icon={<Ticket className="mx-auto h-10 w-10" />}
-                title={tab === 'past' ? 'No past drop-in classes' : 'Nothing taking drop-ins'}
+                title={tab === 'past' ? 'No past casual classes' : 'Nothing taking casual bookings'}
                 body={tab === 'past'
-                  ? 'Drop-in classes move here once their last session has been.'
-                  : 'No classes are currently taking drop-ins. Set one up and clients can book a single session.'}
+                  ? 'Casual classes move here once their last session has been.'
+                  : 'No classes are currently taking casual bookings. Set one up and clients can book a single session.'}
               />
             ) : (
               shown.map(r => (
@@ -95,7 +95,7 @@ export function DropInsView({ runs, currency = 'NZD' }: { runs: RunRow[]; curren
                       ? [{ label: `${formatMoney(r.dropInPriceCents, currency)} / session`, tone: 'warn' as const }]
                       : []),
                     ...(r.dropInCount > 0
-                      ? [{ label: `${r.dropInCount} drop-in${r.dropInCount === 1 ? '' : 's'}`, tone: 'muted' as const }]
+                      ? [{ label: `${r.dropInCount} casual booking${r.dropInCount === 1 ? '' : 's'}`, tone: 'muted' as const }]
                       : []),
                   ]}
                   facts={dropInFacts(r)}
@@ -110,7 +110,7 @@ export function DropInsView({ runs, currency = 'NZD' }: { runs: RunRow[]; curren
               ))
             )}
 
-            <AddOfferingLink href="/offerings/new?kind=dropin" label="New drop-in class" />
+            <AddOfferingLink href="/offerings/new?kind=dropin" label="New casual class" />
           </>
         )}
       </OfferingPage>

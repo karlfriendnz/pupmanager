@@ -7,7 +7,7 @@ import { isClassRunPast } from '@/lib/class-runs'
 import { DropInsView } from './drop-ins-view'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Drop-ins' }
+export const metadata: Metadata = { title: 'Casual Classes' }
 
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 

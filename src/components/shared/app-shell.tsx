@@ -56,7 +56,7 @@ const TRAINER_NAV: NavItem[] = [
 
   { href: '/packages',     label: '1:1 Packages', icon: Package,         section: 'programs' },
   { href: '/classes',      label: 'Group Classes', icon: GraduationCap,  section: 'programs' },
-  { href: '/drop-ins',     label: 'Drop-ins',     icon: Ticket,           section: 'programs' },
+  { href: '/casual-classes',     label: 'Casual Classes',     icon: Ticket,           section: 'programs' },
   { href: '/events',       label: 'Events',       icon: CalendarPlus,    section: 'programs' },
   { href: '/doggy-daycare', label: 'Doggy Daycare', icon: Dog,            section: 'programs' },
   { href: '/memberships',  label: 'Memberships',  icon: Ticket,          section: 'programs' },

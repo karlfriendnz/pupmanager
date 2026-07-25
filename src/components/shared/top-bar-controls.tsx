@@ -364,7 +364,7 @@ export function TopBarControls({
               onClick={() => {
                 setAddOpen(false)
                 const href = pathname.startsWith('/classes') ? '/offerings/new?kind=group'
-                  : pathname.startsWith('/drop-ins') ? '/offerings/new?kind=dropin'
+                  : pathname.startsWith('/casual-classes') ? '/offerings/new?kind=dropin'
                   : pathname.startsWith('/events') ? '/offerings/new?kind=oneoff'
                   : '/offerings/new'
                 router.push(href)

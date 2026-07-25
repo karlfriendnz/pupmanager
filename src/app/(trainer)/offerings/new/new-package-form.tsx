@@ -8,7 +8,7 @@ import { PackageForm, type PkgRow, type SessionFormOption } from '../../packages
  *  event is a group with a single session and no recurrence. */
 function listFor(saved: PkgRow): string {
   if (!saved.isGroup) return '/packages'
-  if (saved.allowDropIn) return '/drop-ins'
+  if (saved.allowDropIn) return '/casual-classes'
   if (saved.sessionCount === 1 && !saved.recurrenceRule) return '/events'
   return '/classes'
 }

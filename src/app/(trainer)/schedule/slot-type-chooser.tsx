@@ -8,7 +8,7 @@ const OPTIONS: { type: SlotAddType; label: string; hint: string; Icon: LucideIco
   { type: 'session', label: 'Session',       hint: '1:1 from a package',        Icon: User },
   { type: 'class',    label: 'Class',         hint: 'Group class series',        Icon: Users },
   { type: 'buddies',  label: 'Group walk',  hint: 'Several dogs together',  Icon: PawPrint },
-  { type: 'dropin',   label: 'Drop-in class', hint: 'One-off single class',      Icon: DoorOpen },
+  { type: 'dropin',   label: 'Casual class', hint: 'One-off single class',      Icon: DoorOpen },
 ]
 
 // Shown when the trainer clicks an empty calendar slot — pick what to add, then

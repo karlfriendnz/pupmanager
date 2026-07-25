@@ -180,7 +180,7 @@ export const ADDONS: AddonDef[] = [
   },
   {
     id: 'dropins',
-    name: 'Drop-in classes',
+    name: 'Casual classes',
     hidden: true,
     // On by default and box hidden: drop-ins aren't a separate thing a trainer
     // opts into — they're just part of running group classes. The nav item and
@@ -188,7 +188,7 @@ export const ADDONS: AddonDef[] = [
     // and there's no toggle to find or forget. Without defaultOn, hasAddon()
     // returned false with no way to flip it, so the whole feature was invisible.
     defaultOn: true,
-    description: 'Sell single sessions of a class — one-off spots for people who can’t commit to the whole course, or regulars filling a gap.',
+    description: 'Sell single sessions of a class as casual classes — one-off spots for people who can’t commit to the whole course, or regulars filling a gap.',
     // Free while the feature beds in: it only pays off once a trainer is
     // actually running classes, and charging for it up front would stop people
     // trying it. Pricing it later is a one-line change here plus a Stripe run.

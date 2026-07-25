@@ -71,7 +71,7 @@ export default async function EditPackagePage({
   const back = run
     ? { href: `/classes/${run.id}`, label: `Back to ${pkg.name}` }
     : !pkg.isGroup ? { href: '/packages', label: 'Back to packages' }
-    : pkg.allowDropIn ? { href: '/drop-ins', label: 'Back to drop-ins' }
+    : pkg.allowDropIn ? { href: '/casual-classes', label: 'Back to casual classes' }
     : isEvent ? { href: '/events', label: 'Back to events' }
     : { href: '/classes', label: 'Back to classes' }
 
