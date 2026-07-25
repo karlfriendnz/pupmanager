@@ -46,6 +46,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         ...(d.headerColor !== undefined ? { headerColor: d.headerColor } : {}),
         ...(d.textColor !== undefined ? { textColor: d.textColor } : {}),
         ...(d.featuredColor !== undefined ? { featuredColor: d.featuredColor } : {}),
+        ...(d.buttonText !== undefined ? { buttonText: d.buttonText } : {}),
         ...(d.priceCents !== undefined ? { priceCents: d.priceCents } : {}),
         ...(d.cadence !== undefined ? { cadence: d.cadence } : {}),
         ...(d.interval !== undefined ? { interval: d.interval } : {}),

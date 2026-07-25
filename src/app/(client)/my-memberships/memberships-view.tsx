@@ -8,7 +8,7 @@ import { formatMoney } from '@/lib/money'
 interface Item { label: string; quantity: number; imageUrl?: string | null; description?: string | null }
 interface M {
   id: string; name: string; description: string | null; priceCents: number; items: Item[]
-  imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null
+  imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null; buttonText: string | null
 }
 
 export function ClientMembershipsView({ memberships, currency }: { memberships: M[]; currency: string }) {
@@ -77,7 +77,7 @@ export function ClientMembershipsView({ memberships, currency }: { memberships: 
                     </ul>
                   )}
                   <button onClick={() => buy(m.id)} disabled={busy === m.id} className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl text-white font-semibold hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: featured }}>
-                    {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Get this membership
+                    {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {m.buttonText?.trim() || 'Get this membership'}
                   </button>
                 </div>
               </div>

@@ -7,7 +7,7 @@ import { isRichTextEmpty } from '@/lib/rich-text'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, ChevronDown } from 'lucide-react'
+import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, ChevronDown, Palette } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { Switch } from '@/components/ui/switch'
@@ -18,7 +18,7 @@ type Interval = 'WEEK' | 'FORTNIGHT' | 'MONTH'
 interface Offering { id: string; name: string; priceCents?: number; imageUrl?: string | null; description?: string | null }
 interface Offerings { packages: Offering[]; classRuns: Offering[]; products: Offering[] }
 interface MItem { kind: Kind; packageId: string | null; classRunId: string | null; productId: string | null; quantity: number; regrantOnRenewal: boolean; imageUrl?: string | null; description?: string | null }
-interface Card { imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null }
+interface Card { imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null; buttonText: string | null }
 interface Membership extends Card {
   id: string; name: string; description: string | null; priceCents: number
   cadence: Cadence; interval: Interval | null; minTermCount: number; earlyTermFeeCents: number | null
@@ -75,7 +75,7 @@ function MembershipPreviewCard({ name, description, priceCents, recurring, inter
             ))}
           </ul>
         )}
-        <button type="button" disabled className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl text-white font-semibold opacity-95 cursor-default" style={{ backgroundColor: featured }}>Get this membership</button>
+        <button type="button" disabled className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl text-white font-semibold opacity-95 cursor-default" style={{ backgroundColor: featured }}>{card.buttonText?.trim() || 'Get this membership'}</button>
       </div>
     </div>
   )
@@ -88,6 +88,17 @@ const CARD_COLORS: { key: 'bgColor' | 'headerColor' | 'textColor' | 'featuredCol
   { key: 'headerColor', label: 'Header', fallback: '#0f172a' },
   { key: 'textColor', label: 'Text', fallback: '#475569' },
   { key: 'featuredColor', label: 'Featured', fallback: '#7c3aed' },
+]
+
+// One-tap coordinated colour schemes (set all four at once). Trainers can still
+// fine-tune individual colours after picking one.
+const CARD_SCHEMES: { name: string; bgColor: string; headerColor: string; textColor: string; featuredColor: string }[] = [
+  { name: 'Teal', bgColor: '#f0fdfa', headerColor: '#0f766e', textColor: '#334155', featuredColor: '#0d9488' },
+  { name: 'Violet', bgColor: '#faf5ff', headerColor: '#6b21a8', textColor: '#475569', featuredColor: '#7c3aed' },
+  { name: 'Slate', bgColor: '#f8fafc', headerColor: '#0f172a', textColor: '#475569', featuredColor: '#334155' },
+  { name: 'Amber', bgColor: '#fffbeb', headerColor: '#92400e', textColor: '#57534e', featuredColor: '#d97706' },
+  { name: 'Rose', bgColor: '#fff1f2', headerColor: '#9f1239', textColor: '#4c4c4c', featuredColor: '#e11d48' },
+  { name: 'Dark', bgColor: '#0f172a', headerColor: '#ffffff', textColor: '#cbd5e1', featuredColor: '#38bdf8' },
 ]
 
 let seq = 0
@@ -108,6 +119,8 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const [error, setError] = useState<string | null>(null)
   // Which included item's image/blurb panel is expanded (by key).
   const [openItem, setOpenItem] = useState<string | null>(null)
+  // Card-appearance controls are collapsed behind a button by default.
+  const [showCardStyle, setShowCardStyle] = useState(false)
 
   function offeringsFor(k: Kind): Offering[] {
     return k === 'PACKAGE' ? offerings.packages : k === 'CLASS' ? offerings.classRuns : offerings.products
@@ -121,7 +134,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
 
   function startNew() {
     setError(null)
-    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [], imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null })
+    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [], imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null, buttonText: null })
   }
   function startEdit(m: Membership) {
     setError(null)
@@ -129,7 +142,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       id: m.id, name: m.name, description: m.description ?? '', price: (m.priceCents / 100).toString(),
       cadence: m.cadence, interval: m.interval ?? 'MONTH', minTermCount: String(m.minTermCount), earlyTermFee: m.earlyTermFeeCents != null ? (m.earlyTermFeeCents / 100).toString() : '',
       published: m.published,
-      imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
+      imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor, buttonText: m.buttonText,
       items: m.items.map(i => ({ key: `k${seq++}`, kind: i.kind, id: i.packageId ?? i.classRunId ?? i.productId ?? '', quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl ?? null, description: i.description ?? '' })),
     })
   }
@@ -169,6 +182,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       earlyTermFeeCents: draft.cadence === 'RECURRING' && draft.earlyTermFee.trim() ? Math.round(Number(draft.earlyTermFee) * 100) : null,
       published: draft.published, items,
       imageUrl: draft.imageUrl, bgColor: draft.bgColor, headerColor: draft.headerColor, textColor: draft.textColor, featuredColor: draft.featuredColor,
+      buttonText: draft.buttonText?.trim() || null,
     }
     setBusy(true); setError(null)
     try {
@@ -239,36 +253,66 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
               )}
             </div>
 
-            {/* Card appearance — hero image + colours for the storefront card. */}
-            <div className="p-5 flex flex-col gap-3">
-              <div className="text-sm font-medium text-slate-700">Card appearance</div>
-              <div className="flex items-center gap-3">
-                <div className="h-14 w-20 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0 grid place-items-center text-slate-300">
-                  {draft.imageUrl
-                    ? // eslint-disable-next-line @next/next/no-img-element
-                      <img src={draft.imageUrl} alt="" className="h-full w-full object-cover" />
-                    : <ImageIcon className="h-5 w-5" />}
-                </div>
-                <div className="flex items-center gap-2">
-                  <ImageUploadButton onUploaded={urls => urls[0] && patch({ imageUrl: urls[0] })} />
-                  {draft.imageUrl && <button type="button" onClick={() => patch({ imageUrl: null })} className="text-xs text-slate-500 hover:text-rose-600">Remove image</button>}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-4">
-                {CARD_COLORS.map(({ key, label, fallback }) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <label className="relative block h-8 w-8 rounded-lg border border-slate-200 overflow-hidden cursor-pointer" style={{ backgroundColor: draft[key] ?? fallback }}>
-                      <input type="color" value={draft[key] ?? fallback} onChange={e => patch({ [key]: e.target.value } as Partial<Draft>)} className="absolute -inset-1 opacity-0 cursor-pointer" />
-                    </label>
-                    <div className="flex flex-col leading-tight">
-                      <span className="text-xs text-slate-600">{label}</span>
-                      {draft[key]
-                        ? <button type="button" onClick={() => patch({ [key]: null } as Partial<Draft>)} className="text-[11px] text-slate-400 hover:text-rose-600 text-left">reset</button>
-                        : <span className="text-[11px] text-slate-400">default</span>}
+            {/* Card appearance — collapsed behind a toggle to keep the form tidy. */}
+            <div className="p-5">
+              <button type="button" onClick={() => setShowCardStyle(v => !v)} className="flex w-full items-center justify-between text-sm font-medium text-slate-700">
+                <span className="flex items-center gap-2"><Palette className="h-4 w-4 text-slate-400" /> Card appearance</span>
+                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showCardStyle ? 'rotate-180' : ''}`} />
+              </button>
+              {showCardStyle && (
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 mb-1.5">Image</p>
+                    <div className="flex items-center gap-3">
+                      <div className="h-14 w-20 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0 grid place-items-center text-slate-300">
+                        {draft.imageUrl
+                          ? // eslint-disable-next-line @next/next/no-img-element
+                            <img src={draft.imageUrl} alt="" className="h-full w-full object-cover" />
+                          : <ImageIcon className="h-5 w-5" />}
+                      </div>
+                      <div className="flex flex-col items-start gap-1">
+                        <ImageUploadButton onUploaded={urls => urls[0] && patch({ imageUrl: urls[0] })} />
+                        {draft.imageUrl && <button type="button" onClick={() => patch({ imageUrl: null })} className="text-xs text-slate-500 hover:text-rose-600">Remove</button>}
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 mb-1.5">Button text</p>
+                    <input value={draft.buttonText ?? ''} onChange={e => patch({ buttonText: e.target.value })} placeholder="Get this membership" maxLength={40} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs font-medium text-slate-500 mb-1.5">Colour scheme</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {CARD_SCHEMES.map(s => (
+                        <button key={s.name} type="button" title={s.name}
+                          onClick={() => patch({ bgColor: s.bgColor, headerColor: s.headerColor, textColor: s.textColor, featuredColor: s.featuredColor })}
+                          className="h-7 w-7 rounded-full border border-slate-200 grid place-items-center hover:scale-110 transition-transform"
+                          style={{ backgroundColor: s.bgColor }}>
+                          <span className="h-3.5 w-3.5 rounded-full" style={{ backgroundColor: s.featuredColor }} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs font-medium text-slate-500 mb-1.5">Fine-tune colours</p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      {CARD_COLORS.map(({ key, label, fallback }) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <label className="relative block h-8 w-8 rounded-lg border border-slate-200 overflow-hidden cursor-pointer" style={{ backgroundColor: draft[key] ?? fallback }}>
+                            <input type="color" value={draft[key] ?? fallback} onChange={e => patch({ [key]: e.target.value } as Partial<Draft>)} className="absolute -inset-1 opacity-0 cursor-pointer" />
+                          </label>
+                          <div className="flex flex-col leading-tight">
+                            <span className="text-xs text-slate-600">{label}</span>
+                            {draft[key]
+                              ? <button type="button" onClick={() => patch({ [key]: null } as Partial<Draft>)} className="text-[11px] text-slate-400 hover:text-rose-600 text-left">reset</button>
+                              : <span className="text-[11px] text-slate-400">default</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Included items */}

@@ -28,6 +28,7 @@ export const membershipCreateSchema = z.object({
   headerColor: hexColor,
   textColor: hexColor,
   featuredColor: hexColor,
+  buttonText: z.string().trim().max(40).nullable().optional(),
   priceCents: z.number().int().min(0).max(10_000_000),
   cadence: z.enum(['ONE_OFF', 'RECURRING']).default('ONE_OFF'),
   interval: z.enum(['WEEK', 'FORTNIGHT', 'MONTH']).nullable().optional(),

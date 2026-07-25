@@ -2990,6 +2990,8 @@ model Membership {
   headerColor       String?
   textColor         String?
   featuredColor     String?
+  // Custom label for the storefront buy button. Null = "Get this membership".
+  buttonText        String?
   priceCents        Int
   cadence           MembershipCadence   @default(ONE_OFF)
   interval          MembershipInterval? // for RECURRING

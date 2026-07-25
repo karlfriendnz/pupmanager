@@ -49,7 +49,7 @@ export default async function ClientMembershipsPage() {
       currency={profile.trainer?.payoutCurrency ?? 'nzd'}
       memberships={memberships.map(m => ({
         id: m.id, name: m.name, description: m.description, priceCents: m.priceCents,
-        imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
+        imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor, buttonText: m.buttonText,
         items: m.items
           .map(it => {
             const id = it.packageId ?? it.classRunId ?? it.productId
