@@ -5,6 +5,9 @@ import { ChevronRight } from 'lucide-react'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { TrainerRow } from './trainer-row'
 import { isPayingCustomer, lifecycleProfileFilter, type TrainerLifecycle } from '@/lib/trainer-lifecycle'
+import { getEnabledAddonsBatch } from '@/lib/billing'
+import { planValueFor, type PlanValue } from '@/lib/plan-value'
+import { formatMoney } from '@/lib/money'
 
 // The canonical trainers table — used on the dedicated Trainers page and on the
 // admin dashboard so the two never drift apart. Desktop (md+) renders the full
@@ -74,6 +77,7 @@ export async function TrainersTable({
           signupCountry: true,
           gracePeriodUntil: true,
           seatCount: true,
+          payoutCurrency: true,
           subscriptionPlan: { select: { name: true } },
           _count: { select: { clients: true, members: true } },
           // Count of onboarding emails actually sent to this trainer.
@@ -118,6 +122,22 @@ export async function TrainersTable({
     }),
   )
 
+  // Plan value per customer — only meaningful for a live paid subscription
+  // (subscriptionStatus ACTIVE) and never for our own internal accounts. One
+  // batched add-on read for the whole page (no N+1); the value is priced from
+  // the catalog in each customer's own currency via planValueFor.
+  const addonsByTrainer = await getEnabledAddonsBatch(profileIds)
+  const planValueByUser = new Map<string, PlanValue>()
+  for (const t of trainers) {
+    const p = t.trainerProfile
+    if (!p || p.isInternal || p.subscriptionStatus !== 'ACTIVE') continue
+    planValueByUser.set(t.id, planValueFor({
+      payoutCurrency: p.payoutCurrency,
+      seatCount: p.seatCount,
+      enabledAddonIds: [...(addonsByTrainer.get(p.id) ?? [])],
+    }))
+  }
+
   const cards = (
     <ul className="rounded-2xl border border-slate-700 bg-slate-800 divide-y divide-slate-700/60">
       {trainers.map(t => {
@@ -126,6 +146,7 @@ export async function TrainersTable({
         const graceActive = !!p.gracePeriodUntil && new Date(p.gracePeriodUntil).getTime() > Date.now()
         const flag = flagEmoji(p.signupCountry)
         const clients = p._count.clients
+        const value = planValueByUser.get(t.id)
         return (
           <li key={t.id}>
             <Link
@@ -147,6 +168,11 @@ export async function TrainersTable({
                 <p className="text-xs text-slate-400 truncate">
                   {t.name?.trim() || t.email} · <span className="tabular-nums">{clients}</span> client{clients === 1 ? '' : 's'} · <span className="tabular-nums">{joinedLabel(t.createdAt)}</span>
                 </p>
+                {value && (
+                  <p className="text-xs text-green-300 mt-0.5 tabular-nums">
+                    {formatMoney(value.monthly * 100, value.currency)}/mo · {formatMoney(value.annual * 100, value.currency)}/yr
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {flag && <span aria-hidden className="text-sm leading-none" title={`Signed up in ${p.signupCountry}`}>{flag}</span>}
@@ -184,6 +210,7 @@ export async function TrainersTable({
                 <th className="text-left px-4 py-3">Joined</th>
                 <th className="text-left px-4 py-3">Last seen</th>
                 <th className="text-left px-4 py-3">Trial ends</th>
+                <th className="text-left px-4 py-3">Value</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -211,6 +238,7 @@ export async function TrainersTable({
                   deactivatedAt: t.deactivatedAt ?? null,
                   createdAt: t.createdAt,
                   lastLoginAt: t.lastLoginAt ?? null,
+                  planValue: planValueByUser.get(t.id) ?? null,
                 }} />
               ))}
             </tbody>

@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { Pencil, Trash2, X, Check, LogIn, Ban, RotateCcw, AlertTriangle, Mail, Loader2 } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { LIKELIHOODS, LIKELIHOOD_META, type ConversionLikelihood } from '@/lib/conversion-likelihood'
+import { formatMoney } from '@/lib/money'
+import type { PlanValue } from '@/lib/plan-value'
 
 // Shape returned by GET /api/admin/trainers/[trainerId]/onboarding-emails
 type EmailReport = {
@@ -56,11 +58,14 @@ type Trainer = {
   // Most recent successful sign-in, or null if they've never logged in since we
   // started tracking it. Rendered as a relative "Last seen" stamp.
   lastLoginAt: Date | string | null
+  // Monthly/annual plan value in the customer's own currency — only for a live
+  // paid (ACTIVE) subscription, null otherwise (renders as "—").
+  planValue: PlanValue | null
 }
 
-// Total column count (10 data columns + actions) — keeps the expanded rows
+// Total column count (11 data columns + actions) — keeps the expanded rows
 // (edit panel, email report) spanning the full table width.
-const COLS = 11
+const COLS = 12
 
 // ISO 3166-1 alpha-2 → flag emoji (regional indicator pair). Null for anything
 // that isn't a clean 2-letter code.
@@ -580,6 +585,18 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
             </span>
           )
         })()}
+      </td>
+      <td className="px-4 py-3">
+        {/* Plan value — monthly + annual in the customer's own currency. Only a
+            live ACTIVE subscription carries a value; everyone else shows "—". */}
+        {trainer.planValue ? (
+          <div className="tabular-nums leading-tight" title="Monthly / annual plan value">
+            <div className="text-sm text-green-300">{formatMoney(trainer.planValue.monthly * 100, trainer.planValue.currency)}<span className="text-xs text-slate-500">/mo</span></div>
+            <div className="text-xs text-slate-400">{formatMoney(trainer.planValue.annual * 100, trainer.planValue.currency)}<span className="text-slate-500">/yr</span></div>
+          </div>
+        ) : (
+          <span className="text-slate-600">—</span>
+        )}
       </td>
       <td className="px-4 py-3 align-middle">
         {/* Center the icon inside every control identically. The impersonate

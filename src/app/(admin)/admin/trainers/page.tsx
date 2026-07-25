@@ -1,10 +1,37 @@
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { lifecycleProfileFilter, type TrainerLifecycle } from '@/lib/trainer-lifecycle'
+import { getEnabledAddonsBatch } from '@/lib/billing'
+import { planValueFor, summarisePlanValues, type CurrencyTotal } from '@/lib/plan-value'
+import { formatMoney } from '@/lib/money'
 import { TrainersTable } from './trainers-table'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Trainers' }
+
+// MRR/ARR across every paying customer, grouped by currency. "Paying" here is
+// the strict revenue sense — a live paid subscription (subscriptionStatus
+// ACTIVE), excluding our own internal accounts and deactivated ones. Values are
+// priced from the catalog (Core + seats + active add-ons) in each customer's
+// own currency, then grouped so we never sum unlike currencies together.
+async function loadPayingValueSummary(): Promise<CurrencyTotal[]> {
+  const profiles = await prisma.trainerProfile.findMany({
+    where: {
+      subscriptionStatus: 'ACTIVE',
+      isInternal: false,
+      user: { deactivatedAt: null },
+    },
+    select: { id: true, payoutCurrency: true, seatCount: true },
+  })
+  if (profiles.length === 0) return []
+  const addonsByTrainer = await getEnabledAddonsBatch(profiles.map(p => p.id))
+  const values = profiles.map(p => planValueFor({
+    payoutCurrency: p.payoutCurrency,
+    seatCount: p.seatCount,
+    enabledAddonIds: [...(addonsByTrainer.get(p.id) ?? [])],
+  }))
+  return summarisePlanValues(values)
+}
 
 // Lifecycle tabs over the trainers table. `statuses` undefined = no filter (All).
 // `ours` shows only PupManager-owned (internal) accounts; `inactive` shows only
@@ -44,12 +71,50 @@ export default async function AdminTrainersPage({
   ])
   const counts: Record<string, number> = { all, trial, paying, churned, ours, inactive }
 
+  const valueSummary = await loadPayingValueSummary()
+  const totalPaying = valueSummary.reduce((n, c) => n + c.count, 0)
+
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Businesses</h1>
         <p className="text-slate-400 text-sm mt-1">{all} business{all !== 1 ? 'es' : ''} registered</p>
       </div>
+
+      {/* Recurring-revenue summary across all paying (ACTIVE) customers. Grouped
+          by currency — customers bill in six different currencies, so a single
+          blended total would be meaningless; each currency stands on its own. */}
+      {valueSummary.length > 0 && (
+        <div className="mb-6 rounded-2xl border border-slate-700 bg-slate-800 p-4">
+          <div className="flex items-baseline justify-between gap-3 mb-3">
+            <h2 className="text-sm font-semibold text-white">Recurring revenue</h2>
+            <span className="text-xs text-slate-400 tabular-nums">
+              {totalPaying} paying customer{totalPaying === 1 ? '' : 's'}
+              {valueSummary.length > 1 ? ` · ${valueSummary.length} currencies` : ''}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {valueSummary.map(c => (
+              <div key={c.currency} className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="font-medium text-slate-300">{c.currency}</span>
+                  <span className="tabular-nums">{c.count} cust{c.count === 1 ? '' : 's'}</span>
+                </div>
+                <div className="mt-2 flex items-end justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">MRR</div>
+                    <div className="text-lg font-semibold text-green-300 tabular-nums">{formatMoney(c.mrr * 100, c.currency)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">ARR</div>
+                    <div className="text-lg font-semibold text-white tabular-nums">{formatMoney(c.arr * 100, c.currency)}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Lifecycle tabs — horizontally scrollable on mobile (six tabs don't fit
           a phone width); scrollbar hidden so it reads as a clean swipe strip. */}

@@ -149,6 +149,42 @@ export async function getEnabledAddons(trainerId: string): Promise<Set<string>> 
   return enabled
 }
 
+/**
+ * Batched form of getEnabledAddons for many trainers at once — one query, no
+ * N+1. Returns a map of trainerId → enabled add-on id set, applying the exact
+ * same rules (explicit active + unexpired, plus default-on unless turned off).
+ * Trainers with no rows still get their default-on set. Used by the admin
+ * Businesses screen to price every customer's plan on one page load.
+ */
+export async function getEnabledAddonsBatch(trainerIds: string[]): Promise<Map<string, Set<string>>> {
+  const result = new Map<string, Set<string>>()
+  if (trainerIds.length === 0) return result
+
+  const rows = await prisma.trainerAddon.findMany({
+    where: { trainerId: { in: trainerIds } },
+    select: { trainerId: true, itemId: true, active: true, expiresAt: true },
+  })
+  const now = Date.now()
+  const explicitByTrainer = new Map<string, Map<string, boolean>>()
+  for (const r of rows) {
+    let m = explicitByTrainer.get(r.trainerId)
+    if (!m) {
+      m = new Map<string, boolean>()
+      explicitByTrainer.set(r.trainerId, m)
+    }
+    m.set(r.itemId, r.active && !isExpired(r.expiresAt, now))
+  }
+
+  for (const id of trainerIds) {
+    const explicit = explicitByTrainer.get(id) ?? new Map<string, boolean>()
+    const enabled = new Set<string>()
+    for (const [itemId, active] of explicit) if (active) enabled.add(itemId)
+    for (const defId of DEFAULT_ON_ADDON_IDS) if (explicit.get(defId) !== false) enabled.add(defId)
+    result.set(id, enabled)
+  }
+  return result
+}
+
 /** A grant's expiry has passed. Null expiresAt = never lapses. */
 function isExpired(expiresAt: Date | null, now = Date.now()): boolean {
   return expiresAt != null && expiresAt.getTime() <= now
