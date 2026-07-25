@@ -51,5 +51,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ clientI
     },
   })
 
+  // First dog in becomes the primary — same rule as the client's own app, so
+  // it doesn't matter which side adds it.
+  await prisma.clientProfile.updateMany({
+    where: { id: clientId, dogId: null },
+    data: { dogId: dog.id },
+  })
+
   return NextResponse.json(dog, { status: 201 })
 }

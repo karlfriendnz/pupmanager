@@ -31,5 +31,14 @@ export async function POST(req: Request) {
     },
   })
 
+  // The first dog becomes the household's primary. Without this, dogs added
+  // after signup were only ever "additional" ones, so a client could have four
+  // dogs and no primary — which is what made their trainer's list say "No dog".
+  // Guarded on dogId still being null so a second dog never steals the spot.
+  await prisma.clientProfile.updateMany({
+    where: { id: clientProfile.id, dogId: null },
+    data: { dogId: dog.id },
+  })
+
   return NextResponse.json(dog, { status: 201 })
 }
