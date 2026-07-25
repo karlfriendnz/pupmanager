@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { CardHeading } from '@/components/shared/card-heading'
-import { Info, Users, Pencil, Package as PackageIcon, Bell } from 'lucide-react'
+import { Info, Users, Pencil, Package as PackageIcon, Bell, Tag } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
+import { DiscountManager } from '@/components/trainer/discount-manager'
 
-type Tab = 'details' | 'clients' | 'messages'
+type Tab = 'details' | 'clients' | 'messages' | 'discounts'
 
 export type PackageInfo = {
   id: string
@@ -85,7 +86,8 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
     { id: 'clients', label: 'Clients', icon: Users, badge: rows.length > 0 ? rows.length : undefined },
     // 1:1 packages can send automated session reminders; group packages run
     // through their class page instead.
-    ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Messages', icon: Bell }] : []),
+    ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Reminders & messages', icon: Bell }] : []),
+    { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
 
   return (
@@ -107,10 +109,9 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           wastes half a wide monitor. Same shape as a class page. */}
       <div className="p-4 md:p-8 w-full">
 
-        {/* Tabs only on phones/tablets. On desktop details + clients sit side by
-            side (with messages full-width below), so the tab bar is hidden.
-            Scrolls sideways on a narrow phone. */}
-        <div className="mb-6 lg:hidden overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Tabs — Details, Clients, Reminders & messages, Discounts. Scrolls
+            sideways on a narrow phone. */}
+        <div className="mb-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-2xl">
             {tabs.map(t => {
               const Icon = t.icon
@@ -137,11 +138,11 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           </div>
         </div>
 
-        {/* Desktop: details left, clients right. Mobile/tablet: one tab at a
-            time (hidden lg:flex keeps the inactive panel visible on desktop). */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+        {/* Details tab: package info (left, 2/3) + a compact clients snapshot
+            (right, 1/3). The full roster lives under the Clients tab. */}
+        <div className={tab === 'details' ? 'grid grid-cols-1 lg:grid-cols-3 gap-5 items-start' : 'hidden'}>
 
-          <div className={`flex flex-col gap-5 ${tab === 'details' ? '' : 'hidden lg:flex'}`}>
+          <div className={`lg:col-span-2 flex flex-col gap-5`}>
 
             {/* No cover image here — an image belongs to a scheduled class
                 run, not to the package definition behind it. */}
@@ -214,7 +215,38 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             </div>
           </div>
 
-          <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden lg:flex'}`}>
+          {/* Compact clients snapshot — the "small version" on the Details tab. */}
+          <div className="flex flex-col gap-5">
+            <Card>
+              <CardBody className="py-5">
+                <CardHeading icon={<Users className="h-4 w-4 text-slate-400" />} count={rows.length}>Clients</CardHeading>
+                {present.length === 0 ? (
+                  <p className="text-sm text-slate-500 py-4 text-center">No one on this package yet.</p>
+                ) : (
+                  <>
+                    <ul className="divide-y divide-slate-100">
+                      {present.slice(0, 6).map(r => (
+                        <li key={r.clientId} className="flex items-center gap-2.5 py-2">
+                          <ClientAvatar name={r.clientName} dogPhotoUrl={r.dogPhotoUrl} size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-slate-900 truncate">{r.clientName}</p>
+                            {r.dogName && <p className="text-xs text-slate-500 truncate">{r.dogName}</p>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    {rows.length > 6 && (
+                      <button type="button" onClick={() => setTab('clients')} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">View all {rows.length} →</button>
+                    )}
+                  </>
+                )}
+              </CardBody>
+            </Card>
+          </div>
+        </div>
+
+        {/* Clients tab — the full roster (current / past). */}
+        <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden'}`}>
 
             <Card>
               <CardBody className="py-5">
@@ -271,18 +303,20 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             </Card>
           </div>
 
-        </div>
-
-        {/* Automated session reminders for this 1:1 package — full width. Phone
-            tab; always shown below the columns on a wide screen. */}
+        {/* Reminders & messages tab — automated session reminders (1:1 only). */}
         {!pkg.isGroup && (
-          <div className={`lg:mt-5 ${tab === 'messages' ? '' : 'hidden lg:block'}`}>
+          <div className={tab === 'messages' ? '' : 'hidden'}>
             <CommsFlowEditor
               packageId={pkg.id}
               clients={Array.from(new Map(clients.map(c => [c.clientId, { id: c.clientId, name: c.clientName }])).values())}
             />
           </div>
         )}
+
+        {/* Discounts tab — the system-wide engine, attached to this package. */}
+        <div className={tab === 'discounts' ? '' : 'hidden'}>
+          <DiscountManager packageId={pkg.id} />
+        </div>
       </div>
     </>
   )

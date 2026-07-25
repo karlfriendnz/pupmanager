@@ -6,6 +6,8 @@ import { Check, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { Switch } from '@/components/ui/switch'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import type { BookingPageRow, AutomationRow, AutomationTrigger, PkgOption } from './booking-pages-manager'
 
 const DAYS: { n: number; label: string }[] = [
@@ -307,13 +309,15 @@ export function BookingPageEditor({
           className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <label className="mt-4 block text-xs font-medium text-slate-700">Intro</label>
-        <textarea
-          value={cfg.intro ?? ''}
-          onChange={e => set('intro', e.target.value)}
-          rows={2}
-          placeholder="Pick a time that suits and I'll confirm."
-          className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+        <div className="mt-1.5">
+          <RichTextEditor
+            key={cfg.id}
+            value={cfg.intro ?? ''}
+            onChange={html => set('intro', isRichTextEmpty(html) ? null : html)}
+            minHeight={120}
+            theme="light"
+          />
+        </div>
       </section>
 
       {error && <Alert variant="error">{error}</Alert>}

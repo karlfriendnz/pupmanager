@@ -30,6 +30,8 @@ import { ScheduleSettings } from './schedule-settings'
 import { ScheduleReport } from './schedule-report'
 import { SessionFormReport } from '@/components/session-form-report'
 import { SessionRowCard } from '@/components/shared/session-row-card'
+import { RichText } from '@/components/shared/rich-text'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import { filterSessionsByMember, resolveMemberFilter, MEMBER_EVERYONE, MEMBER_UNASSIGNED } from '@/lib/schedule-member-filter'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -2688,10 +2690,10 @@ function SessionModal({
           )}
 
           {/* Notes */}
-          {session.description && (
+          {!isRichTextEmpty(session.description) && (
             <div className="border-t border-slate-100 pt-4">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Notes</p>
-              <p className="text-sm text-slate-700 whitespace-pre-wrap">{session.description}</p>
+              <RichText html={session.description} className="text-sm text-slate-700" />
             </div>
           )}
 

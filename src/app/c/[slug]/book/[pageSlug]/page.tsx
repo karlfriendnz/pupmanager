@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth'
 import { fetchBookingSlots } from '@/lib/booking-slots'
 import { bookingConfig } from '@/lib/booking-page'
 import { BookingFlow } from '../booking-flow'
+import { RichText } from '@/components/shared/rich-text'
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
@@ -87,7 +88,7 @@ export default async function PublicBookingPage({
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">
               {page.headline?.trim() || page.name || `Book a session with ${businessName}`}
             </h1>
-            {page.intro?.trim() && <p className="mt-1 text-sm text-slate-500">{page.intro.trim()}</p>}
+            <RichText html={page.intro} className="mt-1 text-sm text-slate-500" />
           </div>
         </div>
 

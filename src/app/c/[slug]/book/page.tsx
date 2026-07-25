@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { CalendarClock, ChevronRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { isRichTextEmpty, richTextToPlain } from '@/lib/rich-text'
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
@@ -78,7 +79,7 @@ export default async function BookingDirectoryPage({ params }: { params: Promise
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-slate-900">{p.headline?.trim() || p.name}</p>
-                  {p.intro?.trim() && <p className="truncate text-sm text-slate-500">{p.intro.trim()}</p>}
+                  {!isRichTextEmpty(p.intro) && <p className="truncate text-sm text-slate-500">{richTextToPlain(p.intro)}</p>}
                 </div>
                 <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition-colors group-hover:text-slate-500" />
               </Link>

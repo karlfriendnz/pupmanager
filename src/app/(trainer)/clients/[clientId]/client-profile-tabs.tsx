@@ -11,6 +11,8 @@ import { ClientTrainingLogTab, type TrainerTrainingLog } from './client-training
 import { ClientInvoicesTab, ClientUnpaidInvoicesCard } from './client-invoices'
 import { Button } from '@/components/ui/button'
 import { SessionFormReport } from '@/components/session-form-report'
+import { RichText } from '@/components/shared/rich-text'
+import { isRichTextEmpty, richTextToPlain } from '@/lib/rich-text'
 import { ClientAchievementsPanel } from './client-achievements-panel'
 import { StatusToggle } from './status-toggle'
 import { DogGalleryManager } from './dog-gallery-manager'
@@ -388,8 +390,8 @@ export function ClientProfileTabs({
                       <p className="text-sm font-medium text-slate-900 group-hover:underline">{formatSessionTitle(latestPastSession.title)}</p>
                       <span className="text-xs text-slate-400">{formatDate(latestPastSession.scheduledAt)}</span>
                     </div>
-                    {latestPastSession.description ? (
-                      <p className="line-clamp-3 text-sm text-slate-600">{latestPastSession.description}</p>
+                    {!isRichTextEmpty(latestPastSession.description) ? (
+                      <p className="line-clamp-3 text-sm text-slate-600">{richTextToPlain(latestPastSession.description)}</p>
                     ) : (
                       <p className="text-sm text-slate-400">No notes recorded — open the session to add a recap.</p>
                     )}
@@ -621,10 +623,10 @@ export function ClientProfileTabs({
                 )}
 
                 {/* Description */}
-                {s.description && (
+                {!isRichTextEmpty(s.description) && (
                   <div className="pt-1 border-t border-slate-100">
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Notes</p>
-                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{s.description}</p>
+                    <RichText html={s.description} className="text-sm text-slate-700" />
                   </div>
                 )}
 
