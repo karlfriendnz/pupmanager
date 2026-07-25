@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, Calendar, Layers, Package,
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag, CalendarPlus,
-  MoreHorizontal, X, Inbox, GraduationCap,
+  X, Inbox, GraduationCap,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, Megaphone, Lock, ClipboardList,
   Download,
@@ -813,6 +813,16 @@ function TrainerMobileHeader({
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
       <div className="flex h-14 items-center gap-2 px-3">
+        {/* Menu — far left, where a thumb reaches on a phone. Opens the same
+            More sheet the shell owns, asked for by event. */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('pm:open-more'))}
+          aria-label="Menu"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500 active:bg-slate-100"
+        >
+          <MenuIcon className="h-5 w-5" />
+        </button>
         {/* Logo — top-left on inner pages, links to the trainer's home page.
             The home screen shows the same logo large and centred, so repeating
             it in the bar above (with the name beside it) says it three times. */}
@@ -843,16 +853,6 @@ function TrainerMobileHeader({
         {/* The same slide-out search as desktop — one implementation, so the
             scope selector, type-ahead and keyboard handling can't diverge. */}
         <TopBarControls variant="search" />
-        {/* Menu — opens the same More sheet the bottom tab does. The shell owns
-            that state, so ask for it by event rather than lifting it up here. */}
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent('pm:open-more'))}
-          aria-label="Menu"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500 active:bg-slate-100"
-        >
-          <MenuIcon className="h-5 w-5" />
-        </button>
       </div>
     </header>
   )

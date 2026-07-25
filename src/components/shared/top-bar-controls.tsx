@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { signOutWithPush } from '@/lib/sign-out'
 import { OrgSwitcher } from './org-switcher'
 import { SaleComposer } from './sale-composer'
+import { ModalPortal } from './modal-portal'
 
 type Org = { id: string; name: string; role: string }
 type Scope = 'all' | 'client' | 'breed' | 'dog'
@@ -121,6 +122,14 @@ export function TopBarControls({
   // Focus the input as it slides open.
   useEffect(() => { if (searchOpen) inputRef.current?.focus() }, [searchOpen])
 
+  // The phone's search covers the screen, so hold the page still behind it.
+  useEffect(() => {
+    if (variant !== 'search' || !searchOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [variant, searchOpen])
+
   // Suggestions, debounced. The server does the scoping (a restricted staff
   // member only ever sees their own clients), so this can't leak anyone.
   //
@@ -195,6 +204,146 @@ export function TopBarControls({
   const initial = userName?.[0]?.toUpperCase() ?? '?'
 
   const searchOnly = variant === 'search'
+
+  // Phone search is a screen, not a slide-out. A 19rem field inside a 390px bar
+  // leaves no room for the scope selector, and a dropdown pinned under the bar
+  // fights the on-screen keyboard. Everything below it — debounced suggestions,
+  // scope, submit, the full-results fallback — is the same code the desktop bar
+  // uses, so the two can't drift.
+  if (searchOnly) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          aria-label="Search"
+          aria-haspopup="dialog"
+          aria-expanded={searchOpen}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-slate-500 transition-colors active:bg-slate-100"
+        >
+          <Search className="h-[20px] w-[20px]" />
+        </button>
+
+        {searchOpen && (
+          <ModalPortal>
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Search"
+              className="md:hidden fixed inset-0 z-[70] flex flex-col bg-white"
+              style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+            >
+              <form onSubmit={submitSearch} className="flex h-14 shrink-0 items-center gap-1 border-b border-slate-100 px-2">
+                <button
+                  type="button"
+                  onClick={closeSearch}
+                  aria-label="Close search"
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500 active:bg-slate-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                <input
+                  ref={inputRef}
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  onKeyDown={onSearchKeyDown}
+                  placeholder={scope === 'breed' ? 'Search by breed…' : scope === 'dog' ? 'Search by dog…' : 'Search clients…'}
+                  aria-label="Search clients"
+                  autoComplete="off"
+                  // Not type="search": WebKit adds its own ✕ decoration, which
+                  // sat next to ours. enterKeyHint still labels the phone's
+                  // return key "Search".
+                  type="text"
+                  enterKeyHint="search"
+                  // 16px: anything smaller and iOS zooms the page on focus.
+                  className="h-11 min-w-0 flex-1 bg-transparent px-1 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => { setQuery(''); inputRef.current?.focus() }}
+                    aria-label="Clear"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 active:bg-slate-100"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </form>
+
+              {/* Scope as chips, not a <select> — three choices, and a native
+                  picker on a phone is a modal on top of a modal. */}
+              <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-100 px-3 py-2.5">
+                {SCOPES.map(s => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    onClick={() => setScope(s.value)}
+                    aria-pressed={scope === s.value}
+                    className={cn(
+                      'shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors',
+                      scope === s.value
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 text-slate-600 active:bg-slate-200',
+                    )}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {query.trim().length < MIN_QUERY ? (
+                  <p className="px-4 py-6 text-center text-sm text-slate-400">
+                    Type at least {MIN_QUERY} letters to search.
+                  </p>
+                ) : visible.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-sm text-slate-400">No matches.</p>
+                ) : (
+                  <div className="[&>*+*]:border-t [&>*+*]:border-slate-100">
+                    {visible.map(s => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => goToClient(s.id)}
+                        className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+                      >
+                        {s.dogPhotoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- arbitrary blob host, sized tiny
+                          <img src={s.dogPhotoUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+                        ) : (
+                          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-400">
+                            {s.name?.[0]?.toUpperCase() ?? '?'}
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-slate-900">{s.name ?? 'Unnamed client'}</span>
+                          {(s.dogName || s.dogBreed) && (
+                            <span className="block truncate text-xs text-slate-400">
+                              {[s.dogName, s.dogBreed].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {query.trim().length >= MIN_QUERY && (
+                  <button
+                    type="button"
+                    onClick={runFullSearch}
+                    className="flex w-full items-center gap-2 border-t border-slate-100 px-4 py-4 text-left text-sm font-medium text-[var(--pm-brand-700)] active:bg-slate-50"
+                  >
+                    <Search className="h-4 w-4" />
+                    See all results for “{query.trim()}”
+                  </button>
+                )}
+              </div>
+            </div>
+          </ModalPortal>
+        )}
+      </>
+    )
+  }
 
   return (
     // The right-hand control cluster of the global top bar (TrainerShell owns
