@@ -16,13 +16,23 @@ export interface TabIntroCopy {
 
 export const TAB_INTRO: Record<string, TabIntroCopy> = {
   profile: {
-    title: 'Profile',
+    title: 'Details',
     blurb:
-      'Your business details and branding — the name, logo and colours your clients see in their app, on your booking pages and on every email you send.',
+      'Your business details — the name, contact info and country behind everything else. What your clients see when they need to reach you.',
     steps: [
       'Fill in your business name, contact details and the country you work in.',
-      'Upload your logo and pick your brand colours.',
       'Choose whether clients can see your phone number.',
+      'Set the base address your travel and routes are measured from.',
+    ],
+  },
+  design: {
+    title: 'Design',
+    blurb:
+      'Your logo, icon and brand colour — what clients see in their app, on your booking pages and on every email you send. Your colour also tints your own home screen on a phone.',
+    steps: [
+      'Upload your logo (the full wordmark) and your icon (a square mark).',
+      'Pick the brand colour used across your client app and emails.',
+      'Check the preview to see how it looks to a client.',
     ],
   },
   notifications: {

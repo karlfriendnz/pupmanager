@@ -50,6 +50,7 @@ export function MobileHome({
   bookingRequestCount,
   bookingRequestHref,
   tileIds,
+  accentColor,
 }: {
   greeting: string
   firstName: string
@@ -67,7 +68,22 @@ export function MobileHome({
   bookingRequestHref: string | null
   /** Which buttons to show, in order — resolved from the trainer's trade. */
   tileIds: TileId[]
+  /** The trainer's own brand colour (Settings → Design). */
+  accentColor: string | null
 }) {
+  // Colour on this screen is the trainer's own, not a palette we picked. Their
+  // brand colour tints the icons and the "needs you" strip; everything else
+  // stays neutral so one accent does the work.
+  //
+  // Both derived tones go through color-mix rather than using the raw hex: a
+  // pale brand colour (and plenty of dog-trainer brands are pastel) would be
+  // unreadable as an icon on white, so the icon tone keeps the hue but is
+  // mixed toward slate-900 to guarantee it stays legible.
+  const accent = accentColor?.trim() || '#2563eb'
+  const accentVars = { '--pm-accent': accent } as React.CSSProperties
+  const INK = 'color-mix(in srgb, var(--pm-accent) 78%, #0f172a)'
+  const TINT_BG = 'color-mix(in srgb, var(--pm-accent) 7%, #ffffff)'
+  const TINT_BORDER = 'color-mix(in srgb, var(--pm-accent) 22%, #ffffff)'
   const openMore = () => window.dispatchEvent(new CustomEvent('pm:open-more'))
   const [reviewOpen, setReviewOpen] = useState(false)
 
@@ -88,8 +104,16 @@ export function MobileHome({
           label: `${enquiryCount} new ${enquiryCount === 1 ? 'enquiry' : 'enquiries'}`,
         }
       : null,
+    // A client waiting on a reply is as much "needs you" as a booking request.
+    unreadMessages > 0
+      ? {
+          href: '/messages',
+          icon: MessageSquare,
+          label: `${unreadMessages} ${unreadMessages === 1 ? 'message' : 'messages'} to reply to`,
+        }
+      : null,
   ].filter(r => r !== null)
-  const reviewTotal = bookingRequestCount + enquiryCount
+  const reviewTotal = bookingRequestCount + enquiryCount + unreadMessages
 
   // What each tile says. Which of them appear, and in what order, is decided
   // by the trainer's trade (see lib/home-tiles) — a dog walker leads with their
@@ -166,7 +190,7 @@ export function MobileHome({
   const tiles: Tile[] = tileIds.map(id => CATALOG[id]).filter(Boolean)
 
   return (
-    <section className="md:hidden -mt-1 mb-6">
+    <section className="md:hidden -mt-1 mb-6" style={accentVars}>
 
       {/* The trainer's own brand, centred and given room — the business name in
           text would only repeat what the logo already says. */}
@@ -195,25 +219,23 @@ export function MobileHome({
           you" without the alarm of red. Tapping opens the breakdown rather than
           sending them somewhere that only covers half of it. */}
       {needsYou.length > 0 && (
-        <div className={cn(
-          'mb-3 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/70',
-          '[&>*+*]:border-t [&>*+*]:border-indigo-200/70',
-        )}>
+        <div
+          className="mb-3 overflow-hidden rounded-xl border [&>*+*]:border-t"
+          style={{ background: TINT_BG, borderColor: TINT_BORDER }}
+        >
           <button
             type="button"
             onClick={() => setReviewOpen(o => !o)}
             aria-expanded={reviewOpen}
-            className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-indigo-100"
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
           >
-            <ClipboardCheck className="h-[18px] w-[18px] flex-shrink-0 text-indigo-600" strokeWidth={1.75} />
-            <span className="min-w-0 flex-1 truncate text-sm font-medium text-indigo-900">
+            <ClipboardCheck className="h-[18px] w-[18px] flex-shrink-0" style={{ color: INK }} strokeWidth={1.75} />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
               {reviewTotal} thing{reviewTotal === 1 ? '' : 's'} to review
             </span>
             <ChevronRight
-              className={cn(
-                'h-4 w-4 flex-shrink-0 text-indigo-400 transition-transform duration-200',
-                reviewOpen && 'rotate-90',
-              )}
+              className={cn('h-4 w-4 flex-shrink-0 transition-transform duration-200', reviewOpen && 'rotate-90')}
+              style={{ color: INK }}
             />
           </button>
           {reviewOpen && needsYou.map(row => {
@@ -222,13 +244,14 @@ export function MobileHome({
               <Link
                 key={row.label}
                 href={row.href}
-                className="flex items-center gap-3 py-3.5 pl-11 pr-4 active:bg-indigo-100"
+                className="flex items-center gap-3 py-3.5 pl-11 pr-4"
+                style={{ borderColor: TINT_BORDER }}
               >
-                <Icon className="h-[18px] w-[18px] flex-shrink-0 text-indigo-500" strokeWidth={1.75} />
-                <span className="min-w-0 flex-1 truncate text-sm text-indigo-900/90">
+                <Icon className="h-[18px] w-[18px] flex-shrink-0" style={{ color: INK }} strokeWidth={1.75} />
+                <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
                   {row.label}
                 </span>
-                <ChevronRight className="h-4 w-4 flex-shrink-0 text-indigo-400" />
+                <ChevronRight className="h-4 w-4 flex-shrink-0" style={{ color: INK }} />
               </Link>
             )
           })}
@@ -240,7 +263,7 @@ export function MobileHome({
         href="/schedule"
         className="mb-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 active:bg-slate-50"
       >
-        <Calendar className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" />
+        <Calendar className="h-[18px] w-[18px] flex-shrink-0" style={{ color: INK }} strokeWidth={1.75} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-slate-900">
             {todayCount === 0
@@ -268,7 +291,7 @@ export function MobileHome({
           const Icon = t.icon
           const inner = (
             <>
-              <Icon className="h-[22px] w-[22px] text-slate-700" strokeWidth={1.75} />
+              <Icon className="h-[22px] w-[22px]" style={{ color: INK }} strokeWidth={1.75} />
               <span className="mt-2.5 block text-[15px] font-semibold leading-tight text-slate-900">
                 {t.label}
               </span>

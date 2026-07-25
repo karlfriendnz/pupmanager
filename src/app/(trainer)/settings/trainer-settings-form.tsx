@@ -51,9 +51,13 @@ type DesignData = z.infer<typeof designSchema>
 export function TrainerSettingsForm({
   user,
   profile,
+  section = 'both',
 }: {
   user: { name: string | null; email: string; timezone: string; landingPage: string; showPageHelp: boolean }
   profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[]; payoutCurrency: string | null }
+  /** Which half to render — the two live on separate Settings tabs now.
+   *  'both' keeps the original single-page layout for any other caller. */
+  section?: 'details' | 'design' | 'both'
 }) {
   const router = useRouter()
   const [businessMsg, setBusinessMsg] = useState<string | null>(null)
@@ -191,6 +195,7 @@ export function TrainerSettingsForm({
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
       {/* Left column — the business details form */}
+      {section !== 'design' && (
       <div className="min-w-0 lg:flex-1">
         <Accordion>
       {/* Business details */}
@@ -300,8 +305,11 @@ export function TrainerSettingsForm({
       </AccordionItem>
         </Accordion>
       </div>
+      )}
 
-      {/* Right column — branding/design */}
+      {/* Branding/design — its own Settings tab; the details page was carrying
+          the whole business form and the uploads at the same time. */}
+      {section !== 'details' && (
       <div className="min-w-0 lg:flex-1">
         <Accordion>
       {/* Design */}
@@ -442,6 +450,7 @@ export function TrainerSettingsForm({
       </AccordionItem>
         </Accordion>
       </div>
+      )}
     </div>
   )
 }

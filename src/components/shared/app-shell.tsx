@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, Calendar, Layers, Package,
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag, CalendarPlus,
-  X, Inbox, GraduationCap,
+  X, Inbox, GraduationCap, Bell,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, Megaphone, Lock, ClipboardList,
   Download,
@@ -97,8 +97,10 @@ const TRAINER_MOBILE_TABS: { href: string; label: string; icon: LucideIcon; need
   { href: '/schedule', label: 'Schedule', icon: Calendar },
   { href: '/clients', label: 'Clients', icon: Users },
   { href: '/messages', label: 'Messages', icon: MessageSquare },
-  // Gated by the same add-on as the Notes nav row.
-  { href: '/sessions/needs-notes', label: 'To do', icon: ClipboardList, needsNav: '/sessions/draft-notes' },
+  // Alerts rather than the to-do list: the to-do list is still one tap away as
+  // a home-screen tile, whereas an unread notification has nowhere else to
+  // surface on a phone.
+  { href: '/notifications', label: 'Alerts', icon: Bell },
 ]
 // Anything not a tab lives in the More sheet.
 const TRAINER_MOBILE_PRIMARY_HREFS = new Set(TRAINER_MOBILE_TABS.map(t => t.href))
@@ -833,6 +835,7 @@ function TrainerMobileHeader({
         {/* The same slide-out search as desktop — one implementation, so the
             scope selector, type-ahead and keyboard handling can't diverge. */}
         <TopBarControls variant="search" />
+        {/* No bell up here — notifications are a bottom tab on phones. */}
       </div>
     </header>
   )
@@ -955,10 +958,16 @@ function TrainerShell({
 
   // Group parents (e.g. Communication) don't navigate, so they never appear on
   // mobile — their children surface directly in the bottom bar / More sheet.
-  // Tabs still answer to permissions and add-ons: a tab shows only when its own
-  // route (or the nav row it's gated by) survived the trainerNav filter.
+  // Tabs still answer to permissions and add-ons: a tab whose route (or the nav
+  // row gating it) was filtered out of trainerNav doesn't show. A tab pointing
+  // somewhere the nav never lists at all — /notifications — isn't gated by
+  // anything, so it always shows.
   const navHrefs = new Set(trainerNav.map(i => i.href))
-  const mobilePrimary = TRAINER_MOBILE_TABS.filter(t => navHrefs.has(t.needsNav ?? t.href))
+  const allNavHrefs = new Set(TRAINER_NAV.map(i => i.href))
+  const mobilePrimary = TRAINER_MOBILE_TABS.filter(t => {
+    const gate = t.needsNav ?? t.href
+    return !allNavHrefs.has(gate) || navHrefs.has(gate)
+  })
   const mobileSecondary = trainerNav.filter(i => !i.group && !TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
 
   // Top-bar title fallback for pages that don't set one (e.g. /schedule): the

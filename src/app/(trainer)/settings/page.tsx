@@ -121,7 +121,10 @@ export default async function TrainerSettingsPage() {
 
       <SettingsTabs
         profile={canEditSettings ? (
-          <TrainerSettingsForm user={user} profile={trainerProfile} />
+          <TrainerSettingsForm user={user} profile={trainerProfile} section="details" />
+        ) : undefined}
+        design={canEditSettings ? (
+          <TrainerSettingsForm user={user} profile={trainerProfile} section="design" />
         ) : undefined}
         notifications={<NotificationsPanel manageableMembers={manageableMembers} />}
         locations={canEditSettings ? <LocationsPanel locations={locations} region={trainerProfile ? trainerRegionCode(trainerProfile) : undefined} /> : undefined}

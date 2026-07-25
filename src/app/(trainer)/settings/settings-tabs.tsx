@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin } from 'lucide-react'
+import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 import { TabIntro } from './tab-intro'
 
@@ -20,7 +20,10 @@ const SECTION_LABEL: Record<Section, string | null> = {
 }
 
 const ALL_TABS = [
-  { id: 'profile', label: 'Profile', icon: User, section: 'account' },
+  { id: 'profile', label: 'Details', icon: User, section: 'account' },
+  // Logo, icon and brand colour — their own tab, so the details page isn't
+  // carrying the business form and the branding uploads at once.
+  { id: 'design', label: 'Design', icon: Palette, section: 'account' },
   { id: 'notifications', label: 'Notifications', icon: Bell, section: 'account' },
   { id: 'addons', label: 'Add-ons', icon: Puzzle, section: 'business' },
   { id: 'forms', label: 'Fields & forms', icon: Pencil, section: 'business' },
@@ -37,6 +40,7 @@ type TabId = typeof ALL_TABS[number]['id']
 
 export function SettingsTabs({
   profile,
+  design,
   notifications,
   forms,
   locations,
@@ -52,6 +56,7 @@ export function SettingsTabs({
   // a member lacks permission for (e.g. staff don't get Profile/Forms).
   // Notifications are per-user and always available.
   profile?: React.ReactNode
+  design?: React.ReactNode
   notifications: React.ReactNode
   forms?: React.ReactNode
   locations?: React.ReactNode
@@ -64,7 +69,7 @@ export function SettingsTabs({
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, notifications, forms, locations, integration, addons, team, payments, xero, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, addons, team, payments, xero, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -180,6 +185,7 @@ export function SettingsTabs({
         {/* What this tab is for, and how to get it working — every tab, same shape. */}
         <TabIntro tab={tab} />
         {profile != null && <div className={tab === 'profile' ? 'max-w-6xl' : 'hidden'}>{profile}</div>}
+        {design != null && <div className={tab === 'design' ? 'max-w-6xl' : 'hidden'}>{design}</div>}
         <div className={tab === 'notifications' ? 'max-w-2xl' : 'hidden'}>{notifications}</div>
         {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}
         {locations != null && <div className={tab === 'locations' ? '' : 'hidden'}>{locations}</div>}

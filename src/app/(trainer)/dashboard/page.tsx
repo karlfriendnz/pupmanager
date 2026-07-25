@@ -422,6 +422,7 @@ export default async function DashboardPage({
             pendingBookingRequests[0] ? schedulePreviewHref(pendingBookingRequests[0].id) : null
           }
           tileIds={homeTileIds}
+          accentColor={branding.emailAccentColor}
         />
         <WaitlistNudge trainerId={trainerId} />
         {sampleClientCount === 0 && <OnboardingPanel state={onboardingState} branding={branding} impersonating={!!session.user.impersonatorId} />}
