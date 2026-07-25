@@ -22,7 +22,11 @@ Statuses:
 
 | id | Rule | Status | Proven by |
 |----|------|--------|-----------|
-| ACC-1 | One person's login can be both a trainer and a dog owner. A dog owner can belong to **several trainers** — their client record is per (person, trainer) pair, so switching trainers switches the whole app. | Enforced, untested | `ClientProfile` is keyed `(userId, trainerId)`; `getActiveClient()` picks by cookie |
+| ACC-1 | One person's login can be both a trainer and a dog owner. A dog owner can belong to **several trainers** — their client record is per (person, trainer) pair, so switching trainers switches the whole app. | Enforced | `uat-two-trainers.spec.ts` |
+| ACC-1a | Each trainer's offerings, sessions and messages stay with that trainer. Nothing bleeds between two relationships held by the same person. | Enforced | `uat-two-trainers.spec.ts` |
+| ACC-1b | The switcher is reachable even when a trainer's intake is outstanding — being added by a new trainer must never trap someone away from the one they already use. | Enforced | `uat-two-trainers.spec.ts` |
+| ACC-1c | A new trainer's intake starts from the phone number held on another of that person's relationships. Suggested only: it isn't written to the new trainer until they submit it. | Enforced | `uat-two-trainers.spec.ts` |
+| ACC-1d | Switching is a URL, so it verifies ownership: you can only switch into a client record that is yours. | Enforced | `uat-two-trainers.spec.ts` |
 | ACC-2 | Anyone registering gets a **10-day trial** and a business, before they've paid anything. | Enforced | `signup-journey.spec.ts` |
 | ACC-3 | An email can hold **one account**. A second signup with the same email is refused, not silently merged. | Enforced | `signup-journey.spec.ts` |
 | ACC-4 | A trainer must verify an emailed code before setting a password. Until then the account exists as a lead but can't be signed into. | Enforced | `signup-journey.spec.ts` |
