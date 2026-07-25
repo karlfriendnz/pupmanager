@@ -104,6 +104,54 @@ Statuses:
 
 ---
 
+## Offering scenarios
+
+The same offering type behaves differently depending on how it's set up. These
+are the variants that change what actually *happens*, researched from the code
+and then tested in `uat-offering-scenarios.spec.ts`.
+
+### 1:1 packages
+
+| Set up as | What the client gets | Status |
+|-----------|---------------------|--------|
+| **Fixed count** (`sessionCount: 3`, `weeksBetween: 1`) | Three sessions, a week apart, from the time they picked | Enforced |
+| **Ongoing** (`sessionCount: 0`) | **One** seed session. Not zero — they'd have nothing to attend; not a runaway calendar. Ongoing assignments top up toward a horizon later | Enforced |
+| **Instant** (`selfBookRequiresApproval: false`) | Booked then and there, sessions in the diary | Enforced |
+| **Approval required** | A pending request carrying the times they asked for. **Nothing** in the diary until the trainer accepts | Enforced |
+| **Special price set** | The special price is what they're shown and charged; the list price isn't quoted | Enforced |
+| **Not self-bookable** (`clientSelfBook: false`) | Doesn't appear in the client's Offerings at all — the trainer assigns it | Enforced, untested |
+| **Group** (`isGroup: true`) | Never offered on the 1:1 path; it has a timetable and is booked by its sessions | Enforced |
+
+### Classes
+
+| Set up as | What the client gets | Status |
+|-----------|---------------------|--------|
+| **Course only** | Enrol in the whole thing; one enrolment covering every session | Enforced |
+| **Drop-ins allowed AND priced** | The session picker: choose which weeks. Each is its own enrolment | Enforced |
+| **Drop-ins allowed, NOT priced** | Still the full-course path — the picker only appears once a per-session price exists. Worth knowing when a trainer says "I ticked drop-ins and nothing changed" | Enforced |
+| **Full, waitlist on** | Offered the waitlist rather than a booking | Enforced, untested |
+| **Full, waitlist off** | Shown as full, no way in | Enforced, untested |
+
+### Memberships
+
+| Set up as | What the client gets | Status |
+|-----------|---------------------|--------|
+| **One-off, published** | Visible in Offerings → Memberships, buyable | Enforced |
+| **One-off, draft** | Invisible | Enforced |
+| **Recurring, published** | Invisible, and the buy route refuses it (409) — configurable now, sellable when mandates land | Enforced |
+| **Any, add-on off** | Invisible, and unbuyable even with an old link | Enforced |
+
+### Multi-dog households
+
+| Scenario | Behaviour | Status |
+|----------|-----------|--------|
+| Two dogs, one class, one booking | Two enrolments — one per dog, because the roster, capacity and invoice all count dogs | Enforced |
+| The same dog listed twice | Collapses to one enrolment; nobody is charged twice | Enforced |
+| Someone else's dog | Refused | Enforced |
+| Two dogs into one drop-in session | Both booked onto that session | Enforced |
+
+---
+
 ## Known gaps
 
 Rules the product implies but the platform doesn't keep yet.
