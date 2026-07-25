@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { RichText } from '@/components/shared/rich-text'
 import { Ticket, Loader2, Check } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 
@@ -40,7 +41,7 @@ export function ClientMembershipsView({ memberships, currency }: { memberships: 
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="font-semibold text-slate-900 text-lg flex items-center gap-2"><Ticket className="h-5 w-5 text-violet-600 shrink-0" /> {m.name}</h2>
-                  {m.description && <p className="text-sm text-slate-500 mt-1">{m.description}</p>}
+                  <RichText html={m.description} className="text-sm text-slate-500 mt-1" />
                 </div>
                 <span className="text-lg font-bold text-violet-700 whitespace-nowrap">{formatMoney(m.priceCents, currency)}</span>
               </div>

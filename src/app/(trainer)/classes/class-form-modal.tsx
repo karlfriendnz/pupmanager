@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
 import { useBookingConflicts } from '@/lib/use-booking-conflicts'
 import { Button } from '@/components/ui/button'
@@ -304,12 +306,11 @@ export function ClassFormModal({
             </label>
             {/* Goes out in the booking email — it's what tells someone what
                 they've actually signed up for and what to bring. */}
-            <textarea
+            <RichTextEditor
               value={description}
-              onChange={e => setDescription(e.target.value)}
-              rows={3}
-              placeholder="What the class covers, who it suits, what to bring…"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              onChange={html => setDescription(isRichTextEmpty(html) ? '' : html)}
+              minHeight={120}
+              theme="light"
             />
             <p className="text-[11px] text-slate-400 mt-1">Included in the email clients get when you book them in.</p>
           </div>

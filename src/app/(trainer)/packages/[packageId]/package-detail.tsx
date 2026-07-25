@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { RichText } from '@/components/shared/rich-text'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import Link from 'next/link'
 import { Card, CardBody } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -175,10 +177,10 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                 {/* The description is what clients are sent when they're
                     assigned this, so it's worth seeing here rather than only in
                     the edit form. */}
-                {pkg.description && (
+                {!isRichTextEmpty(pkg.description) && (
                   <div className="mt-4 pt-4 border-t border-slate-100">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">About this package</p>
-                    <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{pkg.description}</p>
+                    <RichText html={pkg.description} className="text-sm text-slate-600 leading-relaxed" />
                   </div>
                 )}
               </CardBody>

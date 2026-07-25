@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
@@ -355,7 +357,7 @@ export function PackageForm({
   const [clientSelfBook, setClientSelfBook] = useState<boolean>(existing?.clientSelfBook ?? false)
   const [selfBookRequiresApproval, setSelfBookRequiresApproval] = useState<boolean>(existing?.selfBookRequiresApproval ?? true)
   const [requirePayment, setRequirePayment] = useState<boolean | null>(existing?.requirePayment ?? null)
-  const { register, handleSubmit, watch, trigger, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, watch, setValue, trigger, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: existing
       ? {
@@ -547,10 +549,11 @@ export function PackageForm({
 
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
-        <textarea
-          {...register('description')}
-          rows={3}
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <RichTextEditor
+          value={watch('description') ?? ''}
+          onChange={html => setValue('description', isRichTextEmpty(html) ? '' : html, { shouldDirty: true })}
+          minHeight={120}
+          theme="light"
         />
       </div>
 

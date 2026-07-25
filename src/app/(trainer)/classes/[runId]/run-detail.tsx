@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { RichText } from '@/components/shared/rich-text'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -288,10 +290,10 @@ export function RunDetail({
               {/* The description is what clients are sent when they're booked
                   in, so it's worth seeing here rather than only in the edit
                   form — it's the thing you check before enrolling someone. */}
-              {run.description && (
+              {!isRichTextEmpty(run.description) && (
                 <div className="mt-4 pt-4 border-t border-slate-100">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">About this class</p>
-                  <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">{run.description}</p>
+                  <RichText html={run.description} className="text-sm text-slate-600 leading-relaxed" />
                 </div>
               )}
               {run.assignedTrainers.length > 0 && (
