@@ -161,28 +161,28 @@ export function MobileHome({
         </p>
       </div>
 
-      {/* Everything waiting on the trainer, summed into one line — amber so it
-          reads as "needs you" against the otherwise neutral screen, without the
-          alarm of red. Tapping opens the breakdown rather than sending them
-          somewhere that only covers half of it. */}
+      {/* Everything waiting on the trainer, summed into one line. Indigo, the
+          same tint the desktop booking-request panel uses — it reads as "needs
+          you" without the alarm of red. Tapping opens the breakdown rather than
+          sending them somewhere that only covers half of it. */}
       {needsYou.length > 0 && (
         <div className={cn(
-          'mb-3 overflow-hidden rounded-xl border border-amber-200 bg-amber-50',
-          '[&>*+*]:border-t [&>*+*]:border-amber-200/70',
+          'mb-3 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/70',
+          '[&>*+*]:border-t [&>*+*]:border-indigo-200/70',
         )}>
           <button
             type="button"
             onClick={() => setReviewOpen(o => !o)}
             aria-expanded={reviewOpen}
-            className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-amber-100"
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-indigo-100"
           >
-            <ClipboardCheck className="h-[18px] w-[18px] flex-shrink-0 text-amber-600" strokeWidth={1.75} />
-            <span className="min-w-0 flex-1 truncate text-sm font-medium text-amber-900">
+            <ClipboardCheck className="h-[18px] w-[18px] flex-shrink-0 text-indigo-600" strokeWidth={1.75} />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-indigo-900">
               {reviewTotal} thing{reviewTotal === 1 ? '' : 's'} to review
             </span>
             <ChevronRight
               className={cn(
-                'h-4 w-4 flex-shrink-0 text-amber-500 transition-transform duration-200',
+                'h-4 w-4 flex-shrink-0 text-indigo-400 transition-transform duration-200',
                 reviewOpen && 'rotate-90',
               )}
             />
@@ -193,13 +193,13 @@ export function MobileHome({
               <Link
                 key={row.label}
                 href={row.href}
-                className="flex items-center gap-3 py-3.5 pl-11 pr-4 active:bg-amber-100"
+                className="flex items-center gap-3 py-3.5 pl-11 pr-4 active:bg-indigo-100"
               >
-                <Icon className="h-[18px] w-[18px] flex-shrink-0 text-amber-600/80" strokeWidth={1.75} />
-                <span className="min-w-0 flex-1 truncate text-sm text-amber-900/90">
+                <Icon className="h-[18px] w-[18px] flex-shrink-0 text-indigo-500" strokeWidth={1.75} />
+                <span className="min-w-0 flex-1 truncate text-sm text-indigo-900/90">
                   {row.label}
                 </span>
-                <ChevronRight className="h-4 w-4 flex-shrink-0 text-amber-500" />
+                <ChevronRight className="h-4 w-4 flex-shrink-0 text-indigo-400" />
               </Link>
             )
           })}
