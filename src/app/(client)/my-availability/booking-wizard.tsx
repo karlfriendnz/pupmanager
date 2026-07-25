@@ -12,6 +12,7 @@ import { zonedToUtc, todayInTz } from '@/lib/timezone'
 export interface WizardPackage {
   id: string
   name: string
+  imageUrl: string | null
   description: string | null
   sessionCount: number
   weeksBetween: number
@@ -26,6 +27,7 @@ export interface WizardPackage {
 export interface WizardClass {
   id: string
   name: string
+  imageUrl: string | null
   scheduleNote: string | null
   packageName: string
   nextSessionAt: string | null
@@ -357,8 +359,12 @@ export function BookingWizard(props: {
                 <div className="flex flex-col gap-2.5">
                   {packages.map(p => (
                     <button key={p.id} onClick={() => chooseSession(p)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
+                      <div className="flex items-start gap-3">
+                        {p.imageUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.imageUrl} alt="" className="h-11 w-11 rounded-xl object-cover shrink-0" />
+                        )}
+                        <div className="min-w-0 flex-1">
                           <p className="text-[15px] font-semibold text-slate-900">{p.name}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
                             <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{p.durationMins} min</span>
@@ -388,8 +394,12 @@ export function BookingWizard(props: {
                     const isFull = c.seatsLeft === 0
                     return (
                       <button key={c.id} onClick={() => chooseClass(c)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
+                        <div className="flex items-start gap-3">
+                          {c.imageUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={c.imageUrl} alt="" className="h-11 w-11 rounded-xl object-cover shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
                             <p className="text-[15px] font-semibold text-slate-900">{c.name}</p>
                             <p className="text-xs text-slate-500 mt-0.5">{c.packageName}</p>
                             <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">

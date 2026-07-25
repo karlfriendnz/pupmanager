@@ -116,7 +116,7 @@ export default async function MyAvailabilityPage() {
     where: { trainerId: profile.trainerId, clientSelfBook: true, isGroup: false },
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
     select: {
-      id: true, name: true, description: true, sessionCount: true, weeksBetween: true,
+      id: true, name: true, imageUrl: true, description: true, sessionCount: true, weeksBetween: true,
       durationMins: true, bufferMins: true, sessionType: true, priceCents: true,
       specialPriceCents: true, selfBookRequiresApproval: true, allowWaitlist: true,
     },
@@ -124,6 +124,7 @@ export default async function MyAvailabilityPage() {
   const packages: WizardPackage[] = rawPackages.map(p => ({
     id: p.id,
     name: p.name,
+    imageUrl: p.imageUrl,
     description: p.description,
     sessionCount: p.sessionCount,
     weeksBetween: p.weeksBetween,
@@ -179,6 +180,7 @@ export default async function MyAvailabilityPage() {
     return {
       id: r.id,
       name: r.name,
+      imageUrl: r.imageUrl,
       scheduleNote: r.scheduleNote,
       packageName: r.package.name,
       nextSessionAt: r.sessions[0]?.scheduledAt.toISOString() ?? null,
