@@ -7,7 +7,11 @@ import { isRichTextEmpty } from '@/lib/rich-text'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, ChevronDown, Palette } from 'lucide-react'
+import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, ChevronDown, Palette, GripVertical } from 'lucide-react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import type { ReactNode, HTMLAttributes } from 'react'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { Switch } from '@/components/ui/switch'
@@ -101,6 +105,19 @@ const CARD_SCHEMES: { name: string; bgColor: string; headerColor: string; textCo
   { name: 'Dark', bgColor: '#0f172a', headerColor: '#ffffff', textColor: '#cbd5e1', featuredColor: '#38bdf8' },
 ]
 
+// Sortable wrapper for a What's-included row. Renders its children with the
+// drag-handle props to spread onto a grip button, so the row JSX stays inline.
+function SortableItemShell({ id, children }: { id: string; children: (handle: HTMLAttributes<HTMLElement>) => ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style: React.CSSProperties = {
+    transform: transform ? CSS.Transform.toString(transform) : undefined,
+    transition,
+    position: 'relative',
+    zIndex: isDragging ? 10 : undefined,
+  }
+  return <div ref={setNodeRef} style={style}>{children({ ...attributes, ...listeners })}</div>
+}
+
 let seq = 0
 const KINDS: { k: Kind; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
   { k: 'PACKAGE', label: '1:1 package', Icon: GraduationCap },
@@ -151,6 +168,16 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const addItem = () => patch({ items: [...draft!.items, { key: `k${seq++}`, kind: 'PACKAGE', id: '', quantity: 1, regrantOnRenewal: false, imageUrl: null, description: '' }] })
   const patchItem = (key: string, p: Partial<DraftItem>) => patch({ items: draft!.items.map(it => (it.key === key ? { ...it, ...p } : it)) })
   const removeItem = (key: string) => patch({ items: draft!.items.filter(it => it.key !== key) })
+  // Drag-to-reorder the included items; their saved order is the array order.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  function reorderItems(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id || !draft) return
+    const from = draft.items.findIndex(it => it.key === active.id)
+    const to = draft.items.findIndex(it => it.key === over.id)
+    if (from < 0 || to < 0) return
+    patch({ items: arrayMove(draft.items, from, to) })
+  }
 
   // "Normally" = sum of the included offerings' own prices (classes have no
   // standalone price here, so they don't add to it).
@@ -319,14 +346,19 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
             <div className="p-5">
               <div className="text-sm font-medium text-slate-700 mb-2">What&#39;s included</div>
               <div className="flex flex-col gap-2">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderItems}>
+                <SortableContext items={draft.items.map(it => it.key)} strategy={verticalListSortingStrategy}>
                 {draft.items.map(it => {
                   const off = offeringOf(it)
                   const resolvedImg = it.imageUrl ?? off?.imageUrl ?? null
                   const open = openItem === it.key
                   const customised = !!it.imageUrl || !!it.description.trim()
                   return (
-                    <div key={it.key} className="rounded-xl border border-slate-200">
+                    <SortableItemShell key={it.key} id={it.key}>
+                    {(handle) => (
+                    <div className="rounded-xl border border-slate-200 bg-white">
                       <div className="flex flex-wrap items-center gap-2 p-2.5">
+                        <button type="button" {...handle} title="Drag to reorder" className="cursor-grab touch-none px-0.5 text-slate-300 hover:text-slate-500"><GripVertical className="h-4 w-4" /></button>
                         <select value={it.kind} onChange={e => patchItem(it.key, { kind: e.target.value as Kind, id: '', imageUrl: null, description: '' })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
                           {KINDS.map(k => <option key={k.k} value={k.k}>{k.label}</option>)}
                         </select>
@@ -381,8 +413,12 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                         </div>
                       )}
                     </div>
+                    )}
+                    </SortableItemShell>
                   )
                 })}
+                </SortableContext>
+                </DndContext>
               </div>
               <button onClick={addItem} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50"><Plus className="h-4 w-4" /> Add item</button>
               {saving > 0 && priceCents > 0 && (
