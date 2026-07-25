@@ -16,7 +16,7 @@ import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { Switch } from '@/components/ui/switch'
 import {
-  OfferingCard, OfferingEmpty, OfferingListBar, OfferingItems,
+  OfferingCard, OfferingEmpty, OfferingListBar, useOfferingView, OfferingItems,
   SortableOfferingList, SortableOfferingCard, AddOfferingLink,   type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
@@ -147,6 +147,8 @@ const KINDS: { k: Kind; label: string; Icon: React.ComponentType<{ className?: s
 ]
 
 export function MembershipsView({ memberships, offerings, currency: initialCurrency }: { memberships: Membership[]; offerings: Offerings; currency: string }) {
+  const [view, setView] = useOfferingView('memberships')
+
   const router = useRouter()
   const currency = useCurrency() ?? initialCurrency
   const sym = currencySymbol(currency)
@@ -528,9 +530,9 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar />
+            <OfferingListBar view={view} onView={setView} />
             <SortableOfferingList ids={list.map(m => m.id)} onReorder={reorder}>
-              <OfferingItems>
+              <OfferingItems view={view}>
                 {list.map(m => (
                   <SortableOfferingCard key={m.id} id={m.id}>
                     {handle => (

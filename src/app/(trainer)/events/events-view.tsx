@@ -6,7 +6,7 @@ import { CalendarPlus, MapPin, Users, Ticket, Pencil, Copy, CalendarDays } from 
 import { PageHeader } from '@/components/shared/page-header'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
-  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact,
+  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
@@ -31,6 +31,8 @@ export type EventRow = {
 }
 
 export function EventsView({ events: initialEvents, currency }: { events: EventRow[]; currency: string }) {
+  const [view, setView] = useOfferingView('events')
+
   const router = useRouter()
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
   const [cloning, setCloning] = useState<string | null>(null)
@@ -72,7 +74,7 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar>
+            <OfferingListBar view={view} onView={setView}>
               <OfferingTabs
                 value={tab}
                 onChange={setTab}
@@ -93,7 +95,7 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
               />
             ) : (
               <SortableOfferingList ids={shown.map(e => e.id)} onReorder={reorder}>
-                <OfferingItems>
+                <OfferingItems view={view}>
                   {shown.map(e => (
                     <SortableOfferingCard key={e.id} id={e.id}>
                       {handle => (

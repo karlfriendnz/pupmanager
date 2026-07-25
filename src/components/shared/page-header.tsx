@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { SetPageTitle, useHasPageTitleShell, usePageHelp } from './page-title'
+import { SetPageTitle, SetPageHasBack, useHasPageTitleShell, usePageHelp } from './page-title'
 import { PageHeaderTopBarPortal } from './page-header-portal'
 
 // Either a Link (href) or a click handler (onClick — e.g. router.back() so
@@ -44,6 +44,10 @@ export function PageHeader({ title, subtitle, back, actions, descriptionActions 
   return (
     <>
       <SetPageTitle title={title} />
+      {/* Tells the phone bar to drop its menu icon while this page shows a
+          back arrow — it can't see the arrow itself, since it arrives by
+          portal. */}
+      <SetPageHasBack value={!!back} />
       <PageHeaderTopBarPortal back={back} actions={actions} />
       {/* One-line "what this page is" helper. The trainer top bar shows only the
           title (no subtitle), so the description renders here in-flow, on every

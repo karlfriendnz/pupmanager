@@ -21,7 +21,7 @@ import { VersionGuard } from './version-guard'
 import { NotificationToaster } from './notification-toaster'
 import { TopBarControls } from './top-bar-controls'
 import { FloatingCreateButton } from './floating-create-button'
-import { PageTitleProvider, usePageTitle } from './page-title'
+import { PageTitleProvider, usePageTitle, usePageHasBack } from './page-title'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
 const NAV_GROUPS_KEY = 'k10.trainerNavGroups'
@@ -801,6 +801,7 @@ function TrainerMobileHeader({
   // label for the route, so pages with a custom header (e.g. /schedule) still
   // name themselves here.
   const title = usePageTitle() ?? fallbackTitle
+  const hasBack = usePageHasBack()
   const pathname = usePathname()
   const isHome = pathname === '/dashboard'
   const showTitle = !!title && !isHome
@@ -812,14 +813,19 @@ function TrainerMobileHeader({
       <div className="flex h-14 items-center gap-2 px-3">
         {/* Menu — far left, where a thumb reaches on a phone. Opens the same
             More sheet the shell owns, asked for by event. */}
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent('pm:open-more'))}
-          aria-label="Menu"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500 active:bg-slate-100"
-        >
-          <MenuIcon className="h-5 w-5" />
-        </button>
+        {/* A detail page shows a back arrow in the slot below — from inside a
+            class or a client, back is what you reach for, and two navigation
+            controls side by side is one too many. */}
+        {!hasBack && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('pm:open-more'))}
+            aria-label="Menu"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500 active:bg-slate-100"
+          >
+            <MenuIcon className="h-5 w-5" />
+          </button>
+        )}
         {/* No logo in the bar on any page: the home screen shows it large and
             centred, and on inner pages it was a 32px decoration competing with
             the page name. Home is a bottom tab. */}

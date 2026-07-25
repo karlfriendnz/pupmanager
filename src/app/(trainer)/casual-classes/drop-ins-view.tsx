@@ -6,7 +6,7 @@ import { Ticket, Users, CalendarDays, MapPin, Repeat, Pencil, Copy } from 'lucid
 import { PageHeader } from '@/components/shared/page-header'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
-  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact,
+  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
@@ -31,6 +31,8 @@ export type RunRow = {
 }
 
 export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: RunRow[]; currency?: string }) {
+  const [view, setView] = useOfferingView('casual-classes')
+
   const router = useRouter()
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const [cloning, setCloning] = useState<string | null>(null)
@@ -70,7 +72,7 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar>
+            <OfferingListBar view={view} onView={setView}>
               <OfferingTabs
                 value={tab}
                 onChange={setTab}
@@ -91,7 +93,7 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
               />
             ) : (
               <SortableOfferingList ids={shown.map(r => r.id)} onReorder={reorder}>
-                <OfferingItems>
+                <OfferingItems view={view}>
                   {shown.map(r => (
                     <SortableOfferingCard key={r.id} id={r.id}>
                       {handle => (

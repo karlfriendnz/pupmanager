@@ -5,17 +5,45 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 // Lets any page push its title into the desktop top bar. The shared PageHeader
 // component sets this automatically, so existing pages need no changes; pages
 // without a PageHeader can render <SetPageTitle title="…" /> directly.
-type PageTitleCtx = { title: string | null; setTitle: (t: string | null) => void }
+type PageTitleCtx = {
+  title: string | null
+  setTitle: (t: string | null) => void
+  /** Whether the current page portals a back arrow into the top bar. */
+  hasBack: boolean
+  setHasBack: (b: boolean) => void
+}
 
 const Ctx = createContext<PageTitleCtx | null>(null)
 
 export function PageTitleProvider({ children }: { children: ReactNode }) {
   const [title, setTitle] = useState<string | null>(null)
-  return <Ctx.Provider value={{ title, setTitle }}>{children}</Ctx.Provider>
+  const [hasBack, setHasBack] = useState(false)
+  return <Ctx.Provider value={{ title, setTitle, hasBack, setHasBack }}>{children}</Ctx.Provider>
 }
 
 export function usePageTitle(): string | null {
   return useContext(Ctx)?.title ?? null
+}
+
+/**
+ * True while the page shows a back arrow in the top bar.
+ *
+ * The phone bar uses it to drop the menu icon: from inside a class or a client
+ * you reach for "back", and two navigation controls side by side is one too
+ * many. It can't just look at the slot — that's filled by a portal.
+ */
+export function usePageHasBack(): boolean {
+  return useContext(Ctx)?.hasBack ?? false
+}
+
+/** Set by PageHeader for the length of a page that has a back arrow. */
+export function SetPageHasBack({ value }: { value: boolean }) {
+  const setHasBack = useContext(Ctx)?.setHasBack
+  useEffect(() => {
+    setHasBack?.(value)
+    return () => setHasBack?.(false)
+  }, [value, setHasBack])
+  return null
 }
 
 // True when rendered inside a PageTitleProvider (i.e. the trainer shell, whose

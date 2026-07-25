@@ -1,9 +1,9 @@
 'use client'
 
-import { type ReactNode, type HTMLAttributes } from 'react'
+import { type ReactNode, type HTMLAttributes, useCallback, useSyncExternalStore } from 'react'
 import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
 import Link from 'next/link'
-import { Plus, GripVertical } from 'lucide-react'
+import { Plus, GripVertical, LayoutGrid, List as ListIcon } from 'lucide-react'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -196,23 +196,91 @@ export function OfferingCard({
 
 // ─── List chrome: view mode, drag-to-reorder ─────────────────────────────────
 
-/**
- * There is one card view now, so there's nothing to toggle between.
- *
- * The old list/grid switch (remembered per page in localStorage) existed
- * because neither layout worked everywhere: the list squeezed the title
- * between a drag handle, an icon and three action buttons until it wrapped a
- * word per line on a phone, and the grid spent 128px on a block of flat colour
- * whenever an offering had no photo. One card that reflows — full width on a
- * phone, two or three up on a desktop — beats asking the trainer to pick
- * between two compromises.
- */
+export type OfferingView = 'list' | 'grid'
 
-/** The row that carries the tabs (if any). */
-export function OfferingListBar({ children }: { children?: ReactNode }) {
+const VIEW_KEY_PREFIX = 'pupmanager:offering-view'
+
+/**
+ * The list/grid preference, remembered PER PAGE — memberships can sit in grid
+ * while classes stay a list, because the lists are read differently (photos
+ * matter more on some than others).
+ *
+ * Desktop only. A phone is one column either way, so the choice is meaningless
+ * there and the toggle is hidden — which is also why the CARD no longer has
+ * two layouts. The view now only decides how many cards sit across the page;
+ * what's inside one never changes. That's what stopped the old "list" card
+ * from crushing its title between a drag handle, an icon and three buttons.
+ *
+ * Starts as 'list' on the server so the markup matches until the stored choice
+ * is read (a mismatch here hydration-errors the whole page).
+ */
+const viewListeners = new Set<() => void>()
+
+function subscribeView(cb: () => void) {
+  viewListeners.add(cb)
+  // Another tab switching view should switch this one too.
+  window.addEventListener('storage', cb)
+  return () => {
+    viewListeners.delete(cb)
+    window.removeEventListener('storage', cb)
+  }
+}
+
+// Read through useSyncExternalStore rather than an effect: localStorage IS an
+// external store, and this gives the server 'list' while the client reads the
+// real value, with no setState-in-effect cascade.
+function readView(key: string): OfferingView {
+  try { return window.localStorage.getItem(key) === 'grid' ? 'grid' : 'list' } catch { return 'list' }
+}
+const serverView = (): OfferingView => 'list'
+
+/** @param page which list this is — its own remembered view ('classes', 'memberships', …). */
+export function useOfferingView(page: string): [OfferingView, (v: OfferingView) => void] {
+  const key = `${VIEW_KEY_PREFIX}:${page}`
+  // Both callbacks have to be stable, or useSyncExternalStore resubscribes on
+  // every render and the page spins.
+  const subscribe = useCallback((cb: () => void) => subscribeView(cb), [])
+  const snapshot = useCallback(() => readView(key), [key])
+  const view = useSyncExternalStore(subscribe, snapshot, serverView)
+  const choose = useCallback((v: OfferingView) => {
+    try { window.localStorage.setItem(key, v) } catch { /* private mode */ }
+    viewListeners.forEach(l => l())
+  }, [key])
+  return [view, choose]
+}
+
+/** List / grid switch. Hidden on phones — one column either way there. */
+export function OfferingViewToggle({ value, onChange }: { value: OfferingView; onChange: (v: OfferingView) => void }) {
+  return (
+    <div className="hidden items-center gap-0.5 rounded-xl bg-slate-100 p-1 md:flex">
+      {([
+        { id: 'list' as const, icon: <ListIcon className="h-4 w-4" />, label: 'List view' },
+        { id: 'grid' as const, icon: <LayoutGrid className="h-4 w-4" />, label: 'Grid view' },
+      ]).map(v => (
+        <button
+          key={v.id}
+          type="button"
+          onClick={() => onChange(v.id)}
+          aria-label={v.label}
+          title={v.label}
+          aria-pressed={value === v.id}
+          className={`flex h-8 w-9 items-center justify-center rounded-lg transition-colors ${
+            value === v.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          {v.icon}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** The row that carries the tabs (if any) on the left and the view toggle right. */
+export function OfferingListBar({ children, view, onView }: { children?: ReactNode; view: OfferingView; onView: (v: OfferingView) => void }) {
   return (
     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
       <div className="min-w-0">{children}</div>
+      <OfferingViewToggle value={view} onChange={onView} />
     </div>
   )
 }
@@ -295,10 +363,17 @@ export function SortableOfferingCard({ id, children }: { id: string; children: (
   return <SortableOffering id={id}>{handle => children(<OfferingDragHandle {...handle} />)}</SortableOffering>
 }
 
-/** The container the cards sit in: one column on a phone, more as there's room. */
-export function OfferingItems({ children }: { children: ReactNode }) {
+/**
+ * The container the cards sit in. Always one column on a phone; on desktop the
+ * trainer's chosen view decides whether cards go full width (list) or two to
+ * four across (grid).
+ */
+export function OfferingItems({ view, children }: { view: OfferingView; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <div className={view === 'grid'
+      ? 'grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'
+      : 'flex flex-col gap-2.5'}
+    >
       {children}
     </div>
   )

@@ -12,7 +12,7 @@ import { type PackageColor, type PkgRow } from './package-form'
 import { formatMoney } from '@/lib/money'
 import {
   OfferingCard, OfferingEmpty, AddOfferingLink, OfferingPage,
-  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact, type OfferingBadge,
+  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact, type OfferingBadge,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 
@@ -47,6 +47,8 @@ export function PackagesView({
   connectName?: string | null
   currency?: string
 }) {
+  const [view, setView] = useOfferingView('packages')
+
   const router = useRouter()
   // Same drag + saved order as every other offering list.
   const { rows: packages, setRows: setPackages, reorder, error: reorderError } = useOfferingReorder(initialPackages, 'package')
@@ -93,9 +95,9 @@ export function PackagesView({
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar />
+            <OfferingListBar view={view} onView={setView} />
             <SortableOfferingList ids={packages.map(p => p.id)} onReorder={reorder}>
-              <OfferingItems>
+              <OfferingItems view={view}>
                 {packages.map(p => (
                   <SortableOfferingCard key={p.id} id={p.id}>
                     {handle => (
