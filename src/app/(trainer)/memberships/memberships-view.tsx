@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
@@ -26,6 +27,34 @@ interface DraftItem { key: string; kind: Kind; id: string; quantity: number; reg
 interface Draft {
   id: string | null; name: string; description: string; price: string; cadence: Cadence
   interval: Interval; minTermCount: string; earlyTermFee: string; published: boolean; items: DraftItem[]
+}
+
+// Live preview of the membership as it appears in the client Memberships
+// storefront (mirrors ClientMembershipsView's card), fed from the builder draft.
+function MembershipPreviewCard({ name, description, priceCents, recurring, interval, items, currency }: {
+  name: string; description: string; priceCents: number; recurring: boolean; interval: Interval; items: { label: string; quantity: number }[]; currency: string
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-semibold text-slate-900 text-lg flex items-center gap-2">
+            <Ticket className="h-5 w-5 text-violet-600 shrink-0" /> {name.trim() || <span className="text-slate-400 font-normal">Membership name</span>}
+          </h2>
+          <RichText html={description} className="text-sm text-slate-500 mt-1" />
+        </div>
+        <span className="text-lg font-bold text-violet-700 whitespace-nowrap">{formatMoney(priceCents, currency)}{recurring ? ` / ${interval.toLowerCase()}` : ''}</span>
+      </div>
+      {items.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-1.5">
+          {items.map((it, i) => (
+            <li key={i} className="flex items-center gap-2 text-sm text-slate-700"><Check className="h-4 w-4 text-emerald-500 shrink-0" /> {it.quantity > 1 ? `${it.quantity}× ` : ''}{it.label}</li>
+          ))}
+        </ul>
+      )}
+      <button type="button" disabled className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-violet-600 text-white font-semibold opacity-90 cursor-default">Get this membership</button>
+    </div>
+  )
 }
 
 let seq = 0
@@ -129,10 +158,11 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
           <button onClick={startNew} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">New membership</span></button>
         ) : undefined}
       />
-      <div className="p-4 md:p-8 w-full max-w-3xl">
+      <div className={`p-4 md:p-8 w-full ${draft ? 'max-w-6xl' : 'max-w-3xl'}`}>
         {error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2">{error}</div>}
 
         {draft ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
             <div className="p-5 flex flex-col gap-3">
               <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Membership name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
@@ -203,6 +233,21 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                 <button onClick={save} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save</button>
               </div>
             </div>
+          </div>
+          {/* Live preview — exactly how the card looks in the client
+              Memberships storefront, updating as you build. */}
+          <div className="lg:sticky lg:top-6">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Preview — how clients see it</p>
+            <MembershipPreviewCard
+              name={draft.name}
+              description={draft.description}
+              priceCents={priceCents}
+              recurring={draft.cadence === 'RECURRING'}
+              interval={draft.interval}
+              items={draft.items.filter(it => it.id).map(it => ({ label: offeringsFor(it.kind).find(o => o.id === it.id)?.name ?? '…', quantity: it.quantity }))}
+              currency={currency}
+            />
+          </div>
           </div>
         ) : list.length === 0 ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
