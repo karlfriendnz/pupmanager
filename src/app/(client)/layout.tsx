@@ -194,7 +194,10 @@ export default async function ClientLayout({ children }: { children: React.React
   if (!hasMemberships) hiddenClientNav.push('/my-memberships')
 
   return (
-    <div style={themeStyle}>
+    // In preview the amber banner is a fixed bar; add its height to the safe-top
+    // inset so the shell's fixed header/sidebar (which offset by --app-safe-top)
+    // sit BELOW it instead of underneath.
+    <div style={active.isPreview ? ({ ...themeStyle, '--app-safe-top': 'calc(min(env(safe-area-inset-top, 0px), 1rem) + 2.75rem)' } as React.CSSProperties) : themeStyle}>
       {banner}
       <AppShell
         role="CLIENT"
