@@ -7,7 +7,7 @@ import { isRichTextEmpty } from '@/lib/rich-text'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon } from 'lucide-react'
+import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, ChevronDown } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { Switch } from '@/components/ui/switch'
@@ -238,41 +238,47 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                         </select>
                         <span className="text-slate-400 text-sm">×</span>
                         <input value={it.quantity} onChange={e => patchItem(it.key, { quantity: Math.max(1, Number(e.target.value.replace(/[^0-9]/g, '')) || 1) })} inputMode="numeric" className="h-9 w-14 rounded-lg border border-slate-200 px-2 text-sm" />
-                        {/* Optional image + blurb for this item (pulls the offering's own by default). */}
-                        <button type="button" onClick={() => setOpenItem(open ? null : it.key)} disabled={!it.id} title="Image & description"
-                          className={`p-1.5 rounded-lg disabled:opacity-40 ${open || customised ? 'text-teal-600 bg-teal-50' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'}`}>
-                          <ImageIcon className="h-4 w-4" />
+                        {/* Optional image + custom description for this item
+                            (pulls the offering's own by default). */}
+                        <button type="button" onClick={() => setOpenItem(open ? null : it.key)} disabled={!it.id}
+                          className={`inline-flex items-center gap-1 h-9 px-2.5 rounded-lg text-xs font-medium disabled:opacity-40 ${open || customised ? 'bg-teal-50 text-teal-700' : 'text-slate-500 hover:bg-slate-100'}`}>
+                          <ImageIcon className="h-3.5 w-3.5" />
+                          {customised ? 'Edit description & image' : 'Add description & image'}
+                          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
                         </button>
                         <button onClick={() => removeItem(it.key)} title="Remove" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
                       </div>
                       {open && it.id && (
-                        <div className="border-t border-slate-100 p-3 flex flex-col gap-3 bg-slate-50/60">
-                          <div className="flex items-start gap-3">
-                            <div className="h-16 w-16 rounded-lg border border-slate-200 bg-white overflow-hidden shrink-0 grid place-items-center text-slate-300">
-                              {resolvedImg
-                                ? // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={resolvedImg} alt="" className="h-full w-full object-cover" />
-                                : <ImageIcon className="h-5 w-5" />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs text-slate-500 mb-1.5">
-                                {it.imageUrl ? 'Custom image' : off?.imageUrl ? 'Using the offering’s image' : 'This offering has no image — add one'}
-                              </p>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <ImageUploadButton onUploaded={urls => urls[0] && patchItem(it.key, { imageUrl: urls[0] })} />
-                                {it.imageUrl && <button type="button" onClick={() => patchItem(it.key, { imageUrl: null })} className="text-xs text-slate-500 hover:text-rose-600">Use offering’s image</button>}
-                              </div>
-                            </div>
-                          </div>
+                        <div className="border-t border-slate-100 p-3 flex flex-col gap-4 bg-slate-50/60">
                           <div>
-                            <p className="text-xs text-slate-500 mb-1">Description {it.description.trim() ? '(custom)' : off?.description ? '— leave empty to use the offering’s' : ''}</p>
-                            <RichTextEditor value={it.description} onChange={html => patchItem(it.key, { description: isRichTextEmpty(html) ? '' : html })} key={it.key} minHeight={80} theme="light" />
+                            <p className="text-xs font-medium text-slate-600 mb-1">Custom description {it.description.trim() ? '' : off?.description ? '— leave empty to use the offering’s own' : ''}</p>
+                            <RichTextEditor value={it.description} onChange={html => patchItem(it.key, { description: isRichTextEmpty(html) ? '' : html })} key={it.key} minHeight={90} theme="light" />
                             {!it.description.trim() && off?.description && (
                               <div className="mt-1.5">
                                 <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-0.5">Pulls in the offering’s description</p>
                                 <RichText html={off.description} className="text-xs text-slate-500" />
                               </div>
                             )}
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-600 mb-1.5">Image</p>
+                            <div className="flex items-start gap-3">
+                              <div className="h-16 w-16 rounded-lg border border-slate-200 bg-white overflow-hidden shrink-0 grid place-items-center text-slate-300">
+                                {resolvedImg
+                                  ? // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={resolvedImg} alt="" className="h-full w-full object-cover" />
+                                  : <ImageIcon className="h-5 w-5" />}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs text-slate-500 mb-1.5">
+                                  {it.imageUrl ? 'Custom image' : off?.imageUrl ? 'Using the offering’s image' : 'This offering has no image — add one'}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <ImageUploadButton onUploaded={urls => urls[0] && patchItem(it.key, { imageUrl: urls[0] })} />
+                                  {it.imageUrl && <button type="button" onClick={() => patchItem(it.key, { imageUrl: null })} className="text-xs text-slate-500 hover:text-rose-600">Use offering’s image</button>}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       )}
