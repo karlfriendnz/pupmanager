@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
+import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
@@ -411,8 +412,8 @@ function AssignModal({
                 </option>
               ))}
             </select>
-            {pkg?.description && (
-              <p className="text-xs text-slate-500 mt-1.5">{pkg.description}</p>
+            {!isRichTextEmpty(pkg?.description) && (
+              <p className="text-xs text-slate-500 mt-1.5">{richTextToPlain(pkg?.description)}</p>
             )}
           </div>
           )}

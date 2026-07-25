@@ -1,6 +1,7 @@
 'use client'
 
 import { DogPhotoPrompt } from './dog-photo-prompt'
+import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
 
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -470,7 +471,7 @@ export function ClientHomeView({
                       <span className="h-10 w-10 rounded-xl bg-accent-soft flex items-center justify-center flex-shrink-0"><Download className="h-4 w-4 text-accent" /></span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-900 truncate">{item.name}</p>
-                        {item.description && <p className="text-xs text-slate-500 truncate">{item.description}</p>}
+                        {!isRichTextEmpty(item.description) && <p className="text-xs text-slate-500 truncate">{richTextToPlain(item.description)}</p>}
                       </div>
                       <ChevronRight className="h-4 w-4 text-slate-300 flex-shrink-0" />
                     </>

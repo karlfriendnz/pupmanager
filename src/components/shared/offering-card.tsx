@@ -1,6 +1,7 @@
 'use client'
 
 import { type ReactNode } from 'react'
+import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 
@@ -109,8 +110,8 @@ export function OfferingCard({
           ))}
         </div>
 
-        {description && (
-          <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">{description}</p>
+        {!isRichTextEmpty(description) && (
+          <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">{richTextToPlain(description)}</p>
         )}
 
         {/* The facts. Chips rather than a "·"-joined string so each one keeps
