@@ -202,7 +202,11 @@ export default async function ClientsPage({
         title="Clients"
         subtitle={`${newCount > 0 ? `${newCount} new · ` : ''}${activeCount} active · ${inactiveCount} inactive`}
         actions={
-          <div className="flex items-center gap-2">
+          // Desktop only. On a phone these portal into the control bar, where
+          // they sat as two near-identical person-add glyphs next to the global
+          // "+" — which offers these same two choices (Quick / Full client) by
+          // name on its create screen.
+          <div className="hidden md:flex items-center gap-2">
             <QuickAddButton />
             <Link href="/clients/invite">
               <Button size="sm">
