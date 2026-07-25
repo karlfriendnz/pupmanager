@@ -777,26 +777,20 @@ function TrainerTopBar({
   )
 }
 
-// Trainer phone top bar. On the dashboard it shows the trainer's brand (icon +
-// business name); on every other page it shows the page's back arrow + title
-// instead — pages portal their back button into #pm-topbar-back-mobile, and the
-// title comes from the page-title context. Search stays pinned on the right.
+// Trainer phone top bar: menu on the left, then the business name (home) or the
+// page's back arrow + title (everywhere else) — pages portal their back button
+// into #pm-topbar-back-mobile, and the title comes from the page-title context.
+// Create and search stay pinned on the right, and open as full screens.
 // The slots render unconditionally so the portal target always exists on first
 // paint (matching the desktop bar).
 function TrainerMobileHeader({
-  trainerIcon,
-  trainerLogo,
   businessName,
   fallbackTitle,
-  homeHref,
   canSell = false,
   currency = 'nzd',
 }: {
-  trainerIcon?: string | null
-  trainerLogo?: string | null
   businessName?: string
   fallbackTitle: string
-  homeHref: string
   canSell?: boolean
   currency?: string
 }) {
@@ -823,23 +817,9 @@ function TrainerMobileHeader({
         >
           <MenuIcon className="h-5 w-5" />
         </button>
-        {/* Logo — top-left on inner pages, links to the trainer's home page.
-            The home screen shows the same logo large and centred, so repeating
-            it in the bar above (with the name beside it) says it three times. */}
-        {!isHome && (
-          <Link href={homeHref} aria-label="Home" className="flex shrink-0 items-center">
-            {trainerIcon ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={trainerIcon} alt="" className="h-8 w-8 rounded-lg object-contain" />
-            ) : trainerLogo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={trainerLogo} alt="" className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100" />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg" />
-            )}
-          </Link>
-        )}
+        {/* No logo in the bar on any page: the home screen shows it large and
+            centred, and on inner pages it was a 32px decoration competing with
+            the page name. Home is a bottom tab. */}
         {/* Back slot — always present so the portal target exists on first paint. */}
         <span id="pm-topbar-back-mobile" className="flex items-center empty:hidden" />
         {/* On inner pages, the page name; on the home screen, the business. */}
@@ -1014,7 +994,7 @@ function TrainerShell({
           logo and business name, never "PupManager". Sticky (not fixed) so it
           occupies flow and no page needs new top padding; pads the safe-area
           inset so it clears the notch. */}
-      <TrainerMobileHeader trainerIcon={trainerIcon} trainerLogo={trainerLogo} businessName={businessName} fallbackTitle={navFallbackTitle} homeHref={homeHref} canSell={canSell} currency={currency} />
+      <TrainerMobileHeader businessName={businessName} fallbackTitle={navFallbackTitle} canSell={canSell} currency={currency} />
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
           Hidden inside Settings, which brings its own rail. */}
