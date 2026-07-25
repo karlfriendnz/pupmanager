@@ -20,6 +20,7 @@ import { addonNudge, pickNudgeAddonId } from '@/components/shared/addon-nudge-re
 import { isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 import { formatMoney } from '@/lib/money'
 import { OnboardingPanel } from './onboarding-panel'
+import { MobileHome } from './mobile-home'
 import { TeamInviteCard } from './team-invite-card'
 import { SampleDataBanner } from './sample-data-banner'
 import { CountryPrompt } from './country-prompt'
@@ -219,6 +220,23 @@ export default async function DashboardPage({
     return a.scheduledAt.getTime() - b.scheduledAt.getTime()
   })
 
+  // Phone home screen shows one live line about today: how many sessions and
+  // when the next one starts (the first that hasn't finished yet).
+  const nextSession = todaysSessionsRaw.find(
+    s => s.scheduledAt.getTime() + s.durationMins * 60_000 >= nowMs,
+  )
+  const nextSessionLabel = nextSession
+    ? `${nextSession.scheduledAt
+        .toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', timeZone: tz })
+        .replace(/\s/g, '')
+        .toLowerCase()} ${
+        nextSession.classRun?.name
+        ?? nextSession.dog?.name
+        ?? nextSession.client?.user.name?.split(' ')[0]
+        ?? ''
+      }`.trim()
+    : null
+
   const prevDate = new Date(focusDate); prevDate.setDate(prevDate.getDate() - 1)
   const nextDate = new Date(focusDate); nextDate.setDate(nextDate.getDate() + 1)
   const prevHref = `/dashboard?date=${toDateStr(prevDate)}`
@@ -345,6 +363,23 @@ export default async function DashboardPage({
         {/* While sample data is loaded the account looks set up, so show the
             "remove sample data" strip at the top and hide the get-set-up
             onboarding. Removing the sample data brings the onboarding back. */}
+        {/* Phones get a launcher home instead of the widget wall: branded
+            welcome, one live line about today, six live-count tiles. Everything
+            below stays for md+ (and the action panels stay on both). */}
+        <MobileHome
+          greeting={getGreeting(tz)}
+          firstName={session.user.name?.split(' ')[0] ?? ''}
+          businessName={branding.businessName}
+          logoUrl={branding.logoUrl}
+          todayCount={todaysSessions.length}
+          nextSessionLabel={nextSessionLabel}
+          activeClients={activeClients}
+          notesCount={wrapNotesCount}
+          invoiceCount={wrapInvoiceCount}
+          invoiceLabel={wrapInvoiceLabel}
+          enquiryCount={unviewedEnquiryCount}
+          notesOn={notesOn}
+        />
         {sampleClientCount > 0 && <SampleDataBanner realClientCount={realClientCount} />}
         <BookingRequestsPanel trainerId={trainerId} />
         <WaitlistNudge trainerId={trainerId} />
@@ -359,7 +394,9 @@ export default async function DashboardPage({
           Dogs. The first two link to /sessions/needs-notes; Clients/Dogs are
           informational. Tiles show their value even when zero so the row stays
           a stable four-up. */}
-      <div className="mb-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* md, not sm: <MobileHome/> is md:hidden, so handing over at sm would
+          show both between 640–767px. */}
+      <div className="mb-8 hidden md:grid grid-cols-2 md:grid-cols-4 gap-3">
         {notesOn && (
         <Link
           href="/sessions/needs-notes"
@@ -433,8 +470,9 @@ export default async function DashboardPage({
       </div>
 
       {/* Day-scoped session list — surfaced next so the trainer sees what's
-          on today before scrolling past stats. */}
-      <div className="mb-8">
+          on today before scrolling past stats. Phones get this via the home
+          grid's Schedule tile + today line instead. */}
+      <div className="mb-8 hidden md:block">
         <div className="mb-3 flex items-center justify-between gap-3 h-9">
           <h2 className="text-base font-semibold text-slate-900 leading-none min-w-0 truncate">
             {isToday
@@ -515,7 +553,8 @@ export default async function DashboardPage({
         <Link
           href="/enquiries"
           className={cn(
-            'mb-6 block rounded-2xl border p-4 transition-colors',
+            // Phones see the enquiry count as a strip in <MobileHome/>.
+            'mb-6 hidden md:block rounded-2xl border p-4 transition-colors',
             unviewedEnquiryCount > 0
               ? 'bg-violet-50 border-violet-100 hover:border-violet-200'
               : 'bg-white border-slate-200 hover:border-slate-300',

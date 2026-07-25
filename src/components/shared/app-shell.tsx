@@ -922,6 +922,14 @@ function TrainerShell({
   // Close the sheet when route changes.
   useEffect(() => { setMoreOpen(false) }, [pathname])
 
+  // The phone home grid's "More" tile lives outside this shell, so it asks for
+  // the sheet by event rather than duplicating the whole menu.
+  useEffect(() => {
+    const open = () => setMoreOpen(true)
+    window.addEventListener('pm:open-more', open)
+    return () => window.removeEventListener('pm:open-more', open)
+  }, [])
+
   const sidebarWidth = collapsed ? 'md:w-16' : 'md:w-64'
   // Settings has its OWN left rail (Profile / Notifications / Add-ons / …), so
   // the app's main menu alongside it is two menus fighting for the same job.
