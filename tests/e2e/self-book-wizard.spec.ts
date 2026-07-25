@@ -25,11 +25,13 @@ test.describe('my-availability booking wizard — client happy path', () => {
     await loginAsClient(page)
     await page.goto('/my-availability')
 
-    // Step 1 — the trainer header + the "choose" step, with our self-bookable
-    // package listed under 1-on-1 sessions.
-    // The name also sits in the client top bar, so scope to the page body.
-    await expect(page.getByRole('main').getByText('E2E Dog School', { exact: true })).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByRole('heading', { name: 'What would you like to book?' })).toBeVisible()
+    // Step 1 — the "choose" step, a menu of offering TYPES; drill into 1-on-1
+    // sessions to reach our package. The trainer's name is in the intro copy
+    // ("…from E2E Dog School.") and also in the client top bar, so match loosely
+    // and scope to the page body.
+    await expect(page.getByRole('heading', { name: 'What would you like to book?' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('main').getByText(/E2E Dog School/).first()).toBeVisible()
+    await page.getByRole('button', { name: /1-on-1 sessions/ }).click()
     const sessionCard = page.getByRole('button', { name: /Self-Book Session/ })
     await expect(sessionCard).toBeVisible()
     await sessionCard.click()
@@ -45,5 +47,27 @@ test.describe('my-availability booking wizard — client happy path', () => {
     await expect(page.getByRole('heading', { name: 'Confirm your booking' })).toBeVisible()
     await expect(page.getByText('Self-Book Session').first()).toBeVisible()
     await expect(page.getByRole('button', { name: 'Confirm booking' })).toBeVisible()
+  })
+
+  // Memberships are a type INSIDE this flow rather than their own nav entry.
+  test('memberships are an offering type, not a nav entry', async ({ page }) => {
+    await loginAsClient(page)
+    await page.goto('/my-availability')
+
+    await expect(page.getByRole('heading', { name: 'What would you like to book?' })).toBeVisible({ timeout: 15_000 })
+    // No Memberships link in the client nav any more — it lives here now.
+    await expect(page.getByRole('link', { name: 'Memberships' })).toHaveCount(0)
+
+    await page.getByRole('button', { name: /Memberships/ }).click()
+    // The card renders the trainer's styling, price and included items; buying
+    // hands off to Stripe, so we stop at the button.
+    await expect(page.getByRole('heading', { name: SEED.membershipName })).toBeVisible()
+    await expect(page.getByText('$120')).toBeVisible()
+    await expect(page.getByText('2× Self-Book Session')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Get this membership' })).toBeVisible()
+
+    // Back out to the type menu.
+    await page.getByRole('button', { name: 'All offerings' }).click()
+    await expect(page.getByRole('button', { name: /1-on-1 sessions/ })).toBeVisible()
   })
 })

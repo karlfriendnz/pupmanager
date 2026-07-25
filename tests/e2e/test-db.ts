@@ -36,6 +36,10 @@ export const SEED = {
   // plus 7-day 09:00–17:00 availability — drives the /my-availability booking
   // wizard happy path without any Stripe handoff.
   selfBookPackageId: 'e2eselfbookpkg0000000000x',
+  // A published, buyable (one-off) membership on Business A — appears as the
+  // "Memberships" type inside the client Offerings flow (/my-availability).
+  membershipId: 'e2emembership00000000000x',
+  membershipName: 'E2E Starter Bundle',
   // A SEPARATE business (different tenant) — the pentest tries to breach it
   // from Business A. Its resources have fixed ids so the attacker can target them.
   businessB: {

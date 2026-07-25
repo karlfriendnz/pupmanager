@@ -5,6 +5,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { todayInTz } from '@/lib/timezone'
 import { slotAppliesOnDate, isBlackoutDate } from '@/lib/availability'
 import { getTrainerAvailabilityForClient } from '@/lib/client-availability'
+import { loadPublishedMemberships } from '@/lib/client-memberships'
 import { BookingWizard, type WizardPackage, type WizardClass, type PreviewDay } from './booking-wizard'
 import type { Metadata } from 'next'
 
@@ -205,6 +206,10 @@ export default async function MyAvailabilityPage() {
     }
   })
 
+  // Memberships are an offering TYPE in this flow rather than their own nav
+  // entry — same published one-off bundles the /my-memberships page sells.
+  const memberships = await loadPublishedMemberships(profile.trainerId)
+
   const allDogs = [
     ...(profile.dog ? [profile.dog] : []),
     ...profile.dogs,
@@ -244,6 +249,7 @@ export default async function MyAvailabilityPage() {
       availability={{ tz, slots, blackouts, busy }}
       packages={packages}
       classes={classes}
+      memberships={memberships}
       dogs={allDogs}
       defaultDogId={profile.dogId}
       acceptPayments={!!(profile.trainer.acceptPaymentsEnabled && profile.trainer.connectChargesEnabled)}

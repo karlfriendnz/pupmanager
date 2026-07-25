@@ -176,6 +176,16 @@ export default async function globalSetup() {
     await prisma.embedForm.create({
       data: { id: SEED.embedFormId, trainerId: profile.id, title: 'Get in touch', isActive: true },
     })
+    // A published one-off membership bundling the self-book package, so the
+    // client Offerings flow has a "Memberships" type to drill into. Buying it
+    // needs Stripe, so specs stop at the card (the buy route has unit coverage).
+    await prisma.membership.create({
+      data: {
+        id: SEED.membershipId, trainerId: profile.id, name: SEED.membershipName,
+        description: 'Everything a new pup needs.', priceCents: 12000, published: true,
+        items: { create: [{ kind: 'PACKAGE', packageId: SEED.selfBookPackageId, quantity: 2, order: 0 }] },
+      },
+    })
 
     // ─── Business B: a SEPARATE tenant the pentest tries to breach ───────────
     const bHash = await bcrypt.hash(SEED.businessB.ownerPassword, 12)
