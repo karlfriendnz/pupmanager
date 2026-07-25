@@ -20,6 +20,9 @@ export const stepFieldsSchema = z.object({
   important: z.boolean(),
   title: z.string().trim().min(1, 'Add a title').max(200),
   body: z.string().trim().min(1, 'Add a message').max(4000),
+  // Optional rich (HTML) body for the EMAIL channel; generous cap since it's
+  // formatted markup. Null/absent = use `body` for email too.
+  emailBody: z.string().max(50000).nullable().optional(),
   enabled: z.boolean(),
 })
 export type StepFields = z.infer<typeof stepFieldsSchema>

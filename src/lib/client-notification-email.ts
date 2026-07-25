@@ -20,6 +20,9 @@ export interface ClientNotificationEmailArgs {
   title: string
   /** Main sentence under the headline. */
   body: string
+  /** Optional pre-authored rich HTML body (sanitized here) rendered instead of
+   *  the escaped `body` — e.g. a comms-flow email step's rich content. */
+  bodyHtml?: string
   /** Optional muted sub-line, e.g. "6 sessions · Thursdays 6pm". */
   detail?: string | null
   /** The package/class description the trainer wrote. Clients want to know what
@@ -42,7 +45,7 @@ export interface RenderedClientNotification {
 }
 
 export function renderClientNotificationEmail(args: ClientNotificationEmailArgs): RenderedClientNotification {
-  const { trainer, title, body, detail, description, sessions, ctaLabel, ctaHref } = args
+  const { trainer, title, body, bodyHtml, detail, description, sessions, ctaLabel, ctaHref } = args
 
   const displayName = trainer.user.name?.trim() || trainer.businessName
   const businessName = trainer.businessName
@@ -52,6 +55,11 @@ export function renderClientNotificationEmail(args: ClientNotificationEmailArgs)
   const safeDisplay = escapeHtml(displayName)
   const safeTitle = escapeHtml(title)
   const safeBody = escapeHtml(body)
+  // A rich email body (e.g. a comms-flow email step) renders sanitized HTML;
+  // otherwise the plain body is escaped into a single paragraph.
+  const bodyBlock = bodyHtml
+    ? `<div style="font-size:16px;line-height:1.6;color:#334155;text-align:left;">${sanitizeRichHtml(bodyHtml)}</div>`
+    : `<p style="margin:0;font-size:16px;line-height:1.6;color:#334155;">${safeBody}</p>`
   const safeDetail = detail ? escapeHtml(detail) : null
   // The description is now rich text (Tiptap HTML). Sanitize it — never escape,
   // or the trainer's formatting would show as literal tags in the email.
@@ -93,7 +101,7 @@ export function renderClientNotificationEmail(args: ClientNotificationEmailArgs)
               </div>
               <div style="padding:12px 32px 4px;text-align:center;">
                 <h1 style="margin:0 0 8px;font-size:22px;line-height:1.3;font-weight:700;color:#0f172a;">${safeTitle}</h1>
-                <p style="margin:0;font-size:16px;line-height:1.6;color:#334155;">${safeBody}</p>
+                ${bodyBlock}
                 ${safeDetail ? `<p style="margin:8px 0 0;font-size:14px;color:#94a3b8;">${safeDetail}</p>` : ''}
                 ${richDescription ? `<div style="margin:14px 0 0;padding:12px 14px;background:#f8fafc;border-left:3px solid ${accent};border-radius:6px;font-size:14px;line-height:1.55;color:#475569;text-align:left;">${richDescription}</div>` : ''}
               </div>

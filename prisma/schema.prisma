@@ -2853,6 +2853,10 @@ model CommsFlowStep {
   important       Boolean               @default(false)
   title           String
   body            String                @db.Text
+  // Optional rich (HTML) body used only for the EMAIL channel — authored with
+  // the same editor as email templates. Push/in-app keep the plain `body`.
+  // Null = fall back to `body` for email too.
+  emailBody       String?               @db.Text
   enabled         Boolean               @default(true)
   order           Int                   @default(0)
   createdAt       DateTime              @default(now())

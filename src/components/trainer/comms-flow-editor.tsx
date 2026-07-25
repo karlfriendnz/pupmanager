@@ -7,6 +7,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Bell, Mail, Smartphone, Plus, Trash2, Loader2, Star, Check, Sparkles, Save, Pencil, X } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty } from '@/lib/rich-text'
 
 type Channel = 'PUSH' | 'EMAIL' | 'IN_APP'
 type Direction = 'BEFORE_SESSION' | 'AFTER_SESSION'
@@ -22,6 +24,7 @@ interface Step {
   important: boolean
   title: string
   body: string
+  emailBody: string | null
   enabled: boolean
   order: number
 }
@@ -119,10 +122,11 @@ export function CommsFlowEditor({ runId, packageId, clients = [] }: { runId?: st
   }
   async function saveDraft() {
     if (!draft) return
-    const { id, direction, offsetMinutes, channels, audience, customClientIds, important, title, body, enabled } = draft
+    const { id, direction, offsetMinutes, channels, audience, customClientIds, important, title, body, emailBody, enabled } = draft
     const res = await api(`${base}/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ direction, offsetMinutes, channels, audience, customClientIds, important, title, body, enabled }),
+      // Only persist an email body when Email is a channel and one was written.
+      body: JSON.stringify({ direction, offsetMinutes, channels, audience, customClientIds, important, title, body, emailBody: channels.includes('EMAIL') && emailBody?.trim() ? emailBody : null, enabled }),
     })
     if (!res) return
     const saved: Step = await res.json()
@@ -335,6 +339,16 @@ function StepEditor({ draft, clients, busy, onPatch, onToggleChannel, onSave, on
           ))}
         </div>
         {draft.body.trim() && <p className="mt-2 text-xs text-slate-500"><span className="font-medium text-slate-400">Preview:</span> {preview(draft.body)}</p>}
+        {draft.channels.includes('EMAIL') && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1.5">
+              <Mail className="h-3.5 w-3.5" /> Email content
+              <span className="font-normal text-slate-400">— the rich version sent by email (push & in-app use the short message above)</span>
+            </div>
+            <RichTextEditor key={draft.id} value={draft.emailBody ?? ''} onChange={html => onPatch({ emailBody: isRichTextEmpty(html) ? null : html })} minHeight={140} theme="light" />
+            <p className="mt-1.5 text-[11px] text-slate-400">Placeholders like {'{{dog}}'} work here too. Leave empty to use the short message for email as well.</p>
+          </div>
+        )}
       </Field>
 
       {/* IMPORTANT */}

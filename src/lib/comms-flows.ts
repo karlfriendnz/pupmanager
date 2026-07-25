@@ -13,6 +13,7 @@
 import { prisma } from './prisma'
 import { sendPush } from './push'
 import { sendEmail, fromTrainer } from './email'
+import { richTextToPlain } from './rich-text'
 import { renderClientNotificationEmail } from './client-notification-email'
 import type { NotificationChannel } from '@/generated/prisma'
 
@@ -42,12 +43,17 @@ function fill(template: string, vars: CommsVars): string {
     .replace(/\{\{\s*location\s*\}\}/g, vars.location)
 }
 
-/** Render a step's title + body with the session/recipient variables filled in. */
+/** Render a step's title + body (+ optional rich email body) with the
+ *  session/recipient variables filled in. */
 export function renderCommsMessage(
-  step: { title: string; body: string },
+  step: { title: string; body: string; emailBody?: string | null },
   vars: CommsVars,
-): { title: string; body: string } {
-  return { title: fill(step.title, vars), body: fill(step.body, vars) }
+): { title: string; body: string; emailBody: string | null } {
+  return {
+    title: fill(step.title, vars),
+    body: fill(step.body, vars),
+    emailBody: step.emailBody ? fill(step.emailBody, vars) : null,
+  }
 }
 
 function fmtTime(date: Date, tz: string): string {
@@ -114,9 +120,10 @@ async function deliver(args: {
   trainer: TrainerBrand
   title: string
   body: string
+  emailBody: string | null
   link: string
 }): Promise<void> {
-  const { channels, important, user, trainer, title, body, link } = args
+  const { channels, important, user, trainer, title, body, emailBody, link } = args
 
   if (channels.includes('IN_APP')) {
     await prisma.notification
@@ -134,7 +141,10 @@ async function deliver(args: {
     const email = renderClientNotificationEmail({
       trainer,
       title,
-      body,
+      // Rich email body when authored; else the plain message. bodyHtml renders
+      // the formatted version, body feeds the preview + plain-text part.
+      body: emailBody ? richTextToPlain(emailBody) : body,
+      bodyHtml: emailBody ?? undefined,
       detail: null,
       description: null,
       ctaLabel: 'Open in PupManager',
@@ -257,8 +267,8 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
       for (const [userId, { user, dogs }] of byUser) {
         if (alreadySent.has(userId)) continue
         const vars: CommsVars = { ...vars0, name: user.name ?? 'there', dog: dogs.join(', ') }
-        const { title, body } = renderCommsMessage(step, vars)
-        await deliver({ channels: step.channels, important: step.important, user, trainer, title, body, link })
+        const { title, body, emailBody } = renderCommsMessage(step, vars)
+        await deliver({ channels: step.channels, important: step.important, user, trainer, title, body, emailBody, link })
         // Record the send. Unique (stepId, sessionId, userId) guards a concurrent
         // tick from double-sending — swallow the conflict if it races.
         await prisma.commsFlowSend.create({ data: { stepId: step.id, sessionId, userId } }).catch(() => {})
