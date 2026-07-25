@@ -200,7 +200,8 @@ export default async function ClientsPage({
     <>
       <PageHeader
         title="Clients"
-        subtitle={`${newCount > 0 ? `${newCount} new · ` : ''}${activeCount} active · ${inactiveCount} inactive`}
+        // No subtitle: the tabs below already carry these counts ("Active 55",
+        // "Inactive 6"), so it was the same numbers twice.
         actions={
           // Desktop only. On a phone these portal into the control bar, where
           // they sat as two near-identical person-add glyphs next to the global
