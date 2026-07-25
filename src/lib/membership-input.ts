@@ -13,7 +13,7 @@ const itemSchema = z.object({
   regrantOnRenewal: z.boolean().optional(),
   // Optional presentation overrides — null/absent = use the offering's own.
   imageUrl: z.string().url().nullable().optional(),
-  description: z.string().max(2000).nullable().optional(),
+  description: z.string().max(50000).nullable().optional(),
 }).refine(
   i => (i.kind === 'PACKAGE' && !!i.packageId) || (i.kind === 'CLASS' && !!i.classRunId) || (i.kind === 'PRODUCT' && !!i.productId),
   { message: 'Each item needs a matching offering' },
@@ -21,7 +21,7 @@ const itemSchema = z.object({
 
 export const membershipCreateSchema = z.object({
   name: z.string().trim().min(1, 'Name the membership').max(120),
-  description: z.string().max(2000).nullable().optional(),
+  description: z.string().max(50000).nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
   // Storefront card styling — hex colours (#fff or #ffffff). Null clears.
   bgColor: hexColor,
