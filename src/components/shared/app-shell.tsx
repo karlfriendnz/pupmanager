@@ -820,9 +820,9 @@ function TrainerMobileHeader({
         )}
         {/* Back slot — always present so the portal target exists on first paint. */}
         <span id="pm-topbar-back-mobile" className="flex items-center empty:hidden" />
-        {/* Inner pages name themselves; the home screen leaves it to the logo. */}
+        {/* On inner pages, the page name; on the home screen, the business. */}
         <span className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">
-          {showTitle ? title : isHome ? '' : businessName ?? 'PupManager'}
+          {showTitle ? title : businessName ?? 'PupManager'}
         </span>
         {/* Page-actions slot — always present (empty:hidden). */}
         <span id="pm-topbar-actions-mobile" className="flex items-center gap-1.5 empty:hidden" />
@@ -831,6 +831,16 @@ function TrainerMobileHeader({
         {/* The same slide-out search as desktop — one implementation, so the
             scope selector, type-ahead and keyboard handling can't diverge. */}
         <TopBarControls variant="search" />
+        {/* Menu — opens the same More sheet the bottom tab does. The shell owns
+            that state, so ask for it by event rather than lifting it up here. */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('pm:open-more'))}
+          aria-label="Menu"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500 active:bg-slate-100"
+        >
+          <MenuIcon className="h-5 w-5" />
+        </button>
       </div>
     </header>
   )
