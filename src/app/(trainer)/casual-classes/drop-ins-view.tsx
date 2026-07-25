@@ -14,6 +14,7 @@ export type RunRow = {
   id: string
   packageId: string
   name: string
+  imageUrl: string | null
   description: string | null
   scheduleNote: string | null
   startLabel: string
@@ -88,6 +89,7 @@ export function DropInsView({ runs, currency = 'NZD' }: { runs: RunRow[]; curren
                   href={`/classes/${r.id}`}
                   title={r.name}
                   description={r.description}
+                  imageUrl={r.imageUrl}
                   tile={{ icon: <Ticket className="h-5 w-5" />, className: 'bg-amber-50 text-amber-600' }}
                   dimmed={r.isPast}
                   badges={[

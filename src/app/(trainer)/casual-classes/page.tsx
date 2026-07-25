@@ -73,6 +73,7 @@ export default async function DropInsPage() {
           id: r.id,
           packageId: r.package.id,
           name: r.name,
+          imageUrl: r.imageUrl,
           description: r.package.description,
           scheduleNote: r.scheduleNote,
           startLabel: formatDate(r.startDate),
