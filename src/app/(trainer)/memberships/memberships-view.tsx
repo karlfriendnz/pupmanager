@@ -177,12 +177,12 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
           <button onClick={startNew} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">New membership</span></button>
         ) : undefined}
       />
-      <div className={`p-4 md:p-8 w-full ${draft ? 'max-w-6xl' : 'max-w-3xl'}`}>
+      <div className={`p-4 md:p-8 w-full ${draft ? '' : 'max-w-3xl'}`}>
         {error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2">{error}</div>}
 
         {draft ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
             <div className="p-5 flex flex-col gap-3">
               <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Membership name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
               <RichTextEditor value={draft.description} onChange={html => patch({ description: isRichTextEmpty(html) ? '' : html })} key={draft.id ?? 'new'} minHeight={100} theme="light" />
