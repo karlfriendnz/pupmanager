@@ -1524,6 +1524,8 @@ model Package {
   isSample                 Boolean     @default(false)
   name                     String
   description              String?     @db.Text
+  // Optional cover image (Vercel Blob URL), shown on the offering card + detail.
+  imageUrl                 String?
   sessionCount             Int         @default(3)
   weeksBetween             Int         @default(2) // gap between sessions, in weeks
   durationMins             Int         @default(60) // default duration applied to created sessions

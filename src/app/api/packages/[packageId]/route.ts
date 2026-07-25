@@ -147,6 +147,7 @@ export async function PATCH(
       where: { id: packageId },
       data: {
         ...columns,
+        imageUrl: imageUrl ?? null,
         ...(dropIn && {
           allowDropIn: dropIn.allowDropIn,
           dropInPriceCents: dropIn.dropInPriceCents,

@@ -195,6 +195,7 @@ function SortablePackageRow({
         href={`/packages/${p.id}`}
         title={p.name}
         description={p.description}
+        imageUrl={p.imageUrl}
         tile={{ icon: <PackageIcon className="h-5 w-5" />, className: packageIconClasses(p.color) }}
         badges={badges}
         facts={packageFacts(p)}

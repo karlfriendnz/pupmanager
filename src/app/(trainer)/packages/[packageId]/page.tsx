@@ -71,6 +71,7 @@ export default async function PackagePage({
         id: pkg.id,
         name: pkg.name,
         description: pkg.description,
+        imageUrl: pkg.imageUrl,
         priceCents: pkg.priceCents,
         specialPriceCents: pkg.specialPriceCents,
         sessionCount: pkg.sessionCount,

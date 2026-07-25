@@ -124,6 +124,7 @@ export async function POST(req: Request) {
         trainerId,
         name: parsed.data.name,
         description: parsed.data.description ?? null,
+        imageUrl: parsed.data.imageUrl ?? null,
         sessionCount: parsed.data.sessionCount,
         weeksBetween: parsed.data.weeksBetween,
         durationMins: parsed.data.durationMins,

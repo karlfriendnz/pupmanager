@@ -20,6 +20,7 @@ export type PackageInfo = {
   id: string
   name: string
   description: string | null
+  imageUrl: string | null
   priceCents: number | null
   specialPriceCents: number | null
   sessionCount: number
@@ -144,8 +145,10 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
 
           <div className={`lg:col-span-2 flex flex-col gap-5`}>
 
-            {/* No cover image here — an image belongs to a scheduled class
-                run, not to the package definition behind it. */}
+            {pkg.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={pkg.imageUrl} alt={pkg.name} className="w-full h-40 sm:h-52 object-cover rounded-2xl border border-slate-200" />
+            )}
 
             {/* Package details */}
             <Card>
