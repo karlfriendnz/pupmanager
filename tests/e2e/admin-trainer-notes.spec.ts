@@ -16,7 +16,9 @@ async function loginAdmin(page: Page) {
 
 test('admin can add an internal note and a to-do to a trainer', async ({ page }) => {
   await loginAdmin(page)
-  await page.goto('/admin/trainers')
+  // The "All" tab — the seeded businesses are ACTIVE without a Stripe
+  // subscription, so they sit in no lifecycle bucket (the default tab is trial).
+  await page.goto('/admin/trainers?tab=all')
 
   await page
     .locator('table a[href^="/admin/trainers/"]')

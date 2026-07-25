@@ -70,7 +70,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     // Each session is enrolled on its own so one full session doesn't lose the
     // others. Failures are reported per session rather than thrown, unless
     // every one of them failed — then there's nothing to report but the error.
-    const outcomes: { sessionId: string | null; enrollmentId?: string; status?: string; error?: string }[] = []
+    const outcomes: { sessionId: string | null; enrollmentId?: string; status?: string; error?: string; code?: string }[] = []
     for (const sid of sessionIds) {
       try {
         const r = await enrollInRun({
@@ -83,14 +83,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
         })
         outcomes.push({ sessionId: sid, enrollmentId: r.enrollmentId, status: r.status })
       } catch (err) {
-        if (err instanceof ClassError) outcomes.push({ sessionId: sid, error: err.message })
+        if (err instanceof ClassError) outcomes.push({ sessionId: sid, error: err.message, code: err.code })
         else throw err
       }
     }
     const booked = outcomes.filter(o => o.enrollmentId)
     if (booked.length === 0) {
       const first = outcomes.find(o => o.error)
-      return NextResponse.json({ error: first?.error ?? 'Could not enrol that client.' }, { status: 409 })
+      // 409 is for a genuine conflict (the session is full, they're already in).
+      // A malformed request — a drop-in that named no session — is still a 400,
+      // as it was before drop-ins could span several sessions.
+      const conflict = first?.code === 'FULL' || first?.code === 'ALREADY_ENROLLED'
+      return NextResponse.json(
+        { error: first?.error ?? 'Could not enrol that client.', code: first?.code },
+        { status: conflict ? 409 : 400 },
+      )
     }
     // Keep the single-enrolment shape callers already read.
     const result = { enrollmentId: booked[0].enrollmentId!, status: booked[0].status! }

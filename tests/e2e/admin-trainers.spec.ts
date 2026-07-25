@@ -21,7 +21,9 @@ async function loginAdmin(page: Page) {
 test.describe('admin /admin/trainers — companies, not individual trainers', () => {
   test('lists businesses and hides invited team members', async ({ page }) => {
     await loginAdmin(page)
-    await page.goto('/admin/trainers')
+    // The "All" tab — the seeded businesses are ACTIVE without a Stripe
+    // subscription, so they sit in no lifecycle bucket (default tab is trial).
+    await page.goto('/admin/trainers?tab=all')
 
     await expect(page.getByRole('heading', { name: 'Businesses' })).toBeVisible()
 
@@ -36,7 +38,7 @@ test.describe('admin /admin/trainers — companies, not individual trainers', ()
 
   test('a row opens the trainer full view with detail + actions', async ({ page }) => {
     await loginAdmin(page)
-    await page.goto('/admin/trainers')
+    await page.goto('/admin/trainers?tab=all')
 
     // Each row links into that trainer's full view. The desktop table links the
     // OWNER'S NAME while the mobile card links the business name, so match on the

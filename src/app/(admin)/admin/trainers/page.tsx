@@ -40,6 +40,11 @@ async function loadPayingValueSummary(): Promise<CurrencyTotal[]> {
 // subscribed trainer inside their carried-over trial window is a PAYING
 // customer, not a trialist). undefined = no filter (All).
 const TABS: { key: string; label: string; bucket?: TrainerLifecycle; ours?: boolean; inactive?: boolean }[] = [
+  // "All" is not just a convenience: the lifecycle buckets don't cover every
+  // account (a comped or manually-ACTIVE business has no stripeSubscriptionId,
+  // so it's neither trialing nor paying) and those were reachable from no tab at
+  // all — invisible despite being counted in "N businesses registered".
+  { key: 'all',      label: 'All' },
   { key: 'trial',    label: 'In Trial',         bucket: 'trial' },
   { key: 'paying',   label: 'Paying customer',  bucket: 'paying' },
   { key: 'churned',  label: 'Churned',          bucket: 'churned' },

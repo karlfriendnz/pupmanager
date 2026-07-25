@@ -190,8 +190,9 @@ test.describe('an offering with a start date is scheduled', () => {
 
       expect(await prisma.trainingSession.count({ where: { classRunId: body.classRunId } })).toBe(3)
 
-      // Drop-ins have their own page, and stay off the classes list.
-      await page.goto('/drop-ins')
+      // Drop-ins (now "casual classes") have their own page, and stay off the
+      // group-classes list.
+      await page.goto('/casual-classes')
       await expect(page.getByText('E2E Slot-scheduled Drop-in')).toBeVisible({ timeout: 15_000 })
       await page.goto('/classes')
       await expect(page.getByText('E2E Slot-scheduled Drop-in')).toHaveCount(0)

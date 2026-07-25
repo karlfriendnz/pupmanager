@@ -57,8 +57,9 @@ test.describe('automated communication flows', () => {
       expect(create.status(), await create.text()).toBe(201)
       expect(await prisma.commsFlowStep.count({ where: { classRunId: runA } })).toBe(1)
 
-      // It renders on the class page (desktop shows the Messages section).
+      // It renders on the class page, under its own "Reminders & messages" tab.
       await page.goto(`/classes/${runA}`)
+      await page.getByRole('button', { name: 'Reminders & messages' }).click()
       await expect(page.getByText('E2E Bring treats')).toBeVisible({ timeout: 15_000 })
       await expect(page.getByText('1 day before', { exact: false })).toBeVisible()
 
@@ -100,8 +101,14 @@ test.describe('automated communication flows', () => {
       cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
 
       const anon = await browser.newContext()
-      const guard = await anon.request.post(`/api/trainer/class-runs/${b.classRunId}/comms-flow`, { data: { title: 'x' } })
-      expect([401, 403]).toContain(guard.status())
+      // Don't follow redirects: the middleware bounces an unauthenticated call
+      // to /login, and following that turns the rejection into a 200 HTML page.
+      // What matters is that it never succeeds and never writes a step.
+      const guard = await anon.request.post(`/api/trainer/class-runs/${b.classRunId}/comms-flow`, {
+        data: { title: 'x' },
+        maxRedirects: 0,
+      })
+      expect([302, 307, 401, 403]).toContain(guard.status())
       expect(await prisma.commsFlowStep.count({ where: { classRunId: b.classRunId } })).toBe(0)
       await anon.close()
     } finally {

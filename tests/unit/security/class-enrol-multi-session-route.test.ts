@@ -27,13 +27,17 @@ describe('POST /api/class-runs/[runId]/enrollments — multi-session drop-ins', 
 
   // One full session shouldn't cost the client the other three.
   it('enrols each session on its own and reports per-session failures', () => {
-    expect(route).toContain('outcomes.push({ sessionId: sid, error: err.message })')
+    expect(route).toContain('outcomes.push({ sessionId: sid, error: err.message, code: err.code })')
     expect(route).toContain('results: outcomes')
   })
 
-  // Nothing booked at all is a plain failure, not a partial success.
+  // Nothing booked at all is a plain failure, not a partial success — and the
+  // status must still say WHY: 409 for a real conflict (full / already in),
+  // 400 for a malformed request such as a drop-in that named no session.
   it('fails the request when every session was refused', () => {
     expect(route).toContain('if (booked.length === 0)')
+    expect(route).toContain("first?.code === 'FULL' || first?.code === 'ALREADY_ENROLLED'")
+    expect(route).toContain('status: conflict ? 409 : 400')
   })
 
   // A drop-in is billed per session, so each booking raises its own invoice.
