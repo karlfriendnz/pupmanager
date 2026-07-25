@@ -11,6 +11,7 @@ import { SessionRowCard } from '@/components/shared/session-row-card'
 import { PageHeader } from '@/components/shared/page-header'
 import { WaitlistNudge } from '@/components/shared/waitlist-nudge'
 import { BookingRequestsPanel } from '@/components/shared/booking-requests-panel'
+import { schedulePreviewHref } from '@/lib/booking-request-preview'
 import { PendingRequestsPanel } from './pending-requests-panel'
 import { TodoBrainDumpPanel } from './todo-braindump-panel'
 import { hasAddon, getEnabledAddons } from '@/lib/billing'
@@ -117,6 +118,13 @@ export default async function DashboardPage({
       _count: { select: { formResponses: true } },
       clientPackage: { select: { package: { select: { priceCents: true, sessionCount: true } } } },
     },
+  })
+  // Phone home shows pending booking requests as a single row, so it needs the
+  // count and somewhere to send the trainer (the schedule preview of the first).
+  const pendingBookingRequestsP = prisma.bookingRequest.findMany({
+    where: { trainerId, status: 'PENDING' },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
   })
   const pendingProductRequestsP = prisma.productRequest.findMany({
     where: { client: { trainerId }, status: 'PENDING' },
@@ -287,6 +295,7 @@ export default async function DashboardPage({
   // Pending product requests across this trainer's clients — shown as a panel
   // so the trainer can fulfil items at the next session and dismiss the chip.
   const pendingProductRequests = await pendingProductRequestsP
+  const pendingBookingRequests = await pendingBookingRequestsP
 
   // Index requests by client so we can show them inline on each "Coming up
   // today" session row — the trainer sees what to bring at a glance.
@@ -364,9 +373,12 @@ export default async function DashboardPage({
             "remove sample data" strip at the top and hide the get-set-up
             onboarding. Removing the sample data brings the onboarding back. */}
         {sampleClientCount > 0 && <SampleDataBanner realClientCount={realClientCount} />}
-        {/* Anything awaiting a decision sits above the fold on both layouts —
-            on phones that means it comes before the home grid. */}
-        <BookingRequestsPanel trainerId={trainerId} />
+        {/* Desktop keeps the expanded panel (confirm/decline inline). Phones
+            get it as one row inside <MobileHome/> — the full card cost most of
+            a screen before the trainer saw anything else. */}
+        <div className="hidden md:block">
+          <BookingRequestsPanel trainerId={trainerId} />
+        </div>
         {/* Phones get a launcher home instead of the widget wall: welcome, one
             live line about today, six live-count tiles. Everything below stays
             for md+ (and the action panels stay on both). */}
@@ -382,6 +394,10 @@ export default async function DashboardPage({
           invoiceCount={wrapInvoiceCount}
           invoiceLabel={wrapInvoiceLabel}
           enquiryCount={unviewedEnquiryCount}
+          bookingRequestCount={pendingBookingRequests.length}
+          bookingRequestHref={
+            pendingBookingRequests[0] ? schedulePreviewHref(pendingBookingRequests[0].id) : null
+          }
           notesOn={notesOn}
         />
         <WaitlistNudge trainerId={trainerId} />

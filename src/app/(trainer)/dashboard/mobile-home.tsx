@@ -1,10 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import {
   Calendar, Users, Layers, FileText, Wallet, LayoutGrid,
-  MessageSquare, ChevronRight, Inbox,
+  MessageSquare, ChevronRight, Inbox, CalendarClock, ClipboardCheck,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -43,6 +44,8 @@ export function MobileHome({
   invoiceCount,
   invoiceLabel,
   enquiryCount,
+  bookingRequestCount,
+  bookingRequestHref,
   notesOn,
 }: {
   greeting: string
@@ -56,9 +59,32 @@ export function MobileHome({
   invoiceCount: number
   invoiceLabel: string | null
   enquiryCount: number
+  bookingRequestCount: number
+  bookingRequestHref: string | null
   notesOn: boolean
 }) {
   const openMore = () => window.dispatchEvent(new CustomEvent('pm:open-more'))
+  const [reviewOpen, setReviewOpen] = useState(false)
+
+  // Decisions waiting on the trainer. Summed into one line; the breakdown is
+  // behind the disclosure.
+  const needsYou = [
+    bookingRequestCount > 0 && bookingRequestHref
+      ? {
+          href: bookingRequestHref,
+          icon: CalendarClock,
+          label: `${bookingRequestCount} booking request${bookingRequestCount === 1 ? '' : 's'}`,
+        }
+      : null,
+    enquiryCount > 0
+      ? {
+          href: '/enquiries',
+          icon: Inbox,
+          label: `${enquiryCount} new ${enquiryCount === 1 ? 'enquiry' : 'enquiries'}`,
+        }
+      : null,
+  ].filter(r => r !== null)
+  const reviewTotal = bookingRequestCount + enquiryCount
 
   const tiles: Tile[] = [
     {
@@ -112,19 +138,6 @@ export function MobileHome({
 
   return (
     <section className="md:hidden -mt-1 mb-6">
-      {/* Waiting on the trainer — first thing on the screen. */}
-      {enquiryCount > 0 && (
-        <Link
-          href="/enquiries"
-          className="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 active:bg-slate-50"
-        >
-          <Inbox className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
-            {enquiryCount} new {enquiryCount === 1 ? 'enquiry' : 'enquiries'} to review
-          </span>
-          <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
-        </Link>
-      )}
 
       {/* Plain welcome — their logo, their name. No gradient, no card. */}
       <div className="mb-4 flex items-center gap-3 px-0.5">
@@ -153,6 +166,51 @@ export function MobileHome({
           )}
         </div>
       </div>
+
+      {/* Everything waiting on the trainer, summed into one line — amber so it
+          reads as "needs you" against the otherwise neutral screen, without the
+          alarm of red. Tapping opens the breakdown rather than sending them
+          somewhere that only covers half of it. */}
+      {needsYou.length > 0 && (
+        <div className={cn(
+          'mb-3 overflow-hidden rounded-xl border border-amber-200 bg-amber-50',
+          '[&>*+*]:border-t [&>*+*]:border-amber-200/70',
+        )}>
+          <button
+            type="button"
+            onClick={() => setReviewOpen(o => !o)}
+            aria-expanded={reviewOpen}
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-amber-100"
+          >
+            <ClipboardCheck className="h-[18px] w-[18px] flex-shrink-0 text-amber-600" strokeWidth={1.75} />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-amber-900">
+              {reviewTotal} thing{reviewTotal === 1 ? '' : 's'} to review
+            </span>
+            <ChevronRight
+              className={cn(
+                'h-4 w-4 flex-shrink-0 text-amber-500 transition-transform duration-200',
+                reviewOpen && 'rotate-90',
+              )}
+            />
+          </button>
+          {reviewOpen && needsYou.map(row => {
+            const Icon = row.icon
+            return (
+              <Link
+                key={row.label}
+                href={row.href}
+                className="flex items-center gap-3 py-3.5 pl-11 pr-4 active:bg-amber-100"
+              >
+                <Icon className="h-[18px] w-[18px] flex-shrink-0 text-amber-600/80" strokeWidth={1.75} />
+                <span className="min-w-0 flex-1 truncate text-sm text-amber-900/90">
+                  {row.label}
+                </span>
+                <ChevronRight className="h-4 w-4 flex-shrink-0 text-amber-500" />
+              </Link>
+            )
+          })}
+        </div>
+      )}
 
       {/* One live line about today, sharing the grid's flat treatment. */}
       <Link

@@ -60,6 +60,29 @@ test.describe('trainer home on a phone', () => {
     expect(tileN).toBe(heroN)
   })
 
+  test('everything waiting is one row, and it opens to the breakdown', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/dashboard')
+
+    const summary = page.getByRole('button', { name: /things? to review/ })
+    // Nothing pending in the seed is a legitimate state — the row hides itself.
+    if (await summary.count() === 0) test.skip()
+
+    // The total is the sum, and the kinds are hidden until asked for.
+    const total = Number((await summary.innerText()).match(/(\d+)/)![1])
+    expect(total).toBeGreaterThan(0)
+    await expect(page.getByRole('link', { name: /booking request|new enquir/ })).toHaveCount(0)
+
+    await summary.click()
+    const kinds = page.getByRole('link', { name: /booking request|new enquir/ })
+    expect(await kinds.count()).toBeGreaterThan(0)
+
+    // The parts add up to the headline.
+    let sum = 0
+    for (const t of await kinds.allInnerTexts()) sum += Number(t.match(/(\d+)/)?.[1] ?? 0)
+    expect(sum).toBe(total)
+  })
+
   test('More opens the full menu, Offerings opens the hub', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/dashboard')
