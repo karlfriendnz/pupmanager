@@ -146,6 +146,8 @@ export function BookingWizard(props: {
   const { businessName, initials, tz, availability, packages, classes, dogs, defaultDogId, acceptPayments, currency, previewDays } = props
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
+  // Step 1 is a menu of offering TYPES; picking one drills into that type's list.
+  const [category, setCategory] = useState<'sessions' | 'classes' | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
 
   // Session (package) picker state.
@@ -325,9 +327,31 @@ export function BookingWizard(props: {
           <EmptyState businessName={businessName} previewDays={previewDays} onWaitlist={joinWaitlist} saving={saving} error={error} />
         ) : (
           <div className="flex flex-col gap-6">
-            <StepIntro title="What would you like to book?" sub={`Pick a session or class with ${businessName}.`} />
+            {category === null ? (
+              <>
+                <StepIntro title="What would you like to book?" sub={`Choose what you'd like from ${businessName}.`} />
+                <div className="flex flex-col gap-3">
+                  {packages.length > 0 && (
+                    <button type="button" onClick={() => setCategory('sessions')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><CalendarPlus className="h-5 w-5" /></span>
+                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">1-on-1 sessions</span><span className="block text-xs text-slate-500">{packages.length} available</span></span>
+                      <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+                    </button>
+                  )}
+                  {classes.length > 0 && (
+                    <button type="button" onClick={() => setCategory('classes')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><GraduationCap className="h-5 w-5" /></span>
+                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">Group classes</span><span className="block text-xs text-slate-500">{classes.length} available</span></span>
+                      <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => setCategory(null)} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 self-start"><ChevronLeft className="h-4 w-4" /> All offerings</button>
 
-            {packages.length > 0 && (
+            {category === 'sessions' && packages.length > 0 && (
               <section>
                 <SectionLabel icon={<CalendarPlus className="h-3.5 w-3.5" />} text="1-on-1 sessions" />
                 <div className="flex flex-col gap-2.5">
@@ -356,7 +380,7 @@ export function BookingWizard(props: {
               </section>
             )}
 
-            {classes.length > 0 && (
+            {category === 'classes' && classes.length > 0 && (
               <section>
                 <SectionLabel icon={<GraduationCap className="h-3.5 w-3.5" />} text="Group classes" />
                 <div className="flex flex-col gap-2.5">
@@ -385,6 +409,8 @@ export function BookingWizard(props: {
                   })}
                 </div>
               </section>
+            )}
+              </>
             )}
           </div>
         )
