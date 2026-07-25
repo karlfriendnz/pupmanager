@@ -11,6 +11,8 @@ const h = vi.hoisted(() => ({
   classRun: { findMany: vi.fn() },
   product: { findMany: vi.fn() },
 }))
+// The loader is add-on gated; these tests are about what it loads, so it's on.
+vi.mock('@/lib/billing', () => ({ hasAddon: vi.fn(async () => true) }))
 vi.mock('@/lib/prisma', () => ({ prisma: h }))
 
 import { loadPublishedMemberships } from '@/lib/client-memberships'

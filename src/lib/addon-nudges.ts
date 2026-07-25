@@ -69,6 +69,11 @@ export const NUDGE_COPY: Record<string, { title: string; body: string; ctaLabel:
     body: 'Split each day into bookable parts, take rolling day-part bookings and run the day from a live week board.',
     ctaLabel: 'Set up Doggy Daycare',
   },
+  memberships: {
+    title: 'Sell a membership',
+    body: 'Bundle packages, classes and products into one thing clients buy in a single go — with its own storefront card.',
+    ctaLabel: 'Set up Memberships',
+  },
   googlecalendar: {
     title: 'Sync your Google Calendar',
     body: 'See your sessions and classes in Google Calendar and never double-book again.',

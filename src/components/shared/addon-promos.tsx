@@ -4,7 +4,7 @@ import { type ReactNode } from 'react'
 import {
   Users, PenLine, Send, LineChart, Trophy, Share2, Sparkles, Tag, ShoppingBag,
   Wallet, MapPin, Route, Clock, FileText, ListChecks, NotebookPen, Check,
-  Download, Mail, CalendarDays, RefreshCw,
+  Download, Mail, CalendarDays, RefreshCw, Ticket,
 } from 'lucide-react'
 import { FeaturePromoCard, FeaturePromoModal, PROMO_ICON, type PromoStep } from '@/components/shared/feature-promo'
 import { EnableAddonButton } from '@/components/shared/enable-addon-button'
@@ -86,6 +86,19 @@ const PROMOS: Record<string, Cfg> = {
       { icon: <Check className={I} />, label: 'Run the board' },
     ],
     benefits: ['Book by the part or full day', 'Per-part capacity', 'A live week board'],
+  },
+  memberships: {
+    title: 'Sell a membership',
+    description: 'Bundle your packages, classes and products into one thing clients buy.',
+    // Shares the classes/daycare photo until it has its own — a bundle is sold
+    // on the same promise (a group of owners and dogs), not a different one.
+    image: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%', translateX: '28%' },
+    steps: [
+      { icon: <Ticket className={I} />, label: 'Bundle it up' },
+      { icon: <Users className={I} />, label: 'They buy once' },
+      { icon: <Check className={I} />, label: 'Everything granted' },
+    ],
+    benefits: ['One price, several offerings', 'Your own card styling', 'Welcome messages built in'],
   },
   xero: {
     title: 'Reconcile in Xero',

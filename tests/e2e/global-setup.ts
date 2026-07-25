@@ -104,6 +104,7 @@ export default async function globalSetup() {
     for (const [id, name, description, sortOrder] of [
       ['dropins', 'Casual classes', 'Single-session casual classes', 7],
       ['puppyschool', 'Doggy daycare', 'Day-parted daycare with a week board', 8],
+      ['memberships', 'Memberships', 'Bundle offerings into one purchase', 9],
     ] as const) {
       await prisma.billingItem.create({
         data: { id, kind: 'ADDON', name, description, priceMonthly: 0, sortOrder, isActive: true },

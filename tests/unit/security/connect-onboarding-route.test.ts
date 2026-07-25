@@ -25,7 +25,10 @@ const h = vi.hoisted(() => ({
 vi.mock('@/lib/membership', () => ({ getTrainerContext: h.getTrainerContext }))
 vi.mock('@/lib/csrf', () => ({ requireSameOrigin: h.requireSameOrigin }))
 vi.mock('@/lib/audit', () => ({ recordAudit: h.recordAudit, auditRequestMeta: h.auditRequestMeta }))
-vi.mock('@/lib/connect', () => ({
+vi.mock('@/lib/connect', async (importOriginal) => ({
+  // countryCodeFor is pure — keep the real one so the route's normalisation of
+  // a free-text address country is exercised rather than stubbed away.
+  ...(await importOriginal<typeof import('@/lib/connect')>()),
   createExpressAccount: h.createExpressAccount,
   createOnboardingLink: h.createOnboardingLink,
   currencyForCountry: h.currencyForCountry,

@@ -1,4 +1,5 @@
 import { prisma } from './prisma'
+import { hasAddon } from './billing'
 
 // The client-facing shape of a published membership (matches ClientMembershipsView's
 // card): card styling + resolved included-item labels/images/descriptions.
@@ -16,6 +17,10 @@ export interface ClientMembership {
  * its package). Shared by the Memberships storefront and the Offerings flow.
  */
 export async function loadPublishedMemberships(trainerId: string): Promise<ClientMembership[]> {
+  // Memberships are a trainer add-on: switched off, clients see none of them —
+  // including in the Offerings flow, where they'd otherwise still be buyable.
+  if (!(await hasAddon(trainerId, 'memberships'))) return []
+
   const memberships = await prisma.membership.findMany({
     where: { trainerId, published: true, cadence: 'ONE_OFF' },
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],

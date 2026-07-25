@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
+import { hasAddon } from '@/lib/billing'
 import { membershipCreateSchema, itemsOwnedByTrainer, itemRows, planRows } from '@/lib/membership-input'
 
 // Trainer-owned combo memberships. List + create. Guarded by packages.manage;
@@ -21,6 +22,10 @@ export async function GET() {
 export async function POST(req: Request) {
   const ctx = await guardPermission('packages.manage')
   if (ctx instanceof NextResponse) return ctx
+  // Memberships are an add-on — no creating one while it's switched off.
+  if (!(await hasAddon(ctx.companyId, 'memberships'))) {
+    return NextResponse.json({ error: 'Turn the Memberships add-on on first.' }, { status: 403 })
+  }
 
   const parsed = membershipCreateSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })

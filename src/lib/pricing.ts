@@ -65,7 +65,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins' | 'events' | 'puppyschool'
+export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins' | 'events' | 'puppyschool' | 'memberships'
 
 export interface AddonDef {
   id: AddonId
@@ -219,6 +219,16 @@ export const ADDONS: AddonDef[] = [
     // switches it on; enabling it unlocks the Doggy Daycare workspace (a
     // day-parted, ongoing daycare offering with its own week board).
     description: 'Run a doggy daycare — split each day into bookable parts, take rolling day-part bookings, and manage the day from a live week board.',
+    free: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
+  {
+    id: 'memberships',
+    name: 'Memberships',
+    // Free while it beds in — same treatment as classes/events/daycare. Off
+    // until the trainer switches it on; enabling it unlocks the membership
+    // builder and puts memberships in front of clients as an offering type.
+    description: 'Bundle packages, classes and products into a membership clients buy in one go — with its own storefront card and welcome reminders.',
     free: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },

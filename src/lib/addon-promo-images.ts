@@ -29,6 +29,7 @@ export const ADDON_PROMO_IMAGES: Record<string, PromoImage> = {
   // which is the classes photo. Swap when we have real event art.
   events: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%', translateX: '28%' },
   puppyschool: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%', translateX: '28%' },
+  memberships: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%', translateX: '28%' },
   library: { src: '/promo-todos-v3.jpg', objectPosition: 'center 52%' },
   // Connect-based add-ons without a bespoke promo image — sensible reuse.
   payments: { src: '/promo-shop-v1.jpg', objectPosition: 'center 40%', translateX: '28%' },

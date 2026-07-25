@@ -4,6 +4,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
 import { enforceRateLimit } from '@/lib/rate-limit'
+import { hasAddon } from '@/lib/billing'
 import { env } from '@/lib/env'
 
 // A client buys a one-off combo membership: one Connect checkout with a single
@@ -20,6 +21,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ member
 
   const profile = await prisma.clientProfile.findUnique({ where: { id: active.clientId }, select: { id: true, trainerId: true } })
   if (!profile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+
+  // The trainer's Memberships add-on must be on — a switched-off trainer sells
+  // nothing, even to someone holding an old link.
+  if (!(await hasAddon(profile.trainerId, 'memberships'))) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
 
   const membership = await prisma.membership.findFirst({
     where: { id: membershipId, trainerId: profile.trainerId, published: true },

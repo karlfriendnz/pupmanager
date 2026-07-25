@@ -159,6 +159,17 @@ test.describe('memberships — trainer builds, client sees', () => {
       expect(after?.name).toBe('E2E Tenant Target')
       expect(after?.trainerId).toBe(trainer!.id)
 
+      // Give B the add-on, so what's proven below is the OWNERSHIP check and not
+      // just the add-on gate refusing them first.
+      const rival = await prisma.trainerProfile.findFirst({
+        where: { businessName: SEED.businessB.businessName }, select: { id: true },
+      })
+      await prisma.trainerAddon.upsert({
+        where: { trainerId_itemId: { trainerId: rival!.id, itemId: 'memberships' } },
+        create: { trainerId: rival!.id, itemId: 'memberships', active: true },
+        update: { active: true },
+      })
+
       // Nor can B bundle A's package into a membership of its own.
       const steal = await page.request.post('/api/trainer/memberships', {
         data: {

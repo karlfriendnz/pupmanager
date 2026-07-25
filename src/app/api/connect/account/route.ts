@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { getTrainerContext } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import {
+  countryCodeFor,
   createExpressAccount,
   createOnboardingLink,
   currencyForCountry,
@@ -58,7 +59,10 @@ export async function POST(req: Request) {
   // currency from the trainer's country. Subsequent calls just re-mint a fresh
   // onboarding link to resume where they left off.
   if (!accountId) {
-    const country = trainer.addressCountry ?? trainer.signupCountry ?? 'NZ'
+    // Stripe wants an alpha-2 code. addressCountry is free text from the
+    // address form ("United Kingdom "), so normalise it and fall back to
+    // signupCountry, which is always a code.
+    const country = countryCodeFor(trainer.addressCountry, trainer.signupCountry)
     const account = await createExpressAccount({
       sandbox,
       trainerId,

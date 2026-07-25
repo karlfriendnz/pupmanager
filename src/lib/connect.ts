@@ -33,10 +33,53 @@ const COUNTRY_CURRENCY: Record<string, string> = {
   IE: 'eur',
 }
 
+// Country NAMES → ISO code. `addressCountry` is free text off the address form
+// (Google autocomplete fills the display name, "United Kingdom"), while Stripe
+// and our currency map both want the alpha-2 code. Without this, creating a
+// Connect account for a trainer whose address had been filled in threw
+// "invalid country" and they could never turn payments on at all.
+const COUNTRY_NAME_CODE: Record<string, string> = {
+  'NEW ZEALAND': 'NZ',
+  AOTEAROA: 'NZ',
+  AUSTRALIA: 'AU',
+  'UNITED KINGDOM': 'GB',
+  'GREAT BRITAIN': 'GB',
+  ENGLAND: 'GB',
+  SCOTLAND: 'GB',
+  WALES: 'GB',
+  'NORTHERN IRELAND': 'GB',
+  UK: 'GB',
+  CANADA: 'CA',
+  'UNITED STATES': 'US',
+  'UNITED STATES OF AMERICA': 'US',
+  USA: 'US',
+  AMERICA: 'US',
+  'SOUTH AFRICA': 'ZA',
+  IRELAND: 'IE',
+  EIRE: 'IE',
+}
+
+/**
+ * The ISO 3166-1 alpha-2 code for whatever we hold, trying each source in turn.
+ * Accepts a code as-is, maps a known country name, and otherwise falls through
+ * to the next candidate — `signupCountry` is always a code, so it's the safety
+ * net behind the free-text address field.
+ */
+export function countryCodeFor(...candidates: (string | null | undefined)[]): string {
+  for (const raw of candidates) {
+    const value = raw?.trim()
+    if (!value) continue
+    if (/^[A-Za-z]{2}$/.test(value)) return value.toUpperCase()
+    const mapped = COUNTRY_NAME_CODE[value.toUpperCase()]
+    if (mapped) return mapped
+  }
+  return 'NZ'
+}
+
 /** Default payout currency for a signup country (falls back to NZD). */
 export function currencyForCountry(country?: string | null): string {
   if (!country) return 'nzd'
-  return COUNTRY_CURRENCY[country.toUpperCase()] ?? 'nzd'
+  return COUNTRY_CURRENCY[countryCodeFor(country)] ?? 'nzd'
 }
 
 /**

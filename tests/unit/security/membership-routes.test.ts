@@ -21,6 +21,9 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/membership', () => ({ guardPermission: h.guard }))
+// Memberships are add-on gated now; these tests are about the tenant guards,
+// so the add-on is simply on.
+vi.mock('@/lib/billing', () => ({ hasAddon: vi.fn(async () => true) }))
 vi.mock('@/lib/prisma', () => {
   const tx = {
     membership: { findFirst: h.memFindFirstOrder, create: h.memCreate, update: h.memUpdate },
