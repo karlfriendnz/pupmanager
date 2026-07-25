@@ -33,7 +33,9 @@ export default async function ClassesPage({
         package: { allowDropIn: false },
         NOT: { package: ONE_OFF_EVENT_PACKAGE },
       },
-      orderBy: { startDate: 'desc' },
+      // Trainer's arranged order first; date breaks ties (and is the whole
+      // order until anything has been dragged).
+      orderBy: [{ order: 'asc' }, { startDate: 'asc' }],
       include: {
         package: { select: { id: true, name: true, description: true, capacity: true, durationMins: true, priceCents: true, specialPriceCents: true } },
         _count: { select: { sessions: true } },

@@ -6,8 +6,10 @@ import { Ticket, Users, CalendarDays, MapPin, Repeat, Pencil, Copy } from 'lucid
 import { PageHeader } from '@/components/shared/page-header'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
+  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard, useOfferingView,
   type OfferingFact,
 } from '@/components/shared/offering-card'
+import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
 
 export type RunRow = {
@@ -29,10 +31,12 @@ export type RunRow = {
   isPast: boolean
 }
 
-export function DropInsView({ runs, currency = 'NZD' }: { runs: RunRow[]; currency?: string }) {
+export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: RunRow[]; currency?: string }) {
   const router = useRouter()
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const [cloning, setCloning] = useState<string | null>(null)
+  const [view, setView] = useOfferingView()
+  const { rows: runs, reorder, error: reorderError } = useOfferingReorder(initialRuns, 'classRun')
 
   const current = runs.filter(r => !r.isPast)
   const past = runs.filter(r => r.isPast)
@@ -65,14 +69,19 @@ export function DropInsView({ runs, currency = 'NZD' }: { runs: RunRow[]; curren
           />
         ) : (
           <>
-            <OfferingTabs
-              value={tab}
-              onChange={setTab}
-              tabs={[
-                { id: 'current', label: 'Current', count: current.length },
-                { id: 'past', label: 'Past', count: past.length },
-              ]}
-            />
+            {reorderError && (
+              <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
+            )}
+            <OfferingListBar view={view} onView={setView}>
+              <OfferingTabs
+                value={tab}
+                onChange={setTab}
+                tabs={[
+                  { id: 'current', label: 'Current', count: current.length },
+                  { id: 'past', label: 'Past', count: past.length },
+                ]}
+              />
+            </OfferingListBar>
 
             {shown.length === 0 ? (
               <OfferingTabEmpty
@@ -83,33 +92,42 @@ export function DropInsView({ runs, currency = 'NZD' }: { runs: RunRow[]; curren
                   : 'No classes are currently taking casual bookings. Set one up and clients can book a single session.'}
               />
             ) : (
-              shown.map(r => (
-                <OfferingCard
-                  key={r.id}
-                  href={`/casual-classes/${r.id}`}
-                  title={r.name}
-                  description={r.description}
-                  imageUrl={r.imageUrl}
-                  tile={{ icon: <Ticket className="h-5 w-5" />, className: 'bg-amber-50 text-amber-600' }}
-                  dimmed={r.isPast}
-                  badges={[
-                    ...(r.dropInPriceCents != null
-                      ? [{ label: `${formatMoney(r.dropInPriceCents, currency)} / session`, tone: 'warn' as const }]
-                      : []),
-                    ...(r.dropInCount > 0
-                      ? [{ label: `${r.dropInCount} casual booking${r.dropInCount === 1 ? '' : 's'}`, tone: 'muted' as const }]
-                      : []),
-                  ]}
-                  facts={dropInFacts(r)}
-                  note={r.upcoming.length === 0 && !r.isPast
-                    ? { label: 'No sessions left to drop into', tone: 'warn' }
-                    : null}
-                  actions={[
-                    { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${r.packageId}/edit`) },
-                    { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(r.packageId), disabled: cloning === r.packageId },
-                  ]}
-                />
-              ))
+              <SortableOfferingList ids={shown.map(r => r.id)} onReorder={reorder} view={view}>
+                <OfferingItems view={view}>
+                  {shown.map(r => (
+                    <SortableOfferingCard key={r.id} id={r.id}>
+                      {handle => (
+                        <OfferingCard
+                          href={`/casual-classes/${r.id}`}
+                          title={r.name}
+                          description={r.description}
+                          imageUrl={r.imageUrl}
+                          tile={{ icon: <Ticket className="h-5 w-5" />, className: 'bg-amber-50 text-amber-600' }}
+                          dimmed={r.isPast}
+                          variant={view}
+                          dragHandle={handle}
+                          badges={[
+                            ...(r.dropInPriceCents != null
+                              ? [{ label: `${formatMoney(r.dropInPriceCents, currency)} / session`, tone: 'warn' as const }]
+                              : []),
+                            ...(r.dropInCount > 0
+                              ? [{ label: `${r.dropInCount} casual booking${r.dropInCount === 1 ? '' : 's'}`, tone: 'muted' as const }]
+                              : []),
+                          ]}
+                          facts={dropInFacts(r)}
+                          note={r.upcoming.length === 0 && !r.isPast
+                            ? { label: 'No sessions left to drop into', tone: 'warn' }
+                            : null}
+                          actions={[
+                            { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${r.packageId}/edit`) },
+                            { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(r.packageId), disabled: cloning === r.packageId },
+                          ]}
+                        />
+                      )}
+                    </SortableOfferingCard>
+                  ))}
+                </OfferingItems>
+              </SortableOfferingList>
             )}
 
             <AddOfferingLink href="/offerings/new?kind=dropin" label="New casual class" />

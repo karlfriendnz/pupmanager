@@ -1754,6 +1754,11 @@ model ClassRun {
   // defaultRequirePayment; true = pay up front (Stripe); false = enrol now, pay
   // later (raise an invoice). Only bites when the trainer CAN take cards.
   requirePayment Boolean?
+  // Trainer-arranged display order within its section (classes / casual classes
+  // / events), lowest first — the same order clients see in the booking flow.
+  // Ties fall back to startDate, so a run that has never been dragged keeps the
+  // old chronological behaviour.
+  order          Int                @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -15,6 +15,7 @@ import { Users, UserPlus, X, CalendarDays, ClipboardCheck, Pencil, Trash2, Loade
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
+import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { DiscountManager } from '@/components/trainer/discount-manager'
 
 type Tab = 'details' | 'clients' | 'messages' | 'discounts'
@@ -255,11 +256,12 @@ export function RunDetail({
       </div>
       </div>
 
-      {/* Details tab: what you're selling (left, 2/3) + a compact clients
-          snapshot (right, 1/3). The full roster lives under the Clients tab. */}
-      <div className={tab === 'details' ? 'grid grid-cols-1 lg:grid-cols-3 gap-5 items-start' : 'hidden'}>
+      {/* Details tab: what you're selling (left, 7 of 12) + a compact clients
+          snapshot (right, 5) — the same 7/5 split as the package detail and the
+          membership builder. The full roster lives under the Clients tab. */}
+      <div className={tab === 'details' ? 'grid grid-cols-1 lg:grid-cols-12 gap-5 items-start' : 'hidden'}>
 
-      <div className="lg:col-span-2 flex flex-col gap-5">
+      <div className="lg:col-span-7 flex flex-col gap-5">
 
           {run.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -364,7 +366,7 @@ export function RunDetail({
       </div>
 
         {/* Compact clients snapshot — the "small version" on the Details tab. */}
-        <div className="flex flex-col gap-5">
+        <div className="lg:col-span-5 flex flex-col gap-5">
           <Card>
             <CardBody className="py-5">
               <CardHeading
@@ -380,14 +382,13 @@ export function RunDetail({
                 <>
                   <ul className="divide-y divide-slate-100">
                     {present.slice(0, 6).map(e => (
-                      <li key={e.id} className="flex items-center gap-2.5 py-2">
-                        <span className="h-8 w-8 rounded-full bg-slate-100 text-slate-500 grid place-items-center text-xs font-semibold shrink-0">{e.clientName.charAt(0).toUpperCase()}</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-slate-900 truncate">{e.clientName}</p>
-                          {e.dogName && <p className="text-xs text-slate-500 truncate">{e.dogName}</p>}
-                        </div>
-                        {e.status === 'WAITLISTED' && <span className="text-[11px] text-amber-600 shrink-0">Waitlist</span>}
-                      </li>
+                      <ClientSnapshotRow
+                        key={e.id}
+                        clientId={e.clientId}
+                        clientName={e.clientName}
+                        dogName={e.dogName}
+                        badge={e.status === 'WAITLISTED' ? 'Waitlist' : null}
+                      />
                     ))}
                   </ul>
                   {enrollments.length > 6 && (

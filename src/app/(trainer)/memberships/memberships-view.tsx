@@ -15,6 +15,13 @@ import type { ReactNode, HTMLAttributes } from 'react'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { Switch } from '@/components/ui/switch'
+import {
+  OfferingCard, OfferingEmpty, OfferingListBar, OfferingItems,
+  SortableOfferingList, SortableOfferingCard, AddOfferingLink, useOfferingView,
+  type OfferingFact,
+} from '@/components/shared/offering-card'
+import { useOfferingReorder } from '@/lib/use-offering-reorder'
+import { Eye, EyeOff, Package as PackageIcon } from 'lucide-react'
 
 type Kind = 'PACKAGE' | 'CLASS' | 'PRODUCT'
 type Cadence = 'ONE_OFF' | 'RECURRING'
@@ -144,7 +151,10 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const currency = useCurrency() ?? initialCurrency
   const sym = currencySymbol(currency)
 
-  const [list, setList] = useState(memberships)
+  // The list owns its own order: dragging a card writes it back, and that same
+  // order is what clients see in Offerings.
+  const { rows: list, setRows: setList, reorder, error: reorderError } = useOfferingReorder(memberships, 'membership')
+  const [view, setView] = useOfferingView()
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -262,7 +272,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
           <button onClick={startNew} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">New membership</span></button>
         ) : undefined}
       />
-      <div className={`p-4 md:p-8 w-full ${draft ? '' : 'max-w-3xl'}`}>
+      <div className="w-full p-4 md:p-8">
         {error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2">{error}</div>}
 
         {draft ? (
@@ -490,33 +500,82 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
           </div>
           </div>
         ) : list.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
-            <div className="mx-auto w-11 h-11 rounded-full bg-violet-50 flex items-center justify-center mb-3"><Ticket className="h-5 w-5 text-violet-600" /></div>
-            <p className="text-sm text-slate-600 mb-4">Bundle your packages, classes and products into a membership clients buy in one go.</p>
-            <button onClick={startNew} className="inline-flex items-center gap-1.5 h-10 px-4 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> New membership</button>
-          </div>
+          <OfferingEmpty
+            icon={<Ticket className="h-6 w-6" />}
+            title="No memberships yet"
+            body="Bundle your packages, classes and products into a membership clients buy in one go."
+            action={{ onClick: startNew, label: 'New membership' }}
+          />
         ) : (
-          <ul className="flex flex-col gap-2">
-            {list.map(m => (
-              <li key={m.id} className={`rounded-xl border border-slate-200 bg-white p-4 flex items-start gap-3 ${m.published ? '' : 'opacity-70'}`}>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="font-semibold text-slate-900">{m.name}</span>
-                    <span className="text-violet-700 font-medium text-sm">{formatMoney(m.priceCents, currency)}{m.cadence === 'RECURRING' ? ` / ${m.interval?.toLowerCase()}` : ''}</span>
-                    {!m.published && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">Draft</span>}
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">{m.items.map(offeringName).join(' · ') || 'No items yet'}{m.purchases > 0 ? ` · ${m.purchases} sold` : ''}</p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Switch checked={m.published} onChange={() => togglePublished(m)} disabled={busy} onColor="bg-violet-600" aria-label={m.published ? 'Unpublish' : 'Publish'} />
-                  <button onClick={() => startEdit(m)} title="Edit" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => remove(m.id)} disabled={busy} title="Delete" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <>
+            {reorderError && (
+              <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
+            )}
+            <OfferingListBar view={view} onView={setView} />
+            <SortableOfferingList ids={list.map(m => m.id)} onReorder={reorder} view={view}>
+              <OfferingItems view={view}>
+                {list.map(m => (
+                  <SortableOfferingCard key={m.id} id={m.id}>
+                    {handle => (
+                      <OfferingCard
+                        title={m.name}
+                        description={m.description}
+                        imageUrl={m.imageUrl}
+                        tile={{ icon: <Ticket className="h-5 w-5" />, className: 'bg-violet-50 text-violet-600' }}
+                        dimmed={!m.published}
+                        variant={view}
+                        dragHandle={handle}
+                        badges={[
+                          {
+                            label: `${formatMoney(m.priceCents, currency)}${m.cadence === 'RECURRING' ? ` / ${m.interval?.toLowerCase()}` : ''}`,
+                            tone: 'accent',
+                          },
+                          ...(m.published ? [] : [{ label: 'Draft', tone: 'muted' as const }]),
+                          ...(m.purchases > 0 ? [{ label: `${m.purchases} sold`, tone: 'good' as const }] : []),
+                        ]}
+                        facts={membershipFacts(m, offeringName)}
+                        actions={[
+                          {
+                            icon: m.published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />,
+                            label: m.published ? 'Unpublish' : 'Publish',
+                            onClick: () => togglePublished(m),
+                            disabled: busy,
+                          },
+                          { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => startEdit(m) },
+                          { icon: <Trash2 className="h-4 w-4" />, label: 'Delete', tone: 'danger', onClick: () => remove(m.id), disabled: busy },
+                        ]}
+                      />
+                    )}
+                  </SortableOfferingCard>
+                ))}
+              </OfferingItems>
+            </SortableOfferingList>
+            <AddOfferingLink onClick={startNew} label="New membership" />
+          </>
         )}
       </div>
     </>
   )
+}
+
+// What's in the bundle, on the card — the reason a trainer can tell two
+// memberships apart at a glance.
+function membershipFacts(
+  m: { items: MItem[]; plans: MPlan[]; cadence: Cadence },
+  nameOf: (it: MItem) => string,
+): OfferingFact[] {
+  const facts: OfferingFact[] = []
+  const items = m.items.map(it => `${it.quantity > 1 ? `${it.quantity}× ` : ''}${nameOf(it)}`)
+  facts.push({
+    icon: <PackageIcon className="h-3.5 w-3.5" />,
+    label: items.length > 0 ? items.join(' · ') : 'No items yet',
+    tone: items.length > 0 ? 'default' : 'warn',
+  })
+  if (m.cadence === 'RECURRING' && m.plans.length > 0) {
+    facts.push({
+      icon: <Ticket className="h-3.5 w-3.5" />,
+      label: `${m.plans.length} pricing option${m.plans.length === 1 ? '' : 's'}`,
+    })
+  }
+  return facts
 }

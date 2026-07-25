@@ -157,7 +157,9 @@ export default async function MyAvailabilityPage() {
       id: { notIn: enrolledRunIds.length ? enrolledRunIds : ['__none__'] },
       sessions: { some: { scheduledAt: { gte: now } } },
     },
-    orderBy: { startDate: 'asc' },
+    // The trainer's own arranged order (from dragging their Classes list) is
+    // what a client sees; start date breaks ties.
+    orderBy: [{ order: 'asc' }, { startDate: 'asc' }],
     include: {
       package: { select: { name: true, priceCents: true, specialPriceCents: true, allowDropIn: true, dropInPriceCents: true, capacity: true, allowWaitlist: true } },
       enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true } },

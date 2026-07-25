@@ -4,12 +4,14 @@ import { useState } from 'react'
 import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
+import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { CardHeading } from '@/components/shared/card-heading'
-import { Info, Users, Pencil, Package as PackageIcon, Bell, Tag } from 'lucide-react'
+import { Info, Users, Pencil, Package as PackageIcon, Bell, Tag, MessageSquare } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 import { DiscountManager } from '@/components/trainer/discount-manager'
@@ -93,9 +95,10 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
 
   return (
     <>
+      {/* No subtitle: the session count was repeating what the Details card
+          below already states, and the name reads better on its own. */}
       <PageHeader
         title={pkg.name}
-        subtitle={pkg.sessionCount === 0 ? 'Ongoing package' : `${pkg.sessionCount} sessions`}
         back={{ href: '/packages', label: 'Packages' }}
         actions={
           <Link href={`/packages/${pkg.id}/edit`}>
@@ -139,11 +142,13 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           </div>
         </div>
 
-        {/* Details tab: package info (left, 2/3) + a compact clients snapshot
-            (right, 1/3). The full roster lives under the Clients tab. */}
-        <div className={tab === 'details' ? 'grid grid-cols-1 lg:grid-cols-3 gap-5 items-start' : 'hidden'}>
+        {/* Details tab: package info (left, 7 of 12) + a compact clients
+            snapshot (right, 5). Same 7/5 split as the membership builder, so
+            the detail screens read the same width-for-width. The full roster
+            lives under the Clients tab. */}
+        <div className={tab === 'details' ? 'grid grid-cols-1 lg:grid-cols-12 gap-5 items-start' : 'hidden'}>
 
-          <div className={`lg:col-span-2 flex flex-col gap-5`}>
+          <div className={`lg:col-span-7 flex flex-col gap-5`}>
 
             {pkg.imageUrl && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -219,7 +224,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           </div>
 
           {/* Compact clients snapshot — the "small version" on the Details tab. */}
-          <div className="flex flex-col gap-5">
+          <div className="lg:col-span-5 flex flex-col gap-5">
             <Card>
               <CardBody className="py-5">
                 <CardHeading icon={<Users className="h-4 w-4 text-slate-400" />} count={rows.length}>Clients</CardHeading>
@@ -229,13 +234,13 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                   <>
                     <ul className="divide-y divide-slate-100">
                       {present.slice(0, 6).map(r => (
-                        <li key={r.clientId} className="flex items-center gap-2.5 py-2">
-                          <ClientAvatar name={r.clientName} dogPhotoUrl={r.dogPhotoUrl} size="sm" />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-slate-900 truncate">{r.clientName}</p>
-                            {r.dogName && <p className="text-xs text-slate-500 truncate">{r.dogName}</p>}
-                          </div>
-                        </li>
+                        <ClientSnapshotRow
+                          key={r.clientId}
+                          clientId={r.clientId}
+                          clientName={r.clientName}
+                          dogName={r.dogName}
+                          dogPhotoUrl={r.dogPhotoUrl}
+                        />
                       ))}
                     </ul>
                     {rows.length > 6 && (
@@ -330,6 +335,9 @@ function ClientTable({
 }: {
   rows: (PackageClientRow & { derived: ReturnType<typeof deriveStatus> })[]
 }) {
+  // Clicking anywhere on a row opens that client — the message cell stops the
+  // event so it doesn't do both.
+  const router = useRouter()
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -340,11 +348,16 @@ function ClientTable({
             <th className="font-medium py-2 px-1">Status</th>
             <th className="font-medium py-2 px-1">Sessions</th>
             <th className="font-medium py-2 px-1">Started</th>
+            <th className="font-medium py-2 px-1 w-9"><span className="sr-only">Message</span></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50">
           {rows.map(r => (
-            <tr key={r.id} className="hover:bg-slate-50">
+            <tr
+              key={r.id}
+              onClick={() => router.push(`/clients/${r.clientId}`)}
+              className="cursor-pointer hover:bg-slate-50"
+            >
               <td className="py-2.5 px-1">
                 <Link href={`/clients/${r.clientId}`} className="flex items-center gap-2.5 group">
                   <ClientAvatar name={r.clientName} dogPhotoUrl={r.dogPhotoUrl} size="sm" />
@@ -362,6 +375,17 @@ function ClientTable({
               </td>
               <td className="py-2.5 px-1 text-slate-500 whitespace-nowrap" suppressHydrationWarning>
                 {new Date(r.startDate).toLocaleDateString()}
+              </td>
+              <td className="py-2.5 px-1">
+                <Link
+                  href={`/messages?client=${r.clientId}`}
+                  onClick={e => e.stopPropagation()}
+                  aria-label={`Message ${r.clientName}`}
+                  title={`Message ${r.clientName}`}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </Link>
               </td>
             </tr>
           ))}

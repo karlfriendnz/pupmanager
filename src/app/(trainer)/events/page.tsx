@@ -27,7 +27,9 @@ export default async function EventsPage() {
 
   const runs = await prisma.classRun.findMany({
     where: { trainerId, package: ONE_OFF_EVENT_PACKAGE },
-    orderBy: { startDate: 'desc' },
+    // Trainer's arranged order first; date breaks ties (and is the whole order
+    // until anything has been dragged).
+    orderBy: [{ order: 'asc' }, { startDate: 'asc' }],
     include: {
       package: {
         select: {

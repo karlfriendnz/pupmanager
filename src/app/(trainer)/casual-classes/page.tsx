@@ -45,7 +45,8 @@ export default async function DropInsPage() {
       // Puppy schools are drop-in-flagged (each day-part books like a drop-in)
       // but live in their own workspace, so keep them off the drop-ins list.
       where: { trainerId, package: { allowDropIn: true, isPuppySchool: false } },
-      orderBy: { startDate: 'asc' },
+      // Trainer's arranged order first; date breaks ties.
+      orderBy: [{ order: 'asc' }, { startDate: 'asc' }],
       include: {
         package: {
           select: {

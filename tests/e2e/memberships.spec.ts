@@ -33,7 +33,9 @@ test.describe('memberships — trainer builds, client sees', () => {
       await login(page, SEED.owner.email, SEED.owner.password)
       await page.goto('/memberships')
 
-      await page.getByRole('button', { name: 'New membership' }).click()
+      // Two "New membership" buttons now — the top bar's and the dashed one
+      // that closes the list. Either opens the builder; take the top bar's.
+      await page.locator('#pm-topbar-actions').getByRole('button', { name: 'New membership' }).click()
       await page.getByPlaceholder('Membership name (e.g. Puppy Starter)').fill(name)
       await page.getByPlaceholder('Price').fill('89')
 

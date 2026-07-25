@@ -7,8 +7,10 @@ import { PageHeader } from '@/components/shared/page-header'
 import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
+  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard, useOfferingView,
   type OfferingFact, type OfferingBadge,
 } from '@/components/shared/offering-card'
+import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
 
 type RunRow = {
@@ -40,7 +42,7 @@ const STATUS_TONE: Record<RunRow['status'], OfferingBadge['tone']> = {
 // Creating a class lives in the offerings wizard (/offerings/new?kind=group) —
 // the one place a class is defined AND scheduled. This list only links to it.
 export function ClassesView({
-  runs,
+  runs: initialRuns,
   connectName: initialConnectName = null,
   currency = 'NZD',
 }: {
@@ -54,10 +56,13 @@ export function ClassesView({
   const [connectName, setConnectName] = useState<string | null>(initialConnectName)
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const [cloning, setCloning] = useState<string | null>(null)
+  const [view, setView] = useOfferingView()
+  const { rows: runs, reorder, error: reorderError } = useOfferingReorder(initialRuns, 'classRun')
 
-  // Server hands the list back newest-start-first. Current classes read better
-  // soonest-first (what's on next), past ones most-recent-first.
-  const current = runs.filter(r => !r.isPast).reverse()
+  // The server hands these back in the trainer's own arranged order (ties fall
+  // back to start date), so the list is NOT re-sorted here — that order is what
+  // the drag handle writes and what clients see.
+  const current = runs.filter(r => !r.isPast)
   const past = runs.filter(r => r.isPast)
   const shown = tab === 'past' ? past : current
 
@@ -88,14 +93,19 @@ export function ClassesView({
           />
         ) : (
           <>
-            <OfferingTabs
-              value={tab}
-              onChange={setTab}
-              tabs={[
-                { id: 'current', label: 'Current', count: current.length },
-                { id: 'past', label: 'Past', count: past.length },
-              ]}
-            />
+            {reorderError && (
+              <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
+            )}
+            <OfferingListBar view={view} onView={setView}>
+              <OfferingTabs
+                value={tab}
+                onChange={setTab}
+                tabs={[
+                  { id: 'current', label: 'Current', count: current.length },
+                  { id: 'past', label: 'Past', count: past.length },
+                ]}
+              />
+            </OfferingListBar>
 
             {shown.length === 0 ? (
               <OfferingTabEmpty
@@ -106,26 +116,35 @@ export function ClassesView({
                   : 'Every class you have has finished. Start a new one to fill the calendar.'}
               />
             ) : (
-              shown.map(r => (
-                <OfferingCard
-                  key={r.id}
-                  href={`/classes/${r.id}`}
-                  title={r.name}
-                  description={r.description}
-                  imageUrl={r.imageUrl}
-                  tile={{ icon: <GraduationCap className="h-5 w-5" />, className: 'bg-blue-50 text-blue-600' }}
-                  dimmed={r.isPast}
-                  badges={[
-                    { label: r.status.charAt(0) + r.status.slice(1).toLowerCase(), tone: STATUS_TONE[r.status] },
-                    ...(r.priceCents != null ? [{ label: formatMoney(r.priceCents, currency), tone: 'accent' as const }] : []),
-                  ]}
-                  facts={classFacts(r)}
-                  actions={[
-                    { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${r.packageId}/edit`) },
-                    { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(r.packageId), disabled: cloning === r.packageId },
-                  ]}
-                />
-              ))
+              <SortableOfferingList ids={shown.map(r => r.id)} onReorder={reorder} view={view}>
+                <OfferingItems view={view}>
+                  {shown.map(r => (
+                    <SortableOfferingCard key={r.id} id={r.id}>
+                      {handle => (
+                        <OfferingCard
+                          href={`/classes/${r.id}`}
+                          title={r.name}
+                          description={r.description}
+                          imageUrl={r.imageUrl}
+                          tile={{ icon: <GraduationCap className="h-5 w-5" />, className: 'bg-blue-50 text-blue-600' }}
+                          dimmed={r.isPast}
+                          variant={view}
+                          dragHandle={handle}
+                          badges={[
+                            { label: r.status.charAt(0) + r.status.slice(1).toLowerCase(), tone: STATUS_TONE[r.status] },
+                            ...(r.priceCents != null ? [{ label: formatMoney(r.priceCents, currency), tone: 'accent' as const }] : []),
+                          ]}
+                          facts={classFacts(r)}
+                          actions={[
+                            { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${r.packageId}/edit`) },
+                            { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(r.packageId), disabled: cloning === r.packageId },
+                          ]}
+                        />
+                      )}
+                    </SortableOfferingCard>
+                  ))}
+                </OfferingItems>
+              </SortableOfferingList>
             )}
 
             <AddOfferingLink href="/offerings/new?kind=group" label="New class" />

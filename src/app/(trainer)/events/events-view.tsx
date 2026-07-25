@@ -6,8 +6,10 @@ import { CalendarPlus, MapPin, Users, Ticket, Pencil, Copy, CalendarDays } from 
 import { PageHeader } from '@/components/shared/page-header'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
+  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard, useOfferingView,
   type OfferingFact,
 } from '@/components/shared/offering-card'
+import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
 
 export type EventTier = { id: string; name: string; priceCents: number | null; capacity: number | null }
@@ -29,13 +31,16 @@ export type EventRow = {
   isPast: boolean
 }
 
-export function EventsView({ events, currency }: { events: EventRow[]; currency: string }) {
+export function EventsView({ events: initialEvents, currency }: { events: EventRow[]; currency: string }) {
   const router = useRouter()
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
   const [cloning, setCloning] = useState<string | null>(null)
+  const [view, setView] = useOfferingView()
+  const { rows: events, reorder, error: reorderError } = useOfferingReorder(initialEvents, 'classRun')
 
-  // Server hands them back newest-first. Upcoming reads better soonest-first.
-  const upcoming = events.filter(e => !e.isPast).reverse()
+  // Left in the trainer's own arranged order (ties fall back to date) — that's
+  // what the drag handle writes and what clients see.
+  const upcoming = events.filter(e => !e.isPast)
   const past = events.filter(e => e.isPast)
   const shown = tab === 'past' ? past : upcoming
 
@@ -66,14 +71,19 @@ export function EventsView({ events, currency }: { events: EventRow[]; currency:
           />
         ) : (
           <>
-            <OfferingTabs
-              value={tab}
-              onChange={setTab}
-              tabs={[
-                { id: 'upcoming', label: 'Upcoming', count: upcoming.length },
-                { id: 'past', label: 'Past', count: past.length },
-              ]}
-            />
+            {reorderError && (
+              <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
+            )}
+            <OfferingListBar view={view} onView={setView}>
+              <OfferingTabs
+                value={tab}
+                onChange={setTab}
+                tabs={[
+                  { id: 'upcoming', label: 'Upcoming', count: upcoming.length },
+                  { id: 'past', label: 'Past', count: past.length },
+                ]}
+              />
+            </OfferingListBar>
 
             {shown.length === 0 ? (
               <OfferingTabEmpty
@@ -84,26 +94,35 @@ export function EventsView({ events, currency }: { events: EventRow[]; currency:
                   : 'Every event you have has been. Put another one in the diary.'}
               />
             ) : (
-              shown.map(e => (
-                <OfferingCard
-                  key={e.id}
-                  href={`/classes/${e.id}`}
-                  title={e.name}
-                  description={e.description}
-                  imageUrl={e.imageUrl}
-                  tile={{ icon: <CalendarPlus className="h-5 w-5" />, className: 'bg-violet-50 text-violet-600' }}
-                  dimmed={e.isPast}
-                  badges={[
-                    ...(e.status === 'CANCELLED' ? [{ label: 'Cancelled', tone: 'bad' as const }] : []),
-                    ...(ticketLabel(e, currency) ? [{ label: ticketLabel(e, currency)!, tone: 'accent' as const }] : []),
-                  ]}
-                  facts={eventFacts(e, currency)}
-                  actions={[
-                    { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${e.packageId}/edit`) },
-                    { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(e.packageId), disabled: cloning === e.packageId },
-                  ]}
-                />
-              ))
+              <SortableOfferingList ids={shown.map(e => e.id)} onReorder={reorder} view={view}>
+                <OfferingItems view={view}>
+                  {shown.map(e => (
+                    <SortableOfferingCard key={e.id} id={e.id}>
+                      {handle => (
+                        <OfferingCard
+                          href={`/classes/${e.id}`}
+                          title={e.name}
+                          description={e.description}
+                          imageUrl={e.imageUrl}
+                          tile={{ icon: <CalendarPlus className="h-5 w-5" />, className: 'bg-violet-50 text-violet-600' }}
+                          dimmed={e.isPast}
+                          variant={view}
+                          dragHandle={handle}
+                          badges={[
+                            ...(e.status === 'CANCELLED' ? [{ label: 'Cancelled', tone: 'bad' as const }] : []),
+                            ...(ticketLabel(e, currency) ? [{ label: ticketLabel(e, currency)!, tone: 'accent' as const }] : []),
+                          ]}
+                          facts={eventFacts(e, currency)}
+                          actions={[
+                            { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${e.packageId}/edit`) },
+                            { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(e.packageId), disabled: cloning === e.packageId },
+                          ]}
+                        />
+                      )}
+                    </SortableOfferingCard>
+                  ))}
+                </OfferingItems>
+              </SortableOfferingList>
             )}
 
             <AddOfferingLink href="/offerings/new?kind=oneoff" label="New event" />

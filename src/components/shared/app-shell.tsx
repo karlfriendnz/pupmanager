@@ -390,7 +390,7 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
             <img src="/logo.png" alt="PupManager" className="h-9 w-9 rounded-xl" />
           )}
         </Link>
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar px-3 py-4 space-y-1">
           {sidebarItems.map((item) => {
             const active = isActive(item.href)
             const Icon = item.icon
@@ -982,7 +982,10 @@ function TrainerShell({
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
           Hidden inside Settings, which brings its own rail. */}
       <aside className={cn('hidden md:flex-col md:fixed md:top-[calc(3.5rem_+_var(--app-safe-top))] md:bottom-0 md:left-0 md:z-40 bg-white border-r border-slate-100 transition-all duration-200', inSettings ? 'md:hidden' : 'md:flex', sidebarWidth)}>
-        <nav className={cn('flex-1 overflow-y-auto py-4 space-y-1', collapsed ? 'px-2' : 'px-3')}>
+        {/* Scrolls, but shows no bars: overflow-x-hidden kills the horizontal
+            one the collapsed rail was getting from its icon tiles, and
+            .no-scrollbar hides the vertical track while keeping the scroll. */}
+        <nav className={cn('flex-1 overflow-y-auto overflow-x-hidden no-scrollbar py-4 space-y-1', collapsed ? 'px-2' : 'px-3')}>
           {desktopNav.map((item, idx, arr) => {
             // Section grouping: emit a small header (expanded) or a divider
             // (collapsed / system group) at each section boundary.
