@@ -2828,6 +2828,11 @@ model BookingAutomationSend {
 enum CommsFlowDirection {
   BEFORE_SESSION // offsetMinutes before session start
   AFTER_SESSION // offsetMinutes after session start
+  // Membership steps have no sessions to hang off, so they anchor on the
+  // purchase instead: offsetMinutes after they bought it (welcome, day-7
+  // check-in), or before the current period ends (renewal, expiry).
+  AFTER_PURCHASE
+  BEFORE_PERIOD_END
 }
 
 // Who a step reaches within the run's enrolments.
@@ -2848,6 +2853,8 @@ model CommsFlowStep {
   // enforces that exactly one is set.
   classRunId      String?
   packageId       String?
+  // A Membership — recipients are the clients holding an active purchase of it.
+  membershipId    String?
   direction       CommsFlowDirection    @default(BEFORE_SESSION)
   offsetMinutes   Int                   @default(1440)
   channels        NotificationChannel[]
@@ -2869,12 +2876,14 @@ model CommsFlowStep {
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
-  classRun ClassRun?       @relation(fields: [classRunId], references: [id], onDelete: Cascade)
-  package  Package?        @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  sends    CommsFlowSend[]
+  classRun   ClassRun?       @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  package    Package?        @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  membership Membership?     @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  sends      CommsFlowSend[]
 
   @@index([classRunId])
   @@index([packageId])
+  @@index([membershipId])
   @@map("comms_flow_steps")
 }
 
@@ -2883,15 +2892,21 @@ model CommsFlowStep {
 model CommsFlowSend {
   id        String   @id @default(cuid())
   stepId    String
-  sessionId String
+  // Exactly one anchor: the session a class/package step fired for, or the
+  // membership purchase a membership step fired for.
+  sessionId String?
+  purchaseId String?
   userId    String // the recipient's User.id
   sentAt    DateTime @default(now())
 
-  step    CommsFlowStep   @relation(fields: [stepId], references: [id], onDelete: Cascade)
-  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  step     CommsFlowStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  session  TrainingSession?    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  purchase MembershipPurchase? @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
 
   @@unique([stepId, sessionId, userId])
+  @@unique([stepId, purchaseId, userId])
   @@index([sessionId])
+  @@index([purchaseId])
   @@map("comms_flow_sends")
 }
 
@@ -3017,9 +3032,10 @@ model Membership {
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
 
-  trainer   TrainerProfile       @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  items     MembershipItem[]
-  purchases MembershipPurchase[]
+  trainer        TrainerProfile       @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  items          MembershipItem[]
+  purchases      MembershipPurchase[]
+  commsFlowSteps CommsFlowStep[]
   plans     MembershipPlan[]
 
   @@unique([trainerId, slug])
@@ -3089,7 +3105,8 @@ model MembershipPurchase {
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
 
-  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  membership     Membership      @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  commsFlowSends CommsFlowSend[]
 
   @@index([membershipId])
   @@index([trainerId])

@@ -4,7 +4,9 @@
 import { z } from 'zod'
 
 export const channelEnum = z.enum(['PUSH', 'EMAIL', 'IN_APP'])
-export const directionEnum = z.enum(['BEFORE_SESSION', 'AFTER_SESSION'])
+// BEFORE/AFTER_SESSION are for offerings with a timetable; the PURCHASE and
+// PERIOD_END anchors are for memberships, which have no sessions.
+export const directionEnum = z.enum(['BEFORE_SESSION', 'AFTER_SESSION', 'AFTER_PURCHASE', 'BEFORE_PERIOD_END'])
 export const audienceEnum = z.enum(['ENROLLED', 'ENROLLED_AND_WAITLIST', 'CUSTOM'])
 
 // Offsets are minutes; cap at 60 days so a stray value can't scan the whole DB.
@@ -48,6 +50,20 @@ export const stepCreateSchema = stepFieldsSchema.partial()
 
 export function withDefaults(partial: Partial<StepFields>): StepFields {
   return { ...DEFAULT_STEP_FIELDS, ...partial }
+}
+
+// A membership has no sessions, so its steps count from the client's purchase.
+// Same shape, different anchor + copy.
+export const DEFAULT_MEMBERSHIP_STEP_FIELDS: StepFields = {
+  ...DEFAULT_STEP_FIELDS,
+  direction: 'AFTER_PURCHASE',
+  offsetMinutes: 0,
+  title: 'Welcome to {{membership}} 🎉',
+  body: "Hi {{name}}, you're all set — everything included is ready to book in the app.",
+}
+
+export function withMembershipDefaults(partial: Partial<StepFields>): StepFields {
+  return { ...DEFAULT_MEMBERSHIP_STEP_FIELDS, ...partial }
 }
 
 // Validator for a template's stored `steps` JSON when applying it to a run.

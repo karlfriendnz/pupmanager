@@ -21,7 +21,8 @@ import {
   type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
-import { Eye, EyeOff, Package as PackageIcon } from 'lucide-react'
+import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
+import { Eye, EyeOff, Package as PackageIcon, Bell } from 'lucide-react'
 
 type Kind = 'PACKAGE' | 'CLASS' | 'PRODUCT'
 type Cadence = 'ONE_OFF' | 'RECURRING'
@@ -162,6 +163,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const [openItem, setOpenItem] = useState<string | null>(null)
   // Card-appearance controls are collapsed behind a button by default.
   const [showCardStyle, setShowCardStyle] = useState(false)
+  const [showMessages, setShowMessages] = useState(false)
 
   function offeringsFor(k: Kind): Offering[] {
     return k === 'PACKAGE' ? offerings.packages : k === 'CLASS' ? offerings.classRuns : offerings.products
@@ -465,6 +467,25 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
               <button onClick={addItem} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50"><Plus className="h-4 w-4" /> Add item</button>
               {saving > 0 && priceCents > 0 && (
                 <p className="mt-3 text-sm text-emerald-700">Buyers save {formatMoney(saving, currency)} vs buying the parts separately.</p>
+              )}
+            </div>
+
+            {/* Reminders & messages — timed automatically off each client's
+                purchase (a membership has no timetable to hang them on). Only
+                once the membership exists: the steps attach to its id. */}
+            <div className="p-5">
+              <button type="button" onClick={() => setShowMessages(v => !v)} className="flex w-full items-center justify-between text-sm font-medium text-slate-700">
+                <span className="flex items-center gap-2"><Bell className="h-4 w-4 text-slate-400" /> Reminders &amp; messages</span>
+                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showMessages ? 'rotate-180' : ''}`} />
+              </button>
+              {showMessages && (
+                draft.id ? (
+                  <div className="mt-4">
+                    <CommsFlowEditor membershipId={draft.id} />
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-slate-500">Save the membership first, then you can add a welcome message and reminders for the people who join it.</p>
+                )
               )}
             </div>
 

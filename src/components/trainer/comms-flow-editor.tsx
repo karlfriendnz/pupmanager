@@ -11,7 +11,7 @@ import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { isRichTextEmpty } from '@/lib/rich-text'
 
 type Channel = 'PUSH' | 'EMAIL' | 'IN_APP'
-type Direction = 'BEFORE_SESSION' | 'AFTER_SESSION'
+type Direction = 'BEFORE_SESSION' | 'AFTER_SESSION' | 'AFTER_PURCHASE' | 'BEFORE_PERIOD_END'
 type Audience = 'ENROLLED' | 'ENROLLED_AND_WAITLIST' | 'CUSTOM'
 
 interface Step {
@@ -57,24 +57,37 @@ const SAMPLE: Record<string, string> = {
   '{{class}}': 'Puppy Class', '{{business}}': 'your business', '{{location}}': 'the hall',
 }
 
+// What a step's timing reads as. A membership has no session, so its anchor is
+// the client joining ("when they join", "3 days after they join") or the end of
+// their current period ("7 days before it renews").
 function humanWhen(direction: Direction, min: number): string {
   const preset = OFFSETS.find(o => o.min === min)
   const label = preset ? preset.label : min < 60 ? `${min} min` : min < 1440 ? `${Math.round(min / 60)} hr` : `${Math.round(min / 1440)} days`
+  if (direction === 'AFTER_PURCHASE') return min === 0 ? 'When they join' : `${label} after they join`
+  if (direction === 'BEFORE_PERIOD_END') return `${label} before it renews`
   return `${label} ${direction === 'BEFORE_SESSION' ? 'before' : 'after'}`
 }
 // Read the flow top-to-bottom in real time order: earliest "before" first,
 // through the session, then "after".
 function timelinePos(s: Step): number {
+  if (s.direction === 'BEFORE_PERIOD_END') return 1_000_000 - s.offsetMinutes
+  if (s.direction === 'AFTER_PURCHASE') return s.offsetMinutes
   return s.direction === 'BEFORE_SESSION' ? -s.offsetMinutes : s.offsetMinutes
 }
 function preview(body: string): string {
   return PLACEHOLDERS.reduce((acc, p) => acc.split(p).join(SAMPLE[p]), body)
 }
 
-export function CommsFlowEditor({ runId, packageId, clients = [] }: { runId?: string; packageId?: string; clients?: ClientOpt[] }) {
-  // Scoped to a class run (group / drop-in / event / puppy school) or a 1:1
-  // package. The two API trees mirror each other.
-  const base = runId ? `/api/trainer/class-runs/${runId}/comms-flow` : `/api/trainer/packages/${packageId}/comms-flow`
+export function CommsFlowEditor({ runId, packageId, membershipId, clients = [] }: { runId?: string; packageId?: string; membershipId?: string; clients?: ClientOpt[] }) {
+  // Scoped to a class run (group / drop-in / event / puppy school), a 1:1
+  // package, or a membership. The API trees mirror each other.
+  const base = runId
+    ? `/api/trainer/class-runs/${runId}/comms-flow`
+    : membershipId
+      ? `/api/trainer/memberships/${membershipId}/comms-flow`
+      : `/api/trainer/packages/${packageId}/comms-flow`
+  // A membership has no timetable, so its steps hang off the purchase instead.
+  const isMembership = !!membershipId
   const [steps, setSteps] = useState<Step[] | null>(null)
   const [templates, setTemplates] = useState<TemplateSummary[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -212,6 +225,7 @@ export function CommsFlowEditor({ runId, packageId, clients = [] }: { runId?: st
                 key={step.id}
                 draft={draft}
                 clients={clients}
+                isMembership={isMembership}
                 busy={busy}
                 onPatch={patchDraft}
                 onToggleChannel={toggleChannel}
@@ -264,11 +278,13 @@ function StepRow({ step, onEdit, onDelete, onToggle, busy }: { step: Step; onEdi
   )
 }
 
-function StepEditor({ draft, clients, busy, onPatch, onToggleChannel, onSave, onCancel }: {
+function StepEditor({ draft, clients, busy, isMembership = false, onPatch, onToggleChannel, onSave, onCancel }: {
   draft: Step
   clients: ClientOpt[]
   busy: boolean
   onPatch: (p: Partial<Step>) => void
+  /** A membership step anchors on the purchase, not a session. */
+  isMembership?: boolean
   onToggleChannel: (c: Channel) => void
   onSave: () => void
   onCancel: () => void
@@ -280,9 +296,12 @@ function StepEditor({ draft, clients, busy, onPatch, onToggleChannel, onSave, on
       <Field label="When">
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-lg bg-white border border-slate-200 p-0.5">
-            {(['BEFORE_SESSION', 'AFTER_SESSION'] as Direction[]).map(d => (
+            {(isMembership
+              ? (['AFTER_PURCHASE', 'BEFORE_PERIOD_END'] as Direction[])
+              : (['BEFORE_SESSION', 'AFTER_SESSION'] as Direction[])
+            ).map(d => (
               <button key={d} onClick={() => onPatch({ direction: d })} className={`px-3 h-8 text-sm font-medium rounded-md ${draft.direction === d ? 'bg-blue-600 text-white' : 'text-slate-600'}`}>
-                {d === 'BEFORE_SESSION' ? 'Before' : 'After'}
+                {d === 'BEFORE_SESSION' ? 'Before' : d === 'AFTER_SESSION' ? 'After' : d === 'AFTER_PURCHASE' ? 'After they join' : 'Before it renews'}
               </button>
             ))}
           </div>

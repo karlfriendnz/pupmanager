@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const h = vi.hoisted(() => ({
   stepFindMany: vi.fn(),
+  purchaseFindMany: vi.fn(),
+  clientFindMany: vi.fn(),
   sessionFindMany: vi.fn(),
   enrollmentFindMany: vi.fn(),
   sendFindMany: vi.fn(),
@@ -24,6 +26,8 @@ vi.mock('@/lib/prisma', () => ({
     classEnrollment: { findMany: h.enrollmentFindMany },
     commsFlowSend: { findMany: h.sendFindMany, create: h.sendCreate },
     notification: { create: h.notificationCreate },
+    membershipPurchase: { findMany: h.purchaseFindMany },
+    clientProfile: { findMany: h.clientFindMany },
   },
 }))
 vi.mock('@/lib/push', () => ({ sendPush: h.sendPush }))
@@ -72,6 +76,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.sessionFindMany.mockResolvedValue([{ id: 'sess1', scheduledAt: SESSION_AT }])
   h.sendFindMany.mockResolvedValue([])
+  h.purchaseFindMany.mockResolvedValue([])
+  h.clientFindMany.mockResolvedValue([])
   h.sendCreate.mockResolvedValue({})
   h.notificationCreate.mockResolvedValue({})
   h.sendPush.mockResolvedValue({ sent: 1, total: 1, results: [] })
@@ -214,5 +220,87 @@ describe('processCommsFlows — 1:1 package scope', () => {
     expect(h.enrollmentFindMany).not.toHaveBeenCalled() // packages have no enrolments
     expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({ userId: 'u9', title: 'Hi Pat & Rex' })
     expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'pstep', sessionId: 'ps1', userId: 'u9' } })
+  })
+})
+
+// ─── Memberships ────────────────────────────────────────────────────────────
+// A membership has no sessions, so its steps fire off the client's purchase.
+
+const membershipStep = (over: Record<string, unknown> = {}) => ({
+  id: 'mstep', classRunId: null, packageId: null, membershipId: 'mem1',
+  direction: 'AFTER_PURCHASE', offsetMinutes: 1440, channels: ['PUSH', 'IN_APP'],
+  audience: 'ENROLLED', customClientIds: [], important: false,
+  title: 'Welcome {{name}}', body: 'Enjoy {{membership}} with {{dog}}',
+  emailBody: null, enabled: true,
+  membership: { name: 'Puppy Starter', trainer },
+  classRun: null, package: null,
+  ...over,
+})
+
+const PURCHASE = {
+  id: 'pur1',
+  purchasedAt: new Date('2026-07-30T00:00:00.000Z'), // 2 days before NOW
+  currentPeriodEnd: null,
+  clientId: 'c1',
+}
+
+const CLIENT = {
+  id: 'c1',
+  dog: { name: 'Bailey' },
+  dogs: [],
+  user: { id: 'u1', name: 'Sam', email: 'sam@x.com', notifyPush: true, productEmailOptOut: false },
+}
+
+describe('processCommsFlows — membership scope', () => {
+  it('sends to each client holding the membership, once per purchase', async () => {
+    h.stepFindMany.mockResolvedValue([membershipStep()])
+    h.purchaseFindMany.mockResolvedValue([PURCHASE])
+    h.clientFindMany.mockResolvedValue([CLIENT])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    // {{membership}} and {{dog}} both fill in.
+    expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({
+      userId: 'u1',
+      title: 'Welcome Sam',
+      body: 'Enjoy Puppy Starter with Bailey',
+      link: '/my-memberships',
+    })
+    // Deduped by purchase, not by session.
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'mstep', purchaseId: 'pur1', userId: 'u1' } })
+  })
+
+  it('only looks at ACTIVE purchases of that membership', async () => {
+    h.stepFindMany.mockResolvedValue([membershipStep()])
+    h.purchaseFindMany.mockResolvedValue([])
+
+    await processCommsFlows(NOW)
+
+    expect(h.purchaseFindMany.mock.calls[0][0].where).toMatchObject({ membershipId: 'mem1', status: 'ACTIVE' })
+    expect(h.notificationCreate).not.toHaveBeenCalled()
+  })
+
+  it('does not re-send to someone already recorded against that purchase', async () => {
+    h.stepFindMany.mockResolvedValue([membershipStep()])
+    h.purchaseFindMany.mockResolvedValue([PURCHASE])
+    h.clientFindMany.mockResolvedValue([CLIENT])
+    h.sendFindMany.mockResolvedValue([{ purchaseId: 'pur1', userId: 'u1' }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(0)
+    expect(h.sendPush).not.toHaveBeenCalled()
+  })
+
+  it('a renewal step counts back from the period end instead', async () => {
+    h.stepFindMany.mockResolvedValue([membershipStep({ direction: 'BEFORE_PERIOD_END', offsetMinutes: 4320 })])
+    h.purchaseFindMany.mockResolvedValue([])
+
+    await processCommsFlows(NOW)
+
+    const where = h.purchaseFindMany.mock.calls[0][0].where
+    expect(where.currentPeriodEnd).toBeDefined()
+    expect(where.purchasedAt).toBeUndefined()
   })
 })

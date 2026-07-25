@@ -22,6 +22,11 @@ export const COMMS_PLACEHOLDERS = [
   '{{name}}', '{{dog}}', '{{time}}', '{{date}}', '{{class}}', '{{business}}', '{{location}}',
 ] as const
 
+// A membership has no session, so time/date/location have nothing to say.
+export const MEMBERSHIP_PLACEHOLDERS = [
+  '{{name}}', '{{dog}}', '{{membership}}', '{{business}}', '{{date}}',
+] as const
+
 export interface CommsVars {
   name: string
   dog: string
@@ -30,6 +35,8 @@ export interface CommsVars {
   class: string
   business: string
   location: string
+  /** Membership steps only — the bundle they bought. */
+  membership?: string
 }
 
 function fill(template: string, vars: CommsVars): string {
@@ -41,6 +48,7 @@ function fill(template: string, vars: CommsVars): string {
     .replace(/\{\{\s*class\s*\}\}/g, vars.class)
     .replace(/\{\{\s*business\s*\}\}/g, vars.business)
     .replace(/\{\{\s*location\s*\}\}/g, vars.location)
+    .replace(/\{\{\s*membership\s*\}\}/g, vars.membership ?? '')
 }
 
 /** Render a step's title + body (+ optional rich email body) with the
@@ -91,6 +99,27 @@ export const COMMS_STARTER_STEPS = [
   },
 ]
 
+// The starter flow offered on a MEMBERSHIP, which has no sessions: a welcome
+// the moment they join, then a check-in a week later.
+export const MEMBERSHIP_STARTER_STEPS = [
+  {
+    direction: 'AFTER_PURCHASE' as const,
+    offsetMinutes: 0,
+    channels: ['PUSH', 'EMAIL'] as NotificationChannel[],
+    important: false,
+    title: 'Welcome to {{membership}}, {{name}} 🎉',
+    body: "You're all set. Everything included is ready to book in the app — see you soon!",
+  },
+  {
+    direction: 'AFTER_PURCHASE' as const,
+    offsetMinutes: 7 * 24 * 60,
+    channels: ['PUSH'] as NotificationChannel[],
+    important: false,
+    title: 'How’s it going, {{name}}?',
+    body: "Hope you and {{dog}} are enjoying {{membership}}. Anything you need, just message us.",
+  },
+]
+
 interface RecipientUser {
   id: string
   name: string | null
@@ -103,7 +132,9 @@ interface TrainerBrand {
   businessName: string
   logoUrl: string | null
   emailAccentColor: string | null
-  user: { name: string | null; email: string }
+  // timezone comes back from TRAINER_BRAND_SELECT and is what dates are
+  // formatted in; optional because the email renderer doesn't need it.
+  user: { name: string | null; email: string; timezone?: string | null }
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? 'https://app.pupmanager.com'
@@ -184,11 +215,19 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
     include: {
       classRun: { select: { name: true, location: true, trainer: { select: TRAINER_BRAND_SELECT } } },
       package: { select: { name: true, trainer: { select: TRAINER_BRAND_SELECT } } },
+      membership: { select: { name: true, trainer: { select: TRAINER_BRAND_SELECT } } },
     },
   })
 
   let sent = 0
   for (const step of steps) {
+    // Membership steps anchor on a purchase, not a session — different shape
+    // entirely, so they run through their own pass.
+    if (step.membershipId) {
+      if (step.membership) sent += await processMembershipStep(step, step.membership, now)
+      continue
+    }
+
     // A step is scoped to a ClassRun (group class / drop-in / event / puppy
     // school) OR a Package (a 1:1 package). Skip a step whose owner was deleted.
     const owner = step.classRunId ? step.classRun : step.packageId ? step.package : null
@@ -278,4 +317,119 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
   }
 
   return { steps: steps.length, sent }
+}
+
+/**
+ * One membership step, for every client currently holding that membership.
+ *
+ * A membership has no sessions, so the anchor is the client's purchase:
+ * AFTER_PURCHASE counts forward from when they bought it (welcome, day-7
+ * check-in), BEFORE_PERIOD_END counts back from the end of the current period
+ * (renewal, expiry). A purchase with no period end simply has nothing for
+ * BEFORE_PERIOD_END to fire against, which is the case for every one-off
+ * membership — those only ever use AFTER_PURCHASE.
+ *
+ * Dedup is per (step, purchase, recipient), so a welcome sends once however
+ * many times the cron ticks.
+ */
+async function processMembershipStep(
+  step: {
+    id: string
+    membershipId: string | null
+    direction: string
+    offsetMinutes: number
+    channels: NotificationChannel[]
+    audience: string
+    customClientIds: string[]
+    important: boolean
+    title: string
+    body: string
+    emailBody: string | null
+  },
+  membership: { name: string; trainer: TrainerBrand },
+  now: Date,
+): Promise<number> {
+  const offsetMs = step.offsetMinutes * 60_000
+  const tz = membership.trainer.user.timezone ?? 'Pacific/Auckland'
+
+  // The window mirrors the session one: due since the anchor passed, and not so
+  // long ago that a flow switched on today back-fills months of history.
+  const anchorWhere =
+    step.direction === 'AFTER_PURCHASE'
+      ? { purchasedAt: { lte: new Date(now.getTime() - offsetMs), gte: new Date(now.getTime() - offsetMs - 30 * DAY_MS) } }
+      : { currentPeriodEnd: { gte: now, lte: new Date(now.getTime() + offsetMs) } }
+
+  const purchases = await prisma.membershipPurchase.findMany({
+    where: {
+      membershipId: step.membershipId!,
+      status: 'ACTIVE',
+      ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
+      ...anchorWhere,
+    },
+    select: {
+      id: true,
+      purchasedAt: true,
+      currentPeriodEnd: true,
+      clientId: true,
+    },
+  })
+  if (purchases.length === 0) return 0
+
+  // MembershipPurchase.clientId has no relation on the model, so the client (and
+  // their user + dog) is fetched separately.
+  const clients = await prisma.clientProfile.findMany({
+    where: { id: { in: purchases.map(p => p.clientId) } },
+    select: {
+      id: true,
+      dog: { select: { name: true } },
+      dogs: { select: { name: true } },
+      user: { select: RECIPIENT_USER_SELECT },
+    },
+  })
+  const clientById = new Map(clients.map(c => [c.id, c]))
+
+  const already = await prisma.commsFlowSend.findMany({
+    where: { stepId: step.id, purchaseId: { in: purchases.map(p => p.id) } },
+    select: { purchaseId: true, userId: true },
+  })
+  const alreadySent = new Set(already.map(a => `${a.purchaseId}|${a.userId}`))
+
+  let sent = 0
+  for (const purchase of purchases) {
+    const client = clientById.get(purchase.clientId)
+    if (!client?.user?.id) continue
+    const user = client.user
+    if (alreadySent.has(`${purchase.id}|${user.id}`)) continue
+
+    const dogs = [client.dog?.name, ...client.dogs.map(d => d.name)]
+      .filter((n): n is string => !!n)
+      .filter((n, i, arr) => arr.indexOf(n) === i)
+    const anchorDate = step.direction === 'AFTER_PURCHASE' ? purchase.purchasedAt : purchase.currentPeriodEnd
+    const vars: CommsVars = {
+      name: user.name ?? 'there',
+      dog: dogs.join(', '),
+      time: anchorDate ? fmtTime(anchorDate, tz) : '',
+      date: anchorDate ? fmtDate(anchorDate, tz) : '',
+      class: membership.name,
+      membership: membership.name,
+      business: membership.trainer.businessName,
+      location: '',
+    }
+    const { title, body, emailBody } = renderCommsMessage(step, vars)
+    await deliver({
+      channels: step.channels,
+      important: step.important,
+      user,
+      trainer: membership.trainer,
+      title,
+      body,
+      emailBody,
+      link: '/my-memberships',
+    })
+    await prisma.commsFlowSend
+      .create({ data: { stepId: step.id, purchaseId: purchase.id, userId: user.id } })
+      .catch(() => {})
+    sent++
+  }
+  return sent
 }

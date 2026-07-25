@@ -173,4 +173,76 @@ test.describe('memberships — trainer builds, client sees', () => {
       await prisma.$disconnect()
     }
   })
+
+  // Memberships have no timetable, so their reminders anchor on the client's
+  // purchase: "when they join", "7 days before it renews".
+  test('a membership carries its own reminders, anchored on the purchase', async ({ page }) => {
+    const prisma = await makePrisma()
+    let id: string | null = null
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      const created = await page.request.post('/api/trainer/memberships', {
+        data: { name: 'E2E Reminder Bundle', priceCents: 6000, published: true, items: [] },
+      })
+      expect(created.status(), await created.text()).toBe(201)
+      id = (await created.json()).id
+
+      // The starter flow is purchase-anchored, not session-anchored.
+      const seeded = await page.request.post(`/api/trainer/memberships/${id}/comms-flow`, { data: { seed: 'starter' } })
+      expect(seeded.status(), await seeded.text()).toBe(201)
+      const steps = await prisma.commsFlowStep.findMany({ where: { membershipId: id! }, orderBy: { order: 'asc' } })
+      expect(steps.length).toBeGreaterThan(0)
+      expect(steps.every(s => s.direction === 'AFTER_PURCHASE')).toBe(true)
+      expect(steps[0].offsetMinutes).toBe(0) // a welcome, the moment they join
+
+      // A renewal reminder counts back from the period end.
+      const renewal = await page.request.post(`/api/trainer/memberships/${id}/comms-flow`, {
+        data: {
+          direction: 'BEFORE_PERIOD_END', offsetMinutes: 4320, channels: ['EMAIL'],
+          title: 'Renewing soon', body: 'Your {{membership}} renews in 3 days.', enabled: true,
+        },
+      })
+      expect(renewal.status(), await renewal.text()).toBe(201)
+      const step = await prisma.commsFlowStep.findFirst({ where: { membershipId: id!, direction: 'BEFORE_PERIOD_END' } })
+      expect(step?.offsetMinutes).toBe(4320)
+
+      // Editing and deleting go through the same guarded tree.
+      const patched = await page.request.patch(`/api/trainer/memberships/${id}/comms-flow/${step!.id}`, {
+        data: { title: 'Renewing in 3 days' },
+      })
+      expect(patched.status()).toBe(200)
+      const del = await page.request.delete(`/api/trainer/memberships/${id}/comms-flow/${step!.id}`)
+      expect(del.status()).toBe(200)
+      expect(await prisma.commsFlowStep.count({ where: { id: step!.id } })).toBe(0)
+    } finally {
+      if (id) await prisma.membership.delete({ where: { id } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
+  test('Business B cannot read or add reminders on Business A’s membership', async ({ page }) => {
+    const prisma = await makePrisma()
+    let id: string | null = null
+    try {
+      const trainer = await prisma.trainerProfile.findFirst({
+        where: { businessName: SEED.owner.businessName }, select: { id: true },
+      })
+      id = (await prisma.membership.create({
+        data: { trainerId: trainer!.id, name: 'E2E Reminder Target', priceCents: 5000, published: true },
+      })).id
+
+      await login(page, SEED.businessB.ownerEmail, SEED.businessB.ownerPassword)
+
+      expect((await page.request.get(`/api/trainer/memberships/${id}/comms-flow`)).status()).toBe(404)
+      const post = await page.request.post(`/api/trainer/memberships/${id}/comms-flow`, {
+        data: { title: 'Sneaky', body: 'Hello', channels: ['PUSH'], enabled: true },
+      })
+      expect(post.status()).toBe(404)
+      expect(await prisma.commsFlowStep.count({ where: { membershipId: id! } })).toBe(0)
+    } finally {
+      if (id) await prisma.membership.delete({ where: { id } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
 })
