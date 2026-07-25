@@ -16,6 +16,33 @@ import imageCompression from 'browser-image-compression'
 // Never throws: on any failure (SSR, worker error, undecodable file) it
 // returns the original File so the upload still attempts exactly as before.
 
+/**
+ * Can the browser actually decode this image?
+ *
+ * compressImageFile's HEIC→JPEG conversion only works where the browser can
+ * decode HEIC in the first place (Safari can; Chrome and Android can't). When
+ * it can't, compression fails and returns the ORIGINAL file — so a HEIC photo
+ * uploads and saves fine, then renders as a broken image everywhere it's shown.
+ *
+ * Call this after compressing and before uploading, so the trainer is told the
+ * format is the problem instead of watching an upload appear to do nothing.
+ *
+ * Never throws — returns false when it can't tell.
+ */
+export async function isDisplayableImage(file: File): Promise<boolean> {
+  if (typeof window === 'undefined') return true
+  // Vectors and animations aren't bitmap-decodable but display fine.
+  if (file.type === 'image/svg+xml' || file.type === 'image/gif') return true
+  if (typeof createImageBitmap !== 'function') return true
+  try {
+    const bitmap = await createImageBitmap(file)
+    bitmap.close?.()
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function compressImageFile(file: File): Promise<File> {
   if (typeof window === 'undefined') return file
   if (!file.type.startsWith('image/')) return file

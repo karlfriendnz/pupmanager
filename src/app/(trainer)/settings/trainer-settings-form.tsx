@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BaseLocationSetting } from './base-location-setting'
 import { trainerRegionCode } from '@/lib/country'
-import { compressImageFile } from '@/lib/compress-image'
+import { compressImageFile, isDisplayableImage } from '@/lib/compress-image'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -111,6 +111,18 @@ export function TrainerSettingsForm({
     setUploading(true)
     try {
       const toSend = await compressImageFile(file)
+
+      // Refuse anything the browser can't decode — HEIC/HEIF straight off an
+      // iPhone is the usual one. Without this the file uploads and saves
+      // happily, then renders as a broken image everywhere it's shown, which
+      // reads as "the upload doesn't work".
+      if (!(await isDisplayableImage(toSend))) {
+        setUploadError(
+          "That image can't be displayed on the web — iPhone photos are often HEIC. Choose a JPG or PNG, or take a screenshot of it first.",
+        )
+        return
+      }
+
       const fd = new FormData()
       fd.append('file', toSend)
       fd.append('kind', kind)
@@ -121,6 +133,11 @@ export function TrainerSettingsForm({
         return
       }
       await persistBranding(field, body.url)
+    } catch {
+      // Anything thrown — a dropped connection mid-upload, a file the browser
+      // couldn't read — used to fall through silently: the spinner stopped and
+      // nothing else happened, so it looked like the button did nothing.
+      setUploadError('Upload failed — check your connection and try again.')
     } finally {
       setUploading(false)
     }
@@ -129,15 +146,19 @@ export function TrainerSettingsForm({
   // Persist a single branding field (also used by Remove, which passes '').
   async function persistBranding(field: 'logoUrl' | 'iconUrl', url: string) {
     designForm.setValue(field, url, { shouldDirty: false })
-    const res = await fetch('/api/trainer/profile', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [field]: url }),
-    })
-    if (res.ok) {
-      setDesignMsg('Saved!')
-      router.refresh()
-    } else {
+    try {
+      const res = await fetch('/api/trainer/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: url }),
+      })
+      if (res.ok) {
+        setDesignMsg('Saved!')
+        router.refresh()
+      } else {
+        setUploadError('Uploaded, but saving failed — please try again.')
+      }
+    } catch {
       setUploadError('Uploaded, but saving failed — please try again.')
     }
   }
