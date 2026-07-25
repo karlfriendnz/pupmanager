@@ -1,7 +1,7 @@
 import {
   Bell, Dumbbell, CheckCircle2, MessageSquare, Inbox, UserPlus, Calendar, CalendarDays,
-  FileText, Clock, Flame, ClipboardList, CalendarClock, CalendarX, ShoppingBag, Trophy,
-  Megaphone,
+  FileText, Clock, Flame, ClipboardList, CalendarClock, CalendarX, ShoppingBag,
+  Megaphone, Wallet,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -33,7 +33,9 @@ const NOTIFICATION_ICONS: Record<string, LucideIcon> = {
   CLIENT_RECAP_READY: FileText,
   CLIENT_NEW_MESSAGE: MessageSquare,
   TRAINER_COMMENTED_LOG: MessageSquare,
-  CLIENT_ACHIEVEMENT: Trophy,
+  // "Please pay this invoice" — the one client notification with money on the
+  // end of it, and it was falling through to the generic bell.
+  CLIENT_PAYMENT_REQUEST: Wallet,
 }
 
 export function iconForNotification(type?: string | null): LucideIcon {

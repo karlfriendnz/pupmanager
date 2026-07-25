@@ -17,6 +17,16 @@ export default async function NotificationsPage() {
     take: 50,
   })
 
+  // Clear the unread badge, exactly as the trainer's feed does — marking AFTER
+  // the read so this render still shows which ones were new. Without this a dog
+  // owner's notifications stayed unread forever: every row kept its full-opacity
+  // "new" styling however many times they looked at it, and any unread count
+  // built on readAt could only ever go up.
+  const unreadIds = notifications.filter(n => !n.readAt).map(n => n.id)
+  if (unreadIds.length > 0) {
+    await prisma.notification.updateMany({ where: { id: { in: unreadIds } }, data: { readAt: new Date() } })
+  }
+
   return (
     <div className="px-5 lg:px-8 py-6 max-w-3xl mx-auto w-full">
       <h1 className="text-2xl font-bold text-slate-900 mb-6">Notifications</h1>
