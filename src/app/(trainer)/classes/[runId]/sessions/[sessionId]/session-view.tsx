@@ -88,12 +88,16 @@ export function SessionView({
   runName,
   sessionTitle,
   sessionScheduledAt,
+  // Which offering section this session sits under, so "Back to class" returns
+  // to the right run detail (/classes, /casual-classes or /doggy-daycare).
+  basePath = '/classes',
 }: {
   runId: string
   sessionId: string
   runName: string
   sessionTitle: string
   sessionScheduledAt: string
+  basePath?: string
 }) {
   const router = useRouter()
   const [data, setData] = useState<AttendanceData | null>(null)
@@ -207,7 +211,7 @@ export function SessionView({
           // the class is the separate, explicit button in `actions`.
           onClick: () => {
             if (typeof window !== 'undefined' && window.history.length > 1) router.back()
-            else router.push(`/classes/${runId}`)
+            else router.push(`${basePath}/${runId}`)
           },
         }}
         actions={
@@ -215,7 +219,7 @@ export function SessionView({
           // so "up to the class" needs to be reachable without guessing where
           // the back arrow will land.
           <Link
-            href={`/classes/${runId}`}
+            href={`${basePath}/${runId}`}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             <GraduationCap className="h-4 w-4" />

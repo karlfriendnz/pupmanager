@@ -134,8 +134,10 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // trainer turns one off we HIDE its nav entirely (unlike paid add-ons, which
   // show a locked upsell via addonLockedHrefs).
   if (!enabledAddons.has('classes')) hiddenNavHrefs.push('/classes')
-  // Drop-ins sit on top of classes: no classes add-on, no drop-ins either.
-  if (!enabledAddons.has('dropins') || !enabledAddons.has('classes')) hiddenNavHrefs.push('/casual-classes')
+  // Casual classes are their own offering type now — gated only by the dropins
+  // add-on, independent of Group Classes (a trainer can run casual classes
+  // without turning group classes on).
+  if (!enabledAddons.has('dropins')) hiddenNavHrefs.push('/casual-classes')
   // The "Library" nav item lives at /templates.
   if (!enabledAddons.has('library')) hiddenNavHrefs.push('/templates')
   // No client app → no client↔trainer messaging.

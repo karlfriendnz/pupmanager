@@ -67,12 +67,14 @@ export function PuppySchoolView({ schools, board, scheduleDays }: { schools: Pup
                   <span key={s.id} className="inline-flex items-center gap-2 rounded-full bg-teal-50 border border-teal-200 text-teal-800 text-sm px-3 py-1">
                     <Dog className="h-3.5 w-3.5" /> {s.name}
                     <span className="text-teal-500 text-xs">{s.dayParts} part{s.dayParts === 1 ? '' : 's'} · {s.days} day{s.days === 1 ? '' : 's'}</span>
-                    {s.runId && <Link href={`/classes/${s.runId}`} className="text-teal-600 underline text-xs">manage</Link>}
+                    {s.runId && <Link href={`/doggy-daycare/${s.runId}`} className="text-teal-600 underline text-xs">manage</Link>}
                   </span>
                 ))}
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 text-sm text-slate-500"><CalendarDays className="h-4 w-4" /> {board.totalBooked} booked this week</span>
+                {/* Distinct dogs across the week — board.totalBooked sums every
+                    day-part booking, so a full-week dog counted once per part. */}
+                <span className="inline-flex items-center gap-1.5 text-sm text-slate-500"><CalendarDays className="h-4 w-4" /> {daysByDog.size} dog{daysByDog.size === 1 ? '' : 's'} this week</span>
                 <DaysConfig scheduleDays={scheduleDays} />
               </div>
             </div>
@@ -154,8 +156,18 @@ function WeekBoardGrid({ board, columns, daysByDog, colLabel }: { board: WeekBoa
     )
   }
 
-  // Per-day totals (sum booked across parts for each visible column).
-  const dayTotal = (colKey: string) => board.parts.reduce((n, p) => n + (board.cells[p.key]?.[colKey]?.booked ?? 0), 0)
+  // Per-day total = distinct DOGS in that column, not the sum of per-part
+  // occupancy. A dog booked into both morning and afternoon is one dog here —
+  // summing cell.booked across parts double-counts full-day and multi-part dogs.
+  const dayTotal = (colKey: string) => {
+    const dogs = new Set<string>()
+    for (const p of board.parts) {
+      for (const a of board.cells[p.key]?.[colKey]?.attendees ?? []) {
+        if (a.dogId) dogs.add(a.dogId)
+      }
+    }
+    return dogs.size
+  }
 
   return (
     <>

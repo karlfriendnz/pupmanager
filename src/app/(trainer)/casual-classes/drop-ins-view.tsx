@@ -86,7 +86,7 @@ export function DropInsView({ runs, currency = 'NZD' }: { runs: RunRow[]; curren
               shown.map(r => (
                 <OfferingCard
                   key={r.id}
-                  href={`/classes/${r.id}`}
+                  href={`/casual-classes/${r.id}`}
                   title={r.name}
                   description={r.description}
                   imageUrl={r.imageUrl}

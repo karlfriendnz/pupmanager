@@ -83,11 +83,20 @@ export function RunDetail({
   sessions,
   enrollments,
   clients,
+  // Which offering section this run is being viewed under. A ClassRun powers
+  // group classes (/classes), casual classes (/casual-classes) and doggy
+  // daycare (/doggy-daycare) — so the back link, the post-delete redirect and
+  // the session links all follow the section the trainer came in through,
+  // instead of always dumping them on Group Classes (and its add-on gate).
+  basePath = '/classes',
+  backLabel = 'Classes',
 }: {
   run: Run
   sessions: SessionRow[]
   enrollments: Enrollment[]
   clients: ClientOpt[]
+  basePath?: string
+  backLabel?: string
 }) {
   const router = useRouter()
   const currency = useCurrency()
@@ -109,7 +118,7 @@ export function RunDetail({
         // refresh() first so the /classes list re-renders without the run —
         // pushing alone can serve the cached (stale) server render.
         router.refresh()
-        router.push('/classes')
+        router.push(basePath)
         return
       }
       const body = await res.json().catch(() => null)
@@ -166,7 +175,7 @@ export function RunDetail({
     <>
       <PageHeader
         title={run.name}
-        back={{ href: '/classes', label: 'Classes' }}
+        back={{ href: basePath, label: backLabel }}
         // Delete / Edit belong with the other page-level controls in the top
         // bar, not floating above the content.
         actions={
@@ -330,7 +339,7 @@ export function RunDetail({
                       {/* The whole row is the link — the "Open" button was a
                           small target for something the entire row means. */}
                       <Link
-                        href={`/classes/${run.id}/sessions/${s.id}`}
+                        href={`${basePath}/${run.id}/sessions/${s.id}`}
                         className="flex items-center gap-4 rounded-lg py-2.5 px-2 -mx-2 hover:bg-slate-50"
                       >
                         <p className="w-24 shrink-0 text-sm font-medium text-slate-900">Session {s.sessionIndex ?? '—'}</p>
