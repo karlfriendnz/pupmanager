@@ -95,11 +95,12 @@ const NAV_SECTION_LABEL: Record<NavSection, string | null> = {
 const TRAINER_MOBILE_TABS: { href: string; label: string; icon: LucideIcon; needsNav?: string }[] = [
   { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
   { href: '/schedule', label: 'Schedule', icon: Calendar },
-  { href: '/clients', label: 'Clients', icon: Users },
+  // To do over Clients: it's the one screen a trainer keeps coming back to
+  // between sessions (notes owed, invoices owed, their own list). Clients is a
+  // home tile and the search's whole job, so it's never more than a tap away.
+  // Gated by the same add-on as the Notes nav row.
+  { href: '/sessions/needs-notes', label: 'To do', icon: ClipboardList, needsNav: '/sessions/draft-notes' },
   { href: '/messages', label: 'Messages', icon: MessageSquare },
-  // Alerts rather than the to-do list: the to-do list is still one tap away as
-  // a home-screen tile, whereas an unread notification has nowhere else to
-  // surface on a phone.
   { href: '/notifications', label: 'Alerts', icon: Bell },
 ]
 // Anything not a tab lives in the More sheet.

@@ -28,10 +28,13 @@ test.describe('trainer home on a phone', () => {
     // Welcome band: greeting + the trainer's own business name.
     await expect(page.getByText(/^Good (morning|afternoon|evening)/)).toBeVisible()
 
-    // The six destinations.
-    for (const label of ['Schedule', 'Clients', 'Offerings', 'Money', 'More']) {
+    // The six destinations. Which six depends on the trainer's trade (see
+    // lib/home-tiles) — these are the ones the seeded owner gets.
+    for (const label of ['Schedule', 'Clients', 'Offerings', 'Money']) {
       await expect(page.locator('section').getByText(label, { exact: true })).toBeVisible()
     }
+    // Always six, never a short grid.
+    await expect(page.locator('section .grid > a, section .grid > button')).toHaveCount(6)
 
     // The desktop widget wall is NOT what a phone gets.
     await expect(page.getByText('notes to write')).toHaveCount(0)
@@ -83,13 +86,19 @@ test.describe('trainer home on a phone', () => {
     expect(sum).toBe(total)
   })
 
-  test('More opens the full menu, Offerings opens the hub', async ({ page }) => {
+  test('the menu, the bottom tabs, and the Offerings hub', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/dashboard')
 
-    await page.getByRole('button', { name: /More/ }).first().click()
+    // Everything else is behind the header menu, not a bottom tab.
+    await page.getByRole('button', { name: 'Menu' }).click()
     await expect(page.getByRole('link', { name: /Reports/ }).first()).toBeVisible()
     await page.keyboard.press('Escape')
+
+    // Five tabs, all destinations a trainer works in — no "More" tab.
+    const tabs = page.locator('nav.fixed.bottom-0 a')
+    await expect(tabs).toHaveCount(5)
+    await expect(page.locator('nav.fixed.bottom-0').getByText('More')).toHaveCount(0)
 
     await page.goto('/offerings')
     // Every row is a real destination with a count or a description.

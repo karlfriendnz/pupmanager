@@ -5,6 +5,8 @@ import { ListTodo, FileText } from 'lucide-react'
 import { CurrencyGlyph } from '@/components/currency-glyph'
 import { PageHeader } from '@/components/shared/page-header'
 import { NeedsNotesList, type TodoRow } from './needs-notes-list'
+import { TodoBrainDumpPanel } from '../../dashboard/todo-braindump-panel'
+import { hasAddon } from '@/lib/billing'
 import { formatMoney } from '@/lib/money'
 import type { Metadata } from 'next'
 
@@ -75,6 +77,30 @@ export default async function SessionsTodoPage() {
   })
   const currency = profile?.payoutCurrency ?? 'nzd'
 
+  // The scratchpad lives here too: this is the trainer's one "what's left to
+  // do" screen — sessions needing a write-up, sessions needing an invoice, and
+  // whatever they've jotted down. On a phone it's the To do tab, and the
+  // dashboard hides its own copy.
+  const hasTodos = await hasAddon(trainerId, 'todos')
+  const [todos, brainDump, members] = hasTodos
+    ? await Promise.all([
+        prisma.trainerTodo.findMany({
+          where: { companyId: trainerId },
+          include: { assignedTo: { select: { id: true, user: { select: { name: true, email: true } } } } },
+          orderBy: [{ done: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
+        }),
+        prisma.trainerBrainDump.findUnique({
+          where: { companyId_userId: { companyId: trainerId, userId: session.user.id } },
+          select: { body: true },
+        }),
+        prisma.trainerMembership.findMany({
+          where: { companyId: trainerId },
+          select: { id: true, user: { select: { name: true, email: true } } },
+          orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
+        }),
+      ])
+    : [[], null, []]
+
   const sessions = await loadPendingSessions(trainerId)
   const needsNotesCount = sessions.filter(s => s._count.formResponses === 0 && !(DONE_STATUSES as readonly string[]).includes(s.status)).length
   const needsInvoiceCount = sessions.filter(s => s.invoicedAt == null).length
@@ -101,11 +127,35 @@ export default async function SessionsTodoPage() {
   return (
     <>
       <PageHeader
-        title="Sessions to wrap up"
+        title="To do"
         back={{ href: '/dashboard', label: 'Back to dashboard' }}
         actions={<ListTodo className="h-5 w-5 text-amber-500" />}
       />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+
+        {/* The trainer's own list first — what they've decided needs doing,
+            ahead of what the system worked out needs doing. */}
+        {hasTodos && (
+          <div className="mb-6">
+            <TodoBrainDumpPanel
+              initialTodos={todos.map(t => ({
+                id: t.id,
+                title: t.title,
+                done: t.done,
+                dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+                completedAt: t.completedAt ? t.completedAt.toISOString() : null,
+                createdAt: t.createdAt.toISOString(),
+                assignee: t.assignedTo
+                  ? { id: t.assignedTo.id, name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Trainer' }
+                  : null,
+              }))}
+              initialBrainDump={brainDump?.body ?? ''}
+              members={members.map(m => ({ id: m.id, name: m.user.name?.trim() || m.user.email || 'Trainer' }))}
+            />
+          </div>
+        )}
+
+        <h2 className="mb-3 text-base font-semibold text-slate-900">Sessions to wrap up</h2>
 
         <div className="mb-6">
           {sessions.length === 0 ? (

@@ -684,8 +684,10 @@ export default async function DashboardPage({
           {/* Right rail — To-do / Brain dump scratchpad (a free add-on). On lg+
               it sticks below the page header so it stays visible while the main
               column scrolls. */}
+          {/* Desktop only: on a phone the scratchpad lives on the To do tab,
+              alongside the notes and invoices it belongs with. */}
           {hasTodos && (
-            <div className="lg:col-span-4 min-w-0 mt-2 lg:mt-0">
+            <div className="hidden md:block lg:col-span-4 min-w-0 mt-2 lg:mt-0">
               <div className="lg:sticky lg:top-4">
                 <TodoBrainDumpPanel
                   initialTodos={todoItems}
