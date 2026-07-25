@@ -88,6 +88,24 @@ describe('renderCommsMessage', () => {
     expect(out.title).toBe('Hi Sam & Bailey')
     expect(out.body).toBe('Puppy Class on Tuesday 5 August at 6:00 pm @ Hall — Waggy')
   })
+
+  // The email body is authored separately (rich text) from the short push/in-app
+  // body, and its placeholders must fill in too.
+  it('fills placeholders in the rich email body as well', () => {
+    const out = renderCommsMessage(
+      { title: 'Hi {{name}}', body: 'short', emailBody: '<p>Hi <strong>{{name}}</strong>, bring treats for {{dog}}.</p>' },
+      { name: 'Sam', dog: 'Bailey', time: '', date: '', class: '', business: '', location: '' },
+    )
+    expect(out.emailBody).toBe('<p>Hi <strong>Sam</strong>, bring treats for Bailey.</p>')
+    expect(out.body).toBe('short') // push/in-app keep the plain one
+  })
+
+  it('leaves emailBody null when the step has none', () => {
+    const out = renderCommsMessage({ title: 't', body: 'b' }, {
+      name: 'Sam', dog: 'Bailey', time: '', date: '', class: '', business: '', location: '',
+    })
+    expect(out.emailBody).toBeNull()
+  })
 })
 
 describe('processCommsFlows', () => {
@@ -150,6 +168,29 @@ describe('processCommsFlows', () => {
 
     expect(h.sendPush).toHaveBeenCalledTimes(1)
     expect(h.sendEmail).toHaveBeenCalledTimes(1)
+  })
+
+  // A step with a rich email body sends THAT as the email's HTML, with a plain
+  // -text fallback — while push and in-app still carry the short plain body.
+  it('emails the rich body and pushes the plain one', async () => {
+    h.stepFindMany.mockResolvedValue([step({
+      channels: ['PUSH', 'IN_APP', 'EMAIL'],
+      body: 'Bring treats for {{dog}}',
+      emailBody: '<p>Hi <strong>{{name}}</strong>, bring treats for {{dog}}.</p>',
+    })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    await processCommsFlows(NOW)
+
+    const rendered = h.renderEmail.mock.calls[0][0]
+    expect(rendered.bodyHtml).toBe('<p>Hi <strong>Sam</strong>, bring treats for Bailey.</p>')
+    // The text part is the same content flattened, NOT the push copy.
+    expect(rendered.body).toContain('bring treats for Bailey')
+    expect(rendered.body).not.toContain('<strong>')
+
+    // Push + in-app are unchanged by the email body.
+    expect(h.sendPush.mock.calls[0][1].alert.body).toBe('Bring treats for Bailey')
+    expect(h.notificationCreate.mock.calls[0][0].data.body).toBe('Bring treats for Bailey')
   })
 })
 

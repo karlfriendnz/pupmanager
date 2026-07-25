@@ -98,6 +98,18 @@ export default async function globalSetup() {
     await prisma.trainerAddon.create({
       data: { trainerId: profile.id, itemId: 'events', active: true },
     })
+    // Casual classes + doggy daycare are the same story — each section's routes
+    // redirect to the Add-ons tab when its add-on is off, so the specs that open
+    // /casual-classes/<run> and /doggy-daycare/<run> need them on.
+    for (const [id, name, description, sortOrder] of [
+      ['dropins', 'Casual classes', 'Single-session casual classes', 7],
+      ['puppyschool', 'Doggy daycare', 'Day-parted daycare with a week board', 8],
+    ] as const) {
+      await prisma.billingItem.create({
+        data: { id, kind: 'ADDON', name, description, priceMonthly: 0, sortOrder, isActive: true },
+      })
+      await prisma.trainerAddon.create({ data: { trainerId: profile.id, itemId: id, active: true } })
+    }
 
     // An accepted MANAGER + STAFF member (with passwords) so permission specs
     // can sign in as them. Members have a membership, no TrainerProfile.

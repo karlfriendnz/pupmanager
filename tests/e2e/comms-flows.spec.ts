@@ -87,6 +87,74 @@ test.describe('automated communication flows', () => {
     }
   })
 
+  // An EMAIL step is authored with the rich editor into its own emailBody; the
+  // short plain body stays for push/in-app. Both must persist and travel with a
+  // saved template.
+  test('an email step keeps its own rich body, through save-as-template', async ({ page }) => {
+    const prisma = await makePrisma()
+    const cleanup: Array<() => Promise<unknown>> = []
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      const res = await page.request.post('/api/packages', {
+        data: { name: 'E2E Email Flow Class', sessionCount: 2, weeksBetween: 1, durationMins: 60, isGroup: true, startAt: inDays(10).toISOString() },
+      })
+      expect(res.status(), await res.text()).toBe(201)
+      const b = await res.json()
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+
+      const emailBody = '<p>Hi <strong>{{name}}</strong>, here is what to bring.</p><ul><li>Treats</li></ul>'
+      const create = await page.request.post(`/api/trainer/class-runs/${b.classRunId}/comms-flow`, {
+        data: {
+          direction: 'BEFORE_SESSION', offsetMinutes: 60, channels: ['EMAIL', 'PUSH'],
+          audience: 'ENROLLED', important: false, title: 'E2E What to bring',
+          body: 'Bring treats for {{dog}}.', emailBody, enabled: true,
+        },
+      })
+      expect(create.status(), await create.text()).toBe(201)
+
+      const step = await prisma.commsFlowStep.findFirst({ where: { classRunId: b.classRunId } })
+      expect(step?.emailBody).toBe(emailBody)
+      expect(step?.body).toBe('Bring treats for {{dog}}.') // push copy untouched
+
+      // The rich body survives being saved as a template.
+      const save = await page.request.post('/api/trainer/comms-flow-templates', {
+        data: { name: 'E2E Email Template', runId: b.classRunId },
+      })
+      expect(save.status(), await save.text()).toBe(201)
+      const tmpl = await save.json()
+      cleanup.push(() => prisma.commsFlowTemplate.delete({ where: { id: tmpl.id } }).catch(() => {}))
+      const savedTmpl = await prisma.commsFlowTemplate.findUnique({ where: { id: tmpl.id }, select: { steps: true } })
+      const tmplSteps = savedTmpl?.steps as { emailBody?: string }[]
+      expect(tmplSteps[0]?.emailBody).toBe(emailBody)
+
+      // …and lands intact on the next class it's applied to.
+      const res2 = await page.request.post('/api/packages', {
+        data: { name: 'E2E Email Flow Class 2', sessionCount: 2, weeksBetween: 1, durationMins: 60, isGroup: true, startAt: inDays(12).toISOString() },
+      })
+      const b2 = await res2.json()
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b2.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b2.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.package.delete({ where: { id: b2.id } }).catch(() => {}))
+      const apply = await page.request.post(`/api/trainer/class-runs/${b2.classRunId}/comms-flow/apply-template`, {
+        data: { templateId: tmpl.id },
+      })
+      expect(apply.status(), await apply.text()).toBe(201)
+      const applied = await prisma.commsFlowStep.findFirst({ where: { classRunId: b2.classRunId } })
+      expect(applied?.emailBody).toBe(emailBody)
+
+      // And the editor shows the email content, not just the push line.
+      await page.goto(`/classes/${b.classRunId}`)
+      await page.getByRole('button', { name: 'Reminders & messages' }).click()
+      await expect(page.getByText('E2E What to bring')).toBeVisible({ timeout: 15_000 })
+    } finally {
+      for (const fn of cleanup.reverse()) await fn()
+      await prisma.$disconnect()
+    }
+  })
+
   test('an unauthenticated caller cannot create a flow step', async ({ page, browser }) => {
     const prisma = await makePrisma()
     const cleanup: Array<() => Promise<unknown>> = []

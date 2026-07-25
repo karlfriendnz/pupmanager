@@ -52,6 +52,10 @@ export async function POST(req: Request) {
     select: {
       direction: true, offsetMinutes: true, channels: true, audience: true,
       customClientIds: true, important: true, title: true, body: true, enabled: true,
+      // The email channel's rich body is authored separately from `body`.
+      // Leaving it out here silently dropped the email content on save, so a
+      // template applied elsewhere fell back to the short push line.
+      emailBody: true,
     },
   })
   if (steps.length === 0) return NextResponse.json({ error: 'This flow has no messages to save' }, { status: 400 })
