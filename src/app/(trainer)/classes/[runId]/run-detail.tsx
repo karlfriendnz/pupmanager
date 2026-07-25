@@ -217,9 +217,10 @@ export function RunDetail({
       <div className="p-4 md:p-8 w-full">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* One tab at a time, full width, on every screen size. Delete/Edit live
-          in the top control bar. Scrolls sideways on a narrow phone. */}
-      <div className="mb-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Tabs only on phones/tablets, where two columns won't fit. On desktop
+          both panels sit side by side (details left, clients right), so the
+          tab bar is hidden. Scrolls sideways on a narrow phone. */}
+      <div className="mb-6 lg:hidden overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-2xl">
         {tabs.map(t => {
           const Icon = t.icon
@@ -246,10 +247,12 @@ export function RunDetail({
       </div>
       </div>
 
-      {/* One tab's content at a time, full width, on every screen size. */}
-      <div>
+      {/* Desktop: two columns — details (+ sessions) left, clients right.
+          Mobile/tablet: one tab at a time (hidden lg:flex keeps the inactive
+          panel hidden on small screens but always shown on desktop). */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
 
-      <div className={`flex flex-col gap-5 ${tab === 'details' ? '' : 'hidden'}`}>
+      <div className={`flex flex-col gap-5 ${tab === 'details' ? '' : 'hidden lg:flex'}`}>
 
           {run.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -353,7 +356,7 @@ export function RunDetail({
           </Card>
       </div>
 
-      <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden'}`}>
+      <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden lg:flex'}`}>
           <Card>
             <CardBody className="py-5">
               <CardHeading
