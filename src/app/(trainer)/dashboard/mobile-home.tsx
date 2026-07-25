@@ -167,7 +167,7 @@ export function MobileHome({
           somewhere that only covers half of it. */}
       {needsYou.length > 0 && (
         <div className={cn(
-          '-mx-4 mb-3 border-y border-amber-200 bg-amber-50',
+          'mb-3 overflow-hidden rounded-xl border border-amber-200 bg-amber-50',
           '[&>*+*]:border-t [&>*+*]:border-amber-200/70',
         )}>
           <button
@@ -209,7 +209,7 @@ export function MobileHome({
       {/* One live line about today, sharing the grid's flat treatment. */}
       <Link
         href="/schedule"
-        className="-mx-4 mb-3 flex items-center gap-3 border-y border-slate-200 bg-white px-4 py-3.5 active:bg-slate-50"
+        className="mb-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 active:bg-slate-50"
       >
         <Calendar className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" />
         <span className="min-w-0 flex-1">
@@ -227,10 +227,10 @@ export function MobileHome({
         <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
       </Link>
 
-      {/* Full-bleed block, still two buttons per row, divided by hairlines. The
-          nth-child rules drop the outer edges so only internal lines show. */}
+      {/* One block, divided by hairlines — not six floating cards. The nth-child
+          rules drop the outer edges so only the internal lines show. */}
       <div className={cn(
-        '-mx-4 grid grid-cols-2 border-y border-slate-200 bg-white',
+        'grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white',
         '[&>*]:border-b [&>*]:border-r [&>*]:border-slate-200',
         '[&>*:nth-child(2n)]:border-r-0',
         '[&>*:nth-last-child(-n+2)]:border-b-0',
