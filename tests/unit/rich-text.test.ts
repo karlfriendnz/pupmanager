@@ -34,6 +34,25 @@ describe('sanitizeRichHtml', () => {
     expect(sanitizeRichHtml('<style>body{}</style><p>ok</p>')).toBe('<p>ok</p>')
   })
 
+  it('keeps a text-colour span (hex, rgb, named)', () => {
+    expect(sanitizeRichHtml('<p><span style="color:#ef4444">red</span></p>')).toBe('<p><span style="color:#ef4444">red</span></p>')
+    expect(sanitizeRichHtml('<span style="color:rgb(255, 0, 0)">x</span>')).toContain('color:rgb(255, 0, 0)')
+    expect(sanitizeRichHtml('<span style="color:red">x</span>')).toContain('color:red')
+  })
+
+  it('drops any non-colour style riding on the span', () => {
+    const out = sanitizeRichHtml('<span style="color:#ef4444;position:fixed;top:0">x</span>')
+    expect(out).toContain('color:#ef4444')
+    expect(out).not.toContain('position')
+    expect(out).not.toContain('top')
+  })
+
+  it('strips a url()/expression colour value', () => {
+    const out = sanitizeRichHtml('<span style="color:url(javascript:alert(1))">x</span>')
+    expect(out).not.toContain('url(')
+    expect(out).not.toContain('javascript')
+  })
+
   it('passes plain text through unchanged (legacy descriptions stay safe)', () => {
     expect(sanitizeRichHtml('Just a plain description')).toBe('Just a plain description')
   })

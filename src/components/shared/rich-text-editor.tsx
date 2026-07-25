@@ -1,11 +1,18 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
-import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Link as LinkIcon, Unlink } from 'lucide-react'
+import { TextStyle } from '@tiptap/extension-text-style'
+import { Color } from '@tiptap/extension-color'
+import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Link as LinkIcon, Unlink, Baseline } from 'lucide-react'
 import { emailBodyToHtml } from '@/lib/email-html'
+
+// Preset text colours for the toolbar swatch. A curated palette (slate ink +
+// the accent-friendly brights) keeps descriptions readable rather than letting
+// people pick unreadable low-contrast colours.
+const TEXT_COLORS = ['#0f172a', '#ef4444', '#f97316', '#eab308', '#16a34a', '#0ea5e9', '#6366f1', '#db2777']
 
 // Basic rich-text editor for email bodies — headings, bold/italic, lists, links.
 // Emits HTML via onChange. `value` is the stored body (HTML, or legacy plain
@@ -38,6 +45,8 @@ export function RichTextEditor({ value, onChange, onBlur, minHeight = 260, theme
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3] } }),
       Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer' } }),
+      TextStyle,
+      Color,
     ],
     content: emailBodyToHtml(value),
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
@@ -95,6 +104,9 @@ function Toolbar({ editor, theme }: { editor: Editor; theme: Theme }) {
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
   }
 
+  const [showColors, setShowColors] = useState(false)
+  const currentColor = editor.getAttributes('textStyle').color as string | undefined
+
   const cls = { activeCls, idleCls }
   return (
     <div className={THEME[theme].toolbar}>
@@ -103,6 +115,29 @@ function Toolbar({ editor, theme }: { editor: Editor; theme: Theme }) {
       <span className={`mx-1 h-5 w-px ${divider}`} />
       <ToolbarBtn {...cls} label="Bold" active={editor.isActive('bold')} on={() => editor.chain().focus().toggleBold().run()}><Bold className="h-4 w-4" /></ToolbarBtn>
       <ToolbarBtn {...cls} label="Italic" active={editor.isActive('italic')} on={() => editor.chain().focus().toggleItalic().run()}><Italic className="h-4 w-4" /></ToolbarBtn>
+      {/* Text colour — a swatch that opens a preset palette. Buttons (not a
+          native colour input) so the text selection isn't lost on open. */}
+      <span className="relative">
+        <ToolbarBtn {...cls} label="Text colour" active={showColors || !!currentColor}
+          on={() => setShowColors(v => !v)}>
+          <Baseline className="h-4 w-4" style={currentColor ? { color: currentColor } : undefined} />
+        </ToolbarBtn>
+        {showColors && (
+          <div className={`absolute z-20 top-9 left-0 flex flex-wrap gap-1.5 w-[152px] p-2 rounded-lg shadow-lg border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+            {TEXT_COLORS.map(c => (
+              <button key={c} type="button" aria-label={`Colour ${c}`}
+                onMouseDown={e => { e.preventDefault(); editor.chain().focus().setColor(c).run(); setShowColors(false) }}
+                className="h-6 w-6 rounded-full border border-black/10 hover:scale-110 transition-transform"
+                style={{ backgroundColor: c }} />
+            ))}
+            <button type="button"
+              onMouseDown={e => { e.preventDefault(); editor.chain().focus().unsetColor().run(); setShowColors(false) }}
+              className={`h-6 px-2 rounded-md text-xs ${theme === 'dark' ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-100'}`}>
+              Default
+            </button>
+          </div>
+        )}
+      </span>
       <span className={`mx-1 h-5 w-px ${divider}`} />
       <ToolbarBtn {...cls} label="Bulleted list" active={editor.isActive('bulletList')} on={() => editor.chain().focus().toggleBulletList().run()}><List className="h-4 w-4" /></ToolbarBtn>
       <ToolbarBtn {...cls} label="Numbered list" active={editor.isActive('orderedList')} on={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered className="h-4 w-4" /></ToolbarBtn>

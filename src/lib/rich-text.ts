@@ -10,11 +10,24 @@ import sanitizeHtml from 'sanitize-html'
 
 // Tags the editor can produce, plus the inline formatting they nest. Anything
 // else (script/style/img/iframe/on* handlers/etc.) is dropped.
-const ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'h2', 'h3', 'ul', 'ol', 'li', 'a', 'blockquote', 'code', 'pre']
+const ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'h2', 'h3', 'ul', 'ol', 'li', 'a', 'blockquote', 'code', 'pre', 'span']
 
 const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   allowedTags: ALLOWED_TAGS,
-  allowedAttributes: { a: ['href', 'target', 'rel'] },
+  // The editor's TextStyle+Color mark emits <span style="color:…">. Allow the
+  // style attribute but restrict it to `color` with a strict value allowlist
+  // (allowedStyles below), so no other CSS can ride in.
+  allowedAttributes: { a: ['href', 'target', 'rel'], span: ['style'] },
+  allowedStyles: {
+    '*': {
+      color: [
+        /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/,
+        /^rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$/,
+        /^rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(?:0|1|0?\.\d+)\s*\)$/,
+        /^[a-zA-Z]+$/,
+      ],
+    },
+  },
   // http/https/mailto/tel only — no javascript:/data:/vbscript:.
   allowedSchemes: ['http', 'https', 'mailto', 'tel'],
   allowProtocolRelative: false,
