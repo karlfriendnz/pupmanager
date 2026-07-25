@@ -793,31 +793,36 @@ function TrainerMobileHeader({
   // name themselves here.
   const title = usePageTitle() ?? fallbackTitle
   const pathname = usePathname()
-  const showTitle = !!title && pathname !== '/dashboard'
+  const isHome = pathname === '/dashboard'
+  const showTitle = !!title && !isHome
   return (
     <header
       className="md:hidden sticky top-0 z-40 border-b border-slate-100 bg-white/95 backdrop-blur"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
       <div className="flex h-14 items-center gap-2 px-3">
-        {/* Logo — always top-left, links to the trainer's home page (Settings). */}
-        <Link href={homeHref} aria-label="Home" className="flex shrink-0 items-center">
-          {trainerIcon ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={trainerIcon} alt="" className="h-8 w-8 rounded-lg object-contain" />
-          ) : trainerLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={trainerLogo} alt="" className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100" />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg" />
-          )}
-        </Link>
+        {/* Logo — top-left on inner pages, links to the trainer's home page.
+            The home screen shows the same logo large and centred, so repeating
+            it in the bar above (with the name beside it) says it three times. */}
+        {!isHome && (
+          <Link href={homeHref} aria-label="Home" className="flex shrink-0 items-center">
+            {trainerIcon ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={trainerIcon} alt="" className="h-8 w-8 rounded-lg object-contain" />
+            ) : trainerLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={trainerLogo} alt="" className="h-8 w-8 rounded-lg object-contain bg-white ring-1 ring-slate-100" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src="/logo.png" alt="" className="h-8 w-8 rounded-lg" />
+            )}
+          </Link>
+        )}
         {/* Back slot — always present so the portal target exists on first paint. */}
         <span id="pm-topbar-back-mobile" className="flex items-center empty:hidden" />
-        {/* On inner pages, the page name; on the dashboard, the business name. */}
+        {/* Inner pages name themselves; the home screen leaves it to the logo. */}
         <span className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">
-          {showTitle ? title : businessName ?? 'PupManager'}
+          {showTitle ? title : isHome ? '' : businessName ?? 'PupManager'}
         </span>
         {/* Page-actions slot — always present (empty:hidden). */}
         <span id="pm-topbar-actions-mobile" className="flex items-center gap-1.5 empty:hidden" />

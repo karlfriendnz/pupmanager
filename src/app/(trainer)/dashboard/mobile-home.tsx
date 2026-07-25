@@ -139,32 +139,26 @@ export function MobileHome({
   return (
     <section className="md:hidden -mt-1 mb-6">
 
-      {/* Plain welcome — their logo, their name. No gradient, no card. */}
-      <div className="mb-4 flex items-center gap-3 px-0.5">
+      {/* The trainer's own brand, centred and given room — the business name in
+          text would only repeat what the logo already says. */}
+      <div className="mb-5 flex flex-col items-center pt-1">
         {logoUrl ? (
-          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white p-1">
-            {/* Plain <img>: trainer logos live on Vercel Blob, which isn't in
-                next/image's remotePatterns (same as everywhere else). */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={logoUrl}
-              alt={businessName || 'Business logo'}
-              className="h-full w-full object-contain"
-            />
-          </span>
+          // Plain <img>: trainer logos live on Vercel Blob, which isn't in
+          // next/image's remotePatterns (same as everywhere else).
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoUrl}
+            alt={businessName || 'Business logo'}
+            className="h-20 w-auto max-w-[70%] object-contain"
+          />
         ) : (
-          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-base font-semibold text-slate-700">
+          <span className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-200 bg-white text-2xl font-semibold text-slate-700">
             {(businessName || firstName || 'P').charAt(0).toUpperCase()}
           </span>
         )}
-        <div className="min-w-0">
-          <p className="text-[17px] font-semibold leading-tight text-slate-900">
-            Good {greeting}{firstName ? `, ${firstName}` : ''}
-          </p>
-          {businessName && (
-            <p className="truncate text-[13px] text-slate-500">{businessName}</p>
-          )}
-        </div>
+        <p className="mt-2.5 text-[13px] text-slate-500">
+          Good {greeting}{firstName ? `, ${firstName}` : ''}
+        </p>
       </div>
 
       {/* Everything waiting on the trainer, summed into one line — amber so it
@@ -173,7 +167,7 @@ export function MobileHome({
           somewhere that only covers half of it. */}
       {needsYou.length > 0 && (
         <div className={cn(
-          'mb-3 overflow-hidden rounded-xl border border-amber-200 bg-amber-50',
+          '-mx-4 mb-3 border-y border-amber-200 bg-amber-50',
           '[&>*+*]:border-t [&>*+*]:border-amber-200/70',
         )}>
           <button
@@ -215,7 +209,7 @@ export function MobileHome({
       {/* One live line about today, sharing the grid's flat treatment. */}
       <Link
         href="/schedule"
-        className="mb-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 active:bg-slate-50"
+        className="-mx-4 mb-3 flex items-center gap-3 border-y border-slate-200 bg-white px-4 py-3.5 active:bg-slate-50"
       >
         <Calendar className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" />
         <span className="min-w-0 flex-1">
@@ -233,10 +227,10 @@ export function MobileHome({
         <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
       </Link>
 
-      {/* One block, divided by hairlines — not six floating cards. The nth-child
-          rules drop the outer edges so only the internal lines show. */}
+      {/* Full-bleed block, still two buttons per row, divided by hairlines. The
+          nth-child rules drop the outer edges so only internal lines show. */}
       <div className={cn(
-        'grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white',
+        '-mx-4 grid grid-cols-2 border-y border-slate-200 bg-white',
         '[&>*]:border-b [&>*]:border-r [&>*]:border-slate-200',
         '[&>*:nth-child(2n)]:border-r-0',
         '[&>*:nth-last-child(-n+2)]:border-b-0',
