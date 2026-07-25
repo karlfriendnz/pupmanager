@@ -4,10 +4,12 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import {
-  Calendar, Users, Layers, FileText, Wallet, LayoutGrid,
+  Calendar, Users, Layers, FileText, Wallet,
   MessageSquare, ChevronRight, Inbox, CalendarClock, ClipboardCheck,
+  Navigation, Dog, Megaphone, BarChart3,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import type { TileId } from '@/lib/home-tiles'
 
 /**
  * Phone-only home screen for trainers.
@@ -47,7 +49,7 @@ export function MobileHome({
   unreadMessages,
   bookingRequestCount,
   bookingRequestHref,
-  notesOn,
+  tileIds,
 }: {
   greeting: string
   firstName: string
@@ -63,7 +65,8 @@ export function MobileHome({
   unreadMessages: number
   bookingRequestCount: number
   bookingRequestHref: string | null
-  notesOn: boolean
+  /** Which buttons to show, in order — resolved from the trainer's trade. */
+  tileIds: TileId[]
 }) {
   const openMore = () => window.dispatchEvent(new CustomEvent('pm:open-more'))
   const [reviewOpen, setReviewOpen] = useState(false)
@@ -88,61 +91,79 @@ export function MobileHome({
   ].filter(r => r !== null)
   const reviewTotal = bookingRequestCount + enquiryCount
 
-  const tiles: Tile[] = [
-    {
+  // What each tile says. Which of them appear, and in what order, is decided
+  // by the trainer's trade (see lib/home-tiles) — a dog walker leads with their
+  // route, a groomer doesn't want a notes backlog up front.
+  const CATALOG: Record<TileId, Tile> = {
+    schedule: {
       href: '/schedule',
       label: 'Schedule',
       sub: todayCount === 1 ? '1 session today' : `${todayCount} sessions today`,
       icon: Calendar,
     },
-    {
+    clients: {
       href: '/clients',
       label: 'Clients',
       sub: `${activeClients} active`,
       icon: Users,
     },
-    {
+    offerings: {
       href: '/offerings',
       label: 'Offerings',
       sub: 'Packages & classes',
       icon: Layers,
     },
-    notesOn
-      ? {
-          href: '/sessions/needs-notes',
-          // Same name as the bottom tab and the page's own title — one
-          // destination shouldn't answer to two names.
-          label: 'To do',
-          sub: notesCount === 1 ? '1 to write' : `${notesCount} to write`,
-          icon: FileText,
-        }
-      : {
-          href: '/offerings',
-          label: 'Library',
-          sub: 'Session plans & templates',
-          icon: Layers,
-        },
-    {
+    todo: {
+      href: '/sessions/needs-notes',
+      // Same name as the bottom tab and the page's own title — one destination
+      // shouldn't answer to two names.
+      label: 'To do',
+      sub: notesCount === 1 ? '1 to write' : `${notesCount} to write`,
+      icon: FileText,
+    },
+    money: {
       href: '/finances',
-      label: 'Money',
       // Whole units only — cents don't help on a tile and ".00" is what pushes
       // a 5-figure total (or a wider currency symbol) into truncation.
+      label: 'Money',
       sub: invoiceCount > 0
         ? `${invoiceLabel?.replace(/[.,]00$/, '') ?? invoiceCount} to invoice`
         : 'Payments & invoices',
       icon: Wallet,
     },
-    {
-      // The menu now lives in the header hamburger, so this slot goes to a
-      // place trainers actually work rather than a third door to the same sheet.
+    messages: {
       href: '/messages',
       label: 'Messages',
-      sub: unreadMessages > 0
-        ? `${unreadMessages} unread`
-        : 'Client conversations',
+      sub: unreadMessages > 0 ? `${unreadMessages} unread` : 'Client conversations',
       icon: MessageSquare,
     },
-  ]
+    route: {
+      href: '/schedule/route',
+      label: 'Route',
+      sub: 'Today’s run, in order',
+      icon: Navigation,
+    },
+    daycare: {
+      href: '/doggy-daycare',
+      label: 'Daycare',
+      sub: 'Week board & day parts',
+      icon: Dog,
+    },
+    marketing: {
+      href: '/marketing',
+      label: 'Marketing',
+      sub: 'Email your clients',
+      icon: Megaphone,
+    },
+    reports: {
+      href: '/reports',
+      label: 'Reports',
+      sub: 'How the business is doing',
+      icon: BarChart3,
+    },
+  }
+
+  const tiles: Tile[] = tileIds.map(id => CATALOG[id]).filter(Boolean)
 
   return (
     <section className="md:hidden -mt-1 mb-6">

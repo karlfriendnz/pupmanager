@@ -33,6 +33,9 @@ import { initTrainerOnboarding } from '@/lib/onboarding/init'
 import { getOnboardingState } from '@/lib/onboarding/state'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
 import { countUnreadMessages } from '@/lib/unread-messages'
+import { resolveHomeTiles } from '@/lib/home-tiles'
+import { can, type PermissionKey } from '@/lib/permissions'
+import { getTrainerContext } from '@/lib/membership'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Dashboard' }
@@ -72,7 +75,7 @@ export default async function DashboardPage({
   const brandingP = prisma.trainerProfile.findUnique({
     where: { id: trainerId },
     select: {
-      businessName: true, logoUrl: true, emailAccentColor: true,
+      businessName: true, logoUrl: true, emailAccentColor: true, businessRoles: true,
       clientWelcomeNote: true, website: true, phone: true, publicEmail: true, signupCountry: true,
       payoutCurrency: true, pendingTeamInvites: true, connectChargesEnabled: true,
       subscriptionStatus: true, trialEndsAt: true, stripeSubscriptionId: true,
@@ -261,6 +264,19 @@ export default async function DashboardPage({
   const hasTodos = await hasAddon(trainerId, 'todos')
   const notesOn = await hasAddon(trainerId, 'notes')
 
+  // Which buttons this trainer's phone home shows. Their trade decides the
+  // order (a walker leads with the route, a groomer skips the notes backlog);
+  // add-ons and permissions decide what's offered at all.
+  // Role + permissions from getTrainerContext, not the session's companyRole
+  // hint — same source the nav gates on, so a tile can't offer what the menu
+  // hides.
+  const memberCtx = await getTrainerContext()
+  const homeTileIds = resolveHomeTiles({
+    roles: brandingProfile?.businessRoles ?? [],
+    enabledAddons: enabledAddonSet,
+    hasPermission: (p) => (memberCtx ? can(p as PermissionKey, memberCtx.role, memberCtx.permissions) : true),
+  })
+
   const totalClients = clients.length
   const activeClients = clients.filter(c => c.status === 'ACTIVE').length
   // Dog counts: primary dog (c.dogId) + additional household dogs (c.dogs).
@@ -405,7 +421,7 @@ export default async function DashboardPage({
           bookingRequestHref={
             pendingBookingRequests[0] ? schedulePreviewHref(pendingBookingRequests[0].id) : null
           }
-          notesOn={notesOn}
+          tileIds={homeTileIds}
         />
         <WaitlistNudge trainerId={trainerId} />
         {sampleClientCount === 0 && <OnboardingPanel state={onboardingState} branding={branding} impersonating={!!session.user.impersonatorId} />}
