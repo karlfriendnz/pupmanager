@@ -85,11 +85,23 @@ const NAV_SECTION_LABEL: Record<NavSection, string | null> = {
   system: null,
 }
 
-// On phones the bottom tab bar is limited to four primary destinations plus
-// a "More" tab — anything not in this list lives in the More sheet.
-const TRAINER_MOBILE_PRIMARY_HREFS = new Set([
-  '/dashboard', '/clients', '/schedule', '/messages',
-])
+// The phone's five bottom tabs, in the order they appear. The More sheet moved
+// to the header hamburger, so the fifth slot goes to the to-do list (past
+// sessions still needing a write-up or an invoice) — the thing a trainer
+// actually opens between clients — rather than to a menu.
+//
+// Icons/labels are declared here rather than looked up from TRAINER_NAV because
+// /sessions/needs-notes isn't a nav row of its own.
+const TRAINER_MOBILE_TABS: { href: string; label: string; icon: LucideIcon; needsNav?: string }[] = [
+  { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
+  { href: '/schedule', label: 'Schedule', icon: Calendar },
+  { href: '/clients', label: 'Clients', icon: Users },
+  { href: '/messages', label: 'Messages', icon: MessageSquare },
+  // Gated by the same add-on as the Notes nav row.
+  { href: '/sessions/needs-notes', label: 'To do', icon: ClipboardList, needsNav: '/sessions/draft-notes' },
+]
+// Anything not a tab lives in the More sheet.
+const TRAINER_MOBILE_PRIMARY_HREFS = new Set(TRAINER_MOBILE_TABS.map(t => t.href))
 
 // Mobile bottom tabs (4 primary + a Menu hamburger added in the shell).
 const CLIENT_TABS = [
@@ -963,9 +975,11 @@ function TrainerShell({
 
   // Group parents (e.g. Communication) don't navigate, so they never appear on
   // mobile — their children surface directly in the bottom bar / More sheet.
-  const mobilePrimary = trainerNav.filter(i => !i.group && TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
+  // Tabs still answer to permissions and add-ons: a tab shows only when its own
+  // route (or the nav row it's gated by) survived the trainerNav filter.
+  const navHrefs = new Set(trainerNav.map(i => i.href))
+  const mobilePrimary = TRAINER_MOBILE_TABS.filter(t => navHrefs.has(t.needsNav ?? t.href))
   const mobileSecondary = trainerNav.filter(i => !i.group && !TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
-  const isOnSecondary = mobileSecondary.some(i => pathname === i.href || pathname.startsWith(i.href + '/'))
 
   // Top-bar title fallback for pages that don't set one (e.g. /schedule): the
   // longest-matching nav label for the current route.
@@ -1239,7 +1253,10 @@ function TrainerShell({
         <div className="flex">
           {mobilePrimary.map((item) => {
             if (lockedAddons.has(item.href)) {
-              return <LockedNavRow key={item.href} item={item} variant="mobile-tab" />
+              // lockedAddons is empty today (add-on-locked routes are hidden,
+              // not shown disabled); `section` is only here to satisfy NavItem
+              // if that decision is reverted.
+              return <LockedNavRow key={item.href} item={{ ...item, section: 'overview' }} variant="mobile-tab" />
             }
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
             const Icon = item.icon
@@ -1266,19 +1283,8 @@ function TrainerShell({
               </Link>
             )
           })}
-          <button
-            type="button"
-            onClick={() => setMoreOpen(true)}
-            aria-haspopup="dialog"
-            aria-expanded={moreOpen}
-            className={cn(
-              'flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors cursor-pointer',
-              isOnSecondary ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
-            )}
-          >
-            <MoreHorizontal className={cn('h-5 w-5 transition-transform', isOnSecondary && 'scale-110')} />
-            <span className="text-[10px] font-medium">More</span>
-          </button>
+          {/* No "More" tab — the header hamburger opens that sheet now, so the
+              five slots down here all go to places a trainer works in. */}
         </div>
       </nav>
       )}

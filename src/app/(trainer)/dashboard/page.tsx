@@ -32,6 +32,7 @@ import { activeAddonComps } from '@/lib/addon-grants'
 import { initTrainerOnboarding } from '@/lib/onboarding/init'
 import { getOnboardingState } from '@/lib/onboarding/state'
 import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
+import { countUnreadMessages } from '@/lib/unread-messages'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Dashboard' }
@@ -118,6 +119,10 @@ export default async function DashboardPage({
       _count: { select: { formResponses: true } },
       clientPackage: { select: { package: { select: { priceCents: true, sessionCount: true } } } },
     },
+  })
+  // Unread client messages — the phone home's Messages tile states the count.
+  const unreadMessagesP = countUnreadMessages({
+    kind: 'trainer', companyId: trainerId, userId: session.user.id,
   })
   // Phone home shows pending booking requests as a single row, so it needs the
   // count and somewhere to send the trainer (the schedule preview of the first).
@@ -296,6 +301,7 @@ export default async function DashboardPage({
   // so the trainer can fulfil items at the next session and dismiss the chip.
   const pendingProductRequests = await pendingProductRequestsP
   const pendingBookingRequests = await pendingBookingRequestsP
+  const unreadMessages = await unreadMessagesP
 
   // Index requests by client so we can show them inline on each "Coming up
   // today" session row — the trainer sees what to bring at a glance.
@@ -394,6 +400,7 @@ export default async function DashboardPage({
           invoiceCount={wrapInvoiceCount}
           invoiceLabel={wrapInvoiceLabel}
           enquiryCount={unviewedEnquiryCount}
+          unreadMessages={unreadMessages}
           bookingRequestCount={pendingBookingRequests.length}
           bookingRequestHref={
             pendingBookingRequests[0] ? schedulePreviewHref(pendingBookingRequests[0].id) : null

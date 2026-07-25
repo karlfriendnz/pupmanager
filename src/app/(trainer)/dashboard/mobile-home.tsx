@@ -44,6 +44,7 @@ export function MobileHome({
   invoiceCount,
   invoiceLabel,
   enquiryCount,
+  unreadMessages,
   bookingRequestCount,
   bookingRequestHref,
   notesOn,
@@ -59,6 +60,7 @@ export function MobileHome({
   invoiceCount: number
   invoiceLabel: string | null
   enquiryCount: number
+  unreadMessages: number
   bookingRequestCount: number
   bookingRequestHref: string | null
   notesOn: boolean
@@ -108,15 +110,17 @@ export function MobileHome({
     notesOn
       ? {
           href: '/sessions/needs-notes',
-          label: 'Notes',
+          // Same name as the bottom tab and the page's own title — one
+          // destination shouldn't answer to two names.
+          label: 'To do',
           sub: notesCount === 1 ? '1 to write' : `${notesCount} to write`,
           icon: FileText,
         }
       : {
-          href: '/messages',
-          label: 'Messages',
-          sub: 'Client conversations',
-          icon: MessageSquare,
+          href: '/offerings',
+          label: 'Library',
+          sub: 'Session plans & templates',
+          icon: Layers,
         },
     {
       href: '/finances',
@@ -129,10 +133,14 @@ export function MobileHome({
       icon: Wallet,
     },
     {
-      onClick: openMore,
-      label: 'More',
-      sub: 'Reports, settings & more',
-      icon: LayoutGrid,
+      // The menu now lives in the header hamburger, so this slot goes to a
+      // place trainers actually work rather than a third door to the same sheet.
+      href: '/messages',
+      label: 'Messages',
+      sub: unreadMessages > 0
+        ? `${unreadMessages} unread`
+        : 'Client conversations',
+      icon: MessageSquare,
     },
   ]
 
