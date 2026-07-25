@@ -107,9 +107,10 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           wastes half a wide monitor. Same shape as a class page. */}
       <div className="p-4 md:p-8 w-full">
 
-        {/* One tab at a time, full width, on every screen size. Scrolls
-            sideways on a narrow phone. */}
-        <div className="mb-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Tabs only on phones/tablets. On desktop details + clients sit side by
+            side (with messages full-width below), so the tab bar is hidden.
+            Scrolls sideways on a narrow phone. */}
+        <div className="mb-6 lg:hidden overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-2xl">
             {tabs.map(t => {
               const Icon = t.icon
@@ -136,10 +137,11 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           </div>
         </div>
 
-        {/* One tab's content at a time, full width, on every screen size. */}
-        <div>
+        {/* Desktop: details left, clients right. Mobile/tablet: one tab at a
+            time (hidden lg:flex keeps the inactive panel visible on desktop). */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
 
-          <div className={tab === 'details' ? 'flex flex-col gap-5' : 'hidden'}>
+          <div className={`flex flex-col gap-5 ${tab === 'details' ? '' : 'hidden lg:flex'}`}>
 
             {/* No cover image here — an image belongs to a scheduled class
                 run, not to the package definition behind it. */}
@@ -212,7 +214,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             </div>
           </div>
 
-          <div className={tab === 'clients' ? 'flex flex-col gap-5' : 'hidden'}>
+          <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden lg:flex'}`}>
 
             <Card>
               <CardBody className="py-5">
@@ -274,7 +276,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
         {/* Automated session reminders for this 1:1 package — full width. Phone
             tab; always shown below the columns on a wide screen. */}
         {!pkg.isGroup && (
-          <div className={tab === 'messages' ? '' : 'hidden'}>
+          <div className={`lg:mt-5 ${tab === 'messages' ? '' : 'hidden lg:block'}`}>
             <CommsFlowEditor
               packageId={pkg.id}
               clients={Array.from(new Map(clients.map(c => [c.clientId, { id: c.clientId, name: c.clientName }])).values())}
