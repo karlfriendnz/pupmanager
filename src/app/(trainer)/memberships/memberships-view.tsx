@@ -7,7 +7,8 @@ import { isRichTextEmpty } from '@/lib/rich-text'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, ChevronDown } from 'lucide-react'
+import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, ChevronDown, Sparkles } from 'lucide-react'
+import { escapeHtml } from '@/lib/html-escape'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { Switch } from '@/components/ui/switch'
@@ -88,6 +89,9 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const [error, setError] = useState<string | null>(null)
   // Which included item's image/blurb panel is expanded (by key).
   const [openItem, setOpenItem] = useState<string | null>(null)
+  // Bumped to force the description editor to remount when we replace its
+  // content (RichTextEditor only reads `value` on mount).
+  const [descBump, setDescBump] = useState(0)
 
   function offeringsFor(k: Kind): Offering[] {
     return k === 'PACKAGE' ? offerings.packages : k === 'CLASS' ? offerings.classRuns : offerings.products
@@ -117,6 +121,24 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const addItem = () => patch({ items: [...draft!.items, { key: `k${seq++}`, kind: 'PACKAGE', id: '', quantity: 1, regrantOnRenewal: false, imageUrl: null, description: '' }] })
   const patchItem = (key: string, p: Partial<DraftItem>) => patch({ items: draft!.items.map(it => (it.key === key ? { ...it, ...p } : it)) })
   const removeItem = (key: string) => patch({ items: draft!.items.filter(it => it.key !== key) })
+
+  // Build the membership's own description from the included items — a heading
+  // per item followed by its (resolved) blurb — as a starting point the trainer
+  // can then edit. Only items with an offering chosen are included.
+  const canPullDescription = !!draft && draft.items.some(it => it.id)
+  function pullDescriptionFromItems() {
+    if (!draft) return
+    const html = draft.items
+      .filter(it => it.id)
+      .map(it => {
+        const off = offeringOf(it)
+        const blurb = it.description.trim() || off?.description || ''
+        return `<h3>${escapeHtml(off?.name ?? '')}</h3>${blurb}`
+      })
+      .join('')
+    patch({ description: html })
+    setDescBump(b => b + 1)
+  }
 
   // "Normally" = sum of the included offerings' own prices (classes have no
   // standalone price here, so they don't add to it).
@@ -185,7 +207,17 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
           <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
             <div className="p-5 flex flex-col gap-3">
               <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Membership name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
-              <RichTextEditor value={draft.description} onChange={html => patch({ description: isRichTextEmpty(html) ? '' : html })} key={draft.id ?? 'new'} minHeight={100} theme="light" />
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-sm font-medium text-slate-700">Description</span>
+                  <button type="button" onClick={pullDescriptionFromItems} disabled={!canPullDescription}
+                    title="Compose the description from the included items — then edit it"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                    <Sparkles className="h-3.5 w-3.5" /> Pull in from items
+                  </button>
+                </div>
+                <RichTextEditor value={draft.description} onChange={html => patch({ description: isRichTextEmpty(html) ? '' : html })} key={`${draft.id ?? 'new'}-${descBump}`} minHeight={100} theme="light" />
+              </div>
               <div className="flex items-center gap-2">
                 <div className="relative">
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{sym}</span>
