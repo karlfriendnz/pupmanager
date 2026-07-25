@@ -1,6 +1,8 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { XeroAccountField } from '@/components/shared/xero-account-field'
@@ -390,12 +392,11 @@ function ProductEditor({
           {/* Description */}
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">Description</label>
-            <textarea
-              rows={3}
+            <RichTextEditor
               value={draft.description ?? ''}
-              onChange={e => update('description', e.target.value || null)}
-              placeholder="What it is, who it's for, why it helps."
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+              onChange={html => update('description', isRichTextEmpty(html) ? null : html)}
+              minHeight={120}
+              theme="light"
             />
           </div>
 

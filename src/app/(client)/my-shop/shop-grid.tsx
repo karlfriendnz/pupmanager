@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import { RichText } from '@/components/shared/rich-text'
 import { useRouter } from 'next/navigation'
 import {
   Star, Package as PackageIcon, FileDown, Download, ShoppingBag, X, Tag,
@@ -278,9 +279,7 @@ function ProductModal({
             <p className="mt-1 text-lg font-semibold text-slate-700">{formatPrice(product.priceCents, currency)}</p>
           </div>
 
-          {product.description && (
-            <p className="text-sm text-slate-600 whitespace-pre-wrap">{product.description}</p>
-          )}
+          <RichText html={product.description} className="text-sm text-slate-600" />
 
           {canDownload ? (
             <a

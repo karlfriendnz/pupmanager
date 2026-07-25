@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
 import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag } from 'lucide-react'
@@ -134,7 +136,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
           <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
             <div className="p-5 flex flex-col gap-3">
               <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Membership name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
-              <textarea value={draft.description} onChange={e => patch({ description: e.target.value })} rows={2} placeholder="What's in it / who it's for (optional)" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+              <RichTextEditor value={draft.description} onChange={html => patch({ description: isRichTextEmpty(html) ? '' : html })} key={draft.id ?? 'new'} minHeight={100} theme="light" />
               <div className="flex items-center gap-2">
                 <div className="relative">
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{sym}</span>
