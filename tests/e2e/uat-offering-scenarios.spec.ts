@@ -45,10 +45,15 @@ async function makePackage(prisma: Awaited<ReturnType<typeof makePrisma>>, train
   })
 }
 
-/** 10am, a week out — inside the seeded 09:00–17:00 availability. */
-function nextWeekAt10(): string {
-  const d = new Date(Date.now() + 7 * 864e5)
-  d.setHours(10, 0, 0, 0)
+/**
+ * A bookable slot inside the seeded 09:00–17:00 availability. Each test takes
+ * its OWN day and hour: the whole suite shares one database and one trainer's
+ * diary, so a fixed "next week at 10" collides with whatever an earlier spec
+ * left in the calendar and self-booking answers "That time's just been taken".
+ */
+function freeSlot(daysOut: number, hour: number): string {
+  const d = new Date(Date.now() + daysOut * 864e5)
+  d.setHours(hour, 0, 0, 0)
   return d.toISOString()
 }
 
@@ -70,7 +75,7 @@ test.describe('UAT — offerings set up several ways', () => {
 
       await login(page, SEED.client.email, SEED.client.password)
       const res = await page.request.post('/api/my/self-book', {
-        data: { packageId: pkg.id, startDate: nextWeekAt10() },
+        data: { packageId: pkg.id, startDate: freeSlot(40, 11) },
       })
       expect(res.status(), await res.text()).toBe(201)
 
@@ -105,7 +110,7 @@ test.describe('UAT — offerings set up several ways', () => {
 
       await login(page, SEED.client.email, SEED.client.password)
       const res = await page.request.post('/api/my/self-book', {
-        data: { packageId: pkg.id, startDate: nextWeekAt10() },
+        data: { packageId: pkg.id, startDate: freeSlot(47, 12) },
       })
       expect(res.status(), await res.text()).toBe(201)
 
@@ -135,7 +140,7 @@ test.describe('UAT — offerings set up several ways', () => {
 
       await login(page, SEED.client.email, SEED.client.password)
       const res = await page.request.post('/api/my/self-book', {
-        data: { packageId: pkg.id, startDate: nextWeekAt10() },
+        data: { packageId: pkg.id, startDate: freeSlot(54, 13) },
       })
       expect([200, 201], await res.text()).toContain(res.status())
 

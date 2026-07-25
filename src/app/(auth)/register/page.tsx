@@ -1,9 +1,14 @@
+import { headers } from 'next/headers'
 import type { Metadata } from 'next'
 import { RegisterForm } from './register-form'
 
 export const metadata: Metadata = { title: 'Create account' }
 
-export default function RegisterPage() {
+export default async function RegisterPage() {
+  // Vercel's edge tells us where the request came from. Used ONLY to preselect
+  // the country — the trainer confirms it, so a VPN or a missing header just
+  // means they pick from the list.
+  const geoCountry = (await headers()).get('x-vercel-ip-country')?.toUpperCase() || null
   const enabledOAuth = {
     google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
     apple: Boolean(process.env.APPLE_CLIENT_ID && process.env.APPLE_TEAM_ID && process.env.APPLE_KEY_ID && process.env.APPLE_PRIVATE_KEY),
@@ -16,7 +21,7 @@ export default function RegisterPage() {
           Start managing your clients and training plans
         </p>
       </div>
-      <RegisterForm enabledOAuth={enabledOAuth} />
+      <RegisterForm enabledOAuth={enabledOAuth} defaultCountry={geoCountry} />
     </div>
   )
 }

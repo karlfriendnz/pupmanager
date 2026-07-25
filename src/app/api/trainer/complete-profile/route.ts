@@ -14,6 +14,9 @@ const schema = z.object({
   phone: z.string().trim().min(6).max(30),
   showPhoneToClients: z.boolean().optional().default(false),
   publicEmail: z.union([z.string().email(), z.literal('')]).optional(),
+  // The form requires this; optional here so an older client (a cached page
+  // mid-deploy) still saves, falling back to the geo header below.
+  signupCountry: z.string().regex(/^[A-Za-z]{2}$/).optional(),
 })
 
 export async function POST(req: Request) {
@@ -26,7 +29,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Please fill in all fields.' }, { status: 400 })
   }
-  const { name, businessName, phone, showPhoneToClients, publicEmail } = parsed.data
+  const { name, businessName, phone, showPhoneToClients, publicEmail, signupCountry: signupCountryInput } = parsed.data
 
   // Only owners have a TrainerProfile keyed to their userId; invited staff
   // don't and shouldn't be here. Bail rather than create a stray business.
@@ -45,8 +48,9 @@ export async function POST(req: Request) {
   // and with it no currency default and nothing for Stripe onboarding to use.
   // This gate is the first authenticated request they make, so it's the first
   // chance to ask the network where they are.
+  // What they chose wins, then whatever we already held, then the network.
   const geoCountry = req.headers.get('x-vercel-ip-country')?.toUpperCase() || null
-  const signupCountry = owned.signupCountry ?? geoCountry
+  const signupCountry = signupCountryInput?.toUpperCase() || owned.signupCountry || geoCountry
 
   await prisma.$transaction([
     prisma.user.update({ where: { id: session.user.id }, data: { name } }),

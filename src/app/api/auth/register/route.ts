@@ -25,6 +25,9 @@ const schema = z.object({
   publicEmail: z.union([z.string().email(), z.literal('')]).optional(),
   // Optional promo code — when valid it sets the total trial length.
   promoCode: z.string().max(40).optional(),
+  // The country the trainer chose. The form requires it; the geo header is only
+  // a fallback for callers that don't send one (the native app's own flow).
+  signupCountry: z.string().regex(/^[A-Za-z]{2}$/).optional(),
 })
 
 const TRIAL_DAYS = 10
@@ -102,7 +105,10 @@ export async function POST(req: Request) {
         promoCodeId,
         // Country of signup from Vercel's IP geo header (ISO alpha-2), for the
         // admin flag. Null in local dev / when the header is absent.
-        signupCountry: req.headers.get('x-vercel-ip-country')?.toUpperCase() || null,
+        // What they told us wins; the network's guess is the fallback.
+        signupCountry: parsed.data.signupCountry?.toUpperCase()
+          || req.headers.get('x-vercel-ip-country')?.toUpperCase()
+          || null,
       },
     })
 

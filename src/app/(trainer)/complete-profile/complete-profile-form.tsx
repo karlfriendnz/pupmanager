@@ -1,6 +1,7 @@
 'use client'
 
 import { useForm } from 'react-hook-form'
+import { COUNTRIES } from '@/lib/countries'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
@@ -17,6 +18,9 @@ const schema = z.object({
   showPhoneToClients: z.boolean().optional(),
   // Optional company email shown to clients. Empty is allowed.
   publicEmail: z.union([z.string().email('Enter a valid email'), z.literal('')]).optional(),
+  // Required here too: this gate is where an OAuth sign-up lands, and OAuth is
+  // exactly the route that never captured a country.
+  signupCountry: z.string().regex(/^[A-Za-z]{2}$/, 'Please choose your country'),
 })
 
 type FormData = z.infer<typeof schema>
@@ -27,12 +31,14 @@ export function CompleteProfileForm({
   defaultPhone,
   defaultShowPhoneToClients,
   defaultPublicEmail,
+  defaultCountry,
 }: {
   defaultName: string
   defaultBusinessName: string
   defaultPhone: string
   defaultShowPhoneToClients: boolean
   defaultPublicEmail: string
+  defaultCountry: string
 }) {
   const [serverError, setServerError] = useState<string | null>(null)
   const {
@@ -47,6 +53,7 @@ export function CompleteProfileForm({
       phone: defaultPhone,
       showPhoneToClients: defaultShowPhoneToClients,
       publicEmail: defaultPublicEmail,
+      signupCountry: defaultCountry,
     },
   })
 
@@ -111,6 +118,21 @@ export function CompleteProfileForm({
               />
               <span>Show my phone number to clients (so they can call you). Leave unticked to keep it private.</span>
             </label>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="signupCountry" className="text-sm font-medium text-slate-700">Country</label>
+            <select
+              id="signupCountry"
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {...register('signupCountry')}
+            >
+              <option value="">Select your country…</option>
+              {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+            </select>
+            {errors.signupCountry?.message && (
+              <p className="text-sm text-red-600">{errors.signupCountry.message}</p>
+            )}
+            <p className="text-xs text-slate-500">Sets the currency you&apos;re priced and paid in.</p>
           </div>
           <Input
             label="Business email (optional)"

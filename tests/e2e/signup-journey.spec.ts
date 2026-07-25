@@ -64,6 +64,7 @@ test.describe('a brand-new customer signs up on a phone', () => {
       await page.getByLabel('Your name').fill('Nina Numpty')
       await page.getByLabel('Business name').fill('Numpty Dog Co')
       await page.getByLabel('Phone number').fill('021 000 0000')
+      await page.getByLabel('Country').selectOption('NZ')
       await page.getByLabel('Your email').fill('not-an-email')
       await page.getByRole('button', { name: 'Create account' }).click()
       await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible()
@@ -106,11 +107,13 @@ test.describe('a brand-new customer signs up on a phone', () => {
 
       const user = await prisma.user.findUnique({
         where: { email },
-        select: { id: true, emailVerified: true, role: true, trainerProfile: { select: { businessName: true, subscriptionStatus: true } } },
+        select: { id: true, emailVerified: true, role: true, trainerProfile: { select: { businessName: true, subscriptionStatus: true, signupCountry: true } } },
       })
       expect(user?.role).toBe('TRAINER')
       expect(user?.emailVerified, 'verifying the code should stamp emailVerified').toBeTruthy()
       expect(user?.trainerProfile?.businessName).toBe('Numpty Dog Co')
+      // Asked for at signup rather than guessed from an IP address.
+      expect(user?.trainerProfile?.signupCountry, 'the country they chose should be stored').toBe('NZ')
       // Every new trainer starts on a trial, not on nothing.
       expect(user?.trainerProfile?.subscriptionStatus).toBe('TRIALING')
     } finally {
@@ -124,15 +127,48 @@ test.describe('a brand-new customer signs up on a phone', () => {
     const email = `e2e-dupe-${Date.now()}@e2e.test`
     try {
       const first = await page.request.post('/api/auth/register', {
-        data: { name: 'First Owner', businessName: 'First Co', phone: '021 111 1111', email },
+        data: { name: 'First Owner', businessName: 'First Co', phone: '021 111 1111', email, signupCountry: 'GB' },
       })
       expect(first.status()).toBe(201)
 
       const second = await page.request.post('/api/auth/register', {
-        data: { name: 'Second Owner', businessName: 'Second Co', phone: '021 222 2222', email },
+        data: { name: 'Second Owner', businessName: 'Second Co', phone: '021 222 2222', email, signupCountry: 'GB' },
       })
       expect(second.status()).toBe(409)
       expect(await prisma.user.count({ where: { email } })).toBe(1)
+    } finally {
+      await cleanup(prisma, email)
+      await prisma.$disconnect()
+    }
+  })
+
+  // The whole point of asking: nobody lands in the app without a country, so
+  // nobody lands there without a currency either.
+  test('the country is required, not inferred', async ({ page }) => {
+    const prisma = await makePrisma()
+    const email = `e2e-nocountry-${Date.now()}@e2e.test`
+    try {
+      await page.goto('/register')
+      await page.getByLabel('Your name').fill('No Country Nick')
+      await page.getByLabel('Business name').fill('No Country Co')
+      await page.getByLabel('Phone number').fill('021 000 0001')
+      await page.getByLabel('Your email').fill(email)
+      // Country deliberately left unchosen.
+      await page.getByRole('button', { name: 'Create account' }).click()
+
+      // Held at the form, nothing created.
+      await expect(page.getByRole('button', { name: 'Create account' })).toBeVisible()
+      expect(await prisma.user.count({ where: { email } })).toBe(0)
+
+      // Choose one and it goes through.
+      await page.getByLabel('Country').selectOption('GB')
+      await page.getByRole('button', { name: 'Create account' }).click()
+      await expect(page.getByLabel('Verification code')).toBeVisible({ timeout: 20_000 })
+
+      const profile = await prisma.trainerProfile.findFirst({
+        where: { user: { email } }, select: { signupCountry: true },
+      })
+      expect(profile?.signupCountry).toBe('GB')
     } finally {
       await cleanup(prisma, email)
       await prisma.$disconnect()

@@ -1,3 +1,4 @@
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -17,10 +18,13 @@ export default async function CompleteProfilePage() {
   const owned = await prisma.trainerProfile.findUnique({
     where: { userId: session.user.id },
     select: {
-      businessName: true, phone: true, showPhoneToClients: true, publicEmail: true,
+      businessName: true, phone: true, showPhoneToClients: true, publicEmail: true, signupCountry: true,
       user: { select: { name: true } },
     },
   })
+  // Preselect from the network; the trainer confirms it before submitting.
+  const geoCountry = (await headers()).get('x-vercel-ip-country')?.toUpperCase() || null
+
   // No owned business (invited staff) or already complete → nothing to do here.
   if (!owned) redirect('/dashboard')
   const complete = owned.user.name?.trim() && owned.businessName.trim() && owned.phone?.trim()
@@ -41,6 +45,7 @@ export default async function CompleteProfilePage() {
         defaultPhone={owned.phone ?? ''}
         defaultShowPhoneToClients={owned.showPhoneToClients}
         defaultPublicEmail={owned.publicEmail ?? ''}
+        defaultCountry={owned.signupCountry ?? geoCountry ?? ''}
       />
     </div>
   )

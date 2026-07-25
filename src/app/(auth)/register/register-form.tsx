@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
+import { COUNTRIES } from '@/lib/countries'
 import { OAuthButtons, type EnabledOAuth } from '../oauth-buttons'
 import { AppleNativeButton } from '../apple-native-button'
 import { SetPasswordStep } from '../set-password-step'
@@ -24,11 +25,15 @@ const schema = z.object({
   businessName: z.string().min(2, 'Business name is required'),
   phone: z.string().trim().min(6, 'Phone number is required'),
   email: z.string().email('Please enter a valid email address'),
+  // Asked for, not guessed. It decides the currency a trainer is priced and
+  // paid in, and it's what Stripe onboarding opens with — too important to
+  // infer from an IP address that a VPN or an OAuth sign-up can hide.
+  signupCountry: z.string().regex(/^[A-Za-z]{2}$/, 'Please choose your country'),
 })
 
 type FormData = z.infer<typeof schema>
 
-export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
+export function RegisterForm({ enabledOAuth, defaultCountry }: { enabledOAuth: EnabledOAuth; defaultCountry?: string | null }) {
   const [serverError, setServerError] = useState<string | null>(null)
   // iOS uses the native Sign in with Apple sheet instead of web OAuth.
   const isIOS = useNativePlatform() === 'ios'
@@ -46,7 +51,12 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
     handleSubmit,
     setValue,
     formState: { errors, isSubmitting },
-  } = useForm<FormData>({ resolver: zodResolver(schema) })
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    // The network's guess is the starting selection, not the answer — they
+    // confirm or change it before the form will submit.
+    defaultValues: { signupCountry: defaultCountry ?? '' },
+  })
 
   const phoneField = register('phone')
 
@@ -60,6 +70,7 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
         businessName: data.businessName,
         phone: data.phone,
         email: data.email,
+        signupCountry: data.signupCountry,
       }),
     })
 
@@ -123,6 +134,21 @@ export function RegisterForm({ enabledOAuth }: { enabledOAuth: EnabledOAuth }) {
             error={errors.email?.message}
             {...register('email')}
           />
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="signupCountry" className="text-sm font-medium text-slate-700">Country</label>
+            <select
+              id="signupCountry"
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {...register('signupCountry')}
+            >
+              <option value="">Select your country…</option>
+              {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+            </select>
+            {errors.signupCountry?.message && (
+              <p className="text-sm text-red-600">{errors.signupCountry.message}</p>
+            )}
+            <p className="text-xs text-slate-500">Sets the currency you&apos;re priced and paid in.</p>
+          </div>
           <Button type="submit" size="lg" className="w-full mt-1" loading={isSubmitting}>
             Create account
           </Button>
