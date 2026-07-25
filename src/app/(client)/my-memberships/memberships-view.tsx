@@ -6,7 +6,10 @@ import { Ticket, Loader2, Check } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 
 interface Item { label: string; quantity: number; imageUrl?: string | null; description?: string | null }
-interface M { id: string; name: string; description: string | null; priceCents: number; items: Item[] }
+interface M {
+  id: string; name: string; description: string | null; priceCents: number; items: Item[]
+  imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null
+}
 
 export function ClientMembershipsView({ memberships, currency }: { memberships: M[]; currency: string }) {
   const [busy, setBusy] = useState<string | null>(null)
@@ -36,38 +39,50 @@ export function ClientMembershipsView({ memberships, currency }: { memberships: 
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">No memberships available right now.</div>
       ) : (
         <div className="flex flex-col gap-4">
-          {memberships.map(m => (
-            <div key={m.id} className="rounded-2xl border border-slate-200 bg-white p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="font-semibold text-slate-900 text-lg flex items-center gap-2"><Ticket className="h-5 w-5 text-violet-600 shrink-0" /> {m.name}</h2>
-                  <RichText html={m.description} className="text-sm text-slate-500 mt-1" />
+          {memberships.map(m => {
+            const bg = m.bgColor ?? '#ffffff'
+            const header = m.headerColor ?? '#0f172a'
+            const text = m.textColor ?? '#64748b'
+            const featured = m.featuredColor ?? '#7c3aed'
+            return (
+              <div key={m.id} className="rounded-2xl border border-slate-200 shadow-sm overflow-hidden" style={{ backgroundColor: bg }}>
+                {m.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={m.imageUrl} alt="" className="w-full h-36 object-cover" />
+                )}
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="font-semibold text-lg flex items-center gap-2" style={{ color: header }}><Ticket className="h-5 w-5 shrink-0" style={{ color: featured }} /> {m.name}</h2>
+                      <div className="mt-1" style={{ color: text }}><RichText html={m.description} className="text-sm" /></div>
+                    </div>
+                    <span className="text-lg font-bold whitespace-nowrap" style={{ color: featured }}>{formatMoney(m.priceCents, currency)}</span>
+                  </div>
+                  {m.items.length > 0 && (
+                    <ul className="mt-3 flex flex-col gap-2.5">
+                      {m.items.map((it, i) => (
+                        <li key={i} className="flex items-start gap-2.5">
+                          {it.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={it.imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover border border-black/10 shrink-0" />
+                          ) : (
+                            <Check className="h-4 w-4 shrink-0 mt-0.5" style={{ color: featured }} />
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-sm" style={{ color: header }}>{it.quantity > 1 ? `${it.quantity}× ` : ''}{it.label}</p>
+                            {it.description && <div style={{ color: text }}><RichText html={it.description} className="text-xs" /></div>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <button onClick={() => buy(m.id)} disabled={busy === m.id} className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl text-white font-semibold hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: featured }}>
+                    {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Get this membership
+                  </button>
                 </div>
-                <span className="text-lg font-bold text-violet-700 whitespace-nowrap">{formatMoney(m.priceCents, currency)}</span>
               </div>
-              {m.items.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-2.5">
-                  {m.items.map((it, i) => (
-                    <li key={i} className="flex items-start gap-2.5">
-                      {it.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={it.imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover border border-slate-200 shrink-0" />
-                      ) : (
-                        <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-sm text-slate-700">{it.quantity > 1 ? `${it.quantity}× ` : ''}{it.label}</p>
-                        {it.description && <RichText html={it.description} className="text-xs text-slate-500" />}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <button onClick={() => buy(m.id)} disabled={busy === m.id} className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-violet-600 text-white font-semibold hover:bg-violet-700 disabled:opacity-50">
-                {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Get this membership
-              </button>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

@@ -2,6 +2,8 @@
 import { z } from 'zod'
 import type { Prisma } from '@/generated/prisma'
 
+const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Use a hex colour like #14b8a6').nullable().optional()
+
 const itemSchema = z.object({
   kind: z.enum(['PACKAGE', 'CLASS', 'PRODUCT']),
   packageId: z.string().nullable().optional(),
@@ -21,6 +23,11 @@ export const membershipCreateSchema = z.object({
   name: z.string().trim().min(1, 'Name the membership').max(120),
   description: z.string().max(2000).nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
+  // Storefront card styling — hex colours (#fff or #ffffff). Null clears.
+  bgColor: hexColor,
+  headerColor: hexColor,
+  textColor: hexColor,
+  featuredColor: hexColor,
   priceCents: z.number().int().min(0).max(10_000_000),
   cadence: z.enum(['ONE_OFF', 'RECURRING']).default('ONE_OFF'),
   interval: z.enum(['WEEK', 'FORTNIGHT', 'MONTH']).nullable().optional(),

@@ -2984,6 +2984,12 @@ model Membership {
   name              String
   description       String?             @db.Text
   imageUrl          String?
+  // Storefront card styling (hex strings). Null = the app's default theme.
+  // featuredColor tints the price + the "Get this membership" button.
+  bgColor           String?
+  headerColor       String?
+  textColor         String?
+  featuredColor     String?
   priceCents        Int
   cadence           MembershipCadence   @default(ONE_OFF)
   interval          MembershipInterval? // for RECURRING

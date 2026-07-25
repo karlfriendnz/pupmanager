@@ -32,6 +32,7 @@ export async function POST(req: Request) {
     const m = await tx.membership.create({
       data: {
         trainerId: ctx.companyId, name: d.name, description: d.description ?? null, imageUrl: d.imageUrl ?? null,
+        bgColor: d.bgColor ?? null, headerColor: d.headerColor ?? null, textColor: d.textColor ?? null, featuredColor: d.featuredColor ?? null,
         priceCents: d.priceCents, cadence: d.cadence, interval: d.interval ?? null,
         minTermCount: d.minTermCount ?? 0, earlyTermFeeCents: d.earlyTermFeeCents ?? null,
         published: d.published ?? false, order: (last?.order ?? -1) + 1,

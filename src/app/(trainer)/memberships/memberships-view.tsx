@@ -7,8 +7,7 @@ import { isRichTextEmpty } from '@/lib/rich-text'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, ChevronDown, Sparkles } from 'lucide-react'
-import { escapeHtml } from '@/lib/html-escape'
+import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, ChevronDown } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { Switch } from '@/components/ui/switch'
@@ -19,14 +18,15 @@ type Interval = 'WEEK' | 'FORTNIGHT' | 'MONTH'
 interface Offering { id: string; name: string; priceCents?: number; imageUrl?: string | null; description?: string | null }
 interface Offerings { packages: Offering[]; classRuns: Offering[]; products: Offering[] }
 interface MItem { kind: Kind; packageId: string | null; classRunId: string | null; productId: string | null; quantity: number; regrantOnRenewal: boolean; imageUrl?: string | null; description?: string | null }
-interface Membership {
+interface Card { imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null }
+interface Membership extends Card {
   id: string; name: string; description: string | null; priceCents: number
   cadence: Cadence; interval: Interval | null; minTermCount: number; earlyTermFeeCents: number | null
   published: boolean; purchases: number; items: MItem[]
 }
 
 interface DraftItem { key: string; kind: Kind; id: string; quantity: number; regrantOnRenewal: boolean; imageUrl: string | null; description: string }
-interface Draft {
+interface Draft extends Card {
   id: string | null; name: string; description: string; price: string; cadence: Cadence
   interval: Interval; minTermCount: string; earlyTermFee: string; published: boolean; items: DraftItem[]
 }
@@ -34,42 +34,61 @@ interface Draft {
 // Live preview of the membership as it appears in the client Memberships
 // storefront (mirrors ClientMembershipsView's card), fed from the builder draft.
 interface PreviewItem { label: string; quantity: number; imageUrl?: string | null; description?: string | null }
-function MembershipPreviewCard({ name, description, priceCents, recurring, interval, items, currency }: {
-  name: string; description: string; priceCents: number; recurring: boolean; interval: Interval; items: PreviewItem[]; currency: string
+function MembershipPreviewCard({ name, description, priceCents, recurring, interval, items, currency, card }: {
+  name: string; description: string; priceCents: number; recurring: boolean; interval: Interval; items: PreviewItem[]; currency: string; card: Card
 }) {
+  const bg = card.bgColor ?? '#ffffff'
+  const header = card.headerColor ?? '#0f172a'
+  const text = card.textColor ?? '#64748b'
+  const featured = card.featuredColor ?? '#7c3aed'
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="font-semibold text-slate-900 text-lg flex items-center gap-2">
-            <Ticket className="h-5 w-5 text-violet-600 shrink-0" /> {name.trim() || <span className="text-slate-400 font-normal">Membership name</span>}
-          </h2>
-          <RichText html={description} className="text-sm text-slate-500 mt-1" />
-        </div>
-        <span className="text-lg font-bold text-violet-700 whitespace-nowrap">{formatMoney(priceCents, currency)}{recurring ? ` / ${interval.toLowerCase()}` : ''}</span>
-      </div>
-      {items.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-2.5">
-          {items.map((it, i) => (
-            <li key={i} className="flex items-start gap-2.5">
-              {it.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={it.imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover border border-slate-200 shrink-0" />
-              ) : (
-                <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-              )}
-              <div className="min-w-0">
-                <p className="text-sm text-slate-700">{it.quantity > 1 ? `${it.quantity}× ` : ''}{it.label}</p>
-                {it.description && <RichText html={it.description} className="text-xs text-slate-500" />}
-              </div>
-            </li>
-          ))}
-        </ul>
+    <div className="rounded-2xl border border-slate-200 shadow-sm overflow-hidden" style={{ backgroundColor: bg }}>
+      {card.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={card.imageUrl} alt="" className="w-full h-32 object-cover" />
       )}
-      <button type="button" disabled className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-violet-600 text-white font-semibold opacity-90 cursor-default">Get this membership</button>
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-semibold text-lg flex items-center gap-2" style={{ color: header }}>
+              <Ticket className="h-5 w-5 shrink-0" style={{ color: featured }} /> {name.trim() || <span className="opacity-50 font-normal">Membership name</span>}
+            </h2>
+            <div className="mt-1" style={{ color: text }}><RichText html={description} className="text-sm" /></div>
+          </div>
+          <span className="text-lg font-bold whitespace-nowrap" style={{ color: featured }}>{formatMoney(priceCents, currency)}{recurring ? ` / ${interval.toLowerCase()}` : ''}</span>
+        </div>
+        {items.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-2.5">
+            {items.map((it, i) => (
+              <li key={i} className="flex items-start gap-2.5">
+                {it.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={it.imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover border border-black/10 shrink-0" />
+                ) : (
+                  <Check className="h-4 w-4 shrink-0 mt-0.5" style={{ color: featured }} />
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm" style={{ color: header }}>{it.quantity > 1 ? `${it.quantity}× ` : ''}{it.label}</p>
+                  {it.description && <div style={{ color: text }}><RichText html={it.description} className="text-xs" /></div>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button type="button" disabled className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl text-white font-semibold opacity-95 cursor-default" style={{ backgroundColor: featured }}>Get this membership</button>
+      </div>
     </div>
   )
 }
+
+// Storefront card colours the trainer can set (with a sensible default swatch
+// shown when unset). featuredColor tints the price + the buy button.
+const CARD_COLORS: { key: 'bgColor' | 'headerColor' | 'textColor' | 'featuredColor'; label: string; fallback: string }[] = [
+  { key: 'bgColor', label: 'Background', fallback: '#ffffff' },
+  { key: 'headerColor', label: 'Header', fallback: '#0f172a' },
+  { key: 'textColor', label: 'Text', fallback: '#475569' },
+  { key: 'featuredColor', label: 'Featured', fallback: '#7c3aed' },
+]
 
 let seq = 0
 const KINDS: { k: Kind; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
@@ -89,9 +108,6 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const [error, setError] = useState<string | null>(null)
   // Which included item's image/blurb panel is expanded (by key).
   const [openItem, setOpenItem] = useState<string | null>(null)
-  // Bumped to force the description editor to remount when we replace its
-  // content (RichTextEditor only reads `value` on mount).
-  const [descBump, setDescBump] = useState(0)
 
   function offeringsFor(k: Kind): Offering[] {
     return k === 'PACKAGE' ? offerings.packages : k === 'CLASS' ? offerings.classRuns : offerings.products
@@ -105,7 +121,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
 
   function startNew() {
     setError(null)
-    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [] })
+    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [], imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null })
   }
   function startEdit(m: Membership) {
     setError(null)
@@ -113,6 +129,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       id: m.id, name: m.name, description: m.description ?? '', price: (m.priceCents / 100).toString(),
       cadence: m.cadence, interval: m.interval ?? 'MONTH', minTermCount: String(m.minTermCount), earlyTermFee: m.earlyTermFeeCents != null ? (m.earlyTermFeeCents / 100).toString() : '',
       published: m.published,
+      imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
       items: m.items.map(i => ({ key: `k${seq++}`, kind: i.kind, id: i.packageId ?? i.classRunId ?? i.productId ?? '', quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl ?? null, description: i.description ?? '' })),
     })
   }
@@ -121,24 +138,6 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const addItem = () => patch({ items: [...draft!.items, { key: `k${seq++}`, kind: 'PACKAGE', id: '', quantity: 1, regrantOnRenewal: false, imageUrl: null, description: '' }] })
   const patchItem = (key: string, p: Partial<DraftItem>) => patch({ items: draft!.items.map(it => (it.key === key ? { ...it, ...p } : it)) })
   const removeItem = (key: string) => patch({ items: draft!.items.filter(it => it.key !== key) })
-
-  // Build the membership's own description from the included items — a heading
-  // per item followed by its (resolved) blurb — as a starting point the trainer
-  // can then edit. Only items with an offering chosen are included.
-  const canPullDescription = !!draft && draft.items.some(it => it.id)
-  function pullDescriptionFromItems() {
-    if (!draft) return
-    const html = draft.items
-      .filter(it => it.id)
-      .map(it => {
-        const off = offeringOf(it)
-        const blurb = it.description.trim() || off?.description || ''
-        return `<h3>${escapeHtml(off?.name ?? '')}</h3>${blurb}`
-      })
-      .join('')
-    patch({ description: html })
-    setDescBump(b => b + 1)
-  }
 
   // "Normally" = sum of the included offerings' own prices (classes have no
   // standalone price here, so they don't add to it).
@@ -169,6 +168,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       minTermCount: draft.cadence === 'RECURRING' ? Number(draft.minTermCount) || 0 : 0,
       earlyTermFeeCents: draft.cadence === 'RECURRING' && draft.earlyTermFee.trim() ? Math.round(Number(draft.earlyTermFee) * 100) : null,
       published: draft.published, items,
+      imageUrl: draft.imageUrl, bgColor: draft.bgColor, headerColor: draft.headerColor, textColor: draft.textColor, featuredColor: draft.featuredColor,
     }
     setBusy(true); setError(null)
     try {
@@ -203,21 +203,11 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
         {error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2">{error}</div>}
 
         {draft ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-7 rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
             <div className="p-5 flex flex-col gap-3">
               <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Membership name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-sm font-medium text-slate-700">Description</span>
-                  <button type="button" onClick={pullDescriptionFromItems} disabled={!canPullDescription}
-                    title="Compose the description from the included items — then edit it"
-                    className="inline-flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                    <Sparkles className="h-3.5 w-3.5" /> Pull in from items
-                  </button>
-                </div>
-                <RichTextEditor value={draft.description} onChange={html => patch({ description: isRichTextEmpty(html) ? '' : html })} key={`${draft.id ?? 'new'}-${descBump}`} minHeight={100} theme="light" />
-              </div>
+              <RichTextEditor value={draft.description} onChange={html => patch({ description: isRichTextEmpty(html) ? '' : html })} key={draft.id ?? 'new'} minHeight={100} theme="light" />
               <div className="flex items-center gap-2">
                 <div className="relative">
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{sym}</span>
@@ -247,6 +237,38 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Card appearance — hero image + colours for the storefront card. */}
+            <div className="p-5 flex flex-col gap-3">
+              <div className="text-sm font-medium text-slate-700">Card appearance</div>
+              <div className="flex items-center gap-3">
+                <div className="h-14 w-20 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0 grid place-items-center text-slate-300">
+                  {draft.imageUrl
+                    ? // eslint-disable-next-line @next/next/no-img-element
+                      <img src={draft.imageUrl} alt="" className="h-full w-full object-cover" />
+                    : <ImageIcon className="h-5 w-5" />}
+                </div>
+                <div className="flex items-center gap-2">
+                  <ImageUploadButton onUploaded={urls => urls[0] && patch({ imageUrl: urls[0] })} />
+                  {draft.imageUrl && <button type="button" onClick={() => patch({ imageUrl: null })} className="text-xs text-slate-500 hover:text-rose-600">Remove image</button>}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-4">
+                {CARD_COLORS.map(({ key, label, fallback }) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <label className="relative block h-8 w-8 rounded-lg border border-slate-200 overflow-hidden cursor-pointer" style={{ backgroundColor: draft[key] ?? fallback }}>
+                      <input type="color" value={draft[key] ?? fallback} onChange={e => patch({ [key]: e.target.value } as Partial<Draft>)} className="absolute -inset-1 opacity-0 cursor-pointer" />
+                    </label>
+                    <div className="flex flex-col leading-tight">
+                      <span className="text-xs text-slate-600">{label}</span>
+                      {draft[key]
+                        ? <button type="button" onClick={() => patch({ [key]: null } as Partial<Draft>)} className="text-[11px] text-slate-400 hover:text-rose-600 text-left">reset</button>
+                        : <span className="text-[11px] text-slate-400">default</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Included items */}
@@ -337,7 +359,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
           </div>
           {/* Live preview — exactly how the card looks in the client
               Memberships storefront, updating as you build. */}
-          <div className="lg:sticky lg:top-6">
+          <div className="lg:col-span-5 lg:sticky lg:top-6">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Preview — how clients see it</p>
             <MembershipPreviewCard
               name={draft.name}
@@ -350,6 +372,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                 return { label: off?.name ?? '…', quantity: it.quantity, imageUrl: it.imageUrl ?? off?.imageUrl ?? null, description: it.description.trim() || off?.description || null }
               })}
               currency={currency}
+              card={draft}
             />
           </div>
           </div>
