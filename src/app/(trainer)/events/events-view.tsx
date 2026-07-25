@@ -35,7 +35,7 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
   const router = useRouter()
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
   const [cloning, setCloning] = useState<string | null>(null)
-  const [view, setView] = useOfferingView()
+  const [view, setView] = useOfferingView('events')
   const { rows: events, reorder, error: reorderError } = useOfferingReorder(initialEvents, 'classRun')
 
   // Left in the trainer's own arranged order (ties fall back to date) — that's

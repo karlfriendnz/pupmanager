@@ -63,6 +63,7 @@ const BADGE_TONE: Record<NonNullable<OfferingBadge['tone']>, string> = {
  */
 export function OfferingCard({
   href,
+  onOpen,
   title,
   tile,
   imageUrl,
@@ -76,6 +77,8 @@ export function OfferingCard({
   variant = 'list',
 }: {
   href?: string
+  /** For a card with no detail page — memberships open their builder in place. */
+  onOpen?: () => void
   title: string
   /** Coloured icon tile, when there's no cover photo. */
   tile?: { icon: ReactNode; className?: string }
@@ -152,7 +155,7 @@ export function OfferingCard({
   const actionBar = actions.length > 0 && (
     // Always visible on touch (there's no hover to reveal them), and the
     // buttons are 36px so they're tappable.
-    <div className={`flex shrink-0 items-center gap-0.5 ${grid ? 'justify-end border-t border-slate-100 pt-2' : ''}`}>
+    <div className="flex shrink-0 items-center gap-0.5">
       {actions.map((a, i) => (
         <button
           key={i}
@@ -171,16 +174,24 @@ export function OfferingCard({
     </div>
   )
 
-  // In grid the actions sit under the card body rather than beside it, so the
-  // photo keeps the full width of the tile.
+  // In grid the drag handle and the actions share one row across the top, and
+  // everything below it is the link — so the whole tile opens the offering.
   if (grid) {
     return (
       <div
-        className={`group flex h-full flex-col gap-2 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_8px_rgba(15,31,36,0.04)] transition-colors hover:border-blue-200 ${dimmed ? 'opacity-60' : ''}`}
+        className={`group relative flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_8px_rgba(15,31,36,0.04)] transition-colors hover:border-blue-200 ${dimmed ? 'opacity-60' : ''}`}
       >
-        {dragHandle && <div className="-mt-1 -mb-1 flex justify-start">{dragHandle}</div>}
-        {href ? <Link href={href} className="flex min-w-0 flex-1 flex-col">{body}</Link> : body}
-        {actionBar}
+        {(dragHandle || actions.length > 0) && (
+          <div className="mb-1 flex items-center justify-between">
+            {dragHandle ?? <span />}
+            {actionBar}
+          </div>
+        )}
+        {href ? (
+          <Link href={href} className="flex min-w-0 flex-1 flex-col">{body}</Link>
+        ) : onOpen ? (
+          <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 flex-col text-left">{body}</button>
+        ) : body}
       </div>
     )
   }
@@ -192,6 +203,8 @@ export function OfferingCard({
       {dragHandle}
       {href ? (
         <Link href={href} className="flex min-w-0 flex-1 items-start gap-3">{body}</Link>
+      ) : onOpen ? (
+        <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-start gap-3 text-left">{body}</button>
       ) : (
         body
       )}
@@ -204,13 +217,14 @@ export function OfferingCard({
 
 export type OfferingView = 'list' | 'grid'
 
-const VIEW_KEY = 'pupmanager:offering-view'
+const VIEW_KEY_PREFIX = 'pupmanager:offering-view'
 
 /**
- * The list/grid preference, remembered across every offering page — a trainer
- * who prefers photo tiles wants them on classes AND packages, not one at a time.
- * Starts as 'list' on the server so the markup matches until the stored choice
- * is read (a mismatch here hydration-errors the whole page).
+ * The list/grid preference, remembered PER PAGE — memberships can sit in grid
+ * while classes stay a list, because the lists are read differently (photos
+ * matter more on some than others). Starts as 'list' on the server so the
+ * markup matches until the stored choice is read (a mismatch here
+ * hydration-errors the whole page).
  */
 const viewListeners = new Set<() => void>()
 
@@ -227,17 +241,23 @@ function subscribeView(cb: () => void) {
 // Read through useSyncExternalStore rather than an effect: localStorage IS an
 // external store, and this gives the server 'list' while the client reads the
 // real value, with no setState-in-effect cascade.
-function readView(): OfferingView {
-  try { return window.localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'list' } catch { return 'list' }
+function readView(key: string): OfferingView {
+  try { return window.localStorage.getItem(key) === 'grid' ? 'grid' : 'list' } catch { return 'list' }
 }
 const serverView = (): OfferingView => 'list'
 
-export function useOfferingView(): [OfferingView, (v: OfferingView) => void] {
-  const view = useSyncExternalStore(subscribeView, readView, serverView)
+/** @param page which list this is — its own remembered view ('classes', 'memberships', …). */
+export function useOfferingView(page: string): [OfferingView, (v: OfferingView) => void] {
+  const key = `${VIEW_KEY_PREFIX}:${page}`
+  // Both callbacks have to be stable, or useSyncExternalStore resubscribes on
+  // every render and the page spins.
+  const subscribe = useCallback((cb: () => void) => subscribeView(cb), [])
+  const snapshot = useCallback(() => readView(key), [key])
+  const view = useSyncExternalStore(subscribe, snapshot, serverView)
   const choose = useCallback((v: OfferingView) => {
-    try { window.localStorage.setItem(VIEW_KEY, v) } catch { /* private mode */ }
+    try { window.localStorage.setItem(key, v) } catch { /* private mode */ }
     viewListeners.forEach(l => l())
-  }, [])
+  }, [key])
   return [view, choose]
 }
 

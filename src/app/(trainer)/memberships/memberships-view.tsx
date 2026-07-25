@@ -155,7 +155,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   // The list owns its own order: dragging a card writes it back, and that same
   // order is what clients see in Offerings.
   const { rows: list, setRows: setList, reorder, error: reorderError } = useOfferingReorder(memberships, 'membership')
-  const [view, setView] = useOfferingView()
+  const [view, setView] = useOfferingView('memberships')
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -268,12 +268,10 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
 
   return (
     <>
-      <PageHeader
-        title="Memberships"
-        actions={!draft ? (
-          <button onClick={startNew} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> <span className="hidden sm:inline">New membership</span></button>
-        ) : undefined}
-      />
+      {/* No action in the control bar — the dashed "New membership" that closes
+          the list (and the empty state's button) are the way in, same as every
+          other offering page. */}
+      <PageHeader title="Memberships" />
       <div className="w-full p-4 md:p-8">
         {error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2">{error}</div>}
 
@@ -539,6 +537,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                   <SortableOfferingCard key={m.id} id={m.id}>
                     {handle => (
                       <OfferingCard
+                        onOpen={() => startEdit(m)}
                         title={m.name}
                         description={m.description}
                         imageUrl={m.imageUrl}

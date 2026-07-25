@@ -35,7 +35,7 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
   const router = useRouter()
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const [cloning, setCloning] = useState<string | null>(null)
-  const [view, setView] = useOfferingView()
+  const [view, setView] = useOfferingView('casual-classes')
   const { rows: runs, reorder, error: reorderError } = useOfferingReorder(initialRuns, 'classRun')
 
   const current = runs.filter(r => !r.isPast)

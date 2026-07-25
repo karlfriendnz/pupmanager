@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Package as PackageIcon, Pencil, Trash2, GripVertical, Copy,
+  Package as PackageIcon, Pencil, Trash2, Copy,
   Repeat, Clock, Video, MapPin, Users,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
@@ -12,23 +12,10 @@ import { type PackageColor, type PkgRow } from './package-form'
 import { formatMoney } from '@/lib/money'
 import {
   OfferingCard, OfferingEmpty, AddOfferingLink, OfferingPage,
+  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard, useOfferingView,
   type OfferingFact, type OfferingBadge,
 } from '@/components/shared/offering-card'
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCenter,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-  arrayMove,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { useOfferingReorder } from '@/lib/use-offering-reorder'
 
 export type { SessionFormOption } from './package-form'
 
@@ -62,7 +49,9 @@ export function PackagesView({
   currency?: string
 }) {
   const router = useRouter()
-  const [packages, setPackages] = useState(initialPackages)
+  const [view, setView] = useOfferingView('packages')
+  // Same drag + saved order as every other offering list.
+  const { rows: packages, setRows: setPackages, reorder, error: reorderError } = useOfferingReorder(initialPackages, 'package')
 
   async function handleDelete(id: string) {
     if (!confirm('Delete this package? Existing client assignments stay (but their sessions remain on the schedule).')) return
@@ -87,27 +76,6 @@ export function PackagesView({
     }
   }
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    setPackages(prev => {
-      const oldIndex = prev.findIndex(p => p.id === active.id)
-      const newIndex = prev.findIndex(p => p.id === over.id)
-      if (oldIndex === -1 || newIndex === -1) return prev
-      const next = arrayMove(prev, oldIndex, newIndex)
-      void fetch('/api/packages/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: next.map(p => p.id) }),
-      }).then(res => {
-        if (!res.ok) window.location.reload()
-      })
-      return next
-    })
-  }
-
   return (
     <>
       <PageHeader
@@ -124,24 +92,36 @@ export function PackagesView({
           />
         ) : (
           <>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={packages.map(p => p.id)} strategy={verticalListSortingStrategy}>
-                <div className="flex flex-col gap-2.5">
-                  {packages.map(p => (
-                    <SortablePackageRow
-                      key={p.id}
-                      pkg={p}
-                      currency={currency}
-                      showHandle={packages.length > 1}
-                      onEdit={() => router.push(`/packages/${p.id}/edit`)}
-                      onDuplicate={() => handleDuplicate(p.id)}
-                      onDelete={() => handleDelete(p.id)}
-                      duplicating={duplicating === p.id}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+            {reorderError && (
+              <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
+            )}
+            <OfferingListBar view={view} onView={setView} />
+            <SortableOfferingList ids={packages.map(p => p.id)} onReorder={reorder} view={view}>
+              <OfferingItems view={view}>
+                {packages.map(p => (
+                  <SortableOfferingCard key={p.id} id={p.id}>
+                    {handle => (
+                      <OfferingCard
+                        href={`/packages/${p.id}`}
+                        title={p.name}
+                        description={p.description}
+                        imageUrl={p.imageUrl}
+                        tile={{ icon: <PackageIcon className="h-5 w-5" />, className: packageIconClasses(p.color) }}
+                        badges={packageBadges(p, currency)}
+                        facts={packageFacts(p)}
+                        variant={view}
+                        dragHandle={handle}
+                        actions={[
+                          { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${p.id}/edit`) },
+                          { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => handleDuplicate(p.id), disabled: duplicating === p.id },
+                          { icon: <Trash2 className="h-4 w-4" />, label: 'Delete', onClick: () => handleDelete(p.id), tone: 'danger' },
+                        ]}
+                      />
+                    )}
+                  </SortableOfferingCard>
+                ))}
+              </OfferingItems>
+            </SortableOfferingList>
 
             <AddOfferingLink href="/offerings/new" label="New package" />
           </>
@@ -157,67 +137,16 @@ export function PackagesView({
 
 // Drag handle only appears when there's more than one package (nothing to
 // reorder when there's one).
-function SortablePackageRow({
-  pkg: p,
-  currency,
-  showHandle,
-  onEdit,
-  onDuplicate,
-  onDelete,
-  duplicating,
-}: {
-  pkg: PkgRow
-  currency: string
-  showHandle: boolean
-  onEdit: () => void
-  onDuplicate: () => void
-  onDelete: () => void
-  duplicating: boolean
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.id })
-  const style = {
-    transform: transform ? CSS.Transform.toString(transform) : undefined,
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
-
+function packageBadges(p: PkgRow, currency: string): OfferingBadge[] {
   const badges: OfferingBadge[] = []
+  // A special price shows beside the old one, struck, so it reads as "was".
   if (p.specialPriceCents != null && p.priceCents != null) {
     badges.push({ label: formatMoney(p.specialPriceCents, currency), tone: 'good' })
     badges.push({ label: formatMoney(p.priceCents, currency), tone: 'muted', strike: true })
   } else if (p.priceCents != null) {
     badges.push({ label: formatMoney(p.priceCents, currency), tone: 'accent' })
   }
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <OfferingCard
-        href={`/packages/${p.id}`}
-        title={p.name}
-        description={p.description}
-        imageUrl={p.imageUrl}
-        tile={{ icon: <PackageIcon className="h-5 w-5" />, className: packageIconClasses(p.color) }}
-        badges={badges}
-        facts={packageFacts(p)}
-        dragHandle={showHandle ? (
-          <button
-            type="button"
-            {...attributes}
-            {...listeners}
-            aria-label="Drag to reorder"
-            className="mt-2 cursor-grab touch-none text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
-        ) : undefined}
-        actions={[
-          { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: onEdit },
-          { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: onDuplicate, disabled: duplicating },
-          { icon: <Trash2 className="h-4 w-4" />, label: 'Delete', onClick: onDelete, tone: 'danger' },
-        ]}
-      />
-    </div>
-  )
+  return badges
 }
 
 function packageFacts(p: PkgRow): OfferingFact[] {

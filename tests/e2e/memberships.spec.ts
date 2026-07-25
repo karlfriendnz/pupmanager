@@ -33,9 +33,9 @@ test.describe('memberships — trainer builds, client sees', () => {
       await login(page, SEED.owner.email, SEED.owner.password)
       await page.goto('/memberships')
 
-      // Two "New membership" buttons now — the top bar's and the dashed one
-      // that closes the list. Either opens the builder; take the top bar's.
-      await page.locator('#pm-topbar-actions').getByRole('button', { name: 'New membership' }).click()
+      // The way in is the dashed button that closes the list (or the empty
+      // state's, when there are none) — there's no control-bar action.
+      await page.getByRole('main').getByRole('button', { name: 'New membership' }).first().click()
       await page.getByPlaceholder('Membership name (e.g. Puppy Starter)').fill(name)
       await page.getByPlaceholder('Price').fill('89')
 

@@ -56,7 +56,7 @@ export function ClassesView({
   const [connectName, setConnectName] = useState<string | null>(initialConnectName)
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const [cloning, setCloning] = useState<string | null>(null)
-  const [view, setView] = useOfferingView()
+  const [view, setView] = useOfferingView('classes')
   const { rows: runs, reorder, error: reorderError } = useOfferingReorder(initialRuns, 'classRun')
 
   // The server hands these back in the trainer's own arranged order (ties fall
