@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
+import { cn } from '@/lib/utils'
 import { TabIntro } from './tab-intro'
 
 // Settings is the only left menu on screen in here (the app's own sidebar is
@@ -17,6 +18,17 @@ const SECTION_LABEL: Record<Section, string | null> = {
   business: 'Business',
   money: 'Money',
   system: null,
+}
+
+// The phone menu labels every group (the desktop rail leaves the first and
+// last unlabelled, which works beside a heading but not as a bare grid), and
+// takes them in the same order as the rail.
+const SECTION_ORDER: Section[] = ['account', 'business', 'money', 'system']
+const MOBILE_SECTION_LABEL: Record<Section, string> = {
+  account: 'Your account',
+  business: 'Business',
+  money: 'Money',
+  system: 'Security',
 }
 
 const ALL_TABS = [
@@ -91,6 +103,16 @@ export function SettingsTabs({
     : firstTab
   const [tab, setTab] = useState<TabId>(initialTab)
 
+  // Phones get a landing grid instead of a horizontal tab strip: a strip of
+  // twelve items scrolled sideways hides everything past the second one, and
+  // gives no sense of what settings even exist. No ?tab= means "show the
+  // menu"; picking one is a real navigation, so the back gesture returns to
+  // the menu. Desktop keeps its left rail and always has a tab selected.
+  const mobileTab: TabId | null = (tabIds as readonly string[]).includes(queryTab ?? '')
+    ? (queryTab as TabId)
+    : null
+  const showMobileMenu = mobileTab === null
+
   // React to ?tab= changing without a remount — e.g. the Add-ons page's
   // "Manage" action does router.push('/settings?tab=xero') while already on
   // /settings, so the state must follow the new query param.
@@ -133,7 +155,7 @@ export function SettingsTabs({
           fixed full-height rail flush to the left edge, matching the main app's
           sidebar (top-14 → bottom, white panel, right border). On mobile it's a
           horizontal scroll row (where the real nav is a bottom bar). */}
-      <nav className="md:fixed md:top-[calc(3.5rem_+_var(--app-safe-top))] md:bottom-0 md:left-0 md:z-30 md:flex md:w-64 md:flex-col md:bg-white md:border-r md:border-slate-100">
+      <nav className="hidden md:fixed md:top-[calc(3.5rem_+_var(--app-safe-top))] md:bottom-0 md:left-0 md:z-30 md:flex md:w-64 md:flex-col md:bg-white md:border-r md:border-slate-100">
         <div className="flex md:flex-col md:flex-1 gap-1 overflow-x-auto overflow-y-hidden md:overflow-x-hidden md:overflow-y-auto -mx-4 px-4 md:mx-0 md:px-3 md:py-4 border-b border-slate-200 md:border-b-0 mb-6 md:mb-0">
           {/* Settings hides the app's main nav, so the rail is the only way back
               out — lead with an explicit exit to the dashboard. */}
@@ -178,10 +200,69 @@ export function SettingsTabs({
         </div>
       </nav>
 
+      {/* Phone menu — the same entries as the desktop rail, as a two-wide grid
+          of buttons. Shown when no tab is picked. */}
+      <div className={showMobileMenu ? 'md:hidden' : 'hidden'}>
+        {SECTION_ORDER.map(section => {
+          const inSection = tabs.filter(t => t.section === section)
+          if (inSection.length === 0) return null
+          return (
+            <div key={section} className="mb-5 last:mb-0">
+              <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-400">
+                {MOBILE_SECTION_LABEL[section]}
+              </p>
+              <div className={cn(
+                'grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white',
+                '[&>*]:border-b [&>*]:border-r [&>*]:border-slate-200',
+                '[&>*:nth-child(2n)]:border-r-0',
+                // Drop the bottom edge on the last row — which is the last one
+                // or two cells depending on whether the count is even.
+                inSection.length % 2 === 0
+                  ? '[&>*:nth-last-child(-n+2)]:border-b-0'
+                  : '[&>*:last-child]:border-b-0',
+              )}>
+                {inSection.map(t => {
+                  const Icon = t.icon
+                  return (
+                    <Link
+                      key={t.id}
+                      href={`/settings?tab=${t.id}`}
+                      className="flex min-h-[92px] flex-col items-start justify-center px-4 py-4 active:bg-slate-50"
+                    >
+                      <Icon className="h-[22px] w-[22px] text-slate-700" strokeWidth={1.75} />
+                      <span className="mt-2.5 block text-[15px] font-semibold leading-tight text-slate-900">
+                        {t.label}
+                      </span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+        <Link
+          href="/dashboard"
+          className="mt-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-700 active:bg-slate-50"
+        >
+          <ArrowLeft className="h-[18px] w-[18px] text-slate-500" />
+          Back to app
+        </Link>
+      </div>
+
       {/* Content. Single-column forms get a readable cap (max-w-2xl); wide
           master-detail panels (Forms, Email templates) use the full width.
           md:ml-64 clears the fixed left rail (which is out of flow). */}
-      <div className="min-w-0 flex-1 md:ml-64">
+      <div className={cn('min-w-0 flex-1 md:ml-64', showMobileMenu && 'hidden md:block')}>
+        {/* Phone: which setting you're in, and the way back to the menu. */}
+        {!showMobileMenu && (
+          <Link
+            href="/settings"
+            className="-mt-1 mb-3 flex items-center gap-2 text-sm font-medium text-slate-600 active:text-slate-900 md:hidden"
+          >
+            <ArrowLeft className="h-[18px] w-[18px]" />
+            All settings
+          </Link>
+        )}
         {/* What this tab is for, and how to get it working — every tab, same shape. */}
         <TabIntro tab={tab} />
         {profile != null && <div className={tab === 'profile' ? 'max-w-6xl' : 'hidden'}>{profile}</div>}
