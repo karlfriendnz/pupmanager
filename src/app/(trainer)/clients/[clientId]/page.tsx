@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { PawPrint } from 'lucide-react'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { loadClientSessions } from '@/lib/client-sessions'
 import { hasAddon } from '@/lib/billing'
 import { classSessionSpaces, sessionCapacity } from '@/lib/class-runs'
 import { getClientAccess } from '@/lib/trainer-access'
@@ -60,11 +61,10 @@ export default async function ClientDetailPage({
         customFieldValues: true,
       },
     }),
-    prisma.trainingSession.findMany({
-      where: { clientId },
-      orderBy: { scheduledAt: 'desc' },
-      include: { dog: { select: { name: true } } },
-    }),
+    // 1:1 AND class sessions. A class session belongs to the run, not the
+    // client, so the old query returned nothing for someone who only does
+    // classes — their record read "Sessions 0" while their own app listed them.
+    loadClientSessions(clientId),
     // Custom fields from the client's primary trainer.
     prisma.customField.findMany({
       where: { trainerId: clientAccess.trainerId },
@@ -385,7 +385,9 @@ export default async function ClientDetailPage({
         }))}
         sessions={trainingSessions.map(s => ({
           id: s.id,
-          title: s.title,
+          // Class sessions are titled "Session 2" on the run; on a client's
+          // record the class name is what identifies them.
+          title: s.className ? `${s.className} · ${s.title}` : s.title,
           scheduledAt: s.scheduledAt.toISOString(),
           durationMins: s.durationMins,
           sessionType: s.sessionType,
@@ -394,7 +396,7 @@ export default async function ClientDetailPage({
           location: s.location,
           virtualLink: s.virtualLink,
           description: s.description,
-          dogName: s.dog?.name ?? null,
+          dogName: s.dogName,
         }))}
         customFields={customFields.map(f => ({
           id: f.id,

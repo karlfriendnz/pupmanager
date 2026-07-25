@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { nextSessionByClient as nextSessionForClients } from '@/lib/client-sessions'
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import Link from 'next/link'
@@ -52,7 +53,7 @@ export default async function ClientsPage({
     include: {
       user: { select: { name: true, email: true } },
       dog: { select: { name: true, breed: true, photoUrl: true } },
-      dogs: { select: { name: true, photoUrl: true } },
+      dogs: { select: { name: true, breed: true, photoUrl: true } },
       diaryEntries: {
         where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
         select: { id: true, completion: { select: { id: true } } },
@@ -67,7 +68,7 @@ export default async function ClientsPage({
         include: {
           user: { select: { name: true, email: true } },
           dog: { select: { name: true, breed: true, photoUrl: true } },
-          dogs: { select: { name: true, photoUrl: true } },
+          dogs: { select: { name: true, breed: true, photoUrl: true } },
           diaryEntries: {
             where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
             select: { id: true, completion: { select: { id: true } } },
@@ -101,21 +102,10 @@ export default async function ClientsPage({
     ...ownedClients.map(c => c.id),
     ...sharedClients.map(s => s.client.id),
   ]
-  const upcomingSessions = allClientIds.length > 0
-    ? await prisma.trainingSession.findMany({
-        where: {
-          clientId: { in: allClientIds },
-          scheduledAt: { gte: new Date() },
-        },
-        orderBy: { scheduledAt: 'asc' },
-        distinct: ['clientId'],
-        select: { clientId: true, scheduledAt: true },
-      })
-    : []
-  const nextSessionByClient = new Map<string, Date>()
-  for (const s of upcomingSessions) {
-    if (s.clientId) nextSessionByClient.set(s.clientId, s.scheduledAt)
-  }
+  // Across 1:1 AND class enrolments — a class session isn't linked to the
+  // client directly, so querying trainingSession by clientId alone left anyone
+  // who only does classes showing no next session at all.
+  const nextSessionByClient = await nextSessionForClients(allClientIds)
 
   // Flatten owned + shared into one row shape so the client component can
   // filter and render uniformly.
@@ -124,8 +114,11 @@ export default async function ClientsPage({
       id: c.id,
       name: c.user.name,
       email: c.user.email,
-      dogName: c.dog?.name ?? null,
-      dogBreed: c.dog?.breed ?? null,
+      // Fall back to an additional dog: a household whose dogs were all added
+      // as extras has no PRIMARY, and read "No dog" here while their profile
+      // listed four. (The photo already fell back; the name didn't.)
+      dogName: c.dog?.name ?? c.dogs[0]?.name ?? null,
+      dogBreed: c.dog?.breed ?? c.dogs[0]?.breed ?? null,
       dogPhotoUrl: c.dog?.photoUrl ?? c.dogs[0]?.photoUrl ?? null,
       extraDogNames: c.dogs.map(d => d.name),
       taskCount: c.diaryEntries.length,
@@ -137,8 +130,8 @@ export default async function ClientsPage({
       id: s.client.id,
       name: s.client.user.name,
       email: s.client.user.email,
-      dogName: s.client.dog?.name ?? null,
-      dogBreed: s.client.dog?.breed ?? null,
+      dogName: s.client.dog?.name ?? s.client.dogs[0]?.name ?? null,
+      dogBreed: s.client.dog?.breed ?? s.client.dogs[0]?.breed ?? null,
       dogPhotoUrl: s.client.dog?.photoUrl ?? s.client.dogs[0]?.photoUrl ?? null,
       extraDogNames: s.client.dogs.map(d => d.name),
       taskCount: s.client.diaryEntries.length,
