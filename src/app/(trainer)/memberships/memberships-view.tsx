@@ -17,8 +17,7 @@ import { currencySymbol, formatMoney } from '@/lib/money'
 import { Switch } from '@/components/ui/switch'
 import {
   OfferingCard, OfferingEmpty, OfferingListBar, OfferingItems,
-  SortableOfferingList, SortableOfferingCard, AddOfferingLink, useOfferingView,
-  type OfferingFact,
+  SortableOfferingList, SortableOfferingCard, AddOfferingLink,   type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
@@ -155,7 +154,6 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   // The list owns its own order: dragging a card writes it back, and that same
   // order is what clients see in Offerings.
   const { rows: list, setRows: setList, reorder, error: reorderError } = useOfferingReorder(memberships, 'membership')
-  const [view, setView] = useOfferingView('memberships')
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -530,9 +528,9 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar view={view} onView={setView} />
-            <SortableOfferingList ids={list.map(m => m.id)} onReorder={reorder} view={view}>
-              <OfferingItems view={view}>
+            <OfferingListBar />
+            <SortableOfferingList ids={list.map(m => m.id)} onReorder={reorder}>
+              <OfferingItems>
                 {list.map(m => (
                   <SortableOfferingCard key={m.id} id={m.id}>
                     {handle => (
@@ -543,7 +541,6 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                         imageUrl={m.imageUrl}
                         tile={{ icon: <Ticket className="h-5 w-5" />, className: 'bg-violet-50 text-violet-600' }}
                         dimmed={!m.published}
-                        variant={view}
                         dragHandle={handle}
                         badges={[
                           {

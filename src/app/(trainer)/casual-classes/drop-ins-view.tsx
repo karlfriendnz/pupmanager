@@ -6,8 +6,7 @@ import { Ticket, Users, CalendarDays, MapPin, Repeat, Pencil, Copy } from 'lucid
 import { PageHeader } from '@/components/shared/page-header'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
-  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard, useOfferingView,
-  type OfferingFact,
+  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
@@ -35,7 +34,6 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
   const router = useRouter()
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const [cloning, setCloning] = useState<string | null>(null)
-  const [view, setView] = useOfferingView('casual-classes')
   const { rows: runs, reorder, error: reorderError } = useOfferingReorder(initialRuns, 'classRun')
 
   const current = runs.filter(r => !r.isPast)
@@ -72,7 +70,7 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar view={view} onView={setView}>
+            <OfferingListBar>
               <OfferingTabs
                 value={tab}
                 onChange={setTab}
@@ -92,8 +90,8 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
                   : 'No classes are currently taking casual bookings. Set one up and clients can book a single session.'}
               />
             ) : (
-              <SortableOfferingList ids={shown.map(r => r.id)} onReorder={reorder} view={view}>
-                <OfferingItems view={view}>
+              <SortableOfferingList ids={shown.map(r => r.id)} onReorder={reorder}>
+                <OfferingItems>
                   {shown.map(r => (
                     <SortableOfferingCard key={r.id} id={r.id}>
                       {handle => (
@@ -104,7 +102,6 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
                           imageUrl={r.imageUrl}
                           tile={{ icon: <Ticket className="h-5 w-5" />, className: 'bg-amber-50 text-amber-600' }}
                           dimmed={r.isPast}
-                          variant={view}
                           dragHandle={handle}
                           badges={[
                             ...(r.dropInPriceCents != null

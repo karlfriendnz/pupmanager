@@ -6,8 +6,7 @@ import { CalendarPlus, MapPin, Users, Ticket, Pencil, Copy, CalendarDays } from 
 import { PageHeader } from '@/components/shared/page-header'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
-  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard, useOfferingView,
-  type OfferingFact,
+  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
@@ -35,7 +34,6 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
   const router = useRouter()
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
   const [cloning, setCloning] = useState<string | null>(null)
-  const [view, setView] = useOfferingView('events')
   const { rows: events, reorder, error: reorderError } = useOfferingReorder(initialEvents, 'classRun')
 
   // Left in the trainer's own arranged order (ties fall back to date) — that's
@@ -74,7 +72,7 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar view={view} onView={setView}>
+            <OfferingListBar>
               <OfferingTabs
                 value={tab}
                 onChange={setTab}
@@ -94,8 +92,8 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
                   : 'Every event you have has been. Put another one in the diary.'}
               />
             ) : (
-              <SortableOfferingList ids={shown.map(e => e.id)} onReorder={reorder} view={view}>
-                <OfferingItems view={view}>
+              <SortableOfferingList ids={shown.map(e => e.id)} onReorder={reorder}>
+                <OfferingItems>
                   {shown.map(e => (
                     <SortableOfferingCard key={e.id} id={e.id}>
                       {handle => (
@@ -106,7 +104,6 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
                           imageUrl={e.imageUrl}
                           tile={{ icon: <CalendarPlus className="h-5 w-5" />, className: 'bg-violet-50 text-violet-600' }}
                           dimmed={e.isPast}
-                          variant={view}
                           dragHandle={handle}
                           badges={[
                             ...(e.status === 'CANCELLED' ? [{ label: 'Cancelled', tone: 'bad' as const }] : []),

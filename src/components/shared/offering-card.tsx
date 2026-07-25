@@ -1,11 +1,11 @@
 'use client'
 
-import { type ReactNode, type HTMLAttributes, useCallback, useSyncExternalStore } from 'react'
+import { type ReactNode, type HTMLAttributes } from 'react'
 import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
 import Link from 'next/link'
-import { Plus, GripVertical, LayoutGrid, List as ListIcon } from 'lucide-react'
+import { Plus, GripVertical } from 'lucide-react'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
-import { SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
 // One card design for everything a trainer sells — 1:1 packages, group classes,
@@ -74,7 +74,6 @@ export function OfferingCard({
   note,
   dragHandle,
   dimmed = false,
-  variant = 'list',
 }: {
   href?: string
   /** For a card with no detail page — memberships open their builder in place. */
@@ -92,63 +91,61 @@ export function OfferingCard({
   dragHandle?: ReactNode
   /** Past / cancelled things read quieter without disappearing. */
   dimmed?: boolean
-  /** 'grid' puts the cover photo on top as a banner; 'list' keeps it inline. */
-  variant?: OfferingView
 }) {
-  const grid = variant === 'grid'
   const body = (
-    <div className={grid ? 'flex min-w-0 flex-1 flex-col' : 'flex min-w-0 flex-1 items-start gap-3'}>
-      {grid ? (
-        imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt="" className="mb-3 h-32 w-full rounded-xl object-cover" />
-        ) : tile ? (
-          <div className={`mb-3 flex h-32 w-full items-center justify-center rounded-xl ${tile.className ?? 'bg-blue-50 text-blue-600'}`}>
-            <span className="[&_svg]:h-8 [&_svg]:w-8">{tile.icon}</span>
-          </div>
-        ) : null
-      ) : imageUrl ? (
+    <div className="flex min-w-0 flex-1 flex-col">
+      {/* Photo across the top when there is one. Without one, a small mark
+          beside the title — a 128px block of flat colour was a lot of card
+          spent saying "this is a package". */}
+      {imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt="" className="h-11 w-11 shrink-0 rounded-xl object-cover" />
-      ) : tile ? (
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tile.className ?? 'bg-blue-50 text-blue-600'}`}>
-          {tile.icon}
-        </div>
-      ) : null}
+        <img src={imageUrl} alt="" className="mb-3 h-32 w-full rounded-xl object-cover" />
+      )}
 
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="font-semibold text-slate-900 break-words">{title}</p>
-          {badges.map((b, i) => (
-            <span
-              key={i}
-              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${BADGE_TONE[b.tone ?? 'muted']} ${b.strike ? 'line-through opacity-70' : ''}`}
-            >
-              {b.label}
-            </span>
-          ))}
-        </div>
-
-        {!isRichTextEmpty(description) && (
-          <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">{richTextToPlain(description)}</p>
+      <div className="flex min-w-0 items-start gap-3">
+        {!imageUrl && tile && (
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tile.className ?? 'bg-blue-50 text-blue-600'}`}>
+            {tile.icon}
+          </div>
         )}
 
-        {/* The facts. Chips rather than a "·"-joined string so each one keeps
-            its icon and can carry its own colour (full / spaces left). They
-            wrap individually, which is what makes this read on a phone. */}
-        {facts.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            {facts.map((f, i) => (
-              <span key={i} className={`inline-flex items-center gap-1.5 text-xs ${FACT_TONE[f.tone ?? 'default']}`}>
-                <span className="shrink-0 opacity-70">{f.icon}</span>
-                {f.label}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="font-semibold text-slate-900 break-words">{title}</p>
+            {badges.map((b, i) => (
+              <span
+                key={i}
+                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${BADGE_TONE[b.tone ?? 'muted']} ${b.strike ? 'line-through opacity-70' : ''}`}
+              >
+                {b.label}
               </span>
             ))}
           </div>
-        )}
 
-        {note && <p className={`mt-1.5 text-xs font-medium ${FACT_TONE[note.tone ?? 'warn']}`}>{note.label}</p>}
+          {!isRichTextEmpty(description) && (
+            <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">{richTextToPlain(description)}</p>
+          )}
+        </div>
       </div>
+
+      {/* The facts. Chips rather than a "·"-joined string so each one keeps its
+          icon and can carry its own colour (full / spaces left). Full card
+          width — indenting them under the title left them a column too narrow
+          to hold "3 sessions, every 1 week" on one line. Each chip is
+          whitespace-nowrap so a chip breaks to the next line whole rather than
+          stacking a word at a time. */}
+      {facts.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {facts.map((f, i) => (
+            <span key={i} className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs ${FACT_TONE[f.tone ?? 'default']}`}>
+              <span className="shrink-0 opacity-70">{f.icon}</span>
+              {f.label}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {note && <p className={`mt-1.5 text-xs font-medium ${FACT_TONE[note.tone ?? 'warn']}`}>{note.label}</p>}
     </div>
   )
 
@@ -174,125 +171,48 @@ export function OfferingCard({
     </div>
   )
 
-  // In grid the drag handle and the actions share one row across the top, and
-  // everything below it is the link — so the whole tile opens the offering.
-  if (grid) {
-    return (
-      <div
-        className={`group relative flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_8px_rgba(15,31,36,0.04)] transition-colors hover:border-blue-200 ${dimmed ? 'opacity-60' : ''}`}
-      >
-        {(dragHandle || actions.length > 0) && (
-          <div className="mb-1 flex items-center justify-between">
-            {dragHandle ?? <span />}
-            {actionBar}
-          </div>
-        )}
-        {href ? (
-          <Link href={href} className="flex min-w-0 flex-1 flex-col">{body}</Link>
-        ) : onOpen ? (
-          <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 flex-col text-left">{body}</button>
-        ) : body}
-      </div>
-    )
-  }
-
+  // One card, at every width. The drag handle and the actions share a row
+  // across the top and everything below it opens the offering — which is what
+  // stops the actions (three 36px buttons) from eating the width the title
+  // needs on a phone.
   return (
     <div
-      className={`group flex items-start gap-2 rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_8px_rgba(15,31,36,0.04)] transition-colors hover:border-blue-200 ${dimmed ? 'opacity-60' : ''}`}
+      className={`group relative flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_8px_rgba(15,31,36,0.04)] transition-colors hover:border-blue-200 ${dimmed ? 'opacity-60' : ''}`}
     >
-      {dragHandle}
-      {href ? (
-        <Link href={href} className="flex min-w-0 flex-1 items-start gap-3">{body}</Link>
-      ) : onOpen ? (
-        <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-start gap-3 text-left">{body}</button>
-      ) : (
-        body
+      {(dragHandle || actions.length > 0) && (
+        <div className="mb-1 flex items-center justify-between">
+          {dragHandle ?? <span />}
+          {actionBar}
+        </div>
       )}
-      {actionBar}
+      {href ? (
+        <Link href={href} className="flex min-w-0 flex-1 flex-col">{body}</Link>
+      ) : onOpen ? (
+        <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 flex-col text-left">{body}</button>
+      ) : body}
     </div>
   )
 }
 
 // ─── List chrome: view mode, drag-to-reorder ─────────────────────────────────
 
-export type OfferingView = 'list' | 'grid'
-
-const VIEW_KEY_PREFIX = 'pupmanager:offering-view'
-
 /**
- * The list/grid preference, remembered PER PAGE — memberships can sit in grid
- * while classes stay a list, because the lists are read differently (photos
- * matter more on some than others). Starts as 'list' on the server so the
- * markup matches until the stored choice is read (a mismatch here
- * hydration-errors the whole page).
+ * There is one card view now, so there's nothing to toggle between.
+ *
+ * The old list/grid switch (remembered per page in localStorage) existed
+ * because neither layout worked everywhere: the list squeezed the title
+ * between a drag handle, an icon and three action buttons until it wrapped a
+ * word per line on a phone, and the grid spent 128px on a block of flat colour
+ * whenever an offering had no photo. One card that reflows — full width on a
+ * phone, two or three up on a desktop — beats asking the trainer to pick
+ * between two compromises.
  */
-const viewListeners = new Set<() => void>()
 
-function subscribeView(cb: () => void) {
-  viewListeners.add(cb)
-  // Another tab switching view should switch this one too.
-  window.addEventListener('storage', cb)
-  return () => {
-    viewListeners.delete(cb)
-    window.removeEventListener('storage', cb)
-  }
-}
-
-// Read through useSyncExternalStore rather than an effect: localStorage IS an
-// external store, and this gives the server 'list' while the client reads the
-// real value, with no setState-in-effect cascade.
-function readView(key: string): OfferingView {
-  try { return window.localStorage.getItem(key) === 'grid' ? 'grid' : 'list' } catch { return 'list' }
-}
-const serverView = (): OfferingView => 'list'
-
-/** @param page which list this is — its own remembered view ('classes', 'memberships', …). */
-export function useOfferingView(page: string): [OfferingView, (v: OfferingView) => void] {
-  const key = `${VIEW_KEY_PREFIX}:${page}`
-  // Both callbacks have to be stable, or useSyncExternalStore resubscribes on
-  // every render and the page spins.
-  const subscribe = useCallback((cb: () => void) => subscribeView(cb), [])
-  const snapshot = useCallback(() => readView(key), [key])
-  const view = useSyncExternalStore(subscribe, snapshot, serverView)
-  const choose = useCallback((v: OfferingView) => {
-    try { window.localStorage.setItem(key, v) } catch { /* private mode */ }
-    viewListeners.forEach(l => l())
-  }, [key])
-  return [view, choose]
-}
-
-/** List / grid switch, sitting beside the Current / Past tabs. */
-export function OfferingViewToggle({ value, onChange }: { value: OfferingView; onChange: (v: OfferingView) => void }) {
-  return (
-    <div className="flex items-center gap-0.5 rounded-xl bg-slate-100 p-1">
-      {([
-        { id: 'list' as const, icon: <ListIcon className="h-4 w-4" />, label: 'List view' },
-        { id: 'grid' as const, icon: <LayoutGrid className="h-4 w-4" />, label: 'Grid view' },
-      ]).map(v => (
-        <button
-          key={v.id}
-          type="button"
-          onClick={() => onChange(v.id)}
-          aria-label={v.label}
-          title={v.label}
-          aria-pressed={value === v.id}
-          className={`flex h-8 w-9 items-center justify-center rounded-lg transition-colors ${
-            value === v.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'
-          }`}
-        >
-          {v.icon}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-/** The row that carries the tabs (if any) on the left and the view toggle right. */
-export function OfferingListBar({ children, view, onView }: { children?: ReactNode; view: OfferingView; onView: (v: OfferingView) => void }) {
+/** The row that carries the tabs (if any). */
+export function OfferingListBar({ children }: { children?: ReactNode }) {
   return (
     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
       <div className="min-w-0">{children}</div>
-      <OfferingViewToggle value={view} onChange={onView} />
     </div>
   )
 }
@@ -338,12 +258,10 @@ export function OfferingDragHandle(handle: HTMLAttributes<HTMLElement>) {
 export function SortableOfferingList({
   ids,
   onReorder,
-  view,
   children,
 }: {
   ids: string[]
   onReorder: (orderedIds: string[]) => void
-  view: OfferingView
   children: ReactNode
 }) {
   const sensors = useSensors(
@@ -363,7 +281,9 @@ export function SortableOfferingList({
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <SortableContext items={ids} strategy={view === 'grid' ? rectSortingStrategy : verticalListSortingStrategy}>
+      {/* rect, not vertical-list: the cards wrap into columns from sm: up, and
+          the vertical strategy assumes a single column. */}
+      <SortableContext items={ids} strategy={rectSortingStrategy}>
         {children}
       </SortableContext>
     </DndContext>
@@ -375,13 +295,10 @@ export function SortableOfferingCard({ id, children }: { id: string; children: (
   return <SortableOffering id={id}>{handle => children(<OfferingDragHandle {...handle} />)}</SortableOffering>
 }
 
-/** The container the cards sit in — a column in list view, a responsive grid in grid view. */
-export function OfferingItems({ view, children }: { view: OfferingView; children: ReactNode }) {
+/** The container the cards sit in: one column on a phone, more as there's room. */
+export function OfferingItems({ children }: { children: ReactNode }) {
   return (
-    <div className={view === 'grid'
-      ? 'grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4'
-      : 'flex flex-col gap-2.5'}
-    >
+    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {children}
     </div>
   )

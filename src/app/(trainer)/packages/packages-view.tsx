@@ -12,8 +12,7 @@ import { type PackageColor, type PkgRow } from './package-form'
 import { formatMoney } from '@/lib/money'
 import {
   OfferingCard, OfferingEmpty, AddOfferingLink, OfferingPage,
-  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard, useOfferingView,
-  type OfferingFact, type OfferingBadge,
+  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact, type OfferingBadge,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 
@@ -49,7 +48,6 @@ export function PackagesView({
   currency?: string
 }) {
   const router = useRouter()
-  const [view, setView] = useOfferingView('packages')
   // Same drag + saved order as every other offering list.
   const { rows: packages, setRows: setPackages, reorder, error: reorderError } = useOfferingReorder(initialPackages, 'package')
 
@@ -95,9 +93,9 @@ export function PackagesView({
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar view={view} onView={setView} />
-            <SortableOfferingList ids={packages.map(p => p.id)} onReorder={reorder} view={view}>
-              <OfferingItems view={view}>
+            <OfferingListBar />
+            <SortableOfferingList ids={packages.map(p => p.id)} onReorder={reorder}>
+              <OfferingItems>
                 {packages.map(p => (
                   <SortableOfferingCard key={p.id} id={p.id}>
                     {handle => (
@@ -109,7 +107,6 @@ export function PackagesView({
                         tile={{ icon: <PackageIcon className="h-5 w-5" />, className: packageIconClasses(p.color) }}
                         badges={packageBadges(p, currency)}
                         facts={packageFacts(p)}
-                        variant={view}
                         dragHandle={handle}
                         actions={[
                           { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${p.id}/edit`) },

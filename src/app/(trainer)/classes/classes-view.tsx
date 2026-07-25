@@ -7,8 +7,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
-  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard, useOfferingView,
-  type OfferingFact, type OfferingBadge,
+  OfferingListBar, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact, type OfferingBadge,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
@@ -56,7 +55,6 @@ export function ClassesView({
   const [connectName, setConnectName] = useState<string | null>(initialConnectName)
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const [cloning, setCloning] = useState<string | null>(null)
-  const [view, setView] = useOfferingView('classes')
   const { rows: runs, reorder, error: reorderError } = useOfferingReorder(initialRuns, 'classRun')
 
   // The server hands these back in the trainer's own arranged order (ties fall
@@ -96,7 +94,7 @@ export function ClassesView({
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar view={view} onView={setView}>
+            <OfferingListBar>
               <OfferingTabs
                 value={tab}
                 onChange={setTab}
@@ -116,8 +114,8 @@ export function ClassesView({
                   : 'Every class you have has finished. Start a new one to fill the calendar.'}
               />
             ) : (
-              <SortableOfferingList ids={shown.map(r => r.id)} onReorder={reorder} view={view}>
-                <OfferingItems view={view}>
+              <SortableOfferingList ids={shown.map(r => r.id)} onReorder={reorder}>
+                <OfferingItems>
                   {shown.map(r => (
                     <SortableOfferingCard key={r.id} id={r.id}>
                       {handle => (
@@ -128,7 +126,6 @@ export function ClassesView({
                           imageUrl={r.imageUrl}
                           tile={{ icon: <GraduationCap className="h-5 w-5" />, className: 'bg-blue-50 text-blue-600' }}
                           dimmed={r.isPast}
-                          variant={view}
                           dragHandle={handle}
                           badges={[
                             { label: r.status.charAt(0) + r.status.slice(1).toLowerCase(), tone: STATUS_TONE[r.status] },
