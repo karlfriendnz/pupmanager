@@ -363,9 +363,13 @@ export default async function DashboardPage({
         {/* While sample data is loaded the account looks set up, so show the
             "remove sample data" strip at the top and hide the get-set-up
             onboarding. Removing the sample data brings the onboarding back. */}
-        {/* Phones get a launcher home instead of the widget wall: branded
-            welcome, one live line about today, six live-count tiles. Everything
-            below stays for md+ (and the action panels stay on both). */}
+        {sampleClientCount > 0 && <SampleDataBanner realClientCount={realClientCount} />}
+        {/* Anything awaiting a decision sits above the fold on both layouts —
+            on phones that means it comes before the home grid. */}
+        <BookingRequestsPanel trainerId={trainerId} />
+        {/* Phones get a launcher home instead of the widget wall: welcome, one
+            live line about today, six live-count tiles. Everything below stays
+            for md+ (and the action panels stay on both). */}
         <MobileHome
           greeting={getGreeting(tz)}
           firstName={session.user.name?.split(' ')[0] ?? ''}
@@ -380,8 +384,6 @@ export default async function DashboardPage({
           enquiryCount={unviewedEnquiryCount}
           notesOn={notesOn}
         />
-        {sampleClientCount > 0 && <SampleDataBanner realClientCount={realClientCount} />}
-        <BookingRequestsPanel trainerId={trainerId} />
         <WaitlistNudge trainerId={trainerId} />
         {sampleClientCount === 0 && <OnboardingPanel state={onboardingState} branding={branding} impersonating={!!session.user.impersonatorId} />}
         {/* Send-your-team-invites prompt: the emails captured during onboarding,

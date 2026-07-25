@@ -12,10 +12,13 @@ import type { LucideIcon } from 'lucide-react'
  * Phone-only home screen for trainers.
  *
  * The desktop dashboard is a dense wall of widgets; on a phone that reads as
- * overwhelming (groomer/trainer feedback). This is a launcher instead: a
- * branded welcome, one live line about today, and six big destinations. The
- * tiles carry counts so the grid replaces the old four-up stat strip rather
+ * overwhelming (groomer/trainer feedback). This is a launcher instead: whatever
+ * is waiting on the trainer first, then a plain welcome, then six destinations
+ * carrying live counts so the grid replaces the old four-up stat strip rather
  * than adding a layer above it.
+ *
+ * Flat by intent — one hairline-divided block, no cards floating on cards, no
+ * tinted icon chips, no gradient.
  *
  * Rendered md:hidden — the desktop dashboard is untouched.
  */
@@ -26,10 +29,6 @@ type Tile = {
   label: string
   sub: string
   icon: LucideIcon
-  /** Tailwind classes for the icon chip. */
-  chip: string
-  /** Attention count — rendered as a badge when > 0. */
-  badge?: number
 }
 
 export function MobileHome({
@@ -67,21 +66,18 @@ export function MobileHome({
       label: 'Schedule',
       sub: todayCount === 1 ? '1 session today' : `${todayCount} sessions today`,
       icon: Calendar,
-      chip: 'bg-blue-50 text-blue-600',
     },
     {
       href: '/clients',
       label: 'Clients',
       sub: `${activeClients} active`,
       icon: Users,
-      chip: 'bg-violet-50 text-violet-600',
     },
     {
       href: '/offerings',
       label: 'Offerings',
       sub: 'Packages & classes',
       icon: Layers,
-      chip: 'bg-amber-50 text-amber-600',
     },
     notesOn
       ? {
@@ -89,14 +85,12 @@ export function MobileHome({
           label: 'Notes',
           sub: notesCount === 1 ? '1 to write' : `${notesCount} to write`,
           icon: FileText,
-          chip: 'bg-emerald-50 text-emerald-600',
         }
       : {
           href: '/messages',
           label: 'Messages',
           sub: 'Client conversations',
           icon: MessageSquare,
-          chip: 'bg-emerald-50 text-emerald-600',
         },
     {
       href: '/finances',
@@ -107,114 +101,102 @@ export function MobileHome({
         ? `${invoiceLabel?.replace(/[.,]00$/, '') ?? invoiceCount} to invoice`
         : 'Payments & invoices',
       icon: Wallet,
-      chip: 'bg-rose-50 text-rose-600',
     },
     {
       onClick: openMore,
       label: 'More',
       sub: 'Reports, settings & more',
       icon: LayoutGrid,
-      chip: 'bg-slate-100 text-slate-600',
     },
   ]
 
   return (
     <section className="md:hidden -mt-1 mb-6">
-      {/* Welcome band — the trainer's own logo + a time-of-day greeting so the
-          app opens with their brand, not ours. */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-600 via-brand-600 to-indigo-700 px-5 py-5 text-white">
-        {/* Soft light source, top-right. Purely decorative. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-10 -top-16 h-44 w-44 rounded-full bg-white/15 blur-2xl"
-        />
-        <div className="relative flex items-center gap-3">
-          {logoUrl ? (
-            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/95 p-1.5">
-              {/* Plain <img>: trainer logos live on Vercel Blob, which isn't
-                  in next/image's remotePatterns (same as everywhere else). */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={logoUrl}
-                alt={businessName || 'Business logo'}
-                className="h-full w-full object-contain"
-              />
-            </span>
-          ) : (
-            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-white/15 text-lg font-semibold backdrop-blur">
-              {(businessName || firstName || 'P').charAt(0).toUpperCase()}
-            </span>
-          )}
-          <div className="min-w-0">
-            <p className="text-lg font-semibold leading-tight">
-              Good {greeting}{firstName ? `, ${firstName}` : ''}
-            </p>
-            {businessName && (
-              <p className="truncate text-sm text-white/70">{businessName}</p>
-            )}
-          </div>
-        </div>
-
-        {/* The one live line: what's on today, tappable straight to the day. */}
-        <Link
-          href="/schedule"
-          className="relative mt-4 flex items-center gap-2.5 rounded-2xl bg-white/15 px-3.5 py-3 backdrop-blur transition-colors active:bg-white/25"
-        >
-          <Calendar className="h-4 w-4 flex-shrink-0" />
-          {/* Two lines rather than one long truncated string — at 390px
-              "1 session today · next 4:30pm Jasper" loses the dog's name. */}
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">
-              {todayCount === 0
-                ? 'Nothing scheduled today'
-                : `${todayCount} session${todayCount === 1 ? '' : 's'} today`}
-            </span>
-            {nextSessionLabel && (
-              <span className="mt-0.5 block truncate text-xs text-white/75">
-                Next {nextSessionLabel}
-              </span>
-            )}
-          </span>
-          <ChevronRight className="h-4 w-4 flex-shrink-0 text-white/70" />
-        </Link>
-      </div>
-
-      {/* Anything waiting on the trainer that isn't one of the six tiles. */}
+      {/* Waiting on the trainer — first thing on the screen. */}
       {enquiryCount > 0 && (
         <Link
           href="/enquiries"
-          className="mt-3 flex items-center gap-2.5 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 transition-colors active:bg-violet-100"
+          className="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 active:bg-slate-50"
         >
-          <Inbox className="h-4 w-4 flex-shrink-0 text-violet-700" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-violet-900">
+          <Inbox className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
             {enquiryCount} new {enquiryCount === 1 ? 'enquiry' : 'enquiries'} to review
           </span>
-          <ChevronRight className="h-4 w-4 flex-shrink-0 text-violet-400" />
+          <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
         </Link>
       )}
 
-      <div className="mt-3 grid grid-cols-2 gap-3">
+      {/* Plain welcome — their logo, their name. No gradient, no card. */}
+      <div className="mb-4 flex items-center gap-3 px-0.5">
+        {logoUrl ? (
+          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white p-1">
+            {/* Plain <img>: trainer logos live on Vercel Blob, which isn't in
+                next/image's remotePatterns (same as everywhere else). */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={logoUrl}
+              alt={businessName || 'Business logo'}
+              className="h-full w-full object-contain"
+            />
+          </span>
+        ) : (
+          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-base font-semibold text-slate-700">
+            {(businessName || firstName || 'P').charAt(0).toUpperCase()}
+          </span>
+        )}
+        <div className="min-w-0">
+          <p className="text-[17px] font-semibold leading-tight text-slate-900">
+            Good {greeting}{firstName ? `, ${firstName}` : ''}
+          </p>
+          {businessName && (
+            <p className="truncate text-[13px] text-slate-500">{businessName}</p>
+          )}
+        </div>
+      </div>
+
+      {/* One live line about today, sharing the grid's flat treatment. */}
+      <Link
+        href="/schedule"
+        className="mb-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 active:bg-slate-50"
+      >
+        <Calendar className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-slate-900">
+            {todayCount === 0
+              ? 'Nothing scheduled today'
+              : `${todayCount} session${todayCount === 1 ? '' : 's'} today`}
+          </span>
+          {nextSessionLabel && (
+            <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+              Next {nextSessionLabel}
+            </span>
+          )}
+        </span>
+        <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
+      </Link>
+
+      {/* One block, divided by hairlines — not six floating cards. The nth-child
+          rules drop the outer edges so only the internal lines show. */}
+      <div className={cn(
+        'grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white',
+        '[&>*]:border-b [&>*]:border-r [&>*]:border-slate-200',
+        '[&>*:nth-child(2n)]:border-r-0',
+        '[&>*:nth-last-child(-n+2)]:border-b-0',
+      )}>
         {tiles.map((t) => {
           const Icon = t.icon
           const inner = (
             <>
-              {(t.badge ?? 0) > 0 && (
-                <span className="absolute right-3 top-3 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-xs font-semibold tabular-nums text-white">
-                  {t.badge! > 99 ? '99+' : t.badge}
-                </span>
-              )}
-              <span className={cn('flex h-11 w-11 items-center justify-center rounded-2xl', t.chip)}>
-                <Icon className="h-5 w-5" />
-              </span>
-              <span className="mt-3 block text-[15px] font-semibold leading-tight text-slate-900">
+              <Icon className="h-[22px] w-[22px] text-slate-700" strokeWidth={1.75} />
+              <span className="mt-2.5 block text-[15px] font-semibold leading-tight text-slate-900">
                 {t.label}
               </span>
-              <span className="mt-0.5 block text-xs leading-tight text-slate-500">
+              <span className="mt-1 block text-[13px] leading-tight text-slate-500">
                 {t.sub}
               </span>
             </>
           )
-          const cls = 'relative flex min-h-[124px] flex-col items-start rounded-3xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-transform active:scale-[0.98]'
+          const cls = 'flex min-h-[104px] flex-col items-start justify-center px-4 py-4 text-left active:bg-slate-50'
           return t.href ? (
             <Link key={t.label} href={t.href} className={cls}>{inner}</Link>
           ) : (

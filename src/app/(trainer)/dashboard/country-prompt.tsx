@@ -2,21 +2,25 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useIsNative } from '@/lib/native'
 import { COUNTRIES } from '@/lib/countries'
 import { Button } from '@/components/ui/button'
 
-// On the iOS/Android app, the IP-geo country we auto-capture on the web isn't
-// available, so a trainer can end up with no country set. Prompt them to pick
-// it. Hidden on web (where it's captured at signup) and once a country exists.
+// Asks for the country when we don't have one. It drives the currency a trainer
+// is priced and paid in, and it's what Stripe onboarding is opened with.
+//
+// This used to show on the phone apps only, on the assumption the web captures
+// it at signup. The web captures it from an IP-geo header — which an OAuth
+// sign-up never passes through at all (its profile is created in a NextAuth
+// event, with no request to read), and which can simply be absent behind a VPN.
+// Eleven of forty-two businesses had no country as a result, every one of them
+// also missing a currency. So it asks wherever it's missing.
 export function CountryPrompt({ hasCountry }: { hasCountry: boolean }) {
-  const native = useIsNative() // false during SSR + first render, then real value
   const router = useRouter()
   const [code, setCode] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  if (!native || hasCountry || saved) return null
+  if (hasCountry || saved) return null
 
   async function save() {
     if (!code) return
