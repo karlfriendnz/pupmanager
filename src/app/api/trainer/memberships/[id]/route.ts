@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
-import { membershipPatchSchema, itemsOwnedByTrainer, itemRows } from '@/lib/membership-input'
+import { membershipPatchSchema, itemsOwnedByTrainer, itemRows, planRows } from '@/lib/membership-input'
 
 async function owned(trainerId: string, id: string) {
   return prisma.membership.findFirst({ where: { id, trainerId }, select: { id: true } })
@@ -13,7 +13,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params
   const membership = await prisma.membership.findFirst({
     where: { id, trainerId: ctx.companyId },
-    include: { items: { orderBy: { order: 'asc' } } },
+    include: { items: { orderBy: { order: 'asc' } }, plans: { orderBy: { order: 'asc' } } },
   })
   if (!membership) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(membership)
@@ -36,6 +36,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       await tx.membershipItem.deleteMany({ where: { membershipId: id } })
       if (d.items.length) await tx.membershipItem.createMany({ data: itemRows(id, d.items) })
     }
+    if (d.plans !== undefined) {
+      await tx.membershipPlan.deleteMany({ where: { membershipId: id } })
+      if (d.plans.length) await tx.membershipPlan.createMany({ data: planRows(id, d.plans) })
+    }
     return tx.membership.update({
       where: { id },
       data: {
@@ -54,7 +58,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         ...(d.earlyTermFeeCents !== undefined ? { earlyTermFeeCents: d.earlyTermFeeCents } : {}),
         ...(d.published !== undefined ? { published: d.published } : {}),
       },
-      include: { items: { orderBy: { order: 'asc' } } },
+      include: { items: { orderBy: { order: 'asc' } }, plans: { orderBy: { order: 'asc' } } },
     })
   })
 

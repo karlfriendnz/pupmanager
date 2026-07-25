@@ -19,7 +19,7 @@ export default async function MembershipsPage() {
     prisma.membership.findMany({
       where: { trainerId },
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-      include: { items: { orderBy: { order: 'asc' } }, _count: { select: { purchases: true } } },
+      include: { items: { orderBy: { order: 'asc' } }, plans: { orderBy: { order: 'asc' } }, _count: { select: { purchases: true } } },
     }),
     prisma.package.findMany({ where: { trainerId, isGroup: false }, orderBy: { name: 'asc' }, select: { id: true, name: true, priceCents: true, specialPriceCents: true, description: true } }),
     prisma.classRun.findMany({ where: { trainerId, status: { not: 'CANCELLED' } }, orderBy: { startDate: 'desc' }, select: { id: true, name: true, imageUrl: true, package: { select: { description: true } } } }),
@@ -35,6 +35,7 @@ export default async function MembershipsPage() {
         cadence: m.cadence, interval: m.interval, minTermCount: m.minTermCount, earlyTermFeeCents: m.earlyTermFeeCents,
         published: m.published, purchases: m._count.purchases,
         items: m.items.map(i => ({ kind: i.kind, packageId: i.packageId, classRunId: i.classRunId, productId: i.productId, quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl, description: i.description })),
+        plans: m.plans.map(p => ({ interval: p.interval, priceCents: p.priceCents, minTermCount: p.minTermCount, earlyTermFeeCents: p.earlyTermFeeCents })),
       }))}
       offerings={{
         packages: packages.map(p => ({ id: p.id, name: p.name, priceCents: (p.specialPriceCents ?? p.priceCents) ?? undefined, description: p.description ?? null })),

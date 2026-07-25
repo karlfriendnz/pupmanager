@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
-import { membershipCreateSchema, itemsOwnedByTrainer, itemRows } from '@/lib/membership-input'
+import { membershipCreateSchema, itemsOwnedByTrainer, itemRows, planRows } from '@/lib/membership-input'
 
 // Trainer-owned combo memberships. List + create. Guarded by packages.manage;
 // every included item must reference an offering the trainer owns.
@@ -39,6 +39,7 @@ export async function POST(req: Request) {
       },
     })
     if (d.items.length) await tx.membershipItem.createMany({ data: itemRows(m.id, d.items) })
+    if (d.plans?.length) await tx.membershipPlan.createMany({ data: planRows(m.id, d.plans) })
     return m
   })
 

@@ -22,24 +22,28 @@ type Interval = 'WEEK' | 'FORTNIGHT' | 'MONTH'
 interface Offering { id: string; name: string; priceCents?: number; imageUrl?: string | null; description?: string | null }
 interface Offerings { packages: Offering[]; classRuns: Offering[]; products: Offering[] }
 interface MItem { kind: Kind; packageId: string | null; classRunId: string | null; productId: string | null; quantity: number; regrantOnRenewal: boolean; imageUrl?: string | null; description?: string | null }
+interface MPlan { interval: Interval; priceCents: number; minTermCount: number; earlyTermFeeCents: number | null }
 interface Card { imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null; buttonText: string | null }
 interface Membership extends Card {
   id: string; name: string; description: string | null; priceCents: number
   cadence: Cadence; interval: Interval | null; minTermCount: number; earlyTermFeeCents: number | null
-  published: boolean; purchases: number; items: MItem[]
+  published: boolean; purchases: number; items: MItem[]; plans: MPlan[]
 }
 
 interface DraftItem { key: string; kind: Kind; id: string; quantity: number; regrantOnRenewal: boolean; imageUrl: string | null; description: string }
+interface DraftPlan { key: string; interval: Interval; price: string; minTerm: string; earlyTermFee: string }
 interface Draft extends Card {
   id: string | null; name: string; description: string; price: string; cadence: Cadence
-  interval: Interval; minTermCount: string; earlyTermFee: string; published: boolean; items: DraftItem[]
+  interval: Interval; minTermCount: string; earlyTermFee: string; published: boolean; items: DraftItem[]; plans: DraftPlan[]
 }
 
 // Live preview of the membership as it appears in the client Memberships
 // storefront (mirrors ClientMembershipsView's card), fed from the builder draft.
+const INTERVAL_LABEL: Record<Interval, string> = { WEEK: 'week', FORTNIGHT: 'fortnight', MONTH: 'month' }
+interface PreviewPlan { interval: Interval; priceCents: number }
 interface PreviewItem { label: string; quantity: number; imageUrl?: string | null; description?: string | null }
-function MembershipPreviewCard({ name, description, priceCents, recurring, interval, items, currency, card }: {
-  name: string; description: string; priceCents: number; recurring: boolean; interval: Interval; items: PreviewItem[]; currency: string; card: Card
+function MembershipPreviewCard({ name, description, priceCents, recurring, interval, items, plans, currency, card }: {
+  name: string; description: string; priceCents: number; recurring: boolean; interval: Interval; items: PreviewItem[]; plans: PreviewPlan[]; currency: string; card: Card
 }) {
   const bg = card.bgColor ?? '#ffffff'
   const header = card.headerColor ?? '#0f172a'
@@ -59,7 +63,7 @@ function MembershipPreviewCard({ name, description, priceCents, recurring, inter
             </h2>
             <div className="mt-1" style={{ color: text }}><RichText html={description} className="text-sm" /></div>
           </div>
-          <span className="text-lg font-bold whitespace-nowrap" style={{ color: featured }}>{formatMoney(priceCents, currency)}{recurring ? ` / ${interval.toLowerCase()}` : ''}</span>
+          {plans.length === 0 && <span className="text-lg font-bold whitespace-nowrap" style={{ color: featured }}>{formatMoney(priceCents, currency)}{recurring ? ` / ${interval.toLowerCase()}` : ''}</span>}
         </div>
         {items.length > 0 && (
           <ul className="mt-3 flex flex-col gap-2.5">
@@ -78,6 +82,16 @@ function MembershipPreviewCard({ name, description, priceCents, recurring, inter
               </li>
             ))}
           </ul>
+        )}
+        {plans.length > 0 && (
+          <div className="mt-3 flex flex-col gap-1.5">
+            {plans.map((pl, i) => (
+              <div key={i} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm" style={{ borderColor: featured }}>
+                <span style={{ color: header }}>Every {INTERVAL_LABEL[pl.interval]}</span>
+                <span className="font-semibold" style={{ color: featured }}>{formatMoney(pl.priceCents, currency)}</span>
+              </div>
+            ))}
+          </div>
         )}
         <button type="button" disabled className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl text-white font-semibold opacity-95 cursor-default" style={{ backgroundColor: featured }}>{card.buttonText?.trim() || 'Get this membership'}</button>
       </div>
@@ -151,7 +165,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
 
   function startNew() {
     setError(null)
-    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [], imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null, buttonText: null })
+    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [], plans: [], imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null, buttonText: null })
   }
   function startEdit(m: Membership) {
     setError(null)
@@ -161,6 +175,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       published: m.published,
       imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor, buttonText: m.buttonText,
       items: m.items.map(i => ({ key: `k${seq++}`, kind: i.kind, id: i.packageId ?? i.classRunId ?? i.productId ?? '', quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl ?? null, description: i.description ?? '' })),
+      plans: m.plans.map(p => ({ key: `p${seq++}`, interval: p.interval, price: (p.priceCents / 100).toString(), minTerm: String(p.minTermCount), earlyTermFee: p.earlyTermFeeCents != null ? (p.earlyTermFeeCents / 100).toString() : '' })),
     })
   }
 
@@ -168,6 +183,10 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const addItem = () => patch({ items: [...draft!.items, { key: `k${seq++}`, kind: 'PACKAGE', id: '', quantity: 1, regrantOnRenewal: false, imageUrl: null, description: '' }] })
   const patchItem = (key: string, p: Partial<DraftItem>) => patch({ items: draft!.items.map(it => (it.key === key ? { ...it, ...p } : it)) })
   const removeItem = (key: string) => patch({ items: draft!.items.filter(it => it.key !== key) })
+  // Recurring billing options (per week/fortnight/month), each own price/term/fee.
+  const addPlan = () => patch({ plans: [...draft!.plans, { key: `p${seq++}`, interval: 'MONTH', price: '', minTerm: '0', earlyTermFee: '' }] })
+  const patchPlan = (key: string, p: Partial<DraftPlan>) => patch({ plans: draft!.plans.map(pl => (pl.key === key ? { ...pl, ...p } : pl)) })
+  const removePlan = (key: string) => patch({ plans: draft!.plans.filter(pl => pl.key !== key) })
   // Drag-to-reorder the included items; their saved order is the array order.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   function reorderItems(e: DragEndEvent) {
@@ -208,6 +227,9 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       minTermCount: draft.cadence === 'RECURRING' ? Number(draft.minTermCount) || 0 : 0,
       earlyTermFeeCents: draft.cadence === 'RECURRING' && draft.earlyTermFee.trim() ? Math.round(Number(draft.earlyTermFee) * 100) : null,
       published: draft.published, items,
+      plans: draft.cadence === 'RECURRING'
+        ? draft.plans.filter(p => p.price.trim()).map(p => ({ interval: p.interval, priceCents: Math.round(Number(p.price) * 100), minTermCount: Number(p.minTerm) || 0, earlyTermFeeCents: p.earlyTermFee.trim() ? Math.round(Number(p.earlyTermFee) * 100) : null }))
+        : [],
       imageUrl: draft.imageUrl, bgColor: draft.bgColor, headerColor: draft.headerColor, textColor: draft.textColor, featuredColor: draft.featuredColor,
       buttonText: draft.buttonText?.trim() || null,
     }
@@ -250,10 +272,12 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
               <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Membership name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
               <RichTextEditor value={draft.description} onChange={html => patch({ description: isRichTextEmpty(html) ? '' : html })} key={draft.id ?? 'new'} minHeight={100} theme="light" />
               <div className="flex items-center gap-2">
-                <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{sym}</span>
-                  <input value={draft.price} onChange={e => patch({ price: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="Price" className="h-10 w-32 rounded-lg border border-slate-200 pl-6 pr-2 text-sm" />
-                </div>
+                {draft.cadence === 'ONE_OFF' && (
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{sym}</span>
+                    <input value={draft.price} onChange={e => patch({ price: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="Price" className="h-10 w-32 rounded-lg border border-slate-200 pl-6 pr-2 text-sm" />
+                  </div>
+                )}
                 <div className="inline-flex rounded-lg bg-slate-100 border border-slate-200 p-0.5">
                   {(['ONE_OFF', 'RECURRING'] as Cadence[]).map(c => (
                     <button key={c} onClick={() => patch({ cadence: c })} className={`px-3 h-9 text-sm font-medium rounded-md ${draft.cadence === c ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{c === 'ONE_OFF' ? 'One-off' : 'Recurring'}</button>
@@ -261,21 +285,29 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                 </div>
               </div>
               {draft.cadence === 'RECURRING' && (
-                <div className="rounded-lg bg-violet-50/60 border border-violet-100 p-3 flex flex-col gap-2">
-                  <p className="text-xs text-violet-700">Recurring memberships can be configured now but aren&#39;t purchasable until automatic billing ships.</p>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="text-slate-500">Every</span>
-                    <select value={draft.interval} onChange={e => patch({ interval: e.target.value as Interval })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
-                      <option value="WEEK">week</option><option value="FORTNIGHT">fortnight</option><option value="MONTH">month</option>
-                    </select>
-                    <span className="text-slate-500">· min term</span>
-                    <input value={draft.minTermCount} onChange={e => patch({ minTermCount: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" className="h-9 w-14 rounded-lg border border-slate-200 px-2 text-sm" title="cycles (0 = none)" />
-                    <span className="text-slate-500">cycles · early-term fee</span>
-                    <div className="relative">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">{sym}</span>
-                      <input value={draft.earlyTermFee} onChange={e => patch({ earlyTermFee: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="0" className="h-9 w-20 rounded-lg border border-slate-200 pl-5 pr-2 text-sm" />
+                <div className="rounded-lg bg-violet-50/60 border border-violet-100 p-3 flex flex-col gap-2.5">
+                  <p className="text-xs text-violet-700">Add one or more billing options — the client picks which one they want. Configurable now; purchasable once automatic billing ships.</p>
+                  {draft.plans.map(pl => (
+                    <div key={pl.key} className="flex flex-wrap items-center gap-2 text-sm rounded-lg bg-white border border-violet-100 p-2">
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">{sym}</span>
+                        <input value={pl.price} onChange={e => patchPlan(pl.key, { price: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="Price" className="h-9 w-24 rounded-lg border border-slate-200 pl-5 pr-2 text-sm" />
+                      </div>
+                      <span className="text-slate-500">per</span>
+                      <select value={pl.interval} onChange={e => patchPlan(pl.key, { interval: e.target.value as Interval })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                        <option value="WEEK">week</option><option value="FORTNIGHT">fortnight</option><option value="MONTH">month</option>
+                      </select>
+                      <span className="text-slate-500">· min</span>
+                      <input value={pl.minTerm} onChange={e => patchPlan(pl.key, { minTerm: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" title="minimum term in cycles (0 = cancel any time)" className="h-9 w-12 rounded-lg border border-slate-200 px-2 text-sm" />
+                      <span className="text-slate-500">cycles · fee</span>
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">{sym}</span>
+                        <input value={pl.earlyTermFee} onChange={e => patchPlan(pl.key, { earlyTermFee: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="0" title="early-termination fee" className="h-9 w-20 rounded-lg border border-slate-200 pl-5 pr-2 text-sm" />
+                      </div>
+                      <button onClick={() => removePlan(pl.key)} title="Remove option" className="ml-auto p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
                     </div>
-                  </div>
+                  ))}
+                  <button onClick={addPlan} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50 self-start"><Plus className="h-4 w-4" /> Add pricing option</button>
                 </div>
               )}
             </div>
@@ -447,6 +479,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
               priceCents={priceCents}
               recurring={draft.cadence === 'RECURRING'}
               interval={draft.interval}
+              plans={draft.cadence === 'RECURRING' ? draft.plans.filter(p => p.price.trim()).map(p => ({ interval: p.interval, priceCents: Math.round(Number(p.price) * 100) })) : []}
               items={draft.items.filter(it => it.id).map(it => {
                 const off = offeringOf(it)
                 return { label: off?.name ?? '…', quantity: it.quantity, imageUrl: it.imageUrl ?? off?.imageUrl ?? null, description: it.description.trim() || off?.description || null }

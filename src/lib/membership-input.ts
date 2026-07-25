@@ -35,6 +35,13 @@ export const membershipCreateSchema = z.object({
   minTermCount: z.number().int().min(0).max(120).optional(),
   earlyTermFeeCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   published: z.boolean().optional(),
+  // RECURRING billing options — the client picks one. Empty for ONE_OFF.
+  plans: z.array(z.object({
+    interval: z.enum(['WEEK', 'FORTNIGHT', 'MONTH']),
+    priceCents: z.number().int().min(0).max(10_000_000),
+    minTermCount: z.number().int().min(0).max(120).optional(),
+    earlyTermFeeCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  })).max(6).optional(),
   items: z.array(itemSchema).max(30).default([]),
 })
 
@@ -61,6 +68,18 @@ export async function itemsOwnedByTrainer(
     productIds.length ? tx.product.count({ where: { id: { in: productIds }, trainerId } }) : 0,
   ])
   return pkgs === packageIds.length && runs === classRunIds.length && prods === productIds.length
+}
+
+/** Map validated recurring billing options to createMany rows. */
+export function planRows(membershipId: string, plans: NonNullable<z.infer<typeof membershipCreateSchema>['plans']>) {
+  return plans.map((p, idx) => ({
+    membershipId,
+    interval: p.interval,
+    priceCents: p.priceCents,
+    minTermCount: p.minTermCount ?? 0,
+    earlyTermFeeCents: p.earlyTermFeeCents ?? null,
+    order: idx,
+  }))
 }
 
 /** Map validated item inputs to createMany rows for a membership. */

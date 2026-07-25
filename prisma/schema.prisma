@@ -3013,10 +3013,31 @@ model Membership {
   trainer   TrainerProfile       @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   items     MembershipItem[]
   purchases MembershipPurchase[]
+  plans     MembershipPlan[]
 
   @@unique([trainerId, slug])
   @@index([trainerId])
   @@map("memberships")
+}
+
+// A RECURRING membership can offer several billing options (e.g. $10/week OR
+// $35/month), each with its own price, minimum term and cancellation fee — the
+// client picks one at checkout. ONE_OFF memberships don't use these (they carry
+// a single Membership.priceCents). Not purchasable until recurring billing
+// (mandates) ships, but configured + shown on the storefront now.
+model MembershipPlan {
+  id                String             @id @default(cuid())
+  membershipId      String
+  interval          MembershipInterval // WEEK | FORTNIGHT | MONTH
+  priceCents        Int
+  minTermCount      Int                @default(0) // cycles; 0 = cancel any time
+  earlyTermFeeCents Int?
+  order             Int                @default(0)
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId])
+  @@map("membership_plans")
 }
 
 // One included offering. The offering ids are plain references (no FK) so a
