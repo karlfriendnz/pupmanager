@@ -94,13 +94,13 @@ const TRAINER_MOBILE_PRIMARY_HREFS = new Set([
 // Mobile bottom tabs (4 primary + a Menu hamburger added in the shell).
 const CLIENT_TABS = [
   { href: '/home', label: 'Home', icon: Home },
-  { href: '/my-availability', label: 'Book', icon: CalendarPlus },
+  { href: '/my-availability', label: 'Offerings', icon: CalendarPlus },
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
 ]
 // Everything a client can reach — the full-screen menu (mobile).
 const CLIENT_MENU = [
-  { href: '/my-availability', label: 'Book', icon: CalendarPlus },
+  { href: '/my-availability', label: 'Offerings', icon: CalendarPlus },
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-shop', label: 'Shop', icon: ShoppingBag },

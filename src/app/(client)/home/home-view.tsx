@@ -269,7 +269,7 @@ export function ClientHomeView({
         {/* ─── Quick actions ─── (Shop hidden when the trainer's shop add-on is off) */}
         <div className={cn('px-4 -mt-7 relative z-20 grid gap-3', shopEnabled ? 'grid-cols-3' : 'grid-cols-2')}>
           {[
-            { label: 'Book', icon: CalendarIcon, href: '/my-availability' },
+            { label: 'Offerings', icon: CalendarIcon, href: '/my-availability' },
             { label: 'Message', icon: MessageCircle, href: '/my-messages' },
             ...(shopEnabled ? [{ label: 'Shop', icon: ShoppingBag, href: '/my-shop' }] : []),
           ].map(a => (
