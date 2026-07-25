@@ -4,6 +4,7 @@
 
 import { escapeHtml } from './enquiries'
 import { DEFAULT_BRAND_COLOR } from './brand'
+import { sanitizeRichHtml, isRichTextEmpty, richTextToPlain } from './rich-text'
 
 const DEFAULT_ACCENT = DEFAULT_BRAND_COLOR // PupManager teal
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -52,7 +53,9 @@ export function renderClientNotificationEmail(args: ClientNotificationEmailArgs)
   const safeTitle = escapeHtml(title)
   const safeBody = escapeHtml(body)
   const safeDetail = detail ? escapeHtml(detail) : null
-  const safeDescription = description?.trim() ? escapeHtml(description.trim()) : null
+  // The description is now rich text (Tiptap HTML). Sanitize it — never escape,
+  // or the trainer's formatting would show as literal tags in the email.
+  const richDescription = isRichTextEmpty(description) ? null : sanitizeRichHtml(description)
   const initial = escapeHtml(businessName.charAt(0).toUpperCase())
 
   // Multi-session table (only when 2+ sessions are passed).
@@ -92,7 +95,7 @@ export function renderClientNotificationEmail(args: ClientNotificationEmailArgs)
                 <h1 style="margin:0 0 8px;font-size:22px;line-height:1.3;font-weight:700;color:#0f172a;">${safeTitle}</h1>
                 <p style="margin:0;font-size:16px;line-height:1.6;color:#334155;">${safeBody}</p>
                 ${safeDetail ? `<p style="margin:8px 0 0;font-size:14px;color:#94a3b8;">${safeDetail}</p>` : ''}
-                ${safeDescription ? `<p style="margin:14px 0 0;padding:12px 14px;background:#f8fafc;border-left:3px solid ${accent};border-radius:6px;font-size:14px;line-height:1.55;color:#475569;">${safeDescription}</p>` : ''}
+                ${richDescription ? `<div style="margin:14px 0 0;padding:12px 14px;background:#f8fafc;border-left:3px solid ${accent};border-radius:6px;font-size:14px;line-height:1.55;color:#475569;text-align:left;">${richDescription}</div>` : ''}
               </div>
               ${sessionTable ? `<div style="padding:4px 32px 0;">${sessionTable}</div>` : ''}
               <div style="padding:24px 32px 32px;text-align:center;">
@@ -123,7 +126,7 @@ export function renderClientNotificationEmail(args: ClientNotificationEmailArgs)
   return {
     subject: title,
     html,
-    text: `${title}\n\n${body}${detail ? `\n${detail}` : ''}${description?.trim() ? `\n\n${description.trim()}` : ''}\n\n${ctaLabel}: ${ctaHref}`,
+    text: `${title}\n\n${body}${detail ? `\n${detail}` : ''}${richDescription ? `\n\n${richTextToPlain(description)}` : ''}\n\n${ctaLabel}: ${ctaHref}`,
     displayName,
     trainerEmail: trainer.user.email,
   }

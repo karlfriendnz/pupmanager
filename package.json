@@ -68,6 +68,7 @@
     "react-dom": "19.2.4",
     "react-hook-form": "^7.72.1",
     "resend": "^6.10.0",
+    "sanitize-html": "^2.17.6",
     "stripe": "^22.1.1",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.3.6"
@@ -83,6 +84,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/sanitize-html": "^2.16.1",
     "@vitejs/plugin-react": "^6.0.1",
     "dotenv-cli": "^11.0.0",
     "embedded-postgres": "^18.3.0-beta.17",

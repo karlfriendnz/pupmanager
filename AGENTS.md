@@ -23,6 +23,26 @@ cloned locally at `/Users/karl/pupmanager-marketing/`.
 - **Marketing site** (`pupmanager.com`): separate repo + Vercel project — see `/Users/karl/pupmanager-marketing/AGENTS.md`.
 - Both auto-deploy on push to `main`. **Never `git push` without the literal phrase "Deploy Live"** from Karl (rule tightened 2026-05-12).
 
+## Rich text — descriptions are Tiptap HTML (global rule)
+
+Every "description" (and long-form intro/bio/notes) field is **rich text**, not a
+plain `<textarea>`. One editor, one renderer, one sanitizer — never hand-roll.
+
+- **Input:** `RichTextEditor` (`src/components/shared/rich-text-editor.tsx`) —
+  controlled (`value` / `onChange(html)`), emits constrained HTML (h2/h3, bold,
+  italic, lists, links). Remount with a `key` when the underlying doc changes.
+- **Display:** `<RichText html={…} />` (`src/components/shared/rich-text.tsx`).
+  **Never** `dangerouslySetInnerHTML` a description yourself — this component
+  sanitizes first and applies the shared `.tiptap-body` styling. Server-safe.
+- **Sanitize:** `sanitizeRichHtml` / `isRichTextEmpty` / `richTextToPlain`
+  (`src/lib/rich-text.ts`, backed by `sanitize-html`). This is the XSS boundary
+  — trainers author, clients/public view. Do not reuse the regex
+  `sanitizeEmailHtml` (admin-only) for trainer content.
+- **Email:** sanitize (don't `escapeHtml`) descriptions before embedding, and use
+  `richTextToPlain` for the text part — see `client-notification-email.ts`.
+- **Storage:** fields stay `String? @db.Text`. Plain text is valid HTML, so
+  legacy values render fine; the only rule is display goes through `<RichText>`.
+
 ## Testing — ship tests WITH every feature
 
 Every new feature ships with automated tests in the same change. This is not optional.
