@@ -1,3 +1,4 @@
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -68,19 +69,46 @@ export default async function ClientLayout({ children }: { children: React.React
   // either is missing, even if the trainer hasn't defined any custom
   // fields — we still need name + phone before the trainer can do
   // their job.
+  //
+  // Name and email come from the login, so they're already filled in for
+  // someone who has used the app before. The phone lives on the client record,
+  // which is PER TRAINER — so a dog owner taking on a second trainer met a
+  // blank phone box and had to retype a number we already hold. Offer their
+  // existing one as the starting value; they still confirm it, and each
+  // trainer still keeps their own copy, so a client who wants to give one
+  // trainer a different number can just change it.
+  const phoneFromAnotherTrainer = clientProfile.phone
+    ? null
+    : (await prisma.clientProfile.findFirst({
+        where: { userId: clientProfile.userId, phone: { not: null }, id: { not: clientProfile.id } },
+        orderBy: { updatedAt: 'desc' },
+        select: { phone: true },
+      }))?.phone ?? null
+
   const coreContact = {
     name: clientProfile.user.name ?? '',
     email: clientProfile.user.email ?? '',
-    phone: clientProfile.phone ?? '',
+    phone: clientProfile.phone ?? phoneFromAnotherTrainer ?? '',
   }
-  const missingCoreContact = !coreContact.name.trim() || !coreContact.phone.trim()
+  // The gate still trips on a phone we've only *suggested* — it isn't saved
+  // against this trainer until they submit it.
+  const missingCoreContact = !coreContact.name.trim() || !clientProfile.phone?.trim()
 
   const clientDisplayName = clientProfile.user.name ?? clientProfile.user.email ?? 'Client'
 
   // Trainer in preview should see the actual app, not the intake gate — the
   // gate would force them through the client's data-entry flow which would
   // write as the client. The banner already telegraphs that this is a view.
-  const showIntakeGate = !active.isPreview && (
+  //
+  // …except on the trainer switcher. The gate replaces the entire app, so
+  // someone who has just been added by a NEW trainer — which makes that
+  // relationship the active one — would otherwise be trapped in that trainer's
+  // intake with no way back to the trainer they already use. The switcher is
+  // always reachable.
+  const pathname = (await headers()).get('x-pathname') ?? ''
+  const onSwitcher = pathname.startsWith('/switch-trainer')
+
+  const showIntakeGate = !active.isPreview && !onSwitcher && (
     missingCoreContact || (hasMissingRequired && customFields.length > 0)
   )
 

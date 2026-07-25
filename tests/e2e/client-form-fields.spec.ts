@@ -74,7 +74,7 @@ test.describe('the client form, every field', () => {
     } finally {
       const c = await prisma.clientProfile.findFirst({ where: { user: { name } }, select: { id: true, userId: true } })
       if (c) {
-        await prisma.dog.deleteMany({ where: { clientId: c.id } }).catch(() => {})
+        await prisma.dog.deleteMany({ where: { clientProfileId: c.id } }).catch(() => {})
         await prisma.clientProfile.delete({ where: { id: c.id } }).catch(() => {})
         if (c.userId) await prisma.user.delete({ where: { id: c.userId } }).catch(() => {})
       }
