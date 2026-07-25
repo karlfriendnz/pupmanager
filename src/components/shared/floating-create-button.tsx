@@ -41,6 +41,14 @@ export function FloatingCreateButton({
     }
   }, [open])
 
+  // The home grid's "Instant sale" tile opens this composer — it's mounted
+  // here, so it asks by event rather than mounting a second one.
+  useEffect(() => {
+    const open = () => setSaleOpen(true)
+    window.addEventListener('pm:open-sale', open)
+    return () => window.removeEventListener('pm:open-sale', open)
+  }, [])
+
   // No close-on-navigation effect needed: every choice closes the screen before
   // it routes, and Escape / the X cover the rest.
 

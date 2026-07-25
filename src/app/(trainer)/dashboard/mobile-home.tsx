@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import {
   Calendar, Users, Layers, FileText, Wallet,
   MessageSquare, ChevronRight, Inbox, CalendarClock, ClipboardCheck,
-  Navigation, Dog, Megaphone, BarChart3,
+  Navigation, Dog, Megaphone, BarChart3, Receipt,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { TileId } from '@/lib/home-tiles'
@@ -160,6 +160,14 @@ export function MobileHome({
       label: 'Messages',
       sub: unreadMessages > 0 ? `${unreadMessages} unread` : 'Client conversations',
       icon: MessageSquare,
+    },
+    sale: {
+      // The sale composer is mounted by the header's create button, so ask for
+      // it by event rather than standing up a second copy here.
+      onClick: () => window.dispatchEvent(new CustomEvent('pm:open-sale')),
+      label: 'Instant sale',
+      sub: 'Charge a client now',
+      icon: Receipt,
     },
     route: {
       href: '/schedule/route',

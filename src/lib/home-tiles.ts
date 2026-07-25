@@ -19,6 +19,7 @@ export type TileId =
   | 'offerings'
   | 'todo'
   | 'money'
+  | 'sale'
   | 'messages'
   | 'route'
   | 'daycare'
@@ -43,6 +44,8 @@ const TILE_GATES: Partial<Record<TileId, TileGate>> = {
   marketing: { addon: 'marketing' },
   money: { permission: 'billing.view' },
   reports: { permission: 'billing.view' },
+  // Same two conditions as the "New sale" action elsewhere (canSell).
+  sale: { addon: 'pos', permission: 'billing.view' },
 }
 
 // Per-persona order of preference. Everyone shares the same first two — the
@@ -50,19 +53,23 @@ const TILE_GATES: Partial<Record<TileId, TileGate>> = {
 // longer than six on purpose: whatever is gated off falls away and the next
 // one moves up, so nobody ends up with a short grid.
 const BY_PERSONA: Record<string, TileId[]> = {
-  // Appointment-book trades: the round, then who's on it, then getting paid.
-  walker: ['schedule', 'clients', 'route', 'money', 'messages', 'offerings', 'todo', 'marketing'],
-  petsitter: ['schedule', 'clients', 'money', 'messages', 'offerings', 'todo', 'marketing'],
-  // Groomers asked for less, not more — no notes backlog up front.
-  groomer: ['schedule', 'clients', 'offerings', 'money', 'messages', 'marketing', 'todo'],
+  // Appointment-book trades: the round, then who's on it, then taking payment
+  // on the spot — an instant sale is a doorstep transaction for these trades.
+  walker: ['schedule', 'clients', 'route', 'sale', 'money', 'messages', 'offerings', 'todo', 'marketing'],
+  petsitter: ['schedule', 'clients', 'sale', 'money', 'messages', 'offerings', 'todo', 'marketing'],
+  // Groomers asked for less, not more — no notes backlog up front. Selling a
+  // shampoo at the counter matters more to them than a session write-up.
+  groomer: ['schedule', 'clients', 'sale', 'offerings', 'money', 'messages', 'marketing', 'todo'],
   // Programme trades: what's booked, who's on it, what they're working through.
-  trainer: ['schedule', 'clients', 'offerings', 'todo', 'money', 'messages', 'reports'],
-  behaviourist: ['schedule', 'clients', 'todo', 'offerings', 'money', 'messages', 'reports'],
+  trainer: ['schedule', 'clients', 'offerings', 'todo', 'sale', 'money', 'messages', 'reports'],
+  behaviourist: ['schedule', 'clients', 'todo', 'offerings', 'sale', 'money', 'messages', 'reports'],
   // Cohorts and day-parts first.
-  puppyschool: ['schedule', 'clients', 'daycare', 'offerings', 'todo', 'messages', 'money'],
+  puppyschool: ['schedule', 'clients', 'daycare', 'offerings', 'todo', 'sale', 'messages', 'money'],
 }
 
-const DEFAULT_ORDER: TileId[] = ['schedule', 'clients', 'offerings', 'todo', 'money', 'messages']
+// Messages sits last: it's a bottom tab on phones, so it's already one tap
+// away — unlike Clients, which gave up its tab to the to-do list.
+const DEFAULT_ORDER: TileId[] = ['schedule', 'clients', 'offerings', 'todo', 'sale', 'money', 'messages']
 
 /**
  * The preference order for a set of business roles.

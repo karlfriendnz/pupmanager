@@ -5,7 +5,7 @@ import { resolveHomeTiles, tileOrderForRoles, HOME_TILE_COUNT } from '@/lib/home
 // matters: everyone gets six, nobody gets a button they can't use, and a
 // two-trade business sees both trades.
 
-const ALL_ADDONS = new Set(['notes', 'routeplanner', 'puppyschool', 'marketing'])
+const ALL_ADDONS = new Set(['notes', 'routeplanner', 'puppyschool', 'marketing', 'pos'])
 
 describe('tileOrderForRoles', () => {
   it('leads a dog walker with their route and a trainer with their programmes', () => {
@@ -47,6 +47,21 @@ describe('resolveHomeTiles', () => {
     expect(withoutRoute).not.toContain('route')
     // Still a full grid — something took the empty slot.
     expect(withoutRoute).toHaveLength(HOME_TILE_COUNT)
+  })
+
+  it('offers Instant sale to every trade that can take payments', () => {
+    for (const roles of [[], ['walker'], ['groomer'], ['trainer'], ['petsitter']]) {
+      expect(resolveHomeTiles({ roles, enabledAddons: ALL_ADDONS })).toContain('sale')
+    }
+  })
+
+  it('hides Instant sale when the add-on is off or billing is off-limits', () => {
+    expect(resolveHomeTiles({ roles: ['groomer'], enabledAddons: new Set(['notes']) })).not.toContain('sale')
+    expect(resolveHomeTiles({
+      roles: ['groomer'],
+      enabledAddons: ALL_ADDONS,
+      hasPermission: (p) => p !== 'billing.view',
+    })).not.toContain('sale')
   })
 
   it('never offers Money to a member who cannot see billing', () => {
