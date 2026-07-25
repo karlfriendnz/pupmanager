@@ -233,7 +233,10 @@ export function TopBarControls({
               className="md:hidden fixed inset-0 z-[70] flex flex-col bg-white"
               style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
             >
-              <form onSubmit={submitSearch} className="flex h-14 shrink-0 items-center gap-1 border-b border-slate-100 px-2">
+              {/* Title row, matching the create screen — a bare field and an X
+                  gave no clue which screen you'd landed on. */}
+              <div className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-100 px-3">
+                <h2 className="min-w-0 flex-1 pl-1 text-base font-semibold text-slate-900">Search</h2>
                 <button
                   type="button"
                   onClick={closeSearch}
@@ -242,62 +245,84 @@ export function TopBarControls({
                 >
                   <X className="h-5 w-5" />
                 </button>
-                <input
-                  ref={inputRef}
-                  value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  onKeyDown={onSearchKeyDown}
-                  placeholder={scope === 'breed' ? 'Search by breed…' : scope === 'dog' ? 'Search by dog…' : 'Search clients…'}
-                  aria-label="Search clients"
-                  autoComplete="off"
-                  // Not type="search": WebKit adds its own ✕ decoration, which
-                  // sat next to ours. enterKeyHint still labels the phone's
-                  // return key "Search".
-                  type="text"
-                  enterKeyHint="search"
-                  // 16px: anything smaller and iOS zooms the page on focus.
-                  className="h-11 min-w-0 flex-1 bg-transparent px-1 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none"
-                />
-                {query && (
-                  <button
-                    type="button"
-                    onClick={() => { setQuery(''); inputRef.current?.focus() }}
-                    aria-label="Clear"
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 active:bg-slate-100"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+              </div>
+
+              <form onSubmit={submitSearch} className="shrink-0 px-3 pt-4 pb-1">
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3">
+                  <Search className="h-[18px] w-[18px] shrink-0 text-slate-400" />
+                  <input
+                    ref={inputRef}
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    onKeyDown={onSearchKeyDown}
+                    placeholder={scope === 'breed' ? 'Breed…' : scope === 'dog' ? 'Dog name…' : 'Client name…'}
+                    aria-label="Search clients"
+                    autoComplete="off"
+                    // Not type="search": WebKit adds its own ✕ decoration, which
+                    // sat next to ours. enterKeyHint still labels the phone's
+                    // return key "Search".
+                    type="text"
+                    enterKeyHint="search"
+                    // 16px: anything smaller and iOS zooms the page on focus.
+                    className="h-12 min-w-0 flex-1 bg-transparent text-base text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => { setQuery(''); inputRef.current?.focus() }}
+                      aria-label="Clear"
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-400 active:bg-slate-100"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </form>
 
-              {/* Scope as chips, not a <select> — three choices, and a native
-                  picker on a phone is a modal on top of a modal. */}
-              <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-100 px-3 py-2.5">
-                {SCOPES.map(s => (
-                  <button
-                    key={s.value}
-                    type="button"
-                    onClick={() => setScope(s.value)}
-                    aria-pressed={scope === s.value}
-                    className={cn(
-                      'shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors',
-                      scope === s.value
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-600 active:bg-slate-200',
-                    )}
-                  >
-                    {s.label}
-                  </button>
-                ))}
+              {/* Scope as chips, not a <select> — four choices, and a native
+                  picker on a phone is a modal on top of a modal. Captioned:
+                  unlabelled chips read as filters that are already applied
+                  rather than a choice you can make. */}
+              <div className="shrink-0 border-b border-slate-100 px-3 pb-3.5 pt-3">
+                <p className="mb-2 px-0.5 text-xs font-medium text-slate-400">
+                  Search by
+                </p>
+                <div className="flex gap-2 overflow-x-auto">
+                  {SCOPES.map(s => (
+                    <button
+                      key={s.value}
+                      type="button"
+                      onClick={() => setScope(s.value)}
+                      aria-pressed={scope === s.value}
+                      className={cn(
+                        'shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors',
+                        scope === s.value
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 bg-white text-slate-600 active:bg-slate-100',
+                      )}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto">
                 {query.trim().length < MIN_QUERY ? (
-                  <p className="px-4 py-6 text-center text-sm text-slate-400">
-                    Type at least {MIN_QUERY} letters to search.
+                  // Say what this search will actually look through — the chip
+                  // above sets it, and a lone "type to search" doesn't tell you
+                  // that Breed or Dog is even an option.
+                  <p className="px-6 py-6 text-center text-sm leading-relaxed text-slate-400">
+                    {scope === 'breed' ? 'Searching by breed — type at least 2 letters.'
+                      : scope === 'dog' ? 'Searching by dog name — type at least 2 letters.'
+                      : scope === 'client' ? 'Searching client names — type at least 2 letters.'
+                      : 'Searching clients, dogs and breeds — type at least 2 letters.'}
                   </p>
                 ) : visible.length === 0 ? (
-                  <p className="px-4 py-6 text-center text-sm text-slate-400">No matches.</p>
+                  <p className="px-6 py-6 text-center text-sm leading-relaxed text-slate-400">
+                    No matches for “{query.trim()}”
+                    {scope !== 'all' && <> in {SCOPES.find(s => s.value === scope)?.label.toLowerCase()} — try “Anything”.</>}
+                  </p>
                 ) : (
                   <div className="[&>*+*]:border-t [&>*+*]:border-slate-100">
                     {visible.map(s => (
