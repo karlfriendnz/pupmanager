@@ -301,9 +301,15 @@ export function SaleComposer({
 
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40 backdrop-blur-sm sm:items-center">
-        {/* Full-height sheet on a phone, a centred card on desktop. */}
-        <div className="flex h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-xl sm:h-[min(46rem,88vh)] sm:max-w-lg sm:rounded-3xl">
+      {/* A whole screen on a phone — taking a payment is the task, not an
+          interruption to one, and the 8vh of scrim above the old sheet only
+          made the keyboard-plus-form squeeze worse. Still a centred card with
+          a scrim from sm: up. */}
+      <div className="fixed inset-0 z-[60] flex justify-center bg-white sm:items-center sm:bg-slate-900/40 sm:backdrop-blur-sm">
+        <div
+          className="flex h-full w-full flex-col overflow-hidden bg-white sm:h-[min(46rem,88vh)] sm:max-w-lg sm:rounded-3xl sm:shadow-xl"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
           <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
             <div className="min-w-0">
               <h2 className="text-base font-semibold text-slate-900">
@@ -738,7 +744,12 @@ function ItemsStep({
       </div>
 
       {/* Pinned action bar — total always visible, thumb-reachable. */}
-      <footer className="border-t border-slate-100 bg-white px-5 py-4">
+      {/* Full-screen on a phone means this footer sits on the screen edge —
+          pad past the home indicator so the pay button isn't under it. */}
+      <footer
+        className="border-t border-slate-100 bg-white px-5 py-4"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
+      >
         {error && <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="mb-3 flex items-baseline justify-between">
           {onBack ? (
