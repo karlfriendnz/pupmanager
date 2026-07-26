@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PackagesView } from './packages-view'
+import { isPackagePast, type PackageAssignment } from './past-packages'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: '1:1 Packages' }
@@ -19,7 +20,7 @@ export default async function PackagesPage({
 
   const { connect } = await searchParams
 
-  const [packages, trainer] = await Promise.all([
+  const [packages, assignments, trainer] = await Promise.all([
     prisma.package.findMany({
       // 1:1 packages only. A group package is the template behind a class and
       // belongs under Group Classes — listing it here showed the same thing in
@@ -28,9 +29,33 @@ export default async function PackagesPage({
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
       include: { _count: { select: { assignments: true } } },
     }),
+    // What each assignment is doing, for the Current/Past split. Only the LAST
+    // session of each is needed ("has this finished?"), so this stays one row
+    // per assignment however many sessions it has.
+    prisma.clientPackage.findMany({
+      where: { package: { trainerId, isGroup: false } },
+      select: {
+        packageId: true,
+        extendIndefinitely: true,
+        sessions: { select: { scheduledAt: true }, orderBy: { scheduledAt: 'desc' }, take: 1 },
+      },
+    }),
     prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { payoutCurrency: true } }),
   ])
   const currency = (trainer?.payoutCurrency ?? 'NZD').toUpperCase()
+
+  const byPackage = new Map<string, PackageAssignment[]>()
+  for (const a of assignments) {
+    const list = byPackage.get(a.packageId) ?? []
+    list.push({
+      extendIndefinitely: a.extendIndefinitely,
+      lastSessionAt: a.sessions[0]?.scheduledAt.getTime() ?? null,
+    })
+    byPackage.set(a.packageId, list)
+  }
+  // new Date(), not Date.now() — the compiler's purity rule treats the latter
+  // as a call it can't move, and every sibling offering page reads it this way.
+  const now = new Date().getTime()
 
   return (
     <PackagesView
@@ -58,6 +83,7 @@ export default async function PackagesPage({
         selfBookRequiresApproval: p.selfBookRequiresApproval,
         requirePayment: p.requirePayment,
         assignments: p._count.assignments,
+        isPast: isPackagePast(byPackage.get(p.id) ?? [], now),
       }))}
       connectName={connect ?? null}
       currency={currency}
