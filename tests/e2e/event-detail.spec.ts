@@ -187,10 +187,23 @@ test.describe('the event detail screen', () => {
       cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(() => {}))
       cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(() => {}))
 
+      // Give Business B the events add-on, so this proves the TENANT scope
+      // rather than just re-proving the add-on gate in front of it.
+      const bOwner = await prisma.user.findUnique({ where: { email: SEED.businessB.ownerEmail }, select: { id: true } })
+      const bProfile = await prisma.trainerProfile.findFirst({ where: { userId: bOwner!.id }, select: { id: true } })
+      const addon = await prisma.trainerAddon.create({
+        data: { trainerId: bProfile!.id, itemId: 'events', active: true },
+      })
+      cleanup.push(() => prisma.trainerAddon.delete({ where: { id: addon.id } }).catch(() => {}))
+
       // A rival trainer knowing the id gets nothing.
       await login(page, SEED.businessB.ownerEmail, SEED.businessB.ownerPassword)
       const res = await page.request.get(`/events/${ev.classRunId}`)
       expect(res.status()).toBe(404)
+
+      // …and the same for the legacy URL, which must not leak it either.
+      await page.goto(`/classes/${ev.classRunId}`)
+      await expect(page.getByText('E2E Ticketed Workshop')).toHaveCount(0)
     } finally {
       for (const fn of cleanup.reverse()) await fn()
       await prisma.$disconnect()
