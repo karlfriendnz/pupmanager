@@ -190,7 +190,9 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
             type="search"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder={`Search ${tab} clients by name, email or dog`}
+            // Short enough to survive a 390px field beside three icon buttons —
+            // the long version cut off mid-word, which reads as broken.
+            placeholder="Search name, email or dog"
             className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -609,13 +611,17 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
 
       <div className="flex flex-col gap-2">
         {groups.map(group => (
-          <div key={group.key || 'all'} className="flex flex-col gap-2">
+          <div key={group.key || 'all'} className="flex flex-col md:gap-2">
             {groupBy && (
               <div className="flex items-baseline gap-2 mt-2 first:mt-0">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group.label}</h3>
                 <span className="text-[11px] text-slate-400">{group.rows.length}</span>
               </div>
             )}
+            {/* Phone: one block of hairline-divided rows. Desktop: the cards
+                keep their own borders and spacing (md:contents dissolves this
+                wrapper so the gap-2 above still applies to them). */}
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white md:contents md:rounded-none md:border-0">
             {group.rows.map(c => (
               <ClientRowCard
                 key={c.id}
@@ -624,11 +630,13 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
                 visible={visible}
                 dataColumns={dataColumns}
                 gridTemplate={gridTemplate}
+                tz={tz}
                 selectMode={selectMode}
                 isSelected={selected.has(c.id)}
                 onToggleSelect={onToggleSelect}
               />
             ))}
+            </div>
           </div>
         ))}
       </div>
@@ -636,8 +644,9 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
   )
 }
 
-function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, selectMode, isSelected, onToggleSelect }: {
+function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, selectMode, isSelected, onToggleSelect }: {
   client: ClientRow
+  tz: string
   tab: Props['tab']
   visible: Set<string>
   dataColumns: DataColumn[]
@@ -674,8 +683,22 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, select
     </div>
   )
 
+  // The phone's one-line summary: the dog, and when they're next in. Nothing
+  // is printed for a fact the client doesn't have — an empty row is worse than
+  // no row.
+  const nextSessionLabel = client.nextSessionAt
+    ? new Date(client.nextSessionAt).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', timeZone: tz })
+    : null
+  const mobileSummary = [
+    client.dogName,
+    client.extraDogNames.length > 0 ? `+${client.extraDogNames.length}` : null,
+    nextSessionLabel && `Next ${nextSessionLabel}`,
+  ].filter(Boolean).join(' · ')
+
   const inner = (
-    <Card className={`px-4 py-3 transition-all ${
+    // Phone: a row in one shared block (see the wrapper below) — no rounding,
+    // no shadow, no gaps between clients. Desktop keeps the card.
+    <Card className={`rounded-none border-0 border-b border-slate-100 shadow-none last:border-b-0 md:rounded-2xl md:border md:shadow-sm px-4 py-3 transition-all ${
       selectMode
         ? `cursor-pointer ${isSelected ? 'border-[var(--pm-brand-500)] bg-[var(--pm-brand-50)]/40 ring-1 ring-[var(--pm-brand-500)]' : 'hover:border-slate-300'}`
         : 'hover:border-blue-200 hover:shadow-md cursor-pointer'
@@ -696,18 +719,14 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, select
         ))}
       </div>
 
-      {/* <md: stacked label/value rows under the identity row. */}
+      {/* <md: one line. The configured columns are a desktop feature — as
+          label/value rows they made a 150px card per client (four rows, three
+          of them saying "No email" / "—" / "no tasks"), so four clients filled
+          a phone screen. Here only facts that exist are printed. */}
       <div className="md:hidden">
         {identity}
-        {dataColumns.length > 0 && (
-          <dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
-            {dataColumns.map(c => (
-              <div key={c.key} className="contents">
-                <dt className="text-slate-400 uppercase tracking-wide text-[10px] self-center">{c.label}</dt>
-                <dd className="text-slate-700 min-w-0 truncate flex items-center">{c.render(client)}</dd>
-              </div>
-            ))}
-          </dl>
+        {mobileSummary && (
+          <p className="mt-1 truncate pl-[3.25rem] text-[13px] text-slate-500">{mobileSummary}</p>
         )}
       </div>
     </Card>

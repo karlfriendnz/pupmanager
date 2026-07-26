@@ -1,13 +1,13 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
 import { getEnabledAddons } from '@/lib/billing'
 import { ONE_OFF_EVENT_PACKAGE } from '@/lib/class-runs'
 import {
-  Package, GraduationCap, Ticket, CalendarPlus, Dog, ShoppingBag, Layers, ChevronRight,
+  Package, GraduationCap, Ticket, CalendarPlus, Dog, ShoppingBag, Layers,
 } from 'lucide-react'
+import { FlatBlock, FlatRow } from '@/components/shared/flat-list'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Offerings' }
@@ -58,33 +58,23 @@ export default async function OfferingsPage() {
     <>
       <PageHeader title="Offerings" />
       <div className="p-4 md:p-8 w-full md:max-w-2xl">
-        {/* One block, hairline-divided — not a stack of floating cards with
-            tinted icon chips. Matches the phone home. */}
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
-          {rows.map(r => {
-            const Icon = r.icon
-            return (
-              <Link
-                key={r.href}
-                href={r.href}
-                className="flex items-center gap-3.5 px-4 py-4 active:bg-slate-50 hover:bg-slate-50"
-              >
-                <Icon className="h-[22px] w-[22px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold leading-tight text-slate-900">{r.label}</span>
-                  <span className="mt-0.5 block text-[13px] text-slate-500">
-                    {r.count === null
-                      ? 'Session plans & templates'
-                      : r.count === 0
-                        ? `No ${r.many} yet — tap to create one`
-                        : `${r.count} ${r.count === 1 ? r.one : r.many}`}
-                  </span>
-                </span>
-                <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
-              </Link>
-            )
-          })}
-        </div>
+        <FlatBlock>
+          {rows.map(r => (
+            <FlatRow
+              key={r.href}
+              href={r.href}
+              icon={r.icon}
+              label={r.label}
+              sub={
+                r.count === null
+                  ? 'Session plans & templates'
+                  : r.count === 0
+                    ? `No ${r.many} yet — tap to create one`
+                    : `${r.count} ${r.count === 1 ? r.one : r.many}`
+              }
+            />
+          ))}
+        </FlatBlock>
       </div>
     </>
   )

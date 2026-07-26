@@ -23,6 +23,42 @@ cloned locally at `/Users/karl/pupmanager-marketing/`.
 - **Marketing site** (`pupmanager.com`): separate repo + Vercel project — see `/Users/karl/pupmanager-marketing/AGENTS.md`.
 - Both auto-deploy on push to `main`. **Never `git push` without the literal phrase "Deploy Live"** from Karl (rule tightened 2026-05-12).
 
+## Mobile-first look — flat, quiet, and the trainer's colour (global rule)
+
+Mobile is the primary layout, not a squeezed desktop. Every screen is designed
+at 390px first, then allowed to spread. The house style, in order of how often
+it gets broken:
+
+- **Flat surfaces, hairline dividers.** Related things live in ONE bordered
+  block (`rounded-xl border border-slate-200 bg-white`) split by 1px lines —
+  never a stack of floating cards with their own shadows.
+- **No decorative colour.** No gradient bands, no tinted rounded chips behind
+  icons. Plain line icons, `strokeWidth={1.75}`, `text-slate-700`. A tinted
+  icon tile is the single clearest tell of a machine-made screen.
+- **Colour is the trainer's, and it's rationed.** Their brand accent
+  (`emailAccentColor`) tints icons and at most one attention strip; everything
+  else stays neutral. Derive tones with `color-mix` toward `#0f172a` so a
+  pastel brand stays legible — never paint with the raw hex.
+- **Aggregate, don't fragment.** One "N things to review" row that opens, not
+  a strip per kind.
+- **Full screens, not dropdowns.** Create, search and anything with more than
+  ~3 choices takes the whole screen: a title row, a way out, room to explain
+  each option. A 56px menu hanging off a corner is not a phone UI. Portal it
+  to `<body>` (`ModalPortal`) — the mobile header uses `backdrop-blur`, and a
+  filtered ancestor becomes the containing block for `position: fixed`.
+- **Nothing says the same thing twice.** No logo in the bar above a logo on the
+  page; no subtitle restating the tabs' counts; no page-level add button beside
+  the global "+".
+- **Chrome earns its space.** Back replaces the menu on detail screens. The
+  five bottom tabs are places a trainer works, never a menu.
+- **One layout per component.** A `variant` prop that reflows a component two
+  different ways is how the offering card ended up crushing its title on a
+  phone. Let the CONTAINER be responsive; keep the component itself fixed.
+
+Shared primitives live in `src/components/shared/flat-list.tsx`
+(`FlatBlock`, `FlatRow`, `FlatTileGrid`, `FlatTile`, `SectionLabel`). Use them
+rather than re-deriving the border/divider classes per screen.
+
 ## Rich text — descriptions are Tiptap HTML (global rule)
 
 Every "description" (and long-form intro/bio/notes) field is **rich text**, not a
