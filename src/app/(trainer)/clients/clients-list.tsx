@@ -182,8 +182,11 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
         </div>
       )}
 
-      {/* Live search + group + column picker */}
-      <div className="flex items-center gap-2 mb-6">
+      {/* Live search + group + column picker — desktop only. On a phone the
+          top bar's search covers finding a client, and grouping and the column
+          picker are both desktop table features, so the whole row was three
+          unlabelled icons and a field that cut off mid-word. */}
+      <div className="hidden md:flex items-center gap-2 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input

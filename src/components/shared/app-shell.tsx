@@ -85,6 +85,18 @@ const NAV_SECTION_LABEL: Record<NavSection, string | null> = {
   system: null,
 }
 
+// The phone menu labels every group and takes them in this order. The sidebar
+// leaves the first and last unlabelled, which works beside a heading but not as
+// a bare grid of tiles.
+const MENU_SECTION_ORDER: NavSection[] = ['overview', 'clients', 'programs', 'business', 'system']
+const MENU_SECTION_LABEL: Record<NavSection, string> = {
+  overview: 'Overview',
+  clients: 'Clients',
+  programs: 'Offerings',
+  business: 'Business',
+  system: 'Account',
+}
+
 // The phone's five bottom tabs, in the order they appear. The More sheet moved
 // to the header hamburger, so the fifth slot goes to the to-do list (past
 // sessions still needing a write-up or an invoice) — the thing a trainer
@@ -1285,88 +1297,96 @@ function TrainerShell({
       </nav>
       )}
 
-      {/* Mobile More sheet */}
+      {/* Mobile menu — a whole screen of grouped tiles, the same shape as the
+          settings menu. It was a bottom sheet of 20-odd grey pills in one
+          undifferentiated run, which is a lot to read past to find "Reports". */}
       {moreOpen && (
-        <div className="md:hidden fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label="More menu">
-          <button
-            type="button"
-            aria-label="Close menu"
-            onClick={() => setMoreOpen(false)}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] cursor-default"
-          />
+        <div
+          className="md:hidden fixed inset-0 z-[60] flex flex-col bg-white"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
+          <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-100 px-3">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
+              {userName?.[0]?.toUpperCase() ?? '?'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-900">{userName ?? 'You'}</p>
+              {userEmail && <p className="truncate text-xs text-slate-500">{userEmail}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={() => setMoreOpen(false)}
+              aria-label="Close"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500 active:bg-slate-100"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
           <div
-            className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white shadow-2xl"
-            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 0.75rem)' }}
+            className="flex-1 overflow-y-auto p-4"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
           >
-            <div className="sticky top-0 bg-white pt-2 pb-1 z-10">
-              <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
-            </div>
+            {MENU_SECTION_ORDER.map(section => {
+              const inSection = mobileSecondary.filter(i => i.section === section)
+              if (inSection.length === 0) return null
+              return (
+                <div key={section} className="mb-5">
+                  <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-400">
+                    {MENU_SECTION_LABEL[section]}
+                  </p>
+                  <div className={cn(
+                    'grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white',
+                    '[&>*]:border-b [&>*]:border-r [&>*]:border-slate-200',
+                    '[&>*:nth-child(2n)]:border-r-0',
+                    inSection.length % 2 === 0
+                      ? '[&>*:nth-last-child(-n+2)]:border-b-0'
+                      : '[&>*:last-child]:border-b-0',
+                  )}>
+                    {inSection.map(item => {
+                      const active = pathname === item.href || pathname.startsWith(item.href + '/')
+                      const Icon = item.icon
+                      const cls = 'flex min-h-[84px] flex-col items-start justify-center px-4 py-4 text-left active:bg-slate-50'
+                      if (item.comingSoon) {
+                        return (
+                          <div key={item.href} className={cn(cls, 'cursor-default')}>
+                            <Icon className="h-[22px] w-[22px] text-slate-300" strokeWidth={1.75} />
+                            <span className="mt-2.5 text-[15px] font-semibold leading-tight text-slate-400">{item.label}</span>
+                            <span className="mt-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Soon</span>
+                          </div>
+                        )
+                      }
+                      return (
+                        <Link key={item.href} href={item.href} className={cls}>
+                          <Icon
+                            className={cn('h-[22px] w-[22px]', active ? 'text-blue-600' : 'text-slate-700')}
+                            strokeWidth={1.75}
+                          />
+                          <span className={cn(
+                            'mt-2.5 text-[15px] font-semibold leading-tight',
+                            active ? 'text-blue-700' : 'text-slate-900',
+                          )}>
+                            {item.label}
+                          </span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
 
-            <div className="px-4 pb-3 flex items-center gap-3 border-b border-slate-100">
-              <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center text-base font-semibold text-slate-600 flex-shrink-0">
-                {userName?.[0]?.toUpperCase() ?? '?'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-slate-900 truncate">{userName ?? 'You'}</p>
-                {userEmail && <p className="text-xs text-slate-500 truncate">{userEmail}</p>}
-              </div>
-              <button
-                type="button"
-                onClick={() => setMoreOpen(false)}
-                aria-label="Close"
-                className="-mr-1 p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 p-3">
-              {mobileSecondary.map(item => {
-                const active = pathname === item.href || pathname.startsWith(item.href + '/')
-                const Icon = item.icon
-                if (lockedAddons.has(item.href)) {
-                  return <LockedNavRow key={item.href} item={item} variant="mobile-grid" />
-                }
-                if (item.comingSoon) {
-                  return (
-                    <div
-                      key={item.href}
-                      className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium bg-slate-50 text-slate-400 cursor-default"
-                    >
-                      <Icon className="h-5 w-5 flex-shrink-0" />
-                      {item.label}
-                      <span className="ml-auto rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">Soon</span>
-                    </div>
-                  )
-                }
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      'flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors',
-                      active
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
-                    )}
-                  >
-                    <Icon className="h-5 w-5 flex-shrink-0" />
-                    {item.label}
-                  </Link>
-                )
-              })}
-            </div>
-
-            <div className="px-3 pt-1">
-              <button
-                type="button"
-                onClick={() => signOutWithPush()}
-                className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-colors cursor-pointer"
-              >
-                <LogOut className="h-4 w-4" />
-                Sign out
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => signOutWithPush()}
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-red-600 active:bg-red-50"
+            >
+              <LogOut className="h-[18px] w-[18px]" />
+              Sign out
+            </button>
           </div>
         </div>
       )}
