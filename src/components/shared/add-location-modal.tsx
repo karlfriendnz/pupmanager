@@ -9,7 +9,9 @@ import { ImageUploadButton } from '@/components/image-uploader'
 // Quick-add a reusable location from within a creation form (the "+" beside the
 // location dropdown), so you don't have to leave and go to Settings. Same
 // fields as the Locations library: name, Google address, image, description.
-export type CreatedLocation = { id: string; name: string; address: string | null }
+// The image comes back with it: a location added mid-form should show the
+// picture you just gave it, not wait for a page reload to find out it has one.
+export type CreatedLocation = { id: string; name: string; address: string | null; imageUrl: string | null }
 
 export function AddLocationModal({
   region,
@@ -37,7 +39,7 @@ export function AddLocationModal({
       })
       if (!res.ok) { setError('Could not save that location.'); return }
       const { location } = await res.json()
-      onCreated({ id: location.id, name: location.name, address: location.address })
+      onCreated({ id: location.id, name: location.name, address: location.address, imageUrl: location.imageUrl ?? null })
     } finally {
       setSaving(false)
     }

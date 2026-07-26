@@ -10,6 +10,7 @@ import {
   slotSchema, replacePackageSlots, derivedDropInFields,
   ticketTierSchema, replaceTicketTiers,
 } from '@/lib/package-slots'
+import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -72,12 +73,28 @@ export async function PATCH(
   if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { packageId } = await params
-  if (!(await ownPackage(packageId, trainerId))) {
+  const current = await ownPackage(packageId, trainerId)
+  if (!current) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   const parsed = updateSchema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+
+  // A special price is a discount; above the normal price it's an overcharge
+  // wearing a saving's clothes. This is a PARTIAL update, so a patch that
+  // changes only one of the two is checked against the value already stored —
+  // otherwise you could raise the special price today and lower the price
+  // tomorrow and end up in exactly the state the rule forbids.
+  const nextPrice = parsed.data.priceCents !== undefined ? parsed.data.priceCents : current.priceCents
+  const nextSpecial = parsed.data.specialPriceCents !== undefined ? parsed.data.specialPriceCents : current.specialPriceCents
+  if (!isValidSpecialPrice(nextPrice, nextSpecial)) {
+    return NextResponse.json({ error: SPECIAL_PRICE_TOO_HIGH }, { status: 400 })
+  }
+  // Each drop-in slot prices itself, so the rule has to reach them too.
+  if (parsed.data.sessionSlots?.some(s => !isValidSpecialPrice(s.priceCents, s.specialPriceCents))) {
+    return NextResponse.json({ error: SPECIAL_PRICE_TOO_HIGH }, { status: 400 })
+  }
 
   // Converting between 1:1 and group flips which half of the system owns this
   // package: a group package is run as ClassRuns with a shared roster, a 1:1 one
@@ -147,7 +164,13 @@ export async function PATCH(
       where: { id: packageId },
       data: {
         ...columns,
-        imageUrl: imageUrl ?? null,
+        // Every other field here is optional-means-"leave it alone"; the image
+        // used to be the exception. `imageUrl ?? null` cannot tell "clear it"
+        // (explicit null) from "I didn't mention it" (undefined), so ANY patch
+        // that omitted the key silently wiped the offering's cover photo —
+        // which is exactly what the 1:1 edit form sends. Only write it when the
+        // caller actually said something about it.
+        ...(imageUrl !== undefined && { imageUrl }),
         ...(dropIn && {
           allowDropIn: dropIn.allowDropIn,
           dropInPriceCents: dropIn.dropInPriceCents,

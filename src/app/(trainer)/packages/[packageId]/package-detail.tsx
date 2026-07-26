@@ -6,17 +6,18 @@ import { isRichTextEmpty } from '@/lib/rich-text'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { CardHeading } from '@/components/shared/card-heading'
-import { Info, Users, Pencil, Package as PackageIcon, Bell, Tag, MessageSquare } from 'lucide-react'
+import { Info, Users, Pencil, Trash2, Package as PackageIcon, Bell, MessageSquare } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
-import { DiscountManager } from '@/components/trainer/discount-manager'
 
-type Tab = 'details' | 'clients' | 'messages' | 'discounts'
+// 'discounts' is deliberately absent: the discount engine is built but not
+// something we're showing trainers yet, so the tab and its panel are off. Put
+// it back here and in `tabs` below when it ships — nothing else has to change.
+type Tab = 'details' | 'clients' | 'messages'
 
 export type PackageInfo = {
   id: string
@@ -70,8 +71,30 @@ const STATUS_BADGE: Record<'Active' | 'Completed' | 'Inactive', string> = {
 }
 
 export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; clients: PackageClientRow[]; currency: string }) {
+  const router = useRouter()
   const [tab, setTab] = useState<Tab>('details')
   const [clientTab, setClientTab] = useState<'current' | 'past'>('current')
+  // Deleting asks first, inline — a blocking window.confirm is the one dialog
+  // a phone renders worst, and this is a destructive, unrecoverable action.
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  async function handleDelete() {
+    if (deleting) return
+    setDeleting(true)
+    setDeleteError(null)
+    const res = await fetch(`/api/packages/${pkg.id}`, { method: 'DELETE' })
+    if (res.ok) {
+      router.push('/packages')
+      router.refresh()
+      return
+    }
+    setDeleteError('Could not delete this package.')
+    setDeleting(false)
+    setConfirmDelete(false)
+  }
+
   const formatPrice = (cents: number | null): string =>
     cents === null || cents === undefined ? '—' : formatMoney(cents, currency)
 
@@ -100,23 +123,17 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
     // 1:1 packages can send automated session reminders; group packages run
     // through their class page instead.
     ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Reminders & messages', icon: Bell }] : []),
-    { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
 
   return (
     <>
-      {/* No subtitle: the session count was repeating what the Details card
-          below already states, and the name reads better on its own. */}
+      {/* Name and the way back, nothing else. No subtitle — the session count
+          was repeating what the Details card below already states — and no
+          actions: Edit and Delete are things you do to THIS offering, so they
+          live on the page with it, at the end of the Details card. */}
       <PageHeader
         title={pkg.name}
         back={{ href: '/packages', label: '1:1 Consults' }}
-        actions={
-          <Link href={`/packages/${pkg.id}/edit`}>
-            <Button variant="secondary">
-              <Pencil className="h-4 w-4" /> <span className="hidden sm:inline">Edit</span>
-            </Button>
-          </Link>
-        }
       />
 
       {/* Full width — two columns of detail need the room, and capping it
@@ -204,6 +221,51 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                     <RichText html={pkg.description} className="text-sm text-slate-600 leading-relaxed" />
                   </div>
                 )}
+
+                {/* What you can DO with this offering, at the end of what it is.
+                    Two plain rows on hairline dividers — Delete last, set apart,
+                    and it asks before it goes. */}
+                <div className="mt-4 -mx-6 border-t border-slate-100">
+                  <Link
+                    href={`/packages/${pkg.id}/edit`}
+                    className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <Pencil className="h-4 w-4 text-slate-400" strokeWidth={1.75} />
+                    Edit this package
+                  </Link>
+                  <div className="border-t border-slate-100">
+                    {confirmDelete ? (
+                      <div className="flex flex-wrap items-center gap-2 px-6 py-3">
+                        <p className="flex-1 min-w-0 text-sm text-slate-600">Delete “{pkg.name}”? This can’t be undone.</p>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelete(false)}
+                          className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700"
+                        >
+                          Keep it
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDelete}
+                          disabled={deleting}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {deleting ? 'Deleting…' : 'Delete'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(true)}
+                        className="flex w-full items-center gap-3 px-6 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                        Delete this package
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {deleteError && <p className="px-1 pt-3 text-sm text-red-600">{deleteError}</p>}
               </CardBody>
             </Card>
 
@@ -281,8 +343,10 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                   <>
                     {/* Current / past as tabs rather than two stacked tables —
                         a long history shouldn't push who's actually on the
-                        package off the bottom. */}
-                    <div className="mb-3 inline-flex gap-1 rounded-2xl bg-slate-100 p-1.5">
+                        package off the bottom. Right-aligned: they filter the
+                        table below, and the left of that row was dead space. */}
+                    <div className="mb-3 flex justify-end">
+                    <div className="inline-flex gap-1 rounded-2xl bg-slate-100 p-1.5">
                       {([
                         { id: 'current' as const, label: 'Current', count: present.length },
                         { id: 'past' as const, label: 'Past', count: past.length },
@@ -304,6 +368,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                           </span>
                         </button>
                       ))}
+                    </div>
                     </div>
 
                     {clientTab === 'current' ? (
@@ -332,10 +397,9 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           </div>
         )}
 
-        {/* Discounts tab — the system-wide engine, attached to this package. */}
-        <div className={tab === 'discounts' ? '' : 'hidden'}>
-          <DiscountManager packageId={pkg.id} />
-        </div>
+        {/* Discounts tab — the system-wide engine, attached to this package.
+            Hidden for now (see the Tab type); restore the tab entry and this
+            panel together. */}
       </div>
     </>
   )

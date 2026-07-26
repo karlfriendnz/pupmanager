@@ -1,0 +1,327 @@
+import { test, expect, type Page } from '@playwright/test'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { SEED, TEST_DATABASE_URL } from './test-db'
+
+/**
+ * The offering screens, end to end — the four things Karl reported plus the
+ * three layout moves that came with them.
+ *
+ *  - The cover image on an offering you EDIT. It uploaded fine and then went
+ *    nowhere: the form seeded the field from the class run rather than the
+ *    offering, never sent the key for a 1:1 offering, and the API read the
+ *    missing key as "clear it". Three bugs, one symptom, so the check that
+ *    matters is the round trip: set it, save, come back, it's still there.
+ *  - The location you picked came back as "Choose location…" every time, which
+ *    also meant the picture attached to that location could never be shown.
+ *  - A special price above the price is an overcharge wearing a discount's
+ *    clothes. Refused in the form AND at the API.
+ *  - "Send a follow-up reminder for session notes" is meaningless on a one-off
+ *    event; it must not be offered there, and must still be offered on a class.
+ *  - Edit/Delete belong on the page, not in the header chrome; the Current/Past
+ *    tabs sit right; Discounts is hidden for now.
+ */
+
+const PHONE = { width: 390, height: 844 }
+
+async function login(page: Page, email: string, password: string) {
+  await page.goto('/login')
+  await page.getByLabel('Email address').fill(email)
+  await page.getByLabel('Password').fill(password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 30_000 })
+}
+
+async function makePrisma() {
+  const { PrismaClient } = await import('../../src/generated/prisma/index.js')
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
+}
+
+/** A 1:1 offering of our own to poke at, so no other spec's counts move. */
+async function makeOffering(prisma: any, extra: Record<string, unknown> = {}) {
+  const trainer = (await prisma.trainerProfile.findFirst({ where: { businessName: SEED.owner.businessName } }))!
+  return prisma.package.create({
+    data: {
+      trainerId: trainer.id,
+      name: `E2E Offering ${Date.now()}-${Math.round(Math.random() * 1e5)}`,
+      sessionCount: 3,
+      weeksBetween: 1,
+      durationMins: 45,
+      priceCents: 20000,
+      isGroup: false,
+      ...extra,
+    },
+  })
+}
+
+const IMAGE = 'https://blob.example.com/trainer-images/e2e/cover.jpg'
+
+test.describe('offering — the cover image round-trips', () => {
+  test('an image saved on a 1:1 offering is still there next time you edit it', async ({ page }) => {
+    const prisma = await makePrisma()
+    const pkg = await makeOffering(prisma, { imageUrl: IMAGE })
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto(`/packages/${pkg.id}/edit`)
+
+      // It was seeded from the class run before, so a 1:1 offering's image was
+      // simply never on screen.
+      await expect(page.locator(`img[src="${IMAGE}"]`)).toBeVisible()
+
+      // …and saving from here used to send no imageUrl at all, which the API
+      // read as "clear it".
+      await page.getByRole('button', { name: 'Save changes' }).click()
+      await page.waitForURL(u => !u.pathname.endsWith('/edit'), { timeout: 30_000 })
+
+      const after = (await prisma.package.findUnique({ where: { id: pkg.id } }))!
+      expect(after.imageUrl).toBe(IMAGE)
+    } finally {
+      await prisma.package.deleteMany({ where: { id: pkg.id } })
+      await prisma.$disconnect()
+    }
+  })
+
+  test('removing the image still clears it', async ({ page }) => {
+    const prisma = await makePrisma()
+    const pkg = await makeOffering(prisma, { imageUrl: IMAGE })
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto(`/packages/${pkg.id}/edit`)
+      await page.getByRole('button', { name: 'Remove image' }).click()
+      await page.getByRole('button', { name: 'Save changes' }).click()
+      await page.waitForURL(u => !u.pathname.endsWith('/edit'), { timeout: 30_000 })
+
+      const after = (await prisma.package.findUnique({ where: { id: pkg.id } }))!
+      expect(after.imageUrl).toBeNull()
+    } finally {
+      await prisma.package.deleteMany({ where: { id: pkg.id } })
+      await prisma.$disconnect()
+    }
+  })
+})
+
+test.describe('offering — the location, and its picture', () => {
+  test('the picker remembers the saved location and shows its image', async ({ page }) => {
+    const prisma = await makePrisma()
+    const trainer = (await prisma.trainerProfile.findFirst({ where: { businessName: SEED.owner.businessName } }))!
+    const loc = await prisma.location.create({
+      data: {
+        trainerId: trainer.id,
+        name: `E2E Park ${Date.now()}`,
+        address: `12 E2E Road, Testville ${Date.now()}`,
+        imageUrl: 'https://blob.example.com/trainer-images/e2e/park.jpg',
+      },
+    })
+    // A class offering — the Location field is class/event only. It also needs
+    // to be SCHEDULED: the venue is stored on the class run, so an offering
+    // that isn't in the diary yet has nowhere to keep one.
+    const pkg = await makeOffering(prisma, { isGroup: true, sessionCount: 4 })
+    const run = await prisma.classRun.create({
+      data: { trainerId: trainer.id, packageId: pkg.id, name: pkg.name, startDate: new Date(Date.now() + 7 * 864e5) },
+    })
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto(`/packages/${pkg.id}/edit`)
+
+      const picker = page.locator('select').filter({ hasText: 'Choose location' }).first()
+      await picker.selectOption({ label: loc.name })
+
+      // The picture you gave the location, where it's of some use.
+      await expect(page.locator(`img[src="${loc.imageUrl}"]`)).toBeVisible()
+
+      await page.getByRole('button', { name: 'Save changes' }).click()
+      await page.waitForURL(u => !u.pathname.endsWith('/edit'), { timeout: 30_000 })
+
+      // Coming back, the choice is still made — it used to reset to
+      // "Choose location…" however many times you set it.
+      await page.goto(`/packages/${pkg.id}/edit`)
+      await expect(page.locator('select').filter({ hasText: 'Choose location' }).first())
+        .toHaveValue(loc.id)
+      await expect(page.locator(`img[src="${loc.imageUrl}"]`)).toBeVisible()
+    } finally {
+      await prisma.classRun.deleteMany({ where: { id: run.id } })
+      await prisma.package.deleteMany({ where: { id: pkg.id } })
+      await prisma.location.deleteMany({ where: { id: loc.id } })
+      await prisma.$disconnect()
+    }
+  })
+})
+
+test.describe('offering — a special price is a discount', () => {
+  test('the form refuses a special price above the price, and says why', async ({ page }) => {
+    const prisma = await makePrisma()
+    const pkg = await makeOffering(prisma)
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto(`/packages/${pkg.id}/edit`)
+
+      await page.getByLabel('Price', { exact: true }).fill('100')
+      await page.getByLabel('Special price (optional)').fill('250')
+      await page.getByRole('button', { name: 'Save changes' }).click()
+
+      await expect(page.getByText(/discount, not a surcharge/i).first()).toBeVisible()
+      // Still on the form — the save was refused, not merely complained about.
+      expect(new URL(page.url()).pathname).toContain('/edit')
+      const after = (await prisma.package.findUnique({ where: { id: pkg.id } }))!
+      expect(after.specialPriceCents).toBeNull()
+
+      // A real discount goes through.
+      await page.getByLabel('Special price (optional)').fill('80')
+      await page.getByRole('button', { name: 'Save changes' }).click()
+      await page.waitForURL(u => !u.pathname.endsWith('/edit'), { timeout: 30_000 })
+      const saved = (await prisma.package.findUnique({ where: { id: pkg.id } }))!
+      expect(saved.specialPriceCents).toBe(8000)
+      expect(saved.priceCents).toBe(10000)
+    } finally {
+      await prisma.package.deleteMany({ where: { id: pkg.id } })
+      await prisma.$disconnect()
+    }
+  })
+
+  // A client-only check is not a validation — anything that can reach the API
+  // can post the nonsense straight past the form.
+  test('the API refuses it too, even with the form bypassed', async ({ page }) => {
+    const prisma = await makePrisma()
+    const pkg = await makeOffering(prisma)
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      const res = await page.evaluate(async (id) => {
+        const r = await fetch(`/api/packages/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ priceCents: 10000, specialPriceCents: 25000 }),
+        })
+        return { status: r.status, body: await r.text() }
+      }, pkg.id)
+      expect(res.status).toBe(400)
+      expect(res.body).toMatch(/discount/i)
+
+      const after = (await prisma.package.findUnique({ where: { id: pkg.id } }))!
+      expect(after.specialPriceCents).toBeNull()
+    } finally {
+      await prisma.package.deleteMany({ where: { id: pkg.id } })
+      await prisma.$disconnect()
+    }
+  })
+})
+
+test.describe('offering — the session-notes reminder is not an event thing', () => {
+  const LABEL = 'Send a follow-up reminder for session notes'
+
+  test('an event never offers it; a class still does', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+
+    // The wizard shows one card at a time, so walk to Settings on each kind.
+    async function walkToSettings(kind: string) {
+      await page.goto(`/offerings/new?kind=${kind}`)
+      await page.getByLabel(/^Name/).first().fill(`E2E ${kind} ${Date.now()}`)
+      for (let i = 0; i < 4; i++) {
+        const next = page.getByRole('button', { name: 'Next', exact: true })
+        if (!(await next.count())) break
+        await next.click()
+      }
+      await expect(page.getByRole('button', { name: 'Create offering' })).toBeVisible()
+    }
+
+    await walkToSettings('oneoff')
+    await expect(page.getByText(LABEL)).toHaveCount(0)
+
+    await walkToSettings('group')
+    await expect(page.getByText(LABEL)).toBeVisible()
+  })
+
+  // Hiding the question isn't enough — an event that already had the flag on
+  // would keep nudging the trainer to write notes on a single occasion.
+  test('saving an event turns the nudge off, not just the question', async ({ page }) => {
+    const prisma = await makePrisma()
+    // A one-off event: group, one session, no recurrence — with the flag on.
+    const pkg = await makeOffering(prisma, {
+      isGroup: true, sessionCount: 1, recurrenceRule: null, requireSessionNotes: true,
+    })
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto(`/packages/${pkg.id}/edit`)
+      await expect(page.getByText('Send a follow-up reminder for session notes')).toHaveCount(0)
+
+      const saved = page.waitForResponse(r =>
+        r.request().method() === 'PATCH' && r.url().includes(`/api/packages/${pkg.id}`))
+      await page.getByRole('button', { name: 'Save changes' }).click()
+      expect((await saved).status()).toBe(200)
+
+      const after = (await prisma.package.findUnique({ where: { id: pkg.id } }))!
+      expect(after.requireSessionNotes).toBe(false)
+    } finally {
+      await prisma.package.deleteMany({ where: { id: pkg.id } })
+      await prisma.$disconnect()
+    }
+  })
+})
+
+test.describe('offering details page — actions on the page', () => {
+  test.use({ viewport: PHONE })
+
+  test('Edit and Delete live in the details box, Delete asks first', async ({ page }) => {
+    const prisma = await makePrisma()
+    const pkg = await makeOffering(prisma)
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto(`/packages/${pkg.id}`)
+
+      // Not in the header chrome any more.
+      await expect(page.getByRole('link', { name: 'Edit this package' })).toBeVisible()
+      const del = page.getByRole('button', { name: 'Delete this package' })
+      await expect(del).toBeVisible()
+
+      // It asks, and backing out leaves the offering alone.
+      await del.click()
+      await expect(page.getByText(/can’t be undone/)).toBeVisible()
+      await page.getByRole('button', { name: 'Keep it' }).click()
+      expect(await prisma.package.count({ where: { id: pkg.id } })).toBe(1)
+
+      // …and confirming actually deletes it.
+      await page.getByRole('button', { name: 'Delete this package' }).click()
+      await page.getByRole('button', { name: 'Delete', exact: true }).click()
+      await page.waitForURL('**/packages', { timeout: 30_000 })
+      expect(await prisma.package.count({ where: { id: pkg.id } })).toBe(0)
+    } finally {
+      await prisma.package.deleteMany({ where: { id: pkg.id } })
+      await prisma.$disconnect()
+    }
+  })
+
+  test('no Discounts tab, and Current/Past sit at the right', async ({ page }) => {
+    const prisma = await makePrisma()
+    const pkg = await makeOffering(prisma)
+    // The Current/Past tabs only render once somebody is on the offering.
+    const client = (await prisma.clientProfile.findFirst({ where: { id: SEED.assignedClientId } }))!
+    const assignment = await prisma.clientPackage.create({
+      data: { packageId: pkg.id, clientId: client.id, startDate: new Date() },
+    })
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto(`/packages/${pkg.id}`)
+
+      // The discount engine is built but not shown to trainers yet.
+      await expect(page.getByRole('button', { name: /Discounts/ })).toHaveCount(0)
+
+      await page.getByRole('button', { name: /^Clients/ }).first().click()
+      const current = page.getByRole('button', { name: /^Current/ })
+      await expect(current).toBeVisible()
+
+      // Karl marked the empty space to their right — so they belong in it: the
+      // pair sits flush with the right edge of its row, not the left.
+      const geom = await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button'))
+          .find(b => b.textContent?.trim().startsWith('Current'))!
+        const group = btn.parentElement!.getBoundingClientRect()
+        const row = btn.parentElement!.parentElement!.getBoundingClientRect()
+        return { group: { left: group.left, right: group.right }, row: { left: row.left, right: row.right } }
+      })
+      expect(Math.abs(geom.group.right - geom.row.right)).toBeLessThan(2)
+      expect(geom.group.left).toBeGreaterThan(geom.row.left + 20)
+    } finally {
+      await prisma.clientPackage.deleteMany({ where: { id: assignment.id } })
+      await prisma.package.deleteMany({ where: { id: pkg.id } })
+      await prisma.$disconnect()
+    }
+  })
+})

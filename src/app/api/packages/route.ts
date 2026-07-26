@@ -10,6 +10,7 @@ import {
 } from '@/lib/package-slots'
 import { createClassRunIn } from '@/lib/class-runs'
 import { syncClassSessions } from '@/lib/class-session-sync'
+import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 
 const schema = z.object({
   name: z.string().min(1),
@@ -94,6 +95,18 @@ export async function POST(req: Request) {
 
   const parsed = schema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+
+  // A special price above the normal price would be shown to clients as the
+  // discounted amount and charged as such — an overcharge dressed as a saving.
+  // The form says so too, but the form isn't the guarantee.
+  if (!isValidSpecialPrice(parsed.data.priceCents, parsed.data.specialPriceCents)) {
+    return NextResponse.json({ error: SPECIAL_PRICE_TOO_HIGH }, { status: 400 })
+  }
+  // Same rule per drop-in slot — a drop-in has no headline price, each slot
+  // prices itself, so this is where the rule bites for that kind.
+  if (parsed.data.sessionSlots?.some(s => !isValidSpecialPrice(s.priceCents, s.specialPriceCents))) {
+    return NextResponse.json({ error: SPECIAL_PRICE_TOO_HIGH }, { status: 400 })
+  }
 
   // Append new packages at the end of the list
   const max = await prisma.package.aggregate({

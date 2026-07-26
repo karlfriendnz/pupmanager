@@ -211,6 +211,10 @@ export function ClassFormModal({
   }
 
   const fieldCls = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400'
+  // A native <select> draws its chevron inside its own padding box, so the even
+  // px-3 above leaves the option text touching the arrow. Dropdowns get the
+  // extra room on the right; plain inputs don't need it.
+  const selectCls = fieldCls + ' pr-9'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -235,7 +239,7 @@ export function ClassFormModal({
           <div className="grid grid-cols-2 gap-3">
             <div className={oneOff ? 'col-span-2' : ''}>
               <label className="text-sm font-medium text-slate-700 block mb-1.5">Repeats</label>
-              <select value={weeksBetween} disabled={scheduleLocked} onChange={e => setWeeksBetween(e.target.value)} className={fieldCls}>
+              <select value={weeksBetween} disabled={scheduleLocked} onChange={e => setWeeksBetween(e.target.value)} className={selectCls}>
                 <option value="0">Doesn&apos;t repeat (one-off)</option>
                 <option value="1">Weekly</option>
                 <option value="2">Every 2 weeks</option>
@@ -260,7 +264,7 @@ export function ClassFormModal({
             </div>
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1.5">Format</label>
-              <select value={sessionType} onChange={e => setSessionType(e.target.value as 'IN_PERSON' | 'VIRTUAL')} className={fieldCls}>
+              <select value={sessionType} onChange={e => setSessionType(e.target.value as 'IN_PERSON' | 'VIRTUAL')} className={selectCls}>
                 <option value="IN_PERSON">In person</option>
                 <option value="VIRTUAL">Virtual</option>
               </select>
@@ -291,7 +295,7 @@ export function ClassFormModal({
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form <span className="text-slate-400">(optional)</span></label>
-            <select value={defaultFormId} onChange={e => setDefaultFormId(e.target.value)} className={fieldCls}>
+            <select value={defaultFormId} onChange={e => setDefaultFormId(e.target.value)} className={selectCls}>
               <option value="">No form</option>
               {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>

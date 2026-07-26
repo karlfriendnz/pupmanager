@@ -78,7 +78,7 @@ export function SessionSlotsEditor({
   locations: { id: string; name: string }[]
   team?: { id: string; name: string | null; title: string | null }[]
   region?: string
-  onLocationCreated?: (loc: { id: string; name: string; address: string | null }) => void
+  onLocationCreated?: (loc: { id: string; name: string; address: string | null; imageUrl: string | null }) => void
 }) {
   // Xero accounts for the per-session Account autocomplete (fetched once).
   const [accounts, setAccounts] = useState<{ code: string; name: string }[]>([])
@@ -110,6 +110,9 @@ export function SessionSlotsEditor({
     if (from >= 0 && to >= 0) onChange(arrayMove(value, from, to))
   }
   const ctrl = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+  // A native <select> draws its chevron inside its own padding box, so an even
+  // px-3 leaves "Every 2 weeks" / a long venue name touching the arrow.
+  const ctrlSelect = ctrl + ' pr-9'
 
   return (
     <div className="md:col-span-2 flex flex-col gap-3">
@@ -133,7 +136,7 @@ export function SessionSlotsEditor({
             </div>
 
           <Row label="Day">
-            <select value={s.day} onChange={e => update(s.id, { day: Number(e.target.value) })} className={ctrl + ' max-w-[220px]'}>
+            <select value={s.day} onChange={e => update(s.id, { day: Number(e.target.value) })} className={ctrlSelect + ' max-w-[220px]'}>
               {DAYS.map(d => <option key={d.v} value={d.v}>{d.label}</option>)}
             </select>
           </Row>
@@ -210,7 +213,7 @@ export function SessionSlotsEditor({
           </Row>
 
           <Row label="Gap" help={GAP_HELP}>
-            <select value={String(normalizeBufferMins(Number(s.gap) || 0))} onChange={e => update(s.id, { gap: e.target.value })} className={ctrl + ' max-w-[220px]'}>
+            <select value={String(normalizeBufferMins(Number(s.gap) || 0))} onChange={e => update(s.id, { gap: e.target.value })} className={ctrlSelect + ' max-w-[220px]'}>
               {bufferOptions(normalizeBufferMins(Number(s.gap) || 0)).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Row>
@@ -221,7 +224,7 @@ export function SessionSlotsEditor({
 
           <Row label="Location">
             <div className="flex gap-2">
-              <select value={s.locationId} onChange={e => update(s.id, { locationId: e.target.value })} className={ctrl + ' flex-1'}>
+              <select value={s.locationId} onChange={e => update(s.id, { locationId: e.target.value })} className={ctrlSelect + ' flex-1'}>
                 <option value="">Choose location…</option>
                 {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>

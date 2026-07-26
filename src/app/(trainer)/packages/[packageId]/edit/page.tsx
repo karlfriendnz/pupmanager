@@ -121,7 +121,13 @@ export default async function EditPackagePage({
             runStatus: run?.status,
             scheduleNote: run?.scheduleNote ?? null,
             location: run?.location ?? null,
-            imageUrl: run?.imageUrl ?? null,
+            // The cover image belongs to the OFFERING — that's where the detail
+            // page reads it from, and a 1:1 package has no run at all. Seeding
+            // it from the run meant an image you'd saved was simply not there
+            // when you came back to edit, and the next save wrote the blank
+            // over it. Fall back to the run's for rows that only ever got one
+            // through the class page.
+            imageUrl: pkg.imageUrl ?? run?.imageUrl ?? null,
             assignedMembershipIds: run?.assignedTrainers.map(t => t.membershipId) ?? [],
             assignments: pkg._count.assignments,
           }}

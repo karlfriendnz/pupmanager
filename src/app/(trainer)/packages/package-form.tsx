@@ -18,14 +18,22 @@ import { SessionSlotsEditor, newSlot, type SessionSlot } from '@/components/shar
 import { TicketTiersEditor, newTier, type TicketTier } from '@/components/shared/ticket-tiers'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
-import { User, Users, CalendarDays, X, ChevronDown, Check, Plus } from 'lucide-react'
+import { User, Users, CalendarDays, X, ChevronDown, Check, Plus, MapPin } from 'lucide-react'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
+import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 
 export type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan'
 
 // The four things a trainer can create. A UI-level discriminator over the
 // persisted Package flags (isGroup / allowDropIn / sessionCount / recurrence).
 type OfferingKind = 'onetoone' | 'group' | 'dropin' | 'oneoff'
+
+// One text field, one dropdown, so they line up down the form.
+const FIELD_CLASS = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+// A native <select> paints its chevron INSIDE its padding box, so an even px-3
+// leaves a long option ("Ongoing (no fixed end)") running straight into the
+// arrow. Give the right edge room for it.
+const SELECT_CLASS = 'h-11 w-full rounded-xl border border-slate-200 bg-white pl-3 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
 
 const COLOR_OPTIONS: { id: PackageColor; label: string; swatch: string }[] = [
   { id: 'blue',    label: 'Blue',    swatch: 'bg-blue-500' },
@@ -138,6 +146,19 @@ const formSchema = z.object({
   price: z.string().optional(),
   specialPrice: z.string().optional(),
   color: z.enum(['blue', 'emerald', 'amber', 'rose', 'purple', 'orange', 'teal', 'indigo', 'pink', 'cyan']).nullable().optional(),
+}).superRefine((v, ctx) => {
+  // The special price is the amount actually charged and is shown next to the
+  // normal one as a saving — set it higher and the offering advertises a
+  // discount while billing more. Caught here so the trainer reads a sentence
+  // under the field they're typing in, and again in the API, which is what
+  // actually makes it true.
+  if (!isValidSpecialPrice(dollarsToCents(v.price), dollarsToCents(v.specialPrice))) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['specialPrice'],
+      message: SPECIAL_PRICE_TOO_HIGH,
+    })
+  }
 })
 
 /** Stored slot → editor slot. Keeps the real id so a save updates in place
@@ -299,19 +320,39 @@ export function PackageForm({
   const [assignOpen, setAssignOpen] = useState(false)
   // Saved locations to pick from (built in Settings → Locations). '' = none,
   // a location id = that saved place, '__custom' = type a one-off address.
-  const [savedLocations, setSavedLocations] = useState<{ id: string; name: string; address: string | null }[]>([])
+  // A saved location carries a picture. The offering only stores the venue as
+  // free text, so that picture is only reachable by matching the stored text
+  // back to the row it came from — which is exactly what the picker does below.
+  const [savedLocations, setSavedLocations] = useState<{ id: string; name: string; address: string | null; imageUrl: string | null }[]>([])
   const [locationChoice, setLocationChoice] = useState<string>('')
   const [addLocationOpen, setAddLocationOpen] = useState(false)
   useEffect(() => {
     let off = false
     fetch('/api/trainer/locations')
       .then(r => (r.ok ? r.json() : null))
-      .then((d: { locations?: { id: string; name: string; address: string | null }[] } | null) => {
-        if (!off && d?.locations) setSavedLocations(d.locations.map(l => ({ id: l.id, name: l.name, address: l.address })))
+      .then((d: { locations?: { id: string; name: string; address: string | null; imageUrl: string | null }[] } | null) => {
+        if (!off && d?.locations) {
+          const rows = d.locations.map(l => ({ id: l.id, name: l.name, address: l.address, imageUrl: l.imageUrl ?? null }))
+          setSavedLocations(rows)
+          // Re-select what this offering was saved with. Without this the
+          // dropdown reopens on "Choose location…" however many times you set
+          // it — the venue looks lost, and the location's image never shows
+          // because nothing knows which location it is. Matched on address
+          // first (that's what gets stored), then on name for the rows saved
+          // with no address.
+          setLocationChoice(prev => {
+            if (prev) return prev
+            const stored = (existing?.location ?? '').trim()
+            if (!stored) return prev
+            const hit = rows.find(l => (l.address ?? '').trim() === stored) ?? rows.find(l => l.name.trim() === stored)
+            return hit ? hit.id : prev
+          })
+        }
       })
       .catch(() => {})
     return () => { off = true }
-  }, [])
+  }, [existing?.location])
+  const chosenLocation = savedLocations.find(l => l.id === locationChoice) ?? null
   useEffect(() => {
     let off = false
     fetch('/api/trainer/team')
@@ -380,6 +421,15 @@ export function PackageForm({
   // A one-off package — a single session, no cadence. "Weeks between" is moot.
   const oneOff = Number(watch('sessionCount')) === 1
 
+  // A blocked save has to say why. Field-level errors are enough when the field
+  // is on screen (the whole form, when editing), but the wizard shows one card
+  // at a time — a bad special price caught on the Settings step would otherwise
+  // read as "Save does nothing". Repeat it at the top of the form.
+  function onInvalid(errs: typeof errors) {
+    const first = errs.specialPrice?.message ?? errs.name?.message
+    if (first) setError(first)
+  }
+
   // Convert 1:1 ↔ group. Its own request because the server refuses the change
   // while the package is in use and explains why — a message worth showing
   // rather than folding into a generic save failure.
@@ -429,7 +479,10 @@ export function PackageForm({
         bufferMins,
         color,
         defaultSessionFormId,
-        requireSessionNotes,
+        // Hidden for a one-off event (see the Settings card), so never leave a
+        // stale `true` behind nudging the trainer to write session notes on a
+        // single occasion that either happened or didn't.
+        requireSessionNotes: kind === 'oneoff' ? false : requireSessionNotes,
         isGroup,
         capacity: isGroup && capacity.trim() ? Math.max(0, Math.floor(Number(capacity))) : null,
         allowDropIn: isGroup && allowDropIn,
@@ -438,9 +491,13 @@ export function PackageForm({
         // keeps its own day, time, venue, staff, capacity and price. The server
         // derives allowDropIn / the headline price from them.
         ...(kind === 'dropin' && { sessionSlots: slots.map(slotToPayload) }),
-        // What a one-off event sells. Blank rows are dropped server-side.
+        // What a one-off event sells. The editor always keeps one empty row for
+        // you to type into, and the server's tier schema requires a name — so
+        // sending that empty row failed the whole save with a flat "Failed to
+        // save." on any event that hadn't been given ticket types yet. Drop the
+        // blanks here, which is what "unnamed tiers are dropped" always meant.
         ...(kind === 'oneoff' && {
-          ticketTiers: tickets.map(t => ({
+          ticketTiers: tickets.filter(t => t.name.trim()).map(t => ({
             id: t.id,
             name: t.name,
             priceCents: dollarsToCents(t.price),
@@ -457,14 +514,19 @@ export function PackageForm({
         // it — the server rebuilds the sessions, and refuses once anyone has
         // been marked present.
         ...(isGroup && startAt && !hasAttendance && { startAt: startAt.toISOString() }),
-        // Venue / note / cover / staff belong to the scheduled class. Sent on
+        // The cover image belongs to the OFFERING, not to the class it happens
+        // to be scheduled as — a 1:1 consult has a picture too, and it has no
+        // run. Sending it only for group offerings is why an image added to a
+        // package vanished on save: the key never left the browser, and the
+        // server treated the missing key as "clear it".
+        imageUrl,
+        // Venue / note / staff belong to the scheduled class. Sent on
         // create AND edit — on edit the server applies them to the run, which
         // is the whole reason they're on this form.
         ...(isGroup && {
           ...(scheduled && { status: runStatus }),
           scheduleNote: scheduleNote || null,
           location: location || null,
-          imageUrl,
           assignedMembershipIds: assignedIds,
         }),
         recurrenceRule: isGroup && recurrenceRule ? recurrenceRule : null,
@@ -497,6 +559,7 @@ export function PackageForm({
         priceCents: saved.priceCents ?? null,
         specialPriceCents: saved.specialPriceCents ?? null,
         color: saved.color ?? null,
+        imageUrl: saved.imageUrl ?? null,
         defaultSessionFormId: saved.defaultSessionFormId ?? null,
         requireSessionNotes: saved.requireSessionNotes ?? true,
         isGroup: saved.isGroup ?? false,
@@ -519,7 +582,7 @@ export function PackageForm({
   return (
     // Sections are full-width cards now; the two-column grid lives INSIDE each
     // card, so the page is a simple stack whatever the screen width.
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
+    <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="flex flex-col gap-3">
       {error && <div className="md:col-span-2"><Alert variant="error">{error}</Alert></div>}
 
       {addLocationOpen && (
@@ -527,7 +590,7 @@ export function PackageForm({
           region={region}
           onClose={() => setAddLocationOpen(false)}
           onCreated={loc => {
-            setSavedLocations(prev => [...prev, { id: loc.id, name: loc.name, address: loc.address }])
+            setSavedLocations(prev => [...prev, { id: loc.id, name: loc.name, address: loc.address, imageUrl: loc.imageUrl }])
             setLocationChoice(loc.id)
             setLocation(loc.address || loc.name)
             setAddLocationOpen(false)
@@ -648,7 +711,7 @@ export function PackageForm({
             locations={savedLocations.map(l => ({ id: l.id, name: l.name }))}
             team={team}
             region={region}
-            onLocationCreated={loc => setSavedLocations(prev => [...prev, { id: loc.id, name: loc.name, address: loc.address }])}
+            onLocationCreated={loc => setSavedLocations(prev => [...prev, { id: loc.id, name: loc.name, address: loc.address, imageUrl: loc.imageUrl }])}
           />
           <div className="hidden">
             <input type="number" {...register('sessionCount', { valueAsNumber: true })} />
@@ -661,7 +724,7 @@ export function PackageForm({
             <label className="text-sm font-medium text-slate-700 block mb-1.5">Number of sessions</label>
             <select
               {...register('sessionCount', { valueAsNumber: true })}
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={SELECT_CLASS}
             >
               <option value={1}>One-off (single session)</option>
               {Array.from({ length: 19 }, (_, i) => i + 2).map(n => (
@@ -750,7 +813,7 @@ export function PackageForm({
             value={virtualLink}
             onChange={e => setVirtualLink(e.target.value)}
             placeholder="https://zoom.us/j/… or Google Meet link"
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={FIELD_CLASS}
           />
         </div>
       )}
@@ -765,7 +828,7 @@ export function PackageForm({
             value={capacity}
             onChange={e => setCapacity(e.target.value)}
             placeholder="Leave blank for unlimited"
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={FIELD_CLASS}
           />
           <p className="text-[11px] text-slate-400 mt-1">Max in the room per session. A run can override this.</p>
         </div>
@@ -792,7 +855,7 @@ export function PackageForm({
             id="run-status"
             value={runStatus}
             onChange={e => setRunStatus(e.target.value as typeof runStatus)}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={SELECT_CLASS}
           >
             {(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED'] as const).map(st => (
               <option key={st} value={st}>{st.charAt(0) + st.slice(1).toLowerCase()}</option>
@@ -830,7 +893,7 @@ export function PackageForm({
                 const loc = savedLocations.find(l => l.id === v)
                 setLocation(loc?.address || loc?.name || '')
               }}
-              className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={SELECT_CLASS + ' flex-1'}
             >
               <option value="">Choose location…</option>
               {savedLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -845,6 +908,25 @@ export function PackageForm({
               <Plus className="h-5 w-5" />
             </button>
           </div>
+          {/* The picture you gave the location, where it's of some use — you can
+              see you've picked the right park before you save. One row, hairline
+              border, no tint. */}
+          {chosenLocation && (
+            <div className="mt-2 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+              {chosenLocation.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={chosenLocation.imageUrl} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover border border-slate-200" />
+              ) : (
+                <span className="h-12 w-12 shrink-0 rounded-lg border border-slate-200 grid place-items-center">
+                  <MapPin className="h-5 w-5 text-slate-400" strokeWidth={1.75} />
+                </span>
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-slate-800 truncate">{chosenLocation.name}</span>
+                <span className="block text-[11px] text-slate-400 truncate">{chosenLocation.address || 'No address saved'}</span>
+              </span>
+            </div>
+          )}
         </div>
       )}
       </SectionCard>
@@ -897,6 +979,8 @@ export function PackageForm({
             type="text"
             inputMode="decimal"
             placeholder="—"
+            error={errors.specialPrice?.message}
+            hint="A discount off the price above."
             {...register('specialPrice')}
           />
         </>
@@ -977,27 +1061,33 @@ export function PackageForm({
         <select
           value={defaultSessionFormId ?? ''}
           onChange={e => setDefaultSessionFormId(e.target.value || null)}
-          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={SELECT_CLASS}
         >
           <option value="">None</option>
           {sessionForms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
       </div>
 
-      <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={requireSessionNotes}
-          onChange={e => setRequireSessionNotes(e.target.checked)}
-          className="h-4 w-4 mt-0.5"
-        />
-        <span className="flex-1 min-w-0">
-          <span className="block text-sm font-medium text-slate-700">Send a follow-up reminder for session notes</span>
-          <span className="block text-[11px] text-slate-400 mt-0.5">
-            Sends a push near the end of each session in this consult nudging you to write notes. Turn off for drop-in classes or anything that doesn&apos;t need a follow-up.
+      {/* Session notes are a package / 1:1 idea — "near the end of each session
+          in this consult" means nothing for a one-off event, which is a single
+          occasion you either ran or didn't. Don't ask the question, and don't
+          send the nudge either (see the submit payload). */}
+      {kind !== 'oneoff' && (
+        <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={requireSessionNotes}
+            onChange={e => setRequireSessionNotes(e.target.checked)}
+            className="h-4 w-4 mt-0.5"
+          />
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-medium text-slate-700">Send a follow-up reminder for session notes</span>
+            <span className="block text-[11px] text-slate-400 mt-0.5">
+              Sends a push near the end of each session in this consult nudging you to write notes. Turn off for drop-in classes or anything that doesn&apos;t need a follow-up.
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      )}
 
       <label className="md:col-span-2 flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2.5 cursor-pointer">
         <input
@@ -1133,6 +1223,10 @@ export function PackageForm({
                 type="button"
                 onClick={async () => {
                   if (currentKey === 'start' && !(await trigger('name'))) return
+                  // Catch a special price above the price HERE, while the two
+                  // fields are still on screen — a submit-time failure two steps
+                  // later would just look like a dead Save button.
+                  if (currentKey === 'pricing' && !(await trigger('specialPrice'))) return
                   setWstep(s => Math.min(stepKeys.length - 1, s + 1))
                 }}
               >
