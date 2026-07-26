@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers, CheckSquare, Mail, CheckCircle2, MessageSquare } from 'lucide-react'
+import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers, CheckSquare, Mail, CheckCircle2 } from 'lucide-react'
 import { dateParts, displayEmail } from '@/lib/utils'
 import { PhoneRowList } from '@/components/shared/flat-list'
 import { ClientAvatar } from '@/components/shared/client-avatar'
@@ -659,7 +659,6 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
   isSelected: boolean
   onToggleSelect: (id: string) => void
 }) {
-  const router = useRouter()
   const showShared = visible.has('shared') && client.shared
   const checkbox = selectMode ? (
     <span
@@ -748,18 +747,10 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
             <p className="mt-0.5 truncate text-[13px] leading-tight text-slate-500">{mobileSummary}</p>
           )}
         </div>
-        {/* Straight to this client's thread — messaging someone is the most
-            common reason to tap a client you already know. */}
-        {!selectMode && (
-          <span
-            role="link"
-            aria-label={`Message ${client.name ?? client.email}`}
-            onClick={e => { e.preventDefault(); e.stopPropagation(); router.push(`/messages/${client.id}`) }}
-            className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-slate-400 active:bg-slate-100"
-          >
-            <MessageSquare className="h-[18px] w-[18px]" strokeWidth={1.75} />
-          </span>
-        )}
+        {/* No message button here. The phone row is a name, a dog and when
+            they're next in — one tap, one destination, the client. Messaging
+            stays on the desktop table's Message column and on the client's own
+            page, both a tap away. */}
       </div>
     </Card>
   )
