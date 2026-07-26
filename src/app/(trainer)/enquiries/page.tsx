@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Card } from '@/components/ui/card'
+import { PhoneRowList } from '@/components/shared/flat-list'
 import { cn } from '@/lib/utils'
 import { Inbox, ArrowRight, CheckCircle2, XCircle } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
@@ -97,11 +98,13 @@ export default async function EnquiriesPage({
       {enquiries.length === 0 ? (
         <EmptyState tab={tab} />
       ) : (
-        <div className="flex flex-col gap-2">
+        <PhoneRowList className="md:flex md:flex-col md:gap-2">
           {enquiries.map(e => (
             <Link key={e.id} href={`/enquiries/${e.id}`} className="block">
               <Card className={cn(
-                'p-4 hover:border-violet-200 transition-colors',
+                'px-4 py-3 md:p-4 hover:border-violet-200 transition-colors',
+                // Phone: a row in the shared block.
+                'rounded-none border-0 shadow-none md:rounded-2xl md:border md:shadow-sm',
                 tab === 'NEW' && !e.viewedAt && 'border-violet-200 bg-violet-50/30',
               )}>
                 <div className="flex items-start justify-between gap-3">
@@ -137,7 +140,7 @@ export default async function EnquiriesPage({
               </Card>
             </Link>
           ))}
-        </div>
+        </PhoneRowList>
       )}
       </div>
       {showLeadMagnetNudge && leadMagnetNudge && (

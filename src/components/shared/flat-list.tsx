@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { Children, Fragment, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -27,6 +27,37 @@ function iconStyle(accent?: string) {
   return accent
     ? { color: `color-mix(in srgb, ${accent} 78%, #0f172a)` }
     : undefined
+}
+
+/**
+ * Turns a list of rows into ONE block on phones, with hairline dividers, and
+ * dissolves on desktop so the rows keep whatever card styling they had.
+ *
+ * This is the app's most-repeated mobile shape — clients, messages, threads,
+ * sessions. Hand-rolled, it kept coming out as a stack of floating "chips",
+ * each with its own border, shadow and gap.
+ *
+ * The dividers are real 1px elements rather than border utilities on purpose:
+ * a row's own `border-0` cancels a `border-b` (same specificity, later rule
+ * wins), and a wrapper's `border-t` gets painted over by a child card sitting
+ * flush against it. An element can't be swallowed by either.
+ */
+export function PhoneRowList({ children, className }: { children: ReactNode; className?: string }) {
+  const rows = Children.toArray(children)
+  return (
+    <div className={cn(
+      'overflow-hidden rounded-xl border border-slate-200 bg-white',
+      'md:contents md:rounded-none md:border-0',
+      className,
+    )}>
+      {rows.map((row, i) => (
+        <Fragment key={i}>
+          {i > 0 && <div className="h-px bg-slate-200 md:hidden" aria-hidden />}
+          {row}
+        </Fragment>
+      ))}
+    </div>
+  )
 }
 
 /** A small uppercase caption above a block. */

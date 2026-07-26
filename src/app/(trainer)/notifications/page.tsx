@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Card, CardBody } from '@/components/ui/card'
+import { PhoneRowList } from '@/components/shared/flat-list'
 import { iconForNotification } from '@/components/shared/notification-icon'
 import { formatDate } from '@/lib/utils'
 import type { Metadata } from 'next'
@@ -50,11 +51,11 @@ export default async function TrainerNotificationsPage() {
           <p>No notifications yet</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <PhoneRowList className="md:flex md:flex-col md:gap-3">
           {notifications.map((n) => {
             const Icon = iconForNotification(n.type)
             const inner = (
-              <CardBody className="pt-4 pb-4">
+              <CardBody className="px-4 py-3 md:pt-4 md:pb-4">
                 <div className="flex items-start gap-3">
                   <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
                     <Icon className="h-4 w-4" />
@@ -67,16 +68,18 @@ export default async function TrainerNotificationsPage() {
                 </div>
               </CardBody>
             )
+            // Phone: rows in one block; desktop keeps the cards.
+            const flat = 'rounded-none border-0 shadow-none md:rounded-2xl md:border md:shadow-sm'
             // A notification with a deep link taps through to what it's about.
             return n.link ? (
               <Link key={n.id} href={n.link} className="block">
-                <Card className={`transition-colors hover:bg-slate-50 ${n.readAt ? 'opacity-60' : ''}`}>{inner}</Card>
+                <Card className={`transition-colors hover:bg-slate-50 ${flat} ${n.readAt ? 'opacity-60' : ''}`}>{inner}</Card>
               </Link>
             ) : (
-              <Card key={n.id} className={n.readAt ? 'opacity-60' : ''}>{inner}</Card>
+              <Card key={n.id} className={`${flat} ${n.readAt ? 'opacity-60' : ''}`}>{inner}</Card>
             )
           })}
-        </div>
+        </PhoneRowList>
       )}
     </div>
   )

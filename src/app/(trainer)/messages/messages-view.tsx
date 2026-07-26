@@ -6,6 +6,7 @@ import { MessageCircle, ArrowLeft } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { ClientAvatar } from '@/components/shared/client-avatar'
+import { PhoneRowList } from '@/components/shared/flat-list'
 import { MessageThread } from './[clientId]/message-thread'
 
 export interface ClientRow {
@@ -153,7 +154,7 @@ export function MessagesView({
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-1.5">
+            <PhoneRowList className="md:flex md:flex-col md:gap-1.5">
               {visible.map(client => {
                 const lastMsg = client.lastMessage
                 const isSelected = selectedClient?.id === client.id
@@ -162,10 +163,12 @@ export function MessagesView({
                     <Card
                       className={cn(
                         'transition-colors cursor-pointer',
+                        // Phone: a row in the shared block — no card of its own.
+                        'rounded-none border-0 shadow-none md:rounded-2xl md:border md:shadow-sm',
                         isSelected ? 'border-blue-300 bg-blue-50/50' : client.unread > 0 ? 'border-blue-200 bg-blue-50/30' : 'hover:border-blue-200 hover:bg-slate-50',
                       )}
                     >
-                      <CardBody className="pt-3 pb-3">
+                      <CardBody className="px-4 py-2.5 md:pt-3 md:pb-3">
                         <div className="flex items-center gap-3">
                           <div className="relative flex-shrink-0">
                             <ClientAvatar size="lg" name={client.displayName} dogPhotoUrl={client.dogPhotoUrl} />
@@ -212,7 +215,7 @@ export function MessagesView({
                   </Link>
                 )
               })}
-            </div>
+            </PhoneRowList>
           )}
         </div>
       </aside>
