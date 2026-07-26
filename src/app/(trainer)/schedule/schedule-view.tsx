@@ -3059,6 +3059,8 @@ export function ScheduleView({
   scheduleEndHour,
   scheduleMobileStartHour,
   scheduleMobileEndHour,
+  savedView = null,
+  savedMobileView = null,
   scheduleDays,
   scheduleExtraFields,
   allowedSlotTypes,
@@ -3089,6 +3091,9 @@ export function ScheduleView({
   // Mobile-only overrides. Null on either side falls back to the desktop
   // value so existing trainers see no behaviour change until they pick
   // a phone-specific range in the schedule-view settings panel.
+  /** Last layout this trainer chose, per device class (see schema). */
+  savedView?: 'day' | 'threeDay' | 'week' | null
+  savedMobileView?: 'day' | 'threeDay' | 'week' | null
   scheduleMobileStartHour: number | null
   scheduleMobileEndHour: number | null
   scheduleDays: number[]   // 1=Mon..7=Sun
@@ -3160,20 +3165,44 @@ export function ScheduleView({
   //               grid; trainers asked for it as an extra mobile option so
   //               they can scan the whole week without paging.
   // Default: week on desktop, day on mobile.
-  const [view, setView] = useState<'day' | 'threeDay' | 'week'>('week')
+  const [view, setViewState] = useState<'day' | 'threeDay' | 'week'>(savedView ?? 'week')
   // Track viewport class so we can pick the trainer's mobile vs desktop
   // hour range. Matches WeekGrid's existing 640px breakpoint so the two
   // device detectors stay in lockstep.
   const [isMobileViewport, setIsMobileViewport] = useState(false)
+  // Which of the two saved layouts this device writes to. Phones and desktops
+  // keep separate choices for the same reason they keep separate hour ranges —
+  // one value would fight the trainer on whichever device they opened second.
+  const isPhoneLayout = useRef(false)
   useEffect(() => {
-    // Phones default to the day list — but when previewing a booking request
-    // start in the 3-day grid so the ghost blocks are actually visible.
-    if (window.innerWidth < 768) setView(previewRequest ? 'threeDay' : 'day')
+    const phone = window.innerWidth < 768
+    isPhoneLayout.current = phone
+    // Previewing a booking request forces the 3-day grid so the ghost blocks
+    // are visible — a one-off, never saved as the trainer's preference.
+    if (previewRequest) {
+      if (phone) setViewState('threeDay')
+    } else {
+      const saved = phone ? savedMobileView : savedView
+      setViewState(saved ?? (phone ? 'day' : 'week'))
+    }
     const update = () => setIsMobileViewport(window.innerWidth < 640)
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
-  }, [previewRequest])
+  }, [previewRequest, savedView, savedMobileView])
+
+  // Changing the layout remembers it for this device class, for this trainer,
+  // everywhere they sign in. Fire-and-forget: the grid has already switched, and
+  // a failed save just means the old default next time.
+  const setView = useCallback((v: 'day' | 'threeDay' | 'week') => {
+    setViewState(v)
+    const field = isPhoneLayout.current ? 'scheduleMobileView' : 'scheduleView'
+    void fetch('/api/trainer/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: v }),
+    }).catch(() => {})
+  }, [])
 
   // Resolve the effective visible-hour range for the current device.
   // Mobile overrides fall back to the desktop value when null so a

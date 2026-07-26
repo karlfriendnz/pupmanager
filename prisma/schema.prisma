@@ -450,6 +450,13 @@ model TrainerProfile {
   scheduleMobileStartHour   Int? // mobile-only override; null falls back to scheduleStartHour
   scheduleMobileEndHour     Int? // mobile-only override; null falls back to scheduleEndHour
   scheduleDays              Json    @default("[1,2,3,4,5,6,7]")
+  // Which grid layout the trainer last chose — "day" | "threeDay" | "week".
+  // Same desktop/mobile split as the hours above: a phone wants a day column
+  // where a desktop wants the week, so remembering ONE value would fight the
+  // trainer on whichever device they used second. Null = the old default
+  // (week on desktop, day on a phone).
+  scheduleView              String?
+  scheduleMobileView        String?
   // Up to 2 extra fields rendered on schedule blocks. Allowed ids:
   // "location" | "description" | "sessionType" | "duration" | "title"
   scheduleExtraFields       Json    @default("[]")
