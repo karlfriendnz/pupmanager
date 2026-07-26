@@ -307,7 +307,13 @@ function SortableOffering({ id, children }: { id: string; children: (handle: HTM
     <div
       ref={setNodeRef}
       style={{
-        transform: transform ? CSS.Transform.toString(transform) : undefined,
+        // Translate ONLY. CSS.Transform.toString() also emits the scaleX/scaleY
+        // dnd-kit measures between two differently-sized cards, and a card
+        // scaled 1.14 × 0.83 re-renders its text at a stretched size the font
+        // has no hinting for — which is the "the font goes crazy when I drag"
+        // report. The card has to look identical picked up and put down, so the
+        // size mismatch is absorbed by the gap, not by squashing the card.
+        transform: transform ? CSS.Translate.toString(transform) : undefined,
         transition,
         position: 'relative',
         zIndex: isDragging ? 10 : undefined,
