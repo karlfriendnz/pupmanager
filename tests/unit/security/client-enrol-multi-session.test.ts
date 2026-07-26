@@ -45,7 +45,11 @@ describe('POST /api/my/classes/[runId]/enroll — several drop-in sessions', () 
   // webhook fulfils class lines one at a time, so a single line with
   // quantity 3 would take the money and seat them once.
   it('emits one checkout line per dog × session, each with its own session intent', () => {
-    const idx = route.indexOf('const grossLines: Line[] = dogs.flatMap(')
+    // Anchored on the per-dog fan-out itself rather than the whole statement:
+    // ticketed events now take a single-line branch ahead of this, so the
+    // assignment no longer starts with `dogs.flatMap`. The fan-out below is
+    // still what a non-ticketed booking must do.
+    const idx = route.indexOf('dogs.flatMap((dog): Line[] =>')
     expect(idx).toBeGreaterThan(-1)
     const block = route.slice(idx, idx + 900)
     expect(block).toContain('perSession.map(s => ({')
@@ -74,7 +78,7 @@ describe('POST /api/my/classes/[runId]/enroll — several drop-in sessions', () 
   // and capacity must seat every dog.
   it('books several dogs in one pass', () => {
     expect(route).toContain('dogIds: z.array(z.string().min(1)).min(1).max(20).optional()')
-    expect(route).toContain('const grossLines: Line[] = dogs.flatMap(')
+    expect(route).toContain('dogs.flatMap((dog): Line[] =>')
     expect(route).toContain('return { ...s, fits: seats >= dogCount }')
   })
 

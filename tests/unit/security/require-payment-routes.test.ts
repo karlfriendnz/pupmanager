@@ -84,9 +84,9 @@ vi.mock('@/lib/class-runs', () => {
       const n = typeof v === 'number' && Number.isFinite(v) ? Math.floor(v) : 1
       return Math.max(1, Math.min(n, 20))
     },
-    sessionAttendeeCount: h.sessionAttendeeCount ?? (() => 0),
-    sessionDropInPriceCents: h.sessionDropInPriceCents ?? (() => null),
-    sessionCapacity: h.sessionCapacity ?? (() => null),
+    sessionAttendeeCount: () => 0,
+    sessionDropInPriceCents: () => null,
+    sessionCapacity: () => null,
   }
 })
 vi.mock('@/lib/env', () => ({ env: { NEXT_PUBLIC_APP_URL: 'https://app.test' } }))
@@ -268,6 +268,55 @@ describe('POST /api/my/classes/[runId]/enroll require-payment gate', () => {
     expect(h.classEnrollmentUpdate).toHaveBeenCalled() // stamps invoicedAt
     expect(h.createInvoiceForAssignment).toHaveBeenCalledWith(
       expect.objectContaining({ sourceType: 'CLASS_ENROLLMENT', classEnrollmentId: 'enr1' }),
+    )
+  })
+
+  // ── Ticketed events ────────────────────────────────────────────────────────
+  // The bug these pin: a ticketed event was quoted and charged at the PACKAGE
+  // price, so a client self-booking a $200 ticket paid $45. The package price on
+  // a ticketed offering is meaningless — the tier row is the only price.
+  const TIERS = [
+    { id: 'tier-vip', name: 'VIP', priceCents: 20000, capacity: null, order: 0 },
+    { id: 'tier-std', name: 'Standard', priceCents: 8900, capacity: null, order: 1 },
+  ]
+  const ticketReq = (body: Record<string, unknown>) =>
+    new Request('http://x/enroll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'FULL', ...body }) })
+
+  it('a ticketed event charges the TICKET price, never the package price', async () => {
+    seed({ requirePayment: true, package: { isGroup: true, priceCents: 4500, specialPriceCents: null, allowDropIn: false, allowWaitlist: false, capacity: null, sessionCount: 1, dropInPriceCents: null, ticketTiers: TIERS } })
+    const res = await enrollPOST(ticketReq({ ticketTierId: 'tier-vip', quantity: 2 }), params)
+    expect(res.status).toBe(201)
+    const arg = h.createConnectCheckout.mock.calls[0][0]
+    const charged = arg.lines.reduce((sum: number, l: { unitAmount: number; quantity: number }) => sum + l.unitAmount * l.quantity, 0)
+    // 2 × $200.00 — emphatically not the package's $45.
+    expect(charged).toBe(40000)
+    expect(charged).not.toBe(4500)
+  })
+
+  it('a ticketed event refuses a booking with no ticket chosen', async () => {
+    seed({ requirePayment: true, package: { isGroup: true, priceCents: 4500, specialPriceCents: null, allowDropIn: false, allowWaitlist: false, capacity: null, sessionCount: 1, dropInPriceCents: null, ticketTiers: TIERS } })
+    const res = await enrollPOST(req(), params)
+    expect(res.status).toBe(400)
+    expect(h.createConnectCheckout).not.toHaveBeenCalled()
+    expect(h.enrollInRun).not.toHaveBeenCalled()
+  })
+
+  it("a tier id that isn't on this event is refused, not silently priced", async () => {
+    seed({ requirePayment: true, package: { isGroup: true, priceCents: 4500, specialPriceCents: null, allowDropIn: false, allowWaitlist: false, capacity: null, sessionCount: 1, dropInPriceCents: null, ticketTiers: TIERS } })
+    const res = await enrollPOST(ticketReq({ ticketTierId: 'tier-from-another-event', quantity: 1 }), params)
+    expect(res.status).toBe(400)
+    expect(h.createConnectCheckout).not.toHaveBeenCalled()
+  })
+
+  it('the pay-later path records the tier and quantity on the enrolment', async () => {
+    // Without these the receivable is raised from an enrolment with no tier,
+    // and createInvoiceForAssignment falls straight back to the package price.
+    seed({ requirePayment: false, package: { isGroup: true, priceCents: 4500, specialPriceCents: null, allowDropIn: false, allowWaitlist: false, capacity: null, sessionCount: 1, dropInPriceCents: null, ticketTiers: TIERS } })
+    const res = await enrollPOST(ticketReq({ ticketTierId: 'tier-std', quantity: 3 }), params)
+    expect(res.status).toBe(201)
+    expect(h.enrollInRun).toHaveBeenCalledTimes(1)
+    expect(h.enrollInRun).toHaveBeenCalledWith(
+      expect.objectContaining({ ticketTierId: 'tier-std', quantity: 3, type: 'FULL' }),
     )
   })
 

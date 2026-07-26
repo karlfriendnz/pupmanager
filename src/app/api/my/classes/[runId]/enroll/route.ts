@@ -5,6 +5,7 @@ import { getActiveClient } from '@/lib/client-context'
 import {
   enrollInRun, ClassError, effectiveCapacity, enrolledCount,
   sessionAttendeeCount, sessionDropInPriceCents, sessionCapacity,
+  normalizeTicketQuantity, MAX_TICKET_QUANTITY,
 } from '@/lib/class-runs'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
@@ -21,6 +22,16 @@ import { env } from '@/lib/env'
 // pay-to-confirm — the connect webhook enrols on success. Supports booking
 // several dogs at once (dogIds) and applies the offering's discounts to the
 // charge.
+//
+// EVENTS THAT SELL TICKETS are the exception, and the reason this route can't
+// just read the package price. An event's offering can carry several named
+// ticket types at their own prices ("General $200 / Concession $123 / Child
+// $89"); the package's own priceCents is then meaningless — it's whatever was
+// typed into the offering before the tiers were added. This route used to bill
+// that number, so a client self-booking a $200 ticket was charged the package's
+// $45. The rule now: if the offering has ANY ticket tier, the booking MUST name
+// one, and the price is read from that tier row server-side. No tier named →
+// 400, never a fallback to the package price. Blocking beats undercharging.
 
 const schema = z.object({
   type: z.enum(['FULL', 'DROP_IN']).optional(),
@@ -33,6 +44,12 @@ const schema = z.object({
   // Book several dogs in one go — each dog becomes its own enrolment (and its
   // own charge line) per chosen session. Falls back to the single dogId.
   dogIds: z.array(z.string().min(1)).min(1).max(20).optional(),
+  // Which ticket type they're buying, and how many. Required when the event
+  // sells tickets; ignored (and forced null) when it doesn't. The id is only
+  // ever resolved against THIS run's own offering — a tier id from another
+  // event, or another trainer, resolves to nothing and is refused.
+  ticketTierId: z.string().min(1).nullable().optional(),
+  quantity: z.number().int().min(1).max(MAX_TICKET_QUANTITY).optional(),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ runId: string }> }) {
@@ -60,7 +77,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
 
   const run = await prisma.classRun.findFirst({
     where: { id: runId, trainerId: profile.trainerId },
-    include: { package: true },
+    // The offering's ticket tiers come along because they, not the package's
+    // price, are what a ticketed event costs.
+    include: { package: { include: { ticketTiers: { orderBy: { order: 'asc' } } } } },
   })
   if (!run || !run.package.isGroup) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (run.status === 'CANCELLED' || run.status === 'COMPLETED') {
@@ -70,6 +89,47 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   const parsed = schema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
   const type = parsed.data.type ?? 'FULL'
+
+  // ── Ticketed events ────────────────────────────────────────────────────────
+  // An offering with tiers sells by the ticket, and the tier row is the ONLY
+  // source of its price. Everything below reads `tier`/`ticketQuantity` rather
+  // than the package price when `ticketed` is true.
+  const tiers = run.package.ticketTiers
+  const ticketed = tiers.length > 0
+  let tier: (typeof tiers)[number] | null = null
+  let ticketQuantity = 1
+  if (ticketed) {
+    if (type !== 'FULL') {
+      return NextResponse.json({ error: 'This event sells tickets — there’s no drop-in rate.' }, { status: 400 })
+    }
+    if (!parsed.data.ticketTierId) {
+      return NextResponse.json({ error: 'Pick a ticket type.' }, { status: 400 })
+    }
+    tier = tiers.find(t => t.id === parsed.data.ticketTierId) ?? null
+    if (!tier) {
+      return NextResponse.json({ error: 'That ticket type isn’t part of this event.' }, { status: 400 })
+    }
+    ticketQuantity = normalizeTicketQuantity(parsed.data.quantity ?? 1)
+
+    // A ticket type caps itself independently of the event's capacity, so it's
+    // checked before we take any money. enrollInRun re-checks it inside its own
+    // transaction (that's the authoritative one) — this is here so a sold-out
+    // tier is refused at the quote instead of after a successful charge.
+    if (tier.capacity != null) {
+      const sold = await prisma.classEnrollment.aggregate({
+        where: { classRunId: runId, ticketTierId: tier.id, status: 'ENROLLED' },
+        _sum: { quantity: true },
+      })
+      const left = Math.max(0, tier.capacity - (sold._sum?.quantity ?? 0))
+      if (ticketQuantity > left) {
+        return NextResponse.json({
+          error: left === 0
+            ? `${tier.name} tickets are sold out.`
+            : `Only ${left} ${tier.name} ticket${left === 1 ? '' : 's'} left.`,
+        }, { status: 409 })
+      }
+    }
+  }
 
   type Slot = { capacity: number | null; priceCents: number | null; specialPriceCents: number | null } | null
   let dropIns: { id: string; scheduledAt: Date; slot: Slot }[] = []
@@ -142,7 +202,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   const perSession = dropIns.map(d => ({ ...d, price: sessionDropInPriceCents(d.slot, run.package) }))
   const perDogPrice: number | null =
     type === 'FULL'
-      ? (run.package.specialPriceCents ?? run.package.priceCents)
+      // A ticketed event is priced by the ticket, full stop. The package's own
+      // priceCents is meaningless there (it's whatever was typed before tiers
+      // existed) and reading it is exactly how a $200 ticket got sold for $45.
+      ? (ticketed && tier ? tier.priceCents : (run.package.specialPriceCents ?? run.package.priceCents))
       : perSession.reduce<number | null>((sum, s) => s.price == null ? sum : (sum ?? 0) + s.price, null)
 
   // Capacity is per-session and must seat EVERY dog being booked. seatsFor gives
@@ -174,7 +237,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   // the charge only — a booking with no configured discounts is unchanged.
   const perDogAmounts = type === 'DROP_IN' ? perSession.map(s => s.price ?? 0) : [perDogPrice ?? 0]
   const dates = perSession.map(s => s.scheduledAt.toISOString())
-  const grossTotal = (perDogPrice ?? 0) * dogCount
+  // Tickets multiply by how many were bought, not by how many dogs came: a
+  // ticket is a place at the event, and an owner can buy several.
+  const grossTotal = ticketed ? (perDogPrice ?? 0) * ticketQuantity : (perDogPrice ?? 0) * dogCount
   const { discountTotal } = grossTotal > 0
     ? await quoteOfferingDiscount({ trainerId: profile.trainerId, packageId: run.packageId, dogCount, perDogAmounts, dates })
     : { discountTotal: 0 }
@@ -206,7 +271,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       // connect webhook fulfils class lines one at a time, so this fans out into
       // an enrolment per (dog, session) once the payment lands.
       type Line = { kind: 'CLASS_ENROLLMENT'; description: string; unitAmount: number; quantity: number; intent: { classRunId: string; type: 'FULL' | 'DROP_IN'; dogId: string | null; sessionId: string | null } }
-      const grossLines: Line[] = dogs.flatMap((dog): Line[] =>
+      // A ticketed event bills ONE line for the tickets bought — it must not
+      // fan out per dog, or two dogs would double the charge for one ticket.
+      const grossLines: Line[] = ticketed && tier
+        ? [{
+            kind: 'CLASS_ENROLLMENT' as const,
+            description: `${run.name} (${tier.name}${ticketQuantity > 1 ? ` × ${ticketQuantity}` : ''})`,
+            // ?? 0 matches how a null package price is treated (free); it's the
+            // same nullable Int. grossTotal above coerces identically, so the
+            // line and the total can't disagree.
+            unitAmount: tier.priceCents ?? 0,
+            quantity: ticketQuantity,
+            intent: { classRunId: runId, type: 'FULL', dogId: dogs[0] ?? null, sessionId: null },
+          }]
+        : dogs.flatMap((dog): Line[] =>
         type === 'DROP_IN'
           ? perSession.map(s => ({
               kind: 'CLASS_ENROLLMENT' as const,
@@ -257,9 +335,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     // no session), each raising its own receivable on the pay-later path.
     const targets: (string | null)[] = type === 'DROP_IN' ? perSession.map(s => s.id) : [null]
     const results: { enrollmentId: string; status: 'ENROLLED' | 'WAITLISTED' }[] = []
-    for (const dog of dogs) {
-      for (const sid of targets) {
-        results.push(await enrollInRun({ classRunId: runId, clientId: profile.id, dogId: dog ?? null, type, sessionId: sid, source: 'SELF_SERVE' }))
+    if (ticketed && tier) {
+      // One enrolment carrying the tier and how many tickets — not one per dog.
+      // The tier id is what the invoice prices from, so it must be recorded here
+      // or the receivable falls back to the package price.
+      results.push(await enrollInRun({
+        classRunId: runId, clientId: profile.id, dogId: dogs[0] ?? null,
+        type: 'FULL', sessionId: null, ticketTierId: tier.id, quantity: ticketQuantity,
+        source: 'SELF_SERVE',
+      }))
+    } else {
+      for (const dog of dogs) {
+        for (const sid of targets) {
+          results.push(await enrollInRun({ classRunId: runId, clientId: profile.id, dogId: dog ?? null, type, sessionId: sid, source: 'SELF_SERVE' }))
+        }
       }
     }
     const result = results[0]
