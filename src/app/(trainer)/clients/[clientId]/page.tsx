@@ -89,7 +89,7 @@ export default async function ClientDetailPage({
           select: {
             id: true, name: true, scheduleNote: true, startDate: true, capacity: true,
             package: { select: { capacity: true, allowDropIn: true } },
-            enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true } },
+            enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true, quantity: true } },
             sessions: {
               where: { scheduledAt: { gte: new Date() } },
               orderBy: { scheduledAt: 'asc' },

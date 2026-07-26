@@ -162,7 +162,7 @@ export default async function MyAvailabilityPage() {
     orderBy: [{ order: 'asc' }, { startDate: 'asc' }],
     include: {
       package: { select: { name: true, priceCents: true, specialPriceCents: true, allowDropIn: true, dropInPriceCents: true, capacity: true, allowWaitlist: true } },
-      enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true } },
+      enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true, quantity: true } },
       sessions: {
         where: { scheduledAt: { gte: now } },
         orderBy: { scheduledAt: 'asc' },
