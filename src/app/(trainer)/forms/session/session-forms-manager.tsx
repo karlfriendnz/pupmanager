@@ -61,7 +61,7 @@ function PrivacyToggle({ isPrivate, onChange }: { isPrivate: boolean; onChange: 
           ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
           : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
       }`}
-      title={isPrivate ? 'Click to make this question visible to clients' : 'Click to keep this question trainer-only'}
+      title={isPrivate ? 'Click to make this question visible to clients' : 'Click to keep this question staff-only'}
     >
       {isPrivate ? '🔒 Private' : '👁 Public'}
     </button>

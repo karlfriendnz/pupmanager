@@ -496,7 +496,7 @@ function QuestionEditor({
           icon={question.isPrivate ? <Lock className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           label="Private"
           hint={question.isPrivate
-            ? 'Trainer-only — hidden from the client’s report.'
+            ? 'Staff-only — hidden from the client’s report.'
             : 'Shown to the client on their report.'}
           checked={!!question.isPrivate}
           onChange={v => onPatch({ isPrivate: v })}

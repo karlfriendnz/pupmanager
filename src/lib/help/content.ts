@@ -352,7 +352,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: 'Invite a team member',
     category: 'Your team',
     keywords: ['staff', 'team', 'trainer', 'manager', 'add user', 'colleague'],
-    summary: 'Give another trainer or helper their own login.',
+    summary: 'Give another staff member or helper their own login.',
     steps: [
       'Click "Settings" on the left.',
       'Click the "Team" tab.',

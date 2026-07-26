@@ -94,7 +94,7 @@ export async function POST(req: Request) {
 
   if (!trainer?.stripeSubscriptionId) {
     return NextResponse.json(
-      { error: 'Subscribe to your plan to add trainer seats.', needsSubscription: true },
+      { error: 'Subscribe to your plan to add staff seats.', needsSubscription: true },
       { status: 409 },
     )
   }

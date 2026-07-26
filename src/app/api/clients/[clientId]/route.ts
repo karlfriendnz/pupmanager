@@ -194,7 +194,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
         where: { id: assignedMembershipId, companyId: client.trainerId },
         select: { id: true },
       })
-      if (!member) return NextResponse.json({ error: 'Trainer not found in this business' }, { status: 400 })
+      if (!member) return NextResponse.json({ error: 'Staff member not found in this business' }, { status: 400 })
     }
     await prisma.clientProfile.update({
       where: { id: client.id },

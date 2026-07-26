@@ -146,11 +146,11 @@ export default async function SessionsTodoPage() {
                 completedAt: t.completedAt ? t.completedAt.toISOString() : null,
                 createdAt: t.createdAt.toISOString(),
                 assignee: t.assignedTo
-                  ? { id: t.assignedTo.id, name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Trainer' }
+                  ? { id: t.assignedTo.id, name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Staff member' }
                   : null,
               }))}
               initialBrainDump={brainDump?.body ?? ''}
-              members={members.map(m => ({ id: m.id, name: m.user.name?.trim() || m.user.email || 'Trainer' }))}
+              members={members.map(m => ({ id: m.id, name: m.user.name?.trim() || m.user.email || 'Staff member' }))}
             />
           </div>
         )}

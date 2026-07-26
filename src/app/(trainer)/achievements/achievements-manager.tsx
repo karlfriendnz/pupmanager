@@ -54,7 +54,7 @@ interface TriggerMeta {
 }
 
 const TRIGGERS: TriggerMeta[] = [
-  { type: 'MANUAL', label: 'Manual — trainer awards', group: 'Manual', needsValue: false, preview: () => 'Awarded by hand from the client profile' },
+  { type: 'MANUAL', label: 'Manual — staff awards', group: 'Manual', needsValue: false, preview: () => 'Awarded by hand from the client profile' },
   { type: 'FIRST_SESSION', label: 'First session attended', group: 'Sessions', needsValue: false, preview: () => 'Awarded after the first completed session' },
   { type: 'SESSIONS_COMPLETED', label: 'Total sessions completed', group: 'Sessions', needsValue: true, valueLabel: 'Sessions', preview: n => `Awarded after ${n} completed session${n === 1 ? '' : 's'}` },
   { type: 'IN_PERSON_SESSIONS', label: 'In-person sessions completed', group: 'Sessions', needsValue: true, valueLabel: 'Sessions', preview: n => `Awarded after ${n} in-person session${n === 1 ? '' : 's'}` },

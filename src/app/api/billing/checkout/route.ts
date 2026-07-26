@@ -129,7 +129,7 @@ export async function POST(req: Request) {
     const seat = itemById.get('seat')
     const seatPrice = seat ? resolvePriceId(seat, cur, sandbox) : null
     if (!seatPrice) {
-      return NextResponse.json({ error: 'Extra trainer seats aren\'t available for purchase yet' }, { status: 409 })
+      return NextResponse.json({ error: 'Extra staff seats aren\'t available for purchase yet' }, { status: 409 })
     }
     extraLineItems.push({ price: seatPrice, quantity: extraSeats })
   }

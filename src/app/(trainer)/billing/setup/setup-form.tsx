@@ -273,9 +273,9 @@ export function SetupForm({
         {seatAvailable && (
           <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border px-4 py-3" style={{ borderColor: 'var(--pm-ink-100)' }}>
             <div>
-              <p className="text-sm font-semibold" style={{ color: 'var(--pm-ink-900)' }}>How many trainers?</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--pm-ink-900)' }}>How many staff?</p>
               <p className="text-[11px]" style={{ color: 'var(--pm-ink-500)' }}>
-                First trainer included · +{meta.symbol}{formatWeekly(weeklyFromMonthly(SEAT_PRICE[currency]))}/wk each after
+                First staff member included · +{meta.symbol}{formatWeekly(weeklyFromMonthly(SEAT_PRICE[currency]))}/wk each after
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -283,7 +283,7 @@ export function SetupForm({
                 type="button"
                 onClick={() => setSeatCount(n => Math.max(1, n - 1))}
                 disabled={seatCount === 1}
-                aria-label="Fewer trainers"
+                aria-label="Fewer staff"
                 className="grid h-8 w-8 place-items-center rounded-lg border text-lg font-semibold disabled:opacity-40"
                 style={{ borderColor: 'var(--pm-ink-100)', color: 'var(--pm-ink-700)' }}
               >
@@ -293,7 +293,7 @@ export function SetupForm({
               <button
                 type="button"
                 onClick={() => setSeatCount(n => n + 1)}
-                aria-label="More trainers"
+                aria-label="More staff"
                 className="grid h-8 w-8 place-items-center rounded-lg border text-lg font-semibold"
                 style={{ borderColor: 'var(--pm-ink-100)', color: 'var(--pm-ink-700)' }}
               >
@@ -375,7 +375,7 @@ export function SetupForm({
             {locked ? 'Billed monthly at ' : 'Then billed monthly at '}{meta.symbol}{total}/mo
           </p>
           <p className="mt-1 text-xs" style={{ color: 'var(--pm-ink-500)' }}>
-            {planName} · {seatCount} trainer{seatCount === 1 ? '' : 's'}
+            {planName} · {seatCount} staff member{seatCount === 1 ? '' : 's'}
             {extraSeats > 0 && ` (+${extraSeats} seat${extraSeats === 1 ? '' : 's'})`}
             {selectedAddons.size > 0 && ` · ${selectedAddons.size} add-on${selectedAddons.size === 1 ? '' : 's'}`}
           </p>

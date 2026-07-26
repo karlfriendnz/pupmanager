@@ -339,12 +339,12 @@ export default async function DashboardPage({
     completedAt: t.completedAt ? t.completedAt.toISOString() : null,
     createdAt: t.createdAt.toISOString(),
     assignee: t.assignedTo
-      ? { id: t.assignedTo.id, name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Trainer' }
+      ? { id: t.assignedTo.id, name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Staff member' }
       : null,
   }))
   const memberOptions = members.map((m) => ({
     id: m.id,
-    name: m.user.name?.trim() || m.user.email || 'Trainer',
+    name: m.user.name?.trim() || m.user.email || 'Staff member',
   }))
 
   // Add-on nudge: rotate through the add-ons this trainer hasn't turned on yet,

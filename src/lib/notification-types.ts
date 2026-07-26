@@ -94,7 +94,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   DAILY_SUMMARY: {
     type: 'DAILY_SUMMARY',
     label: 'Morning summary',
-    description: 'A quick rundown of your sessions and tasks for the day. When you have nothing booked, the trainer can opt to receive a friendlier "take the day off" message instead.',
+    description: 'A quick rundown of your sessions and tasks for the day. When you have nothing booked, you can opt to receive a friendlier "take the day off" message instead.',
     trigger: 'time-of-day',
     channels: ['PUSH', 'EMAIL'],
     defaults: {

@@ -159,7 +159,7 @@ export async function PATCH(
         where: { id: raw, companyId: trainerId },
         select: { id: true },
       })
-      if (!member) return NextResponse.json({ error: 'Trainer not found in this business' }, { status: 400 })
+      if (!member) return NextResponse.json({ error: 'Staff member not found in this business' }, { status: 400 })
       nextAssignedMembershipId = member.id
     }
   }

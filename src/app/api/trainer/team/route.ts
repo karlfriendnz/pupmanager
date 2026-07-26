@@ -152,7 +152,7 @@ export async function POST(req: Request) {
   const seatsUsed = await prisma.trainerMembership.count({ where: { companyId: ctx.companyId } })
   if (!isTrialing && seatsUsed >= company.seatCount) {
     return NextResponse.json(
-      { error: `All ${company.seatCount} seat${company.seatCount === 1 ? '' : 's'} are in use. Add more seats before inviting another trainer.` },
+      { error: `All ${company.seatCount} seat${company.seatCount === 1 ? '' : 's'} are in use. Add more seats before inviting another staff member.` },
       { status: 403 },
     )
   }

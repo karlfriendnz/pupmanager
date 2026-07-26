@@ -69,9 +69,9 @@ export const PERMISSION_CATALOGUE: PermissionDef[] = [
   { key: 'messages.send', label: 'Message clients', description: 'Send and read client messages.', group: 'Communication' },
 
   { key: 'settings.edit', label: 'Edit business settings', description: 'Business profile, availability, branding.', group: 'Business' },
-  { key: 'team.manage', label: 'Manage the team', description: 'Invite trainers, set roles and permissions.', group: 'Business' },
+  { key: 'team.manage', label: 'Manage the team', description: 'Invite staff, set roles and permissions.', group: 'Business' },
   { key: 'billing.view', label: 'View billing', description: 'See the subscription and billing pages.', group: 'Business' },
-  { key: 'billing.seats', label: 'Add seats', description: 'Add paid trainer seats to the subscription (charges the card on file).', group: 'Business' },
+  { key: 'billing.seats', label: 'Add seats', description: 'Add paid staff seats to the subscription (charges the card on file).', group: 'Business' },
 ]
 
 const ALL_KEYS = PERMISSION_CATALOGUE.map((p) => p.key)

@@ -35,7 +35,7 @@ export default async function TimesheetsPage() {
   const members = roster
     .map((m) => ({
       id: m.id,
-      name: m.user.name?.trim() || m.user.email || 'Trainer',
+      name: m.user.name?.trim() || m.user.email || 'Staff member',
       isSelf: m.userId === ctx.userId,
     }))
     .sort((a, b) => (a.isSelf === b.isSelf ? 0 : a.isSelf ? -1 : 1))

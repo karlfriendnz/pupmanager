@@ -197,7 +197,7 @@ function AddSeatControl({ seatCount, hasSubscription, onChanged }: { seatCount: 
         className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold text-white"
         style={{ background: 'var(--pm-brand-600)' }}
       >
-        <UserPlus className="h-4 w-4" /> Upgrade to add trainers
+        <UserPlus className="h-4 w-4" /> Upgrade to add staff
       </a>
     )
   }
@@ -235,9 +235,9 @@ function AddSeatControl({ seatCount, hasSubscription, onChanged }: { seatCount: 
       </div>
 
       {open && (
-        <Modal open onClose={close} title="Add a trainer seat">
+        <Modal open onClose={close} title="Add a staff seat">
           <p className="text-sm text-slate-600">
-            This adds a paid trainer seat{price ? ` (${price.symbol}${price.seatPrice}/mo ${price.currency})` : ''} to
+            This adds a paid staff seat{price ? ` (${price.symbol}${price.seatPrice}/mo ${price.currency})` : ''} to
             your subscription, billed per seat and pro-rated to your card on file now.
             Confirm your password to continue.
           </p>
@@ -316,14 +316,14 @@ function InviteForm({ onInvited, seatsLeft }: { onInvited: () => void; seatsLeft
         {notice && <Alert variant="success">{notice}</Alert>}
         <div>
           <Button variant="secondary" onClick={() => setOpen(true)} disabled={seatsLeft <= 0}>
-            <UserPlus className="h-4 w-4" /> Invite trainer
+            <UserPlus className="h-4 w-4" /> Invite staff
           </Button>
         </div>
         {seatsLeft <= 0 && (
           <p className="text-xs text-slate-400">
             {native
               ? 'You’ve used all your seats.'
-              : 'You’ve used all your seats. Add more from Billing to invite another trainer.'}
+              : 'You’ve used all your seats. Add more from Billing to invite another staff member.'}
           </p>
         )}
       </div>
@@ -333,7 +333,7 @@ function InviteForm({ onInvited, seatsLeft }: { onInvited: () => void; seatsLeft
   return (
     <div data-testid="invite-form" className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-slate-900">Invite a trainer</h3>
+        <h3 className="font-semibold text-slate-900">Invite a staff member</h3>
         <button onClick={() => { reset(); setOpen(false) }} className="text-slate-400 hover:text-slate-600">
           <X className="h-5 w-5" />
         </button>

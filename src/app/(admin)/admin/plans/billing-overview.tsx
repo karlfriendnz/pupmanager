@@ -41,7 +41,7 @@ export function BillingOverview({ core, seat, addons, currencies, stripeReady }:
         <ItemCard row={core} currencies={currencies} />
       </Section>
 
-      <Section title="Extra trainers">
+      <Section title="Extra staff">
         <ItemCard row={seat} currencies={currencies} />
       </Section>
 
