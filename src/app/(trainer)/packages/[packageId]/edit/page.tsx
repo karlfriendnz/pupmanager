@@ -120,7 +120,11 @@ export default async function EditPackagePage({
             hasAttendance,
             runStatus: run?.status,
             scheduleNote: run?.scheduleNote ?? null,
-            location: run?.location ?? null,
+            // The scheduled class is the live venue when there's exactly one;
+            // otherwise (not scheduled yet, or several cohorts at their own
+            // venues) fall back to the offering's own default, which is where
+            // the form's value is stored and what the next run will inherit.
+            location: run?.location ?? pkg.location ?? null,
             // The cover image belongs to the OFFERING — that's where the detail
             // page reads it from, and a 1:1 package has no run at all. Seeding
             // it from the run meant an image you'd saved was simply not there

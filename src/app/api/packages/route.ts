@@ -138,6 +138,10 @@ export async function POST(req: Request) {
         name: parsed.data.name,
         description: parsed.data.description ?? null,
         imageUrl: parsed.data.imageUrl ?? null,
+        // The offering's own venue. It used to be handed straight to the run
+        // below and nowhere else, so defining an offering WITHOUT a start date
+        // — no run to write it to — accepted the address and threw it away.
+        location: parsed.data.location?.trim() || null,
         sessionCount: parsed.data.sessionCount,
         weeksBetween: parsed.data.weeksBetween,
         durationMins: parsed.data.durationMins,

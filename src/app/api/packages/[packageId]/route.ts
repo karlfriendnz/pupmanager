@@ -171,6 +171,13 @@ export async function PATCH(
         // which is exactly what the 1:1 edit form sends. Only write it when the
         // caller actually said something about it.
         ...(imageUrl !== undefined && { imageUrl }),
+        // The offering's default venue, same optional-means-leave-it-alone rule
+        // as the image. Before this column existed the venue was only ever
+        // written to the run, so editing an offering with no run (or with
+        // several cohorts, where syncOfferingRun deliberately no-ops) dropped
+        // it. Writing it here can never rewrite an existing run's venue —
+        // syncOfferingRun below is the only thing that touches a run.
+        ...(location !== undefined && { location: location?.trim() || null }),
         ...(dropIn && {
           allowDropIn: dropIn.allowDropIn,
           dropInPriceCents: dropIn.dropInPriceCents,

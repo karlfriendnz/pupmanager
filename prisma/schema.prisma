@@ -1551,6 +1551,17 @@ model Package {
   description              String?     @db.Text
   // Optional cover image (Vercel Blob URL), shown on the offering card + detail.
   imageUrl                 String?
+  // The offering's DEFAULT venue, free text like ClassRun.location.
+  //
+  // The venue a class actually meets at lives on the ClassRun (a cohort can
+  // move, and each session snapshots it), but an offering that hasn't been
+  // scheduled yet has no run to hold it — so an address typed into the offering
+  // form was accepted, saved nowhere, and gone on reload. It is stored here
+  // instead, always, and a NEW run inherits it when it doesn't name its own.
+  // Inheritance is create-time only: changing this never rewrites the venue of
+  // a run that already exists (editing a single-run offering still syncs that
+  // one run, which is what the form says it does — see syncOfferingRun).
+  location                 String?
   sessionCount             Int         @default(3)
   weeksBetween             Int         @default(2) // gap between sessions, in weeks
   durationMins             Int         @default(60) // default duration applied to created sessions
@@ -3081,7 +3092,8 @@ enum MembershipRequestReason {
 
 enum MembershipRequestStatus {
   PENDING // client wants this, trainer hasn't actioned it
-  FULFILLED // trainer set it up / priced it
+  FULFILLED // trainer accepted — the client is on the package (payment arranged separately)
+  DECLINED // trainer said no / handled it another way. Keeps the list from growing forever.
 }
 
 // A client asking for a membership they can't check out themselves. Mirrors

@@ -39,41 +39,11 @@ export function generateSessionDates(
   return out
 }
 
-/**
- * The backing-package shape of a one-off EVENT: a group offering that runs once
- * and doesn't repeat. An event is a ClassRun like any other — same cohort,
- * roster, capacity and invoicing machinery, just a single session — so what
- * makes it an "event" rather than a "class" is only this shape.
- *
- * Shared because two pages must agree on it exactly: /events selects it and
- * /classes excludes it. If they ever drift, runs get listed twice or vanish.
- */
-export const ONE_OFF_EVENT_PACKAGE = {
-  isGroup: true,
-  allowDropIn: false,
-  sessionCount: 1,
-  recurrenceRule: null,
-} as const
-
-/**
- * Is this offering a one-off EVENT? The same shape ONE_OFF_EVENT_PACKAGE
- * selects for, asked of a package you already have in hand — used by the event
- * detail route (which must 404 a class) and by the legacy /classes/[runId]
- * redirect. One predicate so "what counts as an event" is stated once.
- */
-export function isOneOffEventPackage(pkg: {
-  isGroup: boolean
-  allowDropIn: boolean
-  sessionCount: number
-  recurrenceRule: string | null
-}): boolean {
-  return (
-    pkg.isGroup === ONE_OFF_EVENT_PACKAGE.isGroup &&
-    pkg.allowDropIn === ONE_OFF_EVENT_PACKAGE.allowDropIn &&
-    pkg.sessionCount === ONE_OFF_EVENT_PACKAGE.sessionCount &&
-    !pkg.recurrenceRule
-  )
-}
+// Re-exported so server code can keep importing them from here; the run-kind
+// predicates themselves live in the client-safe run-kind module, because the
+// schedule grid (a client component) routes with them too and can't pull this
+// file's prisma import across the boundary.
+export { ONE_OFF_EVENT_PACKAGE, isOneOffEventPackage } from './run-kind'
 
 // ─── Drop-in schedule slots ──────────────────────────────────────────────────
 
@@ -474,6 +444,12 @@ export async function createClassRunIn(
 
   const buffer = effectiveBufferMins(args.bufferMins, pkg.bufferMins)
 
+  // A run inherits the offering's venue unless it names its own. An offering
+  // can be defined before it's scheduled, and the address the trainer typed
+  // then has to survive into the class they schedule off it later. Inheritance
+  // is create-time only — nothing here touches a run that already exists.
+  const venue = args.location?.trim() || pkg.location?.trim() || null
+
   // A drop-in class schedules itself from its slots (each with its own day,
   // time, venue and gap); everything else uses the flat N-sessions-every-W-weeks
   // cadence. Both end up as one chronological series on the run.
@@ -500,7 +476,7 @@ export async function createClassRunIn(
         assignedMembershipId: null,
         packageSessionSlotId: null,
         // The run's venue, unless a slot named its own above.
-        location: args.location?.trim() || null,
+        location: venue,
       }))
 
   const run = await tx.classRun.create({
@@ -513,7 +489,7 @@ export async function createClassRunIn(
       capacity: args.capacity ?? null,
       bufferMins: args.bufferMins ?? null,
       imageUrl: args.imageUrl ?? null,
-      location: args.location?.trim() || null,
+      location: venue,
       requirePayment: args.requirePayment ?? null,
     },
   })
@@ -584,6 +560,9 @@ export async function createClassWithPackage(args: {
         trainerId: args.trainerId,
         name: args.name,
         description: args.description?.trim() || null,
+        // The offering keeps the venue too, so a SECOND cohort scheduled off
+        // this package later starts at the same place rather than blank.
+        location: args.location?.trim() || null,
         sessionCount: count,
         weeksBetween: args.weeksBetween,
         durationMins: args.durationMins,
