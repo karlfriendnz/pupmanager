@@ -145,8 +145,11 @@ function Toolbar({ editor, theme }: { editor: Editor; theme: Theme }) {
           on={() => setShowColors(v => !v)}>
           <Baseline className="h-4 w-4" style={currentColor ? { color: currentColor } : undefined} />
         </ToolbarBtn>
+        {/* Palette is wide enough for four swatches a row: globals.css forces
+            every <button> to a 44px minimum touch target, so each circle is
+            44px wide however small its own classes are. */}
         {showColors && (
-          <div className={`absolute z-20 top-9 left-0 flex flex-wrap gap-1.5 w-[152px] p-2 rounded-lg shadow-lg border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          <div className={`absolute z-20 top-9 left-0 flex flex-wrap gap-1.5 w-[214px] p-2 rounded-lg shadow-lg border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
             {swatches.map(c => (
               <button key={c} type="button" aria-label={c === brand ? `Brand colour ${c}` : `Colour ${c}`}
                 onMouseDown={e => { e.preventDefault(); editor.chain().focus().setColor(c).run(); setShowColors(false) }}
