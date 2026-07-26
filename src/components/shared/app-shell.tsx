@@ -62,7 +62,10 @@ const TRAINER_NAV: NavItem[] = [
   // and the route still works, it just isn't offered in the nav yet. Restore
   // this line to bring it back.
   // { href: '/doggy-daycare', label: 'Doggy Daycare', icon: Dog,         section: 'programs' },
-  { href: '/memberships',  label: 'Packages',     icon: Ticket,          section: 'programs' },
+  // Packages (memberships) hidden for now (Karl, 2026-07-27), same treatment as
+  // Doggy Daycare and Lead magnets — the pages and routes still work, they just
+  // aren't offered in the nav. Restore this line to bring it back.
+  // { href: '/memberships',  label: 'Packages',   icon: Ticket,          section: 'programs' },
 
   // Not offerings themselves — the things that support them.
   { href: '/schedule/route', label: 'Route',      icon: Navigation,      section: 'tools' },
