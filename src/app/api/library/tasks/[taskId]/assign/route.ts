@@ -42,6 +42,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ taskId:
     return NextResponse.json({ error: 'That dog does not belong to this client.' }, { status: 400 })
   }
 
+  // The homework stays a SNAPSHOT (title/description are copied, so editing the
+  // library item later never rewrites work already handed out) — libraryTaskId
+  // is only a provenance link, so the library item can show who has it.
   const created = await prisma.trainingTask.create({
     data: {
       clientId: parsed.data.clientId,
@@ -51,6 +54,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ taskId:
       repetitions: task.repetitions,
       videoUrl: task.videoUrl,
       dogId: parsed.data.dogId ?? null,
+      libraryTaskId: task.id,
     },
   })
 

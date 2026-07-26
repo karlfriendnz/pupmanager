@@ -77,6 +77,24 @@ export const SEED = {
     taskId: 'e2ehomeworktask000000000x',
     title: 'Loose-lead walking',
   },
+  // ─── Training Library fixtures ────────────────────────────────────────────
+  // One category → theme → item on Business A, plus a Business B item the
+  // cross-tenant guard aims at. Fixed ids so library.spec.ts can deep-link
+  // straight at /templates/type|theme|item/<id>.
+  library: {
+    typeId: 'e2elibtype000000000000000',
+    typeName: 'E2E Obedience',
+    themeId: 'e2elibtheme00000000000000',
+    themeName: 'E2E Basic Commands',
+    itemId: 'e2elibitem000000000000000',
+    itemTitle: 'E2E Sit And Stay',
+    // A second theme, so "the category lists its themes" has more than one row.
+    themeTwoId: 'e2elibtheme20000000000000',
+    themeTwoName: 'E2E Leash Manners',
+    // Business B's item — Business A must 404 on it.
+    businessBItemId: 'e2eblibitem00000000000000',
+    businessBThemeId: 'e2eblibtheme0000000000000',
+  },
   // Emails we invite trainers at during the multi-trainer spec.
   invitees: [
     { name: 'Manny Manager', email: 'manny@e2e.test', role: 'MANAGER' as const },

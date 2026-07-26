@@ -4,12 +4,21 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
+// z.url() happily accepts `javascript:…`, and these values end up in href/src —
+// so every link field is pinned to http(s).
+const webUrl = z.string().url().refine(u => /^https?:\/\//i.test(u), 'Must be a http(s) link')
+
 const schema = z.object({
   themeId: z.string().min(1),
   title: z.string().min(1),
+  // Rich text (Tiptap HTML). Sanitized on the way out by <RichText />.
   description: z.string().optional().nullable(),
   repetitions: z.number().int().positive().optional().nullable(),
-  videoUrl: z.string().url().optional().nullable().or(z.literal('')),
+  videoUrl: webUrl.optional().nullable().or(z.literal('')),
+  // Blob URLs written by /api/library/upload; fileName is the handout's label.
+  imageUrl: webUrl.optional().nullable().or(z.literal('')),
+  fileUrl: webUrl.optional().nullable().or(z.literal('')),
+  fileName: z.string().max(255).optional().nullable(),
 })
 
 export async function POST(req: Request) {
@@ -39,6 +48,9 @@ export async function POST(req: Request) {
       description: parsed.data.description ?? null,
       repetitions: parsed.data.repetitions ?? null,
       videoUrl: parsed.data.videoUrl || null,
+      imageUrl: parsed.data.imageUrl || null,
+      fileUrl: parsed.data.fileUrl || null,
+      fileName: parsed.data.fileName || null,
       order: (maxOrder._max.order ?? -1) + 1,
     },
   })

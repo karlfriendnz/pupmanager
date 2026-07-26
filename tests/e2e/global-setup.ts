@@ -274,6 +274,38 @@ export default async function globalSetup() {
       },
     })
 
+    // ─── Training Library fixtures (see SEED.library) ────────────────────────
+    // Business A gets a category with two themes and one item; Business B gets
+    // its own item so the cross-tenant guard has a real target. The item's
+    // description is rich text on purpose — the item page renders it through
+    // <RichText/> and the theme list flattens it to a plain preview.
+    const LIB = SEED.library
+    await prisma.libraryType.create({
+      data: { id: LIB.typeId, trainerId: profile.id, name: LIB.typeName, order: 0 },
+    })
+    await prisma.libraryTheme.create({
+      data: { id: LIB.themeId, typeId: LIB.typeId, name: LIB.themeName, order: 0 },
+    })
+    await prisma.libraryTheme.create({
+      data: { id: LIB.themeTwoId, typeId: LIB.typeId, name: LIB.themeTwoName, order: 1 },
+    })
+    await prisma.libraryTask.create({
+      data: {
+        id: LIB.itemId, themeId: LIB.themeId, title: LIB.itemTitle,
+        description: '<p>Ask for a <strong>sit</strong>, then step back.</p>',
+        repetitions: 5, order: 0,
+      },
+    })
+    await prisma.libraryType.create({
+      data: { id: 'e2eblibtype00000000000000', trainerId: bProfile.id, name: 'Rival Library', order: 0 },
+    })
+    await prisma.libraryTheme.create({
+      data: { id: LIB.businessBThemeId, typeId: 'e2eblibtype00000000000000', name: 'Rival Theme', order: 0 },
+    })
+    await prisma.libraryTask.create({
+      data: { id: LIB.businessBItemId, themeId: LIB.businessBThemeId, title: 'Rival Item', order: 0 },
+    })
+
     // A homework task on the assigned client, dated now so it shows in the
     // client home's "This week" list. The homework-log spec opens it and logs
     // a practice against it.
