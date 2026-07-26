@@ -18,7 +18,8 @@ vi.mock('@/lib/prisma', () => ({ prisma: h }))
 import { loadPublishedMemberships } from '@/lib/client-memberships'
 
 const CARD = {
-  imageUrl: 'm.jpg', bgColor: '#fff', headerColor: '#000', textColor: '#333', featuredColor: '#7c3aed', buttonText: 'Join',
+  imageUrl: 'm.jpg', bgColor: '#fff', headerColor: '#000', textColor: '#333', featuredColor: '#7c3aed',
+  buttonBgColor: '#0d9488', buttonTextColor: '#ffffff', buttonText: 'Join',
 }
 
 beforeEach(() => {

@@ -3037,6 +3037,11 @@ model Membership {
   featuredColor     String?
   // Custom label for the storefront buy button. Null = "Get this membership".
   buttonText        String?
+  // Buy-button colours. Null = fall back to featuredColor / an auto-picked
+  // legible label. Whatever is stored here is still put through the 4.5:1
+  // contrast guard in lib/membership-card-colors.ts before it is painted.
+  buttonBgColor     String?
+  buttonTextColor   String?
   priceCents        Int
   cadence           MembershipCadence   @default(ONE_OFF)
   interval          MembershipInterval? // for RECURRING

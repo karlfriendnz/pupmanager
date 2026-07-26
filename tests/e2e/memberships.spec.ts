@@ -232,6 +232,76 @@ test.describe('memberships — trainer builds, client sees', () => {
     }
   })
 
+  // The builder's card-appearance block and each item's description/image used
+  // to hide behind toggles, and there was no way back to the list. All three are
+  // now just present — these pin that so a "tidy the form" refactor can't
+  // quietly re-bury them.
+  test('the builder shows card appearance, per-item description/image and a way back, with nothing to expand', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/memberships')
+    await page.getByRole('main').getByRole('button', { name: 'New membership' }).first().click()
+
+    // Card appearance is open on arrival — image, button text, colours.
+    await expect(page.getByText('Card appearance')).toBeVisible()
+    await expect(page.getByText('Colour scheme')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Card appearance' })).toHaveCount(0)
+
+    // Button background + text colours, with a live readability read-out.
+    await expect(page.getByLabel('Button background')).toBeVisible()
+    await expect(page.getByLabel('Button text')).toBeVisible()
+    await expect(page.getByText(/Contrast \d+(\.\d+)?:1/)).toBeVisible()
+
+    // A new item's description editor and image control are there straight away,
+    // with no "Add description & image" button to press first.
+    await page.getByRole('button', { name: 'Add item' }).click()
+    await page.getByLabel('Included offering').first().selectOption({ label: 'Self-Book Session' })
+    await expect(page.getByText('Custom description').first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /description & image/ })).toHaveCount(0)
+
+    // Back returns to the list rather than stranding the trainer in the form.
+    await page.getByRole('button', { name: 'Back to memberships' }).click()
+    await expect(page.getByRole('button', { name: 'New membership' }).first()).toBeVisible()
+  })
+
+  test('button colours round-trip, and an unreadable pair is corrected before a client sees it', async ({ page }) => {
+    const prisma = await makePrisma()
+    let id: string | null = null
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      // Pale yellow button with white text — saved as given…
+      const created = await page.request.post('/api/trainer/memberships', {
+        data: {
+          name: 'E2E Button Colour Bundle', priceCents: 4200, published: true, items: [],
+          buttonBgColor: '#fef08a', buttonTextColor: '#ffffff', buttonText: 'Join us',
+        },
+      })
+      expect(created.status(), await created.text()).toBe(201)
+      id = (await created.json()).id
+      const saved = await prisma.membership.findUnique({ where: { id: id! } })
+      expect(saved?.buttonBgColor).toBe('#fef08a')
+      expect(saved?.buttonTextColor).toBe('#ffffff')
+
+      // …and a bad hex is refused rather than stored.
+      const bad = await page.request.patch(`/api/trainer/memberships/${id}`, {
+        data: { buttonBgColor: 'rebeccapurple' },
+      })
+      expect(bad.status()).toBe(400)
+
+      // The client's card paints a corrected label, never the raw white.
+      await login(page, SEED.client.email, SEED.client.password)
+      await page.goto('/my-availability')
+      await page.getByRole('button', { name: /Memberships/ }).click()
+      const buy = page.getByRole('button', { name: 'Join us' })
+      await expect(buy).toBeVisible({ timeout: 15_000 })
+      const colour = await buy.evaluate(el => getComputedStyle(el).color)
+      expect(colour).not.toBe('rgb(255, 255, 255)')
+    } finally {
+      if (id) await prisma.membership.delete({ where: { id } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
   test('Business B cannot read or add reminders on Business A’s membership', async ({ page }) => {
     const prisma = await makePrisma()
     let id: string | null = null
@@ -255,5 +325,34 @@ test.describe('memberships — trainer builds, client sees', () => {
       if (id) await prisma.membership.delete({ where: { id } }).catch(() => {})
       await prisma.$disconnect()
     }
+  })
+})
+
+// The "What's included" row used to wrap into three ragged lines on a phone,
+// with the quantity box stranded above the next row's type dropdown.
+test.describe('memberships builder on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test('an included-item row stays two tidy lines and the page never scrolls sideways', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/memberships')
+    await page.getByRole('main').getByRole('button', { name: 'New membership' }).first().click()
+    await page.getByRole('button', { name: 'Add item' }).click()
+
+    const kind = page.getByLabel('Item type').first()
+    const offering = page.getByLabel('Included offering').first()
+    const qty = page.getByLabel('Quantity').first()
+
+    const [kindBox, offeringBox, qtyBox] = await Promise.all([
+      kind.boundingBox(), offering.boundingBox(), qty.boundingBox(),
+    ])
+    // Type + quantity share the top line; the offering picker takes the one below.
+    expect(Math.abs(kindBox!.y - qtyBox!.y)).toBeLessThan(4)
+    expect(offeringBox!.y).toBeGreaterThan(kindBox!.y + kindBox!.height - 4)
+    // Quantity is sized for the 1–2 digits it holds, not a third of the row.
+    expect(qtyBox!.width).toBeLessThan(56)
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow).toBeLessThanOrEqual(0)
   })
 })

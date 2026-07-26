@@ -35,7 +35,8 @@ export default async function MembershipsPage() {
     <MembershipsView
       memberships={memberships.map(m => ({
         id: m.id, name: m.name, description: m.description, priceCents: m.priceCents,
-        imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor, buttonText: m.buttonText,
+        imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
+        buttonBgColor: m.buttonBgColor, buttonTextColor: m.buttonTextColor, buttonText: m.buttonText,
         cadence: m.cadence, interval: m.interval, minTermCount: m.minTermCount, earlyTermFeeCents: m.earlyTermFeeCents,
         published: m.published, purchases: m._count.purchases,
         items: m.items.map(i => ({ kind: i.kind, packageId: i.packageId, classRunId: i.classRunId, productId: i.productId, quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl, description: i.description })),

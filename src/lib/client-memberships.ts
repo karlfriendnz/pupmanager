@@ -6,7 +6,8 @@ import { hasAddon } from './billing'
 export interface ClientMembershipItem { label: string; quantity: number; imageUrl: string | null; description: string | null }
 export interface ClientMembership {
   id: string; name: string; description: string | null; priceCents: number
-  imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null; buttonText: string | null
+  imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null
+  buttonBgColor: string | null; buttonTextColor: string | null; buttonText: string | null
   items: ClientMembershipItem[]
 }
 
@@ -49,7 +50,8 @@ export async function loadPublishedMemberships(trainerId: string): Promise<Clien
 
   return memberships.map(m => ({
     id: m.id, name: m.name, description: m.description, priceCents: m.priceCents,
-    imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor, buttonText: m.buttonText,
+    imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
+    buttonBgColor: m.buttonBgColor, buttonTextColor: m.buttonTextColor, buttonText: m.buttonText,
     items: m.items
       .map(it => {
         const id = it.packageId ?? it.classRunId ?? it.productId

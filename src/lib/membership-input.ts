@@ -28,6 +28,10 @@ export const membershipCreateSchema = z.object({
   headerColor: hexColor,
   textColor: hexColor,
   featuredColor: hexColor,
+  // Buy-button colours. Stored as given; the 4.5:1 contrast guard in
+  // lib/membership-card-colors.ts derives what actually gets painted.
+  buttonBgColor: hexColor,
+  buttonTextColor: hexColor,
   buttonText: z.string().trim().max(40).nullable().optional(),
   priceCents: z.number().int().min(0).max(10_000_000),
   cadence: z.enum(['ONE_OFF', 'RECURRING']).default('ONE_OFF'),

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { RichText } from '@/components/shared/rich-text'
 import { Ticket, Loader2, Check } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
+import { resolveButtonColors } from '@/lib/membership-card-colors'
 import type { ClientMembership } from '@/lib/client-memberships'
 
 /**
@@ -43,6 +44,9 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
           const header = m.headerColor ?? '#0f172a'
           const text = m.textColor ?? '#64748b'
           const featured = m.featuredColor ?? '#7c3aed'
+          // Never paint the trainer's raw pair — the guard derives a label tone
+          // that clears 4.5:1 on whatever background they chose.
+          const btn = resolveButtonColors(m.buttonBgColor, m.buttonTextColor, m.featuredColor)
           return (
             <div key={m.id} className="rounded-2xl border border-slate-200 shadow-sm overflow-hidden" style={{ backgroundColor: bg }}>
               {m.imageUrl && (
@@ -75,7 +79,7 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
                     ))}
                   </ul>
                 )}
-                <button onClick={() => buy(m.id)} disabled={busy === m.id} className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl text-white font-semibold hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: featured }}>
+                <button onClick={() => buy(m.id)} disabled={busy === m.id} className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: btn.background, color: btn.color }}>
                   {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {m.buttonText?.trim() || 'Get this membership'}
                 </button>
               </div>

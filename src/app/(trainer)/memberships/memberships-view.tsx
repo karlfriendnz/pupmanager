@@ -20,6 +20,7 @@ import {
   SortableOfferingList, SortableOfferingCard, AddOfferingLink,   type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
+import { resolveButtonColors, MIN_CONTRAST, type ButtonColors } from '@/lib/membership-card-colors'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 import { Eye, EyeOff, Package as PackageIcon, Bell } from 'lucide-react'
 
@@ -30,7 +31,10 @@ interface Offering { id: string; name: string; priceCents?: number; imageUrl?: s
 interface Offerings { packages: Offering[]; classRuns: Offering[]; products: Offering[] }
 interface MItem { kind: Kind; packageId: string | null; classRunId: string | null; productId: string | null; quantity: number; regrantOnRenewal: boolean; imageUrl?: string | null; description?: string | null }
 interface MPlan { interval: Interval; priceCents: number; minTermCount: number; earlyTermFeeCents: number | null }
-interface Card { imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null; buttonText: string | null }
+interface Card {
+  imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null
+  buttonBgColor: string | null; buttonTextColor: string | null; buttonText: string | null
+}
 interface Membership extends Card {
   id: string; name: string; description: string | null; priceCents: number
   cadence: Cadence; interval: Interval | null; minTermCount: number; earlyTermFeeCents: number | null
@@ -56,6 +60,7 @@ function MembershipPreviewCard({ name, description, priceCents, recurring, inter
   const header = card.headerColor ?? '#0f172a'
   const text = card.textColor ?? '#64748b'
   const featured = card.featuredColor ?? '#7c3aed'
+  const btn = resolveButtonColors(card.buttonBgColor, card.buttonTextColor, card.featuredColor)
   return (
     <div className="rounded-2xl border border-slate-200 shadow-sm overflow-hidden" style={{ backgroundColor: bg }}>
       {card.imageUrl && (
@@ -100,15 +105,17 @@ function MembershipPreviewCard({ name, description, priceCents, recurring, inter
             ))}
           </div>
         )}
-        <button type="button" disabled className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl text-white font-semibold opacity-95 cursor-default" style={{ backgroundColor: featured }}>{card.buttonText?.trim() || 'Get this membership'}</button>
+        <button type="button" disabled className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold opacity-95 cursor-default" style={{ backgroundColor: btn.background, color: btn.color }}>{card.buttonText?.trim() || 'Get this membership'}</button>
       </div>
     </div>
   )
 }
 
 // Storefront card colours the trainer can set (with a sensible default swatch
-// shown when unset). featuredColor tints the price + the buy button.
-const CARD_COLORS: { key: 'bgColor' | 'headerColor' | 'textColor' | 'featuredColor'; label: string; fallback: string }[] = [
+// shown when unset). featuredColor tints the price +, unless overridden below,
+// the buy button.
+type ColorKey = 'bgColor' | 'headerColor' | 'textColor' | 'featuredColor' | 'buttonBgColor' | 'buttonTextColor'
+const CARD_COLORS: { key: ColorKey; label: string; fallback: string }[] = [
   { key: 'bgColor', label: 'Background', fallback: '#ffffff' },
   { key: 'headerColor', label: 'Header', fallback: '#0f172a' },
   { key: 'textColor', label: 'Text', fallback: '#475569' },
@@ -124,6 +131,15 @@ const CARD_SCHEMES: { name: string; bgColor: string; headerColor: string; textCo
   { name: 'Amber', bgColor: '#fffbeb', headerColor: '#92400e', textColor: '#57534e', featuredColor: '#d97706' },
   { name: 'Rose', bgColor: '#fff1f2', headerColor: '#9f1239', textColor: '#4c4c4c', featuredColor: '#e11d48' },
   { name: 'Dark', bgColor: '#0f172a', headerColor: '#ffffff', textColor: '#cbd5e1', featuredColor: '#38bdf8' },
+]
+
+// The buy button's own colours, kept apart from the card's four because they're
+// the pair a trainer can most easily make unreadable — the swatches sit next to
+// a live contrast read-out. Null on either = follow the Featured colour / an
+// auto-picked legible label.
+const BUTTON_COLORS: { key: 'buttonBgColor' | 'buttonTextColor'; label: string }[] = [
+  { key: 'buttonBgColor', label: 'Button background' },
+  { key: 'buttonTextColor', label: 'Button text' },
 ]
 
 // Sortable wrapper for a What's-included row. Renders its children with the
@@ -159,10 +175,6 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Which included item's image/blurb panel is expanded (by key).
-  const [openItem, setOpenItem] = useState<string | null>(null)
-  // Card-appearance controls are collapsed behind a button by default.
-  const [showCardStyle, setShowCardStyle] = useState(false)
   const [showMessages, setShowMessages] = useState(false)
 
   function offeringsFor(k: Kind): Offering[] {
@@ -177,7 +189,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
 
   function startNew() {
     setError(null)
-    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [], plans: [], imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null, buttonText: null })
+    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [], plans: [], imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null, buttonBgColor: null, buttonTextColor: null, buttonText: null })
   }
   function startEdit(m: Membership) {
     setError(null)
@@ -185,7 +197,8 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       id: m.id, name: m.name, description: m.description ?? '', price: (m.priceCents / 100).toString(),
       cadence: m.cadence, interval: m.interval ?? 'MONTH', minTermCount: String(m.minTermCount), earlyTermFee: m.earlyTermFeeCents != null ? (m.earlyTermFeeCents / 100).toString() : '',
       published: m.published,
-      imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor, buttonText: m.buttonText,
+      imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
+      buttonBgColor: m.buttonBgColor, buttonTextColor: m.buttonTextColor, buttonText: m.buttonText,
       items: m.items.map(i => ({ key: `k${seq++}`, kind: i.kind, id: i.packageId ?? i.classRunId ?? i.productId ?? '', quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl ?? null, description: i.description ?? '' })),
       plans: m.plans.map(p => ({ key: `p${seq++}`, interval: p.interval, price: (p.priceCents / 100).toString(), minTerm: String(p.minTermCount), earlyTermFee: p.earlyTermFeeCents != null ? (p.earlyTermFeeCents / 100).toString() : '' })),
     })
@@ -218,6 +231,9 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   }, 0) : 0
   const priceCents = draft ? Math.round((Number(draft.price) || 0) * 100) : 0
   const saving = partsTotal - priceCents
+  // What the buy button will actually be painted with, contrast guard applied —
+  // drives the swatch fallbacks, the readability note and the live preview.
+  const buttonPreview = resolveButtonColors(draft?.buttonBgColor, draft?.buttonTextColor, draft?.featuredColor)
 
   async function save() {
     if (!draft) return
@@ -243,6 +259,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
         ? draft.plans.filter(p => p.price.trim()).map(p => ({ interval: p.interval, priceCents: Math.round(Number(p.price) * 100), minTermCount: Number(p.minTerm) || 0, earlyTermFeeCents: p.earlyTermFee.trim() ? Math.round(Number(p.earlyTermFee) * 100) : null }))
         : [],
       imageUrl: draft.imageUrl, bgColor: draft.bgColor, headerColor: draft.headerColor, textColor: draft.textColor, featuredColor: draft.featuredColor,
+      buttonBgColor: draft.buttonBgColor, buttonTextColor: draft.buttonTextColor,
       buttonText: draft.buttonText?.trim() || null,
     }
     setBusy(true); setError(null)
@@ -271,7 +288,12 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       {/* No action in the control bar — the dashed "New membership" that closes
           the list (and the empty state's button) are the way in, same as every
           other offering page. */}
-      <PageHeader title="Memberships" />
+      {/* Editing a membership is a detail screen: back replaces the menu and
+          returns to the list, same as every other detail page. */}
+      <PageHeader
+        title={draft ? (draft.id ? draft.name.trim() || 'Edit membership' : 'New membership') : 'Memberships'}
+        back={draft ? { onClick: () => setDraft(null), label: 'Back to memberships' } : undefined}
+      />
       <div className="w-full p-4 md:p-8">
         {error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2">{error}</div>}
 
@@ -322,66 +344,68 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
               )}
             </div>
 
-            {/* Card appearance — collapsed behind a toggle to keep the form tidy. */}
+            {/* Card appearance — always open. It's how the card the client
+                actually meets gets built, so it isn't something to go looking
+                for behind a chevron. */}
             <div className="p-5">
-              <button type="button" onClick={() => setShowCardStyle(v => !v)} className="flex w-full items-center justify-between text-sm font-medium text-slate-700">
-                <span className="flex items-center gap-2"><Palette className="h-4 w-4 text-slate-400" /> Card appearance</span>
-                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showCardStyle ? 'rotate-180' : ''}`} />
-              </button>
-              {showCardStyle && (
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                  <div>
-                    <p className="text-xs font-medium text-slate-500 mb-1.5">Image</p>
-                    <div className="flex items-center gap-3">
-                      <div className="h-14 w-20 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0 grid place-items-center text-slate-300">
-                        {draft.imageUrl
-                          ? // eslint-disable-next-line @next/next/no-img-element
-                            <img src={draft.imageUrl} alt="" className="h-full w-full object-cover" />
-                          : <ImageIcon className="h-5 w-5" />}
-                      </div>
-                      <div className="flex flex-col items-start gap-1">
-                        <ImageUploadButton onUploaded={urls => urls[0] && patch({ imageUrl: urls[0] })} />
-                        {draft.imageUrl && <button type="button" onClick={() => patch({ imageUrl: null })} className="text-xs text-slate-500 hover:text-rose-600">Remove</button>}
-                      </div>
+              <p className="flex items-center gap-2 text-sm font-medium text-slate-700"><Palette className="h-4 w-4 text-slate-400" strokeWidth={1.75} /> Card appearance</p>
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                <div>
+                  <p className="text-xs font-medium text-slate-500 mb-1.5">Image</p>
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-20 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0 grid place-items-center text-slate-300">
+                      {draft.imageUrl
+                        ? // eslint-disable-next-line @next/next/no-img-element
+                          <img src={draft.imageUrl} alt="" className="h-full w-full object-cover" />
+                        : <ImageIcon className="h-5 w-5" strokeWidth={1.75} />}
                     </div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-slate-500 mb-1.5">Button text</p>
-                    <input value={draft.buttonText ?? ''} onChange={e => patch({ buttonText: e.target.value })} placeholder="Get this membership" maxLength={40} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <p className="text-xs font-medium text-slate-500 mb-1.5">Colour scheme</p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {CARD_SCHEMES.map(s => (
-                        <button key={s.name} type="button" title={s.name}
-                          onClick={() => patch({ bgColor: s.bgColor, headerColor: s.headerColor, textColor: s.textColor, featuredColor: s.featuredColor })}
-                          className="h-7 w-7 rounded-full border border-slate-200 grid place-items-center hover:scale-110 transition-transform"
-                          style={{ backgroundColor: s.bgColor }}>
-                          <span className="h-3.5 w-3.5 rounded-full" style={{ backgroundColor: s.featuredColor }} />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <p className="text-xs font-medium text-slate-500 mb-1.5">Fine-tune colours</p>
-                    <div className="flex flex-wrap gap-x-4 gap-y-2">
-                      {CARD_COLORS.map(({ key, label, fallback }) => (
-                        <div key={key} className="flex items-center gap-2">
-                          <label className="relative block h-8 w-8 rounded-lg border border-slate-200 overflow-hidden cursor-pointer" style={{ backgroundColor: draft[key] ?? fallback }}>
-                            <input type="color" value={draft[key] ?? fallback} onChange={e => patch({ [key]: e.target.value } as Partial<Draft>)} className="absolute -inset-1 opacity-0 cursor-pointer" />
-                          </label>
-                          <div className="flex flex-col leading-tight">
-                            <span className="text-xs text-slate-600">{label}</span>
-                            {draft[key]
-                              ? <button type="button" onClick={() => patch({ [key]: null } as Partial<Draft>)} className="text-[11px] text-slate-400 hover:text-rose-600 text-left">reset</button>
-                              : <span className="text-[11px] text-slate-400">default</span>}
-                          </div>
-                        </div>
-                      ))}
+                    <div className="flex flex-col items-start gap-1">
+                      <ImageUploadButton onUploaded={urls => urls[0] && patch({ imageUrl: urls[0] })} />
+                      {draft.imageUrl && <button type="button" onClick={() => patch({ imageUrl: null })} className="text-xs text-slate-500 hover:text-rose-600">Remove</button>}
                     </div>
                   </div>
                 </div>
-              )}
+                <div>
+                  <p className="text-xs font-medium text-slate-500 mb-1.5">Button text</p>
+                  <input value={draft.buttonText ?? ''} onChange={e => patch({ buttonText: e.target.value })} placeholder="Get this membership" maxLength={40} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-xs font-medium text-slate-500 mb-1.5">Colour scheme</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {CARD_SCHEMES.map(s => (
+                      <button key={s.name} type="button" title={s.name}
+                        // Picking a scheme clears any hand-set button colours so
+                        // the button follows the scheme rather than stranding an
+                        // old accent on it.
+                        onClick={() => patch({ bgColor: s.bgColor, headerColor: s.headerColor, textColor: s.textColor, featuredColor: s.featuredColor, buttonBgColor: null, buttonTextColor: null })}
+                        className="h-7 w-7 rounded-full border border-slate-200 grid place-items-center hover:scale-110 transition-transform"
+                        style={{ backgroundColor: s.bgColor }}>
+                        <span className="h-3.5 w-3.5 rounded-full" style={{ backgroundColor: s.featuredColor }} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-xs font-medium text-slate-500 mb-1.5">Fine-tune colours</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-2">
+                    {CARD_COLORS.map(({ key, label, fallback }) => (
+                      <ColorSwatch key={key} label={label} value={draft[key]} fallback={fallback}
+                        onChange={v => patch({ [key]: v } as Partial<Draft>)} />
+                    ))}
+                  </div>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-xs font-medium text-slate-500 mb-1.5">Button colours</p>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    {BUTTON_COLORS.map(({ key, label }) => (
+                      <ColorSwatch key={key} label={label} value={draft[key]}
+                        fallback={key === 'buttonBgColor' ? buttonPreview.background : buttonPreview.color}
+                        onChange={v => patch({ [key]: v } as Partial<Draft>)} />
+                    ))}
+                  </div>
+                  <ButtonContrastNote colors={buttonPreview} chosenText={draft.buttonTextColor} />
+                </div>
+              </div>
             </div>
 
             {/* Included items */}
@@ -393,34 +417,31 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                 {draft.items.map(it => {
                   const off = offeringOf(it)
                   const resolvedImg = it.imageUrl ?? off?.imageUrl ?? null
-                  const open = openItem === it.key
-                  const customised = !!it.imageUrl || !!it.description.trim()
                   return (
                     <SortableItemShell key={it.key} id={it.key}>
                     {(handle) => (
                     <div className="rounded-xl border border-slate-200 bg-white">
+                      {/* One tidy control line. The offering picker takes the
+                          whole width on a phone (order-last) and slots back
+                          inline once there's room — quantity stays sized to the
+                          1–2 digits it holds. */}
                       <div className="flex flex-wrap items-center gap-2 p-2.5">
-                        <button type="button" {...handle} title="Drag to reorder" className="cursor-grab touch-none px-0.5 text-slate-300 hover:text-slate-500"><GripVertical className="h-4 w-4" /></button>
-                        <select value={it.kind} onChange={e => patchItem(it.key, { kind: e.target.value as Kind, id: '', imageUrl: null, description: '' })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                        <button type="button" {...handle} title="Drag to reorder" className="shrink-0 cursor-grab touch-none px-0.5 text-slate-300 hover:text-slate-500"><GripVertical className="h-4 w-4" strokeWidth={1.75} /></button>
+                        <select aria-label="Item type" value={it.kind} onChange={e => patchItem(it.key, { kind: e.target.value as Kind, id: '', imageUrl: null, description: '' })} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-sm sm:flex-none sm:w-[8.5rem]">
                           {KINDS.map(k => <option key={k.k} value={k.k}>{k.label}</option>)}
                         </select>
-                        <select value={it.id} onChange={e => patchItem(it.key, { id: e.target.value })} className="h-9 flex-1 min-w-[10rem] rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                        <select aria-label="Included offering" value={it.id} onChange={e => patchItem(it.key, { id: e.target.value })} className="h-9 min-w-0 basis-full order-last rounded-lg border border-slate-200 bg-white px-2 text-sm sm:order-none sm:basis-auto sm:flex-1">
                           <option value="">Choose…</option>
                           {offeringsFor(it.kind).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                         </select>
-                        <span className="text-slate-400 text-sm">×</span>
-                        <input value={it.quantity} onChange={e => patchItem(it.key, { quantity: Math.max(1, Number(e.target.value.replace(/[^0-9]/g, '')) || 1) })} inputMode="numeric" className="h-9 w-14 rounded-lg border border-slate-200 px-2 text-sm" />
-                        {/* Optional image + custom description for this item
-                            (pulls the offering's own by default). */}
-                        <button type="button" onClick={() => setOpenItem(open ? null : it.key)} disabled={!it.id}
-                          className={`inline-flex items-center gap-1 h-9 px-2.5 rounded-lg text-xs font-medium disabled:opacity-40 ${open || customised ? 'bg-teal-50 text-teal-700' : 'text-slate-500 hover:bg-slate-100'}`}>
-                          <ImageIcon className="h-3.5 w-3.5" />
-                          {customised ? 'Edit description & image' : 'Add description & image'}
-                          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-                        </button>
-                        <button onClick={() => removeItem(it.key)} title="Remove" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
+                        <span className="shrink-0 text-slate-400 text-sm">×</span>
+                        <input aria-label="Quantity" value={it.quantity} onChange={e => patchItem(it.key, { quantity: Math.max(1, Number(e.target.value.replace(/[^0-9]/g, '')) || 1) })} inputMode="numeric" maxLength={2} className="h-9 w-11 shrink-0 rounded-lg border border-slate-200 px-1 text-center text-sm" />
+                        <button onClick={() => removeItem(it.key)} title="Remove" className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" strokeWidth={1.75} /></button>
                       </div>
-                      {open && it.id && (
+                      {/* This item's description + image, in the open. They fall
+                          back to the offering's own, so there's nothing to
+                          "switch on" — only something to override. */}
+                      {it.id && (
                         <div className="border-t border-slate-100 p-3 flex flex-col gap-4 bg-slate-50/60">
                           <div>
                             <p className="text-xs font-medium text-slate-600 mb-1">Custom description {it.description.trim() ? '' : off?.description ? '— leave empty to use the offering’s own' : ''}</p>
@@ -574,6 +595,43 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
         )}
       </div>
     </>
+  )
+}
+
+// One colour control: a swatch that opens the native picker, the label, and a
+// reset back to the derived default.
+function ColorSwatch({ label, value, fallback, onChange }: {
+  label: string; value: string | null; fallback: string; onChange: (v: string | null) => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <label className="relative block h-8 w-8 rounded-lg border border-slate-200 overflow-hidden cursor-pointer" style={{ backgroundColor: value ?? fallback }}>
+        <span className="sr-only">{label}</span>
+        <input type="color" aria-label={label} value={value ?? fallback} onChange={e => onChange(e.target.value)} className="absolute -inset-1 opacity-0 cursor-pointer" />
+      </label>
+      <div className="flex flex-col leading-tight">
+        <span className="text-xs text-slate-600">{label}</span>
+        {value
+          ? <button type="button" onClick={() => onChange(null)} className="text-[11px] text-slate-400 hover:text-rose-600 text-left">reset</button>
+          : <span className="text-[11px] text-slate-400">default</span>}
+      </div>
+    </div>
+  )
+}
+
+// Tells the trainer, in words, what their button pair does — and says so plainly
+// when we had to darken/lighten their label to keep it readable. No tinted
+// chips: a swatch of the real thing plus one line of slate text.
+function ButtonContrastNote({ colors, chosenText }: { colors: ButtonColors; chosenText: string | null }) {
+  return (
+    <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <span className="inline-flex h-8 items-center rounded-lg px-3 text-xs font-semibold" style={{ backgroundColor: colors.background, color: colors.color }}>Button preview</span>
+      <p className="text-[11px] text-slate-500">
+        {colors.adjusted && chosenText
+          ? `Contrast ${colors.ratio.toFixed(1)}:1 — your text colour was too close to the background, so it’s been deepened to stay readable.`
+          : `Contrast ${colors.ratio.toFixed(1)}:1 — clears the ${MIN_CONTRAST}:1 readability standard.`}
+      </p>
+    </div>
   )
 }
 
