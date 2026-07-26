@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers, CheckSquare, Mail, CheckCircle2 } from 'lucide-react'
+import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers, CheckSquare, Mail, CheckCircle2, MessageSquare } from 'lucide-react'
 import { dateParts, displayEmail } from '@/lib/utils'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { BulkEmailModal } from './bulk-email-modal'
@@ -658,6 +658,7 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
   isSelected: boolean
   onToggleSelect: (id: string) => void
 }) {
+  const router = useRouter()
   const showShared = visible.has('shared') && client.shared
   const checkbox = selectMode ? (
     <span
@@ -701,7 +702,7 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
   const inner = (
     // Phone: a row in one shared block (see the wrapper below) — no rounding,
     // no shadow, no gaps between clients. Desktop keeps the card.
-    <Card className={`rounded-none border-0 border-b border-slate-100 shadow-none last:border-b-0 md:rounded-2xl md:border md:shadow-sm px-4 py-3 transition-all ${
+    <Card className={`rounded-none border-0 border-b border-slate-200 shadow-none last:border-b-0 md:rounded-2xl md:border md:border-slate-100 md:shadow-sm px-4 py-2.5 md:py-3 transition-all ${
       selectMode
         ? `cursor-pointer ${isSelected ? 'border-[var(--pm-brand-500)] bg-[var(--pm-brand-50)]/40 ring-1 ring-[var(--pm-brand-500)]' : 'hover:border-slate-300'}`
         : 'hover:border-blue-200 hover:shadow-md cursor-pointer'
@@ -722,14 +723,38 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
         ))}
       </div>
 
-      {/* <md: one line. The configured columns are a desktop feature — as
-          label/value rows they made a 150px card per client (four rows, three
-          of them saying "No email" / "—" / "no tasks"), so four clients filled
-          a phone screen. Here only facts that exist are printed. */}
-      <div className="md:hidden">
-        {identity}
-        {mobileSummary && (
-          <p className="mt-1 truncate pl-[3.25rem] text-[13px] text-slate-500">{mobileSummary}</p>
+      {/* <md: avatar, name, and one summary line — tight, with the two lines
+          stacked beside the avatar rather than the summary hanging under an
+          indent. The configured columns are a desktop feature; as label/value
+          rows they made a 150px card per client (four rows, three of them
+          saying "No email" / "—" / "no tasks"). Only facts that exist print. */}
+      <div className="md:hidden flex items-center gap-3">
+        {selectMode && checkbox}
+        <ClientAvatar size="md" name={client.name ?? client.email} dogPhotoUrl={client.dogPhotoUrl} />
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 truncate text-sm font-semibold leading-tight text-slate-900">
+            {client.name ?? client.email}
+            {showShared && (
+              <span className="flex-shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+                Shared
+              </span>
+            )}
+          </p>
+          {mobileSummary && (
+            <p className="mt-0.5 truncate text-[13px] leading-tight text-slate-500">{mobileSummary}</p>
+          )}
+        </div>
+        {/* Straight to this client's thread — messaging someone is the most
+            common reason to tap a client you already know. */}
+        {!selectMode && (
+          <span
+            role="link"
+            aria-label={`Message ${client.name ?? client.email}`}
+            onClick={e => { e.preventDefault(); e.stopPropagation(); router.push(`/messages/${client.id}`) }}
+            className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg text-slate-400 active:bg-slate-100"
+          >
+            <MessageSquare className="h-[18px] w-[18px]" strokeWidth={1.75} />
+          </span>
         )}
       </div>
     </Card>

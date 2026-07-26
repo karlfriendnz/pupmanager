@@ -13,7 +13,7 @@ import {
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, Megaphone, Lock, ClipboardList,
   Download,
-  type LucideIcon, Ticket, ExternalLink,} from 'lucide-react'
+  type LucideIcon, Ticket, CircleDollarSign,} from 'lucide-react'
 import { InstagramIcon } from '@/components/icons/instagram-icon'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
@@ -41,14 +41,15 @@ type NavSection = 'overview' | 'clients' | 'programs' | 'tools' | 'business' | '
 type NavItem = { href: string; label: string; icon: LucideIcon; section: NavSection; desktopHidden?: boolean; child?: boolean; group?: boolean; comingSoon?: boolean }
 
 const TRAINER_NAV: NavItem[] = [
+  // The three a trainer opens every day, above the section headers.
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, section: 'overview' },
+  { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'overview' },
+  { href: '/schedule',     label: 'Schedule',     icon: Calendar,        section: 'overview' },
 
   { href: '/clients',      label: 'Clients',      icon: Users,           section: 'clients' },
   { href: '/enquiries',    label: 'Enquiries',    icon: Inbox,           section: 'clients', child: true },
   { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
   { href: '/clients/waitlist', label: 'Waitlist', icon: ClipboardList,   section: 'clients', child: true },
-  { href: '/schedule',     label: 'Schedule',     icon: Calendar,        section: 'clients' },
-  { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'clients' },
 
   { href: '/packages',     label: '1:1 Packages', icon: Package,         section: 'programs' },
   { href: '/classes',      label: 'Group Classes', icon: GraduationCap,  section: 'programs' },
@@ -68,10 +69,10 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'business' },
   { href: '/lead-magnets', label: 'Lead magnets', icon: Download,        section: 'business', child: true },
   { href: '/instagram',    label: 'Instagram link', icon: InstagramIcon as unknown as LucideIcon, section: 'business', child: true },
-  { href: '/email-templates', label: 'Email templates', icon: Mail,       section: 'business', child: true },
+  { href: '/email-templates', label: 'Emails',      icon: Mail,           section: 'business', child: true },
 
   { href: '/finances',     label: 'Finances',     icon: Wallet,          section: 'business' },
-  { href: '/finances/stripe', label: 'Stripe dashboard', icon: ExternalLink, section: 'business', child: true },
+  { href: '/finances/stripe', label: 'Stripe',      icon: CircleDollarSign, section: 'business', child: true },
   { href: '/timesheets',   label: 'Timesheets',   icon: Clock,           section: 'business' },
   { href: '/reports',      label: 'Reports',      icon: BarChart3,       section: 'business' },
   // Add-ons + Integration now live as tabs inside Settings (top-right cog).
