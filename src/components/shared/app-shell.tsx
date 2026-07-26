@@ -55,7 +55,10 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/classes',      label: 'Group Classes', icon: GraduationCap,  section: 'programs' },
   { href: '/casual-classes',     label: 'Casual Classes',     icon: Ticket,           section: 'programs' },
   { href: '/events',       label: 'Events',       icon: CalendarPlus,    section: 'programs' },
-  { href: '/doggy-daycare', label: 'Doggy Daycare', icon: Dog,            section: 'programs' },
+  // Doggy Daycare is hidden for now (Karl, 2026-07-26) — the pages still exist
+  // and the route still works, it just isn't offered in the nav yet. Restore
+  // this line to bring it back.
+  // { href: '/doggy-daycare', label: 'Doggy Daycare', icon: Dog,         section: 'programs' },
   { href: '/memberships',  label: 'Memberships',  icon: Ticket,          section: 'programs' },
 
   // Not offerings themselves — the things that support them.
@@ -66,13 +69,16 @@ const TRAINER_NAV: NavItem[] = [
 
   // Marketing sits in Business, not Clients: reaching people who aren't
   // clients yet is running the business, not servicing the book.
+  // Lead magnets, Instagram and Emails were children of Marketing. They're each
+  // a place a trainer goes to do a job, not a sub-setting of one — nesting them
+  // cost a tap and hid them. Top level in Business now (Karl, 2026-07-26).
   { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'business' },
-  { href: '/lead-magnets', label: 'Lead magnets', icon: Download,        section: 'business', child: true },
-  { href: '/instagram',    label: 'Instagram link', icon: InstagramIcon as unknown as LucideIcon, section: 'business', child: true },
-  { href: '/email-templates', label: 'Emails',      icon: Mail,           section: 'business', child: true },
+  { href: '/lead-magnets', label: 'Lead magnets', icon: Download,        section: 'business' },
+  { href: '/instagram',    label: 'Instagram link', icon: InstagramIcon as unknown as LucideIcon, section: 'business' },
+  { href: '/email-templates', label: 'Emails',      icon: Mail,           section: 'business' },
 
   { href: '/finances',     label: 'Finances',     icon: Wallet,          section: 'business' },
-  { href: '/finances/stripe', label: 'Stripe',      icon: CircleDollarSign, section: 'business', child: true },
+  { href: '/finances/stripe', label: 'Stripe',      icon: CircleDollarSign, section: 'business' },
   { href: '/timesheets',   label: 'Timesheets',   icon: Clock,           section: 'business' },
   { href: '/reports',      label: 'Reports',      icon: BarChart3,       section: 'business' },
   // Add-ons + Integration now live as tabs inside Settings (top-right cog).
