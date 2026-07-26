@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Loader2, Check, Eye, Mail } from 'lucide-react'
+import { Trash2, Loader2, Check, Eye, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { emailBodyToHtml, htmlHasText } from '@/lib/email-html'
@@ -163,47 +163,38 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
       </div>
 
       <div className="flex flex-col gap-5">
-        {/* Template picker — a wrapping row of pills, no inner sidebar. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => open(null)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-slate-300 px-3.5 py-2 text-sm font-medium text-slate-600 hover:border-accent hover:text-accent transition-colors"
+        {/* Template picker — one dropdown. As a wrapping row of pills it grew
+            a line every few templates and pushed the editor off the screen,
+            and "New template" sat at the front where the trainer's eye starts.
+            Creating a new one is the last option, where you look after finding
+            nothing that fits. */}
+        <div className="flex items-center gap-2">
+          <label htmlFor="pm-template-picker" className="sr-only">Choose an email template</label>
+          <select
+            id="pm-template-picker"
+            value={isInvite ? 'invite' : draft?.id ?? (draft ? '__new' : 'invite')}
+            disabled={templates === null}
+            onChange={e => {
+              const v = e.target.value
+              if (v === '__new') { open(null); return }
+              if (v === 'invite') { openInvite(); return }
+              const t = templates?.find(x => x.id === v)
+              if (t) open(t)
+            }}
+            className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:opacity-60 sm:max-w-sm"
           >
-            <Plus className="h-4 w-4" /> New template
-          </button>
-          {/* Pinned, non-deletable invite entry — backed by inviteTemplate. */}
-          <button
-            type="button"
-            onClick={openInvite}
-            title="The default copy sent when you invite a client"
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors ${
-              isInvite
-                ? 'border-accent bg-accent-soft text-accent'
-                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-            }`}
-          >
-            <Mail className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />
-            <span className="truncate max-w-[180px]">Client invitation</span>
-            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Default</span>
-          </button>
-          {templates === null && <span className="inline-flex items-center gap-2 text-sm text-slate-400 px-1"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</span>}
-          {templates?.map(t => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => open(t)}
-              title={t.subject}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors ${
-                draft?.id === t.id
-                  ? 'border-accent bg-accent-soft text-accent'
-                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-              }`}
-            >
-              <Mail className="h-3.5 w-3.5 flex-shrink-0 opacity-60" />
-              <span className="truncate max-w-[180px]">{t.name}</span>
-            </button>
-          ))}
+            <option value="invite">Client invitation · Default</option>
+            {templates?.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+            {draft && !draft.id && !isInvite && <option value="__new">New template (unsaved)</option>}
+            <option value="__new">+ New template…</option>
+          </select>
+          {templates === null && (
+            <span className="inline-flex items-center gap-2 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </span>
+          )}
         </div>
 
         {/* Editor — full width below the picker. */}

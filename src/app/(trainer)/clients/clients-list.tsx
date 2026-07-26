@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers, CheckSquare, Mail, CheckCircle2, MessageSquare } from 'lucide-react'
-import { dateParts, displayEmail } from '@/lib/utils'
+import { dateParts, displayEmail, cn } from '@/lib/utils'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { BulkEmailModal } from './bulk-email-modal'
 
@@ -624,7 +624,11 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
             {/* Phone: one block of hairline-divided rows. Desktop: the cards
                 keep their own borders and spacing (md:contents dissolves this
                 wrapper so the gap-2 above still applies to them). */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white md:contents md:rounded-none md:border-0">
+            <div className={cn(
+              'overflow-hidden rounded-xl border border-slate-200 bg-white',
+              '[&>*+*]:border-t [&>*+*]:border-slate-200',
+              'md:contents md:rounded-none md:border-0 md:[&>*+*]:border-t-0',
+            )}>
             {group.rows.map(c => (
               <ClientRowCard
                 key={c.id}
@@ -702,7 +706,10 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
   const inner = (
     // Phone: a row in one shared block (see the wrapper below) — no rounding,
     // no shadow, no gaps between clients. Desktop keeps the card.
-    <Card className={`rounded-none border-0 border-b border-slate-200 shadow-none last:border-b-0 md:rounded-2xl md:border md:border-slate-100 md:shadow-sm px-4 py-2.5 md:py-3 transition-all ${
+    // Phone: a bare row — the divider is drawn by the wrapper below, because
+    // `border-0` and `border-b` on one element fight and the bottom border
+    // loses. Desktop keeps the card.
+    <Card className={`rounded-none border-0 shadow-none md:rounded-2xl md:border md:border-slate-100 md:shadow-sm px-4 py-2.5 md:py-3 transition-all ${
       selectMode
         ? `cursor-pointer ${isSelected ? 'border-[var(--pm-brand-500)] bg-[var(--pm-brand-50)]/40 ring-1 ring-[var(--pm-brand-500)]' : 'hover:border-slate-300'}`
         : 'hover:border-blue-200 hover:shadow-md cursor-pointer'
