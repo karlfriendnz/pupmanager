@@ -75,9 +75,19 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
   const formatPrice = (cents: number | null): string =>
     cents === null || cents === undefined ? '—' : formatMoney(cents, currency)
 
+  // One row per ASSIGNMENT — a client who buys the same package again holds two
+  // of them, and both belong in the full roster (different start dates,
+  // different sessions used).
   const rows = clients.map(c => ({ ...c, derived: deriveStatus(c) }))
   const present = rows.filter(r => r.derived.present)
   const past = rows.filter(r => !r.derived.present)
+
+  // …but the Details-tab snapshot answers "who is on this package", so it's one
+  // row per PERSON. Keyed by assignment it would list the same person twice;
+  // keyed by client it collided the React key (two children with the same key),
+  // which is how a row can silently vanish on re-render. Deduping fixes both.
+  // Assignments arrive newest-first, so the row kept is their current one.
+  const snapshot = Array.from(new Map(present.map(r => [r.clientId, r])).values()).slice(0, 6)
 
   const effectivePrice = pkg.specialPriceCents ?? pkg.priceCents
   const totalRevenue = effectivePrice != null ? effectivePrice * rows.length : null
@@ -233,7 +243,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                 ) : (
                   <>
                     <ul className="divide-y divide-slate-100">
-                      {present.slice(0, 6).map(r => (
+                      {snapshot.map(r => (
                         <ClientSnapshotRow
                           key={r.clientId}
                           clientId={r.clientId}
@@ -243,7 +253,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                         />
                       ))}
                     </ul>
-                    {rows.length > 6 && (
+                    {rows.length > snapshot.length && (
                       <button type="button" onClick={() => setTab('clients')} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">View all {rows.length} →</button>
                     )}
                   </>
