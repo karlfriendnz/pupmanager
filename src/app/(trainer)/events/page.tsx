@@ -39,7 +39,9 @@ export default async function EventsPage() {
         },
       },
       sessions: { orderBy: { scheduledAt: 'asc' }, take: 1, select: { scheduledAt: true } },
-      enrollments: { where: { status: 'ENROLLED' }, select: { id: true } },
+      // quantity, because one ticket booking can be several places — counting
+      // rows would show "6 of 30 booked" for an event that has sold 14.
+      enrollments: { where: { status: 'ENROLLED' }, select: { id: true, quantity: true } },
     },
   })
 
@@ -60,7 +62,7 @@ export default async function EventsPage() {
           imageUrl: r.imageUrl,
           status: r.status,
           capacity: r.capacity ?? r.package.capacity ?? null,
-          booked: r.enrollments.length,
+          booked: r.enrollments.reduce((n, e) => n + Math.max(1, e.quantity), 0),
           priceCents: r.package.specialPriceCents ?? r.package.priceCents,
           tiers: r.package.ticketTiers.map(t => ({
             id: t.id, name: t.name, priceCents: t.priceCents, capacity: t.capacity,
