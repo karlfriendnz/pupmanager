@@ -79,7 +79,18 @@ export default async function EventPage({
   // one (its sessions and single price would silently go missing).
   if (!isOneOffEventPackage(run.package)) notFound()
 
-  const invoiceByEnrolment = new Map(enrolmentInvoices.map(i => [i.sourceId, i]))
+  const bySourceId = new Map(enrolmentInvoices.map(i => [i.sourceId, i]))
+  // Several ticket types bought in one action are several enrolment rows on ONE
+  // invoice, which hangs off the first row of the group. Without this the other
+  // rows would read "No invoice" and offer to raise a duplicate.
+  const byTicketGroup = new Map<string, (typeof enrolmentInvoices)[number]>()
+  for (const e of run.enrollments) {
+    if (!e.ticketGroupId) continue
+    const inv = bySourceId.get(e.id)
+    if (inv) byTicketGroup.set(e.ticketGroupId, inv)
+  }
+  const invoiceFor = (e: { id: string; ticketGroupId: string | null }) =>
+    bySourceId.get(e.id) ?? (e.ticketGroupId ? byTicketGroup.get(e.ticketGroupId) : undefined)
 
   // Places already taken per ticket type, so the enrol flow can say "3 left"
   // and refuse a sold-out one before the trainer fills the rest of the form.
@@ -125,7 +136,7 @@ export default async function EventPage({
       }))}
       enrollments={run.enrollments.map(e => {
         const attended = e.attendance.filter(a => a.status === 'PRESENT' || a.status === 'LATE' || a.status === 'MAKEUP').length
-        const inv = invoiceByEnrolment.get(e.id)
+        const inv = invoiceFor(e)
         return {
           id: e.id,
           status: e.status,

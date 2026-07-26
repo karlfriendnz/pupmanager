@@ -1,17 +1,33 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { Alert } from '@/components/ui/alert'
-import { Plus, Trash2, GripVertical, ChevronUp, ChevronDown, Link2 } from 'lucide-react'
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { Plus, Trash2, GripVertical, Link2, X } from 'lucide-react'
 import { ImageUploadButton } from '@/components/image-uploader'
+import { ModalPortal } from '@/components/shared/modal-portal'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { isRichTextEmpty } from '@/lib/rich-text'
+import {
+  FORM_INPUT, FORM_QUIET_ACTION, FORM_TEXTAREA,
+  FormEditorSection, FormEditorShell, FormField,
+} from '../_form-editor-shell'
 
-// The question model + its pure helpers now live in @/lib/session-form-builder
-// (shared with the new two-pane builder modal, and unit-tested there).
-// Re-exported here so existing importers keep working.
+// The question model + its pure helpers live in @/lib/session-form-builder
+// (unit-tested there). Re-exported here so existing importers keep working.
 export {
   isChoiceType,
   type ChoiceType,
@@ -19,7 +35,12 @@ export {
   type Question,
   type QuestionType,
 } from '@/lib/session-form-builder'
-import { isChoiceType } from '@/lib/session-form-builder'
+import {
+  NEW_QUESTION_TYPES, TYPE_LABELS,
+  addQuestion, createCustomFieldQuestion, createQuestion, hasOptions,
+  newQuestionId, removeQuestion as removeQuestionFrom, reorderQuestions,
+  serializeQuestions, updateQuestion, usedCustomFieldIds, validateForm,
+} from '@/lib/session-form-builder'
 import type { CustomFieldOption, Question, QuestionType } from '@/lib/session-form-builder'
 
 export interface FormRow {
@@ -35,42 +56,16 @@ export interface FormRow {
   isActive: boolean
 }
 
-const TYPE_LABELS: Record<Exclude<QuestionType, 'CUSTOM_FIELD'>, string> = {
-  SHORT_TEXT: 'Short text',
-  LONG_TEXT: 'Long text',
-  NUMBER: 'Number',
-  RATING_1_5: 'Rating 1–5',
-  DROPDOWN: 'Dropdown',
-  RADIO: 'Multiple choice',
-  CHECKBOX: 'Checkboxes',
-}
-
 // Note: the standalone SessionFormsManager has been removed — the unified
 // FormsManager on /settings?tab=forms is the only entry point now, and editor
-// pages live at /forms/session/new and /forms/session/[formId].
+// pages live at /forms/session/new and /forms/session/[formId]. Both wear the
+// same FormEditorShell as the lead-capture editor, so a trainer learns one
+// screen no matter which kind of form they're building.
 
-// Inline pill that switches a question between public (trainer + client) and
-// private (trainer only). Click cycles between the two.
-function PrivacyToggle({ isPrivate, onChange }: { isPrivate: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!isPrivate)}
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
-        isPrivate
-          ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-          : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-      }`}
-      title={isPrivate ? 'Click to make this question visible to clients' : 'Click to keep this question staff-only'}
-    >
-      {isPrivate ? '🔒 Private' : '👁 Public'}
-    </button>
-  )
-}
+// ─── Options editor ──────────────────────────────────────────────────────────
 
 // Editor for a choice question's option list. Each option is a text input with a
-// remove button; an "Add option" link appends a blank. Mirrors the drag-free
-// minimal style of the rest of the question card.
+// remove button; an "Add option" link appends a blank.
 function OptionsEditor({
   options,
   onChange,
@@ -79,10 +74,10 @@ function OptionsEditor({
   onChange: (opts: string[]) => void
 }) {
   return (
-    <div className="flex flex-col gap-1.5 mt-0.5 pl-1">
+    <div className="mt-0.5 flex flex-col gap-1.5">
       {options.map((opt, i) => (
         <div key={i} className="flex items-center gap-1.5">
-          <span className="text-slate-300 text-xs flex-shrink-0 w-4 text-center">{i + 1}.</span>
+          <span className="w-4 flex-shrink-0 text-center text-xs text-slate-300">{i + 1}.</span>
           <input
             type="text"
             value={opt}
@@ -92,32 +87,152 @@ function OptionsEditor({
               onChange(next)
             }}
             placeholder={`Option ${i + 1}`}
-            className="h-8 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label={`Option ${i + 1}`}
+            className="h-9 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
           />
           <button
             type="button"
             onClick={() => onChange(options.filter((_, idx) => idx !== i))}
             disabled={options.length <= 1}
-            className="p-1 text-slate-300 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
-            aria-label="Remove option"
+            className="flex-shrink-0 p-1 text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
+            aria-label={`Remove option ${i + 1}`}
           >
-            <Trash2 className="h-3 w-3" />
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
         </div>
       ))}
       <button
         type="button"
         onClick={() => onChange([...options, ''])}
-        className="self-start inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 pl-5"
+        className="self-start pl-5 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
       >
-        <Plus className="h-3 w-3" /> Add option
+        Add option
       </button>
     </div>
   )
 }
 
-// Page-style session form editor. Save / delete redirect to /settings?tab=forms.
-// Renders inside a route page that provides the chrome (back link / heading).
+// ─── One question ────────────────────────────────────────────────────────────
+
+function QuestionCard({
+  question,
+  index,
+  total,
+  customFields,
+  onPatch,
+  onRemove,
+}: {
+  question: Question
+  index: number
+  total: number
+  customFields: CustomFieldOption[]
+  onPatch: (patch: Parameters<typeof updateQuestion>[2]) => void
+  onRemove: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: question.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+  const linked = question.type === 'CUSTOM_FIELD'
+    ? customFields.find(f => f.id === question.customFieldId)
+    : undefined
+
+  return (
+    <div ref={setNodeRef} style={style} data-question-row className="flex gap-2 bg-white p-3">
+      <button
+        type="button"
+        aria-label={`Reorder question ${index + 1} of ${total}`}
+        {...attributes}
+        {...listeners}
+        className="mt-1.5 flex-shrink-0 cursor-grab text-slate-300 hover:text-slate-500"
+      >
+        <GripVertical className="h-4 w-4" strokeWidth={1.75} />
+      </button>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {question.type === 'CUSTOM_FIELD' ? (
+          <>
+            <div className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
+              <Link2 className="h-3.5 w-3.5 flex-shrink-0 text-slate-500" strokeWidth={1.75} />
+              <span className="truncate">{linked?.label ?? 'Unknown field'}</span>
+            </div>
+            <p className="text-xs text-slate-400">
+              Linked to a {linked?.appliesTo === 'DOG' ? 'dog' : 'client'} field
+              {linked?.category ? ` · ${linked.category}` : ''}. Filling it in syncs to their record.
+            </p>
+          </>
+        ) : (
+          <>
+            <input
+              type="text"
+              value={question.label}
+              onChange={e => onPatch({ label: e.target.value })}
+              placeholder="Question text"
+              aria-label={`Question ${index + 1}`}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
+            />
+            <select
+              value={question.type}
+              onChange={e => onPatch({ type: e.target.value as Exclude<QuestionType, 'CUSTOM_FIELD'> })}
+              aria-label={`Answer type for question ${index + 1}`}
+              className="h-9 w-fit rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
+            >
+              {NEW_QUESTION_TYPES.map(t => (
+                <option key={t} value={t}>{TYPE_LABELS[t]}</option>
+              ))}
+            </select>
+            {hasOptions(question) && (
+              <OptionsEditor
+                options={question.options ?? []}
+                onChange={opts => onPatch({ options: opts })}
+              />
+            )}
+          </>
+        )}
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={question.required}
+              onChange={e => onPatch({ required: e.target.checked })}
+              className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            />
+            Required
+          </label>
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={!!question.isPrivate}
+              onChange={e => onPatch({ isPrivate: e.target.checked })}
+              className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            />
+            Staff only
+          </label>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onRemove}
+        disabled={total === 1}
+        className="flex-shrink-0 p-1 text-slate-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-30"
+        aria-label={`Remove question ${index + 1}`}
+      >
+        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+      </button>
+    </div>
+  )
+}
+
+// ─── The editor ──────────────────────────────────────────────────────────────
+
+// Page-style session form editor — same shell as the lead-capture editor.
+// Save / delete redirect to /settings?tab=forms. Renders inside a route page
+// that provides the chrome (back link / heading).
 export function SessionFormEditor({
   existing,
   customFields,
@@ -126,8 +241,6 @@ export function SessionFormEditor({
   customFields: CustomFieldOption[]
 }) {
   const router = useRouter()
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   // Local mirror of isActive so the toggle can update without a refresh
   // round-trip. New (no `existing`) forms default to active.
   const [isActive, setIsActive] = useState(existing?.isActive ?? true)
@@ -139,68 +252,39 @@ export function SessionFormEditor({
   const [backgroundColor, setBackgroundColor] = useState(existing?.backgroundColor ?? '')
   const [backgroundUrl, setBackgroundUrl] = useState(existing?.backgroundUrl ?? '')
   const [questions, setQuestions] = useState<Question[]>(
-    existing?.questions ?? [{ id: cryptoId(), type: 'LONG_TEXT', label: '', required: false }]
+    existing?.questions ?? [createQuestion('LONG_TEXT', newQuestionId())]
   )
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [linkPickerForId, setLinkPickerForId] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const used = usedCustomFieldIds(questions)
 
   function addStandardQuestion() {
-    setQuestions(qs => [...qs, { id: cryptoId(), type: 'LONG_TEXT', label: '', required: false }])
+    setQuestions(qs => addQuestion(qs, createQuestion('LONG_TEXT', newQuestionId())))
   }
 
   function addLinkedQuestion(field: CustomFieldOption) {
-    setQuestions(qs => [...qs, {
-      id: cryptoId(),
-      type: 'CUSTOM_FIELD',
-      customFieldId: field.id,
-      required: false,
-    }])
-    setLinkPickerForId(null)
+    setQuestions(qs => addQuestion(qs, createCustomFieldQuestion(field.id, newQuestionId())))
+    setPickerOpen(false)
   }
 
-  function updateQuestion(id: string, patch: Partial<Question>) {
-    setQuestions(qs => qs.map(q => q.id === id ? { ...q, ...patch } as Question : q))
-  }
-
-  function removeQuestion(id: string) {
-    setQuestions(qs => qs.length > 1 ? qs.filter(q => q.id !== id) : qs)
-  }
-
-  function move(id: string, dir: -1 | 1) {
-    setQuestions(qs => {
-      const idx = qs.findIndex(q => q.id === id)
-      const target = idx + dir
-      if (idx === -1 || target < 0 || target >= qs.length) return qs
-      const next = qs.slice()
-      ;[next[idx], next[target]] = [next[target], next[idx]]
-      return next
-    })
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    setQuestions(qs => reorderQuestions(qs, String(active.id), String(over.id)))
   }
 
   async function handleSave() {
+    const problem = validateForm(name, questions)
+    if (problem) { setError(problem); return }
     setError(null)
-    if (!name.trim()) { setError('Name is required'); return }
-    if (questions.length === 0) { setError('Add at least one question'); return }
-
-    // Validate per-type
-    for (const q of questions) {
-      if (q.type === 'CUSTOM_FIELD') {
-        if (!q.customFieldId) { setError('A linked-field question is missing its field'); return }
-      } else if (!q.label.trim()) {
-        setError('All questions need a label')
-        return
-      } else if (q.type === 'DROPDOWN' || q.type === 'RADIO' || q.type === 'CHECKBOX') {
-        const opts = q.options.map(o => o.trim()).filter(Boolean)
-        if (opts.length === 0) { setError(`"${q.label.trim()}" needs at least one option`); return }
-      }
-    }
-
     setSaving(true)
+
     const url = existing ? `/api/session-forms/${existing.id}` : '/api/session-forms'
-    const method = existing ? 'PATCH' : 'POST'
     const res = await fetch(url, {
-      method,
+      method: existing ? 'PATCH' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: name.trim(),
@@ -209,24 +293,13 @@ export function SessionFormEditor({
         closingText: closingText.trim() || null,
         backgroundColor: backgroundColor.trim() || null,
         backgroundUrl: backgroundUrl.trim() || null,
-        questions: questions.map(q => {
-          if (q.type === 'CUSTOM_FIELD') {
-            return { id: q.id, type: q.type, customFieldId: q.customFieldId, required: q.required, isPrivate: !!q.isPrivate }
-          }
-          if (q.type === 'DROPDOWN' || q.type === 'RADIO' || q.type === 'CHECKBOX') {
-            return {
-              id: q.id, type: q.type, label: q.label.trim(), required: q.required, isPrivate: !!q.isPrivate,
-              options: q.options.map(o => o.trim()).filter(Boolean),
-            }
-          }
-          return { id: q.id, type: q.type, label: q.label.trim(), required: q.required, isPrivate: !!q.isPrivate }
-        }),
+        questions: serializeQuestions(questions),
         // Use live state so toggling Published then clicking Save preserves it.
         isActive,
       }),
     })
     if (!res.ok) {
-      setError('Failed to save')
+      setError('Could not save the form. Please try again.')
       setSaving(false)
       return
     }
@@ -258,347 +331,247 @@ export function SessionFormEditor({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Action bar — publish toggle (existing forms only). */}
-      {existing && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onToggleActive}
-            disabled={togglingActive}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-100 disabled:opacity-50"
-            title={isActive ? 'Unpublish' : 'Publish'}
-          >
-            <span className={`h-2 w-2 rounded-full ${isActive ? 'bg-green-500' : 'bg-amber-400'}`} />
-            <span className={isActive ? 'text-green-700' : 'text-amber-700'}>
-              {isActive ? 'Published' : 'Draft'}
-            </span>
-          </button>
-          <span className="text-xs text-slate-400">Click to {isActive ? 'unpublish' : 'publish'}</span>
-        </div>
-      )}
-
-      <div className="bg-white border border-slate-200 rounded-2xl flex flex-col">
-        <div className="p-5 flex flex-col gap-4">
-          {error && <Alert variant="error">{error}</Alert>}
-
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Form name</label>
+    <>
+      <FormEditorShell
+        status={existing ? { isActive, busy: togglingActive, onToggle: onToggleActive } : undefined}
+        error={error}
+        onDelete={existing ? onDelete : undefined}
+        onCancel={() => router.push('/settings?tab=forms')}
+        onSave={handleSave}
+        saving={saving}
+        saveLabel={existing ? 'Save changes' : 'Create form'}
+      >
+        <FormEditorSection title="Basics">
+          <FormField label="Form name" required>
             <input
               type="text"
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={e => { setName(e.target.value); setError(null) }}
               placeholder="e.g. First session report"
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Form name"
+              className={FORM_INPUT}
             />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
-            <p className="text-[11px] text-slate-400 mb-1.5">Internal — shown to you when picking the form. Not seen by the client.</p>
+          </FormField>
+          <FormField
+            label="Description"
+            hint="Optional — internal. Shown to you when picking the form, never to the client."
+          >
             <RichTextEditor
               value={description}
               onChange={html => setDescription(isRichTextEmpty(html) ? '' : html)}
               minHeight={120}
               theme="light"
             />
-          </div>
+          </FormField>
+        </FormEditorSection>
 
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Welcome / intro text (optional)</label>
-            <p className="text-[11px] text-slate-400 mb-1.5">Shown to the client at the top of the report.</p>
+        <FormEditorSection
+          title="Questions"
+          hint="Drag a question by its handle to reorder it."
+          action={
+            <>
+              <button type="button" onClick={addStandardQuestion} className={FORM_QUIET_ACTION}>
+                <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Add question
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                disabled={customFields.length === 0}
+                className={FORM_QUIET_ACTION}
+                title={customFields.length === 0 ? 'No client fields defined yet' : 'Ask one of your client fields'}
+              >
+                <Link2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Link a field
+              </button>
+            </>
+          }
+        >
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={questions.map(q => q.id)} strategy={verticalListSortingStrategy}>
+              <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
+                {questions.map((q, i) => (
+                  <QuestionCard
+                    key={q.id}
+                    question={q}
+                    index={i}
+                    total={questions.length}
+                    customFields={customFields}
+                    onPatch={patch => setQuestions(qs => updateQuestion(qs, q.id, patch))}
+                    onRemove={() => setQuestions(qs => qs.length > 1 ? removeQuestionFrom(qs, q.id) : qs)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </FormEditorSection>
+
+        <FormEditorSection title="What the client sees" hint="Both optional — top and tail of their report.">
+          <FormField label="Welcome / intro text">
             <textarea
               value={introText}
               onChange={e => setIntroText(e.target.value)}
               rows={3}
-              placeholder="e.g. Thanks for our session today, Sarah! Here&rsquo;s a summary of what we covered…"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g. Thanks for our session today, Sarah! Here's a summary of what we covered…"
+              aria-label="Welcome / intro text"
+              className={FORM_TEXTAREA}
             />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Closing text (optional)</label>
-            <p className="text-[11px] text-slate-400 mb-1.5">Shown to the client at the bottom of the report.</p>
+          </FormField>
+          <FormField label="Closing text">
             <textarea
               value={closingText}
               onChange={e => setClosingText(e.target.value)}
               rows={3}
               placeholder="e.g. See you next time! Reach out anytime if questions come up."
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Closing text"
+              className={FORM_TEXTAREA}
             />
+          </FormField>
+        </FormEditorSection>
+
+        {/* Report background — colour wins when both blank, image takes
+            priority on the report when set. The trainer can upload (same
+            /api/upload/image route as session photos) or paste a URL. */}
+        <FormEditorSection
+          title="Report background"
+          hint="Optional. Shown across the client-facing report — an image overrides the colour."
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="color"
+              value={backgroundColor || '#ffffff'}
+              onChange={e => setBackgroundColor(e.target.value)}
+              aria-label="Background colour"
+              className="h-10 w-12 cursor-pointer rounded-lg border border-slate-200"
+            />
+            <input
+              type="text"
+              value={backgroundColor}
+              onChange={e => setBackgroundColor(e.target.value)}
+              placeholder="#fef3c7 or blank"
+              aria-label="Background colour hex"
+              className="h-10 w-28 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
+            />
+            <input
+              type="url"
+              value={backgroundUrl}
+              onChange={e => setBackgroundUrl(e.target.value)}
+              placeholder="https://… or upload"
+              aria-label="Background image URL"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
+            />
+            <ImageUploadButton onUploaded={urls => urls[0] && setBackgroundUrl(urls[0])} />
           </div>
-
-          {/* Report background — colour wins when both blank, image takes
-              priority on the report when set. Trainer can either upload an
-              image (uses the same /api/upload/image route as session photos)
-              or paste a URL of their own. */}
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Report background (optional)</label>
-            <p className="text-[11px] text-slate-400 mb-1.5">Shown across the client-facing report. Image overrides colour when both are set.</p>
-            <div className="flex gap-2 items-center">
-              <input
-                type="color"
-                value={backgroundColor || '#ffffff'}
-                onChange={e => setBackgroundColor(e.target.value)}
-                aria-label="Background colour"
-                className="h-10 w-12 rounded-lg border border-slate-200 cursor-pointer"
+          {backgroundUrl && (
+            <div className="flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={backgroundUrl}
+                alt=""
+                className="h-16 w-24 rounded-lg border border-slate-200 object-cover"
               />
-              <input
-                type="text"
-                value={backgroundColor}
-                onChange={e => setBackgroundColor(e.target.value)}
-                placeholder="#fef3c7 or blank"
-                className="h-10 w-28 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <input
-                type="url"
-                value={backgroundUrl}
-                onChange={e => setBackgroundUrl(e.target.value)}
-                placeholder="https://… or upload"
-                className="h-10 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <ImageUploadButton
-                onUploaded={(urls) => urls[0] && setBackgroundUrl(urls[0])}
-              />
-            </div>
-            {backgroundUrl && (
-              <div className="mt-2 flex items-center gap-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={backgroundUrl}
-                  alt=""
-                  className="h-16 w-24 rounded-lg object-cover border border-slate-200"
-                />
-                <button
-                  type="button"
-                  onClick={() => setBackgroundUrl('')}
-                  className="text-xs font-medium text-slate-500 hover:text-red-500"
-                >
-                  Remove image
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-slate-700">Questions</label>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={addStandardQuestion}
-                  className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                >
-                  <Plus className="h-3 w-3" /> Add question
-                </button>
-                <button
-                  onClick={() => setLinkPickerForId('__new__')}
-                  disabled={customFields.length === 0}
-                  className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
-                  title={customFields.length === 0 ? 'No custom fields defined' : 'Add a question linked to a client field'}
-                >
-                  <Link2 className="h-3 w-3" /> Link client field
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              {questions.map((q, idx) => {
-                const linked = q.type === 'CUSTOM_FIELD'
-                  ? customFields.find(f => f.id === q.customFieldId)
-                  : undefined
-                return (
-                  <div key={q.id} className={`flex gap-2 items-start p-3 rounded-xl ${linked ? 'bg-emerald-50' : 'bg-slate-50'}`}>
-                    <div className="flex flex-col items-center gap-0.5 mt-1.5 text-slate-300 flex-shrink-0">
-                      <button onClick={() => move(q.id, -1)} disabled={idx === 0} className="hover:text-blue-600 disabled:opacity-30">
-                        <ChevronUp className="h-3.5 w-3.5" />
-                      </button>
-                      <GripVertical className="h-3.5 w-3.5" />
-                      <button onClick={() => move(q.id, 1)} disabled={idx === questions.length - 1} className="hover:text-blue-600 disabled:opacity-30">
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <div className="flex-1 flex flex-col gap-2">
-                      {q.type === 'CUSTOM_FIELD' ? (
-                        <>
-                          <div className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
-                            <Link2 className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-                            <span className="truncate">{linked?.label ?? 'Unknown field'}</span>
-                          </div>
-                          <p className="text-[11px] text-emerald-700">
-                            Linked to {linked?.appliesTo === 'DOG' ? 'dog' : 'client'} field
-                            {linked?.category ? ` · ${linked.category}` : ''}
-                            . Filling syncs to the client&apos;s record.
-                          </p>
-                          <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={q.required}
-                              onChange={e => updateQuestion(q.id, { required: e.target.checked })}
-                              className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            Required
-                          </label>
-                          <PrivacyToggle
-                            isPrivate={!!q.isPrivate}
-                            onChange={v => updateQuestion(q.id, { isPrivate: v })}
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <input
-                            type="text"
-                            value={q.label}
-                            onChange={e => updateQuestion(q.id, { label: e.target.value })}
-                            placeholder="Question text"
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <select
-                              value={q.type}
-                              onChange={e => {
-                                const next = e.target.value as Exclude<QuestionType, 'CUSTOM_FIELD'>
-                                // Seed two blank options the first time a question
-                                // becomes a choice type so there's something to edit.
-                                const patch: Partial<Question> = { type: next }
-                                if (isChoiceType(next) && !('options' in q)) {
-                                  (patch as { options: string[] }).options = ['', '']
-                                }
-                                updateQuestion(q.id, patch)
-                              }}
-                              className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              {(Object.keys(TYPE_LABELS) as (keyof typeof TYPE_LABELS)[]).map(t => (
-                                <option key={t} value={t}>{TYPE_LABELS[t]}</option>
-                              ))}
-                            </select>
-                            <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={q.required}
-                                onChange={e => updateQuestion(q.id, { required: e.target.checked })}
-                                className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              Required
-                            </label>
-                            <PrivacyToggle
-                              isPrivate={!!q.isPrivate}
-                              onChange={v => updateQuestion(q.id, { isPrivate: v })}
-                            />
-                          </div>
-                          {q.type === 'DROPDOWN' || q.type === 'RADIO' || q.type === 'CHECKBOX' ? (
-                            <OptionsEditor
-                              options={q.options ?? []}
-                              onChange={opts => updateQuestion(q.id, { options: opts } as Partial<Question>)}
-                            />
-                          ) : null}
-                        </>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => removeQuestion(q.id)}
-                      disabled={questions.length === 1}
-                      className="p-1 text-slate-300 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
-                      aria-label="Remove question"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 p-5 border-t border-slate-100 flex-shrink-0 bg-white">
-          {existing && onDelete && (
-            confirmDelete ? (
-              <div className="flex items-center gap-1 mr-auto">
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(false)}
-                  className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setDeleting(true)
-                    try { await onDelete() } finally { setDeleting(false) }
-                  }}
-                  disabled={deleting}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {deleting ? 'Deleting…' : 'Confirm delete'}
-                </button>
-              </div>
-            ) : (
               <button
                 type="button"
-                onClick={() => setConfirmDelete(true)}
-                className="mr-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50"
+                onClick={() => setBackgroundUrl('')}
+                className="text-xs font-medium text-slate-500 underline-offset-2 hover:text-red-500 hover:underline"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete
+                Remove image
               </button>
-            )
+            </div>
           )}
-          <Button variant="ghost" size="sm" onClick={() => router.push('/settings?tab=forms')}>Cancel</Button>
-          <Button size="sm" loading={saving} onClick={handleSave}>
-            {existing ? 'Save changes' : 'Create form'}
-          </Button>
-        </div>
-      </div>
+        </FormEditorSection>
+      </FormEditorShell>
 
-      {linkPickerForId && (
+      {pickerOpen && (
         <CustomFieldPicker
           customFields={customFields}
+          used={used}
           onPick={addLinkedQuestion}
-          onClose={() => setLinkPickerForId(null)}
+          onClose={() => setPickerOpen(false)}
         />
       )}
-    </div>
+    </>
   )
 }
 
+// ─── Link-a-field picker ─────────────────────────────────────────────────────
+
+// A full screen, not a dropdown — there can be dozens of fields, and each row
+// needs room to say what it is. Portaled to <body> (the header's backdrop-blur
+// would otherwise become the containing block for `fixed`), and it locks body
+// scroll so there's never a second scrollbar behind it.
 function CustomFieldPicker({
   customFields,
+  used,
   onPick,
   onClose,
 }: {
   customFields: CustomFieldOption[]
+  used: Set<string>
   onPick: (f: CustomFieldOption) => void
   onClose: () => void
 }) {
+  useEffect(() => {
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previous }
+  }, [])
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-      <div className="relative z-[61] bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="p-5 border-b border-slate-100 flex-shrink-0">
-          <h3 className="font-semibold text-slate-900">Link a client field</h3>
-          <p className="text-xs text-slate-500 mt-0.5">Filling this question will update the client&apos;s record.</p>
+    <ModalPortal>
+      <div className="fixed inset-0 z-[70] flex flex-col bg-white" role="dialog" aria-modal="true" aria-label="Link a client field">
+        <div className="flex flex-shrink-0 items-start gap-3 border-b border-slate-200 px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-semibold text-slate-900">Link a client field</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Answering the question updates the client&apos;s record too, so you only type it once.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="-mr-1 flex-shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X className="h-5 w-5" strokeWidth={1.75} />
+          </button>
         </div>
-        <div className="overflow-y-auto p-2">
-          {customFields.map(f => (
-            <button
-              key={f.id}
-              onClick={() => onPick(f)}
-              className="w-full text-left p-3 rounded-xl hover:bg-slate-50 transition-colors"
-            >
-              <p className="text-sm font-medium text-slate-900">{f.label}</p>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {f.appliesTo === 'DOG' ? '🐕 Dog' : '👤 Client'} · {f.type.toLowerCase()}
-                {f.category ? ` · ${f.category}` : ''}
-              </p>
-            </button>
-          ))}
+
+        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
+          {customFields.length === 0 ? (
+            <p className="text-sm text-slate-400">
+              No client fields yet — add them on the Fields tab and they&apos;ll show up here.
+            </p>
+          ) : (
+            <div className="mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
+              {customFields.map(f => {
+                const already = used.has(f.id)
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    disabled={already}
+                    onClick={() => onPick(f)}
+                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50 disabled:opacity-50"
+                  >
+                    <Link2 className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-slate-900">{f.label}</span>
+                      <span className="mt-0.5 block truncate text-xs text-slate-400">
+                        {f.appliesTo === 'DOG' ? 'Dog' : 'Client'} · {f.type.toLowerCase()}
+                        {f.category ? ` · ${f.category}` : ''}
+                      </span>
+                    </span>
+                    {already && (
+                      <span className="flex-shrink-0 text-xs font-medium text-slate-400">Added</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </ModalPortal>
   )
-}
-
-function cryptoId(): string {
-  return Math.random().toString(36).slice(2, 10)
 }

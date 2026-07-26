@@ -1,20 +1,25 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import {
-  Plus, Copy, Check, Trash2, Pencil, ExternalLink, Sparkles,
-  Globe, ToggleLeft, ToggleRight, Code2, FileText,
+  Plus, Copy, Check, ExternalLink, Sparkles,
+  Globe, Code2, FileText, ChevronRight,
   ClipboardList,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { isRichTextEmpty, richTextToPlain } from '@/lib/rich-text'
 import type { FormRow as SessionFormRow } from './session/session-forms-manager'
-import { SessionFormBuilderModal } from './session/session-form-builder-modal'
 import { CustomFieldsManager } from '../settings/custom-fields-manager'
 import { FieldPacksWizard } from '../settings/field-packs-wizard'
+import {
+  FORM_INPUT, FORM_QUIET_ACTION, FORM_TEXTAREA,
+  FormEditorSection, FormEditorShell, FormField, FormRowGroup, FormSegmented, FormToggleRow,
+} from './_form-editor-shell'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -91,22 +96,22 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   }
 
   return (
-    <button
-      onClick={copy}
-      className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
-    >
-      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    <button onClick={copy} className={FORM_QUIET_ACTION}>
+      {copied
+        ? <Check className="h-3.5 w-3.5" strokeWidth={1.75} />
+        : <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />}
       {copied ? 'Copied!' : label}
     </button>
   )
 }
 
-// ─── Form builder panel ───────────────────────────────────────────────────────
+// ─── Lead-capture form editor ────────────────────────────────────────────────
 
-// Page-style embed form editor. Renders in a dedicated route (/forms/embed/new
-// or /forms/embed/[formId]) — the parent page provides the chrome (back link
-// + title), this component owns the form fields, save/delete/toggle, and the
-// embed code reveal. Save and delete redirect back to Settings → Fields & forms.
+// Page-style lead-capture (embed) form editor. Renders in a dedicated route
+// (/forms/embed/new or /forms/embed/[formId]) — the parent page provides the
+// chrome (back link + title), FormEditorShell provides the frame every form
+// editor shares, and this component owns the sections. Save and delete redirect
+// back to Settings → Fields & forms.
 export function EmbedFormEditor({
   initial,
   customFields,
@@ -136,8 +141,6 @@ export function EmbedFormEditor({
   const [isActive, setIsActive] = useState(initial?.isActive ?? true)
   const [togglingActive, setTogglingActive] = useState(false)
   const [showEmbed, setShowEmbed] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [title, setTitle] = useState(initial?.title ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [thankYouTitle, setThankYouTitle] = useState(initial?.thankYouTitle ?? '')
@@ -241,12 +244,17 @@ export function EmbedFormEditor({
 
   async function onToggleActive() {
     if (!initial) return
-    const res = await fetch(`/api/embed-forms/${initial.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: !isActive }),
-    })
-    if (!res.ok) return
+    setTogglingActive(true)
+    try {
+      const res = await fetch(`/api/embed-forms/${initial.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !isActive }),
+      })
+      if (res.ok) setIsActive(v => !v)
+    } finally {
+      setTogglingActive(false)
+    }
   }
 
   async function onDelete() {
@@ -261,482 +269,287 @@ export function EmbedFormEditor({
   const dogCustom = customFields.filter(f => f.appliesTo === 'DOG')
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Action bar — publish toggle, preview, embed code, delete. Sits above
-          the form so trainers can act without scrolling. Only shown for
-          existing forms. */}
-      {initial && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-3 flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={async () => {
-                  setTogglingActive(true)
-                  try { await onToggleActive(); setIsActive(v => !v) }
-                  finally { setTogglingActive(false) }
-                }}
-                disabled={togglingActive}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-100 disabled:opacity-50"
-                title={isActive ? 'Unpublish' : 'Publish'}
-              >
-                {isActive
-                  ? <ToggleRight className="h-4 w-4 text-green-500" />
-                  : <ToggleLeft className="h-4 w-4 text-slate-400" />}
-                <span className={isActive ? 'text-green-700' : 'text-slate-500'}>
-                  {isActive ? 'Published' : 'Draft'}
+    <FormEditorShell
+      status={initial ? { isActive, busy: togglingActive, onToggle: onToggleActive } : undefined}
+      statusActions={initial ? (
+        <>
+          {formUrl && (
+            <a href={formUrl} target="_blank" rel="noopener noreferrer" className={FORM_QUIET_ACTION}>
+              <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Preview
+            </a>
+          )}
+          {embedSnippet && (
+            <button type="button" onClick={() => setShowEmbed(v => !v)} className={FORM_QUIET_ACTION}>
+              <Code2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+              {showEmbed ? 'Hide embed code' : 'Embed code'}
+            </button>
+          )}
+        </>
+      ) : undefined}
+      error={error}
+      onDelete={initial ? onDelete : undefined}
+      onCancel={() => router.push('/settings?tab=forms')}
+      onSave={save}
+      saving={saving}
+      saveLabel={initial ? 'Save changes' : 'Create form'}
+    >
+      {showEmbed && embedSnippet && (
+        <FormEditorSection title="Paste this on your site" action={<CopyButton text={embedSnippet} label="Copy" />}>
+          <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-600">
+            {embedSnippet}
+          </pre>
+        </FormEditorSection>
+      )}
+
+      <FormEditorSection title="Basics">
+        <FormField label="Form title" required>
+          <input
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Register with us"
+            aria-label="Form title"
+            className={FORM_INPUT}
+          />
+        </FormField>
+        <FormField label="Description" hint="Optional — shown above the fields on the public form.">
+          <RichTextEditor
+            value={description}
+            onChange={html => setDescription(isRichTextEmpty(html) ? '' : html)}
+            minHeight={120}
+            theme="light"
+          />
+        </FormField>
+      </FormEditorSection>
+
+      <FormEditorSection
+        title="Fields"
+        hint="Name and email are always included. Add fields from your library for anything dog-specific."
+      >
+        <FormRowGroup>
+          {STANDARD_FIELDS.map(f => (
+            <FormToggleRow
+              key={f.key}
+              label={f.label}
+              checked={fieldConfig[f.key]?.enabled ?? false}
+              onChange={() => toggleField(f.key, 'enabled')}
+              trailing={fieldConfig[f.key]?.enabled ? (
+                <button
+                  type="button"
+                  onClick={() => toggleField(f.key, 'required')}
+                  className="flex-shrink-0 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
+                >
+                  {fieldConfig[f.key]?.required ? 'Required' : 'Optional'}
+                </button>
+              ) : undefined}
+            />
+          ))}
+          {[...ownerCustom, ...dogCustom].map(cf => (
+            <FormToggleRow
+              key={cf.id}
+              label={cf.appliesTo === 'DOG' ? `${cf.label} (dog)` : cf.label}
+              checked={enabledCustomIds.has(cf.id)}
+              onChange={() => toggleCustom(cf.id)}
+              trailing={enabledCustomIds.has(cf.id) ? (
+                <span className="flex-shrink-0 text-xs font-medium text-slate-400">
+                  {cf.required ? 'Required' : 'Optional'}
                 </span>
-              </button>
-              {formUrl && (
-                <a
-                  href={formUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Preview
-                </a>
-              )}
-              {embedSnippet && (
-                <button
-                  type="button"
-                  onClick={() => setShowEmbed(v => !v)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100"
-                >
-                  <Code2 className="h-3.5 w-3.5" />
-                  {showEmbed ? 'Hide embed code' : 'Embed code'}
-                </button>
-              )}
-            </div>
-          </div>
+              ) : undefined}
+            />
+          ))}
+        </FormRowGroup>
+      </FormEditorSection>
 
-          {showEmbed && embedSnippet && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Paste this on your site</p>
-                <CopyButton text={embedSnippet} label="Copy" />
-              </div>
-              <pre className="text-xs text-slate-600 font-mono bg-white border border-slate-200 rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap break-all">{embedSnippet}</pre>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="bg-white border border-slate-200 rounded-2xl flex flex-col">
-        {/* Body */}
-        <div className="px-5 py-5 flex flex-col gap-5">
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>
-          )}
-
-          {/* Basic info */}
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Form title <span className="text-red-500">*</span></label>
-              <input
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="Register with us"
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Description (optional)</label>
-              <RichTextEditor
-                value={description}
-                onChange={html => setDescription(isRichTextEmpty(html) ? '' : html)}
-                minHeight={120}
-                theme="light"
-              />
-            </div>
-          </div>
-
-          {/* Standard fields */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Fields</p>
-            <p className="text-xs text-slate-400 mb-3">Name and email are always included. Add custom fields below for anything dog-specific (breed, vax status, etc.).</p>
-            <div className="flex flex-col gap-2">
-              {STANDARD_FIELDS.map(f => (
-                <FieldToggleRow
-                  key={f.key}
-                  label={f.label}
-                  enabled={fieldConfig[f.key]?.enabled ?? false}
-                  required={fieldConfig[f.key]?.required ?? false}
-                  onToggleEnabled={() => toggleField(f.key, 'enabled')}
-                  onToggleRequired={() => toggleField(f.key, 'required')}
-                />
-              ))}
-              {ownerCustom.map(cf => (
-                <CustomFieldToggleRow
-                  key={cf.id}
-                  label={cf.label}
-                  required={cf.required}
-                  enabled={enabledCustomIds.has(cf.id)}
-                  onToggle={() => toggleCustom(cf.id)}
-                />
-              ))}
-              {dogCustom.map(cf => (
-                <CustomFieldToggleRow
-                  key={cf.id}
-                  label={`${cf.label} (dog)`}
-                  required={cf.required}
-                  enabled={enabledCustomIds.has(cf.id)}
-                  onToggle={() => toggleCustom(cf.id)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Styling — let the trainer match the form to their site's
-              brand. Border toggle is useful for embeds where the parent
-              page already provides framing; button colour overrides the
-              platform blue for the submit CTA. */}
-          <div className="flex flex-col gap-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Styling</p>
-            <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setShowBorder(v => !v)}
-                className="flex-shrink-0"
-                aria-pressed={showBorder}
-                aria-label="Toggle card border"
-              >
-                {showBorder
-                  ? <ToggleRight className="h-5 w-5 text-blue-600" />
-                  : <ToggleLeft className="h-5 w-5 text-slate-300" />}
-              </button>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-900">Card border</p>
-                <p className="text-xs text-slate-500">A subtle border around each field group. Turn off when you&apos;re embedding inside a card on your own site.</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200">
-              <input
-                type="color"
-                value={buttonColor}
-                onChange={e => setButtonColor(e.target.value)}
-                className="h-9 w-12 rounded-lg border border-slate-200 cursor-pointer bg-white"
-                aria-label="Submit button colour"
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-900">Submit button colour</p>
-                <p className="text-xs text-slate-500 break-all">{buttonColor}{buttonColor.toLowerCase() === DEFAULT_BUTTON_COLOR ? ' (platform default)' : ''}</p>
-              </div>
-              {buttonColor.toLowerCase() !== DEFAULT_BUTTON_COLOR && (
-                <button
-                  type="button"
-                  onClick={() => setButtonColor(DEFAULT_BUTTON_COLOR)}
-                  className="text-xs text-slate-500 hover:text-slate-700 hover:underline"
-                >
-                  Reset
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Success page copy */}
-          <div className="flex flex-col gap-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Success page</p>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Heading</label>
-              <input
-                value={thankYouTitle}
-                onChange={e => setThankYouTitle(e.target.value)}
-                placeholder="You're registered!"
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Body</label>
-              <textarea
-                value={thankYou}
-                onChange={e => setThankYou(e.target.value)}
-                rows={3}
-                placeholder="Thanks for registering. Check your email — we've sent you a link to access your training diary."
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-            </div>
-          </div>
-
-          {/* Auto-reply — goes to the PERSON WHO FILLED IN THE FORM, the
-              moment they submit. Sits above the welcome email because it
-              fires first in the timeline (submit → auto-reply, later:
-              accept → welcome). Off by default so existing forms don't
-              suddenly start emailing. */}
-          <div className="flex flex-col gap-3">
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Auto-reply email</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Sent straight away to whoever fills in this form, so they aren&apos;t left wondering.
-                Use <code className="text-slate-500">{'{business}'}</code> and <code className="text-slate-500">{'{name}'}</code> to personalise.
+      {/* Styling — let the trainer match the form to their site's brand. The
+          border toggle is useful for embeds where the parent page already
+          provides framing; button colour overrides the platform blue. */}
+      <FormEditorSection title="Styling">
+        <FormRowGroup>
+          <FormToggleRow
+            label="Card border"
+            hint="A subtle border around each field group. Turn it off when you're embedding inside a card of your own."
+            checked={showBorder}
+            onChange={setShowBorder}
+          />
+          <div className="flex items-center gap-3 py-3">
+            <input
+              type="color"
+              value={buttonColor}
+              onChange={e => setButtonColor(e.target.value)}
+              className="h-9 w-12 cursor-pointer rounded-lg border border-slate-200 bg-white"
+              aria-label="Submit button colour"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-slate-900">Submit button colour</p>
+              <p className="break-all text-xs text-slate-400">
+                {buttonColor}{buttonColor.toLowerCase() === DEFAULT_BUTTON_COLOR ? ' (platform default)' : ''}
               </p>
             </div>
-
-            {/* Three modes as segmented buttons — clearer than a dropdown
-                for a choice that changes what's below it. */}
-            <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl">
-              {([
-                { id: 'OFF' as const, label: "Don't send" },
-                { id: 'TEMPLATE' as const, label: 'Use a template' },
-                { id: 'CUSTOM' as const, label: 'Write my own' },
-              ]).map(m => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setAutoReplyMode(m.id)}
-                  aria-pressed={autoReplyMode === m.id}
-                  className={`px-2 py-2 rounded-lg text-xs font-medium transition-all ${
-                    autoReplyMode === m.id
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-
-            {autoReplyMode === 'TEMPLATE' && (
-              emailTemplates.length === 0 ? (
-                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
-                  You haven&apos;t saved any email templates yet — add one under Settings → Email
-                  templates, or choose &ldquo;Write my own&rdquo; instead.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700">Template</label>
-                  <select
-                    value={autoReplyTemplateId}
-                    onChange={e => setAutoReplyTemplateId(e.target.value)}
-                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Choose a template…</option>
-                    {emailTemplates.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.category ? `${t.category} · ${t.name}` : t.name}
-                      </option>
-                    ))}
-                  </select>
-                  {!autoReplyTemplateId && (
-                    <p className="text-xs text-slate-400">Nothing sends until you pick one.</p>
-                  )}
-                </div>
-              )
-            )}
-
-            {autoReplyMode === 'CUSTOM' && (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700">Subject</label>
-                  <input
-                    value={autoReplySubject}
-                    onChange={e => setAutoReplySubject(e.target.value)}
-                    placeholder="Thanks for getting in touch with {business}"
-                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700">Message</label>
-                  <RichTextEditor theme="light" value={autoReplyBody} onChange={setAutoReplyBody} minHeight={120} />
-                  <p className="text-xs text-slate-400">
-                    Hi {'{name}'}, thanks for your enquiry — we&apos;ve got your details and will be in
-                    touch shortly.
-                  </p>
-                </div>
-                {(!autoReplySubject.trim() || !autoReplyBody.trim()) && (
-                  <p className="text-xs text-slate-400">
-                    Add both a subject and a message — until then nothing sends.
-                  </p>
-                )}
-              </>
+            {buttonColor.toLowerCase() !== DEFAULT_BUTTON_COLOR && (
+              <button
+                type="button"
+                onClick={() => setButtonColor(DEFAULT_BUTTON_COLOR)}
+                className="flex-shrink-0 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
+              >
+                Reset
+              </button>
             )}
           </div>
+        </FormRowGroup>
+      </FormEditorSection>
 
-          {/* Welcome email — sent when you accept an enquiry from this form
-              and tick "email them a magic link". Greeting, branding, and
-              the expiry note stay templated; everything here is yours to
-              edit. Blank fields fall back to the platform defaults. */}
-          <div className="flex flex-col gap-3">
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Welcome email</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Sent when you accept an enquiry from this form and choose to email them a login link.
-                Use <code className="text-slate-500">{'{business}'}</code> and <code className="text-slate-500">{'{name}'}</code> to personalise.
-              </p>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Subject</label>
+      <FormEditorSection title="Success page" hint="What they see once they've hit submit.">
+        <FormField label="Heading">
+          <input
+            value={thankYouTitle}
+            onChange={e => setThankYouTitle(e.target.value)}
+            placeholder="You're registered!"
+            aria-label="Success page heading"
+            className={FORM_INPUT}
+          />
+        </FormField>
+        <FormField label="Body">
+          <textarea
+            value={thankYou}
+            onChange={e => setThankYou(e.target.value)}
+            rows={3}
+            placeholder="Thanks for registering. Check your email — we've sent you a link to access your training diary."
+            aria-label="Success page body"
+            className={`${FORM_TEXTAREA} resize-none`}
+          />
+        </FormField>
+      </FormEditorSection>
+
+      {/* Auto-reply — goes to the PERSON WHO FILLED IN THE FORM, the moment
+          they submit. Sits above the welcome email because it fires first in
+          the timeline (submit → auto-reply, later: accept → welcome). Off by
+          default so existing forms don't suddenly start emailing. */}
+      <FormEditorSection
+        title="Auto-reply email"
+        hint={
+          <>
+            Sent straight away to whoever fills in this form, so they aren&apos;t left wondering.
+            Use <code className="text-slate-500">{'{business}'}</code> and <code className="text-slate-500">{'{name}'}</code> to personalise.
+          </>
+        }
+      >
+        <FormSegmented
+          ariaLabel="Auto-reply"
+          value={autoReplyMode}
+          onChange={setAutoReplyMode}
+          options={[
+            { id: 'OFF', label: "Don't send" },
+            { id: 'TEMPLATE', label: 'Use a template' },
+            { id: 'CUSTOM', label: 'Write my own' },
+          ]}
+        />
+
+        {autoReplyMode === 'TEMPLATE' && (
+          emailTemplates.length === 0 ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
+              You haven&apos;t saved any email templates yet — add one under Settings → Email
+              templates, or choose &ldquo;Write my own&rdquo; instead.
+            </p>
+          ) : (
+            <FormField
+              label="Template"
+              hint={!autoReplyTemplateId ? 'Nothing sends until you pick one.' : undefined}
+            >
+              <select
+                value={autoReplyTemplateId}
+                onChange={e => setAutoReplyTemplateId(e.target.value)}
+                aria-label="Auto-reply template"
+                className={FORM_INPUT}
+              >
+                <option value="">Choose a template…</option>
+                {emailTemplates.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.category ? `${t.category} · ${t.name}` : t.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          )
+        )}
+
+        {autoReplyMode === 'CUSTOM' && (
+          <>
+            <FormField label="Subject">
               <input
-                value={welcomeSubject}
-                onChange={e => setWelcomeSubject(e.target.value)}
-                placeholder={WELCOME_SUBJECT_PLACEHOLDER}
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={autoReplySubject}
+                onChange={e => setAutoReplySubject(e.target.value)}
+                placeholder="Thanks for getting in touch with {business}"
+                aria-label="Auto-reply subject"
+                className={FORM_INPUT}
               />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-700">Intro text</label>
-              <RichTextEditor theme="light" value={welcomeIntro} onChange={setWelcomeIntro} minHeight={120} />
-              <p className="text-xs text-slate-400">{WELCOME_INTRO_PLACEHOLDER}</p>
-            </div>
-            {/* Diary-button toggle. Off = a plain welcome with no login
-                link — only do this if you're inviting them another way. */}
-            <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setWelcomeShowDiaryButton(v => !v)}
-                className="flex-shrink-0"
-                aria-pressed={welcomeShowDiaryButton}
-                aria-label="Toggle diary access button"
-              >
-                {welcomeShowDiaryButton
-                  ? <ToggleRight className="h-5 w-5 text-blue-600" />
-                  : <ToggleLeft className="h-5 w-5 text-slate-300" />}
-              </button>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-900">Show the &ldquo;Access my diary&rdquo; button</p>
-                <p className="text-xs text-slate-500">
-                  {welcomeShowDiaryButton
-                    ? 'The email includes a one-tap login button to their training diary.'
-                    : 'The email goes out as a plain welcome with no login link — invite them another way.'}
-                </p>
-              </div>
-            </div>
-            {welcomeShowDiaryButton && (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-slate-700">Button label</label>
-                <input
-                  value={welcomeButtonLabel}
-                  onChange={e => setWelcomeButtonLabel(e.target.value)}
-                  placeholder={WELCOME_BUTTON_PLACEHOLDER}
-                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+            </FormField>
+            <FormField
+              label="Message"
+              hint="Hi {name}, thanks for your enquiry — we've got your details and will be in touch shortly."
+            >
+              <RichTextEditor theme="light" value={autoReplyBody} onChange={setAutoReplyBody} minHeight={120} />
+            </FormField>
+            {(!autoReplySubject.trim() || !autoReplyBody.trim()) && (
+              <p className="text-xs text-slate-400">
+                Add both a subject and a message — until then nothing sends.
+              </p>
             )}
-          </div>
-        </div>
+          </>
+        )}
+      </FormEditorSection>
 
-        {/* Footer — Delete on left (existing forms only), Save on right. */}
-        <div className="flex items-center gap-2 px-5 py-4 border-t border-slate-100 flex-shrink-0 bg-white">
-          {initial && (
-            confirmDelete ? (
-              <div className="flex items-center gap-1 mr-auto">
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(false)}
-                  className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setDeleting(true)
-                    try { await onDelete() } finally { setDeleting(false) }
-                  }}
-                  disabled={deleting}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {deleting ? 'Deleting…' : 'Confirm delete'}
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                className="mr-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete
-              </button>
-            )
-          )}
-          <Button onClick={save} loading={saving} className={initial ? '' : 'w-full'}>
-            {initial ? 'Save changes' : 'Create form'}
-          </Button>
-        </div>
-      </div>
-    </div>
+      {/* Welcome email — sent when you accept an enquiry from this form and
+          tick "email them a magic link". Greeting, branding and the expiry
+          note stay templated; everything here is yours to edit. Blank fields
+          fall back to the platform defaults. */}
+      <FormEditorSection
+        title="Welcome email"
+        hint={
+          <>
+            Sent when you accept an enquiry from this form and choose to email them a login link.
+            Use <code className="text-slate-500">{'{business}'}</code> and <code className="text-slate-500">{'{name}'}</code> to personalise.
+          </>
+        }
+      >
+        <FormField label="Subject">
+          <input
+            value={welcomeSubject}
+            onChange={e => setWelcomeSubject(e.target.value)}
+            placeholder={WELCOME_SUBJECT_PLACEHOLDER}
+            aria-label="Welcome email subject"
+            className={FORM_INPUT}
+          />
+        </FormField>
+        <FormField label="Intro text" hint={WELCOME_INTRO_PLACEHOLDER}>
+          <RichTextEditor theme="light" value={welcomeIntro} onChange={setWelcomeIntro} minHeight={120} />
+        </FormField>
+        <FormRowGroup>
+          <FormToggleRow
+            label="Show the “Access my diary” button"
+            hint={welcomeShowDiaryButton
+              ? 'The email includes a one-tap login button to their training diary.'
+              : 'The email goes out as a plain welcome with no login link — invite them another way.'}
+            checked={welcomeShowDiaryButton}
+            onChange={setWelcomeShowDiaryButton}
+          />
+        </FormRowGroup>
+        {welcomeShowDiaryButton && (
+          <FormField label="Button label">
+            <input
+              value={welcomeButtonLabel}
+              onChange={e => setWelcomeButtonLabel(e.target.value)}
+              placeholder={WELCOME_BUTTON_PLACEHOLDER}
+              aria-label="Welcome email button label"
+              className={FORM_INPUT}
+            />
+          </FormField>
+        )}
+      </FormEditorSection>
+    </FormEditorShell>
   )
 }
 
-function FieldToggleRow({
-  label,
-  enabled,
-  required,
-  onToggleEnabled,
-  onToggleRequired,
-}: {
-  label: string
-  enabled: boolean
-  required: boolean
-  onToggleEnabled: () => void
-  onToggleRequired: () => void
-}) {
-  return (
-    <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${enabled ? 'border-blue-200 bg-blue-50' : 'border-slate-200'}`}>
-      <button onClick={onToggleEnabled} className="flex-shrink-0">
-        {enabled
-          ? <ToggleRight className="h-5 w-5 text-blue-600" />
-          : <ToggleLeft className="h-5 w-5 text-slate-300" />}
-      </button>
-      <span className={`flex-1 text-sm font-medium ${enabled ? 'text-slate-900' : 'text-slate-400'}`}>
-        {label}
-      </span>
-      {enabled && (
-        <button
-          onClick={onToggleRequired}
-          className={`text-xs px-2 py-0.5 rounded-full border font-medium transition-colors ${
-            required
-              ? 'border-red-300 bg-red-50 text-red-600'
-              : 'border-slate-200 text-slate-400 hover:border-slate-300'
-          }`}
-        >
-          {required ? 'Required' : 'Optional'}
-        </button>
-      )}
-    </div>
-  )
-}
-
-function CustomFieldToggleRow({
-  label,
-  required,
-  enabled,
-  onToggle,
-}: {
-  label: string
-  required: boolean
-  enabled: boolean
-  onToggle: () => void
-}) {
-  return (
-    <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${enabled ? 'border-violet-200 bg-violet-50' : 'border-slate-200'}`}>
-      <button onClick={onToggle} className="flex-shrink-0">
-        {enabled
-          ? <ToggleRight className="h-5 w-5 text-violet-600" />
-          : <ToggleLeft className="h-5 w-5 text-slate-300" />}
-      </button>
-      <span className={`flex-1 text-sm font-medium ${enabled ? 'text-slate-900' : 'text-slate-400'}`}>
-        {label}
-      </span>
-      {enabled && (
-        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
-          required
-            ? 'border-red-300 bg-red-50 text-red-600'
-            : 'border-slate-200 text-slate-400'
-        }`}>
-          {required ? 'Required' : 'Optional'}
-        </span>
-      )}
-    </div>
-  )
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
-
-type FormType = 'INTAKE' | 'EMBED' | 'SESSION'
+// ─── The Forms screen ─────────────────────────────────────────────────────────
 
 // Lightweight list-row shape for lead-capture (embed) forms — mirrors the
 // former EmbedFormsCard's EmbedFormRow. Editing happens on the dedicated
@@ -749,11 +562,6 @@ export interface EmbedFormRow {
   fieldCount: number
 }
 
-const TYPE_BADGE: Record<FormType, { label: string; cls: string; Icon: typeof Globe }> = {
-  INTAKE: { label: 'Intake', cls: 'bg-amber-100 text-amber-700', Icon: ClipboardList },
-  EMBED: { label: 'Embed', cls: 'bg-blue-100 text-blue-700', Icon: Globe },
-  SESSION: { label: 'Session', cls: 'bg-violet-100 text-violet-700', Icon: FileText },
-}
 export function FormsManager({
   initialSessionForms,
   embedForms,
@@ -803,10 +611,6 @@ export function FormsManager({
   }
   const [isPublished, setIsPublished] = useState(intakeFormPublished)
   const [togglingPublished, setTogglingPublished] = useState(false)
-  // New session forms are built in the two-pane builder modal; editing an
-  // existing one still opens the full editor page (intro/closing/background
-  // copy lives there).
-  const [builderOpen, setBuilderOpen] = useState(false)
 
   async function togglePublished() {
     setTogglingPublished(true)
@@ -830,224 +634,166 @@ export function FormsManager({
   const intakeFieldCount = intakeCustomFields.length + 3 // + name/email/phone
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       {wizardOpen && (
         <FieldPacksWizard roles={businessRoles} onClose={() => setWizardOpen(false)} />
       )}
 
-      {builderOpen && (
-        <SessionFormBuilderModal
-          customFields={intakeCustomFields.map(f => ({
-            id: f.id,
-            label: f.label,
-            type: f.type,
-            appliesTo: f.appliesTo,
-            category: f.category,
-          }))}
-          onClose={() => setBuilderOpen(false)}
-        />
-      )}
-
-      <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 w-fit">
-        {(['forms', 'fields'] as const).map(v => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => selectView(v)}
-            aria-pressed={view === v}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${
-              view === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {v}
-          </button>
-        ))}
+      {/* Tabs left, the one action right — on a single line. */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-4">
+          {(['forms', 'fields'] as const).map(v => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => selectView(v)}
+              aria-pressed={view === v}
+              className={`-mb-px border-b-2 px-0.5 pb-2 pt-1 text-sm font-medium capitalize transition-colors ${
+                view === v
+                  ? 'border-slate-900 text-slate-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+        {view === 'forms' ? (
+          <Button size="sm" onClick={() => router.push('/forms/new')}>
+            <Plus className="h-4 w-4" strokeWidth={1.75} />
+            New form
+          </Button>
+        ) : (
+          <Button size="sm" variant="secondary" onClick={() => setWizardOpen(true)}>
+            <Sparkles className="h-4 w-4" strokeWidth={1.75} />
+            Suggest fields
+          </Button>
+        )}
       </div>
 
       {/* ── Fields ───────────────────────────────────────────────────────── */}
       <section className={`flex-col gap-3 ${view === 'fields' ? 'flex' : 'hidden'}`}>
-        <div className="flex justify-end">
-          <Button size="sm" variant="secondary" onClick={() => setWizardOpen(true)}>
-            <Sparkles className="h-4 w-4" />
-            Suggest fields
-          </Button>
-        </div>
-
-        <div>
-          <CustomFieldsManager
-            initialFields={intakeCustomFields}
-            initialSectionOrder={intakeSectionOrder}
-            initialSystemFieldSections={intakeSystemFieldSections}
-            showSystemFields
-          />
-        </div>
+        <CustomFieldsManager
+          initialFields={intakeCustomFields}
+          initialSectionOrder={intakeSectionOrder}
+          initialSystemFieldSections={intakeSystemFieldSections}
+          showSystemFields
+        />
       </section>
 
       {/* ── Forms ────────────────────────────────────────────────────────── */}
-      <section className={`flex-col gap-3 ${view === 'forms' ? 'flex' : 'hidden'}`}>
-        <div className="flex justify-end">
-          <Button size="sm" onClick={() => setBuilderOpen(true)}>
-            <Plus className="h-4 w-4" />
-            New session form
-          </Button>
-        </div>
-
-        {/* Intake form — a view of the fields above, not a separate question set. */}
-        <div className="bg-white rounded-2xl border border-slate-200">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4">
-            <TypeBadgeIcon type="INTAKE" />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="font-semibold text-slate-900 truncate">Intake form</p>
-                <TypeBadge type="INTAKE" />
-                <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                  isPublished ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                }`}>
-                  {isPublished ? 'Published' : 'Draft'}
+      <section className={`flex-col gap-5 ${view === 'forms' ? 'flex' : 'hidden'}`}>
+        <FlatBlock>
+          {/* Intake form — a view of the fields on the other tab, not a
+              separate question set, so its row opens them. */}
+          <div className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <ClipboardList className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+              <button
+                type="button"
+                onClick={() => selectView('fields')}
+                className="min-w-0 flex-1 text-left"
+              >
+                <span className="block truncate text-sm font-medium text-slate-900">Intake form</span>
+                <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                  Asked once, when you accept a client — it uses every field you set up.
                 </span>
-              </div>
-              <p className="text-sm text-slate-400 mt-0.5">
-                The first form a client fills in once you accept them. It asks for every field you set up.
-              </p>
-              <p className="text-xs text-slate-400 mt-1">
-                {intakeFieldCount} field{intakeFieldCount === 1 ? '' : 's'}
-              </p>
+                <span className="mt-0.5 block truncate text-xs text-slate-400">
+                  {intakeFieldCount} field{intakeFieldCount === 1 ? '' : 's'} · {isPublished ? 'Published' : 'Draft'}
+                </span>
+              </button>
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0 sm:ml-auto">
+            <div className="flex flex-shrink-0 items-center gap-1 pl-[30px] sm:pl-0">
               <a
                 href="/forms/intake/preview"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50"
+                className={FORM_QUIET_ACTION}
               >
-                <ExternalLink className="h-3.5 w-3.5" />
+                <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
                 Preview
               </a>
               <button
                 type="button"
                 onClick={togglePublished}
                 disabled={togglingPublished}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-slate-100 disabled:opacity-50"
+                className={FORM_QUIET_ACTION}
               >
                 {isPublished ? 'Unpublish' : 'Publish'}
               </button>
             </div>
           </div>
-        </div>
 
-        {/* Session forms — their own questions, unrelated to the field library. */}
-        {sessionForms.map(f => (
-          <div key={f.id} className="bg-white rounded-2xl border border-slate-200">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4">
-              <TypeBadgeIcon type="SESSION" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-slate-900 truncate">{f.name}</p>
-                  <TypeBadge type="SESSION" />
-                  <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                    f.isActive ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                  }`}>
-                    {f.isActive ? 'Published' : 'Draft'}
+          {/* Session forms — their own questions, unrelated to the field
+              library. The row IS the edit affordance; there's no second
+              pencil doing the same thing. */}
+          {sessionForms.map(f => (
+            <Link
+              key={f.id}
+              href={`/forms/session/${f.id}`}
+              className="flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+            >
+              <FileText className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-slate-900">{f.name}</span>
+                {!isRichTextEmpty(f.description) && (
+                  <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                    {richTextToPlain(f.description)}
                   </span>
-                </div>
-                {!isRichTextEmpty(f.description) && <p className="text-sm text-slate-400 truncate mt-0.5">{richTextToPlain(f.description)}</p>}
-                <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap">
-                  <span>{f.questions.length} question{f.questions.length === 1 ? '' : 's'}</span>
-                  {f.responses > 0 && <><span>·</span><span className="text-blue-600">{f.responses} filled</span></>}
-                </div>
-              </div>
-              <button
-                onClick={() => router.push(`/forms/session/${f.id}`)}
-                className="p-2 text-slate-400 hover:text-blue-600 transition-colors flex-shrink-0"
-                title="Edit form"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        ))}
+                )}
+                <span className="mt-0.5 block truncate text-xs text-slate-400">
+                  Session form · {f.questions.length} question{f.questions.length === 1 ? '' : 's'}
+                  {f.responses > 0 ? ` · ${f.responses} filled` : ''} · {f.isActive ? 'Published' : 'Draft'}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
+            </Link>
+          ))}
+        </FlatBlock>
 
         {/* Lead-capture (embed) forms — public forms a trainer embeds on their
             own website; a submission lands in their enquiries. Editing opens
             the dedicated /forms/embed/* route (embed URL + iframe snippet live
             there). Relocated here from Settings → Website. */}
         {embedForms != null && (
-          <>
-            <div className="flex items-center justify-between gap-3 mt-2">
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900">Lead-capture forms</h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Embed a form on your website — submissions land in your enquiries.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => router.push('/forms/embed/new')}
-                className="flex-shrink-0"
-              >
-                <Plus className="h-4 w-4" />
-                New lead-capture form
-              </Button>
-            </div>
-
+          <div>
+            <SectionLabel>Lead-capture forms</SectionLabel>
+            <p className="mb-2 px-1 text-xs text-slate-400">
+              Embed a form on your website — submissions land in your enquiries.
+            </p>
             {embedForms.length === 0 ? (
-              <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-400">
+              <p className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-400">
                 No lead-capture forms yet.
               </p>
             ) : (
-              embedForms.map(f => (
-                <div key={f.id} className="bg-white rounded-2xl border border-slate-200">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4">
-                    <TypeBadgeIcon type="EMBED" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-slate-900 truncate">{f.title}</p>
-                        <TypeBadge type="EMBED" />
-                        <span className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
-                          f.isActive ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {f.isActive ? 'Published' : 'Draft'}
+              <FlatBlock>
+                {embedForms.map(f => (
+                  <Link
+                    key={f.id}
+                    href={`/forms/embed/${f.id}`}
+                    className="flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+                  >
+                    <Globe className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-slate-900">{f.title}</span>
+                      {!isRichTextEmpty(f.description) && (
+                        <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                          {richTextToPlain(f.description)}
                         </span>
-                      </div>
-                      {!isRichTextEmpty(f.description) && <p className="text-sm text-slate-400 truncate mt-0.5">{richTextToPlain(f.description)}</p>}
-                      <p className="text-xs text-slate-400 mt-1">
-                        {f.fieldCount} field{f.fieldCount === 1 ? '' : 's'}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => router.push(`/forms/embed/${f.id}`)}
-                      className="p-2 text-slate-400 hover:text-blue-600 transition-colors flex-shrink-0"
-                      title="Edit form"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))
+                      )}
+                      <span className="mt-0.5 block truncate text-xs text-slate-400">
+                        Lead-capture form · {f.fieldCount} field{f.fieldCount === 1 ? '' : 's'} ·{' '}
+                        {f.isActive ? 'Published' : 'Draft'}
+                      </span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
+                  </Link>
+                ))}
+              </FlatBlock>
             )}
-          </>
+          </div>
         )}
       </section>
-    </div>
-  )
-}
-
-function TypeBadge({ type }: { type: FormType }) {
-  const meta = TYPE_BADGE[type]
-  return (
-    <span className={`flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${meta.cls}`}>
-      {meta.label}
-    </span>
-  )
-}
-
-function TypeBadgeIcon({ type }: { type: FormType }) {
-  const meta = TYPE_BADGE[type]
-  const Icon = meta.Icon
-  return (
-    <div className={`flex h-10 w-10 items-center justify-center rounded-xl flex-shrink-0 ${meta.cls}`}>
-      <Icon className="h-5 w-5" />
     </div>
   )
 }

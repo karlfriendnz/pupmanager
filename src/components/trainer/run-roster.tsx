@@ -147,6 +147,14 @@ function ticketLabelFor(e: Enrollment): string | null {
   return e.quantity > 1 ? `${e.ticketName} × ${e.quantity}` : e.ticketName
 }
 
+/** Everything one client holds, when they bought several ticket types at once:
+ *  "General × 3 · VIP × 3". Keeping only the first would hide half the money. */
+function joinTicketLabels(a: string | null, b: string | null): string | null {
+  if (!a) return b
+  if (!b) return a
+  return `${a} · ${b}`
+}
+
 export function groupByClient(rows: Enrollment[]): ClientGroup[] {
   const now = Date.now()
   const out = new Map<string, ClientGroup>()
@@ -185,7 +193,10 @@ export function groupByClient(rows: Enrollment[]): ClientGroup[] {
     g.attendedCount += e.attendedCount
     g.markedCount += e.markedCount
     g.waitlistPosition ??= e.waitlistPosition
-    g.ticketLabel ??= ticketLabelFor(e)
+    // Every ticket type they hold, not just the first: a client who bought
+    // 3 General AND 3 VIP in one go is two rows folded into this one, and
+    // showing only "General × 3" would hide half of what they paid for.
+    g.ticketLabel = joinTicketLabels(g.ticketLabel, ticketLabelFor(e))
     // An enrolled booking outranks a waitlisted one in the status badge —
     // "waitlisted" on someone who's confirmed for two sessions would be a lie.
     if (e.status === 'ENROLLED') g.status = 'ENROLLED'
@@ -399,12 +410,21 @@ export function EnrolModal({
   // so this is a multi-select — booking someone into three Saturdays is one
   // trip through this form, not three.
   const [sessionIds, setSessionIds] = useState<string[]>([])
-  // Which ticket, and how many. An event that sells one type still asks, so the
-  // enrolment records what was bought and the invoice quotes the right price.
-  const [ticketTierId, setTicketTierId] = useState<string>(() => tiers[0]?.id ?? '')
-  const [quantity, setQuantity] = useState(1)
-  const tier = tiers.find(t => t.id === ticketTierId) ?? null
-  const ticketsLeft = tier?.capacity == null ? null : Math.max(0, tier.capacity - tier.sold)
+  // How many of EACH ticket type — a party is routinely "3 general and 3 VIP",
+  // which used to mean two trips through this form (and, before that, wasn't
+  // possible at all). Keyed by tier id; a type left at 0 simply isn't bought.
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  const countOf = (id: string) => counts[id] ?? 0
+  const setCount = (id: string, n: number) => setCounts(c => ({ ...c, [id]: Math.max(0, n) }))
+  const leftFor = (t: TicketTier) => (t.capacity == null ? null : Math.max(0, t.capacity - t.sold))
+  const chosenTickets = tiers
+    .map(t => ({ ticketTierId: t.id, quantity: countOf(t.id) }))
+    .filter(l => l.quantity > 0)
+  const ticketCount = chosenTickets.reduce((n, l) => n + l.quantity, 0)
+  const ticketTotalCents = chosenTickets.reduce(
+    (sum, l) => sum + (tiers.find(t => t.id === l.ticketTierId)?.priceCents ?? 0) * l.quantity,
+    0,
+  )
   const upcoming = sessions.filter(s => s.status === 'UPCOMING' && new Date(s.scheduledAt).getTime() > Date.now())
   // What this client already holds. Shown as booked rather than left tickable
   // and refused on submit — the answer is already on screen.
@@ -412,10 +432,7 @@ export function EnrolModal({
   const bookable = upcoming.filter(s => !alreadyBooked.has(s.id))
   // Changing client changes what's already booked, so a tick left over from
   // the previous one could post a session this client can't take.
-  useEffect(() => { setSessionIds([]) }, [clientId])
-  // Each ticket type has its own cap, so a "4" left over from the one with 30
-  // spare could be more than the one they've just switched to has left.
-  useEffect(() => { setQuantity(1) }, [ticketTierId])
+  useEffect(() => { setSessionIds([]); setCounts({}) }, [clientId])
   const [notify, setNotify] = useState(true)
   // Ask them to pay now, or raise the invoice quietly and chase it later.
   const [sendInvoice, setSendInvoice] = useState(true)
@@ -446,8 +463,9 @@ export function EnrolModal({
       setError('Pick at least one session to drop into.')
       return
     }
-    if (tiers.length > 0 && type === 'FULL' && !ticketTierId) {
-      setError('Pick a ticket type.')
+    // Enrolling into nothing is a mistake, not a free booking.
+    if (tiers.length > 0 && type === 'FULL' && chosenTickets.length === 0) {
+      setError('Choose at least one ticket.')
       return
     }
     const c = clients.find(x => x.id === clientId)
@@ -461,7 +479,10 @@ export function EnrolModal({
           dogId: c?.dogId ?? null,
           type,
           ...(type === 'DROP_IN' && { sessionIds }),
-          ...(tiers.length > 0 && type === 'FULL' && { ticketTierId, quantity }),
+          // The whole basket in one action: the server enrols every type or
+          // none of them, so a sold-out VIP can't leave the general tickets
+          // half-booked and already invoiced.
+          ...(tiers.length > 0 && type === 'FULL' && { tickets: chosenTickets }),
           notify,
           sendInvoice,
         }),
@@ -582,83 +603,77 @@ export function EnrolModal({
                 </button>
               </div>
 
-              {/* An event sells named tickets at their own prices. Which one and
-                  how many is the whole question — and it's what gets invoiced,
-                  so it can't be assumed to be "one, at the offering price". */}
+              {/* An event sells named tickets at their own prices, and a party
+                  routinely wants several types at once — "3 general and 3 VIP".
+                  So this is a quantity PER type, not a type then a quantity: one
+                  bordered block, a row each, stepping from 0. What's chosen here
+                  is exactly what gets invoiced, line by line, at each ticket's
+                  own price — never the offering's flat one. */}
               {tiers.length > 0 && type === 'FULL' && (
-                <>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 block mb-1.5">Ticket type</label>
-                    <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                      {tiers.map(t => {
-                        const on = t.id === ticketTierId
-                        const left = t.capacity == null ? null : Math.max(0, t.capacity - t.sold)
-                        return (
-                          <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => setTicketTierId(t.id)}
-                            disabled={left === 0}
-                            aria-pressed={on}
-                            className={`flex w-full items-center gap-2.5 px-3 py-3 text-left first:rounded-t-xl last:rounded-b-xl disabled:opacity-50 ${
-                              on ? 'bg-blue-50' : 'hover:bg-slate-50'
-                            }`}
-                          >
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-medium text-slate-800">{t.name}</span>
-                              {left != null && (
-                                <span className="block text-[11px] text-slate-400">
-                                  {left === 0 ? 'Sold out' : `${left} left`}
-                                </span>
-                              )}
-                            </span>
-                            <span className="shrink-0 text-sm font-medium tabular-nums text-slate-700">
+                <div>
+                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Tickets</label>
+                  {/* overflow-hidden so the tinted total strip at the bottom is
+                      clipped by the block's rounded corners rather than filling
+                      them square. */}
+                  <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+                    {tiers.map(t => {
+                      const left = leftFor(t)
+                      const n = countOf(t.id)
+                      // A type's own cap, not the event's: "Early bird ×20" runs
+                      // out while general admission is still wide open.
+                      const max = left == null ? 20 : Math.min(20, left)
+                      const soldOut = left === 0
+                      return (
+                        <div key={t.id} className="flex items-center gap-3 px-3 py-3">
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-slate-800">{t.name}</span>
+                            <span className="block text-[11px] text-slate-400">
                               {formatMoney(t.priceCents ?? 0, currency)}
+                              {left != null && (soldOut ? ' · Sold out' : ` · ${left} left`)}
                             </span>
-                            {on && <Check className="h-4 w-4 shrink-0 text-blue-600" />}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* A stepper, not a number field: this is thumbed on a phone
-                      beside a trestle table, and 1–2 is the usual answer. */}
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 block mb-1.5">How many</label>
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        aria-label="One fewer"
-                        onClick={() => setQuantity(n => Math.max(1, n - 1))}
-                        disabled={quantity <= 1}
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700 disabled:opacity-40"
-                      >
-                        <Minus className="h-4 w-4" strokeWidth={1.75} />
-                      </button>
-                      <span className="w-10 text-center text-lg font-semibold tabular-nums text-slate-900" aria-live="polite">
-                        {quantity}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="One more"
-                        onClick={() => setQuantity(n => Math.min(20, ticketsLeft == null ? n + 1 : Math.min(ticketsLeft, n + 1)))}
-                        disabled={quantity >= 20 || (ticketsLeft != null && quantity >= ticketsLeft)}
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700 disabled:opacity-40"
-                      >
-                        <Plus className="h-4 w-4" strokeWidth={1.75} />
-                      </button>
-                      {tier && (
-                        <span className="ml-auto min-w-0 text-right">
-                          <span className="block text-[11px] text-slate-400">Total</span>
-                          <span className="block text-sm font-semibold tabular-nums text-slate-900">
-                            {formatMoney((tier.priceCents ?? 0) * quantity, currency)}
                           </span>
-                        </span>
-                      )}
+                          {/* Steppers, not a number field: this is thumbed on a
+                              phone beside a trestle table. */}
+                          <button
+                            type="button"
+                            aria-label={`One fewer ${t.name}`}
+                            onClick={() => setCount(t.id, n - 1)}
+                            disabled={n <= 0}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700 disabled:opacity-40"
+                          >
+                            <Minus className="h-4 w-4" strokeWidth={1.75} />
+                          </button>
+                          <span
+                            className={`w-6 text-center text-base font-semibold tabular-nums ${n > 0 ? 'text-slate-900' : 'text-slate-300'}`}
+                            aria-live="polite"
+                            aria-label={`${t.name} quantity`}
+                          >
+                            {n}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`One more ${t.name}`}
+                            onClick={() => setCount(t.id, Math.min(max, n + 1))}
+                            disabled={soldOut || n >= max}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700 disabled:opacity-40"
+                          >
+                            <Plus className="h-4 w-4" strokeWidth={1.75} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                    {/* The running total across every type — the number the
+                        trainer reads back to the person in front of them. */}
+                    <div className="flex items-baseline gap-3 bg-slate-50 px-3 py-2.5">
+                      <span className="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        {ticketCount === 0 ? 'No tickets yet' : `${ticketCount} ticket${ticketCount === 1 ? '' : 's'}`}
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-900" data-testid="ticket-basket-total">
+                        {formatMoney(ticketTotalCents, currency)}
+                      </span>
                     </div>
                   </div>
-                </>
+                </div>
               )}
 
               {allowDropIn && (

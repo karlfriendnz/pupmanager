@@ -1846,6 +1846,13 @@ model ClassEnrollment {
   // at a time ("2 × General"); everything else is a single seat, hence the
   // default of 1 — it multiplies both the invoice and the capacity it uses up.
   quantity         Int              @default(1)
+  // One enrolment ACTION that bought several ticket types at once ("3 General
+  // + 3 VIP") is one row per type — each prices off its own tier and is capped
+  // by its own tier — tied together by this shared id. It is what makes the
+  // basket bill as ONE invoice with a line per ticket type instead of an
+  // invoice each. Null for every single-ticket enrolment, which is every row
+  // that existed before this.
+  ticketGroupId    String?
   source           String           @default("TRAINER") // "TRAINER" | "SELF_SERVE"
   // Mirrors ClientPackage.invoicedAt — manual until billing is wired.
   invoicedAt       DateTime?
@@ -1861,14 +1868,18 @@ model ClassEnrollment {
   paymentItem   PaymentItem?
 
   // dropInSessionId is part of the key so a client can drop into SEVERAL
-  // sessions of the same run — one row each. A FULL enrolment leaves it null
-  // and is still one-per-client-and-dog, which enrollInRun enforces in code
-  // (Postgres treats NULLs as distinct, so the index alone can't).
+  // sessions of the same run — one row each. Postgres treats NULLs as distinct,
+  // so this index never fires on a FULL enrolment (dropInSessionId is null);
+  // the real rule lives in code. For a plain class that rule is still
+  // one-per-client-and-dog (enrollInRun). For a TICKETED event it is
+  // one-per-client-and-dog PER TICKET TYPE (enrollInRunTickets), because
+  // "3 General + 3 VIP" is genuinely two holdings at two prices.
   @@unique([classRunId, clientId, dogId, dropInSessionId])
   @@index([classRunId])
   @@index([clientId])
   @@index([dropInSessionId])
   @@index([ticketTierId])
+  @@index([ticketGroupId])
   @@map("class_enrollments")
 }
 

@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { enrollInRun, ClassError, MAX_TICKET_QUANTITY } from '@/lib/class-runs'
+import { enrollInRun, enrollInRunTickets, ClassError, MAX_TICKET_QUANTITY } from '@/lib/class-runs'
 import { notifyClient } from '@/lib/client-notify'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { resolveRequirePayment } from '@/lib/require-payment'
@@ -26,6 +26,17 @@ const schema = z.object({
   // trusted from here. Omitted = the offering's flat price, one place.
   ticketTierId: z.string().min(1).nullable().optional(),
   quantity: z.number().int().min(1).max(MAX_TICKET_QUANTITY).optional(),
+  // …or SEVERAL types at once: "3 General and 3 VIP" in one action. A quantity
+  // of 0 is a stepper the trainer left alone, so it's allowed through and
+  // dropped rather than rejected as a bad request. Takes precedence over the
+  // single ticketTierId/quantity pair above when present.
+  tickets: z
+    .array(z.object({
+      ticketTierId: z.string().min(1),
+      quantity: z.number().int().min(0).max(MAX_TICKET_QUANTITY),
+    }))
+    .max(50)
+    .optional(),
   // Whether to tell the client they've been enrolled. Default true.
   notify: z.boolean().optional(),
   // Whether to ask the client to pay now: marks the invoice sent and puts the
@@ -70,30 +81,53 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   const sessionIds = type === 'DROP_IN'
     ? (parsed.data.sessionIds ?? (parsed.data.sessionId ? [parsed.data.sessionId] : [null]))
     : [null]
+  // A basket of ticket types ("3 General + 3 VIP") is one action with several
+  // enrolment rows behind it, so it goes through enrollInRunTickets — which is
+  // all-or-nothing across the tiers — rather than the per-session loop below.
+  // A drop-in prices per session and never sells tickets, so it's FULL only.
+  const basket = type === 'FULL' ? parsed.data.tickets : undefined
 
   try {
-    // Each session is enrolled on its own so one full session doesn't lose the
-    // others. Failures are reported per session rather than thrown, unless
-    // every one of them failed — then there's nothing to report but the error.
     const outcomes: { sessionId: string | null; enrollmentId?: string; status?: string; error?: string; code?: string }[] = []
-    for (const sid of sessionIds) {
-      try {
-        const r = await enrollInRun({
-          classRunId: runId,
-          clientId: parsed.data.clientId,
-          dogId: parsed.data.dogId ?? null,
-          type,
-          sessionId: sid,
-          // A drop-in prices per session, so a ticket type only ever applies to
-          // the whole booking (which is what an event enrolment is).
-          ticketTierId: type === 'FULL' ? parsed.data.ticketTierId ?? null : null,
-          quantity: type === 'FULL' ? parsed.data.quantity ?? 1 : 1,
-          source: 'TRAINER',
-        })
-        outcomes.push({ sessionId: sid, enrollmentId: r.enrollmentId, status: r.status })
-      } catch (err) {
-        if (err instanceof ClassError) outcomes.push({ sessionId: sid, error: err.message, code: err.code })
-        else throw err
+    if (basket) {
+      // All-or-nothing across the ticket types: enrollInRunTickets validates
+      // every tier and every capacity before writing a row, and throws (rolling
+      // the transaction back) rather than half-booking a basket that's already
+      // been priced to the trainer. A throw here is therefore the whole request
+      // failing, which is what the catch below turns into a 409/400.
+      const r = await enrollInRunTickets({
+        classRunId: runId,
+        clientId: parsed.data.clientId,
+        dogId: parsed.data.dogId ?? null,
+        tickets: basket,
+        source: 'TRAINER',
+      })
+      for (const line of r.lines) {
+        outcomes.push({ sessionId: null, enrollmentId: line.enrollmentId, status: r.status })
+      }
+    } else {
+      // Each session is enrolled on its own so one full session doesn't lose the
+      // others. Failures are reported per session rather than thrown, unless
+      // every one of them failed — then there's nothing to report but the error.
+      for (const sid of sessionIds) {
+        try {
+          const r = await enrollInRun({
+            classRunId: runId,
+            clientId: parsed.data.clientId,
+            dogId: parsed.data.dogId ?? null,
+            type,
+            sessionId: sid,
+            // A drop-in prices per session, so a ticket type only ever applies to
+            // the whole booking (which is what an event enrolment is).
+            ticketTierId: type === 'FULL' ? parsed.data.ticketTierId ?? null : null,
+            quantity: type === 'FULL' ? parsed.data.quantity ?? 1 : 1,
+            source: 'TRAINER',
+          })
+          outcomes.push({ sessionId: sid, enrollmentId: r.enrollmentId, status: r.status })
+        } catch (err) {
+          if (err instanceof ClassError) outcomes.push({ sessionId: sid, error: err.message, code: err.code })
+          else throw err
+        }
       }
     }
     const booked = outcomes.filter(o => o.enrollmentId)
@@ -115,7 +149,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     // enrolments were the one priced thing that never produced an invoice, so
     // there was nothing for the client to pay against and no pay link to send.
     // Idempotent + best-effort; never blocks the enrolment. A drop-in across
-    // several sessions is billed per session, so each gets its own.
+    // several sessions is billed per session, so each gets its own — but a
+    // basket of ticket types is ONE invoice with a line per type, so the second
+    // and later rows find the invoice the first one raised (the idempotency
+    // check covers every row of the group) rather than billing again.
     let invoiceId: string | null = null
     for (const b of booked) {
       if (b.status === 'WAITLISTED') continue

@@ -1,0 +1,141 @@
+import { test, expect, type Page } from '@playwright/test'
+import { SEED } from './test-db'
+
+// The Forms screen (Settings → Fields & forms → Forms) and the one editor every
+// kind of form now wears:
+//
+//  1. the sub-tabs and the single action button share ONE row
+//  2. "New form" → a full-screen chooser → the same page editor, whichever
+//     kind you pick (this used to be a two-pane modal for session forms and a
+//     page for lead-capture ones)
+//  3. a form row IS the edit affordance — the duplicate pencil is gone
+//  4. another tenant can't open the editor for your form
+//
+// Everything this spec creates it deletes again — the suite shares one seeded
+// database and one trainer.
+
+async function login(page: Page, email: string, password: string) {
+  await page.goto('/login')
+  await page.getByLabel('Email address').fill(email)
+  await page.getByLabel('Password').fill(password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.waitForURL('**/dashboard', { timeout: 30_000 })
+}
+
+test.describe('forms screen — owner happy path', () => {
+  test('tabs and the new-form action sit on one line', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/settings?tab=forms&view=forms')
+
+    const formsTab = page.getByRole('button', { name: 'forms', exact: true })
+    const fieldsTab = page.getByRole('button', { name: 'fields', exact: true })
+    const newForm = page.getByRole('button', { name: 'New form' })
+    await expect(formsTab).toBeVisible()
+    await expect(newForm).toBeVisible()
+
+    const [tabBox, actionBox] = await Promise.all([formsTab.boundingBox(), newForm.boundingBox()])
+    if (!tabBox || !actionBox) throw new Error('missing geometry')
+    // Same row: their vertical centres line up, and the action is to the right.
+    const tabMid = tabBox.y + tabBox.height / 2
+    const actionMid = actionBox.y + actionBox.height / 2
+    expect(Math.abs(tabMid - actionMid)).toBeLessThan(12)
+    expect(actionBox.x).toBeGreaterThan(tabBox.x + tabBox.width)
+
+    // Switching tabs swaps the action rather than adding a second row.
+    await fieldsTab.click()
+    await expect(page.getByRole('button', { name: 'New form' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Suggest fields' })).toBeVisible()
+  })
+
+  test('owner builds a session form on the shared editor page and it persists', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+
+    // Give the owner a field to link a question to.
+    const fieldLabel = `Confidence ${Date.now()}`
+    const created = await page.request.post('/api/custom-fields', {
+      data: { label: fieldLabel, type: 'TEXT', appliesTo: 'DOG' },
+    })
+    expect(created.ok()).toBeTruthy()
+    const fieldId = (await created.json()).id as string
+
+    await page.goto('/settings?tab=forms&view=forms')
+
+    // One door for every kind of form — a full screen, not a menu.
+    await page.getByRole('button', { name: 'New form' }).click()
+    await page.waitForURL('**/forms/new')
+    await expect(page.getByRole('link', { name: /Session form/ })).toBeVisible()
+    await expect(page.getByRole('link', { name: /Lead-capture form/ })).toBeVisible()
+    await page.getByRole('link', { name: /Session form/ }).click()
+    await page.waitForURL('**/forms/session/new')
+
+    const formName = `Editor form ${Date.now()}`
+    await page.getByLabel('Form name').fill(formName)
+    await page.getByLabel('Question 1', { exact: true }).fill('How did the session go?')
+
+    // A linked field comes from a full-screen picker, not a dropdown.
+    await page.getByRole('button', { name: 'Link a field' }).click()
+    const picker = page.getByRole('dialog', { name: 'Link a client field' })
+    await expect(picker).toBeVisible()
+    await picker.getByRole('button', { name: new RegExp(fieldLabel) }).click()
+    await expect(picker).toBeHidden()
+    await expect(page.locator('[data-question-row]')).toHaveCount(2)
+
+    const [res] = await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/session-forms') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: 'Create form' }).click(),
+    ])
+    expect(res.ok()).toBeTruthy()
+
+    // Back on the list, described in one line, with no second "edit" control.
+    await page.waitForURL('**/settings**')
+    const row = page.getByRole('link', { name: new RegExp(formName) })
+    await expect(row).toBeVisible({ timeout: 10_000 })
+    await expect(row).toContainText('2 questions')
+    await expect(page.getByRole('button', { name: 'Edit form' })).toHaveCount(0)
+
+    // The row itself opens the editor.
+    await row.click()
+    await page.waitForURL('**/forms/session/**')
+    await expect(page.getByLabel('Form name')).toHaveValue(formName)
+
+    // Clean up — delete the form from the editor, then the field via the API.
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/session-forms/') && r.request().method() === 'DELETE'),
+      page.getByRole('button', { name: 'Confirm delete' }).click(),
+    ])
+    await expect(page.getByRole('link', { name: new RegExp(formName) })).toHaveCount(0, { timeout: 10_000 })
+    await page.request.delete(`/api/custom-fields/${fieldId}`)
+  })
+
+  test('the editor refuses to save an unnamed form', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/forms/session/new')
+    await page.getByRole('button', { name: 'Create form' }).click()
+    // Not getByRole('alert') — Next's route announcer carries that role too.
+    await expect(page.getByText('Give the form a name')).toBeVisible()
+    await expect(page).toHaveURL(/\/forms\/session\/new/)
+  })
+})
+
+test.describe('forms screen — cross-tenant guard', () => {
+  test("another business can't open the editor for your session form", async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    const name = `Guarded form ${Date.now()}`
+    const created = await page.request.post('/api/session-forms', {
+      data: { name, questions: [{ id: 'q1', type: 'SHORT_TEXT', label: 'Anything?', required: false }] },
+    })
+    expect(created.ok()).toBeTruthy()
+    const formId = (await created.json()).id as string
+
+    await login(page, SEED.businessB.ownerEmail, SEED.businessB.ownerPassword)
+    await page.goto(`/forms/session/${formId}`)
+    await expect(page.getByLabel('Form name')).toHaveCount(0)
+    await expect(page.getByText(name)).toHaveCount(0)
+
+    // Tidy up as the owner again — the suite shares one database.
+    await login(page, SEED.owner.email, SEED.owner.password)
+    const deleted = await page.request.delete(`/api/session-forms/${formId}`)
+    expect(deleted.ok()).toBeTruthy()
+  })
+})

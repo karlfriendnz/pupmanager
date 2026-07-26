@@ -5,7 +5,7 @@ import { EmbedFormEditor } from '../../forms-manager'
 import { FormEditorPageChrome } from '../../_editor-page-chrome'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'New embed form' }
+export const metadata: Metadata = { title: 'New lead-capture form' }
 
 export default async function NewEmbedFormPage() {
   const session = await auth()
@@ -28,7 +28,7 @@ export default async function NewEmbedFormPage() {
   ])
 
   return (
-    <FormEditorPageChrome title="New embed form">
+    <FormEditorPageChrome title="New lead-capture form">
       <EmbedFormEditor
         customFields={customFields.map(f => ({
           id: f.id,

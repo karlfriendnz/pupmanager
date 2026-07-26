@@ -5,6 +5,7 @@
 // the rules are in one place and the pure parts are unit-tested.
 //
 // The 1:1 ClientPackage path is entirely separate and untouched.
+import { randomUUID } from 'crypto'
 import { prisma } from './prisma'
 import type { Prisma, PrismaClient } from '@/generated/prisma'
 import { effectiveBufferMins, normalizeBufferMins } from './buffer'
@@ -236,6 +237,56 @@ export function normalizeTicketQuantity(value: unknown): number {
   const n = typeof value === 'number' ? Math.trunc(value) : NaN
   if (!Number.isFinite(n)) return 1
   return Math.max(1, Math.min(n, MAX_TICKET_QUANTITY))
+}
+
+/** One line of a ticket basket: how many of one ticket type. */
+export type TicketSelection = { ticketTierId: string; quantity: number }
+
+/**
+ * Tidy a submitted basket ("3 General, 0 Other, 3 VIP") into the lines that are
+ * actually being bought.
+ *
+ * - A quantity of 0 (or negative, or fractional-down-to-nothing) is NOT a
+ *   purchase — it's a stepper the trainer left alone — so it's dropped rather
+ *   than written as an empty enrolment row.
+ * - The same ticket type twice is added up, never two rows for one type.
+ * - Each surviving line is clamped to 1…MAX_TICKET_QUANTITY, same as the
+ *   single-ticket path.
+ *
+ * Pure — the tier ids are NOT validated here; enrollInRunTickets does that
+ * against the run's own offering.
+ */
+export function normalizeTicketBasket(lines: TicketSelection[] | null | undefined): TicketSelection[] {
+  const merged = new Map<string, number>()
+  for (const line of lines ?? []) {
+    if (!line || typeof line.ticketTierId !== 'string' || line.ticketTierId.length === 0) continue
+    const n = typeof line.quantity === 'number' ? Math.trunc(line.quantity) : NaN
+    if (!Number.isFinite(n) || n <= 0) continue
+    merged.set(line.ticketTierId, (merged.get(line.ticketTierId) ?? 0) + n)
+  }
+  return [...merged.entries()].map(([ticketTierId, quantity]) => ({
+    ticketTierId,
+    quantity: Math.min(quantity, MAX_TICKET_QUANTITY),
+  }))
+}
+
+/** How many places a whole basket takes up in the room — the number that has to
+ *  fit the EVENT's capacity, on top of each type fitting its own. */
+export function ticketBasketSeats(lines: TicketSelection[]): number {
+  return lines.reduce((n, l) => n + Math.max(0, l.quantity), 0)
+}
+
+/**
+ * What a basket costs, priced line by line off each ticket type's OWN price.
+ * Never the offering's flat price — charging that for a ticket is the live bug
+ * fixed in d736544 ($45 taken for a $200 ticket).
+ */
+export function ticketBasketTotalCents(
+  lines: TicketSelection[],
+  tiers: { id: string; priceCents: number | null }[],
+): number {
+  const priceOf = new Map(tiers.map(t => [t.id, t.priceCents ?? 0]))
+  return lines.reduce((sum, l) => sum + (priceOf.get(l.ticketTierId) ?? 0) * Math.max(0, l.quantity), 0)
 }
 
 /**
@@ -1093,6 +1144,227 @@ export async function enrollInRun(args: {
       : await tx.classEnrollment.create({ data })
 
     return { enrollmentId: enrollment.id, status: decision as 'ENROLLED' | 'WAITLISTED' }
+  })
+}
+
+export type TicketEnrolmentLine = {
+  enrollmentId: string
+  ticketTierId: string
+  ticketName: string
+  quantity: number
+  unitPriceCents: number | null
+}
+
+/**
+ * Enrol one client into a TICKETED event holding SEVERAL ticket types at once —
+ * "3 General and 3 VIP" in a single action.
+ *
+ * The shape is one ClassEnrollment row per ticket type, tied together by a
+ * shared `ticketGroupId`. That is the honest shape, not a convenience:
+ *   - each row prices off its OWN tier (a ticketed event is never priced by the
+ *     package — that mismatch is the bug fixed in d736544),
+ *   - each row is counted against its OWN tier's capacity, and
+ *   - the invoice reads a line per ticket type, which is what a customer
+ *     expects to see, with the group id keeping it to ONE invoice.
+ *
+ * ALL OR NOTHING. Every tier is validated and every capacity checked before a
+ * single row is written, and the whole thing runs in one transaction — a basket
+ * that half-books while the client has been charged is the worst outcome
+ * available here, so a tier without room refuses the lot.
+ *
+ * Deliberately a SEPARATE function from enrollInRun rather than a rewrite of
+ * it: the single-ticket path (including the client's own self-booking route)
+ * still goes through enrollInRun, unchanged.
+ */
+export async function enrollInRunTickets(args: {
+  classRunId: string
+  clientId: string
+  dogId?: string | null
+  /** What they're buying. Zero-quantity lines are ignored; an empty basket is
+   *  refused rather than silently enrolling them into nothing. */
+  tickets: TicketSelection[]
+  source?: 'TRAINER' | 'SELF_SERVE'
+}): Promise<{
+  groupId: string
+  status: 'ENROLLED' | 'WAITLISTED'
+  lines: TicketEnrolmentLine[]
+  totalCents: number
+}> {
+  const basket = normalizeTicketBasket(args.tickets)
+  if (basket.length === 0) {
+    throw new ClassError('NO_TICKETS', 'Choose at least one ticket.')
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const run = await tx.classRun.findUnique({
+      where: { id: args.classRunId },
+      include: { package: true },
+    })
+    if (!run) throw new ClassError('RUN_NOT_FOUND', 'Event not found')
+    if (run.status === 'CANCELLED' || run.status === 'COMPLETED') {
+      throw new ClassError('RUN_CLOSED', 'This event is no longer taking bookings')
+    }
+
+    const mine = {
+      classRunId: args.classRunId,
+      clientId: args.clientId,
+      dogId: args.dogId ?? null,
+    }
+
+    // Taking tickets while they hold drop-in bookings on the same run would bill
+    // those sessions twice — same rule the FULL path has always had.
+    const drops = await tx.classEnrollment.count({
+      where: { ...mine, dropInSessionId: { not: null }, status: { not: 'WITHDRAWN' } },
+    })
+    if (drops > 0) {
+      throw new ClassError(
+        'ALREADY_ENROLLED',
+        'They already have drop-in sessions booked — withdraw those first.',
+      )
+    }
+
+    // Every tier must belong to THIS run's offering. A tier id alone must never
+    // be enough to bill against another event's — or another trainer's —
+    // ticket, so they're looked up scoped to run.packageId and an id that
+    // doesn't come back is rejected outright (not skipped).
+    const tiers = await tx.packageTicketTier.findMany({
+      where: { id: { in: basket.map(l => l.ticketTierId) }, packageId: run.packageId },
+      select: { id: true, name: true, capacity: true, priceCents: true },
+    })
+    const tierById = new Map(tiers.map(t => [t.id, t]))
+    const stranger = basket.find(l => !tierById.has(l.ticketTierId))
+    if (stranger) {
+      throw new ClassError('TICKET_NOT_FOUND', 'That ticket type isn’t part of this event')
+    }
+
+    // What this client already holds on this run, per ticket type. A row for a
+    // type in the basket is either reused (it was withdrawn) or a conflict (it's
+    // live) — topping up a live holding isn't what this action means. Types NOT
+    // in the basket are left completely alone: they're a separate purchase.
+    const held = await tx.classEnrollment.findMany({
+      where: { ...mine, dropInSessionId: null },
+      select: { id: true, ticketTierId: true, status: true, quantity: true },
+    })
+    const reusable = new Map<string, string>() // tierId -> withdrawn row id
+    for (const line of basket) {
+      const rows = held.filter(h => h.ticketTierId === line.ticketTierId)
+      const live = rows.find(h => h.status !== 'WITHDRAWN')
+      if (live) {
+        const name = tierById.get(line.ticketTierId)!.name
+        throw new ClassError(
+          'ALREADY_ENROLLED',
+          `They already hold ${name} tickets for this event — withdraw those first to change the number.`,
+        )
+      }
+      const withdrawn = rows.find(h => h.status === 'WITHDRAWN')
+      if (withdrawn) reusable.set(line.ticketTierId, withdrawn.id)
+    }
+    // A pre-ticket holding (no tier at all, priced off the package) is the same
+    // person already being in the event — adding tickets on top would double-bill.
+    if (held.some(h => h.ticketTierId == null && h.status !== 'WITHDRAWN')) {
+      throw new ClassError('ALREADY_ENROLLED', 'They’re already enrolled in this event')
+    }
+
+    // Each ticket type caps itself ("Early bird ×20") INDEPENDENTLY of the
+    // event's overall capacity, so every line is checked on its own first.
+    const reusedIds = [...reusable.values()]
+    for (const line of basket) {
+      const tier = tierById.get(line.ticketTierId)!
+      if (tier.capacity == null) continue
+      const sold = await tx.classEnrollment.aggregate({
+        where: {
+          classRunId: args.classRunId,
+          ticketTierId: tier.id,
+          status: 'ENROLLED',
+          // Belt and braces: the rows we're about to reuse are WITHDRAWN and so
+          // already outside this count, but never let a row be weighed against
+          // itself — that's how a re-enrolment reports its own seats as taken.
+          ...(reusedIds.length > 0 ? { id: { notIn: reusedIds } } : {}),
+        },
+        _sum: { quantity: true },
+      })
+      const left = Math.max(0, tier.capacity - (sold._sum?.quantity ?? 0))
+      if (line.quantity > left) {
+        throw new ClassError(
+          'TICKET_FULL',
+          left === 0
+            ? `${tier.name} tickets are sold out`
+            : `Only ${left} ${tier.name} ticket${left === 1 ? '' : 's'} left`,
+        )
+      }
+    }
+
+    // …and the basket as a whole still has to fit the room. Seats already held
+    // by the withdrawn rows we're about to reuse aren't in the headcount (it
+    // counts ENROLLED only), so this is a clean before-and-after comparison.
+    const seats = ticketBasketSeats(basket)
+    const headcount = await busiestSessionHeadcount(args.classRunId, tx)
+    const capacity = effectiveCapacity(run.capacity, run.package.capacity)
+    const decision = decideEnrollment({
+      capacity,
+      enrolledCount: headcount,
+      allowWaitlist: run.package.allowWaitlist,
+      seats,
+    })
+    if (decision === 'REJECTED_FULL') {
+      const left = seatsRemaining(capacity, headcount)
+      throw new ClassError(
+        'FULL',
+        left === 0
+          ? 'This event is full'
+          : `Only ${left} place${left === 1 ? '' : 's'} left in this event — that’s ${seats}.`,
+      )
+    }
+
+    // One waitlist position for the whole basket: they are one party waiting,
+    // not three people at three places in the queue.
+    let waitlistPosition: number | null = null
+    if (decision === 'WAITLISTED') {
+      const last = await tx.classEnrollment.aggregate({
+        where: { classRunId: args.classRunId, status: 'WAITLISTED' },
+        _max: { waitlistPosition: true },
+      })
+      waitlistPosition = (last._max.waitlistPosition ?? 0) + 1
+    }
+
+    // Everything has passed. Write the rows — one per ticket type, all carrying
+    // the same group id so the invoice can bill them as one basket.
+    const groupId = randomUUID()
+    const lines: TicketEnrolmentLine[] = []
+    for (const line of basket) {
+      const tier = tierById.get(line.ticketTierId)!
+      const data = {
+        ...mine,
+        type: 'FULL' as const,
+        status: decision,
+        waitlistPosition,
+        dropInSessionId: null,
+        joinedAtIndex: null,
+        ticketTierId: tier.id,
+        quantity: line.quantity,
+        ticketGroupId: groupId,
+        source: args.source ?? 'TRAINER',
+        withdrawnAt: null,
+      }
+      const reuseId = reusable.get(line.ticketTierId)
+      const row = reuseId
+        ? await tx.classEnrollment.update({ where: { id: reuseId }, data })
+        : await tx.classEnrollment.create({ data })
+      lines.push({
+        enrollmentId: row.id,
+        ticketTierId: tier.id,
+        ticketName: tier.name,
+        quantity: line.quantity,
+        unitPriceCents: tier.priceCents,
+      })
+    }
+
+    return {
+      groupId,
+      status: decision as 'ENROLLED' | 'WAITLISTED',
+      lines,
+      totalCents: ticketBasketTotalCents(basket, tiers),
+    }
   })
 }
 

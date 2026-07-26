@@ -5,7 +5,7 @@ import { EmbedFormEditor } from '../../forms-manager'
 import { FormEditorPageChrome } from '../../_editor-page-chrome'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Edit embed form' }
+export const metadata: Metadata = { title: 'Edit lead-capture form' }
 
 export default async function EditEmbedFormPage({ params }: { params: Promise<{ formId: string }> }) {
   const session = await auth()
@@ -33,7 +33,7 @@ export default async function EditEmbedFormPage({ params }: { params: Promise<{ 
   if (!form) notFound()
 
   return (
-    <FormEditorPageChrome title="Edit embed form">
+    <FormEditorPageChrome title="Edit lead-capture form">
       <EmbedFormEditor
         initial={{
           id: form.id,

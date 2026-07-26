@@ -75,6 +75,19 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
     // of the resolution below instead of being assumed to be 1 × amount.
     let quantity = 1
     let unitAmountCents: number | null = null
+    // A ticketed event bought as a basket ("3 General + 3 VIP") is several
+    // enrolment rows sharing a ticketGroupId, and it must read as ONE invoice
+    // with a line per ticket type. When that's what we're looking at, the
+    // CLASS_ENROLLMENT branch fills these two in and the single-line default
+    // below is skipped.
+    let extraLines: { description: string; quantity: number; unitAmountCents: number; amountCents: number; xeroAccountCode: string | null }[] | null = null
+    // Which enrolment ids this invoice covers. Idempotency is checked across
+    // ALL of them, so raising the invoice for the second ticket type in a
+    // basket finds the one already covering the first instead of billing twice.
+    let idempotencySourceIds: string[] = [sourceId]
+    // The row the invoice hangs off. For a basket it's the earliest of the
+    // group, so whichever member triggered this lands on the same invoice.
+    let effectiveSourceId = sourceId
 
     if (input.sourceType === 'PACKAGE') {
       const cp = await prisma.clientPackage.findFirst({
@@ -92,13 +105,15 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       // drop-in rate for a classic class that just allows drop-ins.
       //
       // An EVENT is the exception: it sells named ticket types at their own
-      // prices, and can be bought several at a time. When the enrolment names a
-      // ticket, THAT price × quantity is the bill — the package's flat price is
-      // only the fallback for everything that doesn't sell tickets.
+      // prices, and can be bought several at a time — several TYPES at a time,
+      // even ("3 General + 3 VIP", one row per type, sharing a ticketGroupId).
+      // When the enrolment names a ticket, THAT price × quantity is the bill;
+      // the package's flat price is only the fallback for everything that
+      // doesn't sell tickets.
       const enr = await prisma.classEnrollment.findFirst({
         where: { id: sourceId, clientId: input.clientId },
         select: {
-          type: true, joinedAtIndex: true, quantity: true,
+          type: true, joinedAtIndex: true, quantity: true, ticketGroupId: true,
           ticketTier: { select: { name: true, priceCents: true } },
           dropInSession: { select: { packageSessionSlot: { select: { priceCents: true, specialPriceCents: true } } } },
           classRun: {
@@ -111,19 +126,58 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       })
       if (!enr) return null
       const pkg = enr.classRun.package
-      quantity = Math.max(1, enr.quantity ?? 1)
-      unitAmountCents = enr.ticketTier
-        ? enr.ticketTier.priceCents
-        : enr.type === 'DROP_IN'
-          ? sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)
-          : (pkg.specialPriceCents ?? pkg.priceCents)
-      amountCents = unitAmountCents == null ? null : unitAmountCents * quantity
-      const ticketNote = enr.ticketTier
-        ? ` (${enr.ticketTier.name}${quantity > 1 ? ` × ${quantity}` : ''})`
-        : enr.type === 'DROP_IN'
-          ? ` (drop-in${enr.joinedAtIndex ? ` · session ${enr.joinedAtIndex}` : ''})`
-          : ''
-      description = enr.classRun.name + ticketNote
+
+      // Several ticket types bought in one action: one invoice, a line per type,
+      // each priced off its OWN tier. Never the offering's flat price — that
+      // mismatch is the bug fixed in d736544 ($45 charged for a $200 ticket).
+      const group = enr.ticketGroupId
+        ? await prisma.classEnrollment.findMany({
+            where: { ticketGroupId: enr.ticketGroupId, clientId: input.clientId },
+            orderBy: [{ enrolledAt: 'asc' }, { id: 'asc' }],
+            select: {
+              id: true, quantity: true,
+              ticketTier: { select: { name: true, priceCents: true, xeroAccountCode: true } },
+            },
+          })
+        : []
+      if (group.length > 1) {
+        idempotencySourceIds = group.map(g => g.id)
+        effectiveSourceId = group[0].id
+        extraLines = group.map((g) => {
+          const unit = g.ticketTier?.priceCents ?? 0
+          const qty = Math.max(1, g.quantity ?? 1)
+          return {
+            description: `${enr.classRun.name} (${g.ticketTier?.name ?? 'Ticket'}${qty > 1 ? ` × ${qty}` : ''})`,
+            quantity: qty,
+            unitAmountCents: unit,
+            amountCents: unit * qty,
+            // A ticket type can post to its own income account, and in a basket
+            // the types can differ — so the code goes on the LINE rather than
+            // being resolved once for the whole invoice.
+            xeroAccountCode: g.ticketTier?.xeroAccountCode ?? null,
+          }
+        })
+        amountCents = extraLines.reduce((n, l) => n + l.amountCents, 0)
+        const totalTickets = extraLines.reduce((n, l) => n + l.quantity, 0)
+        description = `${enr.classRun.name} (${totalTickets} ticket${totalTickets === 1 ? '' : 's'})`
+      } else {
+        // A class enrolment prices off the run's backing group package: a FULL seat
+        // is the package (special) price; a DROP_IN is the price of the ONE
+        // session they booked. A single named ticket is that ticket's price.
+        quantity = Math.max(1, enr.quantity ?? 1)
+        unitAmountCents = enr.ticketTier
+          ? enr.ticketTier.priceCents
+          : enr.type === 'DROP_IN'
+            ? sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)
+            : (pkg.specialPriceCents ?? pkg.priceCents)
+        amountCents = unitAmountCents == null ? null : unitAmountCents * quantity
+        const ticketNote = enr.ticketTier
+          ? ` (${enr.ticketTier.name}${quantity > 1 ? ` × ${quantity}` : ''})`
+          : enr.type === 'DROP_IN'
+            ? ` (drop-in${enr.joinedAtIndex ? ` · session ${enr.joinedAtIndex}` : ''})`
+            : ''
+        description = enr.classRun.name + ticketNote
+      }
     } else {
       const product = await prisma.product.findFirst({
         where: { id: sourceId, trainerId: input.trainerId },
@@ -142,8 +196,16 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
     // Idempotency: at most one invoice per (trainer, client, source). A repeat
     // assignment of the same source is a no-op (returns the existing id) and
     // never re-sends.
+    // `sourceId: { in: … }` rather than a plain equality: a basket of ticket
+    // types is several enrolment rows covered by ONE invoice, and asking for the
+    // second row's invoice has to find the first's rather than raise a duplicate.
     const existing = await prisma.invoice.findFirst({
-      where: { trainerId: input.trainerId, clientId: input.clientId, sourceType: input.sourceType, sourceId },
+      where: {
+        trainerId: input.trainerId,
+        clientId: input.clientId,
+        sourceType: input.sourceType,
+        sourceId: idempotencySourceIds.length > 1 ? { in: idempotencySourceIds } : sourceId,
+      },
       select: { id: true },
     })
     if (existing) return existing.id
@@ -174,20 +236,25 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
         status: 'UNPAID',
         description,
         sourceType: input.sourceType,
-        sourceId,
+        sourceId: effectiveSourceId,
         sentAt: autoSend ? new Date() : null,
         // Every invoice has >=1 line. Assignment invoices start with a single
         // line for the package/product; the trainer can add more in the editor.
+        // A basket of event tickets is the one multi-line case — a line per
+        // ticket type, so the client reads "General × 3" and "VIP × 3" rather
+        // than one mystery total.
         lines: {
-          create: [{
-            description,
-            quantity,
-            // Falls back to the total for the single-item sources, which is the
-            // same number when quantity is 1.
-            unitAmountCents: unitAmountCents ?? amountCents,
-            amountCents,
-            sortOrder: 0,
-          }],
+          create: extraLines
+            ? extraLines.map((l, i) => ({ ...l, sortOrder: i }))
+            : [{
+                description,
+                quantity,
+                // Falls back to the total for the single-item sources, which is the
+                // same number when quantity is 1.
+                unitAmountCents: unitAmountCents ?? amountCents,
+                amountCents,
+                sortOrder: 0,
+              }],
         },
       },
       select: { id: true, payToken: true },
