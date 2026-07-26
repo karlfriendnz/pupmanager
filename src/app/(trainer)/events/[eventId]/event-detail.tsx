@@ -83,12 +83,12 @@ export function EventDetail({
   // What the event has actually sold: each guest at the price of the ticket
   // they hold, times how many. The old screen multiplied the offering's flat
   // price by a headcount, which for a ticketed event was never the real number.
-  const takings = enrollments
-    .filter(e => e.status !== 'WITHDRAWN')
-    .reduce((sum, e) => {
-      const unit = e.ticketPriceCents ?? (tiers.length === 0 ? event.priceCents : null)
-      return unit == null ? sum : sum + unit * Math.max(1, e.quantity)
-    }, 0)
+  // ENROLLED only — a waitlisted guest is never invoiced, so counting them
+  // would quote money that doesn't exist.
+  const takings = going.reduce((sum, e) => {
+    const unit = e.ticketPriceCents ?? (tiers.length === 0 ? event.priceCents : null)
+    return unit == null ? sum : sum + unit * Math.max(1, e.quantity)
+  }, 0)
 
   async function withdraw(enrollmentIds: string[]) {
     setError(null)
@@ -193,7 +193,10 @@ export function EventDetail({
                     : 'Off'}
                 />
                 {event.location && <Detail label="Location" value={event.location} />}
-                <Detail label="Taken" value={takings > 0 ? formatMoney(takings, currency) : '—'} />
+                {/* "Takings", not "Taken" — the row above already counts
+                    places taken, and two meanings of the word side by side is
+                    a misread waiting to happen. */}
+                <Detail label="Takings" value={takings > 0 ? formatMoney(takings, currency) : '—'} />
               </div>
 
               {!isRichTextEmpty(event.description) && (

@@ -413,7 +413,8 @@ export function EnrolModal({
   // Changing client changes what's already booked, so a tick left over from
   // the previous one could post a session this client can't take.
   useEffect(() => { setSessionIds([]) }, [clientId])
-  // A sold-out ticket type shouldn't sit there with "2" in the box.
+  // Each ticket type has its own cap, so a "4" left over from the one with 30
+  // spare could be more than the one they've just switched to has left.
   useEffect(() => { setQuantity(1) }, [ticketTierId])
   const [notify, setNotify] = useState(true)
   // Ask them to pay now, or raise the invoice quietly and chase it later.
