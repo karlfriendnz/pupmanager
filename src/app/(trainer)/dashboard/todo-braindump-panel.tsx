@@ -76,7 +76,9 @@ export function TodoBrainDumpPanel({
 
 // ─── To-do tab ────────────────────────────────────────────────────────────────
 
-function TodoTab({
+// Exported so a screen that gives each of these a tab of its own (the To do
+// page) can mount them separately instead of nesting a tab rail inside a tab.
+export function TodoTab({
   initialTodos,
   members,
   showAssign,
@@ -300,7 +302,7 @@ function TodoRow({
 
 // ─── Brain dump tab ───────────────────────────────────────────────────────────
 
-function BrainDumpTab({ initial }: { initial: string }) {
+export function BrainDumpTab({ initial }: { initial: string }) {
   const [body, setBody] = useState(initial)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)

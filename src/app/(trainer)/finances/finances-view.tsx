@@ -69,6 +69,15 @@ function Pager({ page, totalPages, total, onGo, loading }: { page: number; total
   )
 }
 
+// The list block. On a phone it goes full-bleed: the page wrapper's 16px
+// padding plus the block's own 1px side border plus each row's 16px padding
+// stacked up to ~33px of dead margin down BOTH edges, which is what squeezed
+// the invoice titles into "Bayfair (drop-in · se…" while the screen edges sat
+// empty. Negating the page padding hands those 34px back to the content and
+// leaves a single hairline rule per row — the house's flat-block look, just
+// edge to edge. Desktop keeps the rounded card.
+const LIST_BLOCK = '-mx-4 border-y border-slate-200 bg-white overflow-hidden md:mx-0 md:rounded-2xl md:border'
+
 export interface Tx {
   id: string; description: string | null; clientName: string | null
   amountTotal: number; currency: string; applicationFeeAmount: number
@@ -105,7 +114,7 @@ function TransactionsTab() {
   return (
     <div className="flex flex-col gap-3">
       <SearchBar value={q} onChange={onSearch} placeholder="Search by item or client…" />
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+      <div className={LIST_BLOCK}>
         {loading && !data ? (
           <div className="flex items-center gap-2 text-sm text-slate-400 px-5 py-8"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
         ) : !data || data.items.length === 0 ? (
@@ -119,13 +128,13 @@ function TransactionsTab() {
                   the row is gone — it restated the same figure a third time;
                   the full breakdown lives in the transaction detail. */}
               {data.items.map(t => (
-                <button key={t.id} data-testid="tx-row" type="button" onClick={() => setOpen(t)} className="w-full text-left p-4 active:bg-slate-50">
-                  <div className="flex items-start gap-3">
+                <button key={t.id} data-testid="tx-row" type="button" onClick={() => setOpen(t)} className="w-full text-left px-4 py-3.5 active:bg-slate-50">
+                  <div className="flex items-start gap-2.5">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-slate-900 truncate">{t.description ?? '—'}</p>
                       <p className="text-xs text-slate-400 truncate">{[t.clientName, fmtDate(t.paidAt)].filter(Boolean).join(' · ')}</p>
                     </div>
-                    <div className="w-[7.5rem] shrink-0 text-right">
+                    <div className="w-28 shrink-0 text-right">
                       <p data-testid="tx-amount" className="font-semibold text-slate-900 tabular-nums whitespace-nowrap">{money(t.amountTotal, t.currency)}</p>
                       <span data-testid="tx-badge" className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${TX_BADGE[t.status] ?? TX_BADGE.PAID}`}>{TX_LABEL[t.status] ?? t.status}</span>
                     </div>
@@ -333,7 +342,7 @@ function ReceivablesTab() {
           {reconcileMsg && <span className="text-xs text-slate-500">{reconcileMsg}</span>}
         </div>
       )}
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+      <div className={LIST_BLOCK}>
         {loading && !data ? (
           <div className="flex items-center gap-2 text-sm text-slate-400 px-5 py-8"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
         ) : !data || data.items.length === 0 ? (
@@ -346,18 +355,18 @@ function ReceivablesTab() {
                 const b = receivableBadge(r)
                 const unsent = r.status === 'UNPAID' && !r.sentAt
                 return (
-                  <div key={r.id} data-testid="rcv-row" onClick={() => setOpen(r)} className="p-4 cursor-pointer active:bg-slate-50">
+                  <div key={r.id} data-testid="rcv-row" onClick={() => setOpen(r)} className="px-4 py-3.5 cursor-pointer active:bg-slate-50">
                     {/* Fixed right-hand columns. The title flexes and truncates;
                         the money column and the Xero slot are fixed widths, so
                         the amount, the badge and the icon each keep one column
                         down the whole list — including rows with no Xero icon,
                         whose slot stays reserved rather than collapsing. */}
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-2.5">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-slate-900 truncate">{r.description ?? '—'}</p>
                         <p className="text-xs text-slate-400 truncate">{[r.clientName, `issued ${fmtDate(r.createdAt)}`].filter(Boolean).join(' · ')}</p>
                       </div>
-                      <div className="w-[7.5rem] shrink-0 text-right">
+                      <div className="w-28 shrink-0 text-right">
                         <p data-testid="rcv-amount" className="font-semibold text-slate-900 tabular-nums whitespace-nowrap">{money(r.amountCents, r.currency)}</p>
                         {r.status === 'PARTIAL' && <p className="text-[11px] text-amber-600 tabular-nums whitespace-nowrap">{money(r.amountPaidCents, r.currency)} of {money(r.amountCents, r.currency)}</p>}
                         <span data-testid="rcv-badge" className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span>

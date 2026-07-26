@@ -96,6 +96,32 @@ test.describe('Finances → Invoices — the list columns line up', () => {
     expect(overflow, 'no horizontal scroll at 390px').toBeLessThanOrEqual(0)
   })
 
+  test('at 390px the rows use the full width of the phone', async ({ page }) => {
+    // The page padding + the block's side border + the row padding stacked up
+    // to ~33px of dead margin down both edges, so titles truncated to
+    // "Bayfair (drop-in · se…" with the screen edges empty. The list block now
+    // goes edge to edge; only the row's own 16px padding remains.
+    await page.setViewportSize(PHONE)
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await openFinances(page)
+
+    const row = page.getByTestId('rcv-row').first()
+    await expect(row).toBeVisible({ timeout: 20_000 })
+    const box = (await row.boundingBox())!
+    expect(Math.round(box.x), 'the row starts at the screen edge').toBeLessThanOrEqual(1)
+    expect(Math.round(box.width), 'the row spans the phone').toBeGreaterThanOrEqual(PHONE.width - 1)
+
+    // …and the title column actually got the space: the gap between the row's
+    // left edge and where the money column begins is the row padding alone.
+    const amountBox = (await row.getByTestId('rcv-amount').boundingBox())!
+    const titleWidth = amountBox.x - box.x
+    expect(titleWidth, 'the title column is no longer squeezed').toBeGreaterThan(220)
+
+    // Still no sideways scroll.
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    expect(overflow, 'no horizontal scroll at 390px').toBeLessThanOrEqual(0)
+  })
+
   test('at 1440px the desktop table keeps the same columns', async ({ page }) => {
     await page.setViewportSize(DESKTOP)
     await login(page, SEED.owner.email, SEED.owner.password)
@@ -126,7 +152,7 @@ test.describe('the invoice document action bar fits a phone', () => {
     return dialog
   }
 
-  test('at 390px the bar is one row: close, one primary action and More', async ({ page }) => {
+  test('at 390px the bar is one row: close and More, nothing else', async ({ page }) => {
     await page.setViewportSize(PHONE)
     await login(page, SEED.owner.email, SEED.owner.password)
     const dialog = await openEditableInvoice(page)
@@ -136,12 +162,13 @@ test.describe('the invoice document action bar fits a phone', () => {
     // Five bordered buttons wrapped onto three lines here; one row is ~56px.
     expect(barBox.height, 'the action bar must not wrap').toBeLessThan(64)
 
-    // Send is the primary — it's the only action that moves the invoice toward
-    // being paid. Print/Edit/Copy/Record all live behind More.
-    await expect(bar.getByRole('button', { name: 'Send' })).toBeVisible()
+    // Send/Resend moved into the sheet with everything else, so the header is
+    // the same clean row on every invoice: close, the title, More.
     const more = bar.getByRole('button', { name: 'More' })
     await expect(more).toBeVisible()
+    await expect(bar.getByRole('button', { name: /^(Send|Resend)$/ })).toHaveCount(0)
     await expect(bar.getByRole('button', { name: 'Print' })).toHaveCount(0)
+    await expect(bar.getByRole('button')).toHaveCount(2) // Close + More
 
     // Nothing runs off the screen edge.
     const dialogBox = (await dialog.boundingBox())!
@@ -152,7 +179,7 @@ test.describe('the invoice document action bar fits a phone', () => {
     }
   })
 
-  test('More opens a sheet holding every remaining action, and closes cleanly', async ({ page }) => {
+  test('More opens a sheet holding every action, and closes cleanly', async ({ page }) => {
     await page.setViewportSize(PHONE)
     await login(page, SEED.owner.email, SEED.owner.password)
     const dialog = await openEditableInvoice(page)
@@ -161,7 +188,9 @@ test.describe('the invoice document action bar fits a phone', () => {
     const sheet = page.getByRole('dialog', { name: 'Invoice actions' })
     await expect(sheet).toBeVisible()
 
-    // No action was dropped.
+    // No action was dropped — including the send, which used to be the one
+    // button the header kept for itself.
+    await expect(sheet.getByRole('button', { name: /^(Send|Resend) to the client/ })).toBeVisible()
     await expect(sheet.getByRole('button', { name: 'Edit invoice' })).toBeVisible()
     await expect(sheet.getByRole('button', { name: 'Copy pay link' })).toBeVisible()
     await expect(sheet.getByRole('button', { name: 'Record a payment' })).toBeVisible()
@@ -204,7 +233,7 @@ test.describe('the invoice document action bar fits a phone', () => {
     expect(copied).toContain(`/pay/${INV.editableInvoicePayToken}`)
   })
 
-  test('a settled invoice offers Print as the primary and never Send', async ({ page }) => {
+  test('a settled invoice offers Print in the sheet and never Send', async ({ page }) => {
     await page.setViewportSize(PHONE)
     await login(page, SEED.owner.email, SEED.owner.password)
     await openFinances(page)
@@ -213,9 +242,28 @@ test.describe('the invoice document action bar fits a phone', () => {
     const dialog = page.getByRole('dialog', { name: 'Invoice', exact: true })
     await expect(dialog).toBeVisible({ timeout: 15_000 })
     const bar = page.getByTestId('invoice-action-bar')
-    await expect(bar.getByRole('button', { name: 'Print' })).toBeVisible()
-    await expect(bar.getByRole('button', { name: /^(Send|Resend)$/ })).toHaveCount(0)
     expect((await bar.boundingBox())!.height).toBeLessThan(64)
+
+    await bar.getByRole('button', { name: 'More' }).click()
+    const sheet = page.getByRole('dialog', { name: 'Invoice actions' })
+    await expect(sheet.getByRole('button', { name: 'Print or save as PDF' })).toBeVisible()
+    await expect(sheet.getByRole('button', { name: /^(Send|Resend) to the client/ })).toHaveCount(0)
+  })
+
+  test('a Xero-synced invoice offers View in Xero from the sheet', async ({ page }) => {
+    await page.setViewportSize(PHONE)
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await openFinances(page)
+
+    // The long-title fixture is the seeded row that reached Xero.
+    const syncedRow = page.getByTestId('rcv-row').filter({ hasText: INV.longTitleInvoiceDescription.slice(0, 24) })
+    await expect(syncedRow).toHaveCount(1, { timeout: 20_000 })
+    await syncedRow.click()
+    await expect(page.getByRole('dialog', { name: 'Invoice', exact: true })).toBeVisible({ timeout: 15_000 })
+
+    await page.getByRole('button', { name: 'More' }).click()
+    const sheet = page.getByRole('dialog', { name: 'Invoice actions' })
+    await expect(sheet.getByRole('button', { name: 'View in Xero' })).toBeVisible()
   })
 })
 

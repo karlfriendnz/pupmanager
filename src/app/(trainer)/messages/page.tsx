@@ -41,7 +41,9 @@ export default async function MessagesPage({
         where: { channel: 'TRAINER_CLIENT' },
         orderBy: { createdAt: 'desc' },
         take: 1,
-        include: { sender: { select: { name: true } } },
+        // senderId + readAt drive the row's delivery status: when the last
+        // word was OURS, the row says whether the client has opened it yet.
+        select: { body: true, createdAt: true, senderId: true, readAt: true, sender: { select: { name: true } } },
       },
       _count: {
         select: {
@@ -85,6 +87,10 @@ export default async function MessagesPage({
             body: last.body,
             createdAt: last.createdAt.toISOString(),
             senderName: last.sender.name ?? null,
+            // "Ours" = anyone on this side of the thread, not just the signed-in
+            // staff member: a colleague's reply is still the business replying.
+            outgoing: last.senderId !== c.userId,
+            readAt: last.readAt ? last.readAt.toISOString() : null,
           }
         : null,
     }
@@ -134,23 +140,34 @@ export default async function MessagesPage({
   return (
     // Bounded to viewport height so the two-pane layout can scroll its
     // panes internally. The trainer-shell outer is `min-h-screen` (it
-    // grows when a page is taller than the viewport), so flex-1 +
-    // min-h-0 alone wouldn't constrain this. On mobile we subtract the
-    // bottom tab nav (~5rem) so the composer sits just above the nav
-    // instead of behind it; desktop has no bottom nav so it gets the
-    // full viewport.
+    // grows when a page is taller than the viewport), so on DESKTOP a
+    // flex-1 pane wouldn't be constrained and we still measure off the
+    // viewport.
     //
     // Note: no top padding — the messages surface goes flush against
     // its container so there's no dead band above PageHeader, and the
     // chrome below PageHeader (tabs + list) flows seamlessly.
     <>
       <PageHeader title="Messages" />
-      {/* Cap the two-pane content to the viewport minus the
-          PageHeader's height (69px). The page itself never scrolls;
-          the inner panes scroll internally. flex-1 alone wouldn't
-          constrain it because <main>'s parent uses min-h-screen, so
-          main grows to fit oversized content rather than capping. */}
-      <div className="flex flex-col overflow-hidden px-4 md:px-8 h-[calc(100dvh-5rem-69px)] md:h-[calc(100dvh-69px)]">
+      {/* The pane must have a DEFINITE height — <main>'s own height is
+          content-driven (its parent is min-h-screen), so a flex-1 pane
+          would size to the whole message history and scroll the page
+          instead of the list.
+          PHONE: viewport, minus the shell's top bar (h-14 + 1px border,
+          plus the inset it reserves and the capped inset <main> adds on
+          top), minus the bottom tab bar (58px).
+          The old `calc(100dvh-5rem-69px)` guessed both ends and got both
+          wrong: 5rem for a tab bar that measures 58px, and 69px for a
+          PageHeader that renders NOTHING on the trainer phone (the
+          shell's top bar owns the title there). Those two errors are the
+          34px band Karl saw between the composer and the tabs.
+          `-mb-20` cancels <main>'s pb-20, which exists so ordinary
+          scrolling pages clear the tab bar — this pane measures the bar
+          itself, so counting it twice would push the page taller than
+          the viewport. env(safe-area-inset-bottom) is deliberately
+          absent: `html[data-native] body` already pads it once, globally.
+          DESKTOP: no tab bar, so it keeps viewport-minus-header. */}
+      <div className="flex flex-col overflow-hidden px-4 -mb-20 h-[calc(100dvh-57px-58px-env(safe-area-inset-top,0px)-min(env(safe-area-inset-top,0px),1rem))] md:mb-0 md:px-8 md:h-[calc(100dvh-69px)]">
         <MessagesView
           activeClients={activeClients}
           inactiveClients={inactiveClients}
@@ -177,6 +194,9 @@ async function loadMessages(clientId: string, trainerId: string) {
     body: m.body,
     senderId: m.senderId,
     createdAt: m.createdAt.toISOString(),
+    // Set when the OTHER party opened the thread, so on our own messages it is
+    // literally "the client has read this".
+    readAt: m.readAt ? m.readAt.toISOString() : null,
     sender: { name: m.sender.name, email: m.sender.email ?? '' },
   }))
 }

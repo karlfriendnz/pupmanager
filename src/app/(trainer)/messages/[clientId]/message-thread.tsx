@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
-import { Send, Mail, X } from 'lucide-react'
+import { Send, Mail, X, Check, CheckCheck } from 'lucide-react'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { htmlHasText } from '@/lib/email-html'
 
@@ -11,10 +11,34 @@ interface Message {
   body: string
   senderId: string
   createdAt: string
+  // Stamped when the OTHER party opens the thread, so on our own messages it
+  // is the client's read receipt. Null on an optimistic row until the POST
+  // comes back.
+  readAt: string | null
   sender: { name: string | null; email: string }
 }
 
 type EmailTemplate = { id: string; name: string; category: string | null; subject: string; body: string }
+
+// Read receipt inside one of OUR bubbles. Same truth as the list's tick, but
+// dressed for a blue background. `readAt` is the only delivery signal the
+// schema keeps — there is no per-device ack — so an unread message says "Sent"
+// rather than claiming it was delivered to a handset.
+function ThreadTick({ readAt }: { readAt: string | null }) {
+  const read = !!readAt
+  return (
+    <span
+      data-testid="message-tick"
+      data-read={read ? 'true' : 'false'}
+      aria-label={read ? 'Read by the client' : 'Sent — not read yet'}
+      title={read ? `Read ${new Date(readAt!).toLocaleString('en-NZ', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Sent — not read yet'}
+      className={`inline-flex items-center gap-1 ${read ? 'text-white' : 'text-blue-200'}`}
+    >
+      {read ? <CheckCheck className="h-3.5 w-3.5" strokeWidth={1.75} /> : <Check className="h-3.5 w-3.5" strokeWidth={1.75} />}
+      {read ? 'Read' : 'Sent'}
+    </span>
+  )
+}
 
 export function MessageThread({
   clientId,
@@ -112,6 +136,15 @@ export function MessageThread({
         setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
       } catch { /* ignore malformed events */ }
     })
+    // The client opened the thread — flip our ticks to "Read" while the
+    // trainer is still looking at it, rather than on the next page load.
+    es.addEventListener('read', (ev) => {
+      try {
+        const { ids, readAt } = JSON.parse(ev.data) as { ids: string[]; readAt: string }
+        const set = new Set(ids)
+        setMessages(prev => prev.map(m => (set.has(m.id) && !m.readAt ? { ...m, readAt } : m)))
+      } catch { /* ignore malformed events */ }
+    })
     // Server rotates the connection ~every 4 minutes to dodge the
     // function timeout. EventSource reconnects automatically on
     // close, so we just need to close on unmount.
@@ -136,6 +169,7 @@ export function MessageThread({
       body: text,
       senderId: currentUserId,
       createdAt: new Date().toISOString(),
+      readAt: null,
       sender: { name: null, email: '' },
     }
     setMessages(prev => [...prev, optimistic])
@@ -171,14 +205,22 @@ export function MessageThread({
           const isMine = msg.senderId === currentUserId
           return (
             <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-xs md:max-w-sm rounded-2xl px-4 py-2.5 text-sm ${
+              <div data-testid="message-bubble" data-mine={isMine ? 'true' : 'false'} className={`max-w-xs md:max-w-sm rounded-2xl px-4 py-2.5 text-sm ${
                 isMine
                   ? 'bg-blue-600 text-white rounded-br-sm'
                   : 'bg-slate-100 text-slate-900 rounded-bl-sm'
               }`}>
                 <p className="break-words">{msg.body}</p>
-                <p className={`text-xs mt-1 ${isMine ? 'text-blue-200' : 'text-slate-400'}`}>
+                <p className={`text-xs mt-1 flex items-center gap-1.5 ${isMine ? 'text-blue-200 justify-end' : 'text-slate-400'}`}>
                   {new Date(msg.createdAt).toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit' })}
+                  {/* Only on OUR side: readAt on an incoming message just means
+                      we opened the thread, which is not news. Sending rows have
+                      no id from the server yet, so they say "Sending…". */}
+                  {isMine && (
+                    msg.id.startsWith('temp-')
+                      ? <span className="text-blue-200/80">Sending…</span>
+                      : <ThreadTick readAt={msg.readAt} />
+                  )}
                 </p>
               </div>
             </div>
@@ -189,13 +231,12 @@ export function MessageThread({
 
       {/* Composer — sticky to the bottom of the thread pane. flex-shrink-0
           stops it from collapsing if the messages list ever needs more
-          room. Safe-area-inset-bottom keeps the input clear of the iOS
-          home indicator on devices where this pane reaches the viewport
-          edge. */}
-      <div
-        className="flex-shrink-0 sticky bottom-0 border-t border-slate-100 px-4 pt-3 bg-white"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
-      >
+          room.
+          It does NOT pad env(safe-area-inset-bottom): `html[data-native]
+          body` already pads it once for the whole app, and the tab bar
+          the pane sits above pads it again for itself. Adding a third
+          copy here is what left a band of white below the input. */}
+      <div className="flex-shrink-0 sticky bottom-0 border-t border-slate-100 px-4 py-3 bg-white">
         {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
         <form onSubmit={sendMessage} className="flex gap-2">
           <button

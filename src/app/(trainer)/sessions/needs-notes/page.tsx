@@ -5,7 +5,8 @@ import { ListTodo, FileText } from 'lucide-react'
 import { CurrencyGlyph } from '@/components/currency-glyph'
 import { PageHeader } from '@/components/shared/page-header'
 import { NeedsNotesList, type TodoRow } from './needs-notes-list'
-import { TodoBrainDumpPanel } from '../../dashboard/todo-braindump-panel'
+import { TodoTabs, type TodoTabSpec, type TodoTabId } from './todo-tabs'
+import { TodoTab, BrainDumpTab } from '../../dashboard/todo-braindump-panel'
 import { hasAddon } from '@/lib/billing'
 import { formatMoney } from '@/lib/money'
 import type { Metadata } from 'next'
@@ -65,7 +66,11 @@ function sessionValueCents(s: { clientPackage: { package: { priceCents: number |
   return Math.round(pkg.priceCents / pkg.sessionCount)
 }
 
-export default async function SessionsTodoPage() {
+export default async function SessionsTodoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>
+}) {
   const session = await auth()
   if (!session) redirect('/login')
   const trainerId = session.user.trainerId
@@ -124,6 +129,89 @@ export default async function SessionsTodoPage() {
     }
   })
 
+  // Three tabs rather than three stacked lists: the sessions waiting on a
+  // write-up or an invoice (Notes), the trainer's own list (To do), and the
+  // scratchpad (Brain dump). The last two only exist with the add-on on.
+  const notesPanel = (
+    <>
+      {sessions.length === 0 ? (
+        <>
+          <p className="text-sm text-slate-500">
+            You&apos;re all caught up — every past session has notes recorded and is invoiced.
+          </p>
+          <div className="mt-4 rounded-2xl bg-white border border-dashed border-slate-200 p-10 text-center">
+            <ListTodo className="h-8 w-8 mx-auto text-slate-300" />
+            <p className="text-sm font-medium text-slate-600 mt-3">All caught up</p>
+            <p className="text-xs text-slate-400 mt-1">Past sessions only show here while notes or invoicing are pending.</p>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-6 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-white border border-amber-100 p-4 flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <FileText className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-2xl font-bold text-slate-900 leading-none tabular-nums">{needsNotesCount}</p>
+                <p className="text-xs text-slate-500 mt-1">need notes</p>
+              </div>
+            </div>
+            <div className="rounded-2xl bg-white border border-rose-100 p-4 flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-600 text-white">
+                <CurrencyGlyph className="text-lg" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-2xl font-bold text-slate-900 leading-none tabular-nums">
+                  {totalInvoiceCents > 0 ? formatMoney(totalInvoiceCents, currency) : needsInvoiceCount}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {needsInvoiceCount} session{needsInvoiceCount === 1 ? '' : 's'} to invoice
+                </p>
+              </div>
+            </div>
+          </div>
+          <NeedsNotesList rows={rows} currency={currency} />
+        </>
+      )}
+    </>
+  )
+
+  const memberOptions = members.map(m => ({ id: m.id, name: m.user.name?.trim() || m.user.email || 'Staff member' }))
+  const tabs: TodoTabSpec[] = [
+    { id: 'notes', label: 'Notes', count: sessions.length, panel: notesPanel },
+  ]
+  if (hasTodos) {
+    tabs.push(
+      {
+        id: 'todo',
+        label: 'To do',
+        count: todos.filter(t => !t.done).length,
+        panel: (
+          <TodoTab
+            initialTodos={todos.map(t => ({
+              id: t.id,
+              title: t.title,
+              done: t.done,
+              dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+              completedAt: t.completedAt ? t.completedAt.toISOString() : null,
+              createdAt: t.createdAt.toISOString(),
+              assignee: t.assignedTo
+                ? { id: t.assignedTo.id, name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Staff member' }
+                : null,
+            }))}
+            members={memberOptions}
+            showAssign={memberOptions.length > 1}
+          />
+        ),
+      },
+      { id: 'braindump', label: 'Brain dump', panel: <BrainDumpTab initial={brainDump?.body ?? ''} /> },
+    )
+  }
+
+  const requested = (await searchParams).tab
+  const initialTab = (tabs.some(t => t.id === requested) ? requested : 'notes') as TodoTabId
+
   return (
     <>
       <PageHeader
@@ -132,73 +220,7 @@ export default async function SessionsTodoPage() {
         actions={<ListTodo className="h-5 w-5 text-amber-500" />}
       />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
-
-        {/* The trainer's own list first — what they've decided needs doing,
-            ahead of what the system worked out needs doing. */}
-        {hasTodos && (
-          <div className="mb-6">
-            <TodoBrainDumpPanel
-              initialTodos={todos.map(t => ({
-                id: t.id,
-                title: t.title,
-                done: t.done,
-                dueDate: t.dueDate ? t.dueDate.toISOString() : null,
-                completedAt: t.completedAt ? t.completedAt.toISOString() : null,
-                createdAt: t.createdAt.toISOString(),
-                assignee: t.assignedTo
-                  ? { id: t.assignedTo.id, name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Staff member' }
-                  : null,
-              }))}
-              initialBrainDump={brainDump?.body ?? ''}
-              members={members.map(m => ({ id: m.id, name: m.user.name?.trim() || m.user.email || 'Staff member' }))}
-            />
-          </div>
-        )}
-
-        <h2 className="mb-3 text-base font-semibold text-slate-900">Sessions to wrap up</h2>
-
-        <div className="mb-6">
-          {sessions.length === 0 ? (
-            <p className="text-sm text-slate-500 mt-1">
-              You&apos;re all caught up — every past session has notes recorded and is invoiced.
-            </p>
-          ) : (
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl bg-white border border-amber-100 p-4 flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                  <FileText className="h-5 w-5" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-2xl font-bold text-slate-900 leading-none tabular-nums">{needsNotesCount}</p>
-                  <p className="text-xs text-slate-500 mt-1">need notes</p>
-                </div>
-              </div>
-              <div className="rounded-2xl bg-white border border-rose-100 p-4 flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-600 text-white">
-                  <CurrencyGlyph className="text-lg" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-2xl font-bold text-slate-900 leading-none tabular-nums">
-                    {totalInvoiceCents > 0 ? formatMoney(totalInvoiceCents, currency) : needsInvoiceCount}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {needsInvoiceCount} session{needsInvoiceCount === 1 ? '' : 's'} to invoice
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {sessions.length === 0 ? (
-          <div className="rounded-2xl bg-white border border-dashed border-slate-200 p-10 text-center">
-            <ListTodo className="h-8 w-8 mx-auto text-slate-300" />
-            <p className="text-sm font-medium text-slate-600 mt-3">All caught up</p>
-            <p className="text-xs text-slate-400 mt-1">Past sessions only show here while notes or invoicing are pending.</p>
-          </div>
-        ) : (
-          <NeedsNotesList rows={rows} currency={currency} />
-        )}
+        <TodoTabs tabs={tabs} initial={initialTab} />
       </div>
     </>
   )

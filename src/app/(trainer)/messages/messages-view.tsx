@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { MessageCircle, ArrowLeft } from 'lucide-react'
+import { MessageCircle, ArrowLeft, Check, CheckCheck } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { ClientAvatar } from '@/components/shared/client-avatar'
@@ -20,6 +20,10 @@ export interface ClientRow {
     body: string
     createdAt: string
     senderName: string | null
+    /** The last word was ours (the business), not the client's. */
+    outgoing: boolean
+    /** When the recipient opened it. Only meaningful on an outgoing message. */
+    readAt: string | null
   } | null
 }
 
@@ -28,6 +32,7 @@ export interface ThreadMessage {
   body: string
   senderId: string
   createdAt: string
+  readAt: string | null
   sender: { name: string | null; email: string }
 }
 
@@ -47,6 +52,30 @@ interface Props {
   selectedClient: SelectedClient | null
   threadMessages: ThreadMessage[]
   currentUserId: string
+}
+
+// Delivery state for a message WE sent. `Message.readAt` is stamped when the
+// other party opens the thread, so on an outgoing message it means exactly
+// "the client has read this" — nothing is inferred or faked. There is no
+// separate delivery receipt in the schema (no per-device ack), so a message
+// that exists but hasn't been read reads as "Sent", not "Delivered".
+function DeliveryTick({ readAt, className }: { readAt: string | null; className?: string }) {
+  const read = !!readAt
+  const label = read ? 'Read by the client' : 'Sent — not read yet'
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={read ? `Read ${new Date(readAt!).toLocaleString('en-NZ', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : label}
+      data-read={read ? 'true' : 'false'}
+      data-testid="delivery-tick"
+      className={cn('inline-flex items-center gap-1 text-[11px]', read ? 'text-blue-600' : 'text-slate-400', className)}
+    >
+      {read
+        ? <CheckCheck className="h-3.5 w-3.5" strokeWidth={1.75} />
+        : <Check className="h-3.5 w-3.5" strokeWidth={1.75} />}
+    </span>
+  )
 }
 
 // Two-pane messages layout. Desktop: list on the left (320px), thread on
@@ -170,17 +199,7 @@ export function MessagesView({
                     >
                       <CardBody className="px-4 py-2.5 md:pt-3 md:pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="relative flex-shrink-0">
-                            <ClientAvatar size="lg" name={client.displayName} dogPhotoUrl={client.dogPhotoUrl} />
-                            {client.unread > 0 && (
-                              <span
-                                aria-label={`${client.unread} unread`}
-                                className="absolute -top-1 -right-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white tabular-nums ring-2 ring-white"
-                              >
-                                {client.unread > 9 ? '9+' : client.unread}
-                              </span>
-                            )}
-                          </div>
+                          <ClientAvatar size="lg" name={client.displayName} dogPhotoUrl={client.dogPhotoUrl} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
                               <p className={cn(
@@ -198,16 +217,37 @@ export function MessagesView({
                                 </span>
                               )}
                             </div>
-                            {lastMsg ? (
-                              <p className={cn(
-                                'text-xs truncate mt-0.5',
-                                client.unread > 0 ? 'text-slate-700 font-medium' : 'text-slate-500',
-                              )}>
-                                {lastMsg.senderName ?? 'Unknown'}: {lastMsg.body}
-                              </p>
-                            ) : (
-                              <p className="text-xs text-slate-400 mt-0.5 italic">No messages yet</p>
-                            )}
+                            {/* Second line: who said what last, with the two
+                                things a trainer scans this list for — has the
+                                client written something I haven't read, and did
+                                my last message land. The unread badge sits at
+                                the trailing edge (one per row, in a column) —
+                                it used to hang off the avatar, where it read as
+                                part of the photo rather than as a count. */}
+                            <div className="mt-0.5 flex items-center gap-1.5">
+                              {lastMsg?.outgoing && (
+                                <DeliveryTick readAt={lastMsg.readAt} className="flex-shrink-0" />
+                              )}
+                              {lastMsg ? (
+                                <p className={cn(
+                                  'min-w-0 flex-1 truncate text-xs',
+                                  client.unread > 0 ? 'text-slate-700 font-medium' : 'text-slate-500',
+                                )}>
+                                  {lastMsg.senderName ?? 'Unknown'}: {lastMsg.body}
+                                </p>
+                              ) : (
+                                <p className="min-w-0 flex-1 text-xs text-slate-400 italic">No messages yet</p>
+                              )}
+                              {client.unread > 0 && (
+                                <span
+                                  data-testid="thread-unread"
+                                  aria-label={`${client.unread} unread`}
+                                  className="inline-flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white tabular-nums"
+                                >
+                                  {client.unread > 9 ? '9+' : client.unread}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </CardBody>

@@ -28,6 +28,13 @@ export const SEED = {
   client: { email: 'client@e2e.test', password: 'Password123!', name: 'Sarah Client' },
   // A published public embed form, used to test the public-form rate limiter.
   embedFormId: 'e2eembedform0000000000000',
+  // A single NEW enquiry on Business A with a fixed id — the enquiries spec
+  // taps its row and asserts it lands on /enquiries/<this id>.
+  enquiryId: 'e2eenquiry000000000000000',
+  enquiryName: 'Tessa Tapper',
+  // A PENDING booking request with 4 proposed sessions, so /schedule can render
+  // its preview banner (the card that read one-word-per-line on a phone).
+  previewRequestId: 'e2ebookingreq00000000000x',
   // Business A clients with fixed ids: one assigned to staff (mass-assignment
   // target), one unassigned (staff without clients.viewAll must NOT reach it).
   assignedClientId: 'e2eaassignedclient000000x',

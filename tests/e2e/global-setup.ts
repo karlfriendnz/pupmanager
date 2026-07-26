@@ -84,6 +84,16 @@ export default async function globalSetup() {
     await prisma.trainerAddon.create({
       data: { trainerId: profile.id, itemId: 'timesheets', active: true },
     })
+    // To-do & brain dump is free but off-by-default. With it off the To do
+    // screen has only its Notes tab, so the tabs spec needs it on — and the
+    // dashboard's right rail then carries the same scratchpad, which is how a
+    // real trainer with the add-on sees it.
+    await prisma.billingItem.create({
+      data: { id: 'todos', kind: 'ADDON', name: 'To-do & brain dump', description: 'Scratchpad for to-dos and notes', priceMonthly: 0, sortOrder: 10, isActive: true },
+    })
+    await prisma.trainerAddon.create({
+      data: { trainerId: profile.id, itemId: 'todos', active: true },
+    })
     // Group classes is free + default-on (no TrainerAddon row = enabled), but
     // toggling it writes a TrainerAddon whose itemId is an FK to BillingItem —
     // without this row the toggle 500s on the constraint.
@@ -189,6 +199,35 @@ export default async function globalSetup() {
     await prisma.embedForm.create({
       data: { id: SEED.embedFormId, trainerId: profile.id, title: 'Get in touch', isActive: true },
     })
+    // One NEW enquiry with a known id, so the enquiries spec can tap a row and
+    // assert exactly where it lands. (The rate-limit spec also creates
+    // enquiries, but its count varies — this one is deterministic.)
+    await prisma.enquiry.create({
+      data: {
+        id: SEED.enquiryId, trainerId: profile.id, formId: SEED.embedFormId,
+        name: SEED.enquiryName, email: 'tap-me@e2e.test', phone: '+64 21 000 111',
+        dogName: 'Pixel', dogBreed: 'Border Collie',
+        message: 'Our pup pulls on the lead — can you help?',
+        status: 'NEW',
+      },
+    })
+    // A PENDING booking request proposing 4 sessions, so /schedule?previewRequest=
+    // renders the approve/decline preview card.
+    {
+      const base = new Date()
+      base.setUTCHours(10, 0, 0, 0)
+      const dates = [7, 14, 21, 28].map(d => new Date(base.getTime() + d * 86_400_000).toISOString())
+      await prisma.bookingRequest.create({
+        data: {
+          id: SEED.previewRequestId,
+          trainerId: profile.id,
+          clientId: SEED.assignedClientId,
+          packageId: SEED.selfBookPackageId,
+          sessionDates: dates,
+          status: 'PENDING',
+        },
+      })
+    }
     // A published one-off membership bundling the self-book package, so the
     // client Offerings flow has a "Memberships" type to drill into. Buying it
     // needs Stripe, so specs stop at the card (the buy route has unit coverage).

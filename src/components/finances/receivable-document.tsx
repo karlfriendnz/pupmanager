@@ -103,9 +103,9 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   // tab, the Overview card AND Finances — not just one of them.
   const [payOpen, setPayOpen] = useState(false)
   // Five bordered buttons overflowed the bar at 390px (labels wrapping onto
-  // three lines, the last one off the screen edge), so the bar now carries the
-  // close control plus ONE primary action and everything else lives behind
-  // "More".
+  // three lines, the last one off the screen edge). The bar now carries the
+  // close control and "More" alone — Resend and View in Xero moved in there
+  // too, so the header reads the same whatever state the invoice is in.
   const [menuOpen, setMenuOpen] = useState(false)
   const moreRef = useRef<HTMLButtonElement>(null)
 
@@ -237,12 +237,13 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   }
 
   // ── Toolbar actions ───────────────────────────────────────────────────────
-  // planInvoiceActions decides what earns the bar's one visible slot and what
-  // moves into "More" (see invoice-actions.ts); this only dresses each key.
+  // planInvoiceActions decides which actions are legal for this invoice and the
+  // order "More" lists them (see invoice-actions.ts); this only dresses each
+  // key. Nothing sits in the bar itself any more.
   const plan = planInvoiceActions({
     canSend, editable, payable, hasPayToken: !!data?.payToken, loaded: !!data,
+    hasXeroInvoice: !!data?.xeroInvoiceId,
   })
-  const sendIsPrimary = plan.primary === 'send'
   function pick(action: () => void) {
     return () => { setMenuOpen(false); action() }
   }
@@ -285,6 +286,20 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
       icon: <Check className="h-5 w-5" strokeWidth={1.75} />,
       onSelect: pick(() => setPayOpen(true)),
     },
+    xero: {
+      key: 'xero',
+      label: 'View in Xero',
+      hint: 'Opens this invoice in your Xero org',
+      // Xero's own mark rather than a line icon — it's a jump to another
+      // product, and the logo is what a trainer looks for.
+      icon: (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src="/logos/xero-icon.webp" alt="" className="h-5 w-5 rounded-full" />
+      ),
+      onSelect: pick(() => {
+        if (data?.xeroInvoiceId) window.open(xeroInvoiceUrl(data.xeroInvoiceId), '_blank', 'noopener,noreferrer')
+      }),
+    },
   }
   const menuActions = plan.menu.map(k => ACTION_DETAIL[k])
 
@@ -325,43 +340,28 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
               </button>
             </>
           ) : (
-            <>
-              {/* One primary action, then everything else behind More — five
-                  bordered buttons did not fit a 390px bar. */}
-              {sendIsPrimary ? (
-                <button
-                  type="button"
-                  onClick={send}
-                  disabled={sending}
-                  // A resend puts another email in someone's inbox, so it asks
-                  // first; the initial send doesn't need to.
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-semibold disabled:opacity-60 ${
-                    alreadySent
-                      ? 'border border-slate-200 text-slate-700 hover:bg-slate-50'
-                      : 'bg-accent hover:bg-accent-strong text-white'
-                  }`}
-                >
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} /> : <Send className="h-4 w-4" strokeWidth={1.75} />}
-                  {sending ? 'Sending…' : alreadySent ? 'Resend' : 'Send'}
-                </button>
-              ) : (
-                <button type="button" onClick={() => window.print()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                  <Printer className="h-4 w-4" strokeWidth={1.75} /> Print
-                </button>
-              )}
-              {menuActions.length > 0 && (
-                <button
-                  ref={moreRef}
-                  type="button"
-                  onClick={() => setMenuOpen(true)}
-                  aria-haspopup="dialog"
-                  aria-expanded={menuOpen}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} /> More
-                </button>
-              )}
-            </>
+            // Everything the invoice can do lives behind More — Send/Resend,
+            // Edit, Copy pay link, Record a payment, Print and View in Xero —
+            // so the header is the same clean row on every invoice.
+            //
+            // `sending` still shows here: the send it kicks off outlives the
+            // sheet that started it, and a trainer needs to see it running.
+            menuActions.length > 0 && (
+              <button
+                ref={moreRef}
+                type="button"
+                onClick={() => setMenuOpen(true)}
+                disabled={sending}
+                aria-haspopup="dialog"
+                aria-expanded={menuOpen}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                {sending
+                  ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+                  : <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} />}
+                {sending ? 'Sending…' : 'More'}
+              </button>
+            )
           )}
         </div>
         {menuOpen && (
@@ -510,13 +510,9 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
                 )
               })()}
 
-              {/* Xero — deep link to the invoice in Xero when synced. */}
-              {data.xeroInvoiceId && (
-                <a href={xeroInvoiceUrl(data.xeroInvoiceId)} target="_blank" rel="noopener noreferrer" className="mt-8 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:underline print:hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logos/xero-icon.webp" alt="View in Xero" className="h-[18px] w-[18px] rounded-full" /> View in Xero
-                </a>
-              )}
+              {/* The deep link into Xero moved into the More sheet — it was the
+                  same action offered twice once the sheet carried it. Only the
+                  "it hasn't got there yet" note stays in the document. */}
               {!data.xeroInvoiceId && data.xeroSyncError && (
                 <p className="mt-8 text-xs text-slate-400 print:hidden">Xero sync pending — {data.xeroSyncError}</p>
               )}

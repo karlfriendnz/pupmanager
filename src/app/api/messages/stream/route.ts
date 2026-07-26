@@ -52,6 +52,11 @@ export async function GET(req: Request) {
   // created after the stream opened. Initial messages were already
   // rendered server-side by the parent page.
   let lastSeenAt = new Date()
+  // Read receipts move independently of new messages: the other party can open
+  // the thread hours after the last one was written. Tracked separately so the
+  // "Sent → Read" tick flips while the sender is still looking at it, instead
+  // of only on the next full page load.
+  let lastReadAt = new Date()
   let closed = false
 
   const stream = new ReadableStream({
@@ -99,9 +104,27 @@ export async function GET(req: Request) {
                   body: m.body,
                   senderId: m.senderId,
                   createdAt: m.createdAt.toISOString(),
+                  readAt: m.readAt ? m.readAt.toISOString() : null,
                   sender: { name: m.sender.name },
                 })
               }
+            }
+
+            // Our own messages the other party has read since the last poll.
+            // Ids only — the body is already on screen.
+            const justRead = await prisma.message.findMany({
+              where: {
+                clientId,
+                channel: 'TRAINER_CLIENT',
+                senderId: session.user.id,
+                readAt: { gt: lastReadAt },
+              },
+              orderBy: { readAt: 'asc' },
+              select: { id: true, readAt: true },
+            })
+            if (justRead.length > 0) {
+              lastReadAt = justRead[justRead.length - 1].readAt!
+              send('read', { ids: justRead.map(m => m.id), readAt: lastReadAt.toISOString() })
             }
           }
           // Tell the client we're closing on our own terms so its
