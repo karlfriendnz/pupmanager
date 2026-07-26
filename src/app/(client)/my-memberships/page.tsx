@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { getActiveClient } from '@/lib/client-context'
 import { prisma } from '@/lib/prisma'
-import { loadPublishedMemberships } from '@/lib/client-memberships'
+import { loadPublishedMemberships, PACKAGES_HIDDEN_FROM_CLIENTS } from '@/lib/client-memberships'
 import { ClientMembershipsView } from './memberships-view'
 
 export const metadata: Metadata = { title: 'Packages' }
@@ -20,7 +20,9 @@ export default async function ClientMembershipsPage() {
   })
   if (!profile) redirect('/login')
 
-  const memberships = await loadPublishedMemberships(profile.trainerId, profile.id)
+  const memberships = PACKAGES_HIDDEN_FROM_CLIENTS
+    ? []
+    : await loadPublishedMemberships(profile.trainerId, profile.id)
 
   return (
     <ClientMembershipsView
