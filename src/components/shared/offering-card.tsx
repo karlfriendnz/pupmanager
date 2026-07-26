@@ -103,16 +103,18 @@ export function OfferingCard({
   dimmed?: boolean
 }) {
   const body = (
-    <div className="flex min-w-0 flex-1 flex-col">
-      {/* Photo across the top when there is one. Without one, a small mark
-          beside the title — a 128px block of flat colour was a lot of card
-          spent saying "this is a package". */}
-      {imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt="" className="mb-3 h-32 w-full rounded-xl object-cover" />
-      )}
-
-      <div className="flex min-w-0 items-start gap-3">
+    // Content left, cover photo right — the photo used to be a banner across
+    // the top, which pushed everything that tells you what the offering IS
+    // below the fold of the card and put the buttons on top of the picture.
+    //
+    // Below @sm it stacks instead, photo last. A phone card is ~300px of
+    // content; splitting that two ways crushes the title into a column too
+    // narrow to read, which is the exact failure this card was rewritten to
+    // end. The breakpoint is a CONTAINER query, not a viewport one: the same
+    // card is full width in list view and a third of the width in grid view on
+    // the same screen, so only the card's own width can decide.
+    <div className="flex min-w-0 flex-1 flex-col gap-3 @sm/card:flex-row @sm/card:items-stretch">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
         {!imageUrl && tile && (
           <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tile.className ?? 'bg-blue-50 text-blue-600'}`}>
             {tile.icon}
@@ -166,6 +168,22 @@ export function OfferingCard({
           {note && <p className={`mt-1.5 text-xs font-medium ${FACT_TONE[note.tone ?? 'warn']}`}>{note.label}</p>}
         </div>
       </div>
+
+      {/* The photo. object-cover throughout, so a portrait shot of a dog is
+          cropped, never squashed. Side by side it's a fixed 160px column that
+          takes the card's full height; stacked it's a 128px band under the
+          text. Fixed rather than a fraction because the action buttons have to
+          know exactly how far to step left of it (see below) — and because a
+          photo that grows with a 1400px-wide list card would be the loudest
+          thing on the page. */}
+      {imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt=""
+          className="h-32 w-full shrink-0 rounded-xl object-cover @sm/card:h-auto @sm/card:min-h-24 @sm/card:w-40"
+        />
+      )}
     </div>
   )
 
@@ -191,14 +209,13 @@ export function OfferingCard({
     </div>
   )
 
-  // One card, at every width. The drag handle and the actions share a row
-  // across the top and everything below it opens the offering — which is what
-  // stops the actions (three 36px buttons) from eating the width the title
-  // needs on a phone.
+  // One card, at every width — the CARD decides how it lays out from its own
+  // width (@container), never from the viewport's, because list view and grid
+  // view show the same component at very different widths on one screen.
   return (
     <div
       className={cn(
-        'group relative flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_8px_rgba(15,31,36,0.04)] transition-colors hover:border-blue-200',
+        '@container/card group relative flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_8px_rgba(15,31,36,0.04)] transition-colors hover:border-blue-200',
         // Room for the absolutely-placed grip on the left.
         dragHandle && 'pl-9',
         dimmed && 'opacity-60',
@@ -209,7 +226,18 @@ export function OfferingCard({
           space empty. The title block reserves room so text stops short of
           them instead of running underneath. */}
       {actions.length > 0 && (
-        <div className="absolute right-3 top-3 z-10">{actionBar}</div>
+        <div
+          className={cn(
+            'absolute right-3 top-3 z-10',
+            // Once the photo has the right-hand column, the buttons step left
+            // of it rather than sitting on it: 160px of photo + the 12px gap +
+            // the card's 16px padding = 188px. Buttons over a photo are hard
+            // to see and they swallow the taps meant for the picture.
+            imageUrl && '@sm/card:right-[11.75rem]',
+          )}
+        >
+          {actionBar}
+        </div>
       )}
       {/* Grip sits beside the content, not on a row above it — that row left
           the whole width next to it empty. */}
