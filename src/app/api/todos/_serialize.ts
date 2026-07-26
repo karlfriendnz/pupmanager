@@ -21,7 +21,7 @@ export function serializeTodo(t: TodoWithAssignee) {
     assignee: t.assignedTo
       ? {
           id: t.assignedTo.id,
-          name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Staff member',
+          name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Team member',
         }
       : null,
   }

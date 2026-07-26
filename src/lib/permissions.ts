@@ -69,12 +69,32 @@ export const PERMISSION_CATALOGUE: PermissionDef[] = [
   { key: 'messages.send', label: 'Message clients', description: 'Send and read client messages.', group: 'Communication' },
 
   { key: 'settings.edit', label: 'Edit business settings', description: 'Business profile, availability, branding.', group: 'Business' },
-  { key: 'team.manage', label: 'Manage the team', description: 'Invite staff, set roles and permissions.', group: 'Business' },
+  { key: 'team.manage', label: 'Manage the team', description: 'Invite team members, set roles and permissions.', group: 'Business' },
   { key: 'billing.view', label: 'View billing', description: 'See the subscription and billing pages.', group: 'Business' },
-  { key: 'billing.seats', label: 'Add seats', description: 'Add paid staff seats to the subscription (charges the card on file).', group: 'Business' },
+  { key: 'billing.seats', label: 'Add seats', description: 'Add paid team seats to the subscription (charges the card on file).', group: 'Business' },
 ]
 
 const ALL_KEYS = PERMISSION_CATALOGUE.map((p) => p.key)
+
+/**
+ * How each role is WRITTEN for a human. The enum values are storage — never
+ * print them, and never title-case them into a label: `STAFF` reads as "Staff",
+ * and the word for these people is Team. Everyone in the business except the
+ * owner is a team member; that's the whole vocabulary.
+ *
+ * Keep the enum as-is. Renaming `STAFF` would rewrite every persisted row and
+ * every serialised role on the wire for a copy change.
+ */
+export const ROLE_LABELS: Record<CompanyRole, string> = {
+  OWNER: 'Owner',
+  MANAGER: 'Manager',
+  STAFF: 'Team member',
+}
+
+/** The label for one role, for badges, dropdowns and emails. */
+export function roleLabel(role: CompanyRole): string {
+  return ROLE_LABELS[role] ?? 'Team member'
+}
 
 // Role presets. OWNER is handled specially in `can()` (always true) so its map
 // here is just for completeness / UI seeding.

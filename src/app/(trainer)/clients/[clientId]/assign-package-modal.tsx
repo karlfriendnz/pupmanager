@@ -420,7 +420,7 @@ function AssignModal({
 
           {mode === 'package' && showTrainerPicker && (
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Assigned staff member</label>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Assigned team member</label>
               <select
                 value={assignedMembershipId}
                 onChange={e => setAssignedMembershipId(e.target.value)}

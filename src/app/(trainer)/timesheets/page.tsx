@@ -35,14 +35,14 @@ export default async function TimesheetsPage() {
   const members = roster
     .map((m) => ({
       id: m.id,
-      name: m.user.name?.trim() || m.user.email || 'Staff member',
+      name: m.user.name?.trim() || m.user.email || 'Team member',
       isSelf: m.userId === ctx.userId,
     }))
     .sort((a, b) => (a.isSelf === b.isSelf ? 0 : a.isSelf ? -1 : 1))
 
   return (
     <>
-      <PageHeader title="Timesheets" subtitle="Track staff hours across sessions and shifts, ready for payroll." />
+      <PageHeader title="Timesheets" subtitle="Track your team's hours across sessions and shifts, ready for payroll." />
       <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-4xl mx-auto">
         <TimesheetsView
           currency={profile?.payoutCurrency ?? 'nzd'}

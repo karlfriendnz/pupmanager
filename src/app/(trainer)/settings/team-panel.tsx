@@ -10,6 +10,7 @@ import { useIsNative } from '@/lib/native'
 import {
   PERMISSION_CATALOGUE,
   resolvePermissions,
+  roleLabel,
   type PermissionKey,
   type PermissionDef,
 } from '@/lib/permissions'
@@ -91,8 +92,10 @@ function RoleBadge({ role, status }: { role: Role; status: 'ACTIVE' | 'PENDING' 
   }
   return (
     <span className="flex items-center gap-1.5">
+      {/* The enum value never reaches the screen — STAFF title-cased reads
+          "Staff", and the word is Team. Label comes from the shared map. */}
       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${roleStyles[role]}`}>
-        {role.charAt(0) + role.slice(1).toLowerCase()}
+        {roleLabel(role)}
       </span>
       {status === 'PENDING' && (
         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Invite sent</span>
@@ -197,7 +200,7 @@ function AddSeatControl({ seatCount, hasSubscription, onChanged }: { seatCount: 
         className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold text-white"
         style={{ background: 'var(--pm-brand-600)' }}
       >
-        <UserPlus className="h-4 w-4" /> Upgrade to add staff
+        <UserPlus className="h-4 w-4" /> Upgrade to add your team
       </a>
     )
   }
@@ -235,9 +238,9 @@ function AddSeatControl({ seatCount, hasSubscription, onChanged }: { seatCount: 
       </div>
 
       {open && (
-        <Modal open onClose={close} title="Add a staff seat">
+        <Modal open onClose={close} title="Add a team seat">
           <p className="text-sm text-slate-600">
-            This adds a paid staff seat{price ? ` (${price.symbol}${price.seatPrice}/mo ${price.currency})` : ''} to
+            This adds a paid team seat{price ? ` (${price.symbol}${price.seatPrice}/mo ${price.currency})` : ''} to
             your subscription, billed per seat and pro-rated to your card on file now.
             Confirm your password to continue.
           </p>
@@ -316,14 +319,14 @@ function InviteForm({ onInvited, seatsLeft }: { onInvited: () => void; seatsLeft
         {notice && <Alert variant="success">{notice}</Alert>}
         <div>
           <Button variant="secondary" onClick={() => setOpen(true)} disabled={seatsLeft <= 0}>
-            <UserPlus className="h-4 w-4" /> Invite staff
+            <UserPlus className="h-4 w-4" /> Invite a team member
           </Button>
         </div>
         {seatsLeft <= 0 && (
           <p className="text-xs text-slate-400">
             {native
               ? 'You’ve used all your seats.'
-              : 'You’ve used all your seats. Add more from Billing to invite another staff member.'}
+              : 'You’ve used all your seats. Add more from Billing to invite another team member.'}
           </p>
         )}
       </div>
@@ -333,7 +336,7 @@ function InviteForm({ onInvited, seatsLeft }: { onInvited: () => void; seatsLeft
   return (
     <div data-testid="invite-form" className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-slate-900">Invite a staff member</h3>
+        <h3 className="font-semibold text-slate-900">Invite a team member</h3>
         <button onClick={() => { reset(); setOpen(false) }} className="text-slate-400 hover:text-slate-600">
           <X className="h-5 w-5" />
         </button>
@@ -350,7 +353,7 @@ function InviteForm({ onInvited, seatsLeft }: { onInvited: () => void; seatsLeft
             onChange={(e) => changeRole(e.target.value as Exclude<Role, 'OWNER'>)}
             className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="STAFF">Staff — sees only their assigned work</option>
+            <option value="STAFF">Team member — sees only their assigned work</option>
             <option value="MANAGER">Manager — full access (no billing)</option>
           </select>
         </div>
@@ -451,7 +454,7 @@ function MemberRow({ member, canManage, actorIsOwner, onChanged }: { member: Mem
                 onChange={(e) => { setRole(e.target.value as Exclude<Role, 'OWNER'>); setOverrides({}) }}
                 className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="STAFF">Staff</option>
+                <option value="STAFF">Team member</option>
                 <option value="MANAGER">Manager</option>
               </select>
             </div>

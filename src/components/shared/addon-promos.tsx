@@ -177,7 +177,7 @@ const PROMOS: Record<string, Cfg> = {
       { icon: <Users className={I} />, label: 'Team time' },
       { icon: <FileText className={I} />, label: 'Payroll-ready' },
     ],
-    benefits: ['Staff clock in', 'Owner approves', 'Payroll-ready totals'],
+    benefits: ['Team clocks in', 'Owner approves', 'Payroll-ready totals'],
   },
   todos: {
     title: 'Nothing slips',

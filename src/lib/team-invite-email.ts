@@ -9,7 +9,7 @@ interface TeamInviteArgs {
   inviteeName: string
   businessName: string
   inviterName: string
-  roleLabel: string // "Manager" | "Staff"
+  roleLabel: string // "Manager" | "Team member" — from roleLabel() in permissions.ts
   inviteUrl: string
   logoUrl?: string | null
   accentColor?: string | null

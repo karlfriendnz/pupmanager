@@ -117,7 +117,7 @@ export function ReportsExplorer({
               label="Team member"
               value={filters.member}
               onChange={v => setParams({ member: v })}
-              options={[{ value: '', label: 'All staff' }, ...members.map(m => ({ value: m.id, label: m.name }))]}
+              options={[{ value: '', label: 'All team members' }, ...members.map(m => ({ value: m.id, label: m.name }))]}
             />
           )}
           <FilterSelect

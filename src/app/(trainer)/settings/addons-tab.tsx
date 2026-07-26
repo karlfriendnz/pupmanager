@@ -22,7 +22,7 @@ const DETAILS: Record<string, string> = {
   ai:
     'Turn a few rough notes into a structured training plan, or a month of session logs into a friendly progress update an owner will actually read. The AI helper drafts; you stay in control — edit anything before it reaches a client. Built to save you the Sunday-night admin, not to replace your expertise.',
   timesheets:
-    'Track the hours your team works across sessions, classes and admin, then turn them into payroll-ready totals. Staff clock their own time, owners approve, and everyone sees where the week went.',
+    'Track the hours your team works across sessions, classes and admin, then turn them into payroll-ready totals. The team clocks their own time, owners approve, and everyone sees where the week went.',
   marketing:
     'Reach the right owners at the right moment — win-back nudges for lapsed clients, review requests after a graduation, and seasonal campaigns, all sent from your brand inside PupManager.',
   todos:

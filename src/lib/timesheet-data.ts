@@ -39,7 +39,7 @@ export async function loadTimesheetForExport(id: string, companyId: string, user
     ownerEmail: company?.user?.email ?? null,
     data: {
       businessName: company?.businessName ?? 'PupManager',
-      staffName: user?.name ?? user?.email ?? 'Staff member',
+      staffName: user?.name ?? user?.email ?? 'Team member',
       weekStart: sheet.weekStart,
       title: sheet.title,
       notes: sheet.notes,

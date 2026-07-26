@@ -747,10 +747,12 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
             <p className="mt-0.5 truncate text-[13px] leading-tight text-slate-500">{mobileSummary}</p>
           )}
         </div>
-        {/* No message button here. The phone row is a name, a dog and when
-            they're next in — one tap, one destination, the client. Messaging
-            stays on the desktop table's Message column and on the client's own
-            page, both a tap away. */}
+        {/* No message button here, and nothing else either. The whole row is a
+            single link to the client — a name, a dog, and when they're next in.
+            One tap, one destination. Anything added back must be a SIBLING of
+            the row link, never a child: an anchor (or a router.push span) inside
+            an anchor is invalid HTML and swallows the row's own tap. Messaging
+            lives on the client's own page, one tap away. */}
       </div>
     </Card>
   )
@@ -770,8 +772,11 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
     )
   }
 
+  // The whole row is the target. `block w-full` matters: a bare <a> is inline,
+  // so on a phone the tap area hugged the text runs rather than filling the
+  // row's height — the padding either side of the name was dead space.
   return (
-    <Link href={`/clients/${client.id}`}>
+    <Link href={`/clients/${client.id}`} className="block w-full">
       {inner}
     </Link>
   )

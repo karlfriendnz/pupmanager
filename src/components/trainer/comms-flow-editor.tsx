@@ -62,7 +62,7 @@ const AUDIENCES: { key: Audience; label: string; hint: string }[] = [
   { key: 'ENROLLED', label: 'Everyone booked', hint: 'Every client with a place on this offering.' },
   { key: 'ENROLLED_AND_WAITLIST', label: 'Booked + waitlist', hint: 'Also the people waiting for a place.' },
   { key: 'CUSTOM', label: 'Chosen people', hint: 'Only the clients you pick below.' },
-  { key: 'STAFF', label: 'Your team', hint: 'Your staff, not your clients — whoever is assigned to that session. If nobody is, it goes to the business owner.' },
+  { key: 'STAFF', label: 'Your team', hint: 'Your team, not your clients — whoever is assigned to that session. If nobody is, it goes to the business owner.' },
 ]
 // Plain-language names on the buttons; the token is what actually gets typed
 // into the message. Labels live in one shared place so "Dog name" reads the

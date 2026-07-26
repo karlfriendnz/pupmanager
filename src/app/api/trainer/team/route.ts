@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import crypto from 'crypto'
 import { getTrainerContext, requirePermission, PermissionError } from '@/lib/membership'
-import { can, asPermissionMap } from '@/lib/permissions'
+import { can, asPermissionMap, roleLabel } from '@/lib/permissions'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { renderTeamInviteEmail } from '@/lib/team-invite-email'
 
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
   const seatsUsed = await prisma.trainerMembership.count({ where: { companyId: ctx.companyId } })
   if (!isTrialing && seatsUsed >= company.seatCount) {
     return NextResponse.json(
-      { error: `All ${company.seatCount} seat${company.seatCount === 1 ? '' : 's'} are in use. Add more seats before inviting another staff member.` },
+      { error: `All ${company.seatCount} seat${company.seatCount === 1 ? '' : 's'} are in use. Add more seats before inviting another team member.` },
       { status: 403 },
     )
   }
@@ -190,7 +190,7 @@ export async function POST(req: Request) {
     inviteeName: name,
     businessName: company.businessName,
     inviterName,
-    roleLabel: role === 'MANAGER' ? 'Manager' : 'Staff',
+    roleLabel: roleLabel(role),
     inviteUrl,
     logoUrl: company.logoUrl,
     accentColor: company.emailAccentColor,

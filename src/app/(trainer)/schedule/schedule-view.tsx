@@ -3019,7 +3019,7 @@ function MemberSwitcher({
         variant="secondary"
         size="sm"
         onClick={() => setOpen(o => !o)}
-        title="Filter schedule by staff member"
+        title="Filter schedule by team member"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -3029,7 +3029,7 @@ function MemberSwitcher({
       {open && (
         <div
           role="listbox"
-          aria-label="Filter by staff member"
+          aria-label="Filter by team member"
           className="absolute right-0 z-40 mt-1 w-56 max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl"
         >
           {options.map(opt => {

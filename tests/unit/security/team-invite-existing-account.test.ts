@@ -31,6 +31,13 @@ vi.mock('@/lib/permissions', () => ({
   canManageMemberRole: () => true,
   asPermissionMap: (p: unknown) => (p ?? {}),
   PERMISSION_KEYS: [],
+  // A factory mock replaces the module wholesale, so anything the route imports
+  // and this list omits arrives as undefined and throws on call. The route now
+  // uses roleLabel() for the invite email — keep in step with ROLE_LABELS in
+  // src/lib/permissions.ts (STAFF is labelled "Team member"; the enum value
+  // itself deliberately stays STAFF).
+  ROLE_LABELS: { OWNER: 'Owner', MANAGER: 'Manager', STAFF: 'Team member' },
+  roleLabel: (r: string) => ({ OWNER: 'Owner', MANAGER: 'Manager', STAFF: 'Team member' } as Record<string, string>)[r] ?? 'Team member',
 }))
 vi.mock('@/lib/email', () => ({ sendEmail: h.sendEmail, fromTrainer: (n: string) => n }))
 vi.mock('@/lib/emails/team-invite', () => ({

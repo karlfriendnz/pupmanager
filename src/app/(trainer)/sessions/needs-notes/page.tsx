@@ -177,7 +177,7 @@ export default async function SessionsTodoPage({
     </>
   )
 
-  const memberOptions = members.map(m => ({ id: m.id, name: m.user.name?.trim() || m.user.email || 'Staff member' }))
+  const memberOptions = members.map(m => ({ id: m.id, name: m.user.name?.trim() || m.user.email || 'Team member' }))
   const tabs: TodoTabSpec[] = [
     { id: 'notes', label: 'Notes', count: sessions.length, panel: notesPanel },
   ]
@@ -197,7 +197,7 @@ export default async function SessionsTodoPage({
               completedAt: t.completedAt ? t.completedAt.toISOString() : null,
               createdAt: t.createdAt.toISOString(),
               assignee: t.assignedTo
-                ? { id: t.assignedTo.id, name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Staff member' }
+                ? { id: t.assignedTo.id, name: t.assignedTo.user.name?.trim() || t.assignedTo.user.email || 'Team member' }
                 : null,
             }))}
             members={memberOptions}

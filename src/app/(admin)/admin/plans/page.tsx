@@ -54,9 +54,9 @@ export default async function AdminBillingPage() {
   const seatItem = items.find(i => i.kind === 'SEAT')
   const seatRow: BillingRow = {
     id: 'seat',
-    label: 'Extra staff member (per seat)',
-    name: seatItem?.name ?? 'Extra staff member',
-    description: seatItem?.description ?? 'An additional staff seat on your account.',
+    label: 'Extra team member (per seat)',
+    name: seatItem?.name ?? 'Extra team member',
+    description: seatItem?.description ?? 'An additional team seat on your account.',
     kind: 'SEAT',
     prices: SEAT_PRICE,
     wired: seatItem ? wiredCurrencies(seatItem.stripePriceId, seatItem.stripePriceIdsByCurrency) : [],
