@@ -69,19 +69,28 @@ export function DateTimePicker({
     )
   }
 
+  // Two equal columns. The date button needs an explicit w-full: a <button> is
+  // sized to fit its content even as a flex container, so fieldCls's flex-1
+  // does nothing here (its parent is the relative div, not a flex box) and the
+  // field collapsed to the width of "Pick a date" inside a half-width column.
+  // items-end keeps the two fields on one baseline despite the Time label.
   return (
-    <div ref={wrapRef} className="flex items-stretch gap-2">
+    <div ref={wrapRef} className="flex items-end gap-2">
       {/* Date */}
       <div className="relative flex-1 min-w-0">
-        <button type="button" onClick={() => setDateOpen(o => !o)} className={fieldCls + ' focus:outline-none'}>
+        <button type="button" onClick={() => setDateOpen(o => !o)} className={fieldCls + ' w-full focus:outline-none'}>
           <span className={value ? 'text-slate-900 flex-1' : 'text-slate-400 flex-1'}>{value ? fmtDate(value) : 'Pick a date'}</span>
           <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
         </button>
         {dateOpen && <MonthGrid selected={value} onPick={pickDay} />}
       </div>
 
-      {/* Time */}
-      <TimeWheel value={value} onChange={onChange} fieldCls={fieldCls} />
+      {/* Time — labelled, since the field's own "--:--" placeholder is the only
+          other clue as to what it wants. */}
+      <div className="flex-1 min-w-0">
+        <label className="text-sm font-medium text-slate-500 block mb-1">Time</label>
+        <TimeWheel value={value} onChange={onChange} fieldCls={fieldCls} />
+      </div>
     </div>
   )
 }
