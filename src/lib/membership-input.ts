@@ -20,7 +20,7 @@ const itemSchema = z.object({
 )
 
 export const membershipCreateSchema = z.object({
-  name: z.string().trim().min(1, 'Name the membership').max(120),
+  name: z.string().trim().min(1, 'Name the package').max(120),
   description: z.string().max(50000).nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
   // Storefront card styling — hex colours (#fff or #ffffff). Null clears.

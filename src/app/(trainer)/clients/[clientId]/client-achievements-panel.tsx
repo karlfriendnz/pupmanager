@@ -52,8 +52,8 @@ function triggerSummary(t: TriggerType, value: number | null): string {
     case 'IN_PERSON_SESSIONS': return `${v} in-person sessions`
     case 'VIRTUAL_SESSIONS': return `${v} virtual sessions`
     case 'CONSECUTIVE_SESSIONS_ATTENDED': return `${v} sessions in a row`
-    case 'FIRST_PACKAGE_ASSIGNED': return 'First package'
-    case 'PACKAGES_COMPLETED': return `${v} packages completed`
+    case 'FIRST_PACKAGE_ASSIGNED': return 'First consult'
+    case 'PACKAGES_COMPLETED': return `${v} consults completed`
     case 'FIRST_HOMEWORK_DONE': return 'First homework done'
     case 'HOMEWORK_TASKS_DONE': return `${v} homework tasks`
     case 'HOMEWORK_STREAK_DAYS': return `${v}-day streak`

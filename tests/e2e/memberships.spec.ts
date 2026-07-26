@@ -40,6 +40,7 @@ test.describe('memberships — trainer builds, client sees', () => {
       await page.getByPlaceholder('Price').fill('89')
 
       // One included offering: the seeded self-book package, ×2.
+      await page.getByRole('tab', { name: 'Included' }).click()
       await page.getByRole('button', { name: 'Add item' }).click()
       const row = page.locator('select').filter({ hasText: 'Choose…' }).first()
       await row.selectOption({ label: 'Self-Book Session' })
@@ -235,13 +236,16 @@ test.describe('memberships — trainer builds, client sees', () => {
   // The builder's card-appearance block and each item's description/image used
   // to hide behind toggles, and there was no way back to the list. All three are
   // now just present — these pin that so a "tidy the form" refactor can't
-  // quietly re-bury them.
+  // quietly re-bury them. The four tabs are the ONE thing allowed to hide a
+  // panel, and none of them may re-introduce a chevron inside itself.
   test('the builder shows card appearance, per-item description/image and a way back, with nothing to expand', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/memberships')
     await page.getByRole('main').getByRole('button', { name: 'New package' }).first().click()
 
-    // Card appearance is open on arrival — image, button text, colours.
+    // Card appearance is one tab, and everything in it is open on arrival —
+    // image, button text, colours. No chevron to press.
+    await page.getByRole('tab', { name: 'Appearance' }).click()
     await expect(page.getByText('Card appearance')).toBeVisible()
     await expect(page.getByText('Colour scheme')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Card appearance' })).toHaveCount(0)
@@ -253,6 +257,7 @@ test.describe('memberships — trainer builds, client sees', () => {
 
     // A new item's description editor and image control are there straight away,
     // with no "Add description & image" button to press first.
+    await page.getByRole('tab', { name: 'Included' }).click()
     await page.getByRole('button', { name: 'Add item' }).click()
     await page.getByLabel('Included offering').first().selectOption({ label: 'Self-Book Session' })
     await expect(page.getByText('Custom description').first()).toBeVisible()
@@ -261,6 +266,81 @@ test.describe('memberships — trainer builds, client sees', () => {
     // Back returns to the list rather than stranding the trainer in the form.
     await page.getByRole('button', { name: 'Back to packages' }).click()
     await expect(page.getByRole('button', { name: 'New package' }).first()).toBeVisible()
+  })
+
+  // The screen used to be one endless column. It's four tabs, and the publish /
+  // delete / save row belongs to the package as a whole, so it stays put no
+  // matter which tab is showing.
+  test('the builder is four tabs, one panel at a time, with the save row always there', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/memberships')
+    await page.getByRole('main').getByRole('button', { name: 'New package' }).first().click()
+
+    for (const name of ['Details', 'Included', 'Appearance', 'Messages']) {
+      await expect(page.getByRole('tab', { name })).toBeVisible()
+    }
+
+    // Details is where a new package opens, and its name field is the only
+    // panel showing.
+    await expect(page.getByPlaceholder('Package name (e.g. Puppy Starter)')).toBeVisible()
+    await expect(page.getByText('Colour scheme')).toBeHidden()
+
+    // Switching tabs swaps the panel — one visible at a time, never both.
+    await page.getByRole('tab', { name: 'Appearance' }).click()
+    await expect(page.getByText('Colour scheme')).toBeVisible()
+    await expect(page.getByPlaceholder('Package name (e.g. Puppy Starter)')).toBeHidden()
+
+    // What's typed on one tab survives a trip to another (the panels hide, they
+    // don't unmount — a remounted rich-text editor loses what's in it).
+    await page.getByRole('tab', { name: 'Details' }).click()
+    await page.getByPlaceholder('Package name (e.g. Puppy Starter)').fill('E2E Tab Memory')
+    await page.getByRole('tab', { name: 'Messages' }).click()
+    await page.getByRole('tab', { name: 'Details' }).click()
+    await expect(page.getByPlaceholder('Package name (e.g. Puppy Starter)')).toHaveValue('E2E Tab Memory')
+
+    // Publish + Save sit below the tabs, reachable from every one of them.
+    await page.getByRole('tab', { name: 'Messages' }).click()
+    await expect(page.getByLabel('Published')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Save' })).toBeVisible()
+  })
+
+  // Karl struck the eye / pencil / bin off the card: the row IS the way in, and
+  // the three actions live inside the package now.
+  test('the list card has no icon buttons, and delete lives inside the package', async ({ page }) => {
+    const prisma = await makePrisma()
+    const name = `E2E Card Actions ${Date.now()}`
+    let id: string | null = null
+    try {
+      const trainer = await prisma.trainerProfile.findFirst({
+        where: { businessName: SEED.owner.businessName }, select: { id: true },
+      })
+      id = (await prisma.membership.create({
+        data: { trainerId: trainer!.id, name, priceCents: 5000, published: true },
+      })).id
+
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto('/memberships')
+      await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 })
+
+      // None of the three icon buttons survive on the list.
+      for (const label of ['Edit', 'Delete', 'Publish', 'Unpublish']) {
+        await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0)
+      }
+
+      // Opening the card is what the row does, and Delete is waiting inside it.
+      await page.getByText(name).click()
+      await expect(page.getByPlaceholder('Package name (e.g. Puppy Starter)')).toHaveValue(name)
+      page.once('dialog', d => d.accept())
+      await page.getByRole('button', { name: 'Delete' }).click()
+
+      // Back on the list, and gone for good.
+      await expect(page.getByRole('button', { name: 'New package' }).first()).toBeVisible({ timeout: 15_000 })
+      await expect(page.getByText(name)).toHaveCount(0)
+      expect(await prisma.membership.count({ where: { id: id! } })).toBe(0)
+    } finally {
+      if (id) await prisma.membership.delete({ where: { id } }).catch(() => {})
+      await prisma.$disconnect()
+    }
   })
 
   test('button colours round-trip, and an unreadable pair is corrected before a client sees it', async ({ page }) => {
@@ -337,6 +417,7 @@ test.describe('memberships builder on a phone', () => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/memberships')
     await page.getByRole('main').getByRole('button', { name: 'New package' }).first().click()
+    await page.getByRole('tab', { name: 'Included' }).click()
     await page.getByRole('button', { name: 'Add item' }).click()
 
     const kind = page.getByLabel('Item type').first()

@@ -29,7 +29,7 @@ export type TriggerType =
 export interface TriggerMeta {
   type: TriggerType
   label: string
-  group: 'Sessions' | 'Packages' | 'Homework' | 'Other' | 'Manual'
+  group: 'Sessions' | '1:1 Consults' | 'Homework' | 'Other' | 'Manual'
   needsValue: boolean
   valueLabel?: string
   preview: (n: number) => string
@@ -42,8 +42,11 @@ export const TRIGGERS: TriggerMeta[] = [
   { type: 'IN_PERSON_SESSIONS', label: 'In-person sessions completed', group: 'Sessions', needsValue: true, valueLabel: 'Sessions', preview: n => `Awarded after ${n} in-person session${n === 1 ? '' : 's'}` },
   { type: 'VIRTUAL_SESSIONS', label: 'Virtual sessions completed', group: 'Sessions', needsValue: true, valueLabel: 'Sessions', preview: n => `Awarded after ${n} virtual session${n === 1 ? '' : 's'}` },
   { type: 'CONSECUTIVE_SESSIONS_ATTENDED', label: 'Consecutive sessions attended', group: 'Sessions', needsValue: true, valueLabel: 'In a row', preview: n => `Awarded for ${n} sessions attended in a row` },
-  { type: 'FIRST_PACKAGE_ASSIGNED', label: 'First package signed up', group: 'Packages', needsValue: false, preview: () => 'Awarded when the first package is assigned' },
-  { type: 'PACKAGES_COMPLETED', label: 'Packages completed', group: 'Packages', needsValue: true, valueLabel: 'Packages', preview: n => `Awarded after ${n} completed package${n === 1 ? '' : 's'}` },
+  // "Package" is the bundled offering now, so these two — which fire off a 1:1
+  // assignment — read as consults. The trigger TYPES stay as they are: they're
+  // stored on every existing achievement row.
+  { type: 'FIRST_PACKAGE_ASSIGNED', label: 'First consult signed up', group: '1:1 Consults', needsValue: false, preview: () => 'Awarded when the first consult is assigned' },
+  { type: 'PACKAGES_COMPLETED', label: 'Consults completed', group: '1:1 Consults', needsValue: true, valueLabel: 'Consults', preview: n => `Awarded after ${n} completed consult${n === 1 ? '' : 's'}` },
   { type: 'FIRST_HOMEWORK_DONE', label: 'First homework done', group: 'Homework', needsValue: false, preview: () => 'Awarded the first time a homework task is completed' },
   { type: 'HOMEWORK_TASKS_DONE', label: 'Homework tasks done', group: 'Homework', needsValue: true, valueLabel: 'Tasks', preview: n => `Awarded after ${n} completed task${n === 1 ? '' : 's'}` },
   { type: 'HOMEWORK_STREAK_DAYS', label: 'Homework streak (days)', group: 'Homework', needsValue: true, valueLabel: 'Days in a row', preview: n => `Awarded for ${n} day${n === 1 ? '' : 's'} of perfect homework in a row` },
@@ -58,7 +61,7 @@ export const TRIGGER_META = Object.fromEntries(
   TRIGGERS.map(t => [t.type, t])
 ) as Record<TriggerType, TriggerMeta>
 
-export const TRIGGER_GROUPS = ['Sessions', 'Packages', 'Homework', 'Other'] as const
+export const TRIGGER_GROUPS = ['Sessions', '1:1 Consults', 'Homework', 'Other'] as const
 
 /** The colour keys a badge can be tinted with. */
 export type Color = 'blue' | 'emerald' | 'amber' | 'rose' | 'violet' | 'sky' | 'orange' | 'teal' | 'pink' | 'slate'

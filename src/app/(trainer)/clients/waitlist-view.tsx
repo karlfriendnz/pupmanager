@@ -210,7 +210,7 @@ function Row({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: e.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
-  const want = e.packageName || e.request || 'Any package'
+  const want = e.packageName || e.request || 'Any offering'
   const prefs = prefsSummary(e)
 
   return (

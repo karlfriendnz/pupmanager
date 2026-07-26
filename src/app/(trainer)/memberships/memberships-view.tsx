@@ -7,7 +7,7 @@ import { isRichTextEmpty } from '@/lib/rich-text'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Ticket, Plus, Trash2, Pencil, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, ChevronDown, Palette, GripVertical } from 'lucide-react'
+import { Ticket, Plus, Trash2, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, Palette, GripVertical } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -22,7 +22,7 @@ import {
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { resolveButtonColors, MIN_CONTRAST, type ButtonColors } from '@/lib/membership-card-colors'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
-import { Eye, EyeOff, Package as PackageIcon, Bell } from 'lucide-react'
+import { Package as PackageIcon, Bell } from 'lucide-react'
 
 type Kind = 'PACKAGE' | 'CLASS' | 'PRODUCT'
 type Cadence = 'ONE_OFF' | 'RECURRING'
@@ -155,6 +155,20 @@ function SortableItemShell({ id, children }: { id: string; children: (handle: HT
   return <div ref={setNodeRef} style={style}>{children({ ...attributes, ...listeners })}</div>
 }
 
+// The builder used to be one 8,000px column on a phone: the name and price, the
+// storefront card's image and six colour pickers, every included item with its
+// own rich-text editor and image, and the reminder flow — all stacked. Four
+// tabs, so a trainer meets one job at a time. Same underline rail as Finances
+// and the To-do screen. Panels stay MOUNTED and hide, because remounting a
+// Tiptap editor mid-edit loses what's in it.
+type BuilderTab = 'details' | 'included' | 'appearance' | 'messages'
+const BUILDER_TABS: { id: BuilderTab; label: string; Icon: React.ComponentType<{ className?: string; strokeWidth?: number }> }[] = [
+  { id: 'details', label: 'Details', Icon: Ticket },
+  { id: 'included', label: 'Included', Icon: PackageIcon },
+  { id: 'appearance', label: 'Appearance', Icon: Palette },
+  { id: 'messages', label: 'Messages', Icon: Bell },
+]
+
 let seq = 0
 const KINDS: { k: Kind; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
   { k: 'PACKAGE', label: '1:1 consult', Icon: GraduationCap },
@@ -175,7 +189,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showMessages, setShowMessages] = useState(false)
+  const [tab, setTab] = useState<BuilderTab>('details')
 
   function offeringsFor(k: Kind): Offering[] {
     return k === 'PACKAGE' ? offerings.packages : k === 'CLASS' ? offerings.classRuns : offerings.products
@@ -189,10 +203,12 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
 
   function startNew() {
     setError(null)
+    setTab('details')
     setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [], plans: [], imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null, buttonBgColor: null, buttonTextColor: null, buttonText: null })
   }
   function startEdit(m: Membership) {
     setError(null)
+    setTab('details')
     setDraft({
       id: m.id, name: m.name, description: m.description ?? '', price: (m.priceCents / 100).toString(),
       cadence: m.cadence, interval: m.interval ?? 'MONTH', minTermCount: String(m.minTermCount), earlyTermFee: m.earlyTermFeeCents != null ? (m.earlyTermFeeCents / 100).toString() : '',
@@ -272,15 +288,17 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
     } catch { setError('Something went wrong.') } finally { setBusy(false) }
   }
 
+  // Deleting lives INSIDE the package now — the list card is for opening it, not
+  // for a row of little icons. It confirms, then drops the trainer back on the
+  // list with the card gone.
   async function remove(id: string) {
+    if (!confirm('Delete this package? Anyone who already bought it keeps what it gave them.')) return
     setBusy(true)
     const res = await fetch(`/api/trainer/memberships/${id}`, { method: 'DELETE' })
     setBusy(false)
-    if (res.ok) setList(prev => prev.filter(m => m.id !== id))
-  }
-  async function togglePublished(m: Membership) {
-    setList(prev => prev.map(x => (x.id === m.id ? { ...x, published: !x.published } : x)))
-    await fetch(`/api/trainer/memberships/${m.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ published: !m.published }) })
+    if (!res.ok) { setError('Could not delete this package — try again.'); return }
+    setList(prev => prev.filter(m => m.id !== id))
+    setDraft(null)
   }
 
   return (
@@ -299,8 +317,26 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
 
         {draft ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-7 rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
-            <div className="p-5 flex flex-col gap-3">
+          <div className="lg:col-span-7">
+            {/* One job at a time. The rail scrolls rather than wraps at 390px,
+                and the icons drop out before the labels do — a label you can
+                read beats an icon you can't name. */}
+            <div role="tablist" aria-label="Package sections" className="mb-4 flex gap-1 border-b border-slate-200 overflow-x-auto no-scrollbar">
+              {BUILDER_TABS.map(t => {
+                const active = tab === t.id
+                const count = t.id === 'included' ? draft.items.length : null
+                return (
+                  <button key={t.id} type="button" role="tab" aria-selected={active} onClick={() => setTab(t.id)}
+                    className={`relative flex items-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4 ${active ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+                    <t.Icon className="hidden h-4 w-4 sm:block" strokeWidth={1.75} /> {t.label}
+                    {count != null && count > 0 && <span className="text-xs tabular-nums text-slate-400">{count}</span>}
+                    {active && <span className="absolute -bottom-px left-3 right-3 h-0.5 rounded-full bg-slate-900" />}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white">
+            <div className={tab === 'details' ? 'p-5 flex flex-col gap-3' : 'hidden'}>
               <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Package name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
               <RichTextEditor value={draft.description} onChange={html => patch({ description: isRichTextEmpty(html) ? '' : html })} key={draft.id ?? 'new'} minHeight={100} theme="light" />
               <div className="flex items-center gap-2">
@@ -344,10 +380,10 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
               )}
             </div>
 
-            {/* Card appearance — always open. It's how the card the client
-                actually meets gets built, so it isn't something to go looking
-                for behind a chevron. */}
-            <div className="p-5">
+            {/* Card appearance — its own tab, and everything in it is present:
+                it's how the card the client actually meets gets built, so it
+                isn't something to go looking for behind a chevron. */}
+            <div className={tab === 'appearance' ? 'p-5' : 'hidden'}>
               <p className="flex items-center gap-2 text-sm font-medium text-slate-700"><Palette className="h-4 w-4 text-slate-400" strokeWidth={1.75} /> Card appearance</p>
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
                 <div>
@@ -409,7 +445,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
             </div>
 
             {/* Included items */}
-            <div className="p-5">
+            <div className={tab === 'included' ? 'p-5' : 'hidden'}>
               <div className="text-sm font-medium text-slate-700 mb-2">What&#39;s included</div>
               <div className="flex flex-col gap-2">
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderItems}>
@@ -430,7 +466,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                         <select aria-label="Item type" value={it.kind} onChange={e => patchItem(it.key, { kind: e.target.value as Kind, id: '', imageUrl: null, description: '' })} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-sm sm:flex-none sm:w-[8.5rem]">
                           {KINDS.map(k => <option key={k.k} value={k.k}>{k.label}</option>)}
                         </select>
-                        <select aria-label="Included offering" value={it.id} onChange={e => patchItem(it.key, { id: e.target.value })} className="h-9 min-w-0 basis-full order-last rounded-lg border border-slate-200 bg-white px-2 text-sm sm:order-none sm:basis-auto sm:flex-1">
+                        <select aria-label="Included offering" value={it.id} onChange={e => patchItem(it.key, { id: e.target.value })} className="h-9 min-w-0 basis-full order-last rounded-lg border border-slate-200 bg-white px-2 text-sm sm:order-none sm:basis-0 sm:flex-1">
                           <option value="">Choose…</option>
                           {offeringsFor(it.kind).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                         </select>
@@ -492,31 +528,32 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
             {/* Reminders & messages — timed automatically off each client's
                 purchase (a membership has no timetable to hang them on). Only
                 once the membership exists: the steps attach to its id. */}
-            <div className="p-5">
-              <button type="button" onClick={() => setShowMessages(v => !v)} className="flex w-full items-center justify-between text-sm font-medium text-slate-700">
-                <span className="flex items-center gap-2"><Bell className="h-4 w-4 text-slate-400" /> Reminders &amp; messages</span>
-                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showMessages ? 'rotate-180' : ''}`} />
-              </button>
-              {showMessages && (
-                draft.id ? (
-                  <div className="mt-4">
-                    <CommsFlowEditor membershipId={draft.id} offeringName={draft.name} />
-                  </div>
-                ) : (
-                  <p className="mt-3 text-sm text-slate-500">Save the package first, then you can add a welcome message and reminders for the people who buy it.</p>
-                )
+            <div className={tab === 'messages' ? 'p-5' : 'hidden'}>
+              <p className="flex items-center gap-2 text-sm font-medium text-slate-700"><Bell className="h-4 w-4 text-slate-400" strokeWidth={1.75} /> Reminders &amp; messages</p>
+              {draft.id ? (
+                <div className="mt-4">
+                  <CommsFlowEditor membershipId={draft.id} offeringName={draft.name} />
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500">Save the package first, then you can add a welcome message and reminders for the people who buy it.</p>
               )}
             </div>
 
-            <div className="p-5 flex items-center justify-between">
+            {/* Publish, delete and save belong to the whole package, so they sit
+                below every tab rather than inside one of them. */}
+            <div className="border-t border-slate-100 p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-sm text-slate-700">
                 <Switch checked={draft.published} onChange={() => patch({ published: !draft.published })} onColor="bg-violet-600" aria-label="Published" />
                 Published (buyable on your booking page)
               </div>
               <div className="flex items-center gap-2">
+                {draft.id && (
+                  <button onClick={() => remove(draft.id!)} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 mr-auto"><Trash2 className="h-4 w-4" strokeWidth={1.75} /> Delete</button>
+                )}
                 <button onClick={() => setDraft(null)} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm rounded-lg text-slate-600 hover:bg-slate-100"><X className="h-4 w-4" /> Cancel</button>
                 <button onClick={save} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save</button>
               </div>
+            </div>
             </div>
           </div>
           {/* Live preview — exactly how the card looks in the client
@@ -574,16 +611,10 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                           ...(m.purchases > 0 ? [{ label: `${m.purchases} sold`, tone: 'good' as const }] : []),
                         ]}
                         facts={membershipFacts(m, offeringName)}
-                        actions={[
-                          {
-                            icon: m.published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />,
-                            label: m.published ? 'Unpublish' : 'Publish',
-                            onClick: () => togglePublished(m),
-                            disabled: busy,
-                          },
-                          { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => startEdit(m) },
-                          { icon: <Trash2 className="h-4 w-4" />, label: 'Delete', tone: 'danger', onClick: () => remove(m.id), disabled: busy },
-                        ]}
+                        // No eye/pencil/bin. Tapping the row IS opening it, and
+                        // everything those three did lives inside: publish is
+                        // the switch above Save, delete is the button beside it.
+                        // The Draft badge still says which is which from here.
                       />
                     )}
                   </SortableOfferingCard>

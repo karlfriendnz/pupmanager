@@ -400,7 +400,7 @@ function AssignModal({
             </div>
           ) : (
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Package</label>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Consult</label>
             <select
               value={packageId}
               onChange={e => setPackageId(e.target.value)}

@@ -55,7 +55,7 @@ export async function fulfilMembershipInTx(
         // either way — but the count never goes negative.
         await takeStock(tx, item.productId)
         await tx.productRequest.create({
-          data: { clientId: args.clientId, productId: item.productId, status: 'FULFILLED', fulfilledAt: now, note: `Membership: ${membership.name}` },
+          data: { clientId: args.clientId, productId: item.productId, status: 'FULFILLED', fulfilledAt: now, note: `Package: ${membership.name}` },
         })
       }
     } else if (item.kind === 'CLASS' && item.classRunId) {
