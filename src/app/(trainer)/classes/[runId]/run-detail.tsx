@@ -16,6 +16,7 @@ import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { DiscountManager } from '@/components/trainer/discount-manager'
+import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
 // The roster, the enrol flow and the label/value rows are shared with the event
 // detail screen — see components/trainer/run-roster.tsx for why.
 import {
@@ -133,7 +134,7 @@ export function RunDetail({
     router.refresh()
   }
 
-  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
+  const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: rosterCount > 0 ? rosterCount : undefined },
     { id: 'messages', label: 'Reminders & messages', icon: Bell },
@@ -182,34 +183,9 @@ export function RunDetail({
       <div className="p-4 md:p-8 w-full min-w-0">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Tabs — Details, Clients, Reminders & messages, Discounts. Scrolls
-          sideways on a narrow phone. */}
-      <div className="mb-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-2xl">
-        {tabs.map(t => {
-          const Icon = t.icon
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`relative shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
-                tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {t.label}
-              {t.badge != null && (
-                <span className={`min-w-4 h-4 px-1 text-[10px] font-semibold tabular-nums rounded-full flex items-center justify-center ${
-                  tab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  {t.badge}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-      </div>
+      {/* Tabs — Details, Clients, Reminders & messages, Discounts. Icon on top
+          on a phone (the labels are too long to sit beside one at 390px). */}
+      <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
 
       {/* Details tab: what you're selling (left, 7 of 12) + a compact clients
           snapshot (right, 5) — the same 7/5 split as the package detail and the

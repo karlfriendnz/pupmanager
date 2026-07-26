@@ -13,6 +13,7 @@ import { CardHeading } from '@/components/shared/card-heading'
 import { Info, Users, Pencil, Trash2, Package as PackageIcon, Bell, MessageSquare } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
+import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
 
 // 'discounts' is deliberately absent: the discount engine is built but not
 // something we're showing trainers yet, so the tab and its panel are off. Put
@@ -117,7 +118,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
   const completedCount = rows.filter(r => r.derived.label === 'Completed').length
   const avgSessionsUsed = rows.length > 0 ? rows.reduce((s, r) => s + r.sessionsUsed, 0) / rows.length : 0
 
-  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
+  const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: rows.length > 0 ? rows.length : undefined },
     // 1:1 packages can send automated session reminders; group packages run
@@ -144,34 +145,9 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           phone. Only the table's own overflow-x-auto should scroll. */}
       <div className="p-4 md:p-8 w-full min-w-0">
 
-        {/* Tabs — Details, Clients, Reminders & messages, Discounts. Scrolls
-            sideways on a narrow phone. */}
-        <div className="mb-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-2xl">
-            {tabs.map(t => {
-              const Icon = t.icon
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`relative shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
-                    tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {t.label}
-                  {t.badge != null && (
-                    <span className={`min-w-4 h-4 px-1 text-[10px] font-semibold tabular-nums rounded-full flex items-center justify-center ${
-                      tab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                      {t.badge}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        {/* Tabs — Details, Clients, Reminders & messages. Icon on top on a
+            phone (the labels are too long to sit beside one at 390px). */}
+        <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
 
         {/* Details tab: package info (left, 7 of 12) + a compact clients
             snapshot (right, 5). Same 7/5 split as the membership builder, so

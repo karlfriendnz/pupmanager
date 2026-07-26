@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate, cn, formatSessionTitle, displayEmail } from '@/lib/utils'
 import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, FileText, Dumbbell, type LucideIcon } from 'lucide-react'
-import { FlatRow, FlatRowGrid } from '@/components/shared/flat-list'
+import { FlatBlock, FlatRow, FlatRowGrid } from '@/components/shared/flat-list'
 import { CurrencyGlyph } from '@/components/currency-glyph'
 import { ClientNotesTab } from './client-notes-tab'
 import { ClientTrainingLogTab, type TrainerTrainingLog } from './client-training-log-tab'
@@ -392,27 +392,27 @@ export function ClientProfileTabs({
 
           {/* What a trainer wants first: what's coming up, who owes money,
               the last session, and the latest chatter. */}
-          <Card>
-            <CardBody className="py-5">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-slate-900">Upcoming sessions</h2>
-                {upcomingSessions.length > 0 && (
-                  <button onClick={() => setTab('sessions')} className="text-xs font-medium text-blue-600 hover:underline">
-                    View all
-                  </button>
-                )}
-              </div>
-              {upcomingSessions.length === 0 ? (
-                <p className="text-sm text-slate-400">No upcoming sessions scheduled.</p>
-              ) : (
-                <ul className="flex flex-col divide-y divide-slate-100 -mx-2">
-                  {upcomingSessions.slice(0, 4).map(s => (
-                    <li key={s.id}><ClientSessionRow session={s} /></li>
-                  ))}
-                </ul>
+          {/* One bordered block, hairline dividers — the house flat-list
+              density. It used to be a Card whose px-6/py-5 body wrapped rows
+              that already carried their own padding, so every row sat in a
+              ring of dead space. The rows now own the padding outright. */}
+          <FlatBlock>
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <h2 className="text-sm font-semibold text-slate-900">Upcoming sessions</h2>
+              {upcomingSessions.length > 0 && (
+                <button onClick={() => setTab('sessions')} className="text-xs font-medium text-blue-600 hover:underline">
+                  View all
+                </button>
               )}
-            </CardBody>
-          </Card>
+            </div>
+            {upcomingSessions.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-slate-400">No upcoming sessions scheduled.</p>
+            ) : (
+              upcomingSessions.slice(0, 4).map(s => (
+                <ClientSessionRow key={s.id} session={s} className="rounded-none px-4 py-2.5" />
+              ))
+            )}
+          </FlatBlock>
 
           <div className="grid grid-cols-1 gap-4">
             {/* Unpaid invoices — the client's new-model Invoice rows (UNPAID /
@@ -1032,9 +1032,12 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
 function ClientSessionRow({
   session: s,
   trailing,
+  className,
 }: {
   session: TrainingSession
   trailing?: React.ReactNode
+  /** Overrides the row's own padding — e.g. flat-list density inside a FlatBlock. */
+  className?: string
 }) {
   const d = new Date(s.scheduledAt)
   const dayNum = d.getDate()
@@ -1059,6 +1062,7 @@ function ClientSessionRow({
       className={cn(
         'flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors flex-1 min-w-0',
         isPast ? 'hover:bg-slate-50' : 'hover:bg-blue-50/50',
+        className,
       )}
     >
       <div className={cn(

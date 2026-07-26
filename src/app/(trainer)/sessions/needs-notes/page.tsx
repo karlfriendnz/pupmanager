@@ -217,7 +217,9 @@ export default async function SessionsTodoPage({
       <PageHeader
         title="To do"
         back={{ href: '/dashboard', label: 'Back to dashboard' }}
-        actions={<ListTodo className="h-5 w-5 text-amber-500" />}
+        // No decorative icon in the actions slot: it sat beside the "+" and the
+        // search glass, which are both controls, so it read as a third button
+        // that did nothing. The page is already named "To do".
       />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
         <TodoTabs tabs={tabs} initial={initialTab} />

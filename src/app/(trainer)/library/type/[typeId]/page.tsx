@@ -34,7 +34,8 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
     <>
       <PageHeader
         title={type.name}
-        subtitle={`${type.themes.length} theme${type.themes.length === 1 ? '' : 's'} · ${itemTotal} item${itemTotal === 1 ? '' : 's'}`}
+        // No counts line under the title: the themes are listed directly below
+        // with their own item counts, so it only said the same thing twice.
         back={{ href: '/library', label: 'Library' }}
       />
       <LibraryShell tree={tree}>

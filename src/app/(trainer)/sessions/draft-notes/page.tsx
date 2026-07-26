@@ -98,7 +98,8 @@ export default async function DraftNotesPage() {
       <PageHeader
         title="Draft notes"
         back={{ href: '/schedule', label: 'Schedule' }}
-        actions={<FilePen className="h-5 w-5 text-teal-500" />}
+        // No decorative icon in the actions slot — beside the "+" and search on
+        // a phone it reads as a third button that does nothing.
       />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
         <p className="text-sm text-slate-500 mb-6">

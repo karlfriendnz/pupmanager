@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Card, CardBody } from '@/components/ui/card'
-import { Sparkles, Wand2, BarChart2 } from 'lucide-react'
+import { Wand2, BarChart2 } from 'lucide-react'
 import { AIPlanGenerator } from './ai-plan-generator'
 import { AIProgressSummary } from './ai-progress-summary'
 import { PageHeader } from '@/components/shared/page-header'
@@ -28,10 +28,9 @@ export default async function AIToolsPage() {
 
   return (
     <>
-      <PageHeader
-        title="AI Tools"
-        actions={<Sparkles className="h-5 w-5 text-blue-600" />}
-      />
+      {/* No decorative icon in the actions slot — it sits beside the "+" and
+          search on a phone and reads as a third button that does nothing. */}
+      <PageHeader title="AI Tools" />
       <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
       <p className="text-sm text-slate-500 mb-8">AI-powered tools to help you plan and review client training</p>
 
