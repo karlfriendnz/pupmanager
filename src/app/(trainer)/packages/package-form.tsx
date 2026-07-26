@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { isRichTextEmpty } from '@/lib/rich-text'
@@ -349,6 +349,10 @@ export function PackageForm({
   // Cards carry their step number in both modes, so the one-page edit reads as
   // the same ordered steps you filled in when you created it.
   const stepNo = (k: string) => stepKeys.indexOf(k) + 1
+  // Saving is something the trainer ASKS for. Set only by the save button, and
+  // read once per submit — so a step change, or Enter in any field, can never
+  // create the offering behind their back.
+  const saveIntent = useRef(false)
   const [allowWaitlist, setAllowWaitlist] = useState<boolean>(existing?.allowWaitlist ?? false)
   const [publicEnrollment, setPublicEnrollment] = useState<boolean>(existing?.publicEnrollment ?? false)
   // Client self-booking (independent of group classes).
@@ -380,6 +384,14 @@ export function PackageForm({
   // while the package is in use and explains why — a message worth showing
   // rather than folding into a generic save failure.
   async function onSubmit(values: FormValues) {
+    // While the wizard is running, only the last step's save button may save.
+    // Every other submit is one the trainer didn't ask for — an Enter keypress
+    // in a field, or the footer button changing from Next to Create under the
+    // pointer (a click's activation behaviour is resolved AFTER React has
+    // re-rendered, so the browser sees a submit button and submits).
+    const intended = saveIntent.current
+    saveIntent.current = false
+    if (stepped && !(intended && isLastStep)) return
     setError(null)
     // When Xero is connected with a curated shortlist, the income account is
     // required so every package/class posts to a real Xero account.
@@ -1101,10 +1113,23 @@ export function PackageForm({
           )}
           <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
           <div className="ml-auto">
+            {/* Distinct keys matter: without them React reuses the one DOM node
+                and just flips type="button" → type="submit", which the browser
+                then treats as the click it is still resolving. A separate node
+                means the click that ended the step lands on a button that no
+                longer exists, and nothing is submitted. */}
             {isLastStep ? (
-              <Button type="submit" loading={isSubmitting}>Create offering</Button>
+              <Button
+                key="wizard-save"
+                type="submit"
+                loading={isSubmitting}
+                onClick={() => { saveIntent.current = true }}
+              >
+                Create offering
+              </Button>
             ) : (
               <Button
+                key="wizard-next"
                 type="button"
                 onClick={async () => {
                   if (currentKey === 'start' && !(await trigger('name'))) return
