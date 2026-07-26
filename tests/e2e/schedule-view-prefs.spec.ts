@@ -29,10 +29,14 @@ async function chooseLayout(page: Page, label: 'Day' | '3 days' | 'Week') {
 /** Which layout the panel currently shows as chosen. */
 async function currentLayout(page: Page): Promise<string> {
   await page.getByRole('button', { name: 'Schedule view options' }).click()
-  const active = page.locator('button[aria-pressed="true"]').filter({ hasText: /^(Day|3 days|Week)$/ })
-  const label = (await active.first().innerText()).trim()
+  // The layout rows are the only aria-pressed buttons in the panel carrying an
+  // aria-label (the day toggles don't), and the label is exactly "Day" /
+  // "3 days" / "Week". Reading the label rather than the row's text keeps this
+  // working now each row also renders a hint line under its name.
+  const active = page.locator('button[aria-pressed="true"][aria-label]')
+  const label = (await active.first().getAttribute('aria-label')) ?? ''
   await page.getByRole('button', { name: 'Close' }).click()
-  return label
+  return label.trim()
 }
 
 test.describe('the schedule remembers its layout', () => {

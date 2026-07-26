@@ -1092,7 +1092,10 @@ function WeekGrid({
   const totalHeight = totalHours * pxPerHour
 
   return (
-    <div className="h-full flex flex-col bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+    // Height-capped internal scroller from `sm:` up, where the shell really is
+    // a full-height app frame. On a phone it stays auto-height and the PAGE
+    // scrolls — see the grid body below.
+    <div className="flex flex-col bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden sm:h-full">
       {/* Mobile 3-day window navigator — sits above the day headers so the
           trainer can step through the week in 3-day chunks. The week-level
           date nav (in the page header) still moves between weeks. Hidden
@@ -1109,7 +1112,7 @@ function WeekGrid({
             <ChevronLeft className="h-4 w-4" />
             <span>Prev</span>
           </button>
-          <p className="text-[11px] text-slate-500 tabular-nums">
+          <p data-testid="three-day-range" className="text-[11px] text-slate-500 tabular-nums">
             {visibleDays[0]?.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
             {' – '}
             {visibleDays[visibleDays.length - 1]?.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
@@ -1154,7 +1157,17 @@ function WeekGrid({
       <div
         ref={scrollRef}
         data-testid="schedule-scroll"
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
+        // Phones: NO inner scroller. It used to be `flex-1 min-h-0
+        // overflow-y-auto overscroll-contain` at every width, but on a phone the
+        // column above it (app bar + schedule header + reschedule / booking-
+        // request banners) is already taller than `h-full` assumes, so the
+        // document scrolled 270px AND this box scrolled its own 108px —
+        // two scrollers on one screen. A drag inside the grid hit the end of
+        // that 108px and died (overscroll-contain refuses to chain to the page);
+        // a drag on the banner moved the page instead. That is the "scroll
+        // doesn't work very well". From `sm:` up the frame really is
+        // viewport-height, so the internal scroller comes back.
+        className="sm:flex-1 sm:min-h-0 sm:overflow-y-auto sm:overscroll-contain"
         onTouchStart={handleSwipeStart}
         onTouchMove={handleSwipeMove}
         onTouchEnd={handleSwipeEnd}
@@ -3690,10 +3703,17 @@ export function ScheduleView({
 
   return (
     <SchedTz.Provider value={tz}>
-    <div className="flex flex-col h-full">
+    {/* `h-full` only from sm: up. On a phone the page is the scroller, so the
+        column must be free to grow past the viewport instead of squeezing the
+        grid into a second scroll region. */}
+    <div className="flex flex-col sm:h-full">
       {/* ── Header (title + date nav on the left, controls on the right) ────── */}
       <div
-        className="sticky z-30 flex items-center px-4 md:px-6 gap-3 flex-wrap border-b border-slate-100 bg-white"
+        // `relative` on phones: now that the PAGE scrolls, a second sticky bar
+        // at top:0 would sit underneath the shell's own sticky mobile header
+        // (z-40) and simply disappear. It was never actually sticky on a phone
+        // before — nothing scrolled past it — so this keeps the look identical.
+        className="relative sm:sticky z-30 flex items-center px-4 md:px-6 gap-3 flex-wrap border-b border-slate-100 bg-white"
         style={{
           // Stick below the desktop top bar (which now shows the "Schedule"
           // title); 0 on mobile where there's no top bar.
@@ -3951,7 +3971,7 @@ export function ScheduleView({
 
 
       {/* ── Main content ─────────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-hidden px-4 md:px-6 py-4">
+      <div className="px-4 md:px-6 py-4 sm:flex-1 sm:overflow-hidden">
         {view === 'week' || view === 'threeDay' ? (
           <WeekGrid
             weekDays={weekDays}

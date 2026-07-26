@@ -67,7 +67,14 @@ export default async function EnquiriesPage({
   return (
     <>
       <PageHeader title="Enquiries" />
-      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+      {/* The shell reserves pb-20 (80px) for the phone tab bar, but that bar is
+          58px PLUS env(safe-area-inset-bottom) — ~92px on a notched iPhone — so
+          the last row's tap area ends up under it. Emulators report a 0px inset,
+          which is why this only shows on a real device. */}
+      <div
+        className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto"
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
+      >
       <p className="text-sm text-slate-500 mb-6">
         Form submissions awaiting your decision. Accept turns them into a client; decline closes them out.
       </p>
@@ -100,7 +107,14 @@ export default async function EnquiriesPage({
       ) : (
         <PhoneRowList className="md:flex md:flex-col md:gap-2">
           {enquiries.map(e => (
-            <Link key={e.id} href={`/enquiries/${e.id}`} className="block">
+            <Link
+              key={e.id}
+              href={`/enquiries/${e.id}`}
+              // `active:` gives the tap an immediate pressed state. `hover:` is
+              // `@media (hover:hover)` in Tailwind v4, so on a phone the row had
+              // no feedback at all between the tap and the next screen painting.
+              className="block min-h-14 active:bg-slate-50"
+            >
               <Card className={cn(
                 'px-4 py-3 md:p-4 hover:border-violet-200 transition-colors',
                 // Phone: a row in the shared block.

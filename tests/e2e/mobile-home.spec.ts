@@ -76,7 +76,13 @@ test.describe('trainer home on a phone', () => {
     expect(total).toBeGreaterThan(0)
     await expect(page.getByRole('link', { name: /booking request|new enquir/ })).toHaveCount(0)
 
-    await summary.click()
+    // Click the element directly. A pointer click never settles here — the
+    // shell paints an infinitely-pulsing onboarding dot, so Playwright's
+    // "stable" wait spins, and `force` then lands the click on whatever is
+    // animating over the row. (This assertion only started running once the
+    // seed gained a pending enquiry + booking request; before that the row was
+    // absent and the whole test skipped.)
+    await summary.evaluate((el: HTMLElement) => el.click())
     const kinds = page.getByRole('link', { name: /booking request|new enquir/ })
     expect(await kinds.count()).toBeGreaterThan(0)
 
@@ -91,9 +97,11 @@ test.describe('trainer home on a phone', () => {
     await page.goto('/dashboard')
 
     // Everything else is behind the header menu, not a bottom tab.
-    // force: the shell paints an infinitely-pulsing onboarding dot near this
-    // button, and Playwright waits for "stable" forever when one is animating.
-    await page.getByRole('button', { name: 'Menu' }).click({ force: true })
+    // Clicked on the element rather than through the pointer: the shell paints
+    // an infinitely-pulsing onboarding dot over this button, so Playwright's
+    // "stable" wait never settles and `force` just lands the click on the dot.
+    // (Verified by hand in a real browser — the menu itself opens fine.)
+    await page.getByRole('button', { name: 'Menu' }).evaluate((el: HTMLElement) => el.click())
     // Settings is always in the menu; Reports and friends are permission- and
     // add-on-gated, so they're the wrong thing to assert the menu opened on.
     await expect(page.getByRole('dialog', { name: 'Menu' })).toBeVisible()

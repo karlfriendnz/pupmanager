@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Settings2, X, Loader2 } from 'lucide-react'
+import { Settings2, X, Loader2, Check } from 'lucide-react'
 import { ModalPortal } from '@/components/shared/modal-portal'
 
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+// 1=Mon..7=Sun. Spelled out now the days are a list rather than seven pills —
+// "Tu"/"Sa" only existed because a chip is too narrow for a word.
+const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const
 
 // Built-in option groups. Custom fields are appended at runtime from
 // the trainer's CustomField list (parity with the /clients picker).
@@ -190,25 +192,35 @@ export function ScheduleSettings({
 
               {/* Everything that used to be its own toolbar icon lives here:
                   layout, whose calendar you're looking at, and availability. */}
+              {/* A list with a tick, not a segmented pill group. Karl's standing
+                  rule: chips go, flat rows and hairlines stay. */}
               {view && onView && (
                 <div>
                   <label className="text-sm font-medium text-slate-700 block mb-1.5">Layout</label>
-                  <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+                  <div className="overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
                     {([
-                      { id: 'day' as const, label: 'Day' },
-                      { id: 'threeDay' as const, label: '3 days' },
-                      { id: 'week' as const, label: 'Week' },
+                      { id: 'day' as const,      label: 'Day',    hint: 'One day at a time' },
+                      { id: 'threeDay' as const, label: '3 days', hint: 'A three-day window' },
+                      { id: 'week' as const,     label: 'Week',   hint: 'Every day you work' },
                     ]).map(v => (
                       <button
                         key={v.id}
                         type="button"
                         onClick={() => onView(v.id)}
                         aria-pressed={view === v.id}
-                        className={`h-9 rounded-lg text-sm font-medium transition-colors ${
-                          view === v.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                        }`}
+                        // The hint sits in the row, so without this the button's
+                        // accessible name would be "Week Every day you work" —
+                        // and would collide with "Weekly report" / "Weekdays".
+                        aria-label={v.label}
+                        className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50"
                       >
-                        {v.label}
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-slate-700">{v.label}</span>
+                          <span className="block text-xs text-slate-400">{v.hint}</span>
+                        </span>
+                        {view === v.id && (
+                          <Check className="h-4 w-4 flex-shrink-0 text-[var(--pm-brand-700)]" strokeWidth={1.75} aria-hidden />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -337,35 +349,34 @@ export function ScheduleSettings({
                 <div className="mb-1.5 flex items-baseline justify-between">
                   <label className="text-sm font-medium text-slate-700">Days shown</label>
                   <div className="flex gap-3 text-[11px]">
-                    <button onClick={() => setDraftDays(new Set([1, 2, 3, 4, 5]))} className="text-blue-600 hover:underline">
-                      Weekdays
+                    <button onClick={() => setDraftDays(new Set([1, 2, 3, 4, 5]))} className="text-[var(--pm-brand-700)] hover:underline">
+                      Weekdays only
                     </button>
-                    <button onClick={() => setDraftDays(new Set([1, 2, 3, 4, 5, 6, 7]))} className="text-blue-600 hover:underline">
-                      All week
+                    <button onClick={() => setDraftDays(new Set([1, 2, 3, 4, 5, 6, 7]))} className="text-[var(--pm-brand-700)] hover:underline">
+                      All seven
                     </button>
                   </div>
                 </div>
-                {/* Seven across, one row. Big round pills wrapped 6-then-1 on a
-                    phone, which read as a mistake rather than a control. */}
-                <div className="grid grid-cols-7 gap-1">
+                {/* Seven rows in one block, split by hairlines — the same
+                    tick-list as Layout above. Was seven filled blue pills. */}
+                <div className="overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
                   {DAY_LABELS.map((label, idx) => {
                     const dayValue = idx + 1   // 1=Mon..7=Sun
                     const active = draftDays.has(dayValue)
                     return (
                       <button
                         key={dayValue}
+                        type="button"
                         onClick={() => toggleDay(dayValue)}
                         aria-pressed={active}
-                        className={`h-10 rounded-lg border text-[11px] font-medium transition-colors ${
-                          active
-                            ? 'border-blue-600 bg-blue-600 text-white'
-                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                        }`}
+                        className="flex min-h-11 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50"
                       >
-                        {/* Two letters, not one — "T" and "S" each name two
-                            days. */}
-                        {label.slice(0, 2)}
-                        <span className="hidden sm:inline">{label.slice(2)}</span>
+                        <span className="min-w-0 flex-1 text-sm font-medium text-slate-700">
+                          {label}
+                        </span>
+                        {active && (
+                          <Check className="h-4 w-4 flex-shrink-0 text-[var(--pm-brand-700)]" strokeWidth={1.75} aria-hidden />
+                        )}
                       </button>
                     )
                   })}

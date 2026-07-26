@@ -59,54 +59,73 @@ export function BookingRequestPreviewBanner({
   }
 
   return (
-    <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
-          <CalendarClock className="h-4 w-4" />
-        </span>
+    // One flat bordered block, hairline-split: explanation on top, actions
+    // underneath. It used to be a single `flex flex-wrap` row — icon
+    // (flex-shrink-0) + text (flex-1) + a 3-button cluster (flex-shrink-0).
+    // `flex-1` is `flex: 1 1 0%`, so the text's hypothetical main size is 0 and
+    // wrapping never triggered; the un-shrinkable ~250px of buttons took the
+    // row and left the sentence about 20px wide — one word per line.
+    <div
+      data-testid="booking-request-preview"
+      className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+    >
+      <div className="flex items-start gap-3 px-4 py-3">
+        <CalendarClock
+          className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-700"
+          strokeWidth={1.75}
+          aria-hidden
+        />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-indigo-900 truncate">
-            Previewing: {clientName} · {packageName}
+          <p className="text-sm font-semibold text-slate-900">
+            Previewing {clientName} · {packageName}
           </p>
-          <p className="text-xs text-indigo-700/80">
-            {sessionCount} proposed session{sessionCount === 1 ? '' : 's'} shown as dashed blocks below.
-            {clashCount > 0 && (
-              <span className="ml-1 inline-flex items-center gap-1 font-medium text-amber-700">
-                <AlertTriangle className="h-3 w-3" />
+          <p className="mt-0.5 text-sm text-slate-500">
+            {sessionCount} proposed session{sessionCount === 1 ? '' : 's'}, shown as dashed blocks below.
+          </p>
+          {clashCount > 0 && (
+            <p className="mt-1 flex items-start gap-1.5 text-sm font-medium text-amber-700">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.75} aria-hidden />
+              <span>
                 {clashCount} clash{clashCount === 1 ? 'es' : ''} an existing session
               </span>
-            )}
-          </p>
+            </p>
+          )}
+          {error && <p className="mt-1 text-sm text-red-600">That didn&rsquo;t go through. Try again.</p>}
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <button
-            type="button"
-            onClick={dismiss}
-            disabled={pending !== null}
-            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:bg-white disabled:opacity-50"
-          >
-            Close preview
-          </button>
-          <button
-            type="button"
-            onClick={() => act('DECLINE')}
-            disabled={pending !== null}
-            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-white disabled:opacity-50"
-          >
-            {pending === 'DECLINE' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-            Decline
-          </button>
-          <button
-            type="button"
-            onClick={() => act('CONFIRM')}
-            disabled={pending !== null}
-            className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {pending === 'CONFIRM' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            Approve
-          </button>
-          {error && <span className="text-xs text-red-600">Failed</span>}
-        </div>
+      </div>
+
+      {/* Actions get their own full-width row so nothing has to shrink. */}
+      <div className="flex items-stretch border-t border-slate-200 text-sm font-medium [&>*+*]:border-l [&>*+*]:border-slate-200">
+        <button
+          type="button"
+          onClick={dismiss}
+          disabled={pending !== null}
+          className="min-h-11 flex-1 px-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+        >
+          Close
+        </button>
+        <button
+          type="button"
+          onClick={() => act('DECLINE')}
+          disabled={pending !== null}
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 px-2 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {pending === 'DECLINE'
+            ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+            : <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />}
+          Decline
+        </button>
+        <button
+          type="button"
+          onClick={() => act('CONFIRM')}
+          disabled={pending !== null}
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 px-2 text-[var(--pm-brand-700)] hover:bg-slate-50 disabled:opacity-50"
+        >
+          {pending === 'CONFIRM'
+            ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+            : <Check className="h-4 w-4" strokeWidth={1.75} aria-hidden />}
+          Approve
+        </button>
       </div>
     </div>
   )

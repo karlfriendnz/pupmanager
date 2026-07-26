@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Button } from '@/components/ui/button'
 
 type PendingClient = { userId: string; name: string; count: number; dogs: string[]; plans: string[] }
 
@@ -37,7 +36,7 @@ export function RescheduleBanner() {
 
   if (sessions === 0) {
     return note ? (
-      <div className="mb-3 rounded-2xl bg-white ring-1 ring-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] px-4 py-3 text-sm font-medium text-slate-700">
+      <div className="mb-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700">
         {note}
       </div>
     ) : null
@@ -79,58 +78,98 @@ export function RescheduleBanner() {
   const peopleLabel = clients.length === 1 ? "1 client hasn't been told" : `${clients.length} clients haven't been told`
 
   return (
-    <div className="mb-3 rounded-2xl bg-white ring-1 ring-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] px-4 py-3">
-      <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
-        <span className="h-2 w-2 rounded-full bg-accent shrink-0" />
-        <p className="text-sm">
-          <span className="font-semibold text-slate-900">{sessions} session{sessions === 1 ? '' : 's'} rescheduled</span>
-          <span className="text-slate-400"> · {expanded ? 'choose who to notify' : peopleLabel}</span>
-        </p>
+    // One flat block split by hairlines. It used to be a floating card
+    // (rounded-2xl + its own shadow) holding a row of pill buttons — both things
+    // AGENTS.md rules out, and on a phone the pills wrapped onto their own line.
+    <div
+      data-testid="reschedule-banner"
+      className="mb-3 overflow-hidden rounded-xl border border-slate-200 bg-white"
+    >
+      <p className="px-4 py-3 text-sm">
+        <span className="font-semibold text-slate-900">{sessions} session{sessions === 1 ? '' : 's'} rescheduled</span>
+        <span className="text-slate-500"> · {expanded ? 'choose who to notify' : peopleLabel}</span>
+      </p>
 
-        {!expanded && (
-          <div className="ml-auto flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={dismissAll} disabled={busy !== null}>Dismiss</Button>
-            <Button variant="secondary" size="sm" onClick={() => setExpanded(true)} disabled={busy !== null}>Customise</Button>
-            <Button variant="primary" size="sm" onClick={() => send(null)} loading={busy === 'send'}>Notify clients</Button>
-          </div>
-        )}
-      </div>
-
-      {expanded && (
+      {!expanded ? (
+        <div className="flex items-stretch border-t border-slate-200 text-sm font-medium [&>*+*]:border-l [&>*+*]:border-slate-200">
+          <button
+            type="button"
+            onClick={dismissAll}
+            disabled={busy !== null}
+            className="min-h-11 flex-1 px-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Dismiss
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            disabled={busy !== null}
+            className="min-h-11 flex-1 px-2 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Choose who
+          </button>
+          <button
+            type="button"
+            onClick={() => send(null)}
+            disabled={busy !== null}
+            className="min-h-11 flex-1 px-2 text-[var(--pm-brand-700)] hover:bg-slate-50 disabled:opacity-50"
+          >
+            {busy === 'send' ? 'Notifying…' : 'Notify all'}
+          </button>
+        </div>
+      ) : (
         <>
-          <div className="mt-3 rounded-xl ring-1 ring-slate-100 max-h-56 overflow-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-slate-50/95 backdrop-blur">
-                <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  <th className="px-3 py-2 w-9">
-                    <input type="checkbox" checked={allOn} onChange={toggleAll} aria-label="Select all" className="h-4 w-4 accent-[var(--accent)] cursor-pointer align-middle" />
-                  </th>
-                  <th className="px-2 py-2">Client</th>
-                  <th className="px-2 py-2">Dog</th>
-                  <th className="px-2 py-2">Consult / class</th>
-                  <th className="px-2 py-2 text-right">Sessions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clients.map(c => (
-                  <tr key={c.userId} onClick={() => toggle(c.userId)} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50">
-                    <td className="px-3 py-2">
-                      <input type="checkbox" checked={selected.has(c.userId)} onChange={() => toggle(c.userId)} onClick={e => e.stopPropagation()} className="h-4 w-4 accent-[var(--accent)] cursor-pointer align-middle" />
-                    </td>
-                    <td className="px-2 py-2 font-medium text-slate-800 whitespace-nowrap">{c.name}</td>
-                    <td className="px-2 py-2 text-slate-600">{c.dogs.join(', ') || '—'}</td>
-                    <td className="px-2 py-2 text-slate-600">{c.plans.join(', ') || '—'}</td>
-                    <td className="px-2 py-2 text-right text-slate-400 tabular-nums">{c.count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex items-center gap-2 mt-3 justify-end">
-            <Button variant="ghost" size="sm" onClick={() => setExpanded(false)} disabled={busy !== null}>Back</Button>
-            <Button variant="primary" size="sm" onClick={() => send([...selected])} disabled={busy !== null || selected.size === 0} loading={busy === 'send'}>
-              Notify {selected.size} selected
-            </Button>
+          {/* Rows, not a five-column table in a 224px-tall scroll box. The box
+              was a second scrollbar on the page; the table was unreadable at
+              390px. The whole block grows and the page scrolls once. */}
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 border-t border-slate-200 px-4 py-2.5">
+            <input
+              type="checkbox"
+              checked={allOn}
+              onChange={toggleAll}
+              className="h-4 w-4 shrink-0 accent-[var(--accent)]"
+            />
+            <span className="text-sm font-medium text-slate-700">Everyone</span>
+          </label>
+          {clients.map(c => (
+            <label
+              key={c.userId}
+              className="flex min-h-11 cursor-pointer items-start gap-3 border-t border-slate-200 px-4 py-2.5"
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(c.userId)}
+                onChange={() => toggle(c.userId)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-slate-900">{c.name}</span>
+                <span className="block text-xs text-slate-500">
+                  {[c.dogs.join(', '), c.plans.join(', ')].filter(Boolean).join(' · ') || '—'}
+                </span>
+              </span>
+              <span className="text-xs tabular-nums text-slate-400">
+                {c.count} session{c.count === 1 ? '' : 's'}
+              </span>
+            </label>
+          ))}
+          <div className="flex items-stretch border-t border-slate-200 text-sm font-medium [&>*+*]:border-l [&>*+*]:border-slate-200">
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              disabled={busy !== null}
+              className="min-h-11 flex-1 px-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={() => send([...selected])}
+              disabled={busy !== null || selected.size === 0}
+              className="min-h-11 flex-1 px-2 text-[var(--pm-brand-700)] hover:bg-slate-50 disabled:opacity-50"
+            >
+              {busy === 'send' ? 'Notifying…' : `Notify ${selected.size}`}
+            </button>
           </div>
         </>
       )}

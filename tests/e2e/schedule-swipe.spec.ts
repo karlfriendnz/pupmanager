@@ -62,7 +62,11 @@ test('swiping the 3-day view moves to the next set of days', async ({ page }) =>
   await page.getByRole('button', { name: '3 days', exact: true }).click()
   await page.getByRole('button', { name: 'Close' }).click()
 
-  const range = page.getByText(/\d{1,2} \w{3} – \d{1,2} \w{3}/).first()
+  // The 3-day window's own label, not `.first()` match of the date regex — that
+  // was the WEEK range in the page header, which only changes when a swipe
+  // spills into the next week. Whether it did depended on which weekday "today"
+  // happened to be, so this passed on a Sunday and failed on a Monday.
+  const range = page.getByTestId('three-day-range')
   await expect(range).toBeVisible({ timeout: 20_000 })
   const before = (await range.textContent())?.trim()
 
