@@ -126,27 +126,27 @@ export function OfferingCard({
           {!isRichTextEmpty(description) && (
             <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">{richTextToPlain(description)}</p>
           )}
+
+          {/* The facts sit in the text column, aligned under the title — from
+              the card edge they started left of everything else and read as a
+              separate, misaligned strip. Chips rather than a "·"-joined string
+              so each keeps its icon and its own colour; each is
+              whitespace-nowrap so a chip wraps whole instead of a word at a
+              time. */}
+          {facts.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              {facts.map((f, i) => (
+                <span key={i} className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs ${FACT_TONE[f.tone ?? 'default']}`}>
+                  <span className="shrink-0 opacity-70">{f.icon}</span>
+                  {f.label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {note && <p className={`mt-1.5 text-xs font-medium ${FACT_TONE[note.tone ?? 'warn']}`}>{note.label}</p>}
         </div>
       </div>
-
-      {/* The facts. Chips rather than a "·"-joined string so each one keeps its
-          icon and can carry its own colour (full / spaces left). Full card
-          width — indenting them under the title left them a column too narrow
-          to hold "3 sessions, every 1 week" on one line. Each chip is
-          whitespace-nowrap so a chip breaks to the next line whole rather than
-          stacking a word at a time. */}
-      {facts.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          {facts.map((f, i) => (
-            <span key={i} className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs ${FACT_TONE[f.tone ?? 'default']}`}>
-              <span className="shrink-0 opacity-70">{f.icon}</span>
-              {f.label}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {note && <p className={`mt-1.5 text-xs font-medium ${FACT_TONE[note.tone ?? 'warn']}`}>{note.label}</p>}
     </div>
   )
 
