@@ -24,7 +24,12 @@ function makeTx(membership: unknown = MEMBERSHIP) {
   return {
     membership: { findUnique: vi.fn().mockResolvedValue(membership) },
     package: { findFirst: vi.fn().mockResolvedValue(PKG) },
-    product: { findFirst: vi.fn().mockResolvedValue({ id: 'prod1' }) },
+    product: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'prod1' }),
+      // Granting a membership's products takes stock; null = untracked.
+      findUnique: vi.fn().mockResolvedValue({ stockCount: null }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
     productRequest: { create: vi.fn().mockResolvedValue({}) },
     membershipPurchase: { create: vi.fn().mockResolvedValue({}) },
   }

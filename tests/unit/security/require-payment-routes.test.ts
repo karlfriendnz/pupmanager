@@ -44,7 +44,9 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     clientProfile: { findUnique: h.clientProfileFindUnique },
     package: { findFirst: h.packageFindFirst },
-    product: { findUnique: h.productFindUnique },
+    // stock: takeStock() reads the product then may decrement. The fixtures
+    // below carry stockCount: null (untracked), so it short-circuits.
+    product: { findUnique: h.productFindUnique, updateMany: vi.fn(async () => ({ count: 1 })) },
     classRun: { findFirst: h.classRunFindFirst },
     trainerProfile: { findUnique: h.trainerFindUnique },
     bookingRequest: { create: h.bookingRequestCreate },
@@ -168,7 +170,7 @@ describe('POST /api/my/products/[productId]/buy require-payment gate', () => {
   function seed(product: Record<string, unknown>, trainer: Record<string, unknown> = PAY_ON) {
     h.getActiveClient.mockResolvedValue({ clientId: 'cp1', isPreview: false })
     h.clientProfileFindUnique.mockResolvedValue({ id: 'cp1', trainerId: 't1' })
-    h.productFindUnique.mockResolvedValue({
+    h.productFindUnique.mockResolvedValue({ stockCount: null,
       id: 'prod1', trainerId: 't1', active: true, name: 'Long line', kind: 'PHYSICAL',
       priceCents: 3000, requirePayment: null, ...product,
     })

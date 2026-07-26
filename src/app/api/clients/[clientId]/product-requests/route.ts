@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { takeStock } from '@/lib/stock'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
@@ -48,6 +49,12 @@ export async function POST(
     where: { clientId, productId: parsed.data.productId, status: 'PENDING' },
   })
   if (existing) return NextResponse.json(existing)
+
+  // One unit off the shelf; a tracked product that's run out is refused so the
+  // trainer finds out here rather than when they go to hand it over.
+  if (!(await takeStock(prisma, parsed.data.productId))) {
+    return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
+  }
 
   const created = await prisma.productRequest.create({
     data: {

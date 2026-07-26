@@ -76,7 +76,9 @@ vi.mock('@/lib/prisma', () => ({
       update: h.classEnrollmentUpdate,
     },
     trainingSession: { findFirst: h.trainingSessionFindFirst },
-    product: { findUnique: h.productFindUnique },
+    // stock: takeStock() reads the product then may decrement. The fixtures
+    // below carry stockCount: null (untracked), so it short-circuits.
+    product: { findUnique: h.productFindUnique, updateMany: vi.fn(async () => ({ count: 1 })) },
     productRequest: {
       findFirst: h.productRequestFindFirst,
       create: h.productRequestCreate,
@@ -221,7 +223,7 @@ describe('class enrol → CLIENT_BOOKED_SESSION', () => {
 describe('shop request → CLIENT_SHOP_ORDER', () => {
   const ctx = { params: Promise.resolve({ productId: 'prod1' }) }
   beforeEach(() => {
-    h.productFindUnique.mockResolvedValue({ id: 'prod1', trainerId: 'tp1', active: true, name: 'Long-line lead' })
+    h.productFindUnique.mockResolvedValue({ stockCount: null, id: 'prod1', trainerId: 'tp1', active: true, name: 'Long-line lead' })
     h.productRequestFindFirst.mockResolvedValue(null)
     h.productRequestCreate.mockResolvedValue({ id: 'pr1' })
   })
@@ -249,7 +251,7 @@ describe('shop request → CLIENT_SHOP_ORDER', () => {
 describe('shop buy → CLIENT_SHOP_ORDER (book-now-pay-later)', () => {
   const ctx = { params: Promise.resolve({ productId: 'prod1' }) }
   beforeEach(() => {
-    h.productFindUnique.mockResolvedValue({ id: 'prod1', trainerId: 'tp1', active: true, name: 'Long-line lead', kind: 'PHYSICAL', priceCents: 1500, requirePayment: false })
+    h.productFindUnique.mockResolvedValue({ stockCount: null, id: 'prod1', trainerId: 'tp1', active: true, name: 'Long-line lead', kind: 'PHYSICAL', priceCents: 1500, requirePayment: false })
     h.trainerProfileFindUnique.mockResolvedValue({ acceptPaymentsEnabled: true, connectChargesEnabled: true, connectAccountId: 'acct1', payoutCurrency: 'nzd', sandboxBilling: true, defaultRequirePayment: false })
     h.resolveRequirePayment.mockReturnValue(false) // pay-later branch
     h.productRequestFindFirst.mockResolvedValue(null)

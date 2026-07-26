@@ -60,7 +60,9 @@ describe('POST complete-profile — auth + ownership + validation', () => {
 
     expect(h.profileFindUnique).toHaveBeenCalledWith({
       where: { userId: 't1' },
-      select: { id: true },
+      // signupCountry comes back too: the gate stamps it from the geo header
+      // when we don't already hold one (OAuth sign-ups arrive without any).
+      select: { id: true, signupCountry: true },
     })
     // The update is keyed to the profile resolved from the caller's own id.
     expect(h.transaction).toHaveBeenCalledTimes(1)

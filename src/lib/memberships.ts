@@ -5,6 +5,7 @@
 // items are returned to enrol AFTER the tx commits — enrollInRun opens its own
 // transaction and can't be nested.
 import type { Prisma } from '@/generated/prisma'
+import { takeStock } from './stock'
 import { materializeBooking } from './booking-page'
 import { enrollInRun } from './class-runs'
 
@@ -49,6 +50,10 @@ export async function fulfilMembershipInTx(
       const prod = await tx.product.findFirst({ where: { id: item.productId, trainerId: args.trainerId }, select: { id: true } })
       if (!prod) continue
       for (let i = 0; i < qty; i++) {
+        // Take stock per unit. A membership that's already been paid for is
+        // still granted if the shelf is empty — the trainer owes them the item
+        // either way — but the count never goes negative.
+        await takeStock(tx, item.productId)
         await tx.productRequest.create({
           data: { clientId: args.clientId, productId: item.productId, status: 'FULFILLED', fulfilledAt: now, note: `Membership: ${membership.name}` },
         })

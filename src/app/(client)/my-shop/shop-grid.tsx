@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import { inStock, stockLabel } from '@/lib/stock'
 import { RichText } from '@/components/shared/rich-text'
 import { useRouter } from 'next/navigation'
 import {
@@ -17,6 +18,7 @@ interface Product {
   description: string | null
   kind: 'PHYSICAL' | 'DIGITAL'
   priceCents: number | null
+  stockCount: number | null
   imageUrl: string | null
   downloadUrl: string | null
   category: string | null
@@ -277,6 +279,11 @@ function ProductModal({
             )}
             <h2 className="text-xl font-bold text-slate-900">{product.name}</h2>
             <p className="mt-1 text-lg font-semibold text-slate-700">{formatPrice(product.priceCents, currency)}</p>
+            {stockLabel(product.stockCount) && (
+              <p className={`mt-0.5 text-xs ${inStock(product.stockCount) ? 'text-slate-500' : 'text-slate-400'}`}>
+                {stockLabel(product.stockCount)}
+              </p>
+            )}
           </div>
 
           <RichText html={product.description} className="text-sm text-slate-600" />
@@ -293,6 +300,10 @@ function ProductModal({
           ) : digitalBlockedNative ? (
             <div className="w-full rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-center text-sm text-slate-500">
               This item can be bought on the web at app.pupmanager.com.
+            </div>
+          ) : !inStock(product.stockCount) ? (
+            <div className="w-full rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-center text-sm text-slate-500">
+              Out of stock — ask your trainer when it&apos;s back.
             </div>
           ) : payable ? (
             <button

@@ -17,6 +17,8 @@ const createSchema = z.object({
   xeroAccountCode: z.string().max(50).optional().nullable(),
   // Tri-state "require payment to buy": null = inherit trainer default.
   requirePayment: z.boolean().nullable().optional(),
+  // Units on hand. Null clears tracking ("I never run out of this").
+  stockCount: z.number().int().min(0).max(1_000_000).nullable().optional(),
 })
 
 export async function GET() {
@@ -57,6 +59,7 @@ export async function POST(req: Request) {
       description: parsed.data.description || null,
       kind: parsed.data.kind,
       priceCents: parsed.data.priceCents ?? null,
+      stockCount: parsed.data.stockCount ?? null,
       imageUrl: parsed.data.imageUrl || null,
       downloadUrl: parsed.data.downloadUrl || null,
       category: parsed.data.category?.trim() || null,

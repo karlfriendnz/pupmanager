@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { inStock, takeStock } from '@/lib/stock'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { createConnectCheckout } from '@/lib/connect-checkout'
@@ -45,13 +46,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
 
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true, trainerId: true, active: true, name: true, kind: true, priceCents: true, requirePayment: true },
+    select: { id: true, trainerId: true, active: true, name: true, kind: true, priceCents: true, requirePayment: true, stockCount: true },
   })
   if (!product || product.trainerId !== profile.trainerId || !product.active) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
   if (!product.priceCents || product.priceCents <= 0) {
     return NextResponse.json({ error: 'This item isn’t for sale online.' }, { status: 400 })
+  }
+
+  // Nothing is sold that can't be handed over. Checked here, BEFORE any money
+  // moves; the actual decrement happens once the payment settles (or, on the
+  // pay-later branch below, when the request is created).
+  if (!inStock(product.stockCount)) {
+    return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
   }
 
   // Apple: no in-app purchase of digital goods. We hide the button in the
@@ -87,6 +95,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
       select: { id: true },
     })
     if (!existing) {
+      // One unit off the shelf. Refused rather than oversold.
+      if (!(await takeStock(prisma, product.id))) {
+        return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
+      }
       await prisma.productRequest.create({
         data: { clientId: profile.id, productId: product.id, status: 'PENDING' },
       })

@@ -14,6 +14,8 @@ const patchSchema = z.object({
   category: z.string().max(60).nullable().optional(),
   featured: z.boolean().optional(),
   xeroAccountCode: z.string().max(50).nullable().optional(),
+  // Units on hand. Null clears tracking ("I never run out of this").
+  stockCount: z.number().int().min(0).max(1_000_000).nullable().optional(),
   active: z.boolean().optional(),
   order: z.number().int().optional(),
   // Tri-state "require payment to buy": null = inherit trainer default.
@@ -56,6 +58,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ produc
       ...(data.description !== undefined && { description: data.description || null }),
       ...(data.kind !== undefined && { kind: data.kind }),
       ...(data.priceCents !== undefined && { priceCents: data.priceCents }),
+      ...(data.stockCount !== undefined && { stockCount: data.stockCount }),
       ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl || null }),
       ...(data.downloadUrl !== undefined && { downloadUrl: data.downloadUrl || null }),
       ...(data.category !== undefined && { category: data.category?.trim() || null }),

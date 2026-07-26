@@ -1468,6 +1468,11 @@ model Product {
   // (e.g. Vercel Blob) or signed URL handed out at access time.
   downloadUrl String?
   category    String? // free-form trainer-defined grouping ("Treats", "Guides")
+  // Units on hand. NULL = not tracked (services, digital downloads, anything
+  // the trainer never runs out of) — the common case, and why this is nullable
+  // rather than defaulting to 0, which would read as "sold out" for every
+  // existing product. Counts down as items go out; the trainer tops it up.
+  stockCount  Int?
   featured    Boolean     @default(false) // surfaces on the client home dashboard
   active      Boolean     @default(true) // hide from clients without deleting
   order       Int         @default(0)

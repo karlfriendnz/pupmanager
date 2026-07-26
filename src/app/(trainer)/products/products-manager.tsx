@@ -27,6 +27,7 @@ interface Product {
   description: string | null
   kind: Kind
   priceCents: number | null
+  stockCount: number | null
   imageUrl: string | null
   downloadUrl: string | null
   category: string | null
@@ -41,6 +42,7 @@ const EMPTY_DRAFT: Omit<Product, 'id'> = {
   description: null,
   kind: 'PHYSICAL',
   priceCents: null,
+  stockCount: null,
   imageUrl: null,
   downloadUrl: null,
   category: null,
@@ -277,6 +279,7 @@ function ProductEditor({
       description: draft.description,
       kind: draft.kind,
       priceCents: parsedPrice,
+      stockCount: draft.stockCount ?? null,
       imageUrl: draft.imageUrl,
       downloadUrl: draft.downloadUrl,
       category: draft.category,
@@ -306,6 +309,7 @@ function ProductEditor({
         description: body.description,
         kind: body.kind,
         priceCents: body.priceCents,
+        stockCount: body.stockCount ?? null,
         imageUrl: body.imageUrl,
         downloadUrl: body.downloadUrl,
         category: body.category,
@@ -464,6 +468,24 @@ function ProductEditor({
             value={priceInput}
             onChange={e => setPriceInput(e.target.value)}
           />
+
+          {/* Stock — blank means "I never run out of this", which is how every
+              product behaves until a number is typed here. */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">Stock</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={draft.stockCount ?? ''}
+              onChange={e => update('stockCount', e.target.value === '' ? null : Math.max(0, Math.floor(Number(e.target.value))))}
+              placeholder="Leave blank if you don't count this"
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-slate-500">
+              Counts down as items go out. At zero it stops being sellable until you add more.
+            </p>
+          </div>
 
           {/* Category */}
           <div className="flex flex-col gap-1.5">

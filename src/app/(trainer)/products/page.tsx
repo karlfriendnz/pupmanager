@@ -35,6 +35,7 @@ export default async function ProductsPage() {
           description: p.description,
           kind: p.kind as 'PHYSICAL' | 'DIGITAL',
           priceCents: p.priceCents,
+          stockCount: p.stockCount,
           imageUrl: p.imageUrl,
           downloadUrl: p.downloadUrl,
           category: p.category,

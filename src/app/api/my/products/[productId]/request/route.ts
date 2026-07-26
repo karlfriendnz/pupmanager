@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { takeStock } from '@/lib/stock'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
@@ -70,6 +71,9 @@ export async function POST(
   })
   if (existing) return NextResponse.json(existing)
 
+  if (!(await takeStock(prisma, product.id))) {
+    return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
+  }
   const created = await prisma.productRequest.create({
     data: {
       clientId: profile.id,

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { takeStock } from '@/lib/stock'
 import type Stripe from 'stripe'
 import type { Prisma, SessionType } from '@/generated/prisma'
 import { prisma } from '@/lib/prisma'
@@ -231,6 +232,9 @@ async function markPaidAndFulfil(
       if (!payment.clientId) continue // can't fulfil without a client
 
       if (item.kind === 'PRODUCT' && item.productId) {
+        // Already paid, so never refuse it here — just keep the shelf count
+        // honest. The buy route checked stock before taking the money.
+        await takeStock(tx, item.productId)
         // A paid product becomes a FULFILLED request the trainer hands over.
         await tx.productRequest.create({
           data: {
