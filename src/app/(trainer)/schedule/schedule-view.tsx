@@ -3246,6 +3246,14 @@ export function ScheduleView({
   // page — no post-mount fetch flash. Re-seeded when a new week's data arrives.
   const [busyBlocks, setBusyBlocks]     = useState<BusyBlock[]>(initialBusyBlocks)
   const [showAvail, setShowAvail]       = useState(false)
+  // ?availability=1 opens the editor, so "Availability" in the nav lands on it
+  // rather than on the schedule with the editor hidden behind the toolbar cog.
+  // Done in an effect, not a lazy useState initialiser: reading the URL during
+  // render makes the server produce `false` and the client `true`, which is a
+  // hydration mismatch (measured — it threw on first attempt).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('availability') === '1') setShowAvail(true)
+  }, [])
   const { confirmClashes }              = useBookingConflicts()
   const [showReport, setShowReport]     = useState(false)
 
