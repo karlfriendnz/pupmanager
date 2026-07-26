@@ -296,7 +296,7 @@ const ONBOARDING_STEPS = [
     key: 'invite_staff',
     order: 14,
     title: 'Invite your team',
-    body: "Got other trainers or staff? Send them an invite so they can manage their own clients and sessions. Working solo for now? Skip this — you can add people any time.",
+    body: "Got a team? Send them an invite so they can manage their own clients and sessions. Working solo for now? Skip this — you can add people any time.",
     ctaLabel: 'Invite a teammate',
     ctaHref: '/settings?tab=team',
     skippable: true,

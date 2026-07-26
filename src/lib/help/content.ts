@@ -893,7 +893,7 @@ export const HELP_FAQS: Faq[] = [
     a: 'It\'s how many of the tasks you set a client they\'ve marked done over the last 7 days. Higher means they\'re keeping up with training.',
   },
   {
-    q: 'Can I share a client with another trainer?',
+    q: 'Can I share a client with another team member?',
     a: 'Yes. Open the client\'s profile and tap "Share". You can give read-only access or hand them over completely.',
   },
   {

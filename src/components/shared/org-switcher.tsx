@@ -2,10 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Building2, Check, ChevronsUpDown, Loader2 } from 'lucide-react'
+import { ROLE_LABELS } from '@/lib/permissions'
 
 export type Org = { id: string; name: string; role: string }
 
-const ROLE_LABEL: Record<string, string> = { OWNER: 'Owner', MANAGER: 'Manager', STAFF: 'Team member' }
+// `role` arrives as a plain string off the session, so fall back to the raw
+// value rather than assuming it's a CompanyRole. The labels themselves live in
+// one place (ROLE_LABELS) — never title-case the enum here.
+const roleText = (role: string) => ROLE_LABELS[role as keyof typeof ROLE_LABELS] ?? role
 
 // Lets a trainer who belongs to more than one organisation switch which one
 // they're acting in. Posts to /api/trainer/switch-org (re-points the JWT
@@ -59,7 +63,7 @@ export function OrgSwitcher({ orgs, activeId }: { orgs: Org[]; activeId: string 
         <Building2 className="h-4 w-4 text-accent flex-shrink-0" />
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold text-slate-800 truncate">{active.name}</span>
-          <span className="block text-[11px] text-slate-400 leading-tight">{ROLE_LABEL[active.role] ?? active.role}</span>
+          <span className="block text-[11px] text-slate-400 leading-tight">{roleText(active.role)}</span>
         </span>
         <ChevronsUpDown className="h-4 w-4 text-slate-400 flex-shrink-0" />
       </button>
@@ -80,7 +84,7 @@ export function OrgSwitcher({ orgs, activeId }: { orgs: Org[]; activeId: string 
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-slate-800 truncate">{o.name}</span>
-                  <span className="block text-[11px] text-slate-400 leading-tight">{ROLE_LABEL[o.role] ?? o.role}</span>
+                  <span className="block text-[11px] text-slate-400 leading-tight">{roleText(o.role)}</span>
                 </span>
                 {isSwitching ? <Loader2 className="h-4 w-4 animate-spin text-accent flex-shrink-0" />
                   : isActive ? <Check className="h-4 w-4 text-accent flex-shrink-0" /> : null}

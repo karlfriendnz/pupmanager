@@ -275,7 +275,7 @@ export function SetupForm({
             <div>
               <p className="text-sm font-semibold" style={{ color: 'var(--pm-ink-900)' }}>How many team members?</p>
               <p className="text-[11px]" style={{ color: 'var(--pm-ink-500)' }}>
-                First staff member included · +{meta.symbol}{formatWeekly(weeklyFromMonthly(SEAT_PRICE[currency]))}/wk each after
+                First team member included · +{meta.symbol}{formatWeekly(weeklyFromMonthly(SEAT_PRICE[currency]))}/wk each after
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -375,7 +375,7 @@ export function SetupForm({
             {locked ? 'Billed monthly at ' : 'Then billed monthly at '}{meta.symbol}{total}/mo
           </p>
           <p className="mt-1 text-xs" style={{ color: 'var(--pm-ink-500)' }}>
-            {planName} · {seatCount} staff member{seatCount === 1 ? '' : 's'}
+            {planName} · {seatCount} team member{seatCount === 1 ? '' : 's'}
             {extraSeats > 0 && ` (+${extraSeats} seat${extraSeats === 1 ? '' : 's'})`}
             {selectedAddons.size > 0 && ` · ${selectedAddons.size} add-on${selectedAddons.size === 1 ? '' : 's'}`}
           </p>
