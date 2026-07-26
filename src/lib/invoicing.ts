@@ -69,6 +69,12 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
     // independently in syncReceivableToXero, so we don't carry it here.)
     let amountCents: number | null = null
     let description = ''
+    // Most assignments are one of a thing at its price. An event ticket can be
+    // several ("2 × General"), and the invoice has to show that rather than a
+    // mystery doubled total — so the line quantity/unit price are carried out
+    // of the resolution below instead of being assumed to be 1 × amount.
+    let quantity = 1
+    let unitAmountCents: number | null = null
 
     if (input.sourceType === 'PACKAGE') {
       const cp = await prisma.clientPackage.findFirst({
@@ -84,10 +90,16 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       // session they booked — its schedule slot's, so a drop-in class can charge
       // more for a Saturday than a Tuesday, falling back to the package's flat
       // drop-in rate for a classic class that just allows drop-ins.
+      //
+      // An EVENT is the exception: it sells named ticket types at their own
+      // prices, and can be bought several at a time. When the enrolment names a
+      // ticket, THAT price × quantity is the bill — the package's flat price is
+      // only the fallback for everything that doesn't sell tickets.
       const enr = await prisma.classEnrollment.findFirst({
         where: { id: sourceId, clientId: input.clientId },
         select: {
-          type: true, joinedAtIndex: true,
+          type: true, joinedAtIndex: true, quantity: true,
+          ticketTier: { select: { name: true, priceCents: true } },
           dropInSession: { select: { packageSessionSlot: { select: { priceCents: true, specialPriceCents: true } } } },
           classRun: {
             select: {
@@ -99,10 +111,19 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       })
       if (!enr) return null
       const pkg = enr.classRun.package
-      amountCents = enr.type === 'DROP_IN'
-        ? sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)
-        : (pkg.specialPriceCents ?? pkg.priceCents)
-      description = enr.classRun.name + (enr.type === 'DROP_IN' ? ` (drop-in${enr.joinedAtIndex ? ` · session ${enr.joinedAtIndex}` : ''})` : '')
+      quantity = Math.max(1, enr.quantity ?? 1)
+      unitAmountCents = enr.ticketTier
+        ? enr.ticketTier.priceCents
+        : enr.type === 'DROP_IN'
+          ? sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)
+          : (pkg.specialPriceCents ?? pkg.priceCents)
+      amountCents = unitAmountCents == null ? null : unitAmountCents * quantity
+      const ticketNote = enr.ticketTier
+        ? ` (${enr.ticketTier.name}${quantity > 1 ? ` × ${quantity}` : ''})`
+        : enr.type === 'DROP_IN'
+          ? ` (drop-in${enr.joinedAtIndex ? ` · session ${enr.joinedAtIndex}` : ''})`
+          : ''
+      description = enr.classRun.name + ticketNote
     } else {
       const product = await prisma.product.findFirst({
         where: { id: sourceId, trainerId: input.trainerId },
@@ -158,7 +179,15 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
         // Every invoice has >=1 line. Assignment invoices start with a single
         // line for the package/product; the trainer can add more in the editor.
         lines: {
-          create: [{ description, quantity: 1, unitAmountCents: amountCents, amountCents, sortOrder: 0 }],
+          create: [{
+            description,
+            quantity,
+            // Falls back to the total for the single-item sources, which is the
+            // same number when quantity is 1.
+            unitAmountCents: unitAmountCents ?? amountCents,
+            amountCents,
+            sortOrder: 0,
+          }],
         },
       },
       select: { id: true, payToken: true },
@@ -560,9 +589,14 @@ async function pushReceivableToXero(invoiceId: string, updateExisting: boolean):
     } else if (invoice.sourceType === 'CLASS_ENROLLMENT' && invoice.sourceId) {
       const enr = await prisma.classEnrollment.findUnique({
         where: { id: invoice.sourceId },
-        select: { classRun: { select: { package: { select: { xeroAccountCode: true } } } } },
+        select: {
+          ticketTier: { select: { xeroAccountCode: true } },
+          classRun: { select: { package: { select: { xeroAccountCode: true } } } },
+        },
       })
-      sourceCode = enr?.classRun?.package?.xeroAccountCode ?? null
+      // An event's ticket type can post to its own income account (a workshop
+      // sold alongside merch), so it wins over the offering's.
+      sourceCode = enr?.ticketTier?.xeroAccountCode || enr?.classRun?.package?.xeroAccountCode || null
     }
 
     // Fall back to a single synthetic line if (unexpectedly) the invoice has no

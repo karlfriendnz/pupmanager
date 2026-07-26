@@ -1234,19 +1234,26 @@ model TrainingTask {
   trainerNote String?  @db.Text // per-task comment from the trainer
   imageUrls   Json     @default("[]") // string[] of public image URLs
   order       Int      @default(0) // display order within a session
+  // Which library item this homework was created from, when it came from the
+  // Library. The row stays a SNAPSHOT (title/description are copied, so editing
+  // the library item never rewrites work already handed out) — this is purely a
+  // provenance link so the library item can show who currently has it.
+  libraryTaskId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  client     ClientProfile    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  dog        Dog?             @relation(fields: [dogId], references: [id])
-  session    TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  completion TaskCompletion?
-  logs       TrainingLog[]
+  client      ClientProfile    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dog         Dog?             @relation(fields: [dogId], references: [id])
+  session     TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  libraryTask LibraryTask?     @relation(fields: [libraryTaskId], references: [id], onDelete: SetNull)
+  completion  TaskCompletion?
+  logs        TrainingLog[]
 
   @@index([clientId])
   @@index([date])
   @@index([sessionId])
+  @@index([libraryTaskId])
   @@map("training_tasks")
 }
 
@@ -1687,7 +1694,10 @@ model PackageTicketTier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  package     Package           @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  // Who bought this ticket type. SetNull on the enrolment side, so retiring a
+  // ticket type never deletes the people who already hold one.
+  enrollments ClassEnrollment[]
 
   @@index([packageId])
   @@map("package_ticket_tiers")
@@ -1828,6 +1838,14 @@ model ClassEnrollment {
   // For DROP_IN: the 1-based index of dropInSessionId, kept for display
   // ("dropped into session 3"). dropInSessionId is the source of truth.
   joinedAtIndex    Int?
+  // Which ticket type they bought, for an event that sells several ("Early
+  // bird" / "General"). Null on every other kind of run — those price off the
+  // package's single price, which is what this used to assume for events too.
+  ticketTierId     String?
+  // How many places this one enrolment is for. A ticket can be bought several
+  // at a time ("2 × General"); everything else is a single seat, hence the
+  // default of 1 — it multiplies both the invoice and the capacity it uses up.
+  quantity         Int              @default(1)
   source           String           @default("TRAINER") // "TRAINER" | "SELF_SERVE"
   // Mirrors ClientPackage.invoicedAt — manual until billing is wired.
   invoicedAt       DateTime?
@@ -1838,6 +1856,7 @@ model ClassEnrollment {
   client        ClientProfile       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   dog           Dog?                @relation(fields: [dogId], references: [id], onDelete: SetNull)
   dropInSession TrainingSession?    @relation("DropInSession", fields: [dropInSessionId], references: [id], onDelete: Cascade)
+  ticketTier    PackageTicketTier?  @relation(fields: [ticketTierId], references: [id], onDelete: SetNull)
   attendance    SessionAttendance[]
   paymentItem   PaymentItem?
 
@@ -1849,6 +1868,7 @@ model ClassEnrollment {
   @@index([classRunId])
   @@index([clientId])
   @@index([dropInSessionId])
+  @@index([ticketTierId])
   @@map("class_enrollments")
 }
 
@@ -2644,14 +2664,23 @@ model LibraryTask {
   id          String   @id @default(cuid())
   themeId     String
   title       String
-  description String?  @db.Text
+  description String?  @db.Text // Tiptap rich text — render with <RichText />
   repetitions Int?
   videoUrl    String?
+  // One illustrative image and one attached document (PDF) per item. Both live
+  // in Vercel Blob; images are compressed client-side before upload.
+  imageUrl    String?
+  fileUrl     String?
+  fileName    String? // original filename, for the download link's label
   order       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  theme LibraryTheme @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  theme       LibraryTheme   @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  // Homework rows created FROM this library item — the "who currently has this"
+  // list on the item page. Snapshots keep their own copy of the text, so the
+  // link is nullable and deleting the library item leaves the homework intact.
+  assignments TrainingTask[]
 
   @@index([themeId])
   @@map("library_tasks")
@@ -2858,9 +2887,11 @@ enum CommsFlowAudience {
   ENROLLED_AND_WAITLIST // also WAITLISTED
   CUSTOM // only the clients in customClientIds
   // The trainer's own team, not clients — "you're teaching Puppy Class in an
-  // hour", "a new member joined". Recipients are the ClassRun's assigned
-  // members when it has any, otherwise every accepted TrainerMembership of the
-  // company. Staff-only steps are the ONLY ones allowed the IN_APP channel:
+  // hour", "a new member joined". Recipients are the people working THAT
+  // session: its assignedTrainer, else the ClassRun's assigned members, else
+  // the business owner. Never the whole company — a reminder about one class
+  // has no business on the phone of someone who isn't on it.
+  // Staff-only steps are the ONLY ones allowed the IN_APP channel:
   // the trainer bell reads Notification, the client feed shouldn't fill with
   // duplicated reminder rows.
   STAFF

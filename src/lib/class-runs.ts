@@ -54,6 +54,26 @@ export const ONE_OFF_EVENT_PACKAGE = {
   recurrenceRule: null,
 } as const
 
+/**
+ * Is this offering a one-off EVENT? The same shape ONE_OFF_EVENT_PACKAGE
+ * selects for, asked of a package you already have in hand — used by the event
+ * detail route (which must 404 a class) and by the legacy /classes/[runId]
+ * redirect. One predicate so "what counts as an event" is stated once.
+ */
+export function isOneOffEventPackage(pkg: {
+  isGroup: boolean
+  allowDropIn: boolean
+  sessionCount: number
+  recurrenceRule: string | null
+}): boolean {
+  return (
+    pkg.isGroup === ONE_OFF_EVENT_PACKAGE.isGroup &&
+    pkg.allowDropIn === ONE_OFF_EVENT_PACKAGE.allowDropIn &&
+    pkg.sessionCount === ONE_OFF_EVENT_PACKAGE.sessionCount &&
+    !pkg.recurrenceRule
+  )
+}
+
 // ─── Drop-in schedule slots ──────────────────────────────────────────────────
 
 /** The parts of a PackageSessionSlot the scheduler needs. Structural, so both
@@ -188,15 +208,34 @@ export type EnrollDecision = 'ENROLLED' | 'WAITLISTED' | 'REJECTED_FULL'
  * What happens when someone tries to enrol: a free seat → ENROLLED;
  * no seat but the package allows a waitlist → WAITLISTED; otherwise
  * REJECTED_FULL. Unlimited capacity always enrols.
+ *
+ * `seats` is how many places the booking takes — 1 for a class seat, but an
+ * event ticket can be bought several at a time ("2 × General"), and two of the
+ * three remaining places is a fit while four is not.
  */
 export function decideEnrollment(args: {
   capacity: number | null
   enrolledCount: number
   allowWaitlist: boolean
+  seats?: number
 }): EnrollDecision {
+  const seats = Math.max(1, args.seats ?? 1)
   const left = seatsRemaining(args.capacity, args.enrolledCount)
-  if (left === null || left > 0) return 'ENROLLED'
+  if (left === null || left >= seats) return 'ENROLLED'
   return args.allowWaitlist ? 'WAITLISTED' : 'REJECTED_FULL'
+}
+
+/** The most tickets one enrolment can hold. High enough for a family or a
+ *  workplace group, low enough that a fat-fingered "100" is caught. */
+export const MAX_TICKET_QUANTITY = 20
+
+/** Coerce a submitted ticket quantity into 1…MAX_TICKET_QUANTITY. Anything
+ *  missing, fractional or out of range lands on a sane whole number rather
+ *  than billing a client for 0 (or 10,000) places. */
+export function normalizeTicketQuantity(value: unknown): number {
+  const n = typeof value === 'number' ? Math.trunc(value) : NaN
+  if (!Number.isFinite(n)) return 1
+  return Math.max(1, Math.min(n, MAX_TICKET_QUANTITY))
 }
 
 /**
@@ -245,29 +284,38 @@ export async function setRunTrainers(
 
 /** Count of FULL-course seats that consume the run's capacity (ENROLLED only).
  * Drop-ins don't take a course seat — they take a single session's seat, so
- * they're counted per-session by sessionAttendeeCount, not here. */
+ * they're counted per-session by sessionAttendeeCount, not here.
+ *
+ * Sums `quantity`, not rows: one event enrolment can hold several tickets, and
+ * counting it as a single place would oversell the room. Every other enrolment
+ * has quantity 1, so this is the old count for classes. */
 export async function enrolledCount(classRunId: string, tx: Tx = prisma): Promise<number> {
-  return tx.classEnrollment.count({
+  const agg = await tx.classEnrollment.aggregate({
     where: { classRunId, status: 'ENROLLED', type: 'FULL' },
+    _sum: { quantity: true },
   })
+  return agg._sum?.quantity ?? 0
 }
 
 /** How many people are in the room for ONE session: every FULL enrolment (they
  * attend all sessions) plus the drop-ins booked onto exactly this session.
  * This is the number a drop-in's capacity check must respect — a course that's
- * "full" for the whole term can still have a spare seat in a given week. */
+ * "full" for the whole term can still have a spare seat in a given week.
+ * Sums `quantity` for the same reason as enrolledCount. */
 export async function sessionAttendeeCount(
   classRunId: string,
   sessionId: string,
   tx: Tx = prisma,
 ): Promise<number> {
-  return tx.classEnrollment.count({
+  const agg = await tx.classEnrollment.aggregate({
     where: {
       classRunId,
       status: 'ENROLLED',
       OR: [{ type: 'FULL' }, { type: 'DROP_IN', dropInSessionId: sessionId }],
     },
+    _sum: { quantity: true },
   })
+  return agg._sum?.quantity ?? 0
 }
 
 /** Per-session spaces for a run, computed once from its live enrolments — the
@@ -278,7 +326,9 @@ export async function sessionAttendeeCount(
  * Pure: hand it the enrolments you've already loaded; no DB round-trip. */
 export function classSessionSpaces(
   capacity: number | null,
-  enrolments: { type: 'FULL' | 'DROP_IN'; dropInSessionId: string | null }[],
+  /** `quantity` is how many places the booking holds (an event ticket can be
+   *  several); omit it and each enrolment counts as one, as it always has. */
+  enrolments: { type: 'FULL' | 'DROP_IN'; dropInSessionId: string | null; quantity?: number }[],
 ): {
   fullSeats: number
   /** Spaces left in one session. `sessionCap` overrides the run capacity for
@@ -286,11 +336,12 @@ export function classSessionSpaces(
    *  omit it to use the run/package capacity. */
   spacesLeftFor: (sessionId: string, sessionCap?: number | null) => number | null
 } {
-  const fullSeats = enrolments.filter(e => e.type === 'FULL').length
+  const seats = (e: { quantity?: number }) => Math.max(1, e.quantity ?? 1)
+  const fullSeats = enrolments.filter(e => e.type === 'FULL').reduce((n, e) => n + seats(e), 0)
   const dropInsBySession = new Map<string, number>()
   for (const e of enrolments) {
     if (e.type === 'DROP_IN' && e.dropInSessionId) {
-      dropInsBySession.set(e.dropInSessionId, (dropInsBySession.get(e.dropInSessionId) ?? 0) + 1)
+      dropInsBySession.set(e.dropInSessionId, (dropInsBySession.get(e.dropInSessionId) ?? 0) + seats(e))
     }
   }
   return {
@@ -305,14 +356,18 @@ export function classSessionSpaces(
 /** The most-attended single session in a run (max headcount across sessions).
  * A FULL enrolment attends every session, so it must fit the busiest one. */
 async function busiestSessionHeadcount(classRunId: string, tx: Tx = prisma): Promise<number> {
-  const fulls = await tx.classEnrollment.count({ where: { classRunId, status: 'ENROLLED', type: 'FULL' } })
+  // Sums `quantity` rather than counting rows — see enrolledCount.
+  const fulls = await tx.classEnrollment.aggregate({
+    where: { classRunId, status: 'ENROLLED', type: 'FULL' },
+    _sum: { quantity: true },
+  })
   const perSession = await tx.classEnrollment.groupBy({
     by: ['dropInSessionId'],
     where: { classRunId, status: 'ENROLLED', type: 'DROP_IN', dropInSessionId: { not: null } },
-    _count: { _all: true },
+    _sum: { quantity: true },
   })
-  const maxDropIns = perSession.reduce((m, r) => Math.max(m, r._count._all), 0)
-  return fulls + maxDropIns
+  const maxDropIns = perSession.reduce((m, r) => Math.max(m, r._sum?.quantity ?? 0), 0)
+  return (fulls._sum?.quantity ?? 0) + maxDropIns
 }
 
 export type CreateRunArgs = {
@@ -855,6 +910,14 @@ export async function enrollInRun(args: {
   type?: 'FULL' | 'DROP_IN'
   /** Required when type is DROP_IN: the one session they're dropping into. */
   sessionId?: string | null
+  /**
+   * Which ticket type they're buying, for an event that sells several. Must be
+   * one of the run's own offering's tiers — validated here, never trusted from
+   * the caller. Null/omitted keeps the old behaviour: price off the package.
+   */
+  ticketTierId?: string | null
+  /** How many of that ticket. Clamped to 1…MAX_TICKET_QUANTITY. */
+  quantity?: number | null
   source?: 'TRAINER' | 'SELF_SERVE'
 }): Promise<{ enrollmentId: string; status: 'ENROLLED' | 'WAITLISTED' }> {
   return prisma.$transaction(async (tx) => {
@@ -944,6 +1007,43 @@ export async function enrollInRun(args: {
       }
     }
 
+    // Which ticket type, and how many. An event sells several ("Early bird",
+    // "General"), and the chosen one — not the package's flat price — is what
+    // gets invoiced. Scoped to THIS run's offering: a tier id alone must never
+    // let anyone bill against another package's (or another trainer's) ticket.
+    const quantity = normalizeTicketQuantity(args.quantity ?? 1)
+    let ticketTierId: string | null = null
+    if (args.ticketTierId) {
+      const tier = await tx.packageTicketTier.findFirst({
+        where: { id: args.ticketTierId, packageId: run.packageId },
+        select: { id: true, name: true, capacity: true },
+      })
+      if (!tier) throw new ClassError('TICKET_NOT_FOUND', 'That ticket type isn’t part of this event')
+      ticketTierId = tier.id
+      // A ticket type can cap itself ("Early bird ×20") independently of the
+      // event's overall capacity, so it's checked on its own.
+      if (tier.capacity != null) {
+        const sold = await tx.classEnrollment.aggregate({
+          where: {
+            classRunId: args.classRunId,
+            ticketTierId: tier.id,
+            status: 'ENROLLED',
+            ...(existing ? { id: { not: existing.id } } : {}),
+          },
+          _sum: { quantity: true },
+        })
+        const left = Math.max(0, tier.capacity - (sold._sum?.quantity ?? 0))
+        if (quantity > left) {
+          throw new ClassError(
+            'TICKET_FULL',
+            left === 0
+              ? `${tier.name} tickets are sold out`
+              : `Only ${left} ${tier.name} ticket${left === 1 ? '' : 's'} left`,
+          )
+        }
+      }
+    }
+
     // Capacity is per-session. FULL must fit the busiest session (it's in every
     // one); a drop-in only has to fit its single chosen session.
     const headcount =
@@ -958,6 +1058,7 @@ export async function enrollInRun(args: {
       capacity,
       enrolledCount: headcount,
       allowWaitlist: run.package.allowWaitlist,
+      seats: quantity,
     })
     if (decision === 'REJECTED_FULL') {
       throw new ClassError('FULL', type === 'DROP_IN' ? 'That session is full' : 'This class is full')
@@ -981,6 +1082,8 @@ export async function enrollInRun(args: {
       waitlistPosition,
       dropInSessionId,
       joinedAtIndex,
+      ticketTierId,
+      quantity,
       source: args.source ?? 'TRAINER',
       withdrawnAt: null,
     } as const

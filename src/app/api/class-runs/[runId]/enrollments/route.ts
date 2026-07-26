@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { enrollInRun, ClassError } from '@/lib/class-runs'
+import { enrollInRun, ClassError, MAX_TICKET_QUANTITY } from '@/lib/class-runs'
 import { notifyClient } from '@/lib/client-notify'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { resolveRequirePayment } from '@/lib/require-payment'
@@ -21,6 +21,11 @@ const schema = z.object({
   // several sessions of the same run in one go, one enrolment each.
   sessionId: z.string().min(1).optional(),
   sessionIds: z.array(z.string().min(1)).min(1).max(52).optional(),
+  // An event that sells several ticket types: which one, and how many of them.
+  // The tier is checked against THIS run's offering inside enrollInRun — never
+  // trusted from here. Omitted = the offering's flat price, one place.
+  ticketTierId: z.string().min(1).nullable().optional(),
+  quantity: z.number().int().min(1).max(MAX_TICKET_QUANTITY).optional(),
   // Whether to tell the client they've been enrolled. Default true.
   notify: z.boolean().optional(),
   // Whether to ask the client to pay now: marks the invoice sent and puts the
@@ -79,6 +84,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
           dogId: parsed.data.dogId ?? null,
           type,
           sessionId: sid,
+          // A drop-in prices per session, so a ticket type only ever applies to
+          // the whole booking (which is what an event enrolment is).
+          ticketTierId: type === 'FULL' ? parsed.data.ticketTierId ?? null : null,
+          quantity: type === 'FULL' ? parsed.data.quantity ?? 1 : 1,
           source: 'TRAINER',
         })
         outcomes.push({ sessionId: sid, enrollmentId: r.enrollmentId, status: r.status })
@@ -90,10 +99,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     const booked = outcomes.filter(o => o.enrollmentId)
     if (booked.length === 0) {
       const first = outcomes.find(o => o.error)
-      // 409 is for a genuine conflict (the session is full, they're already in).
-      // A malformed request — a drop-in that named no session — is still a 400,
-      // as it was before drop-ins could span several sessions.
-      const conflict = first?.code === 'FULL' || first?.code === 'ALREADY_ENROLLED'
+      // 409 is for a genuine conflict (the session is full, that ticket type is
+      // sold out, they're already in). A malformed request — a drop-in that
+      // named no session, a ticket from another offering — is still a 400.
+      const conflict = first?.code === 'FULL' || first?.code === 'ALREADY_ENROLLED' || first?.code === 'TICKET_FULL'
       return NextResponse.json(
         { error: first?.error ?? 'Could not enrol that client.', code: first?.code },
         { status: conflict ? 409 : 400 },
@@ -188,7 +197,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     return NextResponse.json({ ok: true, ...result, booked: booked.length, results: outcomes }, { status: 201 })
   } catch (err) {
     if (err instanceof ClassError) {
-      const status = err.code === 'FULL' || err.code === 'ALREADY_ENROLLED' ? 409 : 400
+      const status = err.code === 'FULL' || err.code === 'ALREADY_ENROLLED' || err.code === 'TICKET_FULL' ? 409 : 400
       return NextResponse.json({ error: err.message, code: err.code }, { status })
     }
     throw err
