@@ -1,6 +1,16 @@
 # Plan — recurring client→trainer payments (memberships)
 
-Status: **proposal, nothing built.** Written 2026-07-27 on `feature/comms-flows`.
+Status: **PARKED** — Karl's call, 2026-07-27. Nothing was built, so there is
+nothing to unwind; this document is the whole artefact. Pick it up by answering
+the seven questions in §12 (three of them change the schema).
+
+Written 2026-07-27 on `feature/comms-flows`.
+
+**What is live meanwhile:** a trainer can still configure a recurring package,
+and a client can *request* one — the request reaches the trainer's dashboard.
+No money moves. Note that Packages are currently hidden from both trainers and
+clients (`PACKAGES_HIDDEN_FROM_CLIENTS` in `src/lib/client-memberships.ts`), so
+that request flow is dormant until they are unhidden.
 
 ---
 
