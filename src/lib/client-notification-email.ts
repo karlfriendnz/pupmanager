@@ -113,7 +113,6 @@ export function renderClientNotificationEmail(args: ClientNotificationEmailArgs)
                 <p style="margin:0;font-size:13px;color:#475569;line-height:1.5;">
                   <strong style="color:#0f172a;">${safeDisplay}</strong><span style="color:#94a3b8;"> · ${safeBusiness}</span>
                 </p>
-                <p style="margin:6px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">Hit reply to reach ${safeDisplay} directly.</p>
               </div>
             </td>
           </tr>

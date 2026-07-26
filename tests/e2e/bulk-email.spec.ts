@@ -77,6 +77,66 @@ test.describe('marketing page', () => {
     await expect(page.getByPlaceholder(/subject of your email/i)).toBeVisible()
   })
 
+  // Placeholders are labelled in plain language; the token is still what gets
+  // typed and what the server substitutes per recipient.
+  test('placeholder buttons read as words and insert the raw token', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/marketing/new')
+    await expect(page.getByText('Insert a placeholder')).toBeVisible()
+
+    for (const label of ['Client name', 'Your name', 'Business name', 'Dog name']) {
+      await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible()
+    }
+    // No raw tokens on the buttons.
+    await expect(page.getByRole('button', { name: '{{clientName}}' })).toHaveCount(0)
+
+    const subject = page.getByPlaceholder(/subject of your email/i)
+    await subject.click()
+    await page.getByRole('button', { name: 'Client name', exact: true }).click()
+    await expect(subject).toHaveValue('{{clientName}}')
+
+    // …and the live preview still fills it in, so preview == what is sent.
+    await expect(page.getByText('Aria').first()).toBeVisible()
+  })
+
+  // Blocks reorder by dragging (@dnd-kit, the repo standard), with dnd-kit's
+  // keyboard path as the non-pointer equivalent of the old up/down arrows.
+  test('email blocks reorder by drag handle, including from the keyboard', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/marketing/new')
+
+    const blocks = page.getByTestId('email-block')
+    await expect(blocks).toHaveCount(1)
+    await page.getByRole('button', { name: 'Add image' }).click()
+    await expect(blocks).toHaveCount(2)
+    await expect(blocks.nth(0)).toHaveAttribute('data-block-type', 'text')
+    await expect(blocks.nth(1)).toHaveAttribute('data-block-type', 'image')
+
+    // The click-to-order arrows are gone, replaced by a grip on every block.
+    await expect(page.getByRole('button', { name: /move block/i })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /drag to reorder/i })).toHaveCount(2)
+
+    // Keyboard: space picks the block up, arrow moves it, space drops it.
+    // dnd-kit's live region is the sync point — it stays empty until a lift.
+    const live = page.locator('[role="status"]')
+    await blocks.nth(1).getByRole('button', { name: /drag to reorder/i }).focus()
+    await page.keyboard.press('Space')
+    await expect(live).toContainText(/moved over droppable area/i)
+    await page.keyboard.press('ArrowUp')
+    await page.waitForTimeout(250) // let the lifted block settle over the one above
+    await page.keyboard.press('Space')
+    await expect(live).toContainText(/was dropped/i)
+    await expect(blocks.nth(0)).toHaveAttribute('data-block-type', 'image')
+    await expect(blocks.nth(1)).toHaveAttribute('data-block-type', 'text')
+  })
+
+  test('the preview no longer tells clients to hit reply', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/marketing/new')
+    await expect(page.getByText('Live preview')).toBeVisible()
+    await expect(page.getByText(/hit reply/i)).toHaveCount(0)
+  })
+
   test('a broadcast detail that is not the trainer’s 404s (tenant scope)', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     const res = await page.goto('/marketing/nonexistent-broadcast-id')

@@ -74,7 +74,6 @@ export function buildLeadMagnetEmail({
           </div>
           <div style="padding:20px 32px;background:#fafaf9;border-top:1px solid #f1f5f9;">
             <p style="margin:0;font-size:13px;color:#475569;line-height:1.5;"><strong style="color:#0f172a;">${display}</strong><span style="color:#94a3b8;"> · ${business}</span></p>
-            <p style="margin:6px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">Hit reply to reach ${display} directly.</p>
             <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;line-height:1.5;">You're receiving this because you signed up to ${business}'s mailing list. <a href="${escapeHtml(unsubscribeUrl)}" style="color:#94a3b8;text-decoration:underline;">Unsubscribe</a>.</p>
           </div>
         </td></tr>

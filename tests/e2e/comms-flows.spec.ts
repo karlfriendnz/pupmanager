@@ -291,4 +291,71 @@ test.describe('automated communication flows', () => {
       await prisma.$disconnect()
     }
   })
+
+  // The buttons read as words ("Dog name"), but what they type is still the
+  // token the send-time substitution keys off. Renaming the stored vocabulary
+  // would break every message already in the database, so this pins both ends:
+  // the label the trainer clicks, and the raw `{{dog}}` that lands in the row.
+  test('placeholder buttons read as words and still write the raw token', async ({ page }) => {
+    const prisma = await makePrisma()
+    const cleanup: Array<() => Promise<unknown>> = []
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      const res = await page.request.post('/api/packages', {
+        data: { name: 'E2E Placeholder Class', sessionCount: 2, weeksBetween: 1, durationMins: 60, isGroup: true, startAt: inDays(10).toISOString() },
+      })
+      const b = await res.json()
+      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+
+      const create = await page.request.post(`/api/trainer/class-runs/${b.classRunId}/comms-flow`, {
+        data: {
+          direction: 'BEFORE_SESSION', offsetMinutes: 1440, channels: ['PUSH'],
+          audience: 'ENROLLED', important: false, title: 'E2E Placeholder Step',
+          body: 'Bring treats for', enabled: true,
+        },
+      })
+      expect(create.status(), await create.text()).toBe(201)
+      const stepId = (await create.json()).id as string
+
+      await page.goto(`/classes/${b.classRunId}`)
+      await page.getByRole('button', { name: 'Reminders & messages' }).click()
+      await expect(page.getByText('E2E Placeholder Step', { exact: true })).toBeVisible({ timeout: 15_000 })
+      await page.locator('ol > li').first().getByRole('button').first().click()
+      const sheet = page.getByRole('dialog', { name: 'Message' })
+      await expect(sheet).toBeVisible()
+
+      // Labelled in plain language — the raw tokens are never button text.
+      await expect(sheet.getByText('Insert a placeholder')).toBeVisible()
+      for (const label of ['Client name', 'Dog name', 'Session time', 'Session date', 'Class name', 'Business name', 'Location']) {
+        await expect(sheet.getByRole('button', { name: label, exact: true })).toBeVisible()
+      }
+      await expect(sheet.getByRole('button', { name: '{{dog}}' })).toHaveCount(0)
+
+      // Clicking "Dog name" types `{{dog}}` — the token, not the label.
+      await sheet.getByRole('button', { name: 'Dog name', exact: true }).click()
+      await expect(sheet.getByLabel('Message')).toHaveValue('Bring treats for {{dog}}')
+
+      // …and it is the token that gets persisted.
+      await sheet.getByRole('button', { name: 'Save' }).click()
+      await expect(sheet).toBeHidden({ timeout: 15_000 })
+      await expect.poll(
+        async () => (await prisma.commsFlowStep.findUnique({ where: { id: stepId } }))?.body,
+        { timeout: 15_000 },
+      ).toBe('Bring treats for {{dog}}')
+
+      // Which still fills in for a real recipient at preview/send time.
+      await page.locator('ol > li').first().getByRole('button').first().click()
+      await page.getByRole('button', { name: 'Preview', exact: true }).click()
+      const preview = page.getByRole('dialog', { name: 'Preview' })
+      await expect(preview).toBeVisible()
+      await expect(preview).toContainText('Bring treats for Bailey')
+      await expect(preview).not.toContainText('{{dog}}')
+    } finally {
+      for (const fn of cleanup.reverse()) await fn()
+      await prisma.$disconnect()
+    }
+  })
 })

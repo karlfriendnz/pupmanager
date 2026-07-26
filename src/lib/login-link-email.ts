@@ -115,11 +115,11 @@ export function renderLoginLinkEmail({ url, recipientName, trainer }: LoginLinkE
                 <p style="margin:0;font-size:13px;color:#475569;line-height:1.5;">
                   ${safeTrainerLine}
                 </p>
-                <p style="margin:6px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">
-                  ${trainer
-                    ? `Hit reply to reach ${escapeHtml(trainerDisplay ?? businessName)} directly.`
-                    : `Didn't ask for this? You can safely ignore it — nothing happens until the button gets tapped.`}
-                </p>
+                ${trainer
+                  ? ''
+                  : `<p style="margin:6px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">
+                  Didn't ask for this? You can safely ignore it — nothing happens until the button gets tapped.
+                </p>`}
               </div>
             </td>
           </tr>

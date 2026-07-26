@@ -1,8 +1,11 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
 import type { Editor } from '@tiptap/react'
-import { ImagePlus, Trash2, Loader2, Plus, ArrowUp, ArrowDown, Type } from 'lucide-react'
+import { ImagePlus, Trash2, Loader2, Plus, GripVertical, Type } from 'lucide-react'
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { htmlHasText } from '@/lib/email-html'
 import { compressImageFile } from '@/lib/compress-image'
@@ -61,8 +64,39 @@ function nextBlockId(blocks: EmailBlock[]): string {
   return `b${max + 1}`
 }
 
-// The stacked text/image block editor (add/remove/reorder, rich text, image
-// upload). Controlled: the parent owns `blocks` (so it can serialize for a
+/**
+ * One draggable block. Only the grip carries the drag listeners — the block
+ * body holds a rich-text editor and an upload button, which must stay clickable.
+ *
+ * Translate ONLY: `CSS.Transform.toString()` also emits the scaleX/scaleY
+ * dnd-kit measures between two differently-sized blocks, and a text block
+ * scaled against a short image block re-renders its text at a stretched size
+ * (the 235% stretch this repo hit on the offering cards). The block has to look
+ * identical picked up and put down.
+ */
+function SortableBlock({ id, disabled, children }: {
+  id: string
+  disabled: boolean
+  children: (handle: HTMLAttributes<HTMLElement>) => ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: transform ? CSS.Translate.toString(transform) : undefined,
+        transition,
+        position: 'relative',
+        zIndex: isDragging ? 10 : undefined,
+      }}
+    >
+      {children({ ...attributes, ...listeners })}
+    </div>
+  )
+}
+
+// The stacked text/image block editor (add/remove/drag-to-reorder, rich text,
+// image upload). Controlled: the parent owns `blocks` (so it can serialize for a
 // preview/send). Placeholders + subject stay with the parent, which uses
 // `onEditorReady`/`onBlockFocus` to insert tokens into the focused text block.
 export function EmailBodyBuilder({
@@ -86,13 +120,22 @@ export function EmailBodyBuilder({
   function addText() { onBlocksChange([...blocks, { id: nextBlockId(blocks), type: 'text', html: '' }]) }
   function addImage() { onBlocksChange([...blocks, { id: nextBlockId(blocks), type: 'image', url: '', link: '' }]) }
   function removeBlock(id: string) { onBlocksChange(blocks.filter(b => b.id !== id)) }
-  function moveBlock(id: string, dir: 'up' | 'down') {
-    const i = blocks.findIndex(b => b.id === id)
-    const j = dir === 'up' ? i - 1 : i + 1
-    if (i < 0 || j < 0 || j >= blocks.length) return
-    const next = [...blocks]
-    ;[next[i], next[j]] = [next[j], next[i]]
-    onBlocksChange(next)
+
+  // Drag to reorder. The keyboard path is dnd-kit's own: tab to a block's grip,
+  // press space to pick it up, arrow up/down to move it, space to drop
+  // (escape cancels) — so reordering never depends on a pointer.
+  const sensors = useSensors(
+    // A small threshold so a tap on the grip isn't read as a drag on a phone.
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const from = blocks.findIndex(b => b.id === active.id)
+    const to = blocks.findIndex(b => b.id === over.id)
+    if (from < 0 || to < 0) return
+    onBlocksChange(arrayMove(blocks, from, to))
   }
   function updateText(id: string, html: string) {
     onBlocksChange(blocks.map(b => (b.id === id && b.type === 'text' ? { ...b, html } : b)))
@@ -124,25 +167,31 @@ export function EmailBodyBuilder({
 
   return (
     <div className="flex flex-col gap-3">
-      {blocks.map((block, i) => (
-        <div key={block.id} className="rounded-xl border border-slate-200 p-3">
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
+      {blocks.map(block => (
+        <SortableBlock key={block.id} id={block.id} disabled={disabled || blocks.length < 2}>
+        {handle => (
+        <div data-testid="email-block" data-block-type={block.type} className="rounded-xl border border-slate-200 bg-white p-3">
           <div className="flex items-center justify-between mb-2">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-              {block.type === 'text' ? <Type className="h-3.5 w-3.5" /> : <ImagePlus className="h-3.5 w-3.5" />}
+              {block.type === 'text' ? <Type className="h-3.5 w-3.5" strokeWidth={1.75} /> : <ImagePlus className="h-3.5 w-3.5" strokeWidth={1.75} />}
               {block.type === 'text' ? 'Text' : 'Image'}
             </span>
             <div className="flex items-center gap-0.5">
-              <button type="button" onClick={() => moveBlock(block.id, 'up')} disabled={disabled || i === 0}
-                className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:hover:text-slate-400" aria-label="Move block up">
-                <ArrowUp className="h-4 w-4" />
-              </button>
-              <button type="button" onClick={() => moveBlock(block.id, 'down')} disabled={disabled || i === blocks.length - 1}
-                className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:hover:text-slate-400" aria-label="Move block down">
-                <ArrowDown className="h-4 w-4" />
+              <button
+                type="button"
+                {...handle}
+                disabled={disabled || blocks.length < 2}
+                title="Drag to reorder — or press space, then the arrow keys"
+                aria-label="Drag to reorder — or press space, then the arrow keys"
+                className="cursor-grab touch-none p-1 text-slate-400 hover:text-slate-700 disabled:cursor-default disabled:opacity-30 disabled:hover:text-slate-400"
+              >
+                <GripVertical className="h-4 w-4" strokeWidth={1.75} />
               </button>
               <button type="button" onClick={() => removeBlock(block.id)} disabled={disabled || blocks.length === 1}
                 className="p-1 text-slate-400 hover:text-rose-600 disabled:opacity-30 disabled:hover:text-slate-400" aria-label="Delete block">
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" strokeWidth={1.75} />
               </button>
             </div>
           </div>
@@ -190,7 +239,11 @@ export function EmailBodyBuilder({
             </button>
           )}
         </div>
+        )}
+        </SortableBlock>
       ))}
+      </SortableContext>
+      </DndContext>
 
       {/* Shared hidden input feeds whichever image block requested it. */}
       <input

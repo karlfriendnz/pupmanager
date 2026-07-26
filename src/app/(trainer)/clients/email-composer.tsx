@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Mail, X, Send, ArrowLeft, ArrowRight, ShieldAlert, Users, Search, Check } from 'lucide-react'
 import { EmailBodyBuilder, serializeBlocks, blocksHaveContent, seedBlocks, type EmailBlock } from '@/components/shared/email-body-builder'
 import { emailBodyToHtml } from '@/lib/email-html'
+import { CLIENT_EMAIL_PLACEHOLDER_OPTIONS } from '@/lib/placeholder-labels'
 
 type EmailTemplate = { id: string; name: string; category: string | null; subject: string; body: string }
 
@@ -41,14 +42,10 @@ export type ComposerBrand = {
   accentColor: string | null
 }
 
-// Placeholders the server substitutes per-recipient. Surfaced as insertable
-// chips so the compose UX matches the single-client Messages composer.
-const PLACEHOLDERS: { token: string; label: string }[] = [
-  { token: '{{clientName}}', label: 'Client name' },
-  { token: '{{trainerName}}', label: 'Your name' },
-  { token: '{{businessName}}', label: 'Business name' },
-  { token: '{{dogName}}', label: 'Dog name' },
-]
+// Placeholders the server substitutes per-recipient (`buildClientEmail`).
+// Labelled in plain language from the one shared vocabulary — the button reads
+// "Client name", the token `{{clientName}}` is what gets inserted.
+const PLACEHOLDERS = CLIENT_EMAIL_PLACEHOLDER_OPTIONS
 
 const SKIP_REASON_LABELS: Record<string, string> = {
   NOT_FOUND: 'not found',
@@ -168,7 +165,6 @@ function EmailPreview({ subject, body, brand }: {
           )}
           <div style={{ padding: '20px 32px', background: '#fafaf9', borderTop: '1px solid #f1f5f9' }}>
             <p style={{ margin: 0, fontSize: 13, color: '#475569' }}><strong style={{ color: '#0f172a' }}>{business}</strong></p>
-            <p style={{ margin: '6px 0 0', fontSize: 12, color: '#94a3b8' }}>Hit reply to reach us directly.</p>
             <p style={{ margin: '10px 0 0', fontSize: 11, color: '#94a3b8' }}>You&rsquo;re receiving this because you&rsquo;re a client of {business}. <span style={{ textDecoration: 'underline' }}>Unsubscribe</span> from these emails.</p>
           </div>
         </div>
@@ -447,7 +443,7 @@ export function EmailComposer({
               />
             </div>
 
-            {/* Placeholder chips — insert into the focused text block / subject. */}
+            {/* Placeholder buttons — insert into the focused text block / subject. */}
             <div>
               <p className="text-xs font-medium text-slate-600 mb-1.5">Insert a placeholder</p>
               <div className="flex flex-wrap gap-1.5">
@@ -457,7 +453,7 @@ export function EmailComposer({
                     type="button"
                     onMouseDown={e => e.preventDefault()}
                     onClick={() => insertPlaceholder(p.token)}
-                    className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 hover:border-[var(--pm-brand-500)] hover:text-[var(--pm-brand-700)]"
+                    className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     title={`Insert ${p.token}`}
                   >
                     {p.label}
@@ -575,7 +571,7 @@ export function EmailComposer({
               />
             </div>
             <p className="text-xs text-slate-400">
-              Placeholders like <code className="text-slate-500">{'{{clientName}}'}</code> are filled in per recipient. Each
+              Placeholders like <span className="text-slate-500">Client name</span> are filled in per recipient. Each
               email includes an unsubscribe link.
             </p>
           </>

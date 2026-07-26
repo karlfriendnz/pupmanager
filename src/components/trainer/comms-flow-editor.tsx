@@ -15,6 +15,7 @@ import { RichText } from '@/components/shared/rich-text'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { sortStepsByTime, channelsForAudience } from '@/lib/comms-flow-steps'
+import { COMMS_PLACEHOLDER_OPTIONS } from '@/lib/placeholder-labels'
 
 type Channel = 'PUSH' | 'EMAIL' | 'IN_APP'
 type Direction = 'BEFORE_SESSION' | 'AFTER_SESSION' | 'AFTER_PURCHASE' | 'BEFORE_PERIOD_END'
@@ -63,7 +64,12 @@ const AUDIENCES: { key: Audience; label: string; hint: string }[] = [
   { key: 'CUSTOM', label: 'Chosen people', hint: 'Only the clients you pick below.' },
   { key: 'STAFF', label: 'Your team', hint: 'Your staff, not your clients — whoever is assigned to that session. If nobody is, it goes to the business owner.' },
 ]
-const PLACEHOLDERS = ['{{name}}', '{{dog}}', '{{time}}', '{{date}}', '{{class}}', '{{business}}', '{{location}}']
+// Plain-language names on the buttons; the token is what actually gets typed
+// into the message. Labels live in one shared place so "Dog name" reads the
+// same here as it does in the email composer — see lib/placeholder-labels.ts
+// for why the tokens themselves must never be renamed.
+const PLACEHOLDER_OPTIONS = COMMS_PLACEHOLDER_OPTIONS
+const PLACEHOLDERS = PLACEHOLDER_OPTIONS.map(p => p.token)
 const SAMPLE: Record<string, string> = {
   '{{name}}': 'Sam', '{{dog}}': 'Bailey', '{{time}}': '6:00 pm', '{{date}}': 'Tue 5 Aug',
   '{{class}}': 'Puppy Class', '{{business}}': 'your business', '{{location}}': 'the hall',
@@ -535,10 +541,22 @@ function StepSheet({ draft, clients, busy, isMembership = false, onPatch, onTogg
         <Field label="Message">
           <input value={draft.title} onChange={e => onPatch({ title: e.target.value })} aria-label="Title" placeholder="Title (e.g. See you tomorrow 🐾)" className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800" />
           <textarea value={draft.body} onChange={e => onPatch({ body: e.target.value })} aria-label="Message" rows={4} placeholder="Your message…" className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800" />
-          <div className="flex flex-wrap gap-1 mt-2">
-            {PLACEHOLDERS.map(p => (
-              <button key={p} onClick={() => onPatch({ body: `${draft.body}${draft.body && !draft.body.endsWith(' ') ? ' ' : ''}${p}` })} className="text-[11px] font-mono px-1.5 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">{p}</button>
-            ))}
+          <div className="mt-3">
+            <p className="mb-1.5 text-xs font-medium text-slate-600">Insert a placeholder</p>
+            <div className="flex flex-wrap gap-1.5">
+              {PLACEHOLDER_OPTIONS.map(({ token, label }) => (
+                <button
+                  key={token}
+                  type="button"
+                  onClick={() => onPatch({ body: `${draft.body}${draft.body && !draft.body.endsWith(' ') ? ' ' : ''}${token}` })}
+                  title={`Insert ${token}`}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] text-slate-500">Each one is swapped for the real thing when the message goes out.</p>
           </div>
           {draft.channels.includes('EMAIL') && (
             <div className="mt-3 rounded-lg border border-slate-200 p-3">
@@ -547,7 +565,7 @@ function StepSheet({ draft, clients, busy, isMembership = false, onPatch, onTogg
               </div>
               <p className="text-xs text-slate-500 mb-2">The formatted version sent by email. Push and in‑app use the short message above.</p>
               <RichTextEditor key={draft.id} value={draft.emailBody ?? ''} onChange={html => onPatch({ emailBody: isRichTextEmpty(html) ? null : html })} minHeight={140} theme="light" />
-              <p className="mt-1.5 text-[11px] text-slate-500">Placeholders like {'{{dog}}'} work here too. Leave it empty to use the short message for email as well.</p>
+              <p className="mt-1.5 text-[11px] text-slate-500">The placeholders above work here too. Leave it empty to use the short message for email as well.</p>
             </div>
           )}
         </Field>
