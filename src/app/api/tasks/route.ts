@@ -14,6 +14,13 @@ const schema = z.object({
   videoUrl: z.string().url().nullable().optional(),
   dogId: z.string().nullable().optional(),
   sessionId: z.string().nullable().optional(),
+  // Which library item this was copied from, when it came from the Library.
+  // The row stays a SNAPSHOT — title/description are copied, so editing the
+  // library item never rewrites homework already handed out — this is only
+  // provenance, so the item page can list who currently has it. Verified to
+  // belong to the caller's trainer before it's written (the same check
+  // /api/library/tasks/[taskId]/assign makes).
+  libraryTaskId: z.string().nullable().optional(),
 })
 
 export async function POST(req: Request) {
@@ -45,6 +52,17 @@ export async function POST(req: Request) {
     if (!ok) return NextResponse.json({ error: 'That session does not belong to this client.' }, { status: 400 })
   }
 
+  // Provenance is only recorded for an item this trainer actually owns. An id
+  // that doesn't resolve is dropped rather than refused: the task itself is
+  // still valid homework, and failing the whole save over a broken back-link
+  // would be a worse answer than a task with no link.
+  const libraryTaskId = parsed.data.libraryTaskId
+    ? (await prisma.libraryTask.findFirst({
+        where: { id: parsed.data.libraryTaskId, theme: { type: { trainerId: access.trainerId } } },
+        select: { id: true },
+      }))?.id ?? null
+    : null
+
   const baseData = {
     clientId: parsed.data.clientId,
     date: new Date(parsed.data.date),
@@ -53,6 +71,7 @@ export async function POST(req: Request) {
     repetitions: parsed.data.repetitions ?? null,
     videoUrl: parsed.data.videoUrl ?? null,
     dogId: parsed.data.dogId ?? null,
+    libraryTaskId,
   }
 
   // Append to the end of the session's existing task order. Tasks not linked

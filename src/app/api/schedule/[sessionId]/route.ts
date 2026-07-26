@@ -65,6 +65,9 @@ export async function GET(
           id: true, title: true, description: true, repetitions: true,
           videoUrl: true, dogId: true, trainerNote: true, order: true,
           imageUrls: true,
+          // Which library item it came from — the session picker greys out
+          // items already attached, and matching on that id survives a rename.
+          libraryTaskId: true,
         },
       },
       client: { select: { id: true, user: { select: { name: true, email: true } } } },

@@ -27,11 +27,13 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
   // ── Who currently has this item ────────────────────────────────────────────
   // "Has" = there's a homework row (TrainingTask) on one of this trainer's
   // clients that came from this library item. Homework is a SNAPSHOT — the text
-  // is copied at assign time — so the link is the new TrainingTask.libraryTaskId
-  // provenance column. Rows created before that column existed (and by the
-  // attach-to-session path, which still copies without a link) are matched on
-  // the exact title as a best-effort fallback, which is the same comparison
-  // session-library-tasks.tsx already makes.
+  // is copied at assign time — so the link is the TrainingTask.libraryTaskId
+  // provenance column. BOTH paths that hand an item to a client now stamp it
+  // (assign-to-client and attach-to-session), so a rename no longer loses
+  // anyone. Rows created before the column existed have no id and are matched
+  // on the exact title as a best-effort fallback — that fallback is only ever
+  // wrong in the direction of showing a same-titled task that wasn't ours, and
+  // `linked` below tells the two apart on screen.
   const assignments = await prisma.trainingTask.findMany({
     where: {
       client: { trainerId },

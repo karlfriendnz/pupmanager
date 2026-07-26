@@ -52,6 +52,8 @@ interface AttachedTask {
   trainerNote: string | null
   imageUrls: string[]
   order: number
+  /** The library item this was copied from, when it came from the Library. */
+  libraryTaskId: string | null
 }
 
 /**
@@ -113,9 +115,16 @@ export function SessionLibraryTasks({
   }, [allLibraryTasks, search])
 
   // Hide library tasks already attached so the trainer doesn't accidentally
-  // double-add. We compare on title since attached tasks lose the library id
-  // (they're snapshots, not references) — best-effort match.
-  const attachedTitles = new Set((attached ?? []).map(t => t.title.toLocaleLowerCase('en-NZ')))
+  // double-add. Attached tasks now carry the library item's id, so the match is
+  // exact and survives a rename. The title set is kept for rows attached before
+  // provenance was recorded — those have no id to compare, and matching them on
+  // title is what the check has always done.
+  const attachedLibraryIds = new Set(
+    (attached ?? []).map(t => t.libraryTaskId).filter((id): id is string => !!id)
+  )
+  const attachedTitles = new Set(
+    (attached ?? []).filter(t => !t.libraryTaskId).map(t => t.title.toLocaleLowerCase('en-NZ'))
+  )
 
   async function handleAdd(t: LibraryTask) {
     if (!clientId) {
@@ -135,6 +144,10 @@ export function SessionLibraryTasks({
         description: t.description,
         repetitions: t.repetitions,
         videoUrl: t.videoUrl,
+        // Record WHICH item this came from. The task is still a snapshot of the
+        // fields; without the id, "who has this item" could only match on the
+        // exact title, which stops being true the moment the item is renamed.
+        libraryTaskId: t.id,
       }),
     })
     if (!res.ok) {
@@ -316,7 +329,9 @@ export function SessionLibraryTasks({
                 </p>
               ) : (
                 filtered.map(t => {
-                  const already = attachedTitles.has(t.title.toLocaleLowerCase('en-NZ'))
+                  const already =
+                    attachedLibraryIds.has(t.id) ||
+                    attachedTitles.has(t.title.toLocaleLowerCase('en-NZ'))
                   return (
                     <div key={t.id} className="flex items-center gap-3 px-3 py-2.5">
                       <div className="flex-1 min-w-0">
@@ -390,6 +405,7 @@ function coerceAttachedTask(raw: unknown): AttachedTask {
     trainerNote: (t.trainerNote as string | null) ?? null,
     imageUrls: Array.isArray(t.imageUrls) ? (t.imageUrls as string[]) : [],
     order: typeof t.order === 'number' ? t.order : 0,
+    libraryTaskId: (t.libraryTaskId as string | null) ?? null,
   }
 }
 
