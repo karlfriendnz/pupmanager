@@ -102,7 +102,7 @@ test.describe('memberships — trainer builds, client sees', () => {
     }
   })
 
-  test('a client only sees published one-off memberships, and only their own trainer’s', async ({ page }) => {
+  test('a client sees their trainer’s published memberships — never a draft, never a rival’s', async ({ page }) => {
     const prisma = await makePrisma()
     const made: string[] = []
     try {
@@ -113,10 +113,12 @@ test.describe('memberships — trainer builds, client sees', () => {
         where: { businessName: SEED.businessB.businessName }, select: { id: true },
       })
 
-      // Three that must NOT reach the client, for three different reasons.
+      // Two that must NOT reach the client, plus a published RECURRING one that
+      // now MUST (it used to be filtered out, which meant a trainer whose only
+      // published package was recurring showed their clients nothing at all).
       for (const data of [
         { trainerId: trainer!.id, name: 'E2E Draft Bundle', priceCents: 5000, published: false },
-        { trainerId: trainer!.id, name: 'E2E Subscription Bundle', priceCents: 0, published: true, cadence: 'RECURRING' as const },
+        { trainerId: trainer!.id, name: 'E2E Subscription Bundle', priceCents: 4000, published: true, cadence: 'RECURRING' as const, interval: 'MONTH' as const },
         { trainerId: rival!.id, name: 'E2E Rival Bundle', priceCents: 5000, published: true },
       ]) {
         made.push((await prisma.membership.create({ data })).id)
@@ -126,14 +128,80 @@ test.describe('memberships — trainer builds, client sees', () => {
       await page.goto('/my-availability')
       await page.getByRole('button', { name: /Packages/ }).click()
 
-      // The seeded published one-off is there…
+      // The seeded published one-off is there, buyable…
       await expect(page.getByRole('heading', { name: SEED.membershipName })).toBeVisible({ timeout: 15_000 })
-      // …and none of the three others are.
+      // …the recurring one is there too, priced per period and NOT buyable —
+      // it offers a request instead of a checkout button that would 409.
+      const recurring = page.locator('div').filter({ has: page.getByRole('heading', { name: 'E2E Subscription Bundle' }) }).last()
+      await expect(recurring).toContainText('/ month')
+      await expect(recurring.getByRole('button', { name: 'Request this' })).toBeVisible()
+      // …and neither of the other two is anywhere.
       await expect(page.getByText('E2E Draft Bundle')).toHaveCount(0)
-      await expect(page.getByText('E2E Subscription Bundle')).toHaveCount(0)
       await expect(page.getByText('E2E Rival Bundle')).toHaveCount(0)
     } finally {
+      await prisma.membershipRequest.deleteMany({ where: { membershipId: { in: made } } }).catch(() => {})
       await prisma.membership.deleteMany({ where: { id: { in: made } } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
+  test('a client can request a package they can’t check out, and it sticks', async ({ page }) => {
+    const prisma = await makePrisma()
+    let id: string | null = null
+    try {
+      const trainer = await prisma.trainerProfile.findFirst({
+        where: { businessName: SEED.owner.businessName }, select: { id: true },
+      })
+      id = (await prisma.membership.create({
+        data: {
+          trainerId: trainer!.id, name: 'E2E Ongoing Plan', priceCents: 4000,
+          published: true, cadence: 'RECURRING', interval: 'MONTH',
+        },
+      })).id
+
+      await login(page, SEED.client.email, SEED.client.password)
+      await page.goto('/my-memberships')
+
+      const card = page.locator('div').filter({ has: page.getByRole('heading', { name: 'E2E Ongoing Plan' }) }).last()
+      // The reason is still stated — the button is an action beside it, not a
+      // replacement for the explanation.
+      await expect(card).toContainText('bills you regularly')
+      await card.getByRole('button', { name: 'Request this' }).click()
+      await expect(card.getByText('Requested')).toBeVisible({ timeout: 15_000 })
+
+      // Persisted, with the reason recorded so the trainer knows which job it is.
+      const rows = await prisma.membershipRequest.findMany({ where: { membershipId: id! } })
+      expect(rows).toHaveLength(1)
+      expect(rows[0].reason).toBe('RECURRING')
+      expect(rows[0].status).toBe('PENDING')
+
+      // Survives a reload — not a state flip that forgets.
+      await page.reload()
+      const after = page.locator('div').filter({ has: page.getByRole('heading', { name: 'E2E Ongoing Plan' }) }).last()
+      await expect(after.getByText('Requested')).toBeVisible({ timeout: 15_000 })
+      await expect(after.getByRole('button', { name: 'Request this' })).toHaveCount(0)
+
+      // A second POST is a no-op — one row, so the trainer is told once.
+      const again = await page.request.post(`/api/my/memberships/${id}/request`)
+      expect(again.status()).toBe(200)
+      expect(await prisma.membershipRequest.count({ where: { membershipId: id! } })).toBe(1)
+    } finally {
+      if (id) {
+        await prisma.membershipRequest.deleteMany({ where: { membershipId: id } }).catch(() => {})
+        await prisma.membership.delete({ where: { id } }).catch(() => {})
+      }
+      await prisma.$disconnect()
+    }
+  })
+
+  test('a buyable package refuses a request — Request is not a way to skip paying', async ({ page }) => {
+    const prisma = await makePrisma()
+    try {
+      await login(page, SEED.client.email, SEED.client.password)
+      const res = await page.request.post(`/api/my/memberships/${SEED.membershipId}/request`)
+      expect(res.status()).toBe(409)
+      expect(await prisma.membershipRequest.count({ where: { membershipId: SEED.membershipId } })).toBe(0)
+    } finally {
       await prisma.$disconnect()
     }
   })

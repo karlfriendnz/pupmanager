@@ -16,11 +16,11 @@ export default async function ClientMembershipsPage() {
   if (!active) redirect('/login')
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
-    select: { trainerId: true, trainer: { select: { payoutCurrency: true } } },
+    select: { id: true, trainerId: true, trainer: { select: { payoutCurrency: true } } },
   })
   if (!profile) redirect('/login')
 
-  const memberships = await loadPublishedMemberships(profile.trainerId)
+  const memberships = await loadPublishedMemberships(profile.trainerId, profile.id)
 
   return (
     <ClientMembershipsView

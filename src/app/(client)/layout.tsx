@@ -10,7 +10,7 @@ import { countUnreadMessages } from '@/lib/unread-messages'
 import { getEnabledAddons } from '@/lib/billing'
 import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { IntakeGate } from './intake-gate'
-import { PreviewBanner } from './preview-banner'
+import { PreviewBanner, PREVIEW_SHELL_CLASS } from './preview-banner'
 import { PreviewOnboardingGuide } from './preview-onboarding-guide'
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
@@ -141,7 +141,7 @@ export default async function ClientLayout({ children }: { children: React.React
     // PreviewBanner is the only chrome that survives because it
     // pertains to the trainer-in-preview, not the client.
     return (
-      <>
+      <div className={active.isPreview ? PREVIEW_SHELL_CLASS : undefined}>
         {banner}
         <IntakeGate
           businessName={clientProfile.trainer.businessName}
@@ -172,7 +172,7 @@ export default async function ClientLayout({ children }: { children: React.React
             (clientProfile.trainer.intakeSystemFieldSections as Partial<Record<'name' | 'email' | 'phone', string | null>> | null) ?? {}
           }
         />
-      </>
+      </div>
     )
   }
 
@@ -216,10 +216,15 @@ export default async function ClientLayout({ children }: { children: React.React
   hiddenClientNav.push('/my-memberships')
 
   return (
-    // In preview the amber banner is a fixed bar; add its height to the safe-top
-    // inset so the shell's fixed header/sidebar (which offset by --app-safe-top)
-    // sit BELOW it instead of underneath.
-    <div style={active.isPreview ? ({ ...themeStyle, '--app-safe-top': 'calc(min(env(safe-area-inset-top, 0px), 1rem) + 2.75rem)' } as React.CSSProperties) : themeStyle}>
+    // In preview the amber banner is a fixed bar. PREVIEW_SHELL_CLASS carries
+    // the stylesheet that pushes the shell (and its pinned header/sidebar) down
+    // by exactly the banner's height, so nothing sits behind it.
+    //
+    // This used to bump --app-safe-top by 2.75rem instead. It did nothing: the
+    // CLIENT shell never reads that variable (only the trainer shell does), the
+    // banner measured 61px rather than 44px, and the bar it was compensating
+    // for was sticky, not fixed. Three ways wrong, so all three are gone.
+    <div className={active.isPreview ? PREVIEW_SHELL_CLASS : undefined} style={themeStyle}>
       {banner}
       <AppShell
         role="CLIENT"

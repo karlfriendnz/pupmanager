@@ -5,7 +5,19 @@ import { RichText } from '@/components/shared/rich-text'
 import { Ticket, Loader2, Check } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { resolveButtonColors } from '@/lib/membership-card-colors'
-import type { ClientMembership } from '@/lib/client-memberships'
+import type { ClientMembership, ClientMembershipInterval } from '@/lib/client-memberships'
+
+const INTERVAL_LABEL: Record<ClientMembershipInterval, string> = {
+  WEEK: 'week',
+  FORTNIGHT: 'fortnight',
+  MONTH: 'month',
+}
+
+/** "$400.00 / month" for a recurring plan, plain money for a one-off. */
+function priceLabel(m: ClientMembership, currency: string): string {
+  const base = formatMoney(m.priceCents, currency)
+  return m.interval ? `${base} / ${INTERVAL_LABEL[m.interval]}` : base
+}
 
 /**
  * The client-facing membership cards + their buy action. Shared by the
@@ -13,9 +25,37 @@ import type { ClientMembership } from '@/lib/client-memberships'
  * trainer's card styling (image, colours, custom button text) renders
  * identically wherever a client meets it.
  */
+// Plain-language reason a package can't just be bought, shown beside the
+// Request button so the client is never left guessing what happened.
+const BLOCKED_COPY: Record<'RECURRING' | 'NO_PRICE', string> = {
+  RECURRING: 'This one bills you regularly, so your trainer has to set it up at their end.',
+  NO_PRICE: 'Your trainer hasn’t put a price on this one yet.',
+}
+
 export function MembershipCards({ memberships, currency }: { memberships: ClientMembership[]; currency: string }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Seeded from the server (a PENDING MembershipRequest row), so "Requested"
+  // is still there after a reload rather than a state flip that forgets.
+  const [requested, setRequested] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(memberships.filter(m => m.requested).map(m => [m.id, true])),
+  )
+
+  async function request(id: string) {
+    setBusy(id); setError(null)
+    try {
+      const res = await fetch(`/api/my/memberships/${id}/request`, { method: 'POST' })
+      const b = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(typeof b.error === 'string' ? b.error : 'Could not send that request.'); return }
+      // The route is idempotent, so a second tap lands here too and simply
+      // confirms what's already true — the trainer is told once.
+      setRequested(prev => ({ ...prev, [id]: true }))
+    } catch {
+      setError('Something went wrong — please try again.')
+    } finally {
+      setBusy(null)
+    }
+  }
 
   async function buy(id: string) {
     setBusy(id); setError(null)
@@ -59,7 +99,7 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
                     <h2 className="font-semibold text-lg flex items-center gap-2" style={{ color: header }}><Ticket className="h-5 w-5 shrink-0" style={{ color: featured }} /> {m.name}</h2>
                     <div className="mt-1" style={{ color: text }}><RichText html={m.description} className="text-sm" /></div>
                   </div>
-                  <span className="text-lg font-bold whitespace-nowrap" style={{ color: featured }}>{formatMoney(m.priceCents, currency)}</span>
+                  <span className="text-lg font-bold whitespace-nowrap" style={{ color: featured }}>{priceLabel(m, currency)}</span>
                 </div>
                 {m.items.length > 0 && (
                   <ul className="mt-3 flex flex-col gap-2.5">
@@ -79,9 +119,32 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
                     ))}
                   </ul>
                 )}
-                <button onClick={() => buy(m.id)} disabled={busy === m.id} className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: btn.background, color: btn.color }}>
-                  {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {m.buttonText?.trim() || 'Get this package'}
-                </button>
+                {/* Recurring plans have no mandate layer yet and an unpriced one
+                    has nothing to charge, so the buy route 409s both. Rather
+                    than a dead sentence telling the client to go and message
+                    someone, they get one tap that tells the trainer — with the
+                    reason still stated right above it, and the trainer's own
+                    button colours so the card doesn't look half-styled. */}
+                {m.buyable ? (
+                  <button onClick={() => buy(m.id)} disabled={busy === m.id} className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: btn.background, color: btn.color }}>
+                    {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {m.buttonText?.trim() || 'Get this package'}
+                  </button>
+                ) : (
+                  <>
+                    <p className="mt-4 text-sm" style={{ color: text }}>
+                      {BLOCKED_COPY[m.blockedReason ?? 'NO_PRICE']}
+                    </p>
+                    {requested[m.id] ? (
+                      <p className="mt-2 flex items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-600">
+                        <Check className="h-4 w-4" /> Requested — your trainer will be in touch
+                      </p>
+                    ) : (
+                      <button onClick={() => request(m.id)} disabled={busy === m.id} className="mt-2 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: btn.background, color: btn.color }}>
+                        {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Request this
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           )

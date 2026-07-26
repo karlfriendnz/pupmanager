@@ -1,12 +1,13 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { classSessionSpaces, sessionDropInPriceCents, sessionCapacity } from '@/lib/class-runs'
+import { classSessionSpaces, sessionDropInPriceCents, sessionCapacity, isOneOffEventPackage, MAX_TICKET_QUANTITY } from '@/lib/class-runs'
+import { toWizardEvent } from '@/lib/client-wizard-events'
 import { getActiveClient } from '@/lib/client-context'
 import { todayInTz } from '@/lib/timezone'
 import { slotAppliesOnDate, isBlackoutDate } from '@/lib/availability'
 import { getTrainerAvailabilityForClient } from '@/lib/client-availability'
 import { loadPublishedMemberships } from '@/lib/client-memberships'
-import { BookingWizard, type WizardPackage, type WizardClass, type PreviewDay } from './booking-wizard'
+import { BookingWizard, type WizardPackage, type WizardClass, type WizardEvent, type PreviewDay } from './booking-wizard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Availability' }
@@ -161,8 +162,17 @@ export default async function MyAvailabilityPage() {
     // what a client sees; start date breaks ties.
     orderBy: [{ order: 'asc' }, { startDate: 'asc' }],
     include: {
-      package: { select: { name: true, priceCents: true, specialPriceCents: true, allowDropIn: true, dropInPriceCents: true, capacity: true, allowWaitlist: true } },
-      enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true, quantity: true } },
+      package: {
+        select: {
+          name: true, priceCents: true, specialPriceCents: true, allowDropIn: true, dropInPriceCents: true,
+          capacity: true, allowWaitlist: true,
+          // Needed to tell an EVENT (a one-off run) from a class, and to price
+          // a ticketed event off its tiers rather than the package price.
+          isGroup: true, sessionCount: true, recurrenceRule: true,
+          ticketTiers: { orderBy: { order: 'asc' }, select: { id: true, name: true, priceCents: true, capacity: true } },
+        },
+      },
+      enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true, quantity: true, ticketTierId: true } },
       sessions: {
         where: { scheduledAt: { gte: now } },
         orderBy: { scheduledAt: 'asc' },
@@ -174,7 +184,17 @@ export default async function MyAvailabilityPage() {
       },
     },
   })
-  const classes: WizardClass[] = openRuns.map(r => {
+  // An EVENT is a one-off run (isGroup, no drop-in, a single session, no
+  // recurrence) — the same predicate the trainer's Events list uses. They were
+  // being listed here as "Group classes", and a ticketed one was quoted at the
+  // package price: the $45 shown for a $200 ticket. Split out, they get their
+  // own type and are priced by the ticket.
+  const eventRuns = openRuns.filter(r => isOneOffEventPackage(r.package))
+  const classRuns = openRuns.filter(r => !isOneOffEventPackage(r.package))
+
+  const events: WizardEvent[] = eventRuns.map(toWizardEvent)
+
+  const classes: WizardClass[] = classRuns.map(r => {
     const cap = r.capacity ?? r.package.capacity ?? null
     // One source of truth for per-session spaces, shared with the trainer's
     // assign modal (full seats count on every session, a drop-in only on its
@@ -210,7 +230,7 @@ export default async function MyAvailabilityPage() {
 
   // Memberships are an offering TYPE in this flow rather than their own nav
   // entry — same published one-off bundles the /my-memberships page sells.
-  const memberships = await loadPublishedMemberships(profile.trainerId)
+  const memberships = await loadPublishedMemberships(profile.trainerId, active.clientId)
 
   const allDogs = [
     ...(profile.dog ? [profile.dog] : []),
@@ -251,6 +271,8 @@ export default async function MyAvailabilityPage() {
       availability={{ tz, slots, blackouts, busy }}
       packages={packages}
       classes={classes}
+      events={events}
+      maxTicketQuantity={MAX_TICKET_QUANTITY}
       memberships={memberships}
       dogs={allDogs}
       defaultDogId={profile.dogId}

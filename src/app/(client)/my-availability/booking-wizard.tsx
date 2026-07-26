@@ -3,9 +3,11 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   CalendarPlus, GraduationCap, Clock, Users, Video, MapPin, Check, CheckCircle2,
-  Loader2, ChevronLeft, ArrowRight, CalendarDays, Repeat, Ticket,
+  Loader2, ChevronLeft, ArrowRight, CalendarDays, Repeat, Ticket, PartyPopper,
+  Minus, Plus,
 } from 'lucide-react'
 import { openExternal } from '@/lib/external-link'
+import { currencySymbol } from '@/lib/money'
 import { MembershipCards } from '@/components/shared/membership-cards'
 import type { ClientMembership } from '@/lib/client-memberships'
 import { enumerateStartTimes, type AvailabilityRow, type BlackoutRow, type BusyInterval } from '@/lib/availability'
@@ -53,6 +55,35 @@ export interface WizardClass {
   allowWaitlist: boolean
 }
 
+/** One ticket type on a ticketed event. Priced by the tier, never the package. */
+export interface WizardEventTier {
+  id: string
+  name: string
+  priceCents: number | null
+  /** Null = this tier isn't capped. 0 = sold out. */
+  spacesLeft: number | null
+}
+
+/**
+ * A one-off EVENT — a single-session group run. Separate from WizardClass
+ * because the two are priced differently: a class sells a seat (or a drop-in)
+ * at the package price, while a ticketed event sells a TICKET at its tier's
+ * price. `priceCents` is only populated when there are no tiers.
+ */
+export interface WizardEvent {
+  id: string
+  name: string
+  imageUrl: string | null
+  scheduleNote: string | null
+  packageName: string
+  startsAt: string | null
+  durationMins: number | null
+  seatsLeft: number | null
+  priceCents: number | null
+  tiers: WizardEventTier[]
+  allowWaitlist: boolean
+}
+
 export interface PreviewDay {
   weekday: string
   dayLabel: string
@@ -71,11 +102,12 @@ const DAYS_AHEAD = 28
 // Granularity of offered start times inside each window.
 const STEP_MINS = 30
 
-const CURRENCY_SYMBOLS: Record<string, string> = { nzd: '$', aud: '$', cad: '$', usd: '$', gbp: '£', eur: '€', zar: 'R' }
-
+// Whole dollars stay whole ("$45", not "$45.00") — that's this screen's house
+// style. The SYMBOL comes from lib/money so there's one table for it and no
+// hard-coded "$" hiding a trainer who charges in £ or R.
 function price(cents: number | null, currency: string | null): string | null {
   if (cents == null) return null
-  const sym = currency ? CURRENCY_SYMBOLS[currency.toLowerCase()] ?? '$' : '$'
+  const sym = currencySymbol(currency ?? 'nzd') || '$'
   return `${sym}${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`
 }
 
@@ -131,6 +163,7 @@ function fmtNextSession(iso: string | null, timeZone: string): string | null {
 type Selection =
   | { kind: 'session'; pkg: WizardPackage }
   | { kind: 'class'; cls: WizardClass }
+  | { kind: 'event'; ev: WizardEvent }
 
 type DoneMode = 'booked' | 'requested' | 'enrolled' | 'waitlisted'
 
@@ -141,6 +174,9 @@ export function BookingWizard(props: {
   availability: Availability
   packages: WizardPackage[]
   classes: WizardClass[]
+  events: WizardEvent[]
+  /** Server's ticket-quantity ceiling, so the stepper can't offer more than the API takes. */
+  maxTicketQuantity: number
   memberships: ClientMembership[]
   dogs: { id: string; name: string }[]
   defaultDogId: string | null
@@ -148,12 +184,16 @@ export function BookingWizard(props: {
   currency: string | null
   previewDays: PreviewDay[]
 }) {
-  const { businessName, initials, tz, availability, packages, classes, memberships, dogs, defaultDogId, acceptPayments, currency, previewDays } = props
+  const { businessName, initials, tz, availability, packages, classes, events, maxTicketQuantity, memberships, dogs, defaultDogId, acceptPayments, currency, previewDays } = props
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
   // Step 1 is a menu of offering TYPES; picking one drills into that type's list.
-  const [category, setCategory] = useState<'sessions' | 'classes' | 'memberships' | null>(null)
+  const [category, setCategory] = useState<'sessions' | 'classes' | 'events' | 'memberships' | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
+
+  // Ticketed-event state: which ticket type, and how many.
+  const [ticketTierId, setTicketTierId] = useState<string | null>(null)
+  const [ticketQty, setTicketQty] = useState(1)
 
   // Session (package) picker state.
   const [date, setDate] = useState('')
@@ -178,6 +218,8 @@ export function BookingWizard(props: {
 
   const pkg = selection?.kind === 'session' ? selection.pkg : null
   const cls = selection?.kind === 'class' ? selection.cls : null
+  const ev = selection?.kind === 'event' ? selection.ev : null
+  const tier = ev?.tiers.find(t => t.id === ticketTierId) ?? null
 
   // Bookable start times on a given day — always dropping any that have already
   // been and gone. The past-filter belongs HERE, not just on the chosen day:
@@ -219,7 +261,7 @@ export function BookingWizard(props: {
     if (!timeOptions.includes(time)) setTime(timeOptions[0])
   }, [timeOptions, time])
 
-  const nothingToBook = packages.length === 0 && classes.length === 0 && memberships.length === 0
+  const nothingToBook = packages.length === 0 && classes.length === 0 && events.length === 0 && memberships.length === 0
 
   function chooseSession(p: WizardPackage) {
     setSelection({ kind: 'session', pkg: p })
@@ -233,6 +275,16 @@ export function BookingWizard(props: {
     // full-course mode the client has to find first.
     setClassType(c.allowDropIn && c.dropInPerSessionCents != null ? 'DROP_IN' : 'FULL')
     setDropInSessionIds([])
+    setDogIds(defaultDogId ? [defaultDogId] : [])
+    setError(null)
+    setStep(2)
+  }
+  function chooseEvent(e: WizardEvent) {
+    setSelection({ kind: 'event', ev: e })
+    // Pre-select the first ticket type that still has room — a ticketed event
+    // MUST name one or the API refuses the booking outright.
+    setTicketTierId(e.tiers.find(t => t.spacesLeft == null || t.spacesLeft > 0)?.id ?? null)
+    setTicketQty(1)
     setDogIds(defaultDogId ? [defaultDogId] : [])
     setError(null)
     setStep(2)
@@ -289,6 +341,27 @@ export function BookingWizard(props: {
         if (!res.ok) { setError(typeof b.error === 'string' ? b.error : 'Could not join.'); return }
         if (b.mode === 'payment' && b.url) { openExternal(b.url); return }
         setDone(b.mode === 'waitlisted' ? 'waitlisted' : 'enrolled')
+      } else if (selection?.kind === 'event') {
+        const e = selection.ev
+        const ticketed = e.tiers.length > 0
+        if (ticketed && !ticketTierId) { setError('Pick a ticket type.') ; return }
+        // An event is one occasion, so it's always a FULL enrolment. When it
+        // sells tickets the tier id is mandatory and the SERVER prices from it —
+        // we never send an amount. When it doesn't, it's an ordinary group
+        // booking and the dogs come along as usual.
+        const res = await fetch(`/api/my/classes/${e.id}/enroll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            ticketed
+              ? { type: 'FULL', ticketTierId, quantity: ticketQty, ...(dogIds.length ? { dogIds: [dogIds[0]] } : {}) }
+              : { type: 'FULL', ...(dogIds.length ? { dogIds } : {}) },
+          ),
+        })
+        const b = await res.json().catch(() => ({}))
+        if (!res.ok) { setError(typeof b.error === 'string' ? b.error : 'Could not book that.'); return }
+        if (b.mode === 'payment' && b.url) { openExternal(b.url); return }
+        setDone(b.mode === 'waitlisted' ? 'waitlisted' : 'enrolled')
       }
     } catch {
       setError('Something went wrong. Please try again.')
@@ -302,7 +375,7 @@ export function BookingWizard(props: {
     const copy: Record<DoneMode, { title: string; sub: string }> = {
       booked: { title: "You're booked in! 🎉", sub: `Your sessions with ${businessName} are on the calendar — see them in your Sessions tab.` },
       requested: { title: 'Request sent', sub: `${businessName} will confirm the time and you'll get a notification.` },
-      enrolled: { title: "You're enrolled! 🎉", sub: `See ${cls?.name ?? 'the class'} in your Sessions tab.` },
+      enrolled: { title: ev ? "You're going! 🎉" : "You're enrolled! 🎉", sub: `See ${cls?.name ?? ev?.name ?? 'the class'} in your Sessions tab.` },
       waitlisted: { title: "You're on the waitlist", sub: `${businessName} will be in touch the moment a spot opens up.` },
     }
     return (
@@ -347,6 +420,13 @@ export function BookingWizard(props: {
                     <button type="button" onClick={() => setCategory('classes')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><GraduationCap className="h-5 w-5" /></span>
                       <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">Group classes</span><span className="block text-xs text-slate-500">{classes.length} available</span></span>
+                      <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+                    </button>
+                  )}
+                  {events.length > 0 && (
+                    <button type="button" onClick={() => setCategory('events')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><PartyPopper className="h-5 w-5" /></span>
+                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">Events</span><span className="block text-xs text-slate-500">{events.length} coming up</span></span>
                       <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
                     </button>
                   )}
@@ -431,10 +511,56 @@ export function BookingWizard(props: {
               </section>
             )}
 
+            {category === 'events' && events.length > 0 && (
+              <section>
+                <SectionLabel icon={<PartyPopper className="h-3.5 w-3.5" />} text="Events" />
+                <div className="flex flex-col gap-2.5">
+                  {events.map(e => {
+                    const isFull = e.seatsLeft === 0
+                    // A ticketed event shows the CHEAPEST ticket, marked "from",
+                    // and never the package price — that number is meaningless
+                    // once tiers exist, and quoting it is how a $200 ticket got
+                    // sold for $45.
+                    const tierPrices = e.tiers.map(t => t.priceCents ?? 0)
+                    const from = tierPrices.length > 0 ? Math.min(...tierPrices) : null
+                    const label = from != null ? price(from, currency) : price(e.priceCents, currency)
+                    return (
+                      <button key={e.id} onClick={() => chooseEvent(e)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
+                        <div className="flex items-start gap-3">
+                          {e.imageUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={e.imageUrl} alt="" className="h-11 w-11 rounded-xl object-cover shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[15px] font-semibold text-slate-900">{e.name}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
+                              {fmtNextSession(e.startsAt, tz) && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{fmtNextSession(e.startsAt, tz)}</span>}
+                              {e.seatsLeft != null && (
+                                <span className={`inline-flex items-center gap-1 ${isFull ? 'text-amber-600' : ''}`}><Users className="h-3 w-3" />{isFull ? 'Full' : `${e.seatsLeft} left`}</span>
+                              )}
+                              {e.tiers.length > 1 && <span className="inline-flex items-center gap-1"><Ticket className="h-3 w-3" />{e.tiers.length} ticket types</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {label && (
+                              <span className="text-sm font-semibold text-slate-900">
+                                {from != null && e.tiers.length > 1 ? <span className="text-xs font-normal text-slate-400">from </span> : null}{label}
+                              </span>
+                            )}
+                            <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+
             {category === 'memberships' && memberships.length > 0 && (
               <section>
                 <SectionLabel icon={<Ticket className="h-3.5 w-3.5" />} text="Packages" />
-                <p className="text-xs text-slate-500 -mt-1 mb-2.5">Bundles from {businessName} — everything included, one payment.</p>
+                <p className="text-xs text-slate-500 -mt-1 mb-2.5">Bundles from {businessName} — everything below is included.</p>
                 {/* Checkout is its own flow (Stripe), so these cards buy directly
                     rather than continuing through the wizard's steps 2–3. */}
                 <MembershipCards memberships={memberships} currency={currency ?? 'nzd'} />
@@ -479,6 +605,24 @@ export function BookingWizard(props: {
         />
       )}
 
+      {step === 2 && ev && (
+        <EventTicketStep
+          tz={props.tz}
+          ev={ev}
+          currency={currency}
+          acceptPayments={acceptPayments}
+          dogs={dogs}
+          dogIds={dogIds}
+          onToggleDog={toggleDog}
+          ticketTierId={ticketTierId}
+          onTier={id => { setTicketTierId(id); setTicketQty(1) }}
+          qty={ticketQty}
+          onQty={setTicketQty}
+          maxTicketQuantity={maxTicketQuantity}
+          onContinue={() => { setError(null); setStep(3) }}
+        />
+      )}
+
       {/* ---------- STEP 3 · confirm ---------- */}
       {step === 3 && selection && (
         <ConfirmStep
@@ -490,6 +634,8 @@ export function BookingWizard(props: {
           acceptPayments={acceptPayments}
           classType={classType}
           dropInSessionIds={dropInSessionIds}
+          tier={tier}
+          ticketQty={ticketQty}
           dogName={dogIds.length ? dogs.filter(d => dogIds.includes(d.id)).map(d => d.name).join(', ') : (dogs.find(d => d.id === dogId)?.name ?? null)}
           saving={saving}
           error={error}
@@ -798,6 +944,136 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogIds, onT
   )
 }
 
+/* ============================ step 2 · event tickets ============================ */
+
+// An event is one occasion, so there is no day to pick — the only decisions are
+// which ticket type and how many (and, for an un-ticketed event, which dogs).
+// The tier list is mandatory when the event has tiers: /enroll refuses a
+// ticketed event that doesn't name one, and refuses it BEFORE taking any money.
+function EventTicketStep({ ev, tz, currency, acceptPayments, dogs, dogIds, onToggleDog, ticketTierId, onTier, qty, onQty, maxTicketQuantity, onContinue }: {
+  tz: string
+  ev: WizardEvent
+  currency: string | null
+  acceptPayments: boolean
+  dogs: { id: string; name: string }[]
+  dogIds: string[]
+  onToggleDog: (id: string) => void
+  ticketTierId: string | null
+  onTier: (id: string) => void
+  qty: number
+  onQty: (n: number) => void
+  maxTicketQuantity: number
+  onContinue: () => void
+}) {
+  const ticketed = ev.tiers.length > 0
+  const tier = ev.tiers.find(t => t.id === ticketTierId) ?? null
+  const isFull = ev.seatsLeft === 0
+  const soldOut = ticketed && ev.tiers.every(t => t.spacesLeft === 0)
+  // Never offer more than the tier has left, nor more than the API accepts.
+  const qtyMax = Math.max(1, Math.min(tier?.spacesLeft ?? maxTicketQuantity, maxTicketQuantity))
+  const chargeable = ticketed ? (tier?.priceCents ?? 0) * qty : (ev.priceCents ?? 0)
+  const paidButNoPayments = chargeable > 0 && !acceptPayments
+
+  return (
+    <div className="flex flex-col gap-5">
+      <StepIntro title={ev.name} sub={ev.packageName} />
+
+      <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 flex flex-col gap-2.5 text-sm">
+        {fmtNextSession(ev.startsAt, tz) && <Row icon={<CalendarDays className="h-4 w-4" />} text={fmtNextSession(ev.startsAt, tz)!} />}
+        {ev.durationMins != null && <Row icon={<Clock className="h-4 w-4" />} text={`${ev.durationMins} min`} />}
+        {ev.scheduleNote && <Row icon={<Repeat className="h-4 w-4" />} text={ev.scheduleNote} />}
+        {ev.seatsLeft != null && <Row icon={<Users className="h-4 w-4" />} text={isFull ? (ev.allowWaitlist ? 'Full — join the waitlist' : 'Full') : `${ev.seatsLeft} place${ev.seatsLeft === 1 ? '' : 's'} left`} />}
+      </div>
+
+      {ticketed && (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Which ticket?</p>
+          <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
+            {ev.tiers.map(t => {
+              const out = t.spacesLeft === 0
+              const on = t.id === ticketTierId
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  disabled={out}
+                  onClick={() => onTier(t.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 border-t border-slate-100 first:border-t-0 text-left transition-colors ${on ? 'bg-accent-soft' : 'hover:bg-slate-50'} disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-lg shrink-0 ${on ? 'bg-accent text-accent-fg' : 'bg-accent-soft text-accent'}`}>
+                    {on ? <Check className="h-4 w-4" /> : <Ticket className="h-4 w-4" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-slate-800">{t.name}</span>
+                    {t.spacesLeft != null && (
+                      <span className={`block text-xs ${out ? 'text-rose-500' : 'text-emerald-600'}`}>{out ? 'Sold out' : `${t.spacesLeft} left`}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-sm font-semibold text-slate-900">{price(t.priceCents, currency) ?? 'Free'}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {ticketed && tier && (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">How many?</p>
+          <div className="flex items-center gap-4">
+            <div className="inline-flex items-center rounded-xl border border-slate-200 bg-white">
+              <button type="button" aria-label="One fewer ticket" disabled={qty <= 1} onClick={() => onQty(Math.max(1, qty - 1))} className="h-11 w-11 grid place-items-center text-slate-600 disabled:opacity-30">
+                <Minus className="h-4 w-4" />
+              </button>
+              <span className="w-10 text-center text-sm font-bold tabular-nums text-slate-900">{qty}</span>
+              <button type="button" aria-label="One more ticket" disabled={qty >= qtyMax} onClick={() => onQty(Math.min(qtyMax, qty + 1))} className="h-11 w-11 grid place-items-center text-slate-600 disabled:opacity-30">
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+            <span className="text-sm text-slate-500">
+              {price((tier.priceCents ?? 0) * qty, currency)} total
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Only an un-ticketed event books per dog. A ticket is a place at the
+          event, and one owner can buy several — the API bills the tickets, not
+          the dogs, so offering a multi-dog picker here would just mislead. */}
+      {!ticketed && dogs.length > 1 && (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">Which dogs? <span className="font-normal normal-case text-slate-400">Tap more than one to book them together</span></p>
+          <div className="flex flex-wrap gap-2">
+            {dogs.map(d => (
+              <button key={d.id} onClick={() => onToggleDog(d.id)} className={`rounded-xl px-4 py-2 text-sm font-semibold border transition-colors ${dogIds.includes(d.id) ? 'bg-accent border-accent text-accent-fg' : 'bg-white border-slate-200 text-slate-700 hover:border-accent/40'}`}>
+                {d.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {paidButNoPayments ? (
+        <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 text-sm text-slate-500">
+          This event needs payment your trainer hasn&apos;t switched on yet — ask them to book you in.
+        </div>
+      ) : soldOut ? (
+        <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 text-sm text-slate-500">
+          Every ticket type is sold out.
+        </div>
+      ) : (
+        <StickyCta disabled={(ticketed && !tier) || (isFull && !ev.allowWaitlist)} onClick={onContinue}>
+          {isFull
+            ? (ev.allowWaitlist ? 'Continue to waitlist' : 'Event is full')
+            : ticketed
+              ? (tier ? `Continue · ${qty} × ${tier.name}` : 'Pick a ticket type')
+              : 'Continue'}
+        </StickyCta>
+      )}
+    </div>
+  )
+}
+
 function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <div className="flex items-center gap-2.5 text-slate-600">
@@ -809,7 +1085,7 @@ function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 /* ============================ step 3 · confirm ============================ */
 
-function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dropInSessionIds, dogName, saving, error, onConfirm }: {
+function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dropInSessionIds, tier, ticketQty, dogName, saving, error, onConfirm }: {
   tz: string
   selection: Selection
   date: string
@@ -818,6 +1094,8 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
   acceptPayments: boolean
   classType: 'FULL' | 'DROP_IN'
   dropInSessionIds: string[]
+  tier: WizardEventTier | null
+  ticketQty: number
   dogName: string | null
   saving: boolean
   error: string | null
@@ -826,24 +1104,30 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
   const isSession = selection.kind === 'session'
   const pkg = selection.kind === 'session' ? selection.pkg : null
   const cls = selection.kind === 'class' ? selection.cls : null
+  const ev = selection.kind === 'event' ? selection.ev : null
   const dropInSessions = cls && classType === 'DROP_IN' ? cls.sessions.filter(s => dropInSessionIds.includes(s.id)) : []
 
   // A drop-in can't be "full" — it only exists once a session has room.
-  const isFull = classType === 'FULL' && cls?.seatsLeft === 0
+  const isFull = ev ? ev.seatsLeft === 0 : classType === 'FULL' && cls?.seatsLeft === 0
   // Each session is charged at its own rate, which can differ session to
   // session, so several sessions is the SUM — not one price shown for what's
   // actually three bookings. Falls back to the class's headline rate.
   const priceCents = isSession
     ? pkg!.priceCents
-    : classType === 'DROP_IN'
-      ? dropInSessions.reduce<number | null>(
-          (sum, s) => {
-            const p = s.dropInPriceCents ?? cls!.dropInPerSessionCents
-            return p == null ? sum : (sum ?? 0) + p
-          },
-          null,
-        )
-      : cls!.fullPriceCents
+    : ev
+      // A ticketed event is priced by its TICKET × how many, exactly as the
+      // server does it. ev.priceCents is null whenever tiers exist, so the
+      // package price can never leak into this quote.
+      ? (ev.tiers.length > 0 ? (tier ? (tier.priceCents ?? 0) * ticketQty : null) : ev.priceCents)
+      : classType === 'DROP_IN'
+        ? dropInSessions.reduce<number | null>(
+            (sum, s) => {
+              const p = s.dropInPriceCents ?? cls!.dropInPerSessionCents
+              return p == null ? sum : (sum ?? 0) + p
+            },
+            null,
+          )
+        : cls!.fullPriceCents
   const needsApproval = isSession && pkg!.selfBookRequiresApproval
   const priceLabel = price(priceCents, currency)
 
@@ -855,6 +1139,7 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
   let ctaText: string
   if (isSession) ctaText = needsApproval ? 'Request booking' : willCharge ? `Pay ${priceLabel} & book` : 'Confirm booking'
   else if (isFull) ctaText = 'Join waitlist'
+  else if (ev) ctaText = willCharge ? `Pay ${priceLabel} & book` : 'Confirm my place'
   else ctaText = willCharge ? `Pay ${priceLabel} & join` : 'Confirm & join'
 
   return (
@@ -863,11 +1148,18 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
 
       <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
         <div className="px-4 py-3.5 border-b border-slate-100">
-          <p className="text-[15px] font-bold text-slate-900">{isSession ? pkg!.name : cls!.name}</p>
-          <p className="text-xs text-slate-500 mt-0.5">{isSession ? (pkg!.sessionType === 'VIRTUAL' ? 'Virtual session' : 'In-person session') : cls!.packageName}</p>
+          <p className="text-[15px] font-bold text-slate-900">{isSession ? pkg!.name : ev ? ev.name : cls!.name}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{isSession ? (pkg!.sessionType === 'VIRTUAL' ? 'Virtual session' : 'In-person session') : ev ? ev.packageName : cls!.packageName}</p>
         </div>
         <dl className="divide-y divide-slate-100">
-          {isSession ? (
+          {ev ? (
+            <>
+              {fmtNextSession(ev.startsAt, tz) && <SummaryRow label="When" value={fmtNextSession(ev.startsAt, tz)!} />}
+              {ev.durationMins != null && <SummaryRow label="Length" value={`${ev.durationMins} min`} />}
+              {ev.scheduleNote && <SummaryRow label="Details" value={ev.scheduleNote} />}
+              {tier && <SummaryRow label="Ticket" value={ticketQty > 1 ? `${ticketQty} × ${tier.name}` : tier.name} />}
+            </>
+          ) : isSession ? (
             <>
               <SummaryRow label="When" value={`${fmtFullDate(date)} · ${fmtTimeLabel(time)}`} />
               <SummaryRow label="Length" value={`${pkg!.durationMins} min`} />
@@ -895,7 +1187,8 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
                 : fmtNextSession(cls!.nextSessionAt, tz) && <SummaryRow label="Starts" value={fmtNextSession(cls!.nextSessionAt, tz)!} />}
             </>
           )}
-          {dogName && <SummaryRow label="Dog" value={dogName} />}
+          {/* A ticket is a place, not a dog's spot — don't imply otherwise. */}
+          {dogName && !(ev && ev.tiers.length > 0) && <SummaryRow label="Dog" value={dogName} />}
           <SummaryRow label="Price" value={priceLabel ?? 'Free'} strong />
         </dl>
       </div>
@@ -940,7 +1233,7 @@ function EmptyState({ businessName, previewDays, onWaitlist, saving, error }: {
         </div>
         <p className="mt-3 text-sm font-semibold text-slate-700">Nothing to self-book right now</p>
         <p className="mt-1 text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
-          {businessName} hasn&apos;t opened any sessions or classes for self-booking yet. Join the waitlist and they&apos;ll reach out.
+          {businessName} hasn&apos;t opened any sessions, classes or events for self-booking yet. Join the waitlist and they&apos;ll reach out.
         </p>
         <button onClick={onWaitlist} disabled={saving} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-accent text-accent-fg text-sm font-semibold px-5 py-2.5 disabled:opacity-50">
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}Join the waitlist

@@ -1139,6 +1139,7 @@ model ClientProfile {
   notifications     ClientNotification[]
   clientPackages    ClientPackage[]
   productRequests   ProductRequest[]
+  membershipRequests MembershipRequest[]
   buddySessions     SessionBuddy[]
   achievements      ClientAchievement[]
   payments          Payment[]
@@ -3070,6 +3071,42 @@ enum MembershipPurchaseStatus {
   LAPSED
 }
 
+// Why a client had to ask instead of just buying. Kept on the row so the
+// trainer's notification (and, later, their inbox) can tell the two jobs apart:
+// a recurring plan needs setting up, an unpriced one needs a price first.
+enum MembershipRequestReason {
+  RECURRING // ongoing plan — no mandate layer yet, so checkout can't take it
+  NO_PRICE  // published without a price
+}
+
+enum MembershipRequestStatus {
+  PENDING // client wants this, trainer hasn't actioned it
+  FULFILLED // trainer set it up / priced it
+}
+
+// A client asking for a membership they can't check out themselves. Mirrors
+// ProductRequest (the shop's "request this" path) deliberately: same PENDING
+// row, same idempotency, same CLIENT_SHOP_ORDER notification — so the client
+// meets one behaviour wherever something can't be bought outright.
+model MembershipRequest {
+  id           String                  @id @default(cuid())
+  clientId     String
+  membershipId String
+  reason       MembershipRequestReason
+  status       MembershipRequestStatus @default(PENDING)
+
+  fulfilledAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  client     ClientProfile @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  membership Membership    @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, status])
+  @@index([membershipId, status])
+  @@map("membership_requests")
+}
+
 model Membership {
   id                String              @id @default(cuid())
   trainerId         String
@@ -3106,6 +3143,7 @@ model Membership {
   trainer        TrainerProfile       @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   items          MembershipItem[]
   purchases      MembershipPurchase[]
+  requests       MembershipRequest[]
   commsFlowSteps CommsFlowStep[]
   plans     MembershipPlan[]
 
