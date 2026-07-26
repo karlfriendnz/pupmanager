@@ -1,39 +1,67 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Home, Navigation, MapPin, Loader2, Pencil, ChevronLeft, ChevronRight, Check } from 'lucide-react'
+import { Home, Navigation, Loader2, Pencil, ChevronLeft, ChevronRight, Check, Video, MapPinOff, ArrowRight } from 'lucide-react'
 import { loadMaps } from '@/components/maps/maps-loader'
 import { PlaceAutocomplete, type PlaceResult } from '@/components/maps/place-autocomplete'
 
-type Client = { id: string; name: string; address: string | null; lat: number | null; lng: number | null; time?: string | null; endTime?: string | null; timeMins?: number | null; dogs?: string[] }
+// A day's stop, as /api/route/day returns it. Mirrors DayStop in lib/route-day.
+type Stop = {
+  id: string
+  kind: 'client' | 'group'
+  clientId: string | null
+  classRunId: string | null
+  name: string
+  kindLabel: string
+  href: string
+  address: string | null
+  lat: number | null
+  lng: number | null
+  time?: string | null
+  endTime?: string | null
+  timeMins?: number | null
+  dogs?: string[]
+  attendees?: number
+  visitMins?: number
+  blocked: 'virtual' | 'no-location' | 'no-address' | null
+}
 type Base = { address: string | null; lat: number; lng: number } | null
 type Member = { id: string; name: string }
 type OptStop = {
-  clientId: string; name: string; address: string | null; lat: number; lng: number
-  legDurationSec: number | null; legDistanceMeters: number | null
+  stopId: string
+  kind: 'client' | 'group'
+  clientId: string | null
+  classRunId: string | null
+  name: string
+  address: string | null
+  lat: number | null
+  lng: number | null
+  legDurationSec: number | null
+  legDistanceMeters: number | null
 }
 type OptResult = { stops: OptStop[]; totalDurationSec: number; totalDistanceMeters: number; polyline: string | null }
 
 const AUCKLAND = { lat: -36.8485, lng: 174.7633 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
-// Marker bubble: client name + link to their profile (new tab).
-const bubble = (name: string, clientId: string, time?: string | null) =>
+// Marker bubble: the stop's name + a link to whatever it is (new tab).
+const bubble = (name: string, href: string, openLabel: string, time?: string | null) =>
   `<div style="font:14px -apple-system,sans-serif;min-width:120px">
      <strong>${esc(name)}</strong>${time ? ` · ${esc(time)}` : ''}<br/>
-     <a href="/clients/${esc(clientId)}/edit?tab=details" target="_blank" rel="noopener" style="color:#2563eb">Open client →</a>
+     <a href="${esc(href)}" target="_blank" rel="noopener" style="color:#2563eb">${esc(openLabel)} →</a>
    </div>`
 
 export function RouteManager({
   base: initialBase,
-  clients: initialClients,
+  stops: initialStops,
   members,
   initialDate,
   region,
 }: {
   base: Base
-  clients: Client[]
+  stops: Stop[]
   members: Member[]
   initialDate: string
   // ISO alpha-2 of the trainer's country — localises address suggestions.
@@ -44,7 +72,7 @@ export function RouteManager({
   const validUrlDate = urlDate && /^\d{4}-\d{2}-\d{2}$/.test(urlDate) ? urlDate : null
 
   const [base, setBase] = useState<Base>(initialBase)
-  const [clients, setClients] = useState<Client[]>(initialClients)
+  const [stops, setStops] = useState<Stop[]>(initialStops)
   // Date is driven by the URL (?date) so clicking a day in the schedule always
   // reflects here, regardless of server re-render/caching.
   const [date, setDate] = useState(validUrlDate ?? initialDate)
@@ -54,7 +82,7 @@ export function RouteManager({
   const [orderMode, setOrderMode] = useState<'time' | 'shortest'>('time')
   const [loadingDay, setLoadingDay] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(initialClients.filter(c => c.lat != null).map(c => c.id)),
+    () => new Set(initialStops.filter(s => s.blocked == null).map(s => s.id)),
   )
   const [result, setResult] = useState<OptResult | null>(null)
   const [optimising, setOptimising] = useState(false)
@@ -70,8 +98,13 @@ export function RouteManager({
   const mapHost = useRef<HTMLDivElement>(null)
   const [mapReady, setMapReady] = useState(false)
 
-  // Init map once.
+  const hasBase = base != null
+
+  // Init map once — but only once there IS a base. Without one the planner
+  // renders its explanation instead of the map/column, so mapHost isn't
+  // mounted and loadMaps() would burn a script load on a hidden pane.
   useEffect(() => {
+    if (!hasBase) return
     let cancelled = false
     if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY) {
       setError('Browser maps key missing in the page — NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY not inlined (dev server needs a restart after adding it).')
@@ -98,7 +131,7 @@ export function RouteManager({
       })
       .catch((e: unknown) => setError(`Map error: ${e instanceof Error ? e.message : String(e)}`))
     return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasBase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redraw markers + route whenever inputs change.
   useEffect(() => {
@@ -110,13 +143,16 @@ export function RouteManager({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const add = (o: any) => overlaysRef.current.push(o)
     const info = (infoRef.current ??= new google.maps.InfoWindow())
-    // Marker that opens a client bubble on click.
+    // Marker that opens a bubble on click.
     const stopMarker = (
       opts: google.maps.MarkerOptions,
-      content: { name: string; clientId: string; time?: string | null },
+      content: { name: string; href: string; openLabel: string; time?: string | null },
     ) => {
       const m = new google.maps.Marker(opts)
-      m.addListener('click', () => { info.setContent(bubble(content.name, content.clientId, content.time)); info.open(map, m) })
+      m.addListener('click', () => {
+        info.setContent(bubble(content.name, content.href, content.openLabel, content.time))
+        info.open(map, m)
+      })
       add(m)
       return m
     }
@@ -127,10 +163,15 @@ export function RouteManager({
     }
 
     if (result) {
+      // A venue sent as free text has no coordinates until Google resolves it,
+      // which it does as part of the optimise call — so every optimised stop
+      // can be pinned, class venues included.
       result.stops.forEach((s, i) => {
+        if (s.lat == null || s.lng == null) return
+        const src = stops.find(x => x.id === s.stopId)
         stopMarker(
           { position: { lat: s.lat, lng: s.lng }, map, label: { text: String(i + 1), color: '#fff', fontWeight: '700' }, title: `${i + 1}. ${s.name}` },
-          { name: s.name, clientId: s.clientId, time: clients.find(c => c.id === s.clientId)?.time },
+          { name: s.name, href: src?.href ?? '#', openLabel: openLabelFor(src), time: src?.time },
         )
         bounds.extend({ lat: s.lat, lng: s.lng })
       })
@@ -139,9 +180,9 @@ export function RouteManager({
         add(new google.maps.Polyline({ path, map, strokeColor: '#2a9da9', strokeWeight: 4, strokeOpacity: 0.85 }))
       }
     } else {
-      clients.filter(c => c.lat != null && selected.has(c.id)).forEach(c => {
-        stopMarker({ position: { lat: c.lat!, lng: c.lng! }, map, title: c.name }, { name: c.name, clientId: c.id, time: c.time })
-        bounds.extend({ lat: c.lat!, lng: c.lng! })
+      stops.filter(s => s.lat != null && selected.has(s.id)).forEach(s => {
+        stopMarker({ position: { lat: s.lat!, lng: s.lng! }, map, title: s.name }, { name: s.name, href: s.href, openLabel: openLabelFor(s), time: s.time })
+        bounds.extend({ lat: s.lat!, lng: s.lng! })
       })
     }
     if (!bounds.isEmpty()) {
@@ -152,16 +193,16 @@ export function RouteManager({
         if ((map.getZoom() ?? 0) > 13) map.setZoom(13)
       })
     }
-  }, [base, clients, selected, result, mapReady])
+  }, [base, stops, selected, result, mapReady])
 
   async function saveBase(r: PlaceResult) {
     setBase({ address: r.address, lat: r.lat, lng: r.lng })
-    setShowBaseInput(false); setResult(null)
+    setShowBaseInput(false); setResult(null); setError(null)
     await fetch('/api/route/base', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) })
   }
-  async function saveClientAddr(clientId: string, r: PlaceResult) {
-    setClients(cs => cs.map(c => (c.id === clientId ? { ...c, address: r.address, lat: r.lat, lng: r.lng } : c)))
-    setSelected(s => new Set(s).add(clientId))
+  async function saveClientAddr(stopId: string, clientId: string, r: PlaceResult) {
+    setStops(ss => ss.map(s => (s.id === stopId ? { ...s, address: r.address, lat: r.lat, lng: r.lng, blocked: null } : s)))
+    setSelected(s => new Set(s).add(stopId))
     setSettingAddrFor(null); setResult(null)
     await fetch(`/api/clients/${clientId}/location`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) })
   }
@@ -178,20 +219,22 @@ export function RouteManager({
 
   // Always fetch the day's stops for the current date/member (incl. on mount,
   // so landing on a specific day shows that day, not the server's default).
+  // Skipped without a base — there is no route to plan yet.
   useEffect(() => {
+    if (!hasBase) return
     let cancelled = false
     setLoadingDay(true); setResult(null)
     fetch(`/api/route/day?date=${date}&memberId=${memberId}`)
-      .then(r => (r.ok ? r.json() : { clients: [] }))
-      .then((d: { clients?: Client[] }) => {
+      .then(r => (r.ok ? r.json() : { stops: [] }))
+      .then((d: { stops?: Stop[] }) => {
         if (cancelled) return
-        const cs = d.clients ?? []
-        setClients(cs)
-        setSelected(new Set(cs.filter(c => c.lat != null).map(c => c.id)))
+        const ss = d.stops ?? []
+        setStops(ss)
+        setSelected(new Set(ss.filter(s => s.blocked == null).map(s => s.id)))
       })
       .finally(() => { if (!cancelled) setLoadingDay(false) })
     return () => { cancelled = true }
-  }, [date, memberId])
+  }, [date, memberId, hasBase])
 
   function shiftDay(delta: number) {
     const d = new Date(date + 'T00:00:00')
@@ -206,19 +249,26 @@ export function RouteManager({
 
   async function optimise() {
     setError(null)
-    if (!base) { setError('Set your base first.'); setShowBaseInput(true); return }
+    if (!base) { setError('Set your base first.'); return }
     // Send in booked-time order; the API keeps it when optimize=false.
-    const ids = clients
-      .filter(c => c.lat != null && selected.has(c.id))
+    const chosen = stops
+      .filter(s => s.blocked == null && selected.has(s.id))
       .slice()
       .sort((a, b) => (a.timeMins ?? 0) - (b.timeMins ?? 0))
-      .map(c => c.id)
-    if (ids.length === 0) { setError('Select at least one client with an address.'); return }
+    if (chosen.length === 0) { setError('Select at least one stop with a location.'); return }
     setOptimising(true)
     try {
       const res = await fetch('/api/route/optimise', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientIds: ids, optimize: orderMode === 'shortest' }),
+        body: JSON.stringify({
+          stops: chosen.map(s => ({
+            kind: s.kind,
+            id: s.kind === 'client' ? s.clientId : s.classRunId,
+            // Echoed back, so the run-sheet can find the day stop again.
+            stopId: s.id,
+          })),
+          optimize: orderMode === 'shortest',
+        }),
       })
       const body = await res.json()
       if (!res.ok) { setError(typeof body.error === 'string' ? body.error : 'Optimise failed'); return }
@@ -230,27 +280,70 @@ export function RouteManager({
     }
   }
 
-  const located = clients.filter(c => c.lat != null)
-  const unlocated = clients.filter(c => c.lat == null)
+  const routable = stops.filter(s => s.blocked == null)
+  const skipped = stops.filter(s => s.blocked != null)
   const fmtDur = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m` : `${Math.round(s / 60)}m`)
   const fmtKm = (m: number) => `${(m / 1000).toFixed(1)} km`
 
   const navUrl = result && base
-    ? `https://www.google.com/maps/dir/?api=1&origin=${base.lat},${base.lng}&destination=${base.lat},${base.lng}&waypoints=${result.stops.map(s => `${s.lat},${s.lng}`).join('|')}&travelmode=driving`
+    ? `https://www.google.com/maps/dir/?api=1&origin=${base.lat},${base.lng}&destination=${base.lat},${base.lng}&waypoints=${result.stops
+        .map(s => (s.lat != null && s.lng != null ? `${s.lat},${s.lng}` : encodeURIComponent(s.address ?? '')))
+        .filter(Boolean)
+        .join('|')}&travelmode=driving`
     : null
 
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'short' })
   const initials = (name: string) => name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
-  const dogsOf = (clientId: string) => clients.find(c => c.id === clientId)?.dogs ?? []
-  // The booked session window for a stop, e.g. "9:30am – 10:15am".
-  const windowOf = (c?: Client | null) => (c?.time ? (c.endTime ? `${c.time} – ${c.endTime}` : c.time) : null)
-  const windowById = (clientId: string) => windowOf(clients.find(c => c.id === clientId))
+  // The booked window for a stop, e.g. "9:30am – 10:15am".
+  const windowOf = (s?: Stop | null) => (s?.time ? (s.endTime ? `${s.time} – ${s.endTime}` : s.time) : null)
+  const byId = (stopId: string) => stops.find(s => s.id === stopId)
   const Avatar = ({ name }: { name: string }) => (
     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--pm-brand-50)] text-[11px] font-semibold text-[var(--pm-brand-700)] leading-none">
       {initials(name)}
     </span>
   )
+  // What a stop is called on screen: the dogs on a 1:1 visit, the run's name
+  // for a class or an event.
+  const headline = (s: Stop) => (s.kind === 'client' && s.dogs?.length ? s.dogs.join(', ') : s.name)
 
+  // ── No base of operations ────────────────────────────────────────────────
+  //
+  // A route is "leave from base, visit these, come back to base". With no base
+  // there is no first leg, no last leg, and no distance for anything in
+  // between — the column used to render anyway, with an Optimise button that
+  // could only ever fail. Say what's missing and where to set it instead.
+  if (!hasBase) {
+    return (
+      <div className="mx-auto w-full max-w-lg">
+        <div className="rounded-xl border border-slate-200 bg-white">
+          <div className="flex items-start gap-3 px-4 py-4">
+            <Home className="mt-0.5 h-[18px] w-[18px] shrink-0 text-slate-700" strokeWidth={1.75} />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900">Set your base of operations first</p>
+              <p className="mt-1 text-[13px] leading-relaxed text-slate-500">
+                Every route starts and ends somewhere — usually home or the yard. Until
+                that address is set there&apos;s nothing to measure the day&apos;s driving
+                from, so there&apos;s no order to put your stops in.
+              </p>
+            </div>
+          </div>
+          <div className="border-t border-slate-200 px-4 py-4">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Base address</p>
+            <PlaceAutocomplete placeholder="Search your base address…" onSelect={saveBase} region={region} bias={null} />
+            <p className="mt-2 text-[13px] text-slate-500">Saved as soon as you pick one — the day&apos;s route appears straight after.</p>
+          </div>
+          <Link
+            href="/settings?tab=profile"
+            className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+          >
+            <span className="min-w-0 flex-1 text-sm font-medium text-slate-900">Set it in Settings instead</span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={1.75} />
+          </Link>
+        </div>
+        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+      </div>
+    )
+  }
 
   return (
     <div className="grid lg:grid-cols-[1fr_360px] gap-4 h-[calc(100dvh-8rem)]">
@@ -289,10 +382,10 @@ export function RouteManager({
                 : <p className="text-sm text-slate-400">Not set</p>}
             </div>
             {base && !showBaseInput && (
-              <button onClick={() => setShowBaseInput(true)} className="text-slate-400 hover:text-[var(--pm-brand-600)]"><Pencil className="h-4 w-4" /></button>
+              <button onClick={() => setShowBaseInput(true)} className="text-slate-400 hover:text-[var(--pm-brand-600)]" aria-label="Change base address"><Pencil className="h-4 w-4" /></button>
             )}
           </div>
-          {(!base || showBaseInput) && <div className="mt-2.5"><PlaceAutocomplete placeholder="Search your base address…" onSelect={saveBase} region={region} bias={base ? { lat: base.lat, lng: base.lng } : null} /></div>}
+          {showBaseInput && <div className="mt-2.5"><PlaceAutocomplete placeholder="Search your base address…" onSelect={saveBase} region={region} bias={base ? { lat: base.lat, lng: base.lng } : null} /></div>}
         </div>
 
         {/* Order mode */}
@@ -337,45 +430,52 @@ export function RouteManager({
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400"><Home className="h-4 w-4" /></span>
                 Leave base
               </li>
-              {result.stops.map((s, i) => (
-                <li key={s.clientId} className="relative flex items-start gap-3">
-                  <div className="absolute left-[18px] top-9 bottom-0 w-px bg-slate-100" />
-                  <span className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--pm-brand-600)] text-xs font-bold text-white">{i + 1}</span>
-                  <div className="min-w-0 flex-1 border-b border-slate-50 last:border-0 pb-3">
-                    <div className="flex h-9 items-center justify-between gap-2">
-                      <span className="font-medium text-slate-800 truncate">
-                        {dogsOf(s.clientId).length ? dogsOf(s.clientId).join(', ') : s.name}
-                      </span>
-                      {windowById(s.clientId) && <span className="text-xs font-semibold text-slate-600 shrink-0">{windowById(s.clientId)}</span>}
+              {result.stops.map((s, i) => {
+                const src = byId(s.stopId)
+                return (
+                  <li key={s.stopId} className="relative flex items-start gap-3">
+                    <div className="absolute left-[18px] top-9 bottom-0 w-px bg-slate-100" />
+                    <span className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--pm-brand-600)] text-xs font-bold text-white">{i + 1}</span>
+                    <div className="min-w-0 flex-1 border-b border-slate-50 last:border-0 pb-3">
+                      <div className="flex h-9 items-center justify-between gap-2">
+                        <span className="font-medium text-slate-800 truncate">
+                          {src ? headline(src) : s.name}
+                        </span>
+                        {windowOf(src) && <span className="text-xs font-semibold text-slate-600 shrink-0">{windowOf(src)}</span>}
+                      </div>
+                      <p className="text-xs text-slate-400 truncate -mt-1">
+                        <a href={src?.href ?? '#'} target="_blank" rel="noopener noreferrer" className="hover:text-[var(--pm-brand-600)] hover:underline">
+                          {src?.kindLabel ? `${src.kindLabel} · ` : ''}{s.name}
+                        </a>
+                      </p>
+                      {s.address && <p className="text-[11px] text-slate-400 truncate">{s.address}</p>}
+                      {s.legDurationSec != null && <p className="text-[11px] text-slate-400 mt-0.5">🚗 {fmtDur(s.legDurationSec)} drive</p>}
                     </div>
-                    <p className="text-xs text-slate-400 truncate -mt-1">
-                      <a href={`/clients/${s.clientId}/edit?tab=details`} target="_blank" rel="noopener noreferrer" className="hover:text-[var(--pm-brand-600)] hover:underline">{s.name}</a>
-                    </p>
-                    {s.address && <p className="text-[11px] text-slate-400 truncate">{s.address}</p>}
-                    {s.legDurationSec != null && <p className="text-[11px] text-slate-400 mt-0.5">🚗 {fmtDur(s.legDurationSec)} drive</p>}
-                  </div>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ol>
           </div>
         )}
 
         {/* Stops to include — hidden once optimised (the run-sheet shows them). */}
-        {!result && located.length > 0 && (
+        {!result && routable.length > 0 && (
           <div className="rounded-2xl bg-white shadow-sm border border-slate-100 p-3.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Stops · {selected.size} of {located.length}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Stops · {selected.size} of {routable.length}</p>
             <div className="flex flex-col gap-1 -mx-1">
-              {located.map(c => {
-                const on = selected.has(c.id)
+              {routable.map(s => {
+                const on = selected.has(s.id)
                 return (
-                  <div key={c.id} className={`flex items-center gap-3 rounded-xl px-2 py-1.5 cursor-pointer transition ${on ? 'bg-[var(--pm-brand-50)]' : 'hover:bg-slate-50'}`} onClick={() => toggle(c.id)}>
-                    <Avatar name={c.name} />
+                  <div key={s.id} className={`flex items-center gap-3 rounded-xl px-2 py-1.5 cursor-pointer transition ${on ? 'bg-[var(--pm-brand-50)]' : 'hover:bg-slate-50'}`} onClick={() => toggle(s.id)}>
+                    <Avatar name={s.name} />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-slate-800 truncate">{c.dogs?.length ? c.dogs.join(', ') : c.name}</p>
-                      <a href={`/clients/${c.id}/edit?tab=details`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-slate-400 hover:text-[var(--pm-brand-600)] hover:underline">{c.name}</a>
-                      {c.address && <p className="text-xs text-slate-400 truncate">{c.address}</p>}
+                      <p className="text-sm font-medium text-slate-800 truncate">{headline(s)}</p>
+                      <a href={s.href} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-xs text-slate-400 hover:text-[var(--pm-brand-600)] hover:underline">
+                        {s.kindLabel} · {s.name}
+                      </a>
+                      {s.address && <p className="text-xs text-slate-400 truncate">{s.address}</p>}
                     </div>
-                    {windowOf(c) && <span className="text-xs font-semibold text-slate-500 shrink-0">{windowOf(c)}</span>}
+                    {windowOf(s) && <span className="text-xs font-semibold text-slate-500 shrink-0">{windowOf(s)}</span>}
                     <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${on ? 'border-[var(--pm-brand-600)] bg-[var(--pm-brand-600)] text-white' : 'border-slate-300'}`}>
                       {on && <Check className="h-3 w-3" strokeWidth={3} />}
                     </span>
@@ -386,26 +486,47 @@ export function RouteManager({
           </div>
         )}
 
-        {/* No address yet */}
-        {unlocated.length > 0 && (
-          <div className="rounded-2xl bg-amber-50 border border-amber-100 p-3.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600 mb-2">No address yet · {unlocated.length}</p>
+        {/* Not on the route — every booking that day the planner can't drive to,
+            with the reason and the way to fix it. Dropping these silently made
+            a half-planned day look like a complete one. */}
+        {skipped.length > 0 && (
+          <div className="rounded-2xl bg-white border border-slate-200 p-3.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Not on the route · {skipped.length}</p>
             <div className="flex flex-col gap-1.5">
-              {unlocated.map(c => (
-                <div key={c.id}>
-                  {settingAddrFor === c.id ? (
-                    <div className="rounded-xl bg-white p-2.5">
-                      <p className="text-sm font-medium text-slate-700 mb-1.5">{c.name}</p>
-                      <PlaceAutocomplete placeholder={`${c.name}'s address…`} onSelect={r => saveClientAddr(c.id, r)} region={region} bias={base ? { lat: base.lat, lng: base.lng } : null} />
+              {skipped.map(s => (
+                <div key={s.id}>
+                  {settingAddrFor === s.id ? (
+                    <div className="rounded-xl bg-slate-50 p-2.5">
+                      <p className="text-sm font-medium text-slate-700 mb-1.5">{s.name}</p>
+                      <PlaceAutocomplete
+                        placeholder={`${s.name}'s address…`}
+                        onSelect={r => saveClientAddr(s.id, s.clientId!, r)}
+                        region={region}
+                        bias={base ? { lat: base.lat, lng: base.lng } : null}
+                      />
                     </div>
                   ) : (
                     <div className="flex items-center gap-3 rounded-xl px-1 py-1">
-                      <Avatar name={c.name} />
+                      {s.blocked === 'virtual'
+                        ? <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500"><Video className="h-4 w-4" strokeWidth={1.75} /></span>
+                        : s.blocked === 'no-location'
+                          ? <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500"><MapPinOff className="h-4 w-4" strokeWidth={1.75} /></span>
+                          : <Avatar name={s.name} />}
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-700 truncate">{c.dogs?.length ? c.dogs.join(', ') : c.name}</p>
-                        <a href={`/clients/${c.id}/edit?tab=details`} target="_blank" rel="noopener noreferrer" className="text-xs text-slate-400 hover:text-[var(--pm-brand-600)] hover:underline">{c.name}{windowOf(c) ? ` · ${windowOf(c)}` : ''}</a>
+                        <p className="text-sm font-medium text-slate-700 truncate">{headline(s)}</p>
+                        <p className="text-xs text-slate-400 truncate">
+                          {s.blocked === 'virtual' ? 'Online — nothing to drive to'
+                            : s.blocked === 'no-location' ? `${s.kindLabel} · no venue set`
+                            : 'No address on file'}
+                          {windowOf(s) ? ` · ${windowOf(s)}` : ''}
+                        </p>
                       </div>
-                      <button onClick={() => setSettingAddrFor(c.id)} className="text-xs font-medium text-[var(--pm-brand-700)] bg-white border border-amber-200 rounded-lg px-2.5 py-1 hover:bg-amber-50 shrink-0">Set address</button>
+                      {s.blocked === 'no-address' && s.clientId && (
+                        <button onClick={() => setSettingAddrFor(s.id)} className="text-xs font-medium text-[var(--pm-brand-700)] bg-white border border-slate-200 rounded-lg px-2.5 py-1 hover:bg-slate-50 shrink-0">Set address</button>
+                      )}
+                      {s.blocked === 'no-location' && (
+                        <a href={s.href} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-[var(--pm-brand-700)] bg-white border border-slate-200 rounded-lg px-2.5 py-1 hover:bg-slate-50 shrink-0">Add venue</a>
+                      )}
                     </div>
                   )}
                 </div>
@@ -416,4 +537,11 @@ export function RouteManager({
       </div>
     </div>
   )
+}
+
+/** "Open client" for a 1:1, "Open class"/"Open event" for a group booking. */
+function openLabelFor(s?: Stop | null): string {
+  if (!s) return 'Open'
+  if (s.kind === 'client') return 'Open client'
+  return `Open ${s.kindLabel.toLowerCase()}`
 }

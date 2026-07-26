@@ -3,8 +3,9 @@ import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
 import { getDayStops } from '@/lib/route-day'
 
-// Stops (clients with a visit) for a given day, optionally filtered to one
-// trainer member. Drives the route manager's day switcher.
+// Every stop for a given day — 1:1 visits, classes, casual classes, events and
+// daycare — optionally filtered to one trainer member. Drives the route
+// manager's day switcher.
 export async function GET(req: Request) {
   const ctx = await getTrainerContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
@@ -22,6 +23,6 @@ export async function GET(req: Request) {
   })
   const tz = profile?.user.timezone ?? 'Pacific/Auckland'
 
-  const clients = await getDayStops(ctx.companyId, date, tz, memberId)
-  return NextResponse.json({ clients })
+  const stops = await getDayStops(ctx.companyId, date, tz, memberId)
+  return NextResponse.json({ stops })
 }

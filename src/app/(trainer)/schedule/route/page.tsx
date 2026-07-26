@@ -6,6 +6,7 @@ import { getTrainerContext } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { todayInTz } from '@/lib/timezone'
 import { trainerRegionCode } from '@/lib/country'
+import { PageHeader } from '@/components/shared/page-header'
 import { RouteManager } from './route-manager'
 
 export const metadata: Metadata = { title: 'Route' }
@@ -39,11 +40,15 @@ export default async function RoutePage({ searchParams }: { searchParams: Promis
   const members = memberRows.map(m => ({ id: m.id, name: m.user.name ?? m.user.email }))
 
   return (
-    <div>
-      <h1 className="text-xl font-bold mb-3">Route</h1>
+    <>
+      {/* The shell's bar owns the title. This page used to print its own <h1>
+          under it, so a phone read "Route" twice, one line apart. */}
+      <PageHeader title="Route" back={{ href: '/schedule', label: 'Schedule' }} />
+      <div className="p-4 md:p-8 w-full">
       <Suspense fallback={<p className="text-sm text-slate-400">Loading route…</p>}>
-        <RouteManager base={base} clients={[]} members={members} initialDate={date} region={profile ? trainerRegionCode(profile) : undefined} />
+        <RouteManager base={base} stops={[]} members={members} initialDate={date} region={profile ? trainerRegionCode(profile) : undefined} />
       </Suspense>
-    </div>
+      </div>
+    </>
   )
 }

@@ -9,19 +9,37 @@ const ROUTES_ENDPOINT = 'https://routes.googleapis.com/directions/v2:computeRout
 
 export type LatLng = { lat: number; lng: number }
 
+// A stop is either a geocoded point (a client's address) or a line of free
+// text (a class venue — "the field behind the hall"). Venues have no
+// coordinates anywhere in the schema and never have, so rather than bolt a
+// geocoder on, we hand the text to the Routes API, which resolves it as part
+// of the same call and tells us where it landed (see `legs.endLocation`).
+export type Waypoint = LatLng | { address: string }
+
 export type OptimisedRoute = {
   // Indices into the input `stops`, in the optimal visit order.
   order: number[]
   // Per-leg drive times/distances, in visit order (base→stop1, stop1→stop2, …, →base).
-  legs: { durationSec: number; distanceMeters: number }[]
+  // `end` is where the leg finished — the resolved position of that stop, which
+  // is the only way an address-only stop gets onto the map.
+  legs: { durationSec: number; distanceMeters: number; end: LatLng | null }[]
   totalDurationSec: number
   totalDistanceMeters: number
   // Encoded polyline for drawing the route on a map.
   polyline: string | null
 }
 
-function toWaypoint(p: LatLng) {
-  return { location: { latLng: { latitude: p.lat, longitude: p.lng } } }
+function toWaypoint(p: Waypoint) {
+  return 'address' in p
+    ? { address: p.address }
+    : { location: { latLng: { latitude: p.lat, longitude: p.lng } } }
+}
+
+// Routes API points come back as { latitude, longitude } inside a location.
+function toLatLng(loc: unknown): LatLng | null {
+  const ll = (loc as { latLng?: { latitude?: number; longitude?: number } } | undefined)?.latLng
+  if (!ll || typeof ll.latitude !== 'number' || typeof ll.longitude !== 'number') return null
+  return { lat: ll.latitude, lng: ll.longitude }
 }
 
 // Driving distance + time for a single origin→destination (e.g. base → a client).
@@ -67,7 +85,7 @@ function secs(d: unknown): number {
 export async function optimiseRoute(
   origin: LatLng,
   destination: LatLng,
-  stops: LatLng[],
+  stops: Waypoint[],
   // optimize=true → Google reorders for shortest drive (TSP). false → keep the
   // given order (e.g. booked-time order) and just compute the drive through it.
   optimize = true,
@@ -98,6 +116,9 @@ export async function optimiseRoute(
         'routes.distanceMeters',
         'routes.legs.duration',
         'routes.legs.distanceMeters',
+        // Where each leg finished — how an address-only stop (a class venue)
+        // gets coordinates to draw a marker at.
+        'routes.legs.endLocation',
         'routes.polyline.encodedPolyline',
       ].join(','),
     },
@@ -118,9 +139,10 @@ export async function optimiseRoute(
       ? route.optimizedIntermediateWaypointIndex
       : stops.map((_, i) => i),
     legs: Array.isArray(route.legs)
-      ? route.legs.map((l: { duration?: string; distanceMeters?: number }) => ({
+      ? route.legs.map((l: { duration?: string; distanceMeters?: number; endLocation?: unknown }) => ({
           durationSec: secs(l.duration),
           distanceMeters: l.distanceMeters ?? 0,
+          end: toLatLng(l.endLocation),
         }))
       : [],
     totalDurationSec: secs(route.duration),
