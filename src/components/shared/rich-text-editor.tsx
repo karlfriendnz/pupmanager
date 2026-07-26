@@ -27,12 +27,12 @@ type Theme = 'dark' | 'light'
 const THEME: Record<Theme, { body: string; toolbar: string; skeleton: string }> = {
   dark: {
     body: 'tiptap-body rounded-b-xl bg-slate-900 border border-t-0 border-slate-700 px-3 py-3 text-sm text-slate-100 leading-relaxed focus:outline-none',
-    toolbar: 'flex items-center gap-1 rounded-t-xl bg-slate-800 border border-slate-700 px-2 py-1.5',
+    toolbar: 'flex flex-wrap items-center gap-1 rounded-t-xl bg-slate-800 border border-slate-700 px-2 py-1.5',
     skeleton: 'min-h-[300px] rounded-xl bg-slate-900 border border-slate-700',
   },
   light: {
     body: 'tiptap-body tiptap-light rounded-b-xl bg-white border border-t-0 border-slate-200 px-3 py-3 text-sm text-slate-900 leading-relaxed focus:outline-none',
-    toolbar: 'flex items-center gap-1 rounded-t-xl bg-slate-50 border border-slate-200 px-2 py-1.5',
+    toolbar: 'flex flex-wrap items-center gap-1 rounded-t-xl bg-slate-50 border border-slate-200 px-2 py-1.5',
     skeleton: 'min-h-[300px] rounded-xl bg-white border border-slate-200',
   },
 }
@@ -110,9 +110,6 @@ function Toolbar({ editor, theme }: { editor: Editor; theme: Theme }) {
   const cls = { activeCls, idleCls }
   return (
     <div className={THEME[theme].toolbar}>
-      <ToolbarBtn {...cls} label="Heading" active={editor.isActive('heading', { level: 2 })} on={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 className="h-4 w-4" /></ToolbarBtn>
-      <ToolbarBtn {...cls} label="Subheading" active={editor.isActive('heading', { level: 3 })} on={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 className="h-4 w-4" /></ToolbarBtn>
-      <span className={`mx-1 h-5 w-px ${divider}`} />
       <ToolbarBtn {...cls} label="Bold" active={editor.isActive('bold')} on={() => editor.chain().focus().toggleBold().run()}><Bold className="h-4 w-4" /></ToolbarBtn>
       <ToolbarBtn {...cls} label="Italic" active={editor.isActive('italic')} on={() => editor.chain().focus().toggleItalic().run()}><Italic className="h-4 w-4" /></ToolbarBtn>
       {/* Text colour — a swatch that opens a preset palette. Buttons (not a
@@ -144,6 +141,11 @@ function Toolbar({ editor, theme }: { editor: Editor; theme: Theme }) {
       <span className={`mx-1 h-5 w-px ${divider}`} />
       <ToolbarBtn {...cls} label="Add link" active={editor.isActive('link')} on={setLink}><LinkIcon className="h-4 w-4" /></ToolbarBtn>
       {editor.isActive('link') && <ToolbarBtn {...cls} label="Remove link" on={() => editor.chain().focus().unsetLink().run()}><Unlink className="h-4 w-4" /></ToolbarBtn>}
+      {/* Headings live at the END of the toolbar — the everyday controls
+          (bold/italic/colour/lists/link) come first. */}
+      <span className={`mx-1 h-5 w-px ${divider}`} />
+      <ToolbarBtn {...cls} label="Heading" active={editor.isActive('heading', { level: 2 })} on={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 className="h-4 w-4" /></ToolbarBtn>
+      <ToolbarBtn {...cls} label="Subheading" active={editor.isActive('heading', { level: 3 })} on={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 className="h-4 w-4" /></ToolbarBtn>
     </div>
   )
 }
