@@ -222,7 +222,19 @@ export default async function SchedulePage({
       },
       include: {
         assignedTrainer: { select: { id: true, title: true, user: { select: { name: true } } } },
-        classRun: { select: { name: true } },
+        // The package shape decides which section's session screen a class
+        // block opens — classes, casual classes, events or daycare.
+        classRun: {
+          select: {
+            name: true,
+            package: {
+              select: {
+                isGroup: true, allowDropIn: true, sessionCount: true,
+                recurrenceRule: true, isPuppySchool: true,
+              },
+            },
+          },
+        },
         dog: {
           select: {
             name: true,

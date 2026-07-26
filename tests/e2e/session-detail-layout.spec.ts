@@ -168,51 +168,96 @@ test('choosing a form is one row driven by the platform\'s own picker', async ({
   expect(scrollW).toBe(clientW)
 })
 
-test('a group-class session opens its class screen instead of 404ing', async ({ page }) => {
-  // Regression: the detail page filtered on `clientId: { not: null }` to hide
-  // orphans, but a class session has clientId null BY DESIGN (attendance is
-  // per-enrollee). That filter 404'd every class session in the app.
-  const prisma = db()
-  let runId = ''
-  try {
-    const trainer = await prisma.trainerProfile.findFirst({ where: { businessName: SEED.owner.businessName } })
-    const pkg = await prisma.package.findFirst({ where: { trainerId: trainer!.id } })
-    const run = await prisma.classRun.create({
-      data: {
-        trainerId: trainer!.id,
-        packageId: pkg!.id,
-        name: 'E2E Redirect Class',
-        startDate: new Date('2026-10-05T10:00:00Z'),
-        sessions: {
-          create: [{
-            trainerId: trainer!.id,
-            title: 'E2E Redirect Class — session 1',
-            scheduledAt: new Date('2026-10-05T10:00:00Z'),
-            sessionIndex: 1,
-          }],
+// A ClassRun backs FOUR sections of the app, and each has its own screens. The
+// kind is derived from the backing package's shape, and /sessions/[id] used to
+// send all four to /classes/… — so a drop-in landed on the group-class screen
+// with "Back to class" pointing out of the section the trainer came from, and a
+// one-off event landed on a per-session URL events don't even have.
+//
+// `expectedPath` is the section a session of that kind must end up in.
+const RUN_KINDS = [
+  {
+    kind: 'group class',
+    pkg: { isGroup: true, capacity: 8, allowDropIn: false, sessionCount: 6 },
+    expectedPath: (runId: string, sessionId: string) => `/classes/${runId}/sessions/${sessionId}`,
+  },
+  {
+    kind: 'casual / drop-in class',
+    pkg: { isGroup: true, capacity: 8, allowDropIn: true, dropInPriceCents: 3500, sessionCount: 1 },
+    expectedPath: (runId: string, sessionId: string) => `/casual-classes/${runId}/sessions/${sessionId}`,
+  },
+  {
+    kind: 'doggy daycare',
+    pkg: { isGroup: true, capacity: 8, allowDropIn: false, sessionCount: 6, isPuppySchool: true },
+    expectedPath: (runId: string, sessionId: string) => `/doggy-daycare/${runId}/sessions/${sessionId}`,
+  },
+  {
+    // The exception, and it isn't an oversight: an event is one session by
+    // definition, so /events/[eventId] IS the session screen.
+    kind: 'one-off event',
+    pkg: { isGroup: true, capacity: 8, allowDropIn: false, sessionCount: 1 },
+    expectedPath: (runId: string) => `/events/${runId}`,
+  },
+] as const
+
+for (const { kind, pkg, expectedPath } of RUN_KINDS) {
+  test(`a ${kind} session opens ITS OWN screen, not 404 and not /classes`, async ({ page }) => {
+    // Regression 1: the detail page filtered on `clientId: { not: null }` to
+    // hide orphans, but a run session has clientId null BY DESIGN (attendance
+    // is per-enrollee). That filter 404'd every class session in the app.
+    // Regression 2: the redirect that replaced it sent every kind to /classes.
+    const prisma = db()
+    let runId = ''
+    let packageId = ''
+    try {
+      const trainer = await prisma.trainerProfile.findFirst({ where: { businessName: SEED.owner.businessName } })
+      const created = await prisma.package.create({
+        data: {
+          trainerId: trainer!.id,
+          name: `E2E Redirect ${kind}`,
+          weeksBetween: 1,
+          durationMins: 60,
+          ...pkg,
         },
-      },
-      include: { sessions: true },
-    })
-    runId = run.id
-    const classSession = run.sessions[0]
-    expect(classSession.clientId).toBeNull()
+      })
+      packageId = created.id
+      const run = await prisma.classRun.create({
+        data: {
+          trainerId: trainer!.id,
+          packageId: created.id,
+          name: `E2E Redirect Run — ${kind}`,
+          startDate: new Date('2026-10-05T10:00:00Z'),
+          sessions: {
+            create: [{
+              trainerId: trainer!.id,
+              title: `E2E Redirect Run — session 1`,
+              scheduledAt: new Date('2026-10-05T10:00:00Z'),
+              sessionIndex: 1,
+            }],
+          },
+        },
+        include: { sessions: true },
+      })
+      runId = run.id
+      const runSession = run.sessions[0]
+      expect(runSession.clientId).toBeNull()
 
-    await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto(`/sessions/${classSession.id}`)
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto(`/sessions/${runSession.id}`)
 
-    // Lands on the screen built for it — the one the schedule already links to.
-    await page.waitForURL(`**/classes/${run.id}/sessions/${classSession.id}`, { timeout: 20_000 })
+      await page.waitForURL(`**${expectedPath(run.id, runSession.id)}`, { timeout: 20_000 })
 
-    // A different tenant still gets nothing.
-    await page.context().clearCookies()
-    await login(page, SEED.businessB.ownerEmail, SEED.businessB.ownerPassword)
-    expect((await page.request.get(`/sessions/${classSession.id}`)).status()).toBe(404)
-  } finally {
-    if (runId) await prisma.classRun.deleteMany({ where: { id: runId } }).catch(() => {})
-    await prisma.$disconnect()
-  }
-})
+      // A different tenant still gets nothing.
+      await page.context().clearCookies()
+      await login(page, SEED.businessB.ownerEmail, SEED.businessB.ownerPassword)
+      expect((await page.request.get(`/sessions/${runSession.id}`)).status()).toBe(404)
+    } finally {
+      if (runId) await prisma.classRun.deleteMany({ where: { id: runId } }).catch(() => {})
+      if (packageId) await prisma.package.deleteMany({ where: { id: packageId } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+}
 
 test('a session whose client was deleted says so, rather than showing a bare 404', async ({ page }) => {
   const prisma = db()

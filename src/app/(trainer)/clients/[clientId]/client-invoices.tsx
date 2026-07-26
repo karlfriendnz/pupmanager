@@ -32,53 +32,27 @@ function useClientReceivables(clientId: string) {
   return { items, loading, reload: load }
 }
 
-// Invoice table — clickable rows open the shared ReceivableDocument.
-function InvoiceTable({ items, onOpen }: { items: Rcv[]; onOpen: (r: Rcv) => void }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-100 text-left text-[11px] uppercase tracking-wide text-slate-400">
-            <th className="py-2 pr-3 font-medium">Invoice</th>
-            <th className="py-2 px-3 font-medium">Date</th>
-            <th className="py-2 px-3 font-medium text-right">Amount</th>
-            <th className="py-2 px-3 font-medium text-right">Status</th>
-            <th className="py-2 pl-3 font-medium text-right sr-only">Xero</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {items.map(r => {
-            const b = receivableBadge(r)
-            return (
-              <tr key={r.id} onClick={() => onOpen(r)} className="cursor-pointer hover:bg-slate-50">
-                <td className="py-2.5 pr-3 font-medium text-slate-900">{r.description ?? 'Invoice'}</td>
-                <td className="py-2.5 px-3 whitespace-nowrap text-slate-400">{fmtDate(r.createdAt)}</td>
-                <td className="py-2.5 px-3 text-right tabular-nums text-slate-900 whitespace-nowrap">
-                  <span className="font-semibold">{money(r.amountCents, r.currency)}</span>
-                  {r.status === 'PARTIAL' && (
-                    <span className="block text-[11px] text-amber-600">paid {money(r.amountPaidCents, r.currency)} of {money(r.amountCents, r.currency)}</span>
-                  )}
-                </td>
-                <td className="py-2.5 px-3 text-right">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${b.cls}`}>{b.label}</span>
-                </td>
-                <td className="py-2.5 pl-3 text-right">
-                  {r.xeroInvoiceId && <span onClick={e => e.stopPropagation()} className="inline-flex"><XeroLink xeroInvoiceId={r.xeroInvoiceId} /></span>}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
+// The list block. Identical treatment to the Finances list, and for the same
+// measured reason: the client page's own `p-4` wrapper, plus this block's 1px
+// side border, plus each row's 16px padding stacked to ~33px of dead margin
+// down BOTH edges of a 390px screen — which is what wrapped an untruncated
+// invoice description into three ragged lines while the screen edges sat empty.
+// Negating the page padding hands those 34px back to the content and leaves a
+// single hairline rule per row. Desktop keeps the rounded card.
+const LIST_BLOCK = '-mx-4 border-y border-slate-200 bg-white overflow-hidden md:mx-0 md:rounded-2xl md:border'
+
+const FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'unpaid', label: 'Unpaid' },
+  { id: 'paid', label: 'Paid' },
+] as const
+type InvoiceFilter = typeof FILTERS[number]['id']
 
 // Full "Invoices" tab — the whole invoice history for this client.
 export function ClientInvoicesTab({ clientId }: { clientId: string }) {
   const { items, loading, reload } = useClientReceivables(clientId)
   const [open, setOpen] = useState<Rcv | null>(null)
-  const [filter, setFilter] = useState<'all' | 'unpaid' | 'paid'>('all')
+  const [filter, setFilter] = useState<InvoiceFilter>('all')
 
   const filtered = (items ?? []).filter(r =>
     filter === 'unpaid' ? (r.status === 'UNPAID' || r.status === 'PARTIAL')
@@ -87,29 +61,111 @@ export function ClientInvoicesTab({ clientId }: { clientId: string }) {
   )
 
   return (
-    <Card>
-      <CardBody className="py-3">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="inline-flex rounded-lg bg-slate-100 p-1 text-xs font-semibold">
-            {(['all', 'unpaid', 'paid'] as const).map(f => (
-              <button key={f} type="button" onClick={() => setFilter(f)} className={`rounded-md px-3 py-1.5 capitalize transition-colors ${filter === f ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{f}</button>
-            ))}
-          </div>
-        </div>
+    <div className="flex flex-col gap-3">
+      {/* Underline rail, not a segmented pill on a grey tray — the same control
+          Finances uses one tap away, so the two screens read alike. */}
+      <div className="flex gap-1 border-b border-slate-200">
+        {FILTERS.map(f => {
+          const active = filter === f.id
+          return (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFilter(f.id)}
+              aria-pressed={active}
+              className={`relative px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${active ? 'text-accent' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              {f.label}
+              {active && <span className="absolute -bottom-px left-3 right-3 h-0.5 rounded-full bg-accent" />}
+            </button>
+          )
+        })}
+      </div>
+
+      <div className={LIST_BLOCK}>
         {loading && !items ? (
-          <div className="flex items-center gap-2 text-sm text-slate-400 px-2 py-8"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
+          <div className="flex items-center gap-2 px-5 py-8 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
         ) : (items?.length ?? 0) === 0 ? (
-          <div className="text-center py-12 text-slate-400">
-            <p className="text-sm">No invoices yet. They’re created automatically when you assign a priced consult or product.</p>
-          </div>
+          <p className="px-5 py-8 text-sm text-slate-400">No invoices yet. They’re created automatically when you assign a priced consult or product.</p>
         ) : filtered.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-400">No {filter} invoices.</p>
+          <p className="px-5 py-8 text-sm text-slate-400">No {filter} invoices.</p>
         ) : (
-          <InvoiceTable items={filtered} onOpen={setOpen} />
+          <>
+            {/* Mobile: stacked rows. The description flexes and TRUNCATES; the
+                money column and the Xero slot are fixed widths, so the amount,
+                the badge and the icon each hold one column down the whole list
+                — including rows with no Xero icon, whose slot stays reserved
+                rather than collapsing and shifting everything sideways. */}
+            <div className="divide-y divide-slate-100 md:hidden">
+              {filtered.map(r => {
+                const b = receivableBadge(r)
+                return (
+                  <div key={r.id} data-testid="client-invoice-row" onClick={() => setOpen(r)} className="cursor-pointer px-4 py-3.5 active:bg-slate-50">
+                    <div className="flex items-start gap-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p data-testid="client-invoice-desc" className="truncate text-sm font-medium text-slate-900">{r.description ?? 'Invoice'}</p>
+                        <p className="truncate text-xs text-slate-400">issued {fmtDate(r.createdAt)}</p>
+                      </div>
+                      <div className="w-24 shrink-0 text-right">
+                        <p data-testid="client-invoice-amount" className="whitespace-nowrap text-sm font-semibold tabular-nums text-slate-900">{money(r.amountCents, r.currency)}</p>
+                        {r.status === 'PARTIAL' && (
+                          <p className="whitespace-nowrap text-[11px] tabular-nums text-amber-600">{money(r.amountPaidCents, r.currency)} paid</p>
+                        )}
+                        <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span>
+                      </div>
+                      <div className="flex w-6 shrink-0 justify-center pt-0.5">
+                        {r.xeroInvoiceId && <span onClick={e => e.stopPropagation()} className="inline-flex"><XeroLink xeroInvoiceId={r.xeroInvoiceId} /></span>}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase text-slate-400">
+                    <th className="px-4 pt-4 pb-2 font-medium">Issued</th>
+                    <th className="px-4 pt-4 pb-2 font-medium">For</th>
+                    <th className="px-4 pt-4 pb-2 font-medium text-right">Amount</th>
+                    <th className="px-4 pt-4 pb-2 font-medium">Status</th>
+                    <th className="w-10 px-4 pt-4 pb-2 font-medium text-right" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(r => {
+                    const b = receivableBadge(r)
+                    return (
+                      <tr key={r.id} data-testid="client-invoice-row-desktop" onClick={() => setOpen(r)} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50/70">
+                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-500">{fmtDate(r.createdAt)}</td>
+                        {/* Bounded so a very long description can't stretch the
+                            table and shove the amount/status columns sideways. */}
+                        <td className="max-w-[26rem] px-4 py-2.5 text-slate-700">
+                          <span className="block truncate">{r.description ?? 'Invoice'}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap text-slate-900">
+                          {money(r.amountCents, r.currency)}
+                          {r.status === 'PARTIAL' && (
+                            <span className="block text-[11px] font-normal text-amber-600">{money(r.amountPaidCents, r.currency)} paid</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5"><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span></td>
+                        <td className="px-4 py-2.5 text-right">
+                          {r.xeroInvoiceId && <span onClick={e => e.stopPropagation()} className="inline-flex"><XeroLink xeroInvoiceId={r.xeroInvoiceId} /></span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
-      </CardBody>
+      </div>
       {open && <ReceivableDocument summary={open} onClose={() => setOpen(null)} onSent={reload} />}
-    </Card>
+    </div>
   )
 }
 

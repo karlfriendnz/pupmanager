@@ -23,6 +23,7 @@ import { SlotTypeChooser, type SlotAddType } from './slot-type-chooser'
 import { NewWalkModal } from './new-walk-modal'
 import { useBookingConflicts, findDropClashes, clashesToConflictResult, fetchBookingConflicts, type ExistingSlot } from '@/lib/use-booking-conflicts'
 import { occupiedEndMs } from '@/lib/buffer'
+import { runSessionHref, type RunKindPackage } from '@/lib/run-kind'
 import { previewClashKeys, type PreviewBlock as RequestPreviewBlock } from '@/lib/booking-request-preview'
 import { BookingRequestPreviewBanner } from './booking-request-preview-banner'
 import { ClassFormModal } from '../classes/class-form-modal'
@@ -112,10 +113,11 @@ interface Session {
     primaryFor: { id: string; user: { name: string | null; email: string } }[]
   } | null
   buddies: Buddy[]
-  // Group-class session: shared, no single client. Clicking routes to the
-  // class session page rather than the 1:1 modal.
+  // Session on a RUN: shared, no single client. Clicking routes to the run's
+  // own session screen rather than the 1:1 modal — and WHICH screen depends on
+  // the kind of run, which is why the backing package's shape rides along.
   classRunId: string | null
-  classRun: { name: string } | null
+  classRun: { name: string; package: RunKindPackage } | null
   // Set when this session is part of a recurring "buddies walk" series — drives
   // the this / following / whole-series scope chooser when adding a dog.
   walkSeriesId: string | null
@@ -3658,8 +3660,14 @@ export function ScheduleView({
   }
 
   function handleSessionClick(s: Session) {
-    // Class sessions have their own page (attendance + per-client notes).
-    if (s.classRunId) { router.push(`/classes/${s.classRunId}/sessions/${s.id}`); return }
+    // Sessions on a run have their own page (attendance + per-client notes) —
+    // in the section that run belongs to. This used to hard-code /classes/…,
+    // which took a drop-in or daycare session to the group-class screen and an
+    // event to a per-session URL events don't have.
+    if (s.classRunId && s.classRun) {
+      router.push(runSessionHref(s.classRunId, s.id, s.classRun.package))
+      return
+    }
     setActiveSession(s)
   }
 

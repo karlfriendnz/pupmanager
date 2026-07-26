@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ListChecks, NotebookPen, Plus, Trash2, Check, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { putBrainDump } from '@/lib/brain-dump-save'
 
 type Member = { id: string; name: string }
 
@@ -307,35 +308,63 @@ export function BrainDumpTab({ initial }: { initial: string }) {
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSaved = useRef(initial)
+  // What the trainer has typed but the debounce hasn't sent yet. A ref, not
+  // state, because the teardown path below reads it from a closure created on
+  // mount — state would be the value as at mount, i.e. always stale.
+  const pending = useRef<string | null>(null)
 
   const save = useCallback(async (value: string) => {
+    pending.current = null
     if (value === lastSaved.current) return
     setStatus('saving')
-    const res = await fetch('/api/brain-dump', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: value }),
-    })
+    const res = await putBrainDump(value)
     if (res.ok) {
       lastSaved.current = value
       setStatus('saved')
     } else {
+      // Still unsaved — put it back so a teardown flush picks it up.
+      pending.current = value
       setStatus('idle')
     }
   }, [])
 
   function onChange(value: string) {
     setBody(value)
+    pending.current = value
     setStatus('idle')
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => save(value), 800)
   }
 
-  // Flush a pending save on unmount so a quick tab switch / navigation doesn't
+  // Flush a pending save on teardown so a quick tab switch / navigation doesn't
   // drop the last keystrokes.
+  //
+  // This used to only `clearTimeout`, which is the opposite of a flush: it
+  // cancelled the pending save and the last ~800ms of typing went with it.
+  //
+  // A cleanup function can't await, and it can't call `save()` either — that
+  // sets state on a component that no longer exists, and its plain `fetch()`
+  // is tied to the document, so the browser may cancel it on the way out. The
+  // flush therefore fires-and-forgets a `keepalive` request (see
+  // brain-dump-save.ts for why keepalive rather than sendBeacon) and touches
+  // no state at all.
   useEffect(() => {
+    const flush = () => {
+      const value = pending.current
+      if (value == null || value === lastSaved.current) return
+      // Clear both markers BEFORE sending: pagehide can fire and then unmount
+      // follow, and the same body must not go twice.
+      pending.current = null
+      lastSaved.current = value
+      void putBrainDump(value, { keepalive: true }).catch(() => {})
+    }
+    // Unmount covers a tab switch or client-side navigation; pagehide covers
+    // closing the tab or a hard reload, where React never unmounts anything.
+    window.addEventListener('pagehide', flush)
     return () => {
+      window.removeEventListener('pagehide', flush)
       if (timer.current) clearTimeout(timer.current)
+      flush()
     }
   }, [])
 

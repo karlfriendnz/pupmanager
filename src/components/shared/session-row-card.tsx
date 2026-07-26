@@ -95,7 +95,11 @@ export function SessionRowCard({
 
   const card = (
     <Link
-      href={href ?? (isClass ? `/classes/${s.classRunId}/sessions/${s.id}` : `/sessions/${s.id}`)}
+      // Always /sessions/:id. That route knows which section a run belongs to
+      // (classes / casual classes / events / daycare) and redirects there; this
+      // card sees only a classRunId, so guessing "/classes/…" here sent every
+      // drop-in, event and daycare session to the wrong screen.
+      href={href ?? `/sessions/${s.id}`}
       aria-label={`Open session: ${displayTitle}`}
       className={cn(
         'block rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden transition-all hover:shadow-md hover:-translate-y-px hover:border-blue-200 flex-1 min-w-0',

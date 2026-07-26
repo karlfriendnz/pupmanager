@@ -1,21 +1,30 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
-import { ClipboardCheck, ChevronLeft, ChevronDown, Check, X, StickyNote, GraduationCap } from 'lucide-react'
+import { ModalPortal } from '@/components/shared/modal-portal'
+import { FlatBlock } from '@/components/shared/flat-list'
+import { formatDate, formatTime } from '@/lib/utils'
+import {
+  ClipboardCheck, ChevronLeft, ChevronRight, Check, X, StickyNote,
+  GraduationCap, Calendar, FileText, ListChecks, CheckSquare,
+} from 'lucide-react'
 
 type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'MAKEUP'
 
-const STATUS_META: Record<AttStatus, { label: string; row: string; badge: string; text: string }> = {
-  PRESENT:  { label: 'Present',  row: '',             badge: 'bg-emerald-500', text: 'text-emerald-600' },
-  ABSENT:   { label: 'Absent',   row: 'bg-slate-50',  badge: 'bg-slate-400',   text: 'text-slate-500' },
-  LATE:     { label: 'Late',     row: 'bg-amber-50',  badge: 'bg-amber-500',   text: 'text-amber-600' },
-  EXCUSED:  { label: 'Excused',  row: 'bg-sky-50',    badge: 'bg-sky-500',     text: 'text-sky-600' },
-  MAKEUP:   { label: 'Makeup',   row: 'bg-violet-50', badge: 'bg-violet-500',  text: 'text-violet-600' },
+// Status is real information, so it still gets a word and a mark — but no
+// tinted row backgrounds and no five-colour palette. Present and absent are
+// the two the trainer taps between; the rest read as plain text (AGENTS.md:
+// no decorative colour).
+const STATUS_LABEL: Record<AttStatus, string> = {
+  PRESENT: 'Present',
+  ABSENT: 'Absent',
+  LATE: 'Late',
+  EXCUSED: 'Excused',
+  MAKEUP: 'Makeup',
 }
 const ALL_STATUSES: AttStatus[] = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'MAKEUP']
 
@@ -60,9 +69,10 @@ function initialsOf(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('') || '?'
 }
 
-// Dog avatar (photo or initials) with a status badge — the at-a-glance signal.
+// Dog avatar (photo or initials) with a present/absent mark — the at-a-glance
+// signal. Anything other than those two is said in words on the row instead;
+// a five-colour dot vocabulary was never readable at a glance anyway.
 function StatusAvatar({ name, photoUrl, status }: { name: string; photoUrl: string | null; status: AttStatus }) {
-  const meta = STATUS_META[status]
   const absent = status === 'ABSENT'
   return (
     <span className="relative flex-shrink-0">
@@ -72,15 +82,86 @@ function StatusAvatar({ name, photoUrl, status }: { name: string; photoUrl: stri
           ? <img src={photoUrl} alt="" className="h-full w-full object-cover" />
           : initialsOf(name)}
       </span>
-      <span className={`absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white ${meta.badge}`}>
-        {status === 'PRESENT' ? <Check className="h-2.5 w-2.5" /> : status === 'ABSENT' ? <X className="h-2.5 w-2.5" /> : null}
-      </span>
+      {(status === 'PRESENT' || status === 'ABSENT') && (
+        <span className={`absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-white ${status === 'PRESENT' ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-white'}`}>
+          {status === 'PRESENT' ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : <X className="h-2.5 w-2.5" strokeWidth={3} />}
+        </span>
+      )}
     </span>
   )
 }
 
+/**
+ * A full screen of choices, portaled to <body>.
+ *
+ * Replaces the two dropdowns this screen used to hang off a corner — a 160px
+ * status menu and a "Mark as…" <select> — neither of which is a phone control
+ * for five options (AGENTS.md: full screens, not dropdowns). Body scroll is
+ * locked for as long as it's open so there's never a second scrollbar.
+ */
+function ChoiceScreen({
+  title,
+  sub,
+  options,
+  activeId,
+  onPick,
+  onClose,
+}: {
+  title: string
+  sub?: string
+  options: { id: string; label: string; sub?: string }[]
+  activeId?: string | null
+  onPick: (id: string) => void
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <ModalPortal>
+      <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[90] flex flex-col bg-slate-50">
+        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 pt-[env(safe-area-inset-top)]">
+          <div className="min-w-0 flex-1 py-3.5">
+            <p className="truncate text-[15px] font-semibold text-slate-900">{title}</p>
+            {sub && <p className="mt-0.5 truncate text-[13px] text-slate-500">{sub}</p>}
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="-mr-1 flex-shrink-0 p-2 text-slate-400 active:text-slate-700">
+            <X className="h-5 w-5" strokeWidth={1.75} />
+          </button>
+        </div>
+        <div className="no-scrollbar flex-1 overflow-y-auto p-4">
+          <div className="mx-auto w-full max-w-lg">
+            <FlatBlock>
+              {options.map(o => (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => onPick(o.id)}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-900">{o.label}</span>
+                    {o.sub && <span className="mt-0.5 block truncate text-[13px] text-slate-500">{o.sub}</span>}
+                  </span>
+                  {activeId === o.id && <Check className="h-4 w-4 flex-shrink-0 text-slate-700" strokeWidth={1.75} />}
+                </button>
+              ))}
+            </FlatBlock>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  )
+}
+
 // The class session screen. Two phases at different times:
-//   1) Attendance — tap to mark present/absent, hold for the status menu.
+//   1) Attendance — tap to mark present/absent, hold for the status screen.
 //   2) Notes — later, write up each client's form.
 export function SessionView({
   runId,
@@ -88,6 +169,7 @@ export function SessionView({
   runName,
   sessionTitle,
   sessionScheduledAt,
+  tz,
   // Which offering section this session sits under, so "Back to class" returns
   // to the right run detail (/classes, /casual-classes or /doggy-daycare).
   basePath = '/classes',
@@ -97,6 +179,8 @@ export function SessionView({
   runName: string
   sessionTitle: string
   sessionScheduledAt: string
+  /** The trainer's configured timezone — every date on the page renders in it. */
+  tz: string
   basePath?: string
 }) {
   const router = useRouter()
@@ -106,6 +190,8 @@ export function SessionView({
   const [notesFor, setNotesFor] = useState<string | null>(null)
   const [noteOpen, setNoteOpen] = useState<Set<string>>(new Set())
   const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [formPicker, setFormPicker] = useState(false)
+  const [bulkPicker, setBulkPicker] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
@@ -171,7 +257,7 @@ export function SessionView({
     setNoteOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
   }
 
-  // Quick tap = present/absent; press-and-hold = status menu.
+  // Quick tap = present/absent; press-and-hold = the status screen.
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressed = useRef(false)
   function startPress(id: string) {
@@ -199,254 +285,316 @@ export function SessionView({
   const presentCount = data ? data.roster.filter(r => draft[r.enrollmentId]?.status === 'PRESENT').length : 0
   // "Reactive Rover Group — session 1/6" → "Session 1/6" (class name lives in the title).
   const sessionLabel = sessionTitle.includes('—') ? sessionTitle.split('—').pop()!.trim().replace(/^session/i, 'Session') : null
+  const menuRow = menuFor ? data?.roster.find(r => r.enrollmentId === menuFor) ?? null : null
 
   return (
     <>
+      {/* One back affordance, not two. "Back to class" used to sit in the header
+          beside the back arrow saying almost the same thing; it's a row on the
+          page now (AGENTS.md: nothing says the same thing twice). */}
       <PageHeader
         title={runName}
         back={{
           label: 'Back',
           // Return to wherever they came from (schedule, dashboard, the class…);
-          // fall back to the class page on a fresh/deep-linked load. Going UP to
-          // the class is the separate, explicit button in `actions`.
+          // fall back to the class page on a fresh/deep-linked load.
           onClick: () => {
             if (typeof window !== 'undefined' && window.history.length > 1) router.back()
             else router.push(`${basePath}/${runId}`)
           },
         }}
-        actions={
-          // Attendance is reached from the schedule as often as from the class,
-          // so "up to the class" needs to be reachable without guessing where
-          // the back arrow will land.
-          <Link
-            href={`${basePath}/${runId}`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            <GraduationCap className="h-4 w-4" />
-            Back to class
-          </Link>
-        }
-        subtitle={
-          <span suppressHydrationWarning>
-            {sessionLabel && <>{sessionLabel} · </>}{new Date(sessionScheduledAt).toLocaleString()}
-          </span>
-        }
       />
 
-      <div className="w-full px-4 md:px-6 pt-4 pb-40 md:pb-28">
-        {error && <Alert variant="error" className="mb-3">{error}</Alert>}
+      <div className="w-full px-4 pt-4 pb-40 md:px-6 md:pb-28">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+          {error && <Alert variant="error">{error}</Alert>}
 
-        {!data ? (
-          <p className="text-sm text-slate-500 py-12 text-center">Loading…</p>
+          {!data ? (
+            <p className="py-12 text-center text-sm text-slate-500">Loading…</p>
 
-        ) : notesRow ? (
-          /* ─── Notes phase: write up one client ─── */
-          <div className="max-w-xl mx-auto rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 p-4 flex flex-col gap-3">
-            <button onClick={() => setNotesFor(null)} className="self-start inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700">
-              <ChevronLeft className="h-3.5 w-3.5" /> Back to attendance
-            </button>
-            <div className="flex items-center gap-3">
-              <StatusAvatar name={notesRow.clientName} photoUrl={notesRow.dogPhotoUrl} status={draft[notesRow.enrollmentId].status} />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-900 truncate">{notesRow.clientName}</p>
-                {notesRow.dogName && <p className="text-xs text-slate-400 truncate">{notesRow.dogName}{notesRow.dogBreed ? ` · ${notesRow.dogBreed}` : ''}</p>}
-              </div>
-            </div>
-            {!selectedForm && <p className="text-xs text-slate-400">No form set for this session — pick one in the attendance view, or just write a recap below.</p>}
-            {selectedForm?.questions.map(q => {
-              const label = q.label ?? 'Field'
-              const val = draft[notesRow.enrollmentId].answers[q.id] ?? ''
-              const isLong = q.type === 'LONG_TEXT'
-              const isNum = q.type === 'NUMBER' || q.type === 'RATING_1_5'
-              const opts = q.options ?? []
-              return (
-                <label key={q.id} className="block">
-                  <span className="text-sm font-medium text-slate-700">{label}</span>
-                  {q.type === 'DROPDOWN'
-                    ? <select value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 w-full h-10 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="">Select…</option>
-                        {opts.map(o => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                    : q.type === 'RADIO'
-                    ? <div className="mt-1 flex flex-col gap-1.5">
-                        {opts.map(o => (
-                          <label key={o} className="flex items-center gap-2 text-sm text-slate-700">
-                            <input type="radio" checked={val === o} onChange={() => setAnswer(notesRow.enrollmentId, q.id, o)} className="h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-500" />
-                            {o}
-                          </label>
-                        ))}
-                      </div>
-                    : q.type === 'CHECKBOX'
-                    ? <div className="mt-1 flex flex-col gap-1.5">
-                        {opts.map(o => {
-                          const sel = parseChecks(val)
-                          const checked = sel.includes(o)
-                          return (
-                            <label key={o} className="flex items-center gap-2 text-sm text-slate-700">
-                              <input type="checkbox" checked={checked} onChange={() => setAnswer(notesRow.enrollmentId, q.id, serializeChecks(checked ? sel.filter(x => x !== o) : [...sel, o]))} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-                              {o}
-                            </label>
-                          )
-                        })}
-                      </div>
-                    : isLong
-                    ? <textarea rows={3} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    : <input type={isNum ? 'number' : 'text'} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 w-full h-10 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />}
-                </label>
-              )
-            })}
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">Recap message for the client (optional)</span>
-              <textarea rows={3} value={draft[notesRow.enrollmentId].recap} onChange={e => setDraft(p => ({ ...p, [notesRow.enrollmentId]: { ...p[notesRow.enrollmentId], recap: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </label>
-            <div className="flex gap-2 pt-1">
-              <Button onClick={() => saveNotes(notesRow.enrollmentId)} loading={saving}>Save notes</Button>
-              <Button variant="ghost" onClick={() => setNotesFor(null)}>Back</Button>
-            </div>
-          </div>
+          ) : notesRow ? (
+            /* ─── Notes phase: write up one client ─── */
+            <>
+              <button onClick={() => setNotesFor(null)} className="inline-flex items-center gap-1 self-start text-[13px] font-medium text-slate-500 active:text-slate-700">
+                <ChevronLeft className="h-4 w-4" strokeWidth={1.75} /> Back to attendance
+              </button>
+              <FlatBlock>
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <StatusAvatar name={notesRow.clientName} photoUrl={notesRow.dogPhotoUrl} status={draft[notesRow.enrollmentId].status} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-semibold text-slate-900">{notesRow.clientName}</span>
+                    {notesRow.dogName && (
+                      <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                        {notesRow.dogName}{notesRow.dogBreed ? ` · ${notesRow.dogBreed}` : ''}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-3 px-4 py-4">
+                  {!selectedForm && (
+                    <p className="text-[13px] text-slate-500">No form set for this session — pick one on the attendance screen, or just write a recap below.</p>
+                  )}
+                  {selectedForm?.questions.map(q => {
+                    const label = q.label ?? 'Field'
+                    const val = draft[notesRow.enrollmentId].answers[q.id] ?? ''
+                    const isLong = q.type === 'LONG_TEXT'
+                    const isNum = q.type === 'NUMBER' || q.type === 'RATING_1_5'
+                    const opts = q.options ?? []
+                    return (
+                      <label key={q.id} className="block">
+                        <span className="text-sm font-medium text-slate-700">{label}</span>
+                        {q.type === 'DROPDOWN'
+                          ? <select value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent">
+                              <option value="">Select…</option>
+                              {opts.map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          : q.type === 'RADIO'
+                          ? <div className="mt-1 flex flex-col gap-1.5">
+                              {opts.map(o => (
+                                <label key={o} className="flex items-center gap-2 text-sm text-slate-700">
+                                  <input type="radio" checked={val === o} onChange={() => setAnswer(notesRow.enrollmentId, q.id, o)} className="h-4 w-4 border-slate-300 text-accent focus:ring-accent" />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          : q.type === 'CHECKBOX'
+                          ? <div className="mt-1 flex flex-col gap-1.5">
+                              {opts.map(o => {
+                                const sel = parseChecks(val)
+                                const checked = sel.includes(o)
+                                return (
+                                  <label key={o} className="flex items-center gap-2 text-sm text-slate-700">
+                                    <input type="checkbox" checked={checked} onChange={() => setAnswer(notesRow.enrollmentId, q.id, serializeChecks(checked ? sel.filter(x => x !== o) : [...sel, o]))} className="h-4 w-4 rounded border-slate-300 text-accent focus:ring-accent" />
+                                    {o}
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          : isLong
+                          ? <textarea rows={3} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+                          : <input type={isNum ? 'number' : 'text'} value={val} onChange={e => setAnswer(notesRow.enrollmentId, q.id, e.target.value)} className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />}
+                      </label>
+                    )
+                  })}
+                  <label className="block">
+                    <span className="text-sm font-medium text-slate-700">Recap message for the client (optional)</span>
+                    <textarea rows={3} value={draft[notesRow.enrollmentId].recap} onChange={e => setDraft(p => ({ ...p, [notesRow.enrollmentId]: { ...p[notesRow.enrollmentId], recap: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+                  </label>
+                  <div className="flex gap-2 pt-1">
+                    <Button onClick={() => saveNotes(notesRow.enrollmentId)} loading={saving}>Save notes</Button>
+                    <Button variant="ghost" onClick={() => setNotesFor(null)}>Back</Button>
+                  </div>
+                </div>
+              </FlatBlock>
+            </>
 
-        ) : (
-          /* ─── Attendance phase ─── */
-          <>
-            {/* Form for this session — a quiet inline control */}
-            <div className="flex items-center gap-2 mb-2 text-sm">
-              <span className="text-slate-400">Form</span>
-              <select value={formId} onChange={e => setFormId(e.target.value)} className="flex-1 h-9 rounded-xl bg-white px-3 text-sm text-slate-700 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="">No form</option>
-                {data.availableForms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
-            </div>
+          ) : (
+            /* ─── Attendance phase ─── */
+            <>
+              {/* WHEN / WHAT FORM / WHERE THIS SITS — one bordered block,
+                  hairline rows, the same shape as the 1:1 session screen. The
+                  date used to be a raw toLocaleString() in the subtitle, which
+                  printed "27/07/2026, 1:34:00 am" on a phone. */}
+              <FlatBlock>
+                <div className="flex w-full items-center gap-3 px-4 py-3.5">
+                  <Calendar className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-900" suppressHydrationWarning>
+                      {formatDate(sessionScheduledAt, tz)}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[13px] text-slate-500" suppressHydrationWarning>
+                      {[formatTime(sessionScheduledAt, tz), sessionLabel].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                </div>
 
-            {/* Select-mode toggle */}
-            {data.roster.length > 0 && (
-              <div className="flex items-center justify-between mb-2 px-0.5">
-                {selectMode
-                  ? <button type="button" onClick={() => setSelected(new Set(data.roster.map(r => r.enrollmentId)))} className="text-xs font-medium text-blue-600 hover:text-blue-700">Select all</button>
-                  : <p className="text-xs text-slate-400">Tap to mark · hold for options</p>}
-                {selectMode
-                  ? <button type="button" onClick={exitSelect} className="text-xs font-medium text-slate-500 hover:text-slate-700">Cancel</button>
-                  : <button type="button" onClick={() => setSelectMode(true)} className="text-xs font-medium text-blue-600 hover:text-blue-700">Select</button>}
-              </div>
-            )}
+                {/* Was a bare <select> labelled "Form". A form list is longer
+                    than three choices, so it opens a full screen. */}
+                <button
+                  type="button"
+                  onClick={() => setFormPicker(true)}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+                >
+                  <FileText className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-900">Write-up form</span>
+                    <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                      {selectedForm ? selectedForm.name : 'No form — recap only'}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                </button>
 
-            {data.roster.length === 0 ? (
-              <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 p-10 text-center text-sm text-slate-500">No enrolled clients to mark.</div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {data.roster.map(r => {
-                  const d = draft[r.enrollmentId]
-                  if (!d) return null
-                  const meta = STATUS_META[d.status]
-                  const present = d.status === 'PRESENT'
-                  const showNote = noteOpen.has(r.enrollmentId) || !!d.note
-                  return (
-                    <div key={r.enrollmentId} className={`relative rounded-2xl ${selected.has(r.enrollmentId) ? 'ring-2 ring-blue-400 bg-blue-50' : `ring-1 ring-slate-100 ${meta.row || 'bg-white'}`}`}>
-                      <div className="flex items-center">
-                        {/* Tap = present/absent (or select) · hold = status menu */}
-                        <button
-                          type="button"
-                          onClick={() => selectMode ? toggleSelected(r.enrollmentId) : rowTap(r.enrollmentId)}
-                          onPointerDown={() => startPress(r.enrollmentId)}
-                          onPointerUp={endPress}
-                          onPointerLeave={endPress}
-                          onPointerMove={endPress}
-                          className="flex items-center gap-3 flex-1 min-w-0 text-left px-3 py-2 active:opacity-70 select-none"
-                        >
-                          {selectMode && (
-                            <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 ${selected.has(r.enrollmentId) ? 'bg-blue-500 border-blue-500 text-white' : 'border-slate-300'}`}>
-                              {selected.has(r.enrollmentId) && <Check className="h-3 w-3" />}
-                            </span>
-                          )}
-                          <StatusAvatar name={r.clientName} photoUrl={r.dogPhotoUrl} status={d.status} />
-                          <span className="min-w-0">
-                            <span className="block text-sm font-medium text-slate-900 truncate">{r.clientName}</span>
-                            <span className="block text-xs text-slate-400 truncate">
-                              {r.dogName ?? '—'}
-                              {!present && <span className={`font-medium ${meta.text}`}> · {meta.label}</span>}
-                            </span>
-                          </span>
-                        </button>
+                <button
+                  type="button"
+                  onClick={() => router.push(`${basePath}/${runId}`)}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+                >
+                  <GraduationCap className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-900">Back to class</span>
+                    <span className="mt-0.5 block truncate text-[13px] text-slate-500">{runName}</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                </button>
+              </FlatBlock>
 
-                        {/* Trailing actions — hidden in select mode */}
-                        {!selectMode && <>
-                        <button type="button" onClick={() => setMenuFor(menuFor === r.enrollmentId ? null : r.enrollmentId)} aria-label="Set status" className="flex-shrink-0 p-2 rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100">
-                          <ChevronDown className="h-4 w-4" />
-                        </button>
-                        <button type="button" onClick={() => toggleNote(r.enrollmentId)} title="Quick note" className={`flex-shrink-0 p-2 rounded-lg hover:bg-slate-100 ${d.note ? 'text-blue-500' : 'text-slate-300 hover:text-slate-600'}`}>
-                          <StickyNote className="h-4 w-4" />
-                        </button>
-                        <button type="button" onClick={() => setNotesFor(r.enrollmentId)} title="Write up notes" className={`flex-shrink-0 p-2 mr-1 rounded-lg hover:bg-slate-100 ${r.hasReport ? 'text-emerald-500' : 'text-slate-300 hover:text-slate-600'}`}>
-                          <ClipboardCheck className="h-4 w-4" />
-                        </button>
-                        </>}
-                      </div>
+              {/* Roster — ONE block with hairline dividers, not a stack of
+                  floating ring-1 cards. An empty roster costs one row. */}
+              {data.roster.length === 0 ? (
+                <FlatBlock>
+                  <div className="flex w-full items-center gap-3 px-4 py-3.5">
+                    <ListChecks className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-slate-900">Nobody enrolled yet</span>
+                      <span className="mt-0.5 block truncate text-[13px] text-slate-500">There&apos;s no attendance to mark on this session.</span>
+                    </span>
+                  </div>
+                </FlatBlock>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-3 px-1">
+                    {selectMode
+                      ? <button type="button" onClick={() => setSelected(new Set(data.roster.map(r => r.enrollmentId)))} className="text-[13px] font-medium text-accent">Select all</button>
+                      : <p className="text-[13px] text-slate-500">Tap to mark · hold for more</p>}
+                    <button
+                      type="button"
+                      onClick={() => selectMode ? exitSelect() : setSelectMode(true)}
+                      className="inline-flex items-center gap-1.5 text-[13px] font-medium text-accent"
+                    >
+                      {selectMode ? 'Cancel' : <><CheckSquare className="h-4 w-4" strokeWidth={1.75} /> Select</>}
+                    </button>
+                  </div>
 
-                      {showNote && (
-                        <div className="pl-[3.75rem] pr-3 pb-2">
-                          <input
-                            type="text"
-                            placeholder="Quick note (optional)"
-                            value={d.note}
-                            autoFocus={noteOpen.has(r.enrollmentId) && !d.note}
-                            onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
-                            className="w-full h-9 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        </div>
-                      )}
+                  <FlatBlock>
+                    {data.roster.map(r => {
+                      const d = draft[r.enrollmentId]
+                      if (!d) return null
+                      const present = d.status === 'PRESENT'
+                      const showNote = noteOpen.has(r.enrollmentId) || !!d.note
+                      const isSelected = selected.has(r.enrollmentId)
+                      return (
+                        <div key={r.enrollmentId} className={isSelected ? 'bg-slate-50' : ''}>
+                          <div className="flex items-center">
+                            {/* Tap = present/absent (or select) · hold = status screen */}
+                            <button
+                              type="button"
+                              onClick={() => selectMode ? toggleSelected(r.enrollmentId) : rowTap(r.enrollmentId)}
+                              onPointerDown={() => startPress(r.enrollmentId)}
+                              onPointerUp={endPress}
+                              onPointerLeave={endPress}
+                              onPointerMove={endPress}
+                              className="flex min-w-0 flex-1 select-none items-center gap-3 py-2.5 pl-4 pr-2 text-left active:bg-slate-50"
+                            >
+                              {selectMode && (
+                                <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border ${isSelected ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-300'}`}>
+                                  {isSelected && <Check className="h-3 w-3" strokeWidth={3} />}
+                                </span>
+                              )}
+                              <StatusAvatar name={r.clientName} photoUrl={r.dogPhotoUrl} status={d.status} />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-medium text-slate-900">{r.clientName}</span>
+                                <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                                  {r.dogName ?? '—'}
+                                  {!present && <> · {STATUS_LABEL[d.status]}</>}
+                                </span>
+                              </span>
+                            </button>
 
-                      {menuFor === r.enrollmentId && (
-                        <>
-                          <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />
-                          <div className="absolute right-3 top-12 z-20 w-40 rounded-2xl bg-white shadow-xl ring-1 ring-slate-200 py-1">
-                            {ALL_STATUSES.map(s => {
-                              const m = STATUS_META[s]
-                              return (
-                                <button key={s} type="button" onClick={() => { setStatus(r.enrollmentId, s); setMenuFor(null) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-slate-50">
-                                  <span className={`h-2.5 w-2.5 rounded-full ${m.badge}`} />
-                                  <span className={d.status === s ? `${m.text} font-medium` : 'text-slate-700'}>{m.label}</span>
-                                  {d.status === s && <Check className="h-3.5 w-3.5 ml-auto text-slate-400" />}
-                                </button>
-                              )
-                            })}
+                            {/* Trailing actions — hidden in select mode */}
+                            {!selectMode && <>
+                              <button type="button" onClick={() => toggleNote(r.enrollmentId)} aria-label="Quick note" className={`flex-shrink-0 rounded-lg p-2 active:bg-slate-100 ${d.note ? 'text-slate-700' : 'text-slate-300'}`}>
+                                <StickyNote className="h-[18px] w-[18px]" strokeWidth={1.75} />
+                              </button>
+                              <button type="button" onClick={() => setNotesFor(r.enrollmentId)} aria-label="Write up notes" className={`mr-2 flex-shrink-0 rounded-lg p-2 active:bg-slate-100 ${r.hasReport ? 'text-emerald-600' : 'text-slate-300'}`}>
+                                <ClipboardCheck className="h-[18px] w-[18px]" strokeWidth={1.75} />
+                              </button>
+                            </>}
                           </div>
-                        </>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </>
-        )}
+
+                          {showNote && (
+                            <div className="px-4 pb-3 pl-[3.75rem]">
+                              <input
+                                type="text"
+                                placeholder="Quick note (optional)"
+                                value={d.note}
+                                autoFocus={noteOpen.has(r.enrollmentId) && !d.note}
+                                onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
+                                className="h-9 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </FlatBlock>
+                </>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Pinned bottom action bar (attendance phase) */}
       {data && !notesRow && data.roster.length > 0 && (
-        <div className="sticky z-30 bottom-[calc(4rem_+_env(safe-area-inset-bottom))] md:bottom-0 inset-x-0 border-t border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
-          <div className="w-full px-4 md:px-6 py-3">
+        <div className="sticky inset-x-0 bottom-[calc(4rem_+_env(safe-area-inset-bottom))] z-30 border-t border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 md:bottom-0">
+          <div className="mx-auto w-full max-w-2xl px-4 py-3 md:px-6">
             {selectMode ? (
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-slate-500 whitespace-nowrap"><span className="font-semibold text-slate-700">{selected.size}</span> selected</span>
-                <select
-                  value=""
-                  disabled={selected.size === 0}
-                  onChange={e => { if (e.target.value) applyToSelected(e.target.value as AttStatus) }}
-                  className="h-10 rounded-xl bg-white px-3 text-sm font-medium text-slate-700 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40"
-                >
-                  <option value="">Mark as…</option>
-                  {ALL_STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
-                </select>
+              <div className="flex items-center justify-between gap-3">
+                <span className="whitespace-nowrap text-sm text-slate-500"><span className="font-semibold text-slate-700">{selected.size}</span> selected</span>
+                <Button onClick={() => setBulkPicker(true)} disabled={selected.size === 0}>Mark as…</Button>
               </div>
             ) : (
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-slate-500">
-                  {saved ? <span className="text-emerald-600 font-medium">{saved}</span> : <><span className="font-semibold text-slate-700">{presentCount}</span>/{data.roster.length} present</>}
+                  {saved ? <span className="font-medium text-emerald-600">{saved}</span> : <><span className="font-semibold text-slate-700">{presentCount}</span>/{data.roster.length} present</>}
                 </span>
                 <Button onClick={saveAttendance} loading={saving}>Save attendance</Button>
               </div>
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Full screens, not dropdowns ─────────────────────────────────── */}
+
+      {formPicker && data && (
+        <ChoiceScreen
+          title="Write-up form"
+          sub="Used for every client's notes on this session"
+          activeId={formId || 'none'}
+          options={[
+            { id: 'none', label: 'No form', sub: 'Just a recap message per client' },
+            ...data.availableForms.map(f => ({
+              id: f.id,
+              label: f.name,
+              sub: `${f.questions.length} question${f.questions.length === 1 ? '' : 's'}`,
+            })),
+          ]}
+          onPick={id => { setFormId(id === 'none' ? '' : id); setFormPicker(false) }}
+          onClose={() => setFormPicker(false)}
+        />
+      )}
+
+      {menuRow && (
+        <ChoiceScreen
+          title={menuRow.clientName}
+          sub={menuRow.dogName ?? undefined}
+          activeId={draft[menuRow.enrollmentId]?.status}
+          options={ALL_STATUSES.map(s => ({ id: s, label: STATUS_LABEL[s] }))}
+          onPick={s => { setStatus(menuRow.enrollmentId, s as AttStatus); setMenuFor(null) }}
+          onClose={() => setMenuFor(null)}
+        />
+      )}
+
+      {bulkPicker && (
+        <ChoiceScreen
+          title="Mark as…"
+          sub={`${selected.size} selected`}
+          options={ALL_STATUSES.map(s => ({ id: s, label: STATUS_LABEL[s] }))}
+          onPick={s => { applyToSelected(s as AttStatus); setBulkPicker(false) }}
+          onClose={() => setBulkPicker(false)}
+        />
       )}
     </>
   )

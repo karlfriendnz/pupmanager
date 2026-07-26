@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
-import { isOneOffEventPackage } from '@/lib/class-runs'
+import { runKindLabel, runHref } from '@/lib/run-kind'
 
 // Everything a trainer drives to in a day.
 //
@@ -75,32 +75,9 @@ export type DayStop = {
 }
 
 // A ClassRun is the one model behind four sections of the app, and each has
-// its own detail route. Naming the kind here keeps the route planner from
-// re-deriving it (and getting it wrong) — the same predicates /events and
-// /classes use to decide which runs are theirs.
-type RunPackage = {
-  isGroup: boolean
-  allowDropIn: boolean
-  sessionCount: number
-  recurrenceRule: string | null
-  isPuppySchool: boolean
-}
-
-/** The label a trainer would use for the run's kind. */
-function runKindLabel(pkg: RunPackage): string {
-  if (pkg.isPuppySchool) return 'Daycare'
-  if (isOneOffEventPackage(pkg)) return 'Event'
-  if (pkg.allowDropIn) return 'Casual class'
-  return 'Class'
-}
-
-/** The detail screen for this run, in the section it belongs to. */
-function runHref(runId: string, pkg: RunPackage): string {
-  if (pkg.isPuppySchool) return `/doggy-daycare/${runId}`
-  if (isOneOffEventPackage(pkg)) return `/events/${runId}`
-  if (pkg.allowDropIn) return `/casual-classes/${runId}`
-  return `/classes/${runId}`
-}
+// its own detail route. `runKindLabel` / `runHref` used to be private copies
+// here; they now come from lib/run-kind so the schedule grid, /sessions/[id]
+// and the route planner can't drift apart about which section a run belongs to.
 
 // Every stop on `date` (in the trainer's tz), optionally filtered to one
 // trainer member — multi-trainer businesses route each member's day

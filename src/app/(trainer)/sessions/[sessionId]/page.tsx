@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { Calendar, ChevronDown, Video, User, Clock, History, Paperclip, PawPrint, Eye, ListChecks } from 'lucide-react'
 import { formatSessionTitle } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
+import { runSessionHref } from '@/lib/run-kind'
 import { SessionFormReport } from '@/components/session-form-report'
 import { hasAddon } from '@/lib/billing'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
@@ -46,6 +47,18 @@ export default async function SessionPage({
   const trainingSession = await prisma.trainingSession.findFirst({
     where: { id: sessionId, trainerId },
     include: {
+      // The run's backing package decides WHICH section's screen this session
+      // belongs to — see the redirect below.
+      classRun: {
+        select: {
+          package: {
+            select: {
+              isGroup: true, allowDropIn: true, sessionCount: true,
+              recurrenceRule: true, isPuppySchool: true,
+            },
+          },
+        },
+      },
       client: { select: { id: true, isSample: true, user: { select: { name: true, email: true } } } },
       dog: {
         select: {
@@ -70,12 +83,22 @@ export default async function SessionPage({
   // No such session for this trainer — a genuine 404, and the tenant guard.
   if (!trainingSession) notFound()
 
-  // A class session belongs to a cohort, not to one client, and already has a
-  // screen built for it (attendance per enrollee). The schedule and
-  // session-row-card link there directly; anything landing here — a bookmark, a
-  // notification, an old link — gets sent to the same place rather than a wall.
-  if (trainingSession.classRunId) {
-    redirect(`/classes/${trainingSession.classRunId}/sessions/${trainingSession.id}`)
+  // A session on a RUN belongs to a cohort, not to one client, and already has
+  // a screen built for it (attendance per enrollee). Anything landing here — a
+  // bookmark, a notification, an old link — gets sent there rather than a wall.
+  //
+  // WHICH screen depends on the kind of run: a ClassRun backs group classes,
+  // casual/drop-in classes, one-off events AND doggy daycare, and each has its
+  // own section. This used to send all four to /classes/…, so a casual run
+  // landed on the group-class screen with "Back to class" pointing out of the
+  // section the trainer came from, and an event — which has no per-session
+  // screen at all — landed on a URL for a session page it doesn't own.
+  if (trainingSession.classRunId && trainingSession.classRun) {
+    redirect(runSessionHref(
+      trainingSession.classRunId,
+      trainingSession.id,
+      trainingSession.classRun.package,
+    ))
   }
 
   // Neither a client nor a class: the client was deleted and the session was
