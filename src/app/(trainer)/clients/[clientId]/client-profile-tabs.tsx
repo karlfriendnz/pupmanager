@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate, cn, formatSessionTitle, displayEmail } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, FileText, Dumbbell } from 'lucide-react'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, FileText, Dumbbell, type LucideIcon } from 'lucide-react'
+import { FlatRow, FlatRowGrid } from '@/components/shared/flat-list'
 import { CurrencyGlyph } from '@/components/currency-glyph'
 import { ClientNotesTab } from './client-notes-tab'
 import { ClientTrainingLogTab, type TrainerTrainingLog } from './client-training-log-tab'
@@ -318,10 +319,34 @@ export function ClientProfileTabs({
 
   return (
     <>
-      {/* Tab bar — iOS-style icon-on-top, tiny-label-below. On desktop the tabs
-          split the row evenly; on mobile there are more than fit a phone width,
-          so they scroll horizontally and the bar sticks to the top as you read. */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-6 overflow-x-auto lg:overflow-visible sticky top-2 z-10">
+      {/* On a phone: two columns, every tab visible.
+          There are up to nine of these. As a scrolling strip only six reached
+          the edge of a 390px screen, so Notes, Invoices, Achievements and
+          Details were off-screen with nothing to say they existed — the same
+          trap the search scope chips fell into. Two columns shows the lot, and
+          it's the pattern the "More" menu already uses. Not sticky here: five
+          rows pinned to the top would own half the screen. */}
+      <div className="lg:hidden mb-6">
+        <FlatRowGrid count={tabs.length}>
+          {tabs.map(t => (
+            <FlatRow
+              key={t.id}
+              icon={t.icon as LucideIcon}
+              label={t.label}
+              active={tab === t.id}
+              onClick={() => setTab(t.id)}
+              trailing={
+                t.badge != null
+                  ? <span className="min-w-4 h-4 px-1 text-[10px] font-semibold tabular-nums rounded-full flex items-center justify-center bg-slate-100 text-slate-600">{t.badge}</span>
+                  : <span aria-hidden />
+              }
+            />
+          ))}
+        </FlatRowGrid>
+      </div>
+
+      {/* Desktop: the icon-on-top strip, splitting the row evenly. */}
+      <div className="hidden lg:flex gap-1 p-1 bg-slate-100 rounded-2xl mb-6 lg:overflow-visible sticky top-2 z-10">
         {tabs.map(t => {
           const Icon = t.icon
           return (
