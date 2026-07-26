@@ -15,7 +15,17 @@ export interface MembershipClassGrant { classRunId: string }
 
 export async function fulfilMembershipInTx(
   tx: Tx,
-  args: { membershipId: string; trainerId: string; clientId: string; paymentId: string; sandbox: boolean },
+  args: {
+    membershipId: string; trainerId: string; clientId: string
+    /**
+     * The settled Payment, or null when the trainer granted the package
+     * themselves — accepting a client's "Request this" for a recurring plan or
+     * an unpriced package, neither of which checkout can take. The purchase is
+     * recorded either way; a null paymentId is the record that no money moved.
+     */
+    paymentId: string | null
+    sandbox: boolean
+  },
 ): Promise<{ classGrants: MembershipClassGrant[] }> {
   const membership = await tx.membership.findUnique({
     where: { id: args.membershipId },

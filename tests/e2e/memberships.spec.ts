@@ -194,6 +194,150 @@ test.describe('memberships — trainer builds, client sees', () => {
     }
   })
 
+  // ─── The trainer's half of "Request this" ──────────────────────────────────
+  // A request the trainer never sees is a lead lost, so the pending rows land on
+  // the dashboard next to the shop's product requests. These packages carry NO
+  // included items on purpose: the grant itself has unit coverage, and handing
+  // the shared seed client a ClientPackage + sessions would shift counts other
+  // specs assert on.
+
+  async function seedRequest(prisma: Awaited<ReturnType<typeof makePrisma>>, name: string) {
+    const trainer = await prisma.trainerProfile.findFirst({
+      where: { businessName: SEED.owner.businessName }, select: { id: true },
+    })
+    const membership = await prisma.membership.create({
+      data: {
+        trainerId: trainer!.id, name, priceCents: 4000,
+        published: true, cadence: 'RECURRING', interval: 'MONTH',
+      },
+    })
+    const request = await prisma.membershipRequest.create({
+      data: { clientId: SEED.assignedClientId, membershipId: membership.id, reason: 'RECURRING', status: 'PENDING' },
+    })
+    return { membershipId: membership.id, requestId: request.id }
+  }
+
+  async function cleanupRequest(prisma: Awaited<ReturnType<typeof makePrisma>>, membershipId: string) {
+    await prisma.membershipRequest.deleteMany({ where: { membershipId } }).catch(() => {})
+    await prisma.membershipPurchase.deleteMany({ where: { membershipId } }).catch(() => {})
+    await prisma.membership.delete({ where: { id: membershipId } }).catch(() => {})
+  }
+
+  test('the trainer meets the request on the dashboard and accepting takes no money', async ({ page }) => {
+    const prisma = await makePrisma()
+    const name = `E2E Requested Plan ${Date.now()}`
+    let membershipId: string | null = null
+    try {
+      ;({ membershipId } = await seedRequest(prisma, name))
+
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto('/dashboard')
+
+      // It's on the screen the trainer opens every morning, saying who and what.
+      const row = page.locator('div').filter({ hasText: name }).last()
+      await expect(page.getByText(name)).toBeVisible({ timeout: 20_000 })
+      await expect(page.getByText('1 request from clients')).toBeVisible()
+      await expect(row).toContainText('Ongoing plan')
+
+      await page.getByRole('button', { name: 'Accept' }).first().click()
+
+      // The confirmation is where the money promise is kept — it must say
+      // outright that nothing is charged, and what the trainer still has to do.
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toContainText('No payment is taken')
+      await expect(dialog).toContainText(/invoice/i)
+      await dialog.getByRole('button', { name: 'Accept & grant' }).click()
+
+      await expect(page.getByText(name)).toHaveCount(0, { timeout: 20_000 })
+
+      // The client is on the package via the SAME purchase record a paid
+      // checkout writes — but with no payment attached, because none was taken.
+      const req = await prisma.membershipRequest.findFirst({ where: { membershipId: membershipId! } })
+      expect(req?.status).toBe('FULFILLED')
+      expect(req?.fulfilledAt).not.toBeNull()
+
+      const purchases = await prisma.membershipPurchase.findMany({ where: { membershipId: membershipId! } })
+      expect(purchases).toHaveLength(1)
+      expect(purchases[0].clientId).toBe(SEED.assignedClientId)
+      expect(purchases[0].paymentId).toBeNull()
+    } finally {
+      if (membershipId) await cleanupRequest(prisma, membershipId)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('declining closes the request without granting anything', async ({ page }) => {
+    const prisma = await makePrisma()
+    const name = `E2E Declined Plan ${Date.now()}`
+    let membershipId: string | null = null
+    let requestId: string | null = null
+    try {
+      ;({ membershipId, requestId } = await seedRequest(prisma, name))
+
+      await login(page, SEED.owner.email, SEED.owner.password)
+      const res = await page.request.patch(`/api/membership-requests/${requestId}`, {
+        data: { status: 'DECLINED' },
+      })
+      expect(res.status()).toBe(200)
+
+      const req = await prisma.membershipRequest.findFirst({ where: { id: requestId! } })
+      expect(req?.status).toBe('DECLINED')
+      // Nothing granted — a decline is not a quiet accept.
+      expect(await prisma.membershipPurchase.count({ where: { membershipId: membershipId! } })).toBe(0)
+    } finally {
+      if (membershipId) await cleanupRequest(prisma, membershipId)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('the trainer’s Packages list counts who is waiting', async ({ page }) => {
+    const prisma = await makePrisma()
+    const name = `E2E Waiting Plan ${Date.now()}`
+    let membershipId: string | null = null
+    try {
+      ;({ membershipId } = await seedRequest(prisma, name))
+
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto('/memberships')
+
+      const card = page.locator('div').filter({ hasText: name }).last()
+      await expect(card).toContainText('1 waiting', { timeout: 20_000 })
+    } finally {
+      if (membershipId) await cleanupRequest(prisma, membershipId)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('Business B cannot see or action Business A’s membership request', async ({ page }) => {
+    const prisma = await makePrisma()
+    const name = `E2E Guarded Plan ${Date.now()}`
+    let membershipId: string | null = null
+    let requestId: string | null = null
+    try {
+      ;({ membershipId, requestId } = await seedRequest(prisma, name))
+
+      await login(page, SEED.businessB.ownerEmail, SEED.businessB.ownerPassword)
+
+      // 404, not 403 — a foreign id must not even confirm the row exists.
+      for (const status of ['FULFILLED', 'DECLINED']) {
+        const res = await page.request.patch(`/api/membership-requests/${requestId}`, { data: { status } })
+        expect(res.status()).toBe(404)
+      }
+
+      // Untouched, and nothing granted on A's tenant.
+      const req = await prisma.membershipRequest.findFirst({ where: { id: requestId! } })
+      expect(req?.status).toBe('PENDING')
+      expect(await prisma.membershipPurchase.count({ where: { membershipId: membershipId! } })).toBe(0)
+
+      // And B's own dashboard never lists it.
+      await page.goto('/dashboard')
+      await expect(page.getByText(name)).toHaveCount(0)
+    } finally {
+      if (membershipId) await cleanupRequest(prisma, membershipId)
+      await prisma.$disconnect()
+    }
+  })
+
   test('a buyable package refuses a request — Request is not a way to skip paying', async ({ page }) => {
     const prisma = await makePrisma()
     try {

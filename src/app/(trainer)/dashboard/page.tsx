@@ -13,6 +13,7 @@ import { WaitlistNudge } from '@/components/shared/waitlist-nudge'
 import { BookingRequestsPanel } from '@/components/shared/booking-requests-panel'
 import { schedulePreviewHref } from '@/lib/booking-request-preview'
 import { PendingRequestsPanel } from './pending-requests-panel'
+import { loadPendingMembershipRequests } from '@/lib/membership-requests'
 import { TodoBrainDumpPanel } from './todo-braindump-panel'
 import { hasAddon, getEnabledAddons } from '@/lib/billing'
 import { AddonNudge } from '@/components/shared/addon-nudge'
@@ -145,6 +146,10 @@ export default async function DashboardPage({
       product: { select: { id: true, name: true, kind: true, imageUrl: true } },
     },
   })
+  // Packages a client asked for that checkout can't take (a recurring plan, or
+  // one with no price). Same panel as the product requests above — one place a
+  // trainer answers everything a client has asked for.
+  const pendingMembershipRequestsP = loadPendingMembershipRequests(trainerId)
 
   // Right-rail scratchpad data: the company's to-dos, this user's brain dump,
   // and the team roster (for the to-do assignee picker; only relevant >1 member).
@@ -316,6 +321,7 @@ export default async function DashboardPage({
   // Pending product requests across this trainer's clients — shown as a panel
   // so the trainer can fulfil items at the next session and dismiss the chip.
   const pendingProductRequests = await pendingProductRequestsP
+  const pendingMembershipRequests = await pendingMembershipRequestsP
   const pendingBookingRequests = await pendingBookingRequestsP
   const unreadMessages = await unreadMessagesP
 
@@ -661,7 +667,8 @@ export default async function DashboardPage({
         </Link>
       )}
 
-      {/* Pending product requests */}
+      {/* Everything a client has asked for and not been answered on — shop
+          products and packages checkout can't take, in one block. */}
       <PendingRequestsPanel
         requests={pendingProductRequests.map(r => ({
           id: r.id,
@@ -671,13 +678,9 @@ export default async function DashboardPage({
             id: r.client.id,
             name: r.client.user.name ?? r.client.user.email,
           },
-          product: {
-            id: r.product.id,
-            name: r.product.name,
-            kind: r.product.kind as 'PHYSICAL' | 'DIGITAL',
-            imageUrl: r.product.imageUrl,
-          },
+          product: { id: r.product.id, name: r.product.name },
         }))}
+        membershipRequests={pendingMembershipRequests}
       />
           </div>
 

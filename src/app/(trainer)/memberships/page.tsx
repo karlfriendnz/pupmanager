@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
+import { countPendingMembershipRequests } from '@/lib/membership-requests'
 import { MembershipsView } from './memberships-view'
 
 export const metadata: Metadata = { title: 'Packages' }
@@ -19,7 +20,7 @@ export default async function MembershipsPage() {
   // locked "turn it on" row until then), same as Events and Doggy Daycare.
   if (!(await hasAddon(trainerId, 'memberships'))) redirect('/settings?tab=addons')
 
-  const [memberships, packages, classRuns, products, trainer] = await Promise.all([
+  const [memberships, packages, classRuns, products, trainer, requestCounts] = await Promise.all([
     prisma.membership.findMany({
       where: { trainerId },
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
@@ -29,6 +30,10 @@ export default async function MembershipsPage() {
     prisma.classRun.findMany({ where: { trainerId, status: { not: 'CANCELLED' } }, orderBy: { startDate: 'desc' }, select: { id: true, name: true, imageUrl: true, package: { select: { description: true } } } }),
     prisma.product.findMany({ where: { trainerId }, orderBy: { name: 'asc' }, select: { id: true, name: true, priceCents: true, imageUrl: true, description: true } }),
     prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { payoutCurrency: true } }),
+    // Clients waiting on each package. The trainer answers them on the
+    // dashboard; the count here is so demand is visible where they'd go to fix
+    // the reason it can't be bought (set a price, or think about the plan).
+    countPendingMembershipRequests(trainerId),
   ])
 
   return (
@@ -39,6 +44,7 @@ export default async function MembershipsPage() {
         buttonBgColor: m.buttonBgColor, buttonTextColor: m.buttonTextColor, buttonText: m.buttonText,
         cadence: m.cadence, interval: m.interval, minTermCount: m.minTermCount, earlyTermFeeCents: m.earlyTermFeeCents,
         published: m.published, purchases: m._count.purchases,
+        pendingRequests: requestCounts.get(m.id) ?? 0,
         items: m.items.map(i => ({ kind: i.kind, packageId: i.packageId, classRunId: i.classRunId, productId: i.productId, quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl, description: i.description })),
         plans: m.plans.map(p => ({ interval: p.interval, priceCents: p.priceCents, minTermCount: p.minTermCount, earlyTermFeeCents: p.earlyTermFeeCents })),
       }))}

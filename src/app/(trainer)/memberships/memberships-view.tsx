@@ -47,6 +47,8 @@ interface Membership extends Card {
   id: string; name: string; description: string | null; priceCents: number
   cadence: Cadence; interval: Interval | null; minTermCount: number; earlyTermFeeCents: number | null
   published: boolean; purchases: number; items: MItem[]; plans: MPlan[]
+  /** Clients who tapped "Request this" and haven't been answered. */
+  pendingRequests?: number
 }
 
 interface DraftItem { key: string; kind: Kind; id: string; quantity: number; regrantOnRenewal: boolean; imageUrl: string | null; description: string }
@@ -617,6 +619,12 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                           },
                           ...(m.published ? [] : [{ label: 'Draft', tone: 'muted' as const }]),
                           ...(m.purchases > 0 ? [{ label: `${m.purchases} sold`, tone: 'good' as const }] : []),
+                          // Someone asked for this and is still waiting. It
+                          // reads as "warn" because it's work owed, not a win —
+                          // answering happens on the dashboard.
+                          ...((m.pendingRequests ?? 0) > 0
+                            ? [{ label: `${m.pendingRequests} waiting`, tone: 'warn' as const }]
+                            : []),
                         ]}
                         facts={membershipFacts(m, offeringName)}
                         // No eye/pencil/bin. Tapping the row IS opening it, and
