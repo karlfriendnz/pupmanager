@@ -171,7 +171,10 @@ describe('the money breakdown', () => {
 describe('account mapping', () => {
   it('errors actionably when no clearing account is mapped', () => {
     expect(() => requireClearingAccounts({ ...connection, clearingAccountCode: null } as XeroConnection))
-      .toThrow(/No Stripe clearing account is set.*Settings → Integrations/s)
+      // [\s\S]* rather than .* with the `s` flag: dotAll needs an es2018
+      // target and this repo compiles at ES2017, so the flag was the one
+      // standing typecheck error in the tree. Same meaning, no flag.
+      .toThrow(/No Stripe clearing account is set[\s\S]*Settings → Integrations/)
   })
 
   it('errors actionably when no fee expense account is mapped', () => {
