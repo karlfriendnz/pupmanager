@@ -11,7 +11,7 @@ import {
 import { ShareClientModal } from './share-client-modal'
 import { AssignPackageButton, type ClassOption } from './assign-package-modal'
 import { ModalPortal } from '@/components/shared/modal-portal'
-import { FlatBlock, FlatRow, SectionLabel } from '@/components/shared/flat-list'
+import { FlatBlock, FlatRow, FlatRowGrid, SectionLabel } from '@/components/shared/flat-list'
 import { useIsNative } from '@/lib/native'
 import { cn } from '@/lib/utils'
 
@@ -66,18 +66,26 @@ interface Props {
 }
 
 // Every per-client action — Edit, View as client, Re-invite, Assign consult,
-// Share, Delete — as rows ON the page, at the foot of the Overview tab.
+// Share, Delete — as rows ON the page, at the HEAD of the Overview tab.
 //
 // This replaces the "Actions" dropdown that used to sit in the page header.
 // That dropdown itself replaced a ROW OF HEADER BUTTONS, which wrapped badly on
 // a phone, so it is deliberately NOT a row of buttons that came back: it is the
 // house flat block — one bordered surface, hairline dividers, plain line icons,
-// 44px+ tap targets — which stacks vertically and can't wrap. Overview is the
-// default tab, so nothing is behind a trigger any more.
+// 44px+ tap targets — which can't wrap. Overview is the default tab, so nothing
+// is behind a trigger any more.
 //
-// Delete sits in its OWN block below the others, red text on a plain row rather
-// than a filled button, so a destructive action can't be mistaken for a
-// neighbour of "Edit details".
+// Two-up, not a single stack. It sat at the FOOT of the tab until Karl asked
+// for it at the top, and six full-width rows above "Upcoming sessions" is
+// ~340px of a 390px screen spent before the trainer reads anything — the
+// wasted-vertical-space complaint he keeps making. FlatRowGrid is the house
+// shape for exactly this (the profile's own tab strip and the app's More menu
+// use it): same rows, same icons, same tap targets, two across, ~190px.
+//
+// Delete sits in its OWN block below the others, full width, red text on a
+// plain row rather than a filled button, so a destructive action can't be
+// mistaken for a neighbour of "Edit details" — and being the one full-width row
+// under a grid, it can't be tapped by accident reaching for "Share" either.
 //
 // State machine for the modals: only one can be open at a time. Each row sets
 // `activeModal` to its own kind; the controlled ShareClientModal /
@@ -95,7 +103,7 @@ type ReinviteState =
 // express: an external-target link and a destructive row.
 const ROW_CLS = 'flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50'
 
-function RowInner({ icon: Icon, label, tone }: { icon: LucideIcon; label: string; tone?: 'danger' }) {
+function RowInner({ icon: Icon, label, tone, chevron = true }: { icon: LucideIcon; label: string; tone?: 'danger'; chevron?: boolean }) {
   const danger = tone === 'danger'
   return (
     <>
@@ -109,7 +117,9 @@ function RowInner({ icon: Icon, label, tone }: { icon: LucideIcon; label: string
       )}>
         {label}
       </span>
-      <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
+      {/* No chevron inside the two-up grid — half-width cells with a caret each
+          read as noise, and the same call is made on the profile's tab strip. */}
+      {chevron && <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />}
     </>
   )
 }
@@ -141,24 +151,26 @@ export function ClientActionsPanel({
     return () => { document.body.style.overflow = previous }
   }, [confirmOpen])
 
-  const viewAsClient = (
+  const viewAsClient = (chevron: boolean) => (
     <Link
+      key="view-as-client"
       href={`/preview-as/${clientId}`}
       target={previewTarget}
       rel={previewTarget === '_blank' ? 'noopener' : undefined}
       className={ROW_CLS}
     >
-      <RowInner icon={Eye} label="View as client" />
+      <RowInner icon={Eye} label="View as client" chevron={chevron} />
     </Link>
   )
 
   // Co-managers (canEdit=false) get the View-as-client row and nothing else —
-  // the actions below it are ones they aren't allowed to perform.
+  // the actions below it are ones they aren't allowed to perform. One action is
+  // one full-width row; a grid of one is just a row with a gap beside it.
   if (!canEdit) {
     return (
       <section aria-label="Client actions">
         <SectionLabel>Client actions</SectionLabel>
-        <FlatBlock>{viewAsClient}</FlatBlock>
+        <FlatBlock>{viewAsClient(true)}</FlatBlock>
       </section>
     )
   }
@@ -202,46 +214,67 @@ export function ClientActionsPanel({
     : reinvite.kind === 'error' ? <span className="text-red-600">{reinvite.message}</span>
     : undefined
 
+  // Built as a list so FlatRowGrid gets an accurate `count` — it uses it to
+  // decide which cells drop their bottom edge, and a hard-coded number would
+  // go wrong the moment one of these is gated off.
+  //
+  // Labels WRAP rather than truncate: a half-width cell on a 390px phone has
+  // room for about fourteen characters, and "Share with another trainer" came
+  // back as "Share with an…". Shortening the labels would have cost the desktop
+  // layout, where they all fit; FlatRow's label is `truncate`, so a child span
+  // that opts back into normal wrapping is what gives the phone a second line.
+  const wrap = (text: string) => <span className="whitespace-normal">{text}</span>
+
+  const actionRows = [
+    <FlatRow
+      key="edit"
+      icon={Pencil}
+      label={wrap('Edit details')}
+      href={`/clients/${clientId}/edit`}
+      trailing={<span aria-hidden />}
+    />,
+    // Client-app-only actions (preview + re-invite) — hidden when the
+    // Client app add-on is off.
+    ...(clientAppEnabled ? [viewAsClient(false)] : []),
+    ...(clientAppEnabled ? [
+      <FlatRow
+        key="reinvite"
+        icon={Send}
+        label={wrap(needsInvite ? 'Re-invite client' : 'Re-send sign-in link')}
+        sub={reinviteSub}
+        trailing={<span aria-hidden />}
+        onClick={() => {
+          // Reset any previous error so the confirm dialog opens clean.
+          setReinvite({ kind: 'idle' })
+          setActiveModal('reinvite')
+        }}
+      />,
+    ] : []),
+    ...(canAssign ? [
+      <FlatRow
+        key="assign"
+        icon={PackageIcon}
+        label={wrap('Assign consult')}
+        trailing={<span aria-hidden />}
+        onClick={() => setActiveModal('assign')}
+      />,
+    ] : []),
+    ...(isPrimaryTrainer ? [
+      <FlatRow
+        key="share"
+        icon={Share2}
+        label={wrap('Share with another trainer')}
+        trailing={<span aria-hidden />}
+        onClick={() => setActiveModal('share')}
+      />,
+    ] : []),
+  ]
+
   return (
     <section aria-label="Client actions" className="flex flex-col gap-3">
       <div>
         <SectionLabel>Client actions</SectionLabel>
-        <FlatBlock>
-          <FlatRow
-            icon={Pencil}
-            label="Edit details"
-            href={`/clients/${clientId}/edit`}
-          />
-          {/* Client-app-only actions (preview + re-invite) — hidden when the
-              Client app add-on is off. */}
-          {clientAppEnabled && viewAsClient}
-          {clientAppEnabled && (
-            <FlatRow
-              icon={Send}
-              label={needsInvite ? 'Re-invite client' : 'Re-send sign-in link'}
-              sub={reinviteSub}
-              onClick={() => {
-                // Reset any previous error so the confirm dialog opens clean.
-                setReinvite({ kind: 'idle' })
-                setActiveModal('reinvite')
-              }}
-            />
-          )}
-          {canAssign && (
-            <FlatRow
-              icon={PackageIcon}
-              label="Assign consult"
-              onClick={() => setActiveModal('assign')}
-            />
-          )}
-          {isPrimaryTrainer && (
-            <FlatRow
-              icon={Share2}
-              label="Share with another trainer"
-              onClick={() => setActiveModal('share')}
-            />
-          )}
-        </FlatBlock>
+        <FlatRowGrid count={actionRows.length}>{actionRows}</FlatRowGrid>
       </div>
 
       {/* Delete stands alone, one block down — plain row, red text, no filled

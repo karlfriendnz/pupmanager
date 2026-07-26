@@ -19,7 +19,7 @@ import { DiscountManager } from '@/components/trainer/discount-manager'
 // The roster, the enrol flow and the label/value rows are shared with the event
 // detail screen — see components/trainer/run-roster.tsx for why.
 import {
-  EnrollTable, EnrolModal, Detail, DetailPair, DeleteRunButton,
+  EnrollTable, EnrolModal, Detail, DetailPair, DeleteRunButton, groupByClient,
   type Enrollment, type ClientOpt, type SessionRow,
 } from '@/components/trainer/run-roster'
 
@@ -87,16 +87,33 @@ export function RunDetail({
   const waitlisted = enrollments.filter(e => e.status === 'WAITLISTED')
   const present = enrollments.filter(e => e.status === 'ENROLLED' || e.status === 'WAITLISTED')
   const past = enrollments.filter(e => e.status === 'WITHDRAWN' || e.status === 'COMPLETED')
+  // ONE ROW PER PERSON (per dog, strictly — the same owner bringing two dogs is
+  // genuinely two lines). An enrolment is a BOOKING: a daycare or drop-in client
+  // with four Thursdays booked holds four of them, and every list keyed on raw
+  // enrolments repeated their name four times. The roster table already folded
+  // them with groupByClient; the Details-tab snapshot and all the counts beside
+  // it did not, so the demo daycare read "Bailey's Owner" three times in a row
+  // over a "27" badge above a table of 8 rows. Same grouping everywhere now, so
+  // the number on the tab is the number of lines you'll find under it.
+  const presentGroups = groupByClient(present)
+  const pastGroups = groupByClient(past)
+  const rosterCount = presentGroups.length + pastGroups.length
   // On a drop-in class a row is a BOOKING, not a person — the same client can
   // hold several — so counting rows as "5 enrolled" reads as five people and
   // makes the repeated names look like duplicates. Capacity is per session
   // there too, so a "5 / 8" against the whole run would be wrong as well.
   const dropInPeople = new Set(enrolled.map(e => e.clientId)).size
+  // Seats are per session; bookings are not. The daycare run reads 27 bookings
+  // across 8 dogs, and counting bookings against an 8-seat capacity printed
+  // "27 / 8" — a class three times over its limit, which it isn't. Count the
+  // rows the roster actually shows. On an ordinary class one client holds one
+  // enrolment, so this is unchanged there.
+  const enrolledRows = groupByClient(enrolled).length
   const seatsLabel = run.allowDropIn
     ? `${dropInPeople} client${dropInPeople === 1 ? '' : 's'} · ${enrolled.length} booking${enrolled.length === 1 ? '' : 's'}`
     : run.capacity == null
-      ? `${enrolled.length} enrolled`
-      : `${enrolled.length} / ${run.capacity}`
+      ? `${enrolledRows} enrolled`
+      : `${enrolledRows} / ${run.capacity}`
 
   // Revenue estimate: full price per non-withdrawn enrolment (drop-ins excluded
   // from the headline — their per-session pricing is computed elsewhere).
@@ -118,7 +135,7 @@ export function RunDetail({
 
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
     { id: 'details', label: 'Details', icon: Info },
-    { id: 'clients', label: 'Clients', icon: Users, badge: enrollments.length > 0 ? enrollments.length : undefined },
+    { id: 'clients', label: 'Clients', icon: Users, badge: rosterCount > 0 ? rosterCount : undefined },
     { id: 'messages', label: 'Reminders & messages', icon: Bell },
     { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
@@ -157,7 +174,12 @@ export function RunDetail({
 
       {/* Full width — two columns of detail need the room, and capping it
           wastes half a wide monitor. */}
-      <div className="p-4 md:p-8 w-full">
+      {/* min-w-0: the roster table below carries a min-width so its six
+          columns stay legible, and without this the flex chain up to <main>
+          takes its automatic minimum size from that table and the whole PAGE
+          scrolls sideways on a phone. The table's own overflow-x-auto is the
+          only thing that should scroll. */}
+      <div className="p-4 md:p-8 w-full min-w-0">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
       {/* Tabs — Details, Clients, Reminders & messages, Discounts. Scrolls
@@ -309,23 +331,23 @@ export function RunDetail({
               >
                 Clients
               </CardHeading>
-              {present.length === 0 ? (
+              {presentGroups.length === 0 ? (
                 <p className="text-sm text-slate-500 py-4 text-center">No one enrolled yet.</p>
               ) : (
                 <>
                   <ul className="divide-y divide-slate-100">
-                    {present.slice(0, 6).map(e => (
+                    {presentGroups.slice(0, 6).map(g => (
                       <ClientSnapshotRow
-                        key={e.id}
-                        clientId={e.clientId}
-                        clientName={e.clientName}
-                        dogName={e.dogName}
-                        badge={e.status === 'WAITLISTED' ? 'Waitlist' : null}
+                        key={g.key}
+                        clientId={g.clientId}
+                        clientName={g.clientName}
+                        dogName={g.dogName}
+                        badge={g.status === 'WAITLISTED' ? 'Waitlist' : null}
                       />
                     ))}
                   </ul>
-                  {enrollments.length > 6 && (
-                    <button type="button" onClick={() => setTab('clients')} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">View all {enrollments.length} →</button>
+                  {rosterCount > 6 && (
+                    <button type="button" onClick={() => setTab('clients')} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">View all {rosterCount} →</button>
                   )}
                 </>
               )}
@@ -335,7 +357,7 @@ export function RunDetail({
       </div>
 
       {/* Clients tab — the full roster (current / past). */}
-      <div className={`flex flex-col gap-5 ${tab === 'clients' ? '' : 'hidden'}`}>
+      <div className={`flex min-w-0 flex-col gap-5 ${tab === 'clients' ? '' : 'hidden'}`}>
           <Card>
             <CardBody className="py-5">
               <CardHeading
@@ -356,40 +378,43 @@ export function RunDetail({
                 <>
                   {/* Current / past as tabs rather than two stacked tables —
                       a long history of withdrawals shouldn't push who's
-                      actually in the class off the bottom. */}
-                  {/* Track padding 6px with a 10px pill inside a 16px track —
-                      at 4px the active pill's shadow closes the gap and it
-                      reads as bulging out of the track. */}
-                  <div className="mb-3 inline-flex gap-1 rounded-2xl bg-slate-100 p-1.5">
+                      actually in the class off the bottom.
+
+                      Flat text tabs on one hairline that runs the full width,
+                      not a pill track: the pill was a short island with a wide
+                      band of nothing to the right of it, which is exactly the
+                      dead space Karl marked. The rule now carries across to
+                      meet the table's top edge, so the two read as one object.
+                      Counts are of ROWS in the table below (one per person),
+                      not of raw enrolments — see presentGroups above. */}
+                  <div className="mb-3 flex gap-5 border-b border-slate-200">
                     {([
-                      { id: 'current' as const, label: 'Current', count: present.length },
-                      { id: 'past' as const, label: 'Past', count: past.length },
+                      { id: 'current' as const, label: 'Current', count: presentGroups.length },
+                      { id: 'past' as const, label: 'Past', count: pastGroups.length },
                     ]).map(t => (
                       <button
                         key={t.id}
                         type="button"
                         onClick={() => setClientTab(t.id)}
                         aria-pressed={clientTab === t.id}
-                        className={`inline-flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-sm font-medium transition-all ${
-                          clientTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                        className={`-mb-px shrink-0 border-b-2 py-2 text-sm font-medium transition-colors ${
+                          clientTab === t.id
+                            ? 'border-slate-900 text-slate-900'
+                            : 'border-transparent text-slate-500 hover:text-slate-700'
                         }`}
                       >
                         {t.label}
-                        <span className={`min-w-4 rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${
-                          clientTab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
-                        }`}>
-                          {t.count}
-                        </span>
+                        <span className="ml-1.5 text-[11px] font-normal tabular-nums text-slate-400">{t.count}</span>
                       </button>
                     ))}
                   </div>
 
                   {clientTab === 'current' ? (
-                    present.length > 0
+                    presentGroups.length > 0
                       ? <EnrollTable rows={present} onWithdraw={withdraw} withdrawable runId={run.id} dropInClass={run.allowDropIn} />
                       : <p className="text-sm text-slate-500 py-4 text-center">No one currently enrolled.</p>
                   ) : (
-                    past.length > 0
+                    pastGroups.length > 0
                       ? <EnrollTable rows={past} onWithdraw={withdraw} withdrawable={false} runId={run.id} dropInClass={run.allowDropIn} />
                       : <p className="text-sm text-slate-500 py-4 text-center">No past clients.</p>
                   )}

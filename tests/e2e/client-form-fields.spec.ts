@@ -26,6 +26,59 @@ async function login(page: Page, email: string, password: string) {
   await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 30_000 })
 }
 
+// Karl asked for /clients/invite to be a focused flow: one tab per section,
+// the invitation email on its own tab, and the main nav out of the way. The
+// screen takes the whole viewport (`fixed inset-0`, above the shell's z-40
+// chrome) rather than app-shell special-casing another path.
+test.describe('the new-client screen is a focused, tabbed flow', () => {
+  test('three tabs, the invite email on its own, and no main nav', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/clients/invite')
+
+    for (const label of ['Contact', 'Dogs', 'Invitation email']) {
+      await expect(page.getByRole('button', { name: new RegExp(`^${label}`) })).toBeVisible()
+    }
+
+    // Contact leads; the dog block and the invite body belong to other tabs.
+    await expect(page.getByPlaceholder('Jane Smith')).toBeVisible()
+    await expect(page.getByPlaceholder('Buddy')).toBeHidden()
+    await expect(page.getByText('Send invitation email')).toBeHidden()
+
+    await page.getByRole('button', { name: /^Dogs/ }).click()
+    await expect(page.getByPlaceholder('Buddy')).toBeVisible()
+    await expect(page.getByPlaceholder('Jane Smith')).toBeHidden()
+
+    await page.getByRole('button', { name: /^Invitation email/ }).click()
+    await expect(page.getByText('Send invitation email')).toBeVisible()
+    await expect(page.getByPlaceholder('Buddy')).toBeHidden()
+
+    // Create is live from every tab — a trainer who only wanted a name and a
+    // phone number shouldn't have to tour the others to save.
+    await expect(page.getByRole('button', { name: 'Create client' })).toBeVisible()
+
+    // The main nav is covered: whatever is under the bottom of the viewport
+    // belongs to this screen, not to the shell's tab bar / sidebar.
+    const coversNav = await page.evaluate(() => {
+      const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight - 6)
+      return !!el?.closest('.fixed.inset-0')
+    })
+    expect(coversNav).toBe(true)
+
+    // Never two scrollbars: this surface scrolls, the page behind it doesn't.
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden')
+  })
+
+  test('leaving the flow restores the page scroll it locked', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/clients/invite')
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden')
+
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await page.waitForURL('**/clients', { timeout: 30_000 })
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden')
+  })
+})
+
 test.describe('the client form, every field', () => {
   test('fills in everything and every value comes back', async ({ page }) => {
     const prisma = await makePrisma()
@@ -40,10 +93,13 @@ test.describe('the client form, every field', () => {
       await page.getByPlaceholder('jane@example.com (optional)').fill(email)
       await page.getByPlaceholder('021 234 5678').fill('021 555 0101')
 
-      // The dog block — name, breed, weight, date of birth, notes.
+      // The dog block — name, breed, weight, date of birth, notes. It has its
+      // own tab now: the screen is Contact · Dogs · Invitation email.
+      await page.getByRole('button', { name: /^Dogs/ }).click()
       await page.getByPlaceholder('Buddy').fill('Rex')
       await page.locator('input[type="date"]').first().fill('2022-03-14')
 
+      // Create is live from any tab, so no tour back to Contact first.
       await page.getByRole('button', { name: 'Create client' }).click()
 
       // Saved, and reachable. Name and email live on the linked User; the

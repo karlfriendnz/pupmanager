@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission, getTrainerContext, scopeForMember } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
@@ -280,12 +280,25 @@ export async function POST(req: Request) {
     return { clientProfileId: profile.id, dogIds: createdDogs.map(d => d.id) }
   })
 
-  await safeEvaluate(clientProfileId).catch(() => {})
-
-  // Invite email (best-effort; never fails the create).
-  let emailError: string | null = null
-  if (sendInvite && realEmail) {
+  // Everything past this point is a SIDE EFFECT of the client now existing —
+  // achievement evaluation, the invite email, the onboarding tick. None of it
+  // changes what we hand back, and the invite email is a round-trip to Resend:
+  // measured on the dev box, a full client with an invite took ~860ms end to
+  // end versus ~25ms without one, so the trainer was sitting on a spinner
+  // waiting for someone else's mail API. `after()` runs it once the response
+  // has been flushed (Fluid Compute keeps the invocation alive), so the work
+  // still happens — the trainer just doesn't wait for it.
+  //
+  // The trade: a send failure can no longer come back on this response. It's
+  // logged, and the invite is re-sendable from the client's profile
+  // ("Re-invite client"), which is what a trainer does about a failed invite
+  // anyway. Nothing else read `emailError` from this route.
+  after(async () => {
     try {
+      await safeEvaluate(clientProfileId).catch(() => {})
+
+      if (!sendInvite || !realEmail) return
+
       const slug = await ensureTrainerSlug(trainerProfile.id)
       const inviteUrl = clientInviteUrl(process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com', slug, inviteToken, realEmail)
       const rendered = renderClientInviteEmail({
@@ -304,15 +317,15 @@ export async function POST(req: Request) {
         to: realEmail, subject: rendered.subject, from: fromTrainer(rendered.displayName),
         replyTo: rendered.trainerEmail ?? undefined, text: rendered.text, html: rendered.html,
       })
-      if (result.error) emailError = result.error.message
+      if (result.error) console.error('[clients POST after] invite email failed', result.error.message)
+
+      await prisma.trainerOnboardingProgress
+        .updateMany({ where: { trainerId: trainerProfile.id, firstInviteSentAt: null }, data: { firstInviteSentAt: new Date() } })
+        .catch(() => {})
     } catch (err) {
-      emailError = err instanceof Error ? err.message : 'Unknown error'
+      console.error('[clients POST after]', err)
     }
+  })
 
-    await prisma.trainerOnboardingProgress
-      .updateMany({ where: { trainerId: trainerProfile.id, firstInviteSentAt: null }, data: { firstInviteSentAt: new Date() } })
-      .catch(() => {})
-  }
-
-  return NextResponse.json({ ok: true, clientId: clientProfileId, dogIds, ...(emailError ? { emailError } : {}) }, { status: 201 })
+  return NextResponse.json({ ok: true, clientId: clientProfileId, dogIds }, { status: 201 })
 }

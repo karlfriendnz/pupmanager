@@ -23,10 +23,20 @@ const h = vi.hoisted(() => ({
   safeEvaluate: vi.fn(),
   sendEmail: vi.fn(),
   ensureTrainerSlug: vi.fn(),
+  /** Callbacks the route handed to `after()`. Run them to exercise the
+   *  post-response work (achievements + the invite email). */
+  deferred: [] as (() => unknown)[],
 }))
 
 // guardPermission returns a NextResponse on failure; the route checks
-// `instanceof NextResponse`, so the real next/server module must be used.
+// `instanceof NextResponse`, so the real next/server module must be used —
+// spread the real module and replace only `after`, which throws outside a
+// request scope. Capturing the callbacks rather than dropping them means the
+// invite email is still under test, just on the other side of the response.
+vi.mock('next/server', async (orig) => ({
+  ...(await orig() as object),
+  after: (fn: () => unknown) => { h.deferred.push(fn) },
+}))
 vi.mock('@/lib/auth', () => ({ auth: h.auth }))
 vi.mock('@/lib/membership', () => ({ guardPermission: h.guardPermission }))
 vi.mock('@/lib/prisma', () => ({
@@ -67,7 +77,8 @@ function req(body: unknown) {
 }
 
 beforeEach(() => {
-  Object.values(h).forEach(fn => fn.mockReset())
+  Object.values(h).forEach(v => { if (typeof v === 'function') v.mockReset() })
+  h.deferred.length = 0
   // Sensible defaults for the happy-path collaborators.
   h.auth.mockResolvedValue({ user: { role: 'TRAINER', id: 'u1', trainerId: 'company-A' } })
   h.trainerProfileFindUnique.mockResolvedValue({
@@ -218,5 +229,64 @@ describe('POST /api/clients — mass-assignment guard', () => {
     // No duplicate person, no duplicate profile.
     expect(h.userCreate).not.toHaveBeenCalled()
     expect(h.clientProfileCreate).not.toHaveBeenCalled()
+  })
+})
+
+// "Adding a full client takes a long time." It did: the response waited on a
+// round trip to Resend. Measured on the dev box, a full client with an invite
+// took ~860ms versus ~25ms without one. The send now runs after the response.
+// These guard the two halves of that: nothing mail-shaped happens before the
+// trainer gets their answer, and the mail still goes out afterwards.
+describe('POST /api/clients — the invite email does not block the response', () => {
+  const fullWithInvite = {
+    mode: 'full', name: 'Jess', email: 'jess@x.test', sendInvite: true, emailBody: 'hi',
+    dogs: [{ name: 'Rex' }],
+  }
+
+  it('answers without having sent anything', async () => {
+    grant()
+    h.ensureTrainerSlug.mockResolvedValue('a-slug')
+    h.sendEmail.mockResolvedValue({ error: null })
+
+    const res = await POST(req(fullWithInvite))
+
+    expect(res.status).toBe(201)
+    expect(await res.json()).toMatchObject({ ok: true, clientId: 'profile-1' })
+    // Not yet — it's queued, not sent.
+    expect(h.sendEmail).not.toHaveBeenCalled()
+    expect(h.safeEvaluate).not.toHaveBeenCalled()
+    expect(h.deferred).toHaveLength(1)
+  })
+
+  it('still sends it — and ticks the onboarding step — once the response is out', async () => {
+    grant()
+    h.ensureTrainerSlug.mockResolvedValue('a-slug')
+    h.sendEmail.mockResolvedValue({ error: null })
+
+    await POST(req(fullWithInvite))
+    for (const fn of h.deferred) await fn()
+
+    expect(h.sendEmail).toHaveBeenCalledTimes(1)
+    expect(h.sendEmail.mock.calls[0][0]).toMatchObject({ to: 'jess@x.test' })
+    expect(h.safeEvaluate).toHaveBeenCalledWith('profile-1')
+    expect(h.onboardingUpdateMany).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends nothing when the trainer left the invite off', async () => {
+    grant()
+    const res = await POST(req({ ...fullWithInvite, sendInvite: false }))
+    expect(res.status).toBe(201)
+    for (const fn of h.deferred) await fn()
+    expect(h.sendEmail).not.toHaveBeenCalled()
+    // The achievement pass still runs — it isn't conditional on the invite.
+    expect(h.safeEvaluate).toHaveBeenCalledWith('profile-1')
+  })
+
+  it('a failed send is swallowed, not thrown at the (already sent) response', async () => {
+    grant()
+    h.ensureTrainerSlug.mockRejectedValue(new Error('Resend is down'))
+    const res = await POST(req(fullWithInvite))
+    expect(res.status).toBe(201)
+    await expect(Promise.all(h.deferred.map(fn => fn()))).resolves.toBeDefined()
   })
 })

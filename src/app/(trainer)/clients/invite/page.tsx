@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma'
 import { CreateClientForm, type CustomField } from './create-client-form'
 import { resolveClientFieldConfig } from '@/lib/client-fields'
 import { trainerRegionCode } from '@/lib/country'
-import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'New client' }
@@ -48,20 +47,16 @@ ${trainerProfile?.businessName ?? 'Your Trainer'}`
     appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
   }))
 
+  // No PageHeader and no intro copy: CreateClientForm takes the whole viewport
+  // (its own title row, close button and tab strip), which is what puts the
+  // main nav out of the way for the duration of the flow. A header underneath
+  // would only be a second title nobody can see.
   return (
-    <>
-      <PageHeader title="New client" back={{ href: '/clients', label: 'Back to clients' }} />
-      <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
-        <p className="text-sm text-slate-500 mb-6">
-          Fill in the client&apos;s details. Add an email and we&apos;ll send them an invite to the app — or leave it blank to just record them.
-        </p>
-        <CreateClientForm
-          config={resolveClientFieldConfig(trainerProfile?.clientFieldConfig)}
-          customFields={fields}
-          defaultTemplate={defaultTemplate}
-          region={trainerProfile ? trainerRegionCode(trainerProfile) : undefined}
-        />
-      </div>
-    </>
+    <CreateClientForm
+      config={resolveClientFieldConfig(trainerProfile?.clientFieldConfig)}
+      customFields={fields}
+      defaultTemplate={defaultTemplate}
+      region={trainerProfile ? trainerRegionCode(trainerProfile) : undefined}
+    />
   )
 }

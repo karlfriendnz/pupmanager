@@ -257,22 +257,31 @@ export function EnrollTable({
   return (
     <div>
       {title && <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1 px-1">{title} ({groups.length})</p>}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+      {/* A real data table, not a list wearing <table>. Every fact a trainer
+          scans for — dog, ticket, status, attendance, BILLING — gets its own
+          column with a proper header band, so the eye runs down a column
+          instead of hunting through stacked lines under each name. Billing in
+          particular used to be a third line tucked under the client's name,
+          which is where "has this one been invoiced?" went to hide.
+          The first column takes the slack (`w-full`) so the rest stay tight
+          against the right edge rather than drifting apart on a wide screen. */}
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full min-w-[42rem] text-sm">
           <thead>
-            <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
-              <th className="font-medium py-2 px-1">Client</th>
-              <th className="font-medium py-2 px-1">Dog</th>
-              {ticketed && <th className="font-medium py-2 px-1">Ticket</th>}
-              <th className="font-medium py-2 px-1">Status</th>
-              <th className="font-medium py-2 px-1">Attendance</th>
-              {withdrawable && <th className="font-medium py-2 px-1"></th>}
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <th className="w-full px-3 py-2 font-semibold">Client</th>
+              <th className="whitespace-nowrap px-3 py-2 font-semibold">Dog</th>
+              {ticketed && <th className="whitespace-nowrap px-3 py-2 font-semibold">Ticket</th>}
+              <th className="whitespace-nowrap px-3 py-2 font-semibold">Status</th>
+              <th className="whitespace-nowrap px-3 py-2 font-semibold">Attendance</th>
+              <th className="whitespace-nowrap px-3 py-2 font-semibold">Billing</th>
+              {withdrawable && <th className="px-3 py-2"><span className="sr-only">Withdraw</span></th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50">
+          <tbody className="divide-y divide-slate-100">
             {groups.map(g => (
-              <tr key={g.key} className="hover:bg-slate-50">
-                <td className="py-2.5 px-1">
+              <tr key={g.key} className="align-middle hover:bg-slate-50">
+                <td className="px-3 py-2.5">
                   <Link href={`/clients/${g.clientId}`} className="flex items-center gap-2.5 group">
                     <ClientAvatar name={g.clientName} dogPhotoUrl={g.dogPhotoUrl} size="sm" />
                     <span className="min-w-0">
@@ -286,68 +295,68 @@ export function EnrollTable({
                           {g.selfServe && ' · self-enrolled'}
                         </span>
                       )}
-                      {/* Billing state at a glance — the roster is where a
-                          trainer notices someone hasn't been invoiced, not the
-                          finances tab. Withdrawn rows have nothing to bill.
-                          Across several bookings it's the worst state that
-                          matters: one unpaid session is the thing to chase. */}
-                      {g.status !== 'WITHDRAWN' && (
-                        <span className="block mt-0.5">
-                          {g.invoiceState === 'PAID' ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
-                              <Check className="h-3 w-3" /> Paid
-                            </span>
-                          ) : g.invoiceState === 'SENT' ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-600">
-                              <Send className="h-3 w-3" /> Invoice sent
-                            </span>
-                          ) : g.invoiceState === 'UNSENT' ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400">
-                              <FileText className="h-3 w-3" /> Invoice not sent
-                            </span>
-                          ) : g.invoiceState === 'CANCELLED' ? (
-                            <span className="text-[11px] font-medium text-slate-400">Invoice cancelled</span>
-                          ) : (
-                            // The repair: enrolments made before class
-                            // invoicing existed have nothing behind them, and
-                            // building one by hand in Finances is a slog.
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600">
-                                <AlertTriangle className="h-3 w-3" /> No invoice
-                              </span>
-                              <button
-                                type="button"
-                                onClick={ev => { ev.preventDefault(); ev.stopPropagation(); createInvoices(g.key, g.uninvoicedIds) }}
-                                disabled={invoicingKey === g.key}
-                                className="text-[11px] font-semibold text-blue-600 hover:underline disabled:opacity-50"
-                              >
-                                {invoicingKey === g.key ? 'Creating…' : 'Create'}
-                              </button>
-                            </span>
-                          )}
-                        </span>
-                      )}
                     </span>
                   </Link>
                 </td>
-                <td className="py-2.5 px-1 text-slate-600">{g.dogName ?? '—'}</td>
-                {ticketed && <td className="py-2.5 px-1 text-slate-600">{g.ticketLabel ?? '—'}</td>}
-                <td className="py-2.5 px-1">
+                <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{g.dogName ?? '—'}</td>
+                {ticketed && <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{g.ticketLabel ?? '—'}</td>}
+                <td className="whitespace-nowrap px-3 py-2.5">
                   <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${ENROLL_BADGE[g.status]}`}>
                     {g.status.toLowerCase()}
                   </span>
                 </td>
                 {/* On a drop-in class the useful number isn't attendance yet —
                     it's how many sessions they're booked into from here. */}
-                <td className="py-2.5 px-1 text-slate-600 tabular-nums">
+                <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 tabular-nums">
                   {g.upcomingCount > 0
                     ? `${g.upcomingCount} upcoming`
                     : g.markedCount > 0
                       ? `${g.attendedCount} / ${g.markedCount}`
                       : '—'}
                 </td>
+                {/* Billing state at a glance — the roster is where a trainer
+                    notices someone hasn't been invoiced, not the finances tab.
+                    Withdrawn rows have nothing to bill. Across several bookings
+                    it's the worst state that matters: one unpaid session is the
+                    thing to chase. */}
+                <td className="whitespace-nowrap px-3 py-2.5">
+                  {g.status === 'WITHDRAWN' ? (
+                    <span className="text-[11px] text-slate-300">—</span>
+                  ) : g.invoiceState === 'PAID' ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                      <Check className="h-3 w-3" /> Paid
+                    </span>
+                  ) : g.invoiceState === 'SENT' ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-600">
+                      <Send className="h-3 w-3" /> Invoice sent
+                    </span>
+                  ) : g.invoiceState === 'UNSENT' ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400">
+                      <FileText className="h-3 w-3" /> Invoice not sent
+                    </span>
+                  ) : g.invoiceState === 'CANCELLED' ? (
+                    <span className="text-[11px] font-medium text-slate-400">Invoice cancelled</span>
+                  ) : (
+                    // The repair: enrolments made before class invoicing
+                    // existed have nothing behind them, and building one by
+                    // hand in Finances is a slog. "Create" reads as the end of
+                    // the same sentence, so it sits one word-space away — it
+                    // used to float off on its own with a gap either side.
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600">
+                      <AlertTriangle className="h-3 w-3" /> No invoice
+                      <button
+                        type="button"
+                        onClick={ev => { ev.preventDefault(); ev.stopPropagation(); createInvoices(g.key, g.uninvoicedIds) }}
+                        disabled={invoicingKey === g.key}
+                        className="font-semibold text-blue-600 hover:underline disabled:opacity-50"
+                      >
+                        {invoicingKey === g.key ? 'Creating…' : 'Create'}
+                      </button>
+                    </span>
+                  )}
+                </td>
                 {withdrawable && (
-                  <td className="py-2.5 px-1 text-right">
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right">
                     <button
                       onClick={() => onWithdraw(g.ids)}
                       className="text-xs text-slate-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50"

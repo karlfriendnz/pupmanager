@@ -13,7 +13,23 @@ import { createClassRunIn } from '../src/lib/class-runs'
 
 const prisma = scriptPrisma()
 const PKG_NAME = 'Waggy Tails Doggy Daycare (demo)'
-const DOGS = ['Bailey', 'Max', 'Coco', 'Rosie', 'Ziggy', 'Bandit', 'Nala', 'Milo']
+// Dog + the person who brings them. The owners used to be seeded as
+// "Bailey's Owner", "Max's Owner" … which then showed up verbatim wherever the
+// app prints a client's name — a roster of "<Dog>'s Owner" rows reads like the
+// app failed to find the real name and fell back to a derived label. It isn't a
+// fallback; nothing in src/ builds a name like that. It was just the seed. Real
+// names here, so demo screens look like a real client list.
+const CAST: { dog: string; owner: string }[] = [
+  { dog: 'Bailey', owner: 'Hannah Whitfield' },
+  { dog: 'Max',    owner: 'Tom Ellery' },
+  { dog: 'Coco',   owner: 'Priya Raman' },
+  { dog: 'Rosie',  owner: 'Grace Lomu' },
+  { dog: 'Ziggy',  owner: 'Danny Okafor' },
+  { dog: 'Bandit', owner: 'Marcus Reid' },
+  { dog: 'Nala',   owner: 'Emily Chen' },
+  { dog: 'Milo',   owner: 'Josh Tanumafili' },
+]
+const DOGS = CAST.map(c => c.dog)
 
 function mondayISO(): string {
   const n = new Date()
@@ -97,7 +113,7 @@ async function main() {
   // ── 4. demo dogs + bookings ──────────────────────────────────────────────
   let bookings = 0
   for (let i = 0; i < DOGS.length; i++) {
-    const u = await prisma.user.create({ data: { email: `puppyseed${i}@demo.local`, name: `${DOGS[i]}'s Owner`, role: 'CLIENT' } })
+    const u = await prisma.user.create({ data: { email: `puppyseed${i}@demo.local`, name: CAST[i].owner, role: 'CLIENT' } })
     const profile = await prisma.clientProfile.create({ data: { userId: u.id, trainerId, status: 'ACTIVE', phone: `021 555 0${i}${i}0` } })
     const dog = await prisma.dog.create({ data: { name: DOGS[i], clientProfileId: profile.id } })
     await prisma.clientProfile.update({ where: { id: profile.id }, data: { dogId: dog.id } })

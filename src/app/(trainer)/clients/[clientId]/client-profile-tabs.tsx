@@ -382,6 +382,14 @@ export function ClientProfileTabs({
       {/* ── Overview ─────────────────────────────────────────────────────── */}
       {tab === 'overview' && (
         <div className="flex flex-col gap-6">
+          {/* Per-client actions, at the head of the column — Karl wants them
+              reachable without scrolling to the bottom of the tab. They're a
+              two-up grid rather than a stack of six full-width rows, which
+              halves what they cost the content below them (~190px instead of
+              ~340px on a 390px screen): the actions are named and one tap away,
+              and "Upcoming sessions" is still the first thing you read. */}
+          {actions}
+
           {/* What a trainer wants first: what's coming up, who owes money,
               the last session, and the latest chatter. */}
           <Card>
@@ -502,10 +510,6 @@ export function ClientProfileTabs({
             </Card>
           )}
 
-          {/* Per-client actions, on the page. Last thing on the default tab:
-              a trainer reads the client first, then acts. The "Actions"
-              dropdown that used to live in the header is gone. */}
-          {actions}
         </div>
       )}
 

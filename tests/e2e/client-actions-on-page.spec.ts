@@ -3,11 +3,12 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
 
 // The client profile's "Actions" dropdown is gone. Every per-client action now
-// renders as a row at the foot of the Overview tab (client-actions-panel.tsx),
-// so nothing is hidden behind a trigger.
+// renders as a row at the HEAD of the Overview tab (client-actions-panel.tsx),
+// so nothing is hidden behind a trigger and nothing has to be scrolled to.
 //
 // What matters, and what this locks down:
 //   · the header no longer carries an Actions button
+//   · the block leads the tab — above "Upcoming sessions", not below everything
 //   · all six actions are reachable, and their modals still open
 //   · Delete is last, separated, and still confirms before deleting
 //   · a read-only co-manager gets ONLY "View as client" — sharing, editing
@@ -56,6 +57,25 @@ test.describe('client actions live on the page, not in a dropdown', () => {
     // Edit still points at the edit screen.
     await expect(panel.getByRole('link', { name: 'Edit details' }))
       .toHaveAttribute('href', `/clients/${SEED.assignedClientId}/edit`)
+  })
+
+  // Karl: "move client actions to the top of the column please." They were at
+  // the foot, which meant scrolling past everything to reach them.
+  test('the actions lead the column, above the first content card', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await openSeededClient(page)
+
+    const panel = page.getByRole('region', { name: 'Client actions' }).first()
+    const heading = page.getByRole('heading', { name: 'Upcoming sessions' })
+    const panelTop = (await panel.boundingBox())!.y
+    const headingTop = (await heading.boundingBox())!.y
+    expect(panelTop).toBeLessThan(headingTop)
+
+    // …and it doesn't own the screen doing it. Two-up rather than six stacked
+    // rows: the whole block (grid + the separate Delete row) stays well under
+    // half a 844px-tall phone.
+    const deleteBox = (await page.getByRole('button', { name: 'Delete client' }).boundingBox())!
+    expect(deleteBox.y + deleteBox.height - panelTop).toBeLessThan(300)
   })
 
   test('the actions belong to Overview only', async ({ page }) => {

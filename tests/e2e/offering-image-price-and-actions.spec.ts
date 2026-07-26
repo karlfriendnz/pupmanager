@@ -288,7 +288,7 @@ test.describe('offering details page — actions on the page', () => {
     }
   })
 
-  test('no Discounts tab, and Current/Past sit at the right', async ({ page }) => {
+  test('no Discounts tab, and the Current/Past rule runs into a real data table', async ({ page }) => {
     const prisma = await makePrisma()
     const pkg = await makeOffering(prisma)
     // The Current/Past tabs only render once somebody is on the offering.
@@ -307,17 +307,44 @@ test.describe('offering details page — actions on the page', () => {
       const current = page.getByRole('button', { name: /^Current/ })
       await expect(current).toBeVisible()
 
-      // Karl marked the empty space to their right — so they belong in it: the
-      // pair sits flush with the right edge of its row, not the left.
+      // Karl marked the empty space beside the Current/Past pill and asked for
+      // a data table. Pinning the pill to the right just moved the dead band to
+      // the other end, so the pill is gone: flat text tabs sitting on ONE
+      // hairline that runs the full width of the row, straight into the table.
+      //
+      // So: the tab strip spans its row (no short island), and it carries a
+      // bottom border to do it.
       const geom = await page.evaluate(() => {
         const btn = Array.from(document.querySelectorAll('button'))
           .find(b => b.textContent?.trim().startsWith('Current'))!
-        const group = btn.parentElement!.getBoundingClientRect()
-        const row = btn.parentElement!.parentElement!.getBoundingClientRect()
-        return { group: { left: group.left, right: group.right }, row: { left: row.left, right: row.right } }
+        const strip = btn.parentElement!
+        const table = document.querySelector('table')!.parentElement!
+        const r = strip.getBoundingClientRect()
+        const t = table.getBoundingClientRect()
+        return {
+          stripLeft: r.left, stripRight: r.right,
+          tableLeft: t.left, tableRight: t.right,
+          borderBottom: getComputedStyle(strip).borderBottomWidth,
+          bg: getComputedStyle(strip).backgroundColor,
+        }
       })
-      expect(Math.abs(geom.group.right - geom.row.right)).toBeLessThan(2)
-      expect(geom.group.left).toBeGreaterThan(geom.row.left + 20)
+      // The rule under the tabs is exactly as wide as the table it introduces —
+      // no short island with a band of nothing beside it.
+      expect(Math.abs(geom.stripLeft - geom.tableLeft)).toBeLessThan(2)
+      expect(Math.abs(geom.stripRight - geom.tableRight)).toBeLessThan(2)
+      expect(parseFloat(geom.borderBottom)).toBeGreaterThan(0)
+      // …and no pill track behind it.
+      expect(geom.bg).toMatch(/rgba\(0, 0, 0, 0\)|transparent/)
+
+      // A real data table underneath — every fact in its own column, under a
+      // header band, not a list of stacked lines.
+      const headers = await page.locator('table thead th').allInnerTexts()
+      expect(headers.map(h => h.trim().toLowerCase())).toEqual(
+        expect.arrayContaining(['client', 'dog', 'status', 'sessions', 'started']),
+      )
+      const headerBg = await page.locator('table thead tr').first()
+        .evaluate(el => getComputedStyle(el).backgroundColor)
+      expect(headerBg).not.toMatch(/rgba\(0, 0, 0, 0\)/)
     } finally {
       await prisma.clientPackage.deleteMany({ where: { id: assignment.id } })
       await prisma.package.deleteMany({ where: { id: pkg.id } })
