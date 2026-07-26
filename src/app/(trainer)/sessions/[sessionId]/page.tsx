@@ -1,25 +1,26 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import Link from 'next/link'
-import { Calendar, Clock, MapPin, Video, ExternalLink, ChevronDown, History, Paperclip, PawPrint } from 'lucide-react'
-import { Card, CardBody } from '@/components/ui/card'
+import { Calendar, ChevronDown, MapPin, Video, User, Clock, History, Paperclip, PawPrint, Eye, ListChecks } from 'lucide-react'
 import { formatSessionTitle } from '@/lib/utils'
+import { formatMoney } from '@/lib/money'
 import { SessionFormReport } from '@/components/session-form-report'
 import { hasAddon } from '@/lib/billing'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
-import { MarkCompleteButton } from '@/components/mark-complete-button'
-import { MarkInvoicedButton } from '@/components/mark-invoiced-button'
 import { PaySessionButton } from './pay-session-button'
 import { SessionAttachments } from '@/components/session-attachments'
 import { SessionTimeTracking } from '@/components/session-time-tracking'
 import { OpenSessionLink } from './open-session-link'
-import { SessionMoreMenu } from './session-more-menu'
+import { CompleteCell, InvoicedCell, DeleteSessionRow } from './session-actions'
+import { DisclosureRow, FactRow, LinkRow } from './session-rows'
+import { FlatBlock } from '@/components/shared/flat-list'
 import { PageHeader } from '@/components/shared/page-header'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Session notes' }
+
+const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 export default async function SessionPage({
   params,
@@ -85,9 +86,8 @@ export default async function SessionPage({
   // that was 1 session out of 233. So we open a normal sale instead, seeded
   // with what this session is worth.
   //
-  // Neither is the session's `invoicedAt` flag (the red/green $ disc), which is
-  // a manual "I billed this elsewhere" marker with no amount and no link to any
-  // Invoice.
+  // Neither is the session's `invoicedAt` flag (the manual "I billed this
+  // elsewhere" marker), which has no amount and no link to any Invoice.
   const unpaidInvoice = trainingSession.clientPackageId
     ? await prisma.invoice.findFirst({
         where: {
@@ -133,15 +133,20 @@ export default async function SessionPage({
   const posOn = await hasAddon(trainerId, 'pos')
   const canTakePayment = posOn && trainingSession.client != null
 
+  // The trainer's brand colour + payout currency in one read. The accent tints
+  // ONLY the row icons, via color-mix toward slate-900 (AGENTS.md) — a pastel
+  // brand stays legible and nothing else on the page is painted.
+  const profile = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { payoutCurrency: true, emailAccentColor: true },
+  })
+  const accent = profile?.emailAccentColor && HEX.test(profile.emailAccentColor)
+    ? profile.emailAccentColor
+    : null
+
   // An existing invoice already carries the currency it was raised in; a fresh
-  // sale uses the trainer's payout currency (only fetched when we need it).
-  const currency = unpaidInvoice?.currency
-    ?? (canTakePayment
-      ? (await prisma.trainerProfile.findUnique({
-          where: { id: trainerId },
-          select: { payoutCurrency: true },
-        }))?.payoutCurrency ?? 'nzd'
-      : 'nzd')
+  // sale uses the trainer's payout currency.
+  const currency = unpaidInvoice?.currency ?? profile?.payoutCurrency ?? 'nzd'
 
   // Team members for the "who logged time" picker, plus the session's logged
   // time entries shaped for the client component.
@@ -167,15 +172,19 @@ export default async function SessionPage({
   const clientId = trainingSession.clientId ?? trainingSession.dog?.primaryFor[0]?.id
   const d = trainingSession.scheduledAt
 
-  // Where this session sits in its lifecycle — surfaced as a coloured chip in
-  // the identity rail so the trainer can see status at a glance.
-  const STATUS_META: Record<string, { label: string; cls: string; dot: string }> = {
-    UPCOMING:  { label: 'Upcoming',  cls: 'bg-slate-100 text-slate-600',          dot: 'bg-slate-400' },
-    COMPLETED: { label: 'Completed', cls: 'bg-accent-soft text-accent-strong',    dot: 'bg-accent' },
-    COMMENTED: { label: 'Commented', cls: 'bg-amber-50 text-amber-700',           dot: 'bg-amber-500' },
-    INVOICED:  { label: 'Invoiced',  cls: 'bg-emerald-50 text-emerald-700',       dot: 'bg-emerald-500' },
+  // Where this session sits in its lifecycle. A word and a dot in the identity
+  // row — not a tinted pill, and never repeated further down the page.
+  const STATUS_META: Record<string, { label: string; dot: string }> = {
+    UPCOMING:  { label: 'Upcoming',  dot: 'bg-slate-300' },
+    COMPLETED: { label: 'Completed', dot: 'bg-slate-500' },
+    COMMENTED: { label: 'Commented', dot: 'bg-amber-500' },
+    INVOICED:  { label: 'Invoiced',  dot: 'bg-emerald-500' },
   }
   const status = STATUS_META[trainingSession.status] ?? STATUS_META.UPCOMING
+
+  // Homework already attached — a count for the row, so an empty section costs
+  // one line instead of two full-width buttons.
+  const taskCount = await prisma.trainingTask.count({ where: { sessionId: trainingSession.id } })
 
   // Pull the last 5 past sessions for the same client so the trainer can
   // glance at prior notes without clicking away. Ordered most-recent first.
@@ -205,19 +214,33 @@ export default async function SessionPage({
       })
     : []
 
+  // Sublines for the collapsed sections. Each says what's inside, so the
+  // trainer never has to open a section to find out it's empty.
+  const totalMinutes = timeEntries.reduce((s, e) => s + e.minutes, 0)
+  const billableCents = timeEntries.reduce((s, e) => s + (e.amountCents ?? 0), 0)
+  const timeSub = timeEntries.length === 0
+    ? 'Nothing logged'
+    : [
+        `${Number((totalMinutes / 60).toFixed(2))} h`,
+        billableCents > 0 ? `${formatMoney(billableCents, currency)} billable` : null,
+      ].filter(Boolean).join(' · ')
+
+  const photoCount = trainingSession.attachments.filter(a => a.kind === 'IMAGE').length
+  const videoCount = trainingSession.attachments.length - photoCount
+  const attachmentSub = trainingSession.attachments.length === 0
+    ? 'No photos or videos'
+    : [
+        photoCount > 0 ? `${photoCount} photo${photoCount === 1 ? '' : 's'}` : null,
+        videoCount > 0 ? `${videoCount} video${videoCount === 1 ? '' : 's'}` : null,
+      ].filter(Boolean).join(' · ')
+
   return (
     <>
       <PageHeader
         title="Session notes"
         back={clientId ? { href: `/clients/${clientId}?tab=sessions`, label: 'Back to client' } : undefined}
-        actions={
-          <SessionMoreMenu
-            sessionId={trainingSession.id}
-            redirectTo={clientId ? `/clients/${clientId}?tab=sessions` : '/schedule'}
-          />
-        }
       />
-      <div className="p-4 md:p-8 w-full max-w-3xl lg:max-w-6xl xl:max-w-7xl mx-auto">
+      <div className="p-4 md:p-8 w-full max-w-3xl lg:max-w-5xl mx-auto">
 
       {trainingSession.client?.isSample && (
         <div className="mb-4">
@@ -225,230 +248,140 @@ export default async function SessionPage({
         </div>
       )}
 
-      {/* Desktop (lg+): two-column layout — left rail with the session's
-          metadata + primary actions, right column with the form report,
-          attachments, and library tasks. The rail is sticky so trainers
-          can scroll through long form responses without losing context.
-          Mobile/tablet keep the original single-column flow. */}
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] xl:gap-8 xl:items-start">
-        <aside className="flex flex-col gap-4 xl:sticky xl:top-4">
-          {/* Identity rail — a dog-forward hero (photo + name + lifecycle
-              status), then the session's key facts and the primary actions.
-              Sticky so it stays in view while the trainer scrolls long notes. */}
-          <Card className="overflow-hidden">
-            <div className="bg-accent-tint px-5 pt-6 pb-5 flex flex-col items-center text-center">
+      {/* One column on a phone. From lg the container splits: the session's
+          facts + actions become a sticky rail beside the write-up. Same blocks
+          in both — only the CONTAINER reflows (AGENTS.md). */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
+
+        {/* WHO / WHEN / WHERE / WHAT NOW — one bordered block, hairline rows. */}
+        <aside className="lg:sticky lg:top-4">
+          <FlatBlock>
+            {/* Identity: avatar, name, one subline, status. Was a 340px tinted
+                hero with a photo, a heading, a pill and two more lines. */}
+            <div className="flex items-center gap-3 px-4 py-3">
               {trainingSession.dog?.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={trainingSession.dog.photoUrl}
                   alt={trainingSession.dog.name}
-                  className="h-20 w-20 rounded-2xl object-cover ring-4 ring-white shadow-sm"
+                  className="h-11 w-11 flex-shrink-0 rounded-full object-cover"
                 />
               ) : (
-                <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent-soft text-accent-strong ring-4 ring-white shadow-sm">
-                  <PawPrint className="h-8 w-8" />
-                </div>
+                <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-slate-100">
+                  <PawPrint className="h-5 w-5 text-slate-500" strokeWidth={1.75} />
+                </span>
               )}
-              <h2 className="mt-3 text-xl font-bold text-slate-900 leading-tight">
-                {trainingSession.dog?.name ?? clientName ?? 'Session'}
-              </h2>
-              <span className={`inline-flex items-center gap-1.5 mt-2 text-[11px] font-semibold px-2.5 py-1 rounded-full ${status.cls}`}>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-semibold text-slate-900">
+                  {trainingSession.dog?.name ?? clientName ?? 'Session'}
+                </span>
+                <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                  {[clientName, formatSessionTitle(trainingSession.title)].filter(Boolean).join(' · ')}
+                </span>
+              </span>
+              <span className="flex flex-shrink-0 items-center gap-1.5 text-[13px] text-slate-500">
                 <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
                 {status.label}
               </span>
-              {trainingSession.dog && clientName && (
-                <p className="mt-2 text-sm font-medium text-slate-700">{clientName}</p>
-              )}
-              <p className="mt-0.5 text-xs text-slate-500">{formatSessionTitle(trainingSession.title)}</p>
             </div>
 
-            <CardBody className="py-4 flex flex-col gap-3 text-sm">
-              <div className="flex items-center gap-3">
-                <Calendar className="h-4 w-4 text-accent flex-shrink-0" />
-                <span className="text-slate-700">
-                  {d.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <Clock className="h-4 w-4 text-accent flex-shrink-0" />
-                <span className="text-slate-700">
-                  {d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })} · {trainingSession.durationMins} min
-                </span>
-              </div>
-              {trainingSession.sessionType === 'VIRTUAL' ? (
-                <div className="flex items-center gap-3">
-                  <Video className="h-4 w-4 text-accent flex-shrink-0" />
-                  {trainingSession.virtualLink ? (
-                    <a href={trainingSession.virtualLink} target="_blank" rel="noopener noreferrer" className="text-accent-strong hover:underline truncate">
-                      Virtual session
-                    </a>
-                  ) : (
-                    <span className="text-slate-700">Virtual session</span>
-                  )}
-                </div>
+            <FactRow
+              icon={Calendar}
+              accent={accent}
+              label={d.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              sub={`${d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })} · ${trainingSession.durationMins} min`}
+            />
+
+            {trainingSession.sessionType === 'VIRTUAL' ? (
+              trainingSession.virtualLink ? (
+                <LinkRow
+                  icon={Video}
+                  accent={accent}
+                  label="Virtual session"
+                  href={trainingSession.virtualLink}
+                  external
+                  trailingLabel="Join"
+                />
               ) : (
-                <div className="flex items-center gap-3">
-                  <MapPin className="h-4 w-4 text-accent flex-shrink-0" />
-                  <span className="text-slate-700">{trainingSession.location || 'In-person'}</span>
-                </div>
-              )}
+                <FactRow icon={Video} accent={accent} label="Virtual session" />
+              )
+            ) : (
+              <FactRow icon={MapPin} accent={accent} label={trainingSession.location || 'In-person'} />
+            )}
 
-              {/* Primary actions — complete + invoice as big tap targets. */}
-              <div className="flex items-stretch gap-2 pt-1">
-                <MarkCompleteButton
-                  sessionId={trainingSession.id}
-                  initialStatus={trainingSession.status}
-                  variant="stacked"
-                />
-                <MarkInvoicedButton
-                  sessionId={trainingSession.id}
-                  initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
-                  variant="stacked"
-                />
-                {canTakePayment && (
-                  <PaySessionButton
-                    currency={currency}
-                    prefill={{
-                      client: {
-                        id: trainingSession.client!.id,
-                        name: trainingSession.client!.user?.name ?? null,
-                        dogName: trainingSession.dog?.name ?? null,
-                        dogPhotoUrl: trainingSession.dog?.photoUrl ?? null,
-                      },
-                      lines: unpaidInvoice
-                        // Settling: seed with what they already owe. PATCH is
-                        // replace-all, so these must go back with any upsell or
-                        // they'd be wiped.
-                        ? unpaidInvoice.lines.map((l) => ({
-                            description: l.description,
-                            quantity: l.quantity,
-                            unitAmountCents: l.unitAmountCents,
-                            xeroAccountCode: l.xeroAccountCode,
-                          }))
-                        // Fresh: seed this session at its share of the package
-                        // price. Skipped when unpriced — the trainer just picks
-                        // items instead of starting from a $0 line.
-                        : perSessionCents > 0
-                          ? [{
-                              description: formatSessionTitle(trainingSession.title),
-                              quantity: 1,
-                              unitAmountCents: perSessionCents,
-                            }]
-                          : [],
-                      ...(unpaidInvoice
-                        ? { settle: { invoiceId: unpaidInvoice.id, payToken: unpaidInvoice.payToken } }
-                        : {}),
-                    }}
-                  />
-                )}
-              </div>
-
-              {clientId && (
-                <Link
-                  href={`/clients/${clientId}`}
-                  className="inline-flex items-center gap-1.5 text-sm text-accent-strong hover:underline font-medium pt-0.5"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" /> Client profile
-                </Link>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* Per-member billable time logged against this session. Lives in the
-              rail alongside the session's facts and actions. */}
-          <Card>
-            <CardBody className="py-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Clock className="h-4 w-4 text-accent" />
-                <h2 className="text-sm font-semibold text-slate-700">Time tracking</h2>
-              </div>
-              <SessionTimeTracking
+            {/* The three things a trainer does at the end of a session, as one
+                divided strip instead of three 130px tiles in three colours. */}
+            <div className={`grid ${canTakePayment ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-slate-200`}>
+              <CompleteCell
                 sessionId={trainingSession.id}
-                initialEntries={timeEntries}
-                members={timeMembers}
+                initialStatus={trainingSession.status}
+                accent={accent}
               />
-            </CardBody>
-          </Card>
-
-          {/* Previous notes accordion — collapsed by default. Each past session
-              is its own row; opening a row reveals the trainer's intro/closing
-              messages and a summary of form answers from that session. */}
-          {previousSessions.length > 0 && (
-            <Card className="overflow-hidden">
-          <details className="group">
-            <summary className="cursor-pointer list-none px-5 py-3 flex items-center gap-3 hover:bg-slate-50">
-              <History className="h-4 w-4 text-slate-400" />
-              <span className="text-sm font-semibold text-slate-700 flex-1">
-                Previous notes <span className="text-slate-400 font-normal">({previousSessions.length})</span>
-              </span>
-              <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="border-t border-slate-100 divide-y divide-slate-100">
-              {previousSessions.map(prev => (
-                <details key={prev.id} className="group/inner">
-                  <summary className="cursor-pointer list-none px-5 py-3 flex items-center gap-3 hover:bg-slate-50">
-                    <span className="text-xs text-slate-400 tabular-nums shrink-0 w-24">
-                      {prev.scheduledAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: '2-digit' })}
-                    </span>
-                    <span className="text-sm text-slate-700 flex-1 truncate">{prev.title}</span>
-                    <OpenSessionLink sessionId={prev.id} />
-                    <ChevronDown className="h-3.5 w-3.5 text-slate-300 transition-transform group-open/inner:rotate-180" />
-                  </summary>
-                  <div className="px-5 pb-4 text-sm text-slate-600 flex flex-col gap-3">
-                    {prev.formResponses.length === 0 ? (
-                      <p className="text-xs text-slate-400 italic">No notes recorded for this session.</p>
-                    ) : prev.formResponses.map((r, i) => {
-                      const answers = (r.answers ?? {}) as Record<string, string>
-                      const questions = Array.isArray(r.form.questions) ? r.form.questions as { id: string; label?: string; type?: string }[] : []
-                      return (
-                        <div key={i} className="flex flex-col gap-2">
-                          {r.introMessage && (
-                            <p className="text-sm text-slate-700 italic border-l-2 border-accent/40 pl-3">{r.introMessage}</p>
-                          )}
-                          {questions.map(q => {
-                            const v = answers[q.id]
-                            if (!v) return null
-                            return (
-                              <div key={q.id}>
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{q.label ?? 'Answer'}</p>
-                                <p className="text-sm text-slate-700 whitespace-pre-line">{String(v)}</p>
-                              </div>
-                            )
-                          })}
-                          {r.closingMessage && (
-                            <p className="text-sm text-slate-700 italic border-l-2 border-emerald-200 pl-3 mt-1">{r.closingMessage}</p>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </details>
-              ))}
+              <InvoicedCell
+                sessionId={trainingSession.id}
+                initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
+                accent={accent}
+              />
+              {canTakePayment && (
+                <PaySessionButton
+                  accent={accent}
+                  currency={currency}
+                  prefill={{
+                    client: {
+                      id: trainingSession.client!.id,
+                      name: trainingSession.client!.user?.name ?? null,
+                      dogName: trainingSession.dog?.name ?? null,
+                      dogPhotoUrl: trainingSession.dog?.photoUrl ?? null,
+                    },
+                    lines: unpaidInvoice
+                      // Settling: seed with what they already owe. PATCH is
+                      // replace-all, so these must go back with any upsell or
+                      // they'd be wiped.
+                      ? unpaidInvoice.lines.map((l) => ({
+                          description: l.description,
+                          quantity: l.quantity,
+                          unitAmountCents: l.unitAmountCents,
+                          xeroAccountCode: l.xeroAccountCode,
+                        }))
+                      // Fresh: seed this session at its share of the package
+                      // price. Skipped when unpriced — the trainer just picks
+                      // items instead of starting from a $0 line.
+                      : perSessionCents > 0
+                        ? [{
+                            description: formatSessionTitle(trainingSession.title),
+                            quantity: 1,
+                            unitAmountCents: perSessionCents,
+                          }]
+                        : [],
+                    ...(unpaidInvoice
+                      ? { settle: { invoiceId: unpaidInvoice.id, payToken: unpaidInvoice.payToken } }
+                      : {}),
+                  }}
+                />
+              )}
             </div>
-              </details>
-            </Card>
-          )}
+          </FlatBlock>
         </aside>
 
-        <div className="flex flex-col gap-6 mt-6 xl:mt-0 min-w-0">
-          {/* The form section overrides Card's padding so the questions/inputs
-              stretch the full width of the card. The header line above sets the
-              title; SessionFormReport itself supplies the dropdown or filler. */}
+        <div className="flex min-w-0 flex-col gap-4">
+          {/* The write-up itself — the one thing on this page that earns a
+              block of its own. */}
           {notesOn && (
-            <Card className="overflow-hidden">
+            <FlatBlock>
               <SessionFormReport sessionId={trainingSession.id} layout="inline" autoPromptIfEmpty />
-            </Card>
+            </FlatBlock>
           )}
 
-          {/* Trainer-uploaded media. Sits between the form and the
-              library-tasks card so anything the trainer captures live in
-              a session is right next to the rest of their notes. */}
-          <Card>
-            <CardBody className="py-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Paperclip className="h-4 w-4 text-accent" />
-                <h2 className="text-sm font-semibold text-slate-700">Attachments</h2>
-              </div>
+          {/* Everything else, as rows that open. A section with nothing in it
+              costs one line; a section with content opens on arrival. */}
+          <FlatBlock>
+            <DisclosureRow
+              icon={Paperclip}
+              accent={accent}
+              label="Photos & video"
+              sub={attachmentSub}
+              defaultOpen={trainingSession.attachments.length > 0}
+            >
               <SessionAttachments
                 sessionId={trainingSession.id}
                 initialAttachments={trainingSession.attachments.map(a => ({
@@ -462,14 +395,117 @@ export default async function SessionPage({
                   createdAt: a.createdAt.toISOString(),
                 }))}
               />
-            </CardBody>
-          </Card>
+            </DisclosureRow>
 
-          <SessionLibraryTasks
-            sessionId={trainingSession.id}
-            clientId={clientId ?? null}
-            sessionDate={d.toISOString().split('T')[0]}
-          />
+            <DisclosureRow
+              icon={ListChecks}
+              accent={accent}
+              label="Homework"
+              sub={taskCount === 0 ? 'None set' : `${taskCount} task${taskCount === 1 ? '' : 's'}`}
+              defaultOpen={taskCount > 0}
+            >
+              <SessionLibraryTasks
+                sessionId={trainingSession.id}
+                clientId={clientId ?? null}
+                sessionDate={d.toISOString().split('T')[0]}
+              />
+            </DisclosureRow>
+
+            <DisclosureRow
+              icon={Clock}
+              accent={accent}
+              label="Time tracking"
+              sub={timeSub}
+              defaultOpen={timeEntries.length > 0}
+            >
+              <SessionTimeTracking
+                sessionId={trainingSession.id}
+                initialEntries={timeEntries}
+                members={timeMembers}
+              />
+            </DisclosureRow>
+
+            {previousSessions.length > 0 && (
+              <DisclosureRow
+                icon={History}
+                accent={accent}
+                label="Previous notes"
+                sub={`${previousSessions.length} earlier session${previousSessions.length === 1 ? '' : 's'}`}
+              >
+                <div className="-mx-4 -my-4 divide-y divide-slate-200">
+                  {previousSessions.map(prev => (
+                    <details key={prev.id} className="group/inner">
+                      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 active:bg-slate-50">
+                        <span className="w-20 flex-shrink-0 text-[13px] tabular-nums text-slate-400">
+                          {prev.scheduledAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: '2-digit' })}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{prev.title}</span>
+                        <OpenSessionLink sessionId={prev.id} />
+                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-open/inner:rotate-180" />
+                      </summary>
+                      <div className="flex flex-col gap-3 px-4 pb-4 text-sm text-slate-600">
+                        {prev.formResponses.length === 0 ? (
+                          <p className="text-[13px] text-slate-400">No notes recorded for this session.</p>
+                        ) : prev.formResponses.map((r, i) => {
+                          const answers = (r.answers ?? {}) as Record<string, string>
+                          const questions = Array.isArray(r.form.questions) ? r.form.questions as { id: string; label?: string; type?: string }[] : []
+                          return (
+                            <div key={i} className="flex flex-col gap-2">
+                              {r.introMessage && (
+                                <p className="border-l-2 border-slate-200 pl-3 text-sm italic text-slate-700">{r.introMessage}</p>
+                              )}
+                              {questions.map(q => {
+                                const v = answers[q.id]
+                                if (!v) return null
+                                return (
+                                  <div key={q.id}>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{q.label ?? 'Answer'}</p>
+                                    <p className="whitespace-pre-line text-sm text-slate-700">{String(v)}</p>
+                                  </div>
+                                )
+                              })}
+                              {r.closingMessage && (
+                                <p className="mt-1 border-l-2 border-slate-200 pl-3 text-sm italic text-slate-700">{r.closingMessage}</p>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </DisclosureRow>
+            )}
+
+            {/* Was hidden behind a "…" menu in the header: a whole portal,
+                overlay and outside-click handler to conceal two links. */}
+            <LinkRow
+              icon={Eye}
+              accent={accent}
+              label="Preview report"
+              sub="See what the client will read"
+              href={`/sessions/${trainingSession.id}/preview`}
+            />
+
+            {clientId && (
+              <LinkRow
+                icon={User}
+                accent={accent}
+                label="Client profile"
+                sub={clientName ?? undefined}
+                href={`/clients/${clientId}`}
+              />
+            )}
+          </FlatBlock>
+
+          {/* Destructive, so it sits on its own at the very bottom — quiet red
+              text, and it asks before it does anything. */}
+          <FlatBlock>
+            <DeleteSessionRow
+              sessionId={trainingSession.id}
+              redirectTo={clientId ? `/clients/${clientId}?tab=sessions` : '/schedule'}
+            />
+          </FlatBlock>
         </div>
       </div>
       </div>

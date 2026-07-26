@@ -396,7 +396,7 @@ export function PackageForm({
     // When Xero is connected with a curated shortlist, the income account is
     // required so every package/class posts to a real Xero account.
     if (xeroActive && !xeroAccountCode) {
-      setError('Choose a Xero income account for this package.')
+      setError('Choose a Xero income account for this consult.')
       return
     }
     // Slot times start blank so nobody publishes a guessed hour by accident —
@@ -580,7 +580,7 @@ export function PackageForm({
           bookings, so it presets isGroup + allowDropIn. */}
       <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           {([
-            { key: 'onetoone', icon: User, label: '1-on-1 session', desc: 'One-on-one sessions you book with a single client — grooming, a training session, a consult.' },
+            { key: 'onetoone', icon: User, label: '1:1 consult', desc: 'One-on-one sessions you book with a single client — grooming, a training session, a behaviour consult.' },
             { key: 'group', icon: Users, label: 'Group class', desc: 'A cohort shares one schedule and roster and signs up for the whole course.' },
             { key: 'dropin', icon: Users, label: 'Casual class', desc: 'People join one session at a time and pay per session — great for casual regulars.' },
             { key: 'oneoff', icon: CalendarDays, label: 'One-off event', desc: 'A single event on one date — a workshop, seminar or meet-up people sign up to.' },
@@ -619,7 +619,7 @@ export function PackageForm({
             ? 'Add each session people can drop into. Give every one its own day, time, capacity, price and location — duplicate or reorder them as needed.'
             : kind === 'group'
             ? 'Set when the class runs — the first session’s date and time, how many sessions, and how many weeks apart — plus capacity and location.'
-            : 'Set how long each session lasts and how many are in the package.'
+            : 'Set how long each session lasts and how many are in the consult.'
         }
       >
 
@@ -972,7 +972,7 @@ export function PackageForm({
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form</label>
         <p className="text-[11px] text-slate-400 mb-1.5">
-          Auto-attached to each new session in this package. Trainer can still swap it on the session.
+          Auto-attached to each new session in this consult. Trainer can still swap it on the session.
         </p>
         <select
           value={defaultSessionFormId ?? ''}
@@ -994,7 +994,7 @@ export function PackageForm({
         <span className="flex-1 min-w-0">
           <span className="block text-sm font-medium text-slate-700">Send a follow-up reminder for session notes</span>
           <span className="block text-[11px] text-slate-400 mt-0.5">
-            Sends a push near the end of each session in this package nudging you to write notes. Turn off for drop-in classes or anything that doesn&apos;t need a follow-up.
+            Sends a push near the end of each session in this consult nudging you to write notes. Turn off for drop-in classes or anything that doesn&apos;t need a follow-up.
           </span>
         </span>
       </label>
@@ -1027,7 +1027,7 @@ export function PackageForm({
         <span className="flex-1 min-w-0">
           <span className="block text-sm font-medium text-slate-700">Let clients self-book this from their availability tab</span>
           <span className="block text-[11px] text-slate-400 mt-0.5">
-            Clients pick a start time from your real openings; the rest auto-place on the package cadence.
+            Clients pick a start time from your real openings; the rest auto-place on the consult cadence.
           </span>
         </span>
       </label>
@@ -1051,7 +1051,7 @@ export function PackageForm({
 
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Schedule colour</label>
-        <p className="text-[11px] text-slate-400 mb-1.5">Sessions assigned to this package will use this colour on the calendar. Leave blank to keep the default status colour.</p>
+        <p className="text-[11px] text-slate-400 mb-1.5">Sessions assigned to this consult will use this colour on the calendar. Leave blank to keep the default status colour.</p>
         <div className="flex flex-wrap gap-1.5">
           <button
             type="button"

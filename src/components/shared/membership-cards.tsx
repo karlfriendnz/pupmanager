@@ -32,7 +32,7 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
   }
 
   if (memberships.length === 0) {
-    return <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">No memberships available right now.</div>
+    return <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">No packages available right now.</div>
   }
 
   return (
@@ -80,7 +80,7 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
                   </ul>
                 )}
                 <button onClick={() => buy(m.id)} disabled={busy === m.id} className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: btn.background, color: btn.color }}>
-                  {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {m.buttonText?.trim() || 'Get this membership'}
+                  {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {m.buttonText?.trim() || 'Get this package'}
                 </button>
               </div>
             </div>

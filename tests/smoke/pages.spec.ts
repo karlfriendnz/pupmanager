@@ -24,6 +24,9 @@ const TRAINER_ROUTES = [
   '/clients/invite',
   '/schedule',
   '/packages',
+  '/library',
+  // The Library moved to /library; /templates now only redirects there (and
+  // still hosts the unrelated training-template screens below it).
   '/templates',
   '/templates/new',
   '/products',

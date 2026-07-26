@@ -22,7 +22,7 @@ export function AddItem({ themeId }: { themeId: string }) {
         })
         if (!res.ok) return 'Could not create that item.'
         const created: { id: string } = await res.json()
-        router.push(`/templates/item/${created.id}`)
+        router.push(`/library/item/${created.id}`)
         router.refresh()
         return null
       }}

@@ -109,7 +109,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           below already states, and the name reads better on its own. */}
       <PageHeader
         title={pkg.name}
-        back={{ href: '/packages', label: 'Packages' }}
+        back={{ href: '/packages', label: '1:1 Consults' }}
         actions={
           <Link href={`/packages/${pkg.id}/edit`}>
             <Button variant="secondary">

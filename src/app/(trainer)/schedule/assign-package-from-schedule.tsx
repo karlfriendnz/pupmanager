@@ -80,7 +80,7 @@ export function AssignPackageFromScheduleButton({
   const title = clients.length === 0
     ? 'No clients yet'
     : packages.length === 0
-    ? 'Create a package first at /packages'
+    ? 'Create a 1:1 consult first at /packages'
     : undefined
 
   return (
@@ -93,7 +93,7 @@ export function AssignPackageFromScheduleButton({
         title={title}
       >
         <PackageIcon className="h-4 w-4" />
-        Assign package
+        Assign consult
       </Button>
       {open && (
         <AssignPackageFromScheduleModal
@@ -168,7 +168,7 @@ function EmptyAssignModal({
 }) {
   const missing: string[] = []
   if (!hasClients) missing.push('a client')
-  if (!hasPackages) missing.push('a package')
+  if (!hasPackages) missing.push('a 1:1 consult')
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
@@ -176,7 +176,7 @@ function EmptyAssignModal({
         <PackageIcon className="h-8 w-8 mx-auto text-slate-300 mb-3" />
         <h2 className="font-semibold text-slate-900">Add {missing.join(' and ')} first</h2>
         <p className="text-sm text-slate-500 mt-1.5">
-          You need {missing.join(' and ')} before you can assign a package.
+          You need {missing.join(' and ')} before you can assign a consult.
         </p>
         <Button variant="ghost" onClick={onClose} className="mt-4">Close</Button>
       </div>
@@ -413,7 +413,7 @@ function AssignPackageFromScheduleModalInner({
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      setError(body?.error?.toString() ?? 'Failed to assign package')
+      setError(body?.error?.toString() ?? 'Failed to assign consult')
       setSubmitting(false)
       return
     }
@@ -426,7 +426,7 @@ function AssignPackageFromScheduleModalInner({
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
       <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900">Assign package</h2>
+          <h2 className="font-semibold text-slate-900">Assign consult</h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
@@ -491,7 +491,7 @@ function AssignPackageFromScheduleModalInner({
                 ))}
               </select>
               <p className="text-[11px] text-slate-400 mt-1">
-                Every session in this package is booked onto this trainer&apos;s calendar.
+                Every session in this consult is booked onto this trainer&apos;s calendar.
               </p>
             </div>
           )}
@@ -584,7 +584,7 @@ function AssignPackageFromScheduleModalInner({
               <p className="text-[11px] text-slate-400 mt-1">
                 {noEnd
                   ? `Forever ongoing — first ${EXTEND_BUFFER_WEEKS} weeks created now; the schedule keeps ${EXTEND_BUFFER_WEEKS} weeks of upcoming sessions topped up automatically.`
-                  : `Ongoing package — sessions repeat every ${Math.max(1, pkg.weeksBetween)} week${Math.max(1, pkg.weeksBetween) > 1 ? 's' : ''} until this date.`}
+                  : `Ongoing consult — sessions repeat every ${Math.max(1, pkg.weeksBetween)} week${Math.max(1, pkg.weeksBetween) > 1 ? 's' : ''} until this date.`}
               </p>
             </div>
           )}

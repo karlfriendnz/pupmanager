@@ -56,15 +56,15 @@ test.describe('my-availability booking wizard — client happy path', () => {
 
     await expect(page.getByRole('heading', { name: 'What would you like to book?' })).toBeVisible({ timeout: 15_000 })
     // No Memberships link in the client nav any more — it lives here now.
-    await expect(page.getByRole('link', { name: 'Memberships' })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'Packages' })).toHaveCount(0)
 
-    await page.getByRole('button', { name: /Memberships/ }).click()
+    await page.getByRole('button', { name: /Packages/ }).click()
     // The card renders the trainer's styling, price and included items; buying
     // hands off to Stripe, so we stop at the button.
     await expect(page.getByRole('heading', { name: SEED.membershipName })).toBeVisible()
     await expect(page.getByText('$120')).toBeVisible()
     await expect(page.getByText('2× Self-Book Session')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Get this membership' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Get this package' })).toBeVisible()
 
     // Back out to the type menu.
     await page.getByRole('button', { name: 'All offerings' }).click()

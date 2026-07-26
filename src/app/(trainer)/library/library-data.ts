@@ -3,13 +3,19 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 
-// Shared server helpers for the Library screens (/templates, /templates/type,
-// /templates/theme, /templates/item).
+// Shared server helpers for the Library screens (/library, /library/type,
+// /library/theme, /library/item).
 //
-// There is deliberately NO layout.tsx here: /templates/[templateId] and
-// /templates/new belong to the separate "training template" feature and must
-// not inherit the Library's tree shell. Each Library page composes the shell
-// itself and pulls the tree through these helpers instead.
+// The Library used to live at /templates, sharing that segment with the
+// unrelated "training template" feature (/templates/[templateId], /templates/new)
+// — which is why its sub-paths had to be literal segments that out-rank a
+// dynamic sibling. It owns /library outright now, so that constraint is gone.
+//
+// Still no layout.tsx, for a plainer reason: PageHeader has to render as a
+// SIBLING of the page's content wrapper (see its layout contract), and a layout
+// can only wrap `children` as one blob. Putting the shell in a layout would push
+// each page's header inside the tree's grid column. So every page composes
+// LibraryShell itself and pulls the tree through these helpers.
 
 export interface TreeItem {
   id: string
@@ -64,9 +70,4 @@ export async function getLibraryTree(trainerId: string): Promise<TreeType[]> {
       items: th.tasks.map(tk => ({ id: tk.id, title: tk.title })),
     })),
   }))
-}
-
-/** Total item count across the tree — used for the empty/summary states. */
-export function countItems(tree: TreeType[]): number {
-  return tree.reduce((n, t) => n + t.themes.reduce((m, th) => m + th.items.length, 0), 0)
 }

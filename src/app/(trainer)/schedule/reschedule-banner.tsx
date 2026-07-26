@@ -107,7 +107,7 @@ export function RescheduleBanner() {
                   </th>
                   <th className="px-2 py-2">Client</th>
                   <th className="px-2 py-2">Dog</th>
-                  <th className="px-2 py-2">Package / class</th>
+                  <th className="px-2 py-2">Consult / class</th>
                   <th className="px-2 py-2 text-right">Sessions</th>
                 </tr>
               </thead>

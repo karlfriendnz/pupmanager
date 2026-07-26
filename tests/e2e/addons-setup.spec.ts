@@ -34,11 +34,11 @@ async function loginOwner(page: Page) {
 const ADDON_PAGES: { id: string; path: string; heading: RegExp }[] = [
   { id: 'events', path: '/events', heading: /Events/ },
   { id: 'puppyschool', path: '/doggy-daycare', heading: /Doggy Daycare/i },
-  { id: 'memberships', path: '/memberships', heading: /Memberships/ },
+  { id: 'memberships', path: '/memberships', heading: /Packages/ },
   { id: 'timesheets', path: '/timesheets', heading: /Timesheets/i },
   // Paid add-ons need a live subscription to switch on, so their pages can't be
   // reached from a trial account — they're covered by the refusal test instead.
-  { id: 'library', path: '/templates', heading: /Librar|Template/i },
+  { id: 'library', path: '/library', heading: /Librar/i },
   { id: 'classes', path: '/classes', heading: /Class/i },
   { id: 'dropins', path: '/casual-classes', heading: /Casual/i },
 ]

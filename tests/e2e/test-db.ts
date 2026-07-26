@@ -69,6 +69,27 @@ export const SEED = {
     paidInvoiceId: 'e2epaidinvoice0000000000',
     // A Business B invoice — the cross-tenant guard target (A must 404 on it).
     businessBInvoiceId: 'e2ebinvoice0000000000000x',
+    // Layout fixture for finances-list-layout.spec.ts: a long title (must
+    // truncate, never shove the right-hand columns), a four-figure amount (a
+    // wider money string than its neighbours) and a Xero id, so the list holds
+    // BOTH synced and unsynced rows and the reserved icon slot can be proven.
+    longTitleInvoiceId: 'e2elongtitleinv000000000',
+    longTitleInvoiceXeroId: 'E2E-XERO-LONGTITLE',
+    longTitleInvoiceDescription: 'Six-week reactive rehabilitation programme with in-home follow-up visits',
+  },
+  // Two settled card payments on Business A so the Finances → Transactions list
+  // has real rows. Both carry a stripeFeeAmount, which is what the (removed)
+  // "Card fee … Net …" list line used to restate — the figures still exist and
+  // still render in the transaction detail.
+  payments: {
+    plainId: 'e2epayment0000000000000x',
+    plainDescription: 'E2E Puppy Consult',
+    plainAmount: 9000,
+    plainFee: 291,
+    refundedId: 'e2epaymentref00000000000',
+    refundedDescription: 'E2E Group Class Block',
+    refundedAmount: 24000,
+    refundedFee: 726,
   },
   // A homework task on Business A's assignedClient, dated at seed time so it
   // lands in the client home's current-week "This week" list. The homework-log

@@ -87,9 +87,9 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
       <PageHeader
         title={task.title}
         subtitle={`${task.theme.type.name} · ${task.theme.name}`}
-        back={{ href: `/templates/theme/${task.theme.id}`, label: task.theme.name }}
+        back={{ href: `/library/theme/${task.theme.id}`, label: task.theme.name }}
       />
-      <LibraryShell tree={tree} activeItemId={task.id}>
+      <LibraryShell tree={tree}>
         <ItemEditor
           item={{
             id: task.id,
@@ -114,7 +114,7 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
         />
         <ItemDangerZone
           item={{ id: task.id, title: task.title }}
-          themeHref={`/templates/theme/${task.theme.id}`}
+          themeHref={`/library/theme/${task.theme.id}`}
         />
       </LibraryShell>
     </>

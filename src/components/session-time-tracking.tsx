@@ -191,10 +191,8 @@ export function SessionTimeTracking({
     <div className="flex flex-col gap-3">
       {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
 
-      {entries.length === 0 && !adding && (
-        <p className="text-sm text-slate-400">No time logged yet.</p>
-      )}
-
+      {/* No "nothing logged yet" line — the section's own row already says so
+          (AGENTS.md: an empty section costs one row, not a card). */}
       {entries.length > 0 && (
         <div className="rounded-xl border border-slate-100 divide-y divide-slate-100">
           {entries.map(e => editingId === e.id ? (
@@ -203,7 +201,7 @@ export function SessionTimeTracking({
             </div>
           ) : (
             <div key={e.id} className="flex items-center gap-3 px-3 py-2.5">
-              <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-700 text-xs font-bold">
+              <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
                 {e.memberName.slice(0, 1).toUpperCase()}
               </span>
               <div className="min-w-0 flex-1">
@@ -233,9 +231,9 @@ export function SessionTimeTracking({
         <button
           type="button"
           onClick={() => { setAddDraft(blankDraft(members)); setAdding(true) }}
-          className="inline-flex items-center gap-1.5 self-start text-sm font-medium text-teal-700 hover:text-teal-800"
+          className="inline-flex items-center gap-1.5 self-start rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50"
         >
-          <Plus className="h-4 w-4" /> Log time
+          <Plus className="h-4 w-4 text-slate-700" strokeWidth={1.75} /> Log time
         </button>
       )}
 

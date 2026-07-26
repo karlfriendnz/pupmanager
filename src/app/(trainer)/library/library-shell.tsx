@@ -11,21 +11,18 @@ import type { TreeType } from './library-data'
  *   • ≥ md — a sticky left column holding the tree, beside the detail pane.
  *     The column has no overflow of its own, so it grows with its content and
  *     only the PAGE scrolls. Never two scrollbars.
- *   • < md — no rail at all. The tree is the index page (/templates); a detail
- *     screen is the whole width with Back in the header, which is how every
- *     other phone screen in the app behaves.
+ *   • < md — no rail at all. The whole width is the screen you opened, with
+ *     Back in the header, and you move around by drilling in from the index
+ *     grid — which is how every other phone screen in the app behaves.
+ *
+ * Which row of the tree is highlighted comes from the URL, so pages pass
+ * nothing but the tree itself.
  */
 export function LibraryShell({
   tree,
-  activeTypeId,
-  activeThemeId,
-  activeItemId,
   children,
 }: {
   tree: TreeType[]
-  activeTypeId?: string
-  activeThemeId?: string
-  activeItemId?: string
   children: React.ReactNode
 }) {
   return (
@@ -33,12 +30,7 @@ export function LibraryShell({
       <div className="md:grid md:grid-cols-[17rem_minmax(0,1fr)] md:items-start md:gap-8">
         <aside className="hidden self-start md:sticky md:top-4 md:block">
           <SectionLabel>Library</SectionLabel>
-          <LibraryTree
-            tree={tree}
-            activeTypeId={activeTypeId}
-            activeThemeId={activeThemeId}
-            activeItemId={activeItemId}
-          />
+          <LibraryTree tree={tree} />
         </aside>
         <div className="min-w-0">{children}</div>
       </div>

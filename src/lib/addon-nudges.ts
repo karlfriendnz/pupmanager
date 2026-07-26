@@ -70,9 +70,9 @@ export const NUDGE_COPY: Record<string, { title: string; body: string; ctaLabel:
     ctaLabel: 'Set up Doggy Daycare',
   },
   memberships: {
-    title: 'Sell a membership',
-    body: 'Bundle packages, classes and products into one thing clients buy in a single go — with its own storefront card.',
-    ctaLabel: 'Set up Memberships',
+    title: 'Sell a package',
+    body: 'Bundle 1:1 consults, classes and products into one thing clients buy in a single go — with its own storefront card.',
+    ctaLabel: 'Set up Packages',
   },
   googlecalendar: {
     title: 'Sync your Google Calendar',

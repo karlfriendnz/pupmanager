@@ -252,7 +252,7 @@ function Row({
                     href={`/clients/${e.clientId}`}
                     onClick={onScheduled}
                     className="text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg inline-flex items-center gap-1"
-                    title="Open client to assign a package, marks Scheduled"
+                    title="Open client to assign a consult, marks Scheduled"
                   >
                     <CalendarCheck className="h-3.5 w-3.5" /> Book
                   </Link>
@@ -409,7 +409,7 @@ function EntryModal({
           )}
 
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Package of interest (optional)</label>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">Offering of interest (optional)</label>
             <select
               value={packageId}
               onChange={ev => setPackageId(ev.target.value)}

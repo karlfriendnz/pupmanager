@@ -37,7 +37,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ member
     return NextResponse.json({ error: 'This is a recurring plan — not available to buy yet.' }, { status: 409 })
   }
   if (membership.priceCents <= 0) {
-    return NextResponse.json({ error: 'This membership has no price set.' }, { status: 409 })
+    return NextResponse.json({ error: 'This package has no price set.' }, { status: 409 })
   }
 
   const trainer = await prisma.trainerProfile.findUnique({

@@ -2,39 +2,45 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { ChevronRight, FolderTree } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FlatBlock } from '@/components/shared/flat-list'
 import type { TreeType } from './library-data'
 
 // The Library's navigation spine: every category and the items inside it, in
-// one expandable tree.
+// one expandable tree. It is DESKTOP-ONLY — LibraryShell hangs it in a sticky
+// left column beside whatever is open. That column carries no overflow of its
+// own, so it grows with its content and only the PAGE scrolls: never two
+// scrollbars.
 //
-// Why one component for both viewports (see AGENTS.md "One layout per
-// component"): the tree renders EXACTLY the same at 390px and 1440px. What
-// changes is where it is mounted, which is the container's job —
-//
-//   • phone  → the tree IS the index page (/templates). A fixed left rail is a
-//     desktop idea, and a drawer would be an overlay we'd have to scroll-lock
-//     for something the trainer needs open while they work. Making the tree the
-//     mobile index also replaces the old three-level drill-down (types →
-//     themes → tasks) with one screen you can open as deep as you like.
-//   • desktop → the same tree sits in a sticky left column beside the detail
-//     pane. The column has NO overflow of its own — it grows with its content
-//     and the PAGE scrolls, so there is never a second scrollbar on screen.
+// A phone doesn't get it. A fixed rail is a desktop idea and a drawer would be
+// an overlay we'd have to scroll-lock for something the trainer wants open
+// while they work — so on a phone the drill-down (grid of categories → themes
+// → item) IS the navigation, which is how every other phone screen here works.
 //
 // Rows navigate; the chevron on the left expands. Both are full-height targets.
+// Which row is "here" comes from the URL rather than props, so no page has to
+// thread it down.
 
 interface Props {
   tree: TreeType[]
-  activeTypeId?: string
-  activeThemeId?: string
-  activeItemId?: string
-  /** Visibility is the container's call — e.g. "md:hidden" on the index page. */
+  /** Visibility is the container's call. */
   className?: string
 }
 
-export function LibraryTree({ tree, activeTypeId, activeThemeId, activeItemId, className }: Props) {
+/** `/library/item/abc` → `{ kind: 'item', id: 'abc' }`. */
+function activeFromPath(pathname: string): { kind: string; id: string } | null {
+  const m = /^\/library\/(type|theme|item)\/([^/]+)/.exec(pathname)
+  return m ? { kind: m[1]!, id: m[2]! } : null
+}
+
+export function LibraryTree({ tree, className }: Props) {
+  const active = activeFromPath(usePathname() ?? '')
+  const activeTypeId = active?.kind === 'type' ? active.id : undefined
+  const activeThemeId = active?.kind === 'theme' ? active.id : undefined
+  const activeItemId = active?.kind === 'item' ? active.id : undefined
+
   // The path to whatever is open starts expanded; everything else is closed.
   const activeType = activeTypeId
     ?? tree.find(t => t.themes.some(th =>
@@ -83,7 +89,7 @@ export function LibraryTree({ tree, activeTypeId, activeThemeId, activeItemId, c
         depth={0}
         label={type.name}
         sub={`${type.themes.length} theme${type.themes.length === 1 ? '' : 's'} · ${itemCount} item${itemCount === 1 ? '' : 's'}`}
-        href={`/templates/type/${type.id}`}
+        href={`/library/type/${type.id}`}
         active={activeTypeId === type.id}
         expandable
         expanded={typeOpen}
@@ -104,7 +110,7 @@ export function LibraryTree({ tree, activeTypeId, activeThemeId, activeItemId, c
           depth={1}
           label={theme.name}
           sub={`${theme.items.length} item${theme.items.length === 1 ? '' : 's'}`}
-          href={`/templates/theme/${theme.id}`}
+          href={`/library/theme/${theme.id}`}
           active={activeThemeId === theme.id}
           expandable
           expanded={themeOpen}
@@ -122,7 +128,7 @@ export function LibraryTree({ tree, activeTypeId, activeThemeId, activeItemId, c
             key={item.id}
             depth={2}
             label={item.title}
-            href={`/templates/item/${item.id}`}
+            href={`/library/item/${item.id}`}
             active={activeItemId === item.id}
           />,
         )

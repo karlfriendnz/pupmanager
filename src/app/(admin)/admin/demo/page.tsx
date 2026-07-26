@@ -28,7 +28,7 @@ export default async function AdminDemoPage() {
 
   const stats = [
     { label: 'Clients',      value: counts[0] },
-    { label: 'Packages',     value: counts[1] },
+    { label: 'Offerings',    value: counts[1] },
     { label: 'Sessions',     value: counts[2] },
     { label: 'Library types', value: counts[3] },
     { label: 'Products',     value: counts[4] },

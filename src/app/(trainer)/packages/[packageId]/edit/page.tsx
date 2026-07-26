@@ -7,7 +7,7 @@ import { EditPackageForm } from './edit-package-form'
 import type { PackageColor } from '../../package-form'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Edit package' }
+export const metadata: Metadata = { title: 'Edit consult' }
 
 export default async function EditPackagePage({
   params,

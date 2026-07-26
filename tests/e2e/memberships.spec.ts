@@ -35,8 +35,8 @@ test.describe('memberships — trainer builds, client sees', () => {
 
       // The way in is the dashed button that closes the list (or the empty
       // state's, when there are none) — there's no control-bar action.
-      await page.getByRole('main').getByRole('button', { name: 'New membership' }).first().click()
-      await page.getByPlaceholder('Membership name (e.g. Puppy Starter)').fill(name)
+      await page.getByRole('main').getByRole('button', { name: 'New package' }).first().click()
+      await page.getByPlaceholder('Package name (e.g. Puppy Starter)').fill(name)
       await page.getByPlaceholder('Price').fill('89')
 
       // One included offering: the seeded self-book package, ×2.
@@ -123,7 +123,7 @@ test.describe('memberships — trainer builds, client sees', () => {
 
       await login(page, SEED.client.email, SEED.client.password)
       await page.goto('/my-availability')
-      await page.getByRole('button', { name: /Memberships/ }).click()
+      await page.getByRole('button', { name: /Packages/ }).click()
 
       // The seeded published one-off is there…
       await expect(page.getByRole('heading', { name: SEED.membershipName })).toBeVisible({ timeout: 15_000 })
@@ -239,7 +239,7 @@ test.describe('memberships — trainer builds, client sees', () => {
   test('the builder shows card appearance, per-item description/image and a way back, with nothing to expand', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/memberships')
-    await page.getByRole('main').getByRole('button', { name: 'New membership' }).first().click()
+    await page.getByRole('main').getByRole('button', { name: 'New package' }).first().click()
 
     // Card appearance is open on arrival — image, button text, colours.
     await expect(page.getByText('Card appearance')).toBeVisible()
@@ -259,8 +259,8 @@ test.describe('memberships — trainer builds, client sees', () => {
     await expect(page.getByRole('button', { name: /description & image/ })).toHaveCount(0)
 
     // Back returns to the list rather than stranding the trainer in the form.
-    await page.getByRole('button', { name: 'Back to memberships' }).click()
-    await expect(page.getByRole('button', { name: 'New membership' }).first()).toBeVisible()
+    await page.getByRole('button', { name: 'Back to packages' }).click()
+    await expect(page.getByRole('button', { name: 'New package' }).first()).toBeVisible()
   })
 
   test('button colours round-trip, and an unreadable pair is corrected before a client sees it', async ({ page }) => {
@@ -291,7 +291,7 @@ test.describe('memberships — trainer builds, client sees', () => {
       // The client's card paints a corrected label, never the raw white.
       await login(page, SEED.client.email, SEED.client.password)
       await page.goto('/my-availability')
-      await page.getByRole('button', { name: /Memberships/ }).click()
+      await page.getByRole('button', { name: /Packages/ }).click()
       const buy = page.getByRole('button', { name: 'Join us' })
       await expect(buy).toBeVisible({ timeout: 15_000 })
       const colour = await buy.evaluate(el => getComputedStyle(el).color)
@@ -336,7 +336,7 @@ test.describe('memberships builder on a phone', () => {
   test('an included-item row stays two tidy lines and the page never scrolls sideways', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/memberships')
-    await page.getByRole('main').getByRole('button', { name: 'New membership' }).first().click()
+    await page.getByRole('main').getByRole('button', { name: 'New package' }).first().click()
     await page.getByRole('button', { name: 'Add item' }).click()
 
     const kind = page.getByLabel('Item type').first()

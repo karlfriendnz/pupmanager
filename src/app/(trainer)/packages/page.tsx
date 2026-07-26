@@ -5,7 +5,7 @@ import { PackagesView } from './packages-view'
 import { isPackagePast, type PackageAssignment } from './past-packages'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: '1:1 Packages' }
+export const metadata: Metadata = { title: '1:1 Consults' }
 
 export default async function PackagesPage({
   searchParams,

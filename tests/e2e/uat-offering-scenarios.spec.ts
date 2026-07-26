@@ -228,7 +228,7 @@ test.describe('UAT — offerings set up several ways', () => {
       await page.goto('/my-availability')
       const later = page.getByRole('button', { name: 'Maybe later' })
       if (await later.isVisible().catch(() => false)) await later.click()
-      await page.getByRole('button', { name: /Memberships/ }).click()
+      await page.getByRole('button', { name: /Packages/ }).click()
       await expect(page.getByText(name)).toHaveCount(0)
 
       // And the buy route refuses it outright, link or no link.

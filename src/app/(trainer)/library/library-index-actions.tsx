@@ -18,7 +18,7 @@ export function AddCategory() {
         })
         if (!res.ok) return 'Could not create that category.'
         const created: { id: string } = await res.json()
-        router.push(`/templates/type/${created.id}`)
+        router.push(`/library/type/${created.id}`)
         router.refresh()
         return null
       }}

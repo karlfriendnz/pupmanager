@@ -96,7 +96,7 @@ export async function PATCH(
         const runs = await prisma.classRun.count({ where: { packageId } })
         if (runs > 0) {
           return NextResponse.json(
-            { error: `This is running as ${runs} class${runs === 1 ? '' : 'es'}. Delete or finish ${runs === 1 ? 'it' : 'them'} before turning it back into a 1:1 package.` },
+            { error: `This is running as ${runs} class${runs === 1 ? '' : 'es'}. Delete or finish ${runs === 1 ? 'it' : 'them'} before turning it back into a 1:1 consult.` },
             { status: 409 },
           )
         }
@@ -117,7 +117,7 @@ export async function PATCH(
         const assigned = await prisma.clientPackage.count({ where: { packageId } })
         if (assigned > 0) {
           return NextResponse.json(
-            { error: `${assigned} client${assigned === 1 ? ' is' : 's are'} assigned to this package. Convert a copy instead, or unassign first.` },
+            { error: `${assigned} client${assigned === 1 ? ' is' : 's are'} assigned to this consult. Convert a copy instead, or unassign first.` },
             { status: 409 },
           )
         }

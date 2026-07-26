@@ -542,10 +542,10 @@ function BreakdownsSection({
       {/* What's selling — sales breakdowns. Always shown so a trainer can see
           which channels are (or aren't) earning, with a per-section empty state. */}
       <BreakdownCard
-        title="Sales by package"
+        title="Sales by consult"
         icon={<PackageIcon className="h-4 w-4" />}
         accent="indigo"
-        emptyHint="No 1:1 package sessions in this period."
+        emptyHint="No 1:1 consult sessions in this period."
         rows={byPackage.map(p => ({ label: p.name, sessions: p.sessions, revenueCents: p.revenueCents }))}
       />
 

@@ -224,7 +224,7 @@ describe('getBusinessReports — revenue', () => {
       { kind: 'PRODUCT', unitAmount: 9999, quantity: 1, payment: { currency: 'aud' } }, // wrong currency, dropped
     ])
     const r = await getBusinessReports('trainer-1')
-    expect(r.revenue.byType[0]).toEqual({ label: 'Packages', count: 10000 })
+    expect(r.revenue.byType[0]).toEqual({ label: '1:1 Consults', count: 10000 })
     expect(r.revenue.byType.find(t => t.label === 'Sessions')?.count).toBe(3000)
     expect(r.revenue.byType.find(t => t.label === 'Products')).toBeUndefined()
   })

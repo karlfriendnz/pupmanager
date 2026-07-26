@@ -110,7 +110,7 @@ export async function POST(req: Request) {
       where: { id: d.packageId, trainerId },
       select: { id: true },
     })
-    if (!pkg) return NextResponse.json({ error: 'Package not found' }, { status: 404 })
+    if (!pkg) return NextResponse.json({ error: '1:1 consult not found' }, { status: 404 })
   }
 
   let earliest: Date | null = null

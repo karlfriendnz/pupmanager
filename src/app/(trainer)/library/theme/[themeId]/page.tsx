@@ -33,9 +33,9 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
       <PageHeader
         title={theme.name}
         subtitle={`${theme.type.name} · ${theme.tasks.length} item${theme.tasks.length === 1 ? '' : 's'}`}
-        back={{ href: `/templates/type/${theme.type.id}`, label: theme.type.name }}
+        back={{ href: `/library/type/${theme.type.id}`, label: theme.type.name }}
       />
-      <LibraryShell tree={tree} activeThemeId={theme.id}>
+      <LibraryShell tree={tree}>
         <SectionLabel>Items</SectionLabel>
         {theme.tasks.length === 0 ? (
           <FlatBlock>
@@ -56,7 +56,7 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
                   key={task.id}
                   label={task.title}
                   sub={preview || (task.repetitions ? `${task.repetitions} reps` : undefined)}
-                  href={`/templates/item/${task.id}`}
+                  href={`/library/item/${task.id}`}
                 />
               )
             })}
@@ -68,7 +68,7 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
           kind="theme"
           id={theme.id}
           name={theme.name}
-          afterDeleteHref={`/templates/type/${theme.type.id}`}
+          afterDeleteHref={`/library/type/${theme.type.id}`}
           childCountNote={
             theme.tasks.length === 0
               ? 'This theme is empty.'

@@ -18,7 +18,7 @@ test.describe('permission enforcement', () => {
     await login(page, SEED.staff.email, SEED.staff.password)
 
     // Nav: Packages hidden, Clients visible.
-    await expect(page.getByRole('link', { name: 'Packages' })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '1:1 Consults' })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'Clients' }).first()).toBeVisible()
 
     // API: creating a package is forbidden.
@@ -42,7 +42,7 @@ test.describe('permission enforcement', () => {
   test('manager: management nav visible, can create a package', async ({ page }) => {
     await login(page, SEED.manager.email, SEED.manager.password)
 
-    await expect(page.getByRole('link', { name: 'Packages' }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: '1:1 Consults' }).first()).toBeVisible()
 
     const res = await page.request.post('/api/packages', {
       data: { name: 'Manager package', sessionCount: 3, weeksBetween: 1, durationMins: 60 },

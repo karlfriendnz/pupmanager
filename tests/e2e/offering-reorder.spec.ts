@@ -52,7 +52,7 @@ test.describe('offering lists keep a trainer-arranged order', () => {
       // A client sees that same order in Offerings → Memberships.
       await login(page, SEED.client.email, SEED.client.password)
       await page.goto('/my-availability')
-      await page.getByRole('button', { name: /Memberships/ }).click()
+      await page.getByRole('button', { name: /Packages/ }).click()
       const headings = page.getByRole('heading', { name: /E2E Order (Alpha|Beta)/ })
       await expect(headings.first()).toBeVisible({ timeout: 15_000 })
       // Trimmed: the card heading carries its icon inside the same element.

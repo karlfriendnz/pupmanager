@@ -207,20 +207,20 @@ export function BookingPageEditor({
       {/* What gets booked */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <h3 className="text-sm font-semibold text-slate-900">What gets booked</h3>
-        <label className="mt-4 block text-xs font-medium text-slate-700">Package (optional)</label>
+        <label className="mt-4 block text-xs font-medium text-slate-700">1:1 consult (optional)</label>
         <select
           value={cfg.packageId ?? ''}
           onChange={e => set('packageId', e.target.value || null)}
           className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">Single session (no package)</option>
+          <option value="">Single session (no consult)</option>
           {packages.map(p => (
             <option key={p.id} value={p.id}>{p.name} · {p.sessionCount > 1 ? `${p.sessionCount} sessions` : '1 session'}</option>
           ))}
         </select>
         <p className="mt-1.5 text-xs text-slate-400">
           {pkg
-            ? `The chosen time becomes session 1; the remaining ${Math.max(0, pkg.sessionCount - 1)} auto-schedule on the package cadence.`
+            ? `The chosen time becomes session 1; the remaining ${Math.max(0, pkg.sessionCount - 1)} auto-schedule on the consult cadence.`
             : 'Each booking creates one session of the length below.'}
         </p>
 
@@ -245,7 +245,7 @@ export function BookingPageEditor({
             <p className="text-sm font-medium text-slate-800">Require payment to book</p>
             <p className="mt-0.5 text-xs text-slate-400">
               {cfg.packageId
-                ? 'Charges the package price. The slot is booked once paid.'
+                ? 'Charges the consult price. The slot is booked once paid.'
                 : 'Client pays before the slot is confirmed. Turn on payments in Settings → Payments first.'}
             </p>
           </div>
@@ -287,7 +287,7 @@ export function BookingPageEditor({
             <p className="mt-0.5 text-xs text-slate-400">
               {cfg.packageId
                 ? 'On: a client’s pick becomes a request you confirm. Off: it books instantly.'
-                : 'Single-session bookings by existing clients always book instantly. New people are reviewed when you accept their enquiry. Attach a package to require approval.'}
+                : 'Single-session bookings by existing clients always book instantly. New people are reviewed when you accept their enquiry. Attach a consult to require approval.'}
             </p>
           </div>
           {cfg.packageId ? (

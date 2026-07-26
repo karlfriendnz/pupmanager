@@ -35,9 +35,9 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
       <PageHeader
         title={type.name}
         subtitle={`${type.themes.length} theme${type.themes.length === 1 ? '' : 's'} · ${itemTotal} item${itemTotal === 1 ? '' : 's'}`}
-        back={{ href: '/templates', label: 'Library' }}
+        back={{ href: '/library', label: 'Library' }}
       />
-      <LibraryShell tree={tree} activeTypeId={type.id}>
+      <LibraryShell tree={tree}>
         <SectionLabel>Themes</SectionLabel>
         {type.themes.length === 0 ? (
           <FlatBlock>
@@ -55,7 +55,7 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
                 key={theme.id}
                 label={theme.name}
                 sub={`${theme._count.tasks} item${theme._count.tasks === 1 ? '' : 's'}`}
-                href={`/templates/theme/${theme.id}`}
+                href={`/library/theme/${theme.id}`}
               />
             ))}
           </FlatBlock>
@@ -66,7 +66,7 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
           kind="type"
           id={type.id}
           name={type.name}
-          afterDeleteHref="/templates"
+          afterDeleteHref="/library"
           childCountNote={
             type.themes.length === 0
               ? 'This category is empty.'

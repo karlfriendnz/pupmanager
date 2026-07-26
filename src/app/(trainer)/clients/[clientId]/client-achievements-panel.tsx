@@ -40,7 +40,11 @@ function tone(color: string | null) {
   return COLOR_BY_KEY[color ?? 'amber'] ?? COLOR_BY_KEY.amber
 }
 
-function triggerSummary(t: TriggerType, v: number | null): string {
+function triggerSummary(t: TriggerType, value: number | null): string {
+  // A threshold trigger saved without a value printed the literal word "null"
+  // to the trainer ("null perfect weeks"). One is the sensible floor for every
+  // counter here, and matches triggerLine() on the achievements list.
+  const v = value ?? 1
   switch (t) {
     case 'MANUAL': return 'Manual'
     case 'FIRST_SESSION': return 'First completed session'

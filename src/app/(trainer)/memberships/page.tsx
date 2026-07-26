@@ -5,10 +5,10 @@ import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { MembershipsView } from './memberships-view'
 
-export const metadata: Metadata = { title: 'Memberships' }
+export const metadata: Metadata = { title: 'Packages' }
 
-// Combo memberships: bundle offerings into one purchasable plan. Loads the
-// trainer's memberships plus the offerings they can include (1:1 packages,
+// Combo packages: bundle offerings into one purchasable plan. Loads the
+// trainer's packages plus the offerings they can include (1:1 consults,
 // class runs, products).
 export default async function MembershipsPage() {
   const session = await auth()

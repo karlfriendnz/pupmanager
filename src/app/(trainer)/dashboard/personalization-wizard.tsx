@@ -668,7 +668,7 @@ export function PersonalizationWizard({
                 const selected = Array.isArray(answers.packages) ? (answers.packages as string[]) : []
                 return (
                   <div key="s4-packages" className="max-w-md mx-auto py-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-600 mb-2">Your packages</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-600 mb-2">What you offer</p>
                     <h2 className="font-display text-2xl font-bold text-slate-900 tracking-tight">What do you offer?</h2>
                     <p className="text-sm text-slate-500 mt-1.5">Pick any that apply — we’ll set your app up around them.</p>
                     <div className="mt-6 flex flex-col gap-3">

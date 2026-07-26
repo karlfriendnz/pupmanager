@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   if (ctx instanceof NextResponse) return ctx
   // Memberships are an add-on — no creating one while it's switched off.
   if (!(await hasAddon(ctx.companyId, 'memberships'))) {
-    return NextResponse.json({ error: 'Turn the Memberships add-on on first.' }, { status: 403 })
+    return NextResponse.json({ error: 'Turn the Packages add-on on first.' }, { status: 403 })
   }
 
   const parsed = membershipCreateSchema.safeParse(await req.json().catch(() => ({})))

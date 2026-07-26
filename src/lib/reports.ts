@@ -121,7 +121,7 @@ export interface BusinessReports {
 
 const PAID_STATUSES = ['PAID', 'PARTIALLY_REFUNDED'] as const
 const KIND_LABEL: Record<string, string> = {
-  PACKAGE: 'Packages', SESSION: 'Sessions', PRODUCT: 'Products', CLASS_ENROLLMENT: 'Classes',
+  PACKAGE: '1:1 Consults', SESSION: 'Sessions', PRODUCT: 'Products', CLASS_ENROLLMENT: 'Classes',
 }
 
 // Flexible filters, all optional and composable:

@@ -357,9 +357,9 @@ export function SessionAttachments({ sessionId, initialAttachments }: Props) {
           type="button"
           onClick={() => photoInputRef.current?.click()}
           disabled={uploading !== null}
-          className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-60"
         >
-          <Camera className="h-4 w-4" /> Add photo
+          <Camera className="h-4 w-4 text-slate-700" strokeWidth={1.75} /> Add photo
         </button>
         <button
           type="button"
@@ -368,9 +368,9 @@ export function SessionAttachments({ sessionId, initialAttachments }: Props) {
             videoInputRef.current?.click()
           }}
           disabled={uploading !== null}
-          className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-60"
         >
-          <Video className="h-4 w-4" /> Add video
+          <Video className="h-4 w-4 text-slate-700" strokeWidth={1.75} /> Add video
         </button>
         {/* Native pickers — multi-select on. iOS picker has a
             "Take Photo or Video" option at the top of the camera roll,
@@ -417,7 +417,7 @@ export function SessionAttachments({ sessionId, initialAttachments }: Props) {
             </p>
             <div className="mt-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
               <div
-                className="h-full bg-blue-600 transition-all"
+                className="h-full bg-slate-700 transition-all"
                 style={{ width: `${Math.round(uploading.progress)}%` }}
               />
             </div>
@@ -433,11 +433,9 @@ export function SessionAttachments({ sessionId, initialAttachments }: Props) {
         </div>
       )}
 
-      {attachments.length === 0 ? (
-        <p className="text-xs text-slate-400 italic">
-          No attachments yet — add a photo or video for this session.
-        </p>
-      ) : (
+      {/* No empty state here — the section's own row says "No photos or
+          videos", so an empty gallery costs nothing inside. */}
+      {attachments.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
           {attachments.map(a => (
             <AttachmentTile

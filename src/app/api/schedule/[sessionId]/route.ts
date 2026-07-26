@@ -137,7 +137,7 @@ export async function PATCH(
         where: { id: raw, package: { trainerId } },
         select: { id: true, clientId: true, package: { select: { color: true } } },
       })
-      if (!cp) return NextResponse.json({ error: 'Package assignment not found' }, { status: 400 })
+      if (!cp) return NextResponse.json({ error: 'Consult assignment not found' }, { status: 400 })
       // The assignment must belong to this session's client (or the session
       // has no client yet, in which case the assignment defines the client).
       if (existing.clientId && cp.clientId !== existing.clientId) {

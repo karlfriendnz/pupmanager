@@ -235,7 +235,7 @@ export function HomeworkFlow({
       {library === null ? (
         <div className="mt-5 flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Loading library…</div>
       ) : allTasks.length === 0 ? (
-        <p className="mt-5 text-sm text-slate-400">No library tasks yet. Add some in <a href="/templates" className="text-accent hover:underline">Library</a>.</p>
+        <p className="mt-5 text-sm text-slate-400">No library tasks yet. Add some in <a href="/library" className="text-accent hover:underline">Library</a>.</p>
       ) : (
         <>
           <div className="relative mt-5">

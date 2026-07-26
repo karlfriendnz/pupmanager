@@ -18,7 +18,7 @@ export function AddTheme({ typeId }: { typeId: string }) {
         })
         if (!res.ok) return 'Could not create that theme.'
         const created: { id: string } = await res.json()
-        router.push(`/templates/theme/${created.id}`)
+        router.push(`/library/theme/${created.id}`)
         router.refresh()
         return null
       }}

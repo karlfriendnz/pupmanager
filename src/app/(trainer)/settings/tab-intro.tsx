@@ -67,11 +67,11 @@ export const TAB_INTRO: Record<string, TabIntroCopy> = {
   locations: {
     title: 'Locations',
     blurb:
-      'The places you work from — a training field, a hall you hire, a park you meet at. Save each one once, then pick it when you set up a package, class or session instead of retyping the address.',
+      'The places you work from — a training field, a hall you hire, a park you meet at. Save each one once, then pick it when you set up a consult, class or session instead of retyping the address.',
     steps: [
       'Add a location: give it a name and search for its address.',
       'Add a photo and any notes — parking, gate codes, where to meet.',
-      'Pick it later when you create a package, class or session.',
+      'Pick it later when you create a consult, class or session.',
     ],
   },
   integration: {
@@ -97,10 +97,10 @@ export const TAB_INTRO: Record<string, TabIntroCopy> = {
   payments: {
     title: 'Payments',
     blurb:
-      'Take card payments from your clients — for sessions, packages and class enrolments — straight through the app. Money lands in your bank account, not ours.',
+      'Take card payments from your clients — for sessions, consults and class enrolments — straight through the app. Money lands in your bank account, not ours.',
     steps: [
       'Connect your Stripe account (or create one — it takes a few minutes).',
-      'Choose which of your packages and classes need paying for up front.',
+      'Choose which of your consults and classes need paying for up front.',
       'Clients pay in their app; you see it in Finances.',
     ],
   },

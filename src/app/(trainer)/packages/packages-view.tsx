@@ -64,7 +64,7 @@ export function PackagesView({
   const shown = tab === 'past' ? past : current
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this package? Existing client assignments stay (but their sessions remain on the schedule).')) return
+    if (!confirm('Delete this consult? Existing client assignments stay (but their sessions remain on the schedule).')) return
     const res = await fetch(`/api/packages/${id}`, { method: 'DELETE' })
     if (res.ok) setPackages(prev => prev.filter(p => p.id !== id))
   }
@@ -89,16 +89,16 @@ export function PackagesView({
   return (
     <>
       <PageHeader
-        title="1:1 Packages"
-        subtitle="Bundles of sessions you assign to a client in one go — set the count, spacing and price once."
+        title="1:1 Consults"
+        subtitle="Bundles of 1:1 sessions you assign to a client in one go — set the count, spacing and price once."
       />
       <OfferingPage>
         {packages.length === 0 ? (
           <OfferingEmpty
             icon={<PackageIcon className="h-6 w-6" />}
-            title="No packages yet"
-            body="A package is a bundle of 1:1 sessions you assign to a client in one go — set the count, spacing and price once, then reuse it."
-            action={{ href: '/offerings/new', label: 'New package' }}
+            title="No consults yet"
+            body="A consult is a bundle of 1:1 sessions you assign to a client in one go — set the count, spacing and price once, then reuse it."
+            action={{ href: '/offerings/new', label: 'New consult' }}
           />
         ) : (
           <>
@@ -119,10 +119,10 @@ export function PackagesView({
             {shown.length === 0 ? (
               <OfferingTabEmpty
                 icon={<PackageIcon className="mx-auto h-10 w-10" />}
-                title={tab === 'past' ? 'No past packages' : 'No current packages'}
+                title={tab === 'past' ? 'No past consults' : 'No current consults'}
                 body={tab === 'past'
-                  ? 'A package moves here once everyone you assigned it to has had their last session. It stays put while anyone still has one to come.'
-                  : 'Every package you have has run its course. Make a new one, or duplicate one from Past to start it again.'}
+                  ? 'A consult moves here once everyone you assigned it to has had their last session. It stays put while anyone still has one to come.'
+                  : 'Every consult you have has run its course. Make a new one, or duplicate one from Past to start it again.'}
               />
             ) : (
               <SortableOfferingList ids={shown.map(p => p.id)} onReorder={reorder}>
@@ -153,7 +153,7 @@ export function PackagesView({
               </SortableOfferingList>
             )}
 
-            <AddOfferingLink href="/offerings/new" label="New package" />
+            <AddOfferingLink href="/offerings/new" label="New consult" />
           </>
         )}
       </OfferingPage>

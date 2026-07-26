@@ -96,7 +96,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     '/packages': 'packages.manage',
     '/classes': 'classes.manage',
     '/products': 'products.manage',
-    '/templates': 'forms.manage',
+    '/library': 'forms.manage',
     '/achievements': 'achievements.manage',
     '/enquiries': 'enquiries.manage',
     '/messages': 'messages.send',
@@ -139,8 +139,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // add-on, independent of Group Classes (a trainer can run casual classes
   // without turning group classes on).
   if (!enabledAddons.has('dropins')) hiddenNavHrefs.push('/casual-classes')
-  // The "Library" nav item lives at /templates.
-  if (!enabledAddons.has('library')) hiddenNavHrefs.push('/templates')
+  if (!enabledAddons.has('library')) hiddenNavHrefs.push('/library')
   // No client app → no client↔trainer messaging.
   if (!enabledAddons.has('clientapp')) hiddenNavHrefs.push('/messages')
   // "Link in bio" is a free, off-by-default add-on — its nav entry only appears

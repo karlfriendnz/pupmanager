@@ -14,12 +14,19 @@ import { SaleComposer, type SalePrefill } from '@/components/shared/sale-compose
 //
 // The parent resolves the invoice server-side and passes it in — null when
 // there's nothing owed (already paid, or unpriced), in which case no button.
+// Renders as a CELL in the session screen's action strip — same weight as its
+// neighbours. It used to be a solid brand-teal block beside two outlined
+// buttons, which read as decoration rather than hierarchy (AGENTS.md: colour is
+// the trainer's, and it's rationed).
 export function PaySessionButton({
   prefill,
   currency,
+  accent,
 }: {
   prefill: SalePrefill
   currency: string
+  /** The trainer's brand colour, for the icon only. */
+  accent?: string | null
 }) {
   const [open, setOpen] = useState(false)
 
@@ -28,10 +35,14 @@ export function PaySessionButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex flex-1 flex-col items-center justify-center gap-1 rounded-2xl border border-[var(--pm-brand-600)] bg-[var(--pm-brand-600)] px-3 py-3 text-white transition-colors hover:bg-[var(--pm-brand-700)]"
+        className="flex min-h-[52px] items-center justify-center gap-2 px-2 py-3 text-[13px] font-medium text-slate-900 active:bg-slate-50"
       >
-        <CreditCard className="h-5 w-5" />
-        <span className="text-xs font-semibold">Take payment</span>
+        <CreditCard
+          className="h-[18px] w-[18px] flex-shrink-0 text-slate-700"
+          style={accent ? { color: `color-mix(in srgb, ${accent} 78%, #0f172a)` } : undefined}
+          strokeWidth={1.75}
+        />
+        <span>Payment</span>
       </button>
 
       <SaleComposer

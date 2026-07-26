@@ -81,12 +81,15 @@ test.describe('invoicing — edit line items', () => {
     await expect(row).toBeVisible({ timeout: 15_000 })
     await row.getByText('Editable Invoice').click() // bubbles to the row's open handler
 
-    const dialog = page.getByRole('dialog', { name: 'Invoice' })
+    const dialog = page.getByRole('dialog', { name: 'Invoice', exact: true })
     await expect(dialog).toBeVisible({ timeout: 10_000 })
     // Starts at the seeded $200.00.
     await expect(dialog.getByText('$200.00').first()).toBeVisible()
 
-    await dialog.getByRole('button', { name: 'Edit' }).click()
+    // The bar only has room for one primary action on a phone, so Edit lives in
+    // the "More" sheet (portaled to <body>, hence page- not dialog-scoped).
+    await page.getByRole('button', { name: 'More' }).click()
+    await page.getByRole('dialog', { name: 'Invoice actions' }).getByRole('button', { name: 'Edit invoice' }).click()
     // In edit mode a line has two number inputs: [quantity, unit]. Bump the unit.
     const numberInputs = dialog.locator('input[type="number"]')
     await numberInputs.nth(1).fill('250')

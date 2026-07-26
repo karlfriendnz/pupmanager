@@ -46,7 +46,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       where: { id: d.packageId, trainerId },
       select: { id: true },
     })
-    if (!pkg) return NextResponse.json({ error: 'Package not found' }, { status: 404 })
+    if (!pkg) return NextResponse.json({ error: '1:1 consult not found' }, { status: 404 })
   }
 
   // Status transitions stamp their timestamps once.

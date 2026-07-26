@@ -88,8 +88,8 @@ const PROMOS: Record<string, Cfg> = {
     benefits: ['Book by the part or full day', 'Per-part capacity', 'A live week board'],
   },
   memberships: {
-    title: 'Sell a membership',
-    description: 'Bundle your packages, classes and products into one thing clients buy.',
+    title: 'Sell a package',
+    description: 'Bundle your 1:1 consults, classes and products into one thing clients buy.',
     // Shares the classes/daycare photo until it has its own — a bundle is sold
     // on the same promise (a group of owners and dogs), not a different one.
     image: { src: '/promo-achievements-v8.jpg', objectPosition: 'center 38%', translateX: '28%' },

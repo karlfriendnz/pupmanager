@@ -235,7 +235,7 @@ export function SessionLibraryTasks({
   if (allLibraryTasks.length === 0) {
     return (
       <p className="text-sm text-slate-400">
-        No library tasks yet. Add some in <a href="/templates" className="text-accent hover:underline">Library</a>.
+        No library tasks yet. Add some in <a href="/library" className="text-accent hover:underline">Library</a>.
       </p>
     )
   }
@@ -273,7 +273,7 @@ export function SessionLibraryTasks({
           <button
             onClick={() => setShowLibrary(true)}
             disabled={!clientId}
-            className="flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-accent hover:text-accent-strong disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 rounded-xl hover:bg-accent-soft border border-accent transition-colors"
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             title={!clientId ? 'No client linked to this session' : undefined}
           >
             <Layers className="h-4 w-4" />
@@ -435,7 +435,7 @@ function CustomTaskForm({
       <button
         onClick={() => setOpen(true)}
         disabled={!clientId}
-        className="flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-accent hover:text-accent-strong disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2.5 rounded-xl hover:bg-accent-soft border border-accent transition-colors"
+        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         title={!clientId ? 'No client linked to this session' : undefined}
       >
         <Plus className="h-4 w-4" />

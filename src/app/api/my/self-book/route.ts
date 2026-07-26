@@ -98,7 +98,7 @@ export async function POST(req: Request) {
   const pkg = await prisma.package.findFirst({
     where: { id: parsed.data.packageId, trainerId: ctx.trainerId, clientSelfBook: true, isGroup: false },
   })
-  if (!pkg) return NextResponse.json({ error: 'Package not available' }, { status: 404 })
+  if (!pkg) return NextResponse.json({ error: 'This consult is not available' }, { status: 404 })
 
   const start = new Date(parsed.data.startDate)
   if (Number.isNaN(start.getTime()) || start.getTime() < Date.now()) {

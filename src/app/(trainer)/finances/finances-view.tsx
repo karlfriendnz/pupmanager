@@ -69,7 +69,7 @@ function Pager({ page, totalPages, total, onGo, loading }: { page: number; total
   )
 }
 
-interface Tx {
+export interface Tx {
   id: string; description: string | null; clientName: string | null
   amountTotal: number; currency: string; applicationFeeAmount: number
   stripeFeeAmount: number | null; amountRefunded: number; status: string; paidAt: string | null
@@ -81,11 +81,16 @@ const TX_BADGE: Record<string, string> = {
 }
 const TX_LABEL: Record<string, string> = { PAID: 'Paid', PARTIALLY_REFUNDED: 'Part refund', REFUNDED: 'Refunded', DISPUTED: 'Disputed' }
 
-// Derived figures shared by the mobile cards + desktop table. The trainer is the
-// merchant of record on the direct charge, so the processing (card) fee is
-// theirs — their take-home is gross minus refunds minus that fee (minus any
+// Derived figures for the transaction DETAIL and the desktop table. The trainer
+// is the merchant of record on the direct charge, so the processing (card) fee
+// is theirs — their take-home is gross minus refunds minus that fee (minus any
 // legacy in-app application fee, which is 0 under the current pricing model).
-function txDerived(t: Tx) {
+//
+// The phone list row no longer prints these: "Card fee … Net …" restated the
+// same figure a third time in a row that already showed the amount. The maths
+// is untouched and still drives the detail view — only the row line went.
+// Exported so that promise is unit-testable.
+export function txDerived(t: Tx) {
   const cardFee = t.stripeFeeAmount ?? 0
   const refundFraction = t.amountTotal > 0 ? t.amountRefunded / t.amountTotal : 0
   const platformRetained = Math.round(t.applicationFeeAmount * (1 - refundFraction))
@@ -109,27 +114,24 @@ function TransactionsTab() {
           <>
             {/* Mobile: stacked cards */}
             <div className="md:hidden divide-y divide-slate-100">
-              {data.items.map(t => {
-                const { cardFee, net } = txDerived(t)
-                return (
-                  <button key={t.id} type="button" onClick={() => setOpen(t)} className="w-full text-left p-4 active:bg-slate-50">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-medium text-slate-900 truncate">{t.description ?? '—'}</p>
-                        <p className="text-xs text-slate-400 truncate">{[t.clientName, fmtDate(t.paidAt)].filter(Boolean).join(' · ')}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-semibold text-slate-900 tabular-nums">{money(t.amountTotal, t.currency)}</p>
-                        <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${TX_BADGE[t.status] ?? TX_BADGE.PAID}`}>{TX_LABEL[t.status] ?? t.status}</span>
-                      </div>
+              {/* Amount + badge sit in one fixed-width column so they line up
+                  down the list. The card-fee/net line that used to sit under
+                  the row is gone — it restated the same figure a third time;
+                  the full breakdown lives in the transaction detail. */}
+              {data.items.map(t => (
+                <button key={t.id} data-testid="tx-row" type="button" onClick={() => setOpen(t)} className="w-full text-left p-4 active:bg-slate-50">
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-slate-900 truncate">{t.description ?? '—'}</p>
+                      <p className="text-xs text-slate-400 truncate">{[t.clientName, fmtDate(t.paidAt)].filter(Boolean).join(' · ')}</p>
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                      <span>Card fee {t.stripeFeeAmount == null ? '—' : money(cardFee, t.currency)}</span>
-                      <span>Net <strong className="text-slate-700">{money(net, t.currency)}</strong></span>
+                    <div className="w-[7.5rem] shrink-0 text-right">
+                      <p data-testid="tx-amount" className="font-semibold text-slate-900 tabular-nums whitespace-nowrap">{money(t.amountTotal, t.currency)}</p>
+                      <span data-testid="tx-badge" className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${TX_BADGE[t.status] ?? TX_BADGE.PAID}`}>{TX_LABEL[t.status] ?? t.status}</span>
                     </div>
-                  </button>
-                )
-              })}
+                  </div>
+                </button>
+              ))}
             </div>
             {/* Desktop: table */}
             <div className="hidden md:block overflow-x-auto">
@@ -335,7 +337,7 @@ function ReceivablesTab() {
         {loading && !data ? (
           <div className="flex items-center gap-2 text-sm text-slate-400 px-5 py-8"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
         ) : !data || data.items.length === 0 ? (
-          <p className="text-sm text-slate-400 px-5 py-8">{q ? 'No invoices match your search.' : 'No invoices yet. They’re created automatically when you assign a priced package or product.'}</p>
+          <p className="text-sm text-slate-400 px-5 py-8">{q ? 'No invoices match your search.' : 'No invoices yet. They’re created automatically when you assign a priced consult or product.'}</p>
         ) : (
           <>
             {/* Mobile: stacked cards */}
@@ -344,20 +346,25 @@ function ReceivablesTab() {
                 const b = receivableBadge(r)
                 const unsent = r.status === 'UNPAID' && !r.sentAt
                 return (
-                  <div key={r.id} onClick={() => setOpen(r)} className="p-4 cursor-pointer active:bg-slate-50">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                  <div key={r.id} data-testid="rcv-row" onClick={() => setOpen(r)} className="p-4 cursor-pointer active:bg-slate-50">
+                    {/* Fixed right-hand columns. The title flexes and truncates;
+                        the money column and the Xero slot are fixed widths, so
+                        the amount, the badge and the icon each keep one column
+                        down the whole list — including rows with no Xero icon,
+                        whose slot stays reserved rather than collapsing. */}
+                    <div className="flex items-start gap-3">
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium text-slate-900 truncate">{r.description ?? '—'}</p>
                         <p className="text-xs text-slate-400 truncate">{[r.clientName, `issued ${fmtDate(r.createdAt)}`].filter(Boolean).join(' · ')}</p>
                       </div>
-                      <div className="flex items-start gap-3 shrink-0">
-                        <div className="text-right">
-                          <p className="font-semibold text-slate-900 tabular-nums">{money(r.amountCents, r.currency)}</p>
-                          {r.status === 'PARTIAL' && <p className="text-[11px] text-amber-600 tabular-nums">{money(r.amountPaidCents, r.currency)} of {money(r.amountCents, r.currency)}</p>}
-                          <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${b.cls}`}>{b.label}</span>
-                        </div>
-                        {/* Xero deep link — far-right trailing edge of the card. */}
-                        {r.xeroInvoiceId && <XeroLink xeroInvoiceId={r.xeroInvoiceId} className="mt-1" />}
+                      <div className="w-[7.5rem] shrink-0 text-right">
+                        <p data-testid="rcv-amount" className="font-semibold text-slate-900 tabular-nums whitespace-nowrap">{money(r.amountCents, r.currency)}</p>
+                        {r.status === 'PARTIAL' && <p className="text-[11px] text-amber-600 tabular-nums whitespace-nowrap">{money(r.amountPaidCents, r.currency)} of {money(r.amountCents, r.currency)}</p>}
+                        <span data-testid="rcv-badge" className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span>
+                      </div>
+                      {/* Xero deep link — far-right trailing column, always reserved. */}
+                      <div data-testid="rcv-xero-slot" className="w-6 shrink-0 flex justify-center pt-0.5">
+                        {r.xeroInvoiceId && <XeroLink xeroInvoiceId={r.xeroInvoiceId} />}
                       </div>
                     </div>
                     {unsent && (
@@ -387,17 +394,19 @@ function ReceivablesTab() {
                     const b = receivableBadge(r)
                     const unsent = r.status === 'UNPAID' && !r.sentAt
                     return (
-                      <tr key={r.id} onClick={() => setOpen(r)} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50/70">
+                      <tr key={r.id} data-testid="rcv-row-desktop" onClick={() => setOpen(r)} className="border-t border-slate-100 cursor-pointer hover:bg-slate-50/70">
                         <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">{fmtDate(r.createdAt)}</td>
-                        <td className="px-4 py-2.5 text-slate-700">
-                          <span className="block">{r.description ?? '—'}</span>
-                          {r.clientName && <span className="text-xs text-slate-400">{r.clientName}</span>}
+                        {/* Bounded so a very long title can't stretch the table
+                            and shove the amount/status columns sideways. */}
+                        <td className="px-4 py-2.5 text-slate-700 max-w-[26rem]">
+                          <span className="block truncate">{r.description ?? '—'}</span>
+                          {r.clientName && <span className="block truncate text-xs text-slate-400">{r.clientName}</span>}
                         </td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 whitespace-nowrap">
+                        <td data-testid="rcv-amount-cell" className="px-4 py-2.5 text-right tabular-nums text-slate-900 whitespace-nowrap">
                           {money(r.amountCents, r.currency)}
                           {r.status === 'PARTIAL' && <span className="block text-[11px] font-normal text-amber-600">{money(r.amountPaidCents, r.currency)} paid</span>}
                         </td>
-                        <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span></td>
+                        <td className="px-4 py-2.5"><span data-testid="rcv-badge-cell" className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${b.cls}`}>{b.label}</span></td>
                         <td className="px-4 py-2.5 text-right">
                           {unsent && (
                             <button onClick={e => { e.stopPropagation(); send(r.id) }} disabled={sending === r.id} className="inline-flex items-center gap-1.5 rounded-lg bg-accent hover:bg-accent-strong text-white px-3 py-1.5 text-xs font-semibold disabled:opacity-60">

@@ -71,7 +71,7 @@ function MembershipPreviewCard({ name, description, priceCents, recurring, inter
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="font-semibold text-lg flex items-center gap-2" style={{ color: header }}>
-              <Ticket className="h-5 w-5 shrink-0" style={{ color: featured }} /> {name.trim() || <span className="opacity-50 font-normal">Membership name</span>}
+              <Ticket className="h-5 w-5 shrink-0" style={{ color: featured }} /> {name.trim() || <span className="opacity-50 font-normal">Package name</span>}
             </h2>
             <div className="mt-1" style={{ color: text }}><RichText html={description} className="text-sm" /></div>
           </div>
@@ -105,7 +105,7 @@ function MembershipPreviewCard({ name, description, priceCents, recurring, inter
             ))}
           </div>
         )}
-        <button type="button" disabled className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold opacity-95 cursor-default" style={{ backgroundColor: btn.background, color: btn.color }}>{card.buttonText?.trim() || 'Get this membership'}</button>
+        <button type="button" disabled className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold opacity-95 cursor-default" style={{ backgroundColor: btn.background, color: btn.color }}>{card.buttonText?.trim() || 'Get this package'}</button>
       </div>
     </div>
   )
@@ -157,7 +157,7 @@ function SortableItemShell({ id, children }: { id: string; children: (handle: HT
 
 let seq = 0
 const KINDS: { k: Kind; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-  { k: 'PACKAGE', label: '1:1 package', Icon: GraduationCap },
+  { k: 'PACKAGE', label: '1:1 consult', Icon: GraduationCap },
   { k: 'CLASS', label: 'Class place', Icon: Users },
   { k: 'PRODUCT', label: 'Product', Icon: ShoppingBag },
 ]
@@ -237,7 +237,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
 
   async function save() {
     if (!draft) return
-    if (!draft.name.trim()) return setError('Give the membership a name.')
+    if (!draft.name.trim()) return setError('Give the package a name.')
     const items = draft.items.filter(it => it.id).map(it => ({
       kind: it.kind,
       packageId: it.kind === 'PACKAGE' ? it.id : undefined,
@@ -291,8 +291,8 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       {/* Editing a membership is a detail screen: back replaces the menu and
           returns to the list, same as every other detail page. */}
       <PageHeader
-        title={draft ? (draft.id ? draft.name.trim() || 'Edit membership' : 'New membership') : 'Memberships'}
-        back={draft ? { onClick: () => setDraft(null), label: 'Back to memberships' } : undefined}
+        title={draft ? (draft.id ? draft.name.trim() || 'Edit package' : 'New package') : 'Packages'}
+        back={draft ? { onClick: () => setDraft(null), label: 'Back to packages' } : undefined}
       />
       <div className="w-full p-4 md:p-8">
         {error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2">{error}</div>}
@@ -301,7 +301,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <div className="lg:col-span-7 rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
             <div className="p-5 flex flex-col gap-3">
-              <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Membership name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
+              <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Package name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
               <RichTextEditor value={draft.description} onChange={html => patch({ description: isRichTextEmpty(html) ? '' : html })} key={draft.id ?? 'new'} minHeight={100} theme="light" />
               <div className="flex items-center gap-2">
                 {draft.cadence === 'ONE_OFF' && (
@@ -367,7 +367,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-500 mb-1.5">Button text</p>
-                  <input value={draft.buttonText ?? ''} onChange={e => patch({ buttonText: e.target.value })} placeholder="Get this membership" maxLength={40} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+                  <input value={draft.buttonText ?? ''} onChange={e => patch({ buttonText: e.target.value })} placeholder="Get this package" maxLength={40} className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm" />
                 </div>
                 <div className="sm:col-span-2">
                   <p className="text-xs font-medium text-slate-500 mb-1.5">Colour scheme</p>
@@ -503,7 +503,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                     <CommsFlowEditor membershipId={draft.id} offeringName={draft.name} />
                   </div>
                 ) : (
-                  <p className="mt-3 text-sm text-slate-500">Save the membership first, then you can add a welcome message and reminders for the people who join it.</p>
+                  <p className="mt-3 text-sm text-slate-500">Save the package first, then you can add a welcome message and reminders for the people who buy it.</p>
                 )
               )}
             </div>
@@ -542,9 +542,9 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
         ) : list.length === 0 ? (
           <OfferingEmpty
             icon={<Ticket className="h-6 w-6" />}
-            title="No memberships yet"
-            body="Bundle your packages, classes and products into a membership clients buy in one go."
-            action={{ onClick: startNew, label: 'New membership' }}
+            title="No packages yet"
+            body="Bundle your 1:1 consults, classes and products into a package clients buy in one go."
+            action={{ onClick: startNew, label: 'New package' }}
           />
         ) : (
           <>
@@ -590,7 +590,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                 ))}
               </OfferingItems>
             </SortableOfferingList>
-            <AddOfferingLink onClick={startNew} label="New membership" />
+            <AddOfferingLink onClick={startNew} label="New package" />
           </>
         )}
       </div>

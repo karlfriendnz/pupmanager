@@ -49,14 +49,14 @@ Statuses:
 
 | id | Rule | Status | Proven by |
 |----|------|--------|-----------|
-| SELL-1 | There are five kinds of offering: 1:1 packages, group classes, casual classes, events, memberships. They share one card, one list and one ordering. | Enforced | `offering-reorder.spec.ts` |
+| SELL-1 | There are five kinds of offering: 1:1 consults, group classes, casual classes, events, packages. They share one card, one list and one ordering. | Enforced | `offering-reorder.spec.ts` |
 | SELL-2 | Each kind is an **add-on**. Switched off: the page redirects to Add-ons and the API refuses. | Enforced | `addons-setup.spec.ts`, `memberships-addon-gate.test.ts` |
 | SELL-3 | The order a trainer drags their list into is the order **clients see** in the booking flow. | Enforced | `offering-reorder.spec.ts` |
 | SELL-4 | Group classes, casual classes and events are all class runs underneath, but each lives in its own section, with its own back link, independent of the others' add-ons. | Enforced | `offering-section-routes.spec.ts` |
-| SELL-5 | A membership bundles packages, class places and products into one purchase. | Enforced | `memberships.spec.ts` |
-| SELL-6 | Only **published, one-off** memberships reach clients. Drafts, recurring ones and other trainers' are invisible. | Enforced | `memberships.spec.ts` |
-| SELL-7 | A recurring membership can carry several billing options (per week / fortnight / month), each with its own price, minimum term and cancellation fee. Configurable now; **not purchasable** until mandates ship. | Intended | `memberships.spec.ts` covers the config |
-| SELL-8 | A membership can only include offerings the trainer owns. | Enforced | `memberships.spec.ts` |
+| SELL-5 | A package bundles 1:1 consults, class places and products into one purchase. | Enforced | `memberships.spec.ts` |
+| SELL-6 | Only **published, one-off** packages reach clients. Drafts, recurring ones and other trainers' are invisible. | Enforced | `memberships.spec.ts` |
+| SELL-7 | A recurring package can carry several billing options (per week / fortnight / month), each with its own price, minimum term and cancellation fee. Configurable now; **not purchasable** until mandates ship. | Intended | `memberships.spec.ts` covers the config |
+| SELL-8 | A package can only include offerings the trainer owns. | Enforced | `memberships.spec.ts` |
 
 ## Booking and enrolment
 
@@ -65,7 +65,7 @@ Statuses:
 | BOOK-1 | A **full enrolment** covers every session of a course. A **drop-in** covers one named session. | Enforced | `dropin-single-session.spec.ts` |
 | BOOK-2 | A drop-in must say which session. Not naming one is a bad request — not "the class is full". | Enforced | `dropin-single-session.spec.ts` |
 | BOOK-3 | A full course being full doesn't stop drop-ins into sessions that still have room. | Enforced, untested | `classSessionSpaces()` counts full seats on every session, drop-ins on their own |
-| BOOK-4 | Self-booking offers **1:1 packages only**. A class has its own timetable and is booked by its sessions, not by picking any free hour. | Enforced | `self-book-wizard.spec.ts` |
+| BOOK-4 | Self-booking offers **1:1 consults only**. A class has its own timetable and is booked by its sessions, not by picking any free hour. | Enforced | `self-book-wizard.spec.ts` |
 | BOOK-5 | Times that have already passed are never offered, including later today. | Enforced, untested | past-filter in `startTimesFor()` |
 | BOOK-6 | A session a client already holds is shown as theirs, not offered again. | Enforced, untested | `booked` flag on each session in the wizard |
 | BOOK-7 | A client can enrol themselves; the enrolment appears on the trainer's roster immediately. | Enforced | `client-class-booking.spec.ts` |
@@ -91,7 +91,7 @@ Statuses:
 | MSG-1 | There are 23 kinds of notification. Each has its own copy and its own icon — none falls back to a generic bell. | Enforced | `notification-coverage.test.ts` |
 | MSG-2 | Opening a notification feed marks what's in it as read — for **both** trainers and dog owners. | Enforced | `notifications-all-types.spec.ts` |
 | MSG-3 | Chats belong in Messages, not the notification bell. | Enforced | `notifications-all-types.spec.ts` |
-| MSG-4 | Automated messages hang off a **session** for classes and 1:1 packages, and off the **purchase** for memberships (which have no timetable). | Enforced | `comms-flows.test.ts`, `memberships.spec.ts` |
+| MSG-4 | Automated messages hang off a **session** for classes and 1:1 consults, and off the **purchase** for packages (which have no timetable). | Enforced | `comms-flows.test.ts`, `memberships.spec.ts` |
 | MSG-5 | A step marked **Important** overrides a client's mute. A routine one respects it. | Enforced | `comms-flows.test.ts` |
 | MSG-6 | Each client gets each message once, however often the scheduler runs. | Enforced | `comms-flows.test.ts` |
 | MSG-7 | The email version of a message uses the rich body the trainer wrote; push and in-app use the short plain one. | Enforced | `comms-flows.test.ts`, `comms-flows.spec.ts` |
@@ -114,7 +114,7 @@ The same offering type behaves differently depending on how it's set up. These
 are the variants that change what actually *happens*, researched from the code
 and then tested in `uat-offering-scenarios.spec.ts`.
 
-### 1:1 packages
+### 1:1 consults
 
 | Set up as | What the client gets | Status |
 |-----------|---------------------|--------|
@@ -136,11 +136,11 @@ and then tested in `uat-offering-scenarios.spec.ts`.
 | **Full, waitlist on** | Offered the waitlist rather than a booking | Enforced, untested |
 | **Full, waitlist off** | Shown as full, no way in | Enforced, untested |
 
-### Memberships
+### Packages
 
 | Set up as | What the client gets | Status |
 |-----------|---------------------|--------|
-| **One-off, published** | Visible in Offerings → Memberships, buyable | Enforced |
+| **One-off, published** | Visible in Offerings → Packages, buyable | Enforced |
 | **One-off, draft** | Invisible | Enforced |
 | **Recurring, published** | Invisible, and the buy route refuses it (409) — configurable now, sellable when mandates land | Enforced |
 | **Any, add-on off** | Invisible, and unbuyable even with an old link | Enforced |
@@ -163,7 +163,7 @@ Rules the product implies but the platform doesn't keep yet.
 | Gap | Detail |
 |-----|--------|
 | **A trainer can't review the homework they've set** | Setting homework works and it reaches the client. But no trainer screen lists it: the client record's "Training log" tab shows the client's own practice logs, and homework set for a date appears nowhere. Only session-attached homework shows, on that session. |
-| **Memberships can't be sold from a public booking page** | The buy route needs a signed-in client, so a stranger following a booking link can't buy one. |
-| **Recurring memberships aren't purchasable** | The billing options save and display; nothing can subscribe to them until the mandate layer lands (SELL-7). |
+| **Packages can't be sold from a public booking page** | The buy route needs a signed-in client, so a stranger following a booking link can't buy one. |
+| **Recurring packages aren't purchasable** | The billing options save and display; nothing can subscribe to them until the mandate layer lands (SELL-7). |
 | **Email and push delivery are unproven** | No mail or push credentials in the test environment, so sending is verified only up to the point of handing off. |
 | **Card payments are unproven past the handoff** | Every paid flow is tested up to the Stripe redirect and no further. The biggest remaining hole, given payments are live. |

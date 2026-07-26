@@ -1,18 +1,20 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { X, Loader2, Check, Send, Printer, Pencil, Plus, Trash2, Link2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { X, Loader2, Check, Send, Printer, Pencil, Plus, Trash2, Link2, MoreHorizontal } from 'lucide-react'
+import { ActionSheet, type SheetAction } from '@/components/finances/action-sheet'
+import { planInvoiceActions, type InvoiceActionKey } from '@/components/finances/invoice-actions'
+import { formatMoney } from '@/lib/money'
 
 // Shared receivable (invoice) helpers + the printable invoice-document modal.
 // Used by BOTH the Finances → Invoices tab and the client profile's Invoices
 // tab, so keep it presentation-only + endpoint-driven (no page-specific state).
 
-const CURRENCY_SYMBOLS: Record<string, string> = { nzd: '$', aud: '$', cad: '$', usd: '$', gbp: '£', eur: '€', zar: 'R' }
-
-export function money(minor: number, currency: string): string {
-  const sym = CURRENCY_SYMBOLS[currency.toLowerCase()] ?? ''
-  return `${sym}${(minor / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
+// One money formatter for the whole app — the invoice list mixes currencies
+// (NZD and GBP in the same column), so nothing here may assume a dollar sign.
+// This used to re-implement it against the BROWSER's locale, which grouped a
+// German-locale trainer's $1,240.00 as $1.240,00; formatMoney pins the grouping.
+export const money = formatMoney
 
 export function fmtDate(iso: string | null): string {
   if (!iso) return '—'
@@ -100,6 +102,12 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   // Lives on the shared document so it's reachable from the client's Invoices
   // tab, the Overview card AND Finances — not just one of them.
   const [payOpen, setPayOpen] = useState(false)
+  // Five bordered buttons overflowed the bar at 390px (labels wrapping onto
+  // three lines, the last one off the screen edge), so the bar now carries the
+  // close control plus ONE primary action and everything else lives behind
+  // "More".
+  const [menuOpen, setMenuOpen] = useState(false)
+  const moreRef = useRef<HTMLButtonElement>(null)
 
   const load = useCallback(async () => {
     const d = await fetch(`/api/trainer/finances/receivables/${summary.id}`).then(r => (r.ok ? r.json() : null)).catch(() => null)
@@ -117,10 +125,12 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
   useEffect(() => {
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !editing) onClose() }
+    // Escape belongs to whatever is on top: mid-edit, or with the More sheet /
+    // record-payment modal open, it must not take the whole document with it.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !editing && !menuOpen && !payOpen) onClose() }
     window.addEventListener('keydown', onKey)
     return () => { document.body.style.overflow = prevOverflow; window.removeEventListener('keydown', onKey) }
-  }, [onClose, editing])
+  }, [onClose, editing, menuOpen, payOpen])
 
   // Prefer the fetched detail; fall back to the list summary while loading.
   const view = data ?? summary
@@ -165,10 +175,13 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
     if (!data?.payToken) return
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/pay/${data.payToken}`)
+      // Confirm in place — the sheet stays open showing "Copied", then closes
+      // itself, so the confirmation is never swallowed by the menu shutting.
       setCopied(true)
-      setTimeout(() => setCopied(false), 1600)
+      setTimeout(() => { setCopied(false); setMenuOpen(false) }, 1600)
     } catch {
       setMsg('Could not copy — copy the pay link manually.')
+      setMenuOpen(false)
     }
   }
 
@@ -223,6 +236,58 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
     }
   }
 
+  // ── Toolbar actions ───────────────────────────────────────────────────────
+  // planInvoiceActions decides what earns the bar's one visible slot and what
+  // moves into "More" (see invoice-actions.ts); this only dresses each key.
+  const plan = planInvoiceActions({
+    canSend, editable, payable, hasPayToken: !!data?.payToken, loaded: !!data,
+  })
+  const sendIsPrimary = plan.primary === 'send'
+  function pick(action: () => void) {
+    return () => { setMenuOpen(false); action() }
+  }
+  const ACTION_DETAIL: Record<InvoiceActionKey, SheetAction> = {
+    send: {
+      key: 'send',
+      label: alreadySent ? 'Resend to the client' : 'Send to the client',
+      hint: 'Emails the invoice with a link to pay',
+      icon: <Send className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: pick(() => { void send() }),
+    },
+    print: {
+      key: 'print',
+      label: 'Print or save as PDF',
+      hint: 'Opens your printer dialog',
+      icon: <Printer className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: pick(() => window.print()),
+    },
+    edit: {
+      key: 'edit',
+      label: 'Edit invoice',
+      hint: 'Change the line items or amounts',
+      icon: <Pencil className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: pick(startEdit),
+    },
+    copy: {
+      key: 'copy',
+      // Confirms in place rather than the menu closing over the top of it.
+      label: copied ? 'Copied' : 'Copy pay link',
+      hint: copied ? 'The pay link is on your clipboard' : 'Share it in a text or a message',
+      icon: copied
+        ? <Check className="h-5 w-5 text-emerald-600" strokeWidth={1.75} />
+        : <Link2 className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: () => { void copyPayLink() },
+    },
+    record: {
+      key: 'record',
+      label: 'Record a payment',
+      hint: 'Money that arrived by bank transfer or cash',
+      icon: <Check className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: pick(() => setPayOpen(true)),
+    },
+  }
+  const menuActions = plan.menu.map(k => ACTION_DETAIL[k])
+
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 print:p-0 print:static print:block">
       {/* Backdrop — click to close (disabled mid-edit to avoid losing changes). */}
@@ -249,60 +314,63 @@ export function ReceivableDocument({ summary, onClose, onSent }: { summary: Rcv;
 
       <div role="dialog" aria-modal="true" aria-label="Invoice" className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden print:max-h-none print:max-w-none print:rounded-none print:shadow-none print:overflow-visible">
         {/* Action bar — hidden when printing. */}
-        <div className="print:hidden flex items-center gap-2 px-3 sm:px-5 min-h-[3.5rem] border-b border-slate-100 flex-shrink-0">
+        <div data-testid="invoice-action-bar" className="print:hidden flex items-center gap-2 px-3 sm:px-5 min-h-[3.5rem] border-b border-slate-100 flex-shrink-0">
           <button type="button" onClick={onClose} aria-label="Close" className="p-2 -ml-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><X className="h-5 w-5" /></button>
           <p className="flex-1 min-w-0 truncate text-sm font-semibold text-slate-900">{editing ? 'Edit invoice' : 'Invoice'}</p>
           {editing ? (
             <>
-              <button type="button" onClick={() => { setEditing(false); setMsg(null) }} disabled={saving} className="inline-flex items-center rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">Cancel</button>
-              <button type="button" onClick={save} disabled={saving || !draftValid} className="inline-flex items-center gap-1.5 rounded-lg bg-accent hover:bg-accent-strong text-white px-3 h-9 text-sm font-semibold disabled:opacity-60">
+              <button type="button" onClick={() => { setEditing(false); setMsg(null) }} disabled={saving} className="inline-flex shrink-0 items-center rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">Cancel</button>
+              <button type="button" onClick={save} disabled={saving || !draftValid} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent hover:bg-accent-strong text-white px-3 h-9 text-sm font-semibold disabled:opacity-60">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {saving ? 'Saving…' : 'Save'}
               </button>
             </>
           ) : (
             <>
-              {editable && data && (
-                <button type="button" onClick={startEdit} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                  <Pencil className="h-4 w-4" /> Edit
-                </button>
-              )}
-              {payable && data?.payToken && (
-                <button type="button" onClick={copyPayLink} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                  {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Link2 className="h-4 w-4" />} {copied ? 'Copied' : 'Copy pay link'}
-                </button>
-              )}
-              <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                <Printer className="h-4 w-4" /> Print
-              </button>
-              {payable && (
-                <button
-                  type="button"
-                  onClick={() => setPayOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  <Check className="h-4 w-4" /> Record payment
-                </button>
-              )}
-              {canSend && (
+              {/* One primary action, then everything else behind More — five
+                  bordered buttons did not fit a 390px bar. */}
+              {sendIsPrimary ? (
                 <button
                   type="button"
                   onClick={send}
                   disabled={sending}
                   // A resend puts another email in someone's inbox, so it asks
                   // first; the initial send doesn't need to.
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-semibold disabled:opacity-60 ${
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-semibold disabled:opacity-60 ${
                     alreadySent
                       ? 'border border-slate-200 text-slate-700 hover:bg-slate-50'
                       : 'bg-accent hover:bg-accent-strong text-white'
                   }`}
                 >
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} /> : <Send className="h-4 w-4" strokeWidth={1.75} />}
                   {sending ? 'Sending…' : alreadySent ? 'Resend' : 'Send'}
+                </button>
+              ) : (
+                <button type="button" onClick={() => window.print()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  <Printer className="h-4 w-4" strokeWidth={1.75} /> Print
+                </button>
+              )}
+              {menuActions.length > 0 && (
+                <button
+                  ref={moreRef}
+                  type="button"
+                  onClick={() => setMenuOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-expanded={menuOpen}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 h-9 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} /> More
                 </button>
               )}
             </>
           )}
         </div>
+        {menuOpen && (
+          <ActionSheet
+            title="Invoice actions"
+            actions={menuActions}
+            onClose={() => { setMenuOpen(false); moreRef.current?.focus() }}
+          />
+        )}
 
         <div className="flex-1 overflow-y-auto print:overflow-visible">
           {loading && !data ? (

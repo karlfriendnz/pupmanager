@@ -52,7 +52,7 @@ export default async function OfferingsPage() {
     { href: '/doggy-daycare', label: 'Doggy Daycare', icon: 'daycare', count: daycare, one: 'programme', many: 'programmes', on: false },
     { href: '/memberships', label: 'Packages', icon: 'memberships', count: memberships, one: 'package', many: 'packages', on: addons.has('memberships') },
     { href: '/products', label: 'Products', icon: 'products', count: products, one: 'product', many: 'products', on: addons.has('shop') },
-    { href: '/templates', label: 'Library', icon: 'library', count: null, one: '', many: '', on: true },
+    { href: '/library', label: 'Library', icon: 'library', count: null, one: '', many: '', on: true },
   ] as const
 
   const visible: OfferingRowData[] = rows

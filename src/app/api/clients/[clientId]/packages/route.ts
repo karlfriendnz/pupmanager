@@ -82,13 +82,13 @@ export async function POST(
   const pkg = await prisma.package.findFirst({
     where: { id: parsed.data.packageId, trainerId },
   })
-  if (!pkg) return NextResponse.json({ error: 'Package not found' }, { status: 404 })
+  if (!pkg) return NextResponse.json({ error: '1:1 consult not found' }, { status: 404 })
 
   // sessionCount === 0 means the package is ongoing — any number of sessions is
   // valid (still capped at 52 by the request schema).
   if (pkg.sessionCount > 0 && parsed.data.sessionDates.length > pkg.sessionCount) {
     return NextResponse.json(
-      { error: `Too many sessions: package allows ${pkg.sessionCount}` },
+      { error: `Too many sessions: this consult allows ${pkg.sessionCount}` },
       { status: 400 }
     )
   }
@@ -163,7 +163,7 @@ export async function POST(
     const collides = sessionDates.some(d => existingSlots.has(slotOf(d)))
     if (collides) {
       return NextResponse.json(
-        { error: 'This dog already has an ongoing assignment of this package on that day and time. Pick a different day or time, or edit the existing one.' },
+        { error: 'This dog already has an ongoing assignment of this consult on that day and time. Pick a different day or time, or edit the existing one.' },
         { status: 409 },
       )
     }

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { PackageDetail } from './package-detail'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Package' }
+export const metadata: Metadata = { title: '1:1 Consult' }
 
 export default async function PackagePage({
   params,

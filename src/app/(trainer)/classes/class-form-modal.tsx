@@ -104,7 +104,7 @@ export function ClassFormModal({
   const [convertError, setConvertError] = useState<string | null>(null)
   async function handleConvertToPackage() {
     if (!runId || converting) return
-    if (!confirm('Convert this class back into a 1:1 package? Its scheduled sessions will be removed.')) return
+    if (!confirm('Convert this class back into a 1:1 consult? Its scheduled sessions will be removed.')) return
     setConverting(true)
     setConvertError(null)
     try {
@@ -388,7 +388,7 @@ export function ClassFormModal({
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-medium text-slate-700">Not actually a class?</span>
                 <span className="block text-[11px] text-slate-400 mt-0.5">
-                  Turn it back into a 1:1 package. The scheduled sessions are removed — only possible while nobody is booked in.
+                  Turn it back into a 1:1 consult. The scheduled sessions are removed — only possible while nobody is booked in.
                 </span>
                 {convertError && (
                   <span className="block text-[11px] font-medium mt-1.5 text-red-600">{convertError}</span>
@@ -400,7 +400,7 @@ export function ClassFormModal({
                 disabled={converting}
                 className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
-                {converting ? 'Converting…' : 'Convert to 1:1 package'}
+                {converting ? 'Converting…' : 'Convert to 1:1 consult'}
               </button>
             </div>
           )}

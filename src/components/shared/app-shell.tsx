@@ -51,7 +51,7 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
   { href: '/clients/waitlist', label: 'Waitlist', icon: ClipboardList,   section: 'clients', child: true },
 
-  { href: '/packages',     label: '1:1 Packages', icon: Package,         section: 'programs' },
+  { href: '/packages',     label: '1:1 Consults', icon: Package,         section: 'programs' },
   { href: '/classes',      label: 'Group Classes', icon: GraduationCap,  section: 'programs' },
   { href: '/casual-classes',     label: 'Casual Classes',     icon: Ticket,           section: 'programs' },
   { href: '/events',       label: 'Events',       icon: CalendarPlus,    section: 'programs' },
@@ -59,11 +59,11 @@ const TRAINER_NAV: NavItem[] = [
   // and the route still works, it just isn't offered in the nav yet. Restore
   // this line to bring it back.
   // { href: '/doggy-daycare', label: 'Doggy Daycare', icon: Dog,         section: 'programs' },
-  { href: '/memberships',  label: 'Memberships',  icon: Ticket,          section: 'programs' },
+  { href: '/memberships',  label: 'Packages',     icon: Ticket,          section: 'programs' },
 
   // Not offerings themselves — the things that support them.
   { href: '/schedule/route', label: 'Route',      icon: Navigation,      section: 'tools' },
-  { href: '/templates',    label: 'Library',      icon: Layers,          section: 'tools' },
+  { href: '/library',      label: 'Library',      icon: Layers,          section: 'tools' },
   { href: '/products',     label: 'Products',     icon: ShoppingBag,     section: 'tools' },
   { href: '/achievements', label: 'Achievements', icon: Trophy,          section: 'tools' },
 
@@ -146,7 +146,7 @@ const CLIENT_MENU = [
   { href: '/my-sessions', label: 'Sessions', icon: Calendar },
   { href: '/my-messages', label: 'Messages', icon: MessageSquare },
   { href: '/my-shop', label: 'Shop', icon: ShoppingBag },
-  { href: '/my-memberships', label: 'Memberships', icon: Ticket },
+  { href: '/my-memberships', label: 'Packages', icon: Ticket },
   { href: '/my-invoices', label: 'Invoices', icon: FileText },
   { href: '/my-achievements', label: 'Achievements', icon: Trophy },
   { href: '/my-dogs', label: 'My dogs', icon: Dog },

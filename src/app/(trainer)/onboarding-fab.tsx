@@ -22,7 +22,7 @@ export const STEP_HINT: Record<string, string> = {
   availability: "Let PupManager know when you train. Click 'Schedule' on the left, then 'Hours'.",
   business_profile: "Let's set up your business — click 'Settings' on the left to add your name and logo.",
   intake_form: "Click 'Settings' on the left, then the 'Forms' tab, to customise the form new clients fill in.",
-  program_package: "Time to add a programme. Click 'Packages' on the left to create your first one.",
+  program_package: "Time to add a programme. Click '1:1 Consults' on the left to create your first one.",
   create_client: "Add a test client to play with. Click 'Clients' on the left, then 'Add a client'.",
   client_view: "See what your clients see — click 'Clients' on the left, then 'View as client'.",
   show_notes: "Take a peek at where you write session notes — click 'Schedule' on the left and open a session.",
@@ -49,7 +49,7 @@ const STEP_ON_MENU_HINT: Record<string, string> = {
 // step has no specific in-page version.
 const STEP_ON_PAGE_HINT: Record<string, string> = {
   business_profile: "Fill in your business name, phone and logo here. Hit 'Save' when you're happy.",
-  program_package: "Click 'New package' to add your first programme.",
+  program_package: "Click 'New consult' to add your first programme.",
   create_client: "Fill in the name, email and their dog's name, then hit 'Add client' — no email goes out, it's just a test client.",
   schedule_session: "Click any open time slot in the calendar to drop your first session in.",
   show_notes: "This is your notes screen — where you write up each session for your client. Have a go at writing one up.",
@@ -89,7 +89,7 @@ function subPathHint(pathname: string): string | null {
 //   invite_client → payments → booking_page → download_app → invite_staff → done
 // Keep this chain in lockstep with the step order in prisma/seed.ts.
 const STEP_TRANSITION: Record<string, string> = {
-  business_profile: "Nice work — your business is all set up! Now let's add your first programme — click 'Packages' on the left.",
+  business_profile: "Nice work — your business is all set up! Now let's add your first programme — click '1:1 Consults' on the left.",
   program_package: "Boom — your first programme is in! Now add a test client to build around — click 'Clients' on the left, then 'Add a client'.",
   create_client: "Great — your test client's in! Now drop a first session onto the calendar. Click 'Schedule' on the left and pick an open slot.",
   schedule_session: "Booked — your first session is on the calendar! Now have a go at writing it up — open the session and add your notes.",

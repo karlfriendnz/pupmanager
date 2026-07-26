@@ -1353,7 +1353,7 @@ function DayList({
       <div className="text-center py-12 text-slate-400">
         <Calendar className="h-12 w-12 mx-auto mb-3 opacity-30" />
         <p>No sessions scheduled for this day</p>
-        <p className="text-xs mt-1">Click a time slot in week view, or use the &ldquo;Assign package&rdquo; button</p>
+        <p className="text-xs mt-1">Click a time slot in week view, or use the &ldquo;Assign consult&rdquo; button</p>
       </div>
     )
   }
@@ -2665,9 +2665,9 @@ function SessionModal({
           {clientId && (
             <div className="border-t border-slate-100 pt-4">
               <div className="flex items-center justify-between gap-3 mb-1.5">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Package</p>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">1:1 Consult</p>
                 {session.packageColor && (
-                  <span className={`h-3 w-3 rounded-full ${PACKAGE_COLOR_CLASSES[session.packageColor].bg}`} aria-label="Package colour" />
+                  <span className={`h-3 w-3 rounded-full ${PACKAGE_COLOR_CLASSES[session.packageColor].bg}`} aria-label="Consult colour" />
                 )}
               </div>
               <select
@@ -2676,7 +2676,7 @@ function SessionModal({
                 disabled={savingPackage}
                 className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                <option value="">No package (standalone)</option>
+                <option value="">No consult (standalone)</option>
                 {assignments.map(a => (
                   <option key={a.id} value={a.id}>{a.package.name}</option>
                 ))}
@@ -2920,7 +2920,7 @@ function SessionModal({
             canDeleteFollowing={!!session.clientPackageId}
             onConfirm={async (scope) => {
               const message = scope === 'following'
-                ? 'Delete this session and every later one in the same package? This cannot be undone.'
+                ? 'Delete this session and every later one in the same consult? This cannot be undone.'
                 : 'Delete this session? This cannot be undone.'
               if (!confirm(message)) return
               setDeleting(true)

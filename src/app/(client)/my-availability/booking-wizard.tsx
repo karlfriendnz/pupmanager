@@ -353,7 +353,7 @@ export function BookingWizard(props: {
                   {memberships.length > 0 && (
                     <button type="button" onClick={() => setCategory('memberships')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><Ticket className="h-5 w-5" /></span>
-                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">Memberships</span><span className="block text-xs text-slate-500">{memberships.length} available</span></span>
+                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">Packages</span><span className="block text-xs text-slate-500">{memberships.length} available</span></span>
                       <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
                     </button>
                   )}
@@ -433,7 +433,7 @@ export function BookingWizard(props: {
 
             {category === 'memberships' && memberships.length > 0 && (
               <section>
-                <SectionLabel icon={<Ticket className="h-3.5 w-3.5" />} text="Memberships" />
+                <SectionLabel icon={<Ticket className="h-3.5 w-3.5" />} text="Packages" />
                 <p className="text-xs text-slate-500 -mt-1 mb-2.5">Bundles from {businessName} — everything included, one payment.</p>
                 {/* Checkout is its own flow (Stripe), so these cards buy directly
                     rather than continuing through the wizard's steps 2–3. */}

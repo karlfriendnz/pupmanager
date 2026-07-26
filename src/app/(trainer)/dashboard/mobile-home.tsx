@@ -134,7 +134,7 @@ export function MobileHome({
     offerings: {
       href: '/offerings',
       label: 'Offerings',
-      sub: 'Packages & classes',
+      sub: 'Consults & classes',
       icon: Layers,
     },
     todo: {

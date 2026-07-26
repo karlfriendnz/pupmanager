@@ -104,7 +104,7 @@ export default async function globalSetup() {
     for (const [id, name, description, sortOrder] of [
       ['dropins', 'Casual classes', 'Single-session casual classes', 7],
       ['puppyschool', 'Doggy daycare', 'Day-parted daycare with a week board', 8],
-      ['memberships', 'Memberships', 'Bundle offerings into one purchase', 9],
+      ['memberships', 'Packages', 'Bundle offerings into one purchase', 9],
     ] as const) {
       await prisma.billingItem.create({
         data: { id, kind: 'ADDON', name, description, priceMonthly: 0, sortOrder, isActive: true },
@@ -264,6 +264,19 @@ export default async function globalSetup() {
         lines: { create: [{ description: 'Starter pack', quantity: 1, unitAmountCents: 12000, amountCents: 12000, sortOrder: 0 }] },
       },
     })
+    // A long-titled, four-figure, Xero-SYNCED invoice on the assigned client.
+    // It exists so the invoice list holds rows of differing title length, money
+    // width, badge width AND both synced/unsynced states at once — which is what
+    // the right-hand column alignment has to survive.
+    await prisma.invoice.create({
+      data: {
+        id: INV.longTitleInvoiceId, trainerId: profile.id, clientId: SEED.assignedClientId,
+        amountCents: 124000, amountPaidCents: 0, currency: 'nzd', status: 'UNPAID',
+        description: INV.longTitleInvoiceDescription, sourceType: 'MANUAL', sentAt: new Date(),
+        xeroInvoiceId: INV.longTitleInvoiceXeroId, xeroSyncStatus: 'SYNCED',
+        lines: { create: [{ description: INV.longTitleInvoiceDescription, quantity: 1, unitAmountCents: 124000, amountCents: 124000, sortOrder: 0 }] },
+      },
+    })
     // A Business B invoice — the cross-tenant guard target.
     await prisma.invoice.create({
       data: {
@@ -271,6 +284,28 @@ export default async function globalSetup() {
         amountCents: 5000, amountPaidCents: 0, currency: 'nzd', status: 'UNPAID',
         description: 'Rival Invoice', sourceType: 'MANUAL',
         lines: { create: [{ description: 'Rival Item', quantity: 1, unitAmountCents: 5000, amountCents: 5000, sortOrder: 0 }] },
+      },
+    })
+
+    // ─── Transaction fixtures (see SEED.payments) ────────────────────────────
+    // Settled card payments on Business A's assigned client. They give the
+    // Transactions tab real rows with a real card fee, so the list-row layout
+    // (and the fee/net figures living in the DETAIL, not the row) is testable.
+    const PAY = SEED.payments
+    await prisma.payment.create({
+      data: {
+        id: PAY.plainId, trainerId: profile.id, clientId: SEED.assignedClientId,
+        connectAccountId: 'acct_e2e_test', amountTotal: PAY.plainAmount, currency: 'nzd',
+        applicationFeeAmount: 0, stripeFeeAmount: PAY.plainFee, amountRefunded: 0,
+        status: 'PAID', description: PAY.plainDescription, paidAt: new Date('2026-07-15'),
+      },
+    })
+    await prisma.payment.create({
+      data: {
+        id: PAY.refundedId, trainerId: profile.id, clientId: SEED.assignedClientId,
+        connectAccountId: 'acct_e2e_test', amountTotal: PAY.refundedAmount, currency: 'nzd',
+        applicationFeeAmount: 0, stripeFeeAmount: PAY.refundedFee, amountRefunded: 5000,
+        status: 'PARTIALLY_REFUNDED', description: PAY.refundedDescription, paidAt: new Date('2026-07-10'),
       },
     })
 

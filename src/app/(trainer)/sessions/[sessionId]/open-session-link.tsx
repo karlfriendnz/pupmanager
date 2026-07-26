@@ -10,7 +10,7 @@ export function OpenSessionLink({ sessionId }: { sessionId: string }) {
     <Link
       href={`/sessions/${sessionId}`}
       onClick={e => e.stopPropagation()}
-      className="text-xs text-blue-600 hover:underline shrink-0"
+      className="shrink-0 text-[13px] font-medium text-slate-500 hover:text-slate-900"
     >
       Open
     </Link>

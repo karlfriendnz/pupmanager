@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { loadPublishedMemberships } from '@/lib/client-memberships'
 import { ClientMembershipsView } from './memberships-view'
 
-export const metadata: Metadata = { title: 'Memberships' }
+export const metadata: Metadata = { title: 'Packages' }
 
 // The standalone client-facing storefront for a trainer's published one-off
 // memberships. Memberships now also appear as a type inside the Offerings flow

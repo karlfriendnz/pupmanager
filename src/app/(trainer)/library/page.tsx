@@ -1,24 +1,27 @@
 import type { Metadata } from 'next'
 import { PageHeader } from '@/components/shared/page-header'
-import { SectionLabel } from '@/components/shared/flat-list'
-import { requireLibraryTrainer, getLibraryTree, countItems } from './library-data'
+import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
+import { requireLibraryTrainer, getLibraryTree } from './library-data'
 import { LibraryShell } from './library-shell'
-import { LibraryTree } from './library-tree'
+import { LibraryCategoryGrid } from './library-category-grid'
+import { LibraryEmpty } from './library-empty'
 import { AddCategory } from './library-index-actions'
 
 export const metadata: Metadata = { title: 'Library' }
 
-// The Library index.
+// The Library's landing screen: the top-level categories, as a grid.
 //
-// On a phone the tree IS this page — one screen you can open as deep as you
-// like, replacing the old types → themes → tasks drill-down. On desktop the
-// same tree moves into the sticky left column (LibraryShell) and this pane
-// carries the "what is this" copy plus the create action.
+// ONE grid, the same shape at 390px and 1440px — FlatTileGrid is the phone
+// home's two-up block, so the two screens read as the same app. It gets no
+// variant that reflows it; the CONTAINER simply grows on desktop, where the
+// grid sits beside the tree rail (AGENTS.md "One layout per component").
+//
+// Each tile carries a name AND what's inside it — a grid of bare labels would
+// be worse than the list it replaced. Tapping one drills in: category → theme
+// → item, which is also how a phone gets around, since the tree is desktop-only.
 export default async function LibraryPage() {
   const trainerId = await requireLibraryTrainer()
   const tree = await getLibraryTree(trainerId)
-  const items = countItems(tree)
-  const themes = tree.reduce((n, t) => n + t.themes.length, 0)
 
   return (
     <>
@@ -27,29 +30,20 @@ export default async function LibraryPage() {
         subtitle="Reusable training items you can drop into any client's plan."
       />
       <LibraryShell tree={tree}>
-        {/* Phone: the tree is the page. */}
-        <div className="md:hidden">
-          <LibraryTree tree={tree} />
-          <AddCategory />
-        </div>
-
-        {/* Desktop: the tree lives in the rail, so this pane explains + creates. */}
-        <div className="hidden md:block">
-          <SectionLabel>Overview</SectionLabel>
-          <div className="rounded-xl border border-slate-200 bg-white px-5 py-6">
-            <p className="text-sm font-medium text-slate-900">
-              {tree.length === 0
-                ? 'Your library is empty'
-                : `${tree.length} categor${tree.length === 1 ? 'y' : 'ies'} · ${themes} theme${themes === 1 ? '' : 's'} · ${items} item${items === 1 ? '' : 's'}`}
-            </p>
-            <p className="mt-1 max-w-prose text-[13px] text-slate-500">
-              {tree.length === 0
-                ? 'Start with a category like “Obedience”, add themes inside it, then fill those themes with the exercises you hand out most.'
-                : 'Pick anything in the tree on the left to open it. Categories and themes are renamed from inside; items open on their own page, where you can attach a picture or a handout and see who currently has it.'}
-            </p>
-          </div>
-          <AddCategory />
-        </div>
+        <SectionLabel>Categories</SectionLabel>
+        {tree.length === 0 ? (
+          <FlatBlock><LibraryEmpty /></FlatBlock>
+        ) : (
+          <LibraryCategoryGrid
+            categories={tree.map(type => ({
+              id: type.id,
+              name: type.name,
+              themes: type.themes.length,
+              items: type.themes.reduce((n, th) => n + th.items.length, 0),
+            }))}
+          />
+        )}
+        <AddCategory />
       </LibraryShell>
     </>
   )

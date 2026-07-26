@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     select: { id: true },
   })
   if (owned.length !== parsed.data.ids.length) {
-    return NextResponse.json({ error: 'Some packages were not found' }, { status: 404 })
+    return NextResponse.json({ error: 'Some consults were not found' }, { status: 404 })
   }
 
   await prisma.$transaction(

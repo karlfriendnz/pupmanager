@@ -4,8 +4,9 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
 
 // The Library, end to end:
-//   • the tree is the navigation spine — the index at phone width IS the tree,
-//     and it opens down to an individual item;
+//   • it lives at /library now, and the old /templates links still get there;
+//   • the landing screen is a grid of categories you drill down from, with the
+//     tree as the desktop rail beside it;
 //   • a category is renamed from INSIDE it (there is no pencil on its row);
 //   • an item lives on its own page, its description is rich text, and the page
 //     lists the people who currently have it;
@@ -24,39 +25,81 @@ function db() {
   return new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
 }
 
-test('the tree navigates the library from the phone index down to one item', async ({ page }) => {
+test('the old /templates library links still land on the library', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+
+  // The Library's old home. It still hosts the unrelated training-template
+  // screens, so this has to redirect rather than 404 — bookmarks and in-app
+  // links pointed here for a long time.
+  await page.goto('/templates')
+  await expect(page).toHaveURL(/\/library$/)
+  await expect(page.getByRole('link', { name: new RegExp(LIB.typeName) })).toBeVisible()
+
+  // …and the training-template screens under it are untouched by the move.
+  await page.goto('/templates/new')
+  await expect(page).toHaveURL(/\/templates\/new$/)
+})
+
+test('the phone landing screen is a grid of categories that drills down to an item', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await login(page, SEED.owner.email, SEED.owner.password)
 
-  await page.goto('/templates')
-  // Top level only, until you expand it.
-  await expect(page.getByRole('link', { name: new RegExp(LIB.typeName) })).toBeVisible()
-  await expect(page.getByRole('link', { name: new RegExp(LIB.themeName) })).toHaveCount(0)
+  await page.goto('/library')
+  // A tile per top-level category, carrying what's inside it — not a bare label.
+  const tile = page.getByRole('link', { name: new RegExp(LIB.typeName) })
+  await expect(tile).toBeVisible()
+  await expect(tile).toContainText(/theme/)
+  await expect(tile).toContainText(/item/)
+  // The tree is the desktop rail — a phone drills in instead.
+  await expect(page.getByRole('button', { name: `Expand ${LIB.typeName}` })).toHaveCount(0)
 
-  await page.getByRole('button', { name: `Expand ${LIB.typeName}` }).click()
+  await tile.click()
+  await page.waitForURL(`**/library/type/${LIB.typeId}`)
   await expect(page.getByRole('link', { name: new RegExp(LIB.themeName) })).toBeVisible()
   await expect(page.getByRole('link', { name: new RegExp(LIB.themeTwoName) })).toBeVisible()
-  // Items are one more level down.
-  await expect(page.getByRole('link', { name: new RegExp(LIB.itemTitle) })).toHaveCount(0)
 
-  await page.getByRole('button', { name: `Expand ${LIB.themeName}` }).click()
+  await page.getByRole('link', { name: new RegExp(LIB.themeName) }).click()
+  await page.waitForURL(`**/library/theme/${LIB.themeId}`)
   await page.getByRole('link', { name: new RegExp(LIB.itemTitle) }).click()
 
-  await page.waitForURL(`**/templates/item/${LIB.itemId}`)
-  // The item's own page, opened straight from the tree — no modal in between.
+  await page.waitForURL(`**/library/item/${LIB.itemId}`)
+  // The item's own page — no modal in between.
   await expect(page.getByLabel('Name')).toHaveValue(LIB.itemTitle)
+})
+
+test('the desktop tree opens the library from the rail, expanded to where you are', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await login(page, SEED.owner.email, SEED.owner.password)
+
+  await page.goto('/library')
+  const rail = page.getByRole('complementary')
+  // Top level only, until you expand it.
+  await expect(rail.getByRole('link', { name: new RegExp(LIB.typeName) })).toBeVisible()
+  await expect(rail.getByRole('link', { name: new RegExp(LIB.themeName) })).toHaveCount(0)
+
+  await rail.getByRole('button', { name: `Expand ${LIB.typeName}` }).click()
+  await expect(rail.getByRole('link', { name: new RegExp(LIB.themeName) })).toBeVisible()
+  await expect(rail.getByRole('link', { name: new RegExp(LIB.itemTitle) })).toHaveCount(0)
+
+  await rail.getByRole('button', { name: `Expand ${LIB.themeName}` }).click()
+  await rail.getByRole('link', { name: new RegExp(LIB.itemTitle) }).click()
+  await page.waitForURL(`**/library/item/${LIB.itemId}`)
+
+  // Landing on an item, the rail is already open at that item — the active path
+  // comes from the URL, not from anything the page threads down.
+  await expect(rail.getByRole('link', { name: new RegExp(LIB.itemTitle) })).toBeVisible()
 })
 
 test('a category is renamed from inside it, not from a pencil on its row', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
 
   // The index lists the category but offers no edit affordance on the row.
-  await page.goto('/templates')
+  await page.goto('/library')
   await expect(page.getByRole('button', { name: /^Edit / })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /rename/i })).toHaveCount(0)
 
   // You open it, and the name field is in there.
-  await page.goto(`/templates/type/${LIB.typeId}`)
+  await page.goto(`/library/type/${LIB.typeId}`)
   const name = page.getByLabel('Name')
   await expect(name).toHaveValue(LIB.typeName)
 
@@ -69,7 +112,7 @@ test('a category is renamed from inside it, not from a pencil on its row', async
   try {
     const row = await prisma.libraryType.findUnique({ where: { id: LIB.typeId } })
     expect(row?.name).toBe(renamed)
-    // Put it back so the tree test above reads the same either way round.
+    // Put it back so the grid/tree tests above read the same either way round.
     await prisma.libraryType.update({ where: { id: LIB.typeId }, data: { name: LIB.typeName } })
   } finally {
     await prisma.$disconnect()
@@ -78,10 +121,10 @@ test('a category is renamed from inside it, not from a pencil on its row', async
 
 test('an item is edited on its own page, in rich text, and shows who has it', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
-  await page.goto(`/templates/item/${LIB.itemId}`)
+  await page.goto(`/library/item/${LIB.itemId}`)
 
   // Its own page — not a modal over the list.
-  await expect(page).toHaveURL(new RegExp(`/templates/item/${LIB.itemId}$`))
+  await expect(page).toHaveURL(new RegExp(`/library/item/${LIB.itemId}$`))
   await expect(page.getByLabel('Name')).toHaveValue(LIB.itemTitle)
 
   // The description is a rich-text editor, and the seeded HTML round-trips as
@@ -143,8 +186,8 @@ test('another business’s library is unreachable', async ({ page }) => {
 
   // Deep links at Business B's rows 404 rather than rendering them.
   for (const url of [
-    `/templates/item/${LIB.businessBItemId}`,
-    `/templates/theme/${LIB.businessBThemeId}`,
+    `/library/item/${LIB.businessBItemId}`,
+    `/library/theme/${LIB.businessBThemeId}`,
   ]) {
     await page.goto(url)
     await expect(page.getByText('Rival', { exact: false })).toHaveCount(0)

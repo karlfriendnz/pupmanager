@@ -224,11 +224,11 @@ export const ADDONS: AddonDef[] = [
   },
   {
     id: 'memberships',
-    name: 'Memberships',
+    name: 'Packages',
     // Free while it beds in — same treatment as classes/events/daycare. Off
-    // until the trainer switches it on; enabling it unlocks the membership
-    // builder and puts memberships in front of clients as an offering type.
-    description: 'Bundle packages, classes and products into a membership clients buy in one go — with its own storefront card and welcome reminders.',
+    // until the trainer switches it on; enabling it unlocks the package
+    // builder and puts packages in front of clients as an offering type.
+    description: 'Bundle 1:1 consults, classes and products into a package clients buy in one go — with its own storefront card and welcome reminders.',
     free: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
