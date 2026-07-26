@@ -1463,6 +1463,11 @@ model Product {
   kind        ProductKind @default(PHYSICAL)
   // Price in cents to avoid float issues. Null = unpriced / "Contact trainer".
   priceCents  Int?
+  // Optional sale price, the same idea as Package.specialPriceCents. Null = not
+  // on sale. When set it MUST be below priceCents, and it is the price actually
+  // charged everywhere — client shop, checkout, invoice, membership grant. The
+  // original stays in priceCents so the saving can be shown struck through.
+  salePriceCents Int?
   imageUrl    String?
   // Required for DIGITAL products — the file the customer downloads. Public URL
   // (e.g. Vercel Blob) or signed URL handed out at access time.
@@ -3170,6 +3175,10 @@ model Achievement {
   description  String?            @db.Text
   icon         String?
   color        String?
+  // Optional badge artwork (Vercel Blob URL), uploaded by the trainer. When set
+  // it replaces the emoji icon everywhere the badge is drawn; `icon` stays as
+  // the fallback so removing the image restores the emoji.
+  imageUrl     String?
   order        Int                @default(0)
   // When false the achievement is hidden from clients and not auto-awarded.
   // Trainers use this to draft new achievements before surfacing them or to

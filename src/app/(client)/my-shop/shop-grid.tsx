@@ -9,6 +9,9 @@ import {
   Check, Loader2, CreditCard,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatMoney } from '@/lib/money'
+import { effectivePriceCents } from '@/lib/product-price'
+import { ProductPrice, SaleTag } from '@/components/shared/product-price'
 import { useIsNative, nativePlatform } from '@/lib/native'
 import { openExternal } from '@/lib/external-link'
 
@@ -18,6 +21,8 @@ interface Product {
   description: string | null
   kind: 'PHYSICAL' | 'DIGITAL'
   priceCents: number | null
+  /** Set = on sale. This, not priceCents, is what the client is charged. */
+  salePriceCents: number | null
   stockCount: number | null
   imageUrl: string | null
   downloadUrl: string | null
@@ -27,14 +32,9 @@ interface Product {
   purchased?: boolean
 }
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  nzd: '$', aud: '$', cad: '$', usd: '$', gbp: '£', eur: '€', zar: 'R',
-}
-
 function formatPrice(cents: number | null, currency: string | null) {
   if (cents == null) return 'Contact trainer'
-  const symbol = currency ? CURRENCY_SYMBOLS[currency.toLowerCase()] ?? '' : '$'
-  return `${symbol}${(cents / 100).toFixed(2)}`
+  return formatMoney(cents, currency ?? 'nzd')
 }
 
 export function ShopGrid({
@@ -57,9 +57,11 @@ export function ShopGrid({
   const [buyingId, setBuyingId] = useState<string | null>(null)
   const [buyError, setBuyError] = useState<string | null>(null)
 
-  // A product is buyable when the trainer takes payments and it has a price.
+  // A product is buyable when the trainer takes payments and it has a price —
+  // the sale price when there is one, since that's what actually gets charged.
   function isPayable(p: Product) {
-    return acceptPayments && p.priceCents != null && p.priceCents > 0
+    const cents = effectivePriceCents(p)
+    return acceptPayments && cents != null && cents > 0
   }
 
   async function buy(p: Product) {
@@ -165,11 +167,14 @@ export function ShopGrid({
               ) : (
                 <PackageIcon className="h-7 w-7 text-amber-400" />
               )}
-              {p.featured && (
-                <span className="absolute top-2 left-2 flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 backdrop-blur px-2 py-0.5 rounded-full">
-                  <Star className="h-3 w-3 fill-current" /> Featured
-                </span>
-              )}
+              <div className="absolute top-2 left-2 flex flex-wrap items-center gap-1">
+                <SaleTag product={p} />
+                {p.featured && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 backdrop-blur px-2 py-0.5 rounded-full">
+                    <Star className="h-3 w-3 fill-current" /> Featured
+                  </span>
+                )}
+              </div>
               {isRequested(p) && (
                 <span className="absolute top-2 right-2 flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 backdrop-blur px-2 py-0.5 rounded-full">
                   <Check className="h-3 w-3" /> Requested
@@ -179,7 +184,7 @@ export function ShopGrid({
             <div className="p-3">
               <p className="text-sm font-semibold text-slate-900 line-clamp-2 leading-tight">{p.name}</p>
               <div className="mt-1">
-                <span className="text-sm font-semibold text-slate-700">{formatPrice(p.priceCents, currency)}</span>
+                <ProductPrice product={p} currency={currency ?? 'nzd'} unpricedLabel="Contact trainer" />
               </div>
             </div>
           </button>
@@ -278,7 +283,13 @@ function ProductModal({
               <p className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1">{product.category}</p>
             )}
             <h2 className="text-xl font-bold text-slate-900">{product.name}</h2>
-            <p className="mt-1 text-lg font-semibold text-slate-700">{formatPrice(product.priceCents, currency)}</p>
+            <ProductPrice
+              product={product}
+              currency={currency ?? 'nzd'}
+              size="lg"
+              unpricedLabel="Contact trainer"
+              className="mt-1"
+            />
             {stockLabel(product.stockCount) && (
               <p className={`mt-0.5 text-xs ${inStock(product.stockCount) ? 'text-slate-500' : 'text-slate-400'}`}>
                 {stockLabel(product.stockCount)}
@@ -313,7 +324,7 @@ function ProductModal({
             >
               {buying
                 ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <><CreditCard className="h-4 w-4" /> Buy · {formatPrice(product.priceCents, currency)}</>
+                : <><CreditCard className="h-4 w-4" /> Buy · {formatPrice(effectivePriceCents(product), currency)}</>
               }
             </button>
           ) : product.requested ? (

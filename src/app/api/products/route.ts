@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { optionalAssetUrlSchema } from '@/lib/asset-url'
+import { validateSalePrice } from '@/lib/product-price'
 
 const createSchema = z.object({
   name: z.string().min(1).max(120),
@@ -12,6 +13,9 @@ const createSchema = z.object({
   description: z.string().max(20_000).optional().nullable(),
   kind: z.enum(['PHYSICAL', 'DIGITAL']).default('PHYSICAL'),
   priceCents: z.number().int().min(0).optional().nullable(),
+  // Optional sale price. Must sit below priceCents — checked after parsing so
+  // the trainer gets the sentence, not a Zod shape.
+  salePriceCents: z.number().int().min(0).optional().nullable(),
   imageUrl: optionalAssetUrlSchema(),
   downloadUrl: optionalAssetUrlSchema(),
   category: z.string().max(60).optional().nullable(),
@@ -55,13 +59,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
 
+  const priceCents = parsed.data.priceCents ?? null
+  const salePriceCents = parsed.data.salePriceCents ?? null
+  const priceError = validateSalePrice(priceCents, salePriceCents)
+  if (priceError) return NextResponse.json({ error: priceError }, { status: 400 })
+
   const product = await prisma.product.create({
     data: {
       trainerId,
       name: parsed.data.name,
       description: parsed.data.description || null,
       kind: parsed.data.kind,
-      priceCents: parsed.data.priceCents ?? null,
+      priceCents,
+      salePriceCents,
       stockCount: parsed.data.stockCount ?? null,
       imageUrl: parsed.data.imageUrl || null,
       downloadUrl: parsed.data.downloadUrl || null,

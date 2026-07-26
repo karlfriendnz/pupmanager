@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { inStock, takeStock } from '@/lib/stock'
+import { effectivePriceCents, isOnSale } from '@/lib/product-price'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { createConnectCheckout } from '@/lib/connect-checkout'
@@ -46,12 +47,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
 
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true, trainerId: true, active: true, name: true, kind: true, priceCents: true, requirePayment: true, stockCount: true },
+    select: { id: true, trainerId: true, active: true, name: true, kind: true, priceCents: true, salePriceCents: true, requirePayment: true, stockCount: true },
   })
   if (!product || product.trainerId !== profile.trainerId || !product.active) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
-  if (!product.priceCents || product.priceCents <= 0) {
+  // The sale price, when there is one, is what the client is charged. Resolved
+  // server-side from the row — never taken from the request.
+  const chargeCents = effectivePriceCents(product)
+  if (!chargeCents || chargeCents <= 0) {
     return NextResponse.json({ error: 'This item isn’t for sale online.' }, { status: 400 })
   }
 
@@ -143,8 +147,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
     lines: [
       {
         kind: 'PRODUCT',
-        description: product.name,
-        unitAmount: product.priceCents,
+        description: isOnSale(product) ? `${product.name} (sale)` : product.name,
+        unitAmount: chargeCents,
         quantity: 1,
         productId: product.id,
         intent: { productId: product.id, quantity: 1 },

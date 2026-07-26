@@ -96,9 +96,9 @@ export function DemoClientPreview({
             }}
             packageProgress={{ label: 'Puppy Foundations', completed: 3, total: 6 }}
             featuredProducts={[
-              { id: 'demo-p1', name: 'Long line — 10m', priceCents: 2400, imageUrl: '/concept-products/leash.jpg', kind: 'PHYSICAL' },
-              { id: 'demo-p2', name: 'High-value treat pouch', priceCents: 1900, imageUrl: '/concept-products/treats.jpg', kind: 'PHYSICAL' },
-              { id: 'demo-p3', name: 'Puppy starter kit', priceCents: 4900, imageUrl: '/concept-products/puppykit.jpg', kind: 'PHYSICAL' },
+              { id: 'demo-p1', name: 'Long line — 10m', priceCents: 2400, salePriceCents: null, imageUrl: '/concept-products/leash.jpg', kind: 'PHYSICAL' },
+              { id: 'demo-p2', name: 'High-value treat pouch', priceCents: 1900, salePriceCents: null, imageUrl: '/concept-products/treats.jpg', kind: 'PHYSICAL' },
+              { id: 'demo-p3', name: 'Puppy starter kit', priceCents: 4900, salePriceCents: null, imageUrl: '/concept-products/puppykit.jpg', kind: 'PHYSICAL' },
             ]}
             libraryItems={[]}
             pendingRequests={[]}

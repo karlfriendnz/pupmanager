@@ -148,7 +148,7 @@ export default async function ClientHomePage() {
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
       take: 6,
       select: {
-        id: true, name: true, kind: true, priceCents: true, imageUrl: true,
+        id: true, name: true, kind: true, priceCents: true, salePriceCents: true, imageUrl: true,
       },
     }),
     prisma.product.findMany({
@@ -251,6 +251,7 @@ export default async function ClientHomePage() {
         name: p.name,
         kind: p.kind as 'PHYSICAL' | 'DIGITAL',
         priceCents: p.priceCents,
+        salePriceCents: p.salePriceCents,
         imageUrl: p.imageUrl,
       }))}
       libraryItems={libraryProducts.map(p => ({

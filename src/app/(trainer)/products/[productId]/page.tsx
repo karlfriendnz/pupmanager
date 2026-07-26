@@ -1,0 +1,125 @@
+import { notFound, redirect } from 'next/navigation'
+import { auth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { hasAddon } from '@/lib/billing'
+import { PageHeader } from '@/components/shared/page-header'
+import { ProductDetail } from './product-detail'
+import type { Purchase } from './product-purchases'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Product' }
+
+export default async function ProductPage({ params }: { params: Promise<{ productId: string }> }) {
+  const session = await auth()
+  if (!session || session.user.role !== 'TRAINER') redirect('/login')
+  const trainerId = session.user.trainerId
+  if (!trainerId) redirect('/login')
+  if (!(await hasAddon(trainerId, 'shop'))) redirect('/settings?tab=addons')
+
+  const { productId } = await params
+
+  // Scoped by trainerId, not just id — another tenant's product is a 404 here,
+  // exactly as it is on the API route.
+  const product = await prisma.product.findFirst({
+    where: { id: productId, trainerId },
+  })
+  if (!product) notFound()
+
+  const [siblings, requests, paidItems] = await Promise.all([
+    prisma.product.findMany({
+      where: { trainerId },
+      select: { category: true },
+    }),
+    // Pay-later orders and standing requests.
+    prisma.productRequest.findMany({
+      where: { productId: product.id },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        client: {
+          select: { id: true, user: { select: { name: true } }, dog: { select: { name: true } } },
+        },
+      },
+    }),
+    // Actual money: a payment line pointing at this product, on a paid payment.
+    prisma.paymentItem.findMany({
+      where: { productId: product.id, payment: { status: 'PAID', trainerId } },
+      orderBy: { payment: { createdAt: 'desc' } },
+      select: {
+        id: true,
+        unitAmount: true,
+        quantity: true,
+        payment: {
+          select: {
+            createdAt: true,
+            client: {
+              select: { id: true, user: { select: { name: true } }, dog: { select: { name: true } } },
+            },
+          },
+        },
+      },
+    }),
+  ])
+
+  const paid: Purchase[] = paidItems.map(item => ({
+    id: `pay_${item.id}`,
+    clientId: item.payment.client?.id ?? null,
+    clientName: item.payment.client?.user?.name ?? 'A client',
+    dogName: item.payment.client?.dog?.name ?? null,
+    state: 'PAID',
+    amountCents: item.unitAmount * item.quantity,
+    at: item.payment.createdAt.toISOString(),
+  }))
+
+  // A FULFILLED request raised by a card checkout is already counted above, so
+  // only the ones with no matching paid line are listed — otherwise a single
+  // purchase would appear twice with two different states.
+  const paidClientIds = new Set(paid.map(p => p.clientId).filter(Boolean))
+  const fromRequests: Purchase[] = requests
+    .filter(r => r.status !== 'CANCELLED' && !paidClientIds.has(r.client.id))
+    .map(r => ({
+      id: `req_${r.id}`,
+      clientId: r.client.id,
+      clientName: r.client.user?.name ?? 'A client',
+      dogName: r.client.dog?.name ?? null,
+      state: r.status === 'FULFILLED' ? 'OWING' : 'REQUESTED',
+      amountCents: r.status === 'FULFILLED' ? (product.salePriceCents ?? product.priceCents) : null,
+      at: r.createdAt.toISOString(),
+    }))
+
+  const purchases = [...paid, ...fromRequests].sort((a, b) => b.at.localeCompare(a.at))
+
+  const existingCategories = Array.from(
+    new Set(siblings.map(s => s.category).filter(Boolean) as string[])
+  ).sort()
+
+  return (
+    <>
+      <PageHeader title={product.name} back={{ href: '/products', label: 'Products' }} />
+      <div className="mx-auto w-full max-w-3xl p-4 md:p-8">
+        <ProductDetail
+          product={{
+            id: product.id,
+            name: product.name,
+            description: product.description,
+            kind: product.kind as 'PHYSICAL' | 'DIGITAL',
+            priceCents: product.priceCents,
+            salePriceCents: product.salePriceCents,
+            stockCount: product.stockCount,
+            imageUrl: product.imageUrl,
+            downloadUrl: product.downloadUrl,
+            category: product.category,
+            featured: product.featured,
+            active: product.active,
+            xeroAccountCode: product.xeroAccountCode,
+            requirePayment: product.requirePayment,
+          }}
+          existingCategories={existingCategories}
+          purchases={purchases}
+        />
+      </div>
+    </>
+  )
+}

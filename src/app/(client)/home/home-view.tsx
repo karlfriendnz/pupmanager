@@ -20,6 +20,7 @@ interface GalleryMedia {
 import { cn } from '@/lib/utils'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
+import { effectivePriceCents, isOnSale } from '@/lib/product-price'
 
 interface Dog {
   id: string
@@ -70,6 +71,7 @@ interface FeaturedProduct {
   name: string
   kind: 'PHYSICAL' | 'DIGITAL'
   priceCents: number | null
+  salePriceCents: number | null
   imageUrl: string | null
 }
 
@@ -453,7 +455,13 @@ export function ClientHomeView({
                         <ShoppingBag className="h-8 w-8 text-accent/60" />
                       )}
                     </div>
-                    <div className="p-3"><p className="text-sm font-semibold text-slate-900 line-clamp-1">{p.name}</p><p className="text-xs text-accent font-bold mt-0.5">{formatPrice(p.priceCents)}</p></div>
+                    <div className="p-3">
+                      <p className="text-sm font-semibold text-slate-900 line-clamp-1">{p.name}</p>
+                      <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5">
+                        <span className="text-xs text-accent font-bold">{formatPrice(effectivePriceCents(p))}</span>
+                        {isOnSale(p) && <s className="text-[11px] font-medium text-slate-400">{formatPrice(p.priceCents)}</s>}
+                      </p>
+                    </div>
                   </Link>
                 ))}
               </div>

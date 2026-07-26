@@ -7,6 +7,7 @@ import { ensureClientXeroContact } from './xero-sync'
 import { postPaymentThroughClearing, isSurchargeItem } from './xero-clearing'
 import { createXeroInvoice, fetchXeroInvoiceState } from './xero'
 import { sessionDropInPriceCents } from './class-runs'
+import { effectivePriceCents, isOnSale } from './product-price'
 import { env } from './env'
 import { currencySymbol } from './money'
 
@@ -105,11 +106,13 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
     } else {
       const product = await prisma.product.findFirst({
         where: { id: sourceId, trainerId: input.trainerId },
-        select: { name: true, priceCents: true },
+        select: { name: true, priceCents: true, salePriceCents: true },
       })
       if (!product) return null
-      amountCents = product.priceCents
-      description = product.name
+      // On sale means on sale on the invoice too — same rule as a package's
+      // specialPriceCents a few branches up.
+      amountCents = effectivePriceCents(product)
+      description = isOnSale(product) ? `${product.name} (sale)` : product.name
     }
 
     // Skip free / unpriced items — nothing to invoice.

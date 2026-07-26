@@ -6,6 +6,7 @@ import { Check, Loader2, Minus, Plus, Search, ShoppingBag, Trash2, UserPlus, Use
 import { Button } from '@/components/ui/button'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { currencySymbol, formatMoney } from '@/lib/money'
+import { effectivePriceCents, isOnSale } from '@/lib/product-price'
 import { cn } from '@/lib/utils'
 
 // The "instant sale" (POS) composer — ring up a sale standing in front of a
@@ -21,7 +22,7 @@ import { cn } from '@/lib/utils'
 // render as a QR. The client's own phone does the Stripe part.
 
 type ClientRow = { id: string; name: string | null; dogName: string | null; dogPhotoUrl: string | null }
-type ProductRow = { id: string; name: string; priceCents: number | null; imageUrl: string | null; active: boolean; xeroAccountCode?: string | null }
+type ProductRow = { id: string; name: string; priceCents: number | null; salePriceCents?: number | null; imageUrl: string | null; active: boolean; xeroAccountCode?: string | null }
 type Line = { key: string; description: string; quantity: number; unitAmountCents: number; xeroAccountCode?: string | null }
 type Created = { id: string; payToken: string | null; amountCents: number }
 
@@ -638,8 +639,13 @@ function ItemsStep({
 
   // Only priced, active products can be tapped in — an unpriced one ("contact
   // trainer") has no amount to ring up.
+  // A product on sale rings up at its SALE price — the same number the client
+  // would be charged in the shop, so an in-person sale can't quietly cost more.
   const sellable = useMemo(
-    () => products.filter((p) => p.active && p.priceCents != null && p.priceCents > 0),
+    () => products.filter((p) => {
+      const cents = effectivePriceCents(p)
+      return p.active && cents != null && cents > 0
+    }),
     [products],
   )
 
@@ -653,7 +659,7 @@ function ItemsStep({
         key: `p_${p.id}`,
         description: p.name,
         quantity: 1,
-        unitAmountCents: p.priceCents ?? 0,
+        unitAmountCents: effectivePriceCents(p) ?? 0,
         xeroAccountCode: p.xeroAccountCode ?? null,
       }]
     })
@@ -735,7 +741,10 @@ function ItemsStep({
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-slate-900">{p.name}</p>
-                  <p className="text-xs text-slate-400 tabular-nums">{formatMoney(p.priceCents ?? 0, currency)}</p>
+                  <p className="flex flex-wrap items-baseline gap-x-1.5 text-xs tabular-nums">
+                    <span className="text-slate-400">{formatMoney(effectivePriceCents(p) ?? 0, currency)}</span>
+                    {isOnSale(p) && <s className="text-slate-300">{formatMoney(p.priceCents ?? 0, currency)}</s>}
+                  </p>
                 </div>
               </button>
             ))}

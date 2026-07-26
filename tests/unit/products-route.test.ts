@@ -145,3 +145,40 @@ describe('product save — tenant + permission guards', () => {
     expect(h.update).not.toHaveBeenCalled()
   })
 })
+
+describe('product save — sale price', () => {
+  it('accepts a sale price below the normal price', async () => {
+    const res = await patch({ priceCents: 4500, salePriceCents: 2900 })
+    expect(res.status).toBe(200)
+    expect(h.update.mock.calls[0][0].data).toMatchObject({ priceCents: 4500, salePriceCents: 2900 })
+  })
+
+  it('rejects a sale price at or above the normal price, in one sentence', async () => {
+    const res = await patch({ priceCents: 4500, salePriceCents: 4500 })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/less than the normal price/)
+    expect(h.update).not.toHaveBeenCalled()
+  })
+
+  // The half-patch case: the form sends only the sale price, so the rule has to
+  // be checked against the price already on the row.
+  it('rejects a sale price that beats the price stored on the row', async () => {
+    h.findUnique.mockResolvedValue({ id: PRODUCT, trainerId: TRAINER, priceCents: 4500, salePriceCents: null })
+    const res = await patch({ salePriceCents: 9900 })
+    expect(res.status).toBe(400)
+    expect(h.update).not.toHaveBeenCalled()
+  })
+
+  it('clearing the sale price restores normal pricing', async () => {
+    h.findUnique.mockResolvedValue({ id: PRODUCT, trainerId: TRAINER, priceCents: 4500, salePriceCents: 2900 })
+    const res = await patch({ salePriceCents: null })
+    expect(res.status).toBe(200)
+    expect(h.update.mock.calls[0][0].data).toMatchObject({ salePriceCents: null })
+  })
+
+  it('refuses to put an unpriced product on sale', async () => {
+    const res = await post({ name: 'Contact-only', salePriceCents: 2900 })
+    expect(res.status).toBe(400)
+    expect(h.create).not.toHaveBeenCalled()
+  })
+})

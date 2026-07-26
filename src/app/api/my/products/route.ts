@@ -22,6 +22,7 @@ export async function GET() {
       orderBy: [{ featured: 'desc' }, { order: 'asc' }, { createdAt: 'desc' }],
       select: {
         id: true, name: true, description: true, kind: true, priceCents: true,
+        salePriceCents: true, stockCount: true,
         imageUrl: true, downloadUrl: true, category: true, featured: true,
       },
     }),

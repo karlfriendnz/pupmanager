@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { optionalAssetUrlSchema } from '@/lib/asset-url'
+import { validateSalePrice } from '@/lib/product-price'
 
 const patchSchema = z.object({
   name: z.string().min(1).max(120).optional(),
@@ -11,6 +12,8 @@ const patchSchema = z.object({
   description: z.string().max(20_000).nullable().optional(),
   kind: z.enum(['PHYSICAL', 'DIGITAL']).optional(),
   priceCents: z.number().int().min(0).nullable().optional(),
+  // Optional sale price; null clears it and restores normal pricing.
+  salePriceCents: z.number().int().min(0).nullable().optional(),
   imageUrl: optionalAssetUrlSchema(),
   downloadUrl: optionalAssetUrlSchema(),
   category: z.string().max(60).nullable().optional(),
@@ -27,7 +30,9 @@ const patchSchema = z.object({
 async function ownsProduct(productId: string, trainerId: string) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true, trainerId: true },
+    // Prices come back too: a PATCH may move only one half of the pair, and the
+    // sale-price rule has to be checked against the row as it WILL be.
+    select: { id: true, trainerId: true, priceCents: true, salePriceCents: true },
   })
   return product?.trainerId === trainerId ? product : null
 }
@@ -53,6 +58,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ produc
   }
 
   const data = parsed.data
+
+  // Validate the pair as it will be after this patch, not as it was sent.
+  const nextPrice = data.priceCents !== undefined ? data.priceCents : owned.priceCents
+  const nextSale = data.salePriceCents !== undefined ? data.salePriceCents : owned.salePriceCents
+  const priceError = validateSalePrice(nextPrice, nextSale)
+  if (priceError) return NextResponse.json({ error: priceError }, { status: 400 })
+
   const product = await prisma.product.update({
     where: { id: productId },
     data: {
@@ -60,6 +72,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ produc
       ...(data.description !== undefined && { description: data.description || null }),
       ...(data.kind !== undefined && { kind: data.kind }),
       ...(data.priceCents !== undefined && { priceCents: data.priceCents }),
+      ...(data.salePriceCents !== undefined && { salePriceCents: data.salePriceCents }),
       ...(data.stockCount !== undefined && { stockCount: data.stockCount }),
       ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl || null }),
       ...(data.downloadUrl !== undefined && { downloadUrl: data.downloadUrl || null }),
