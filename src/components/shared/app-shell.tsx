@@ -858,10 +858,16 @@ function TrainerMobileHeader({
             the page name. Home is a bottom tab. */}
         {/* Back slot — always present so the portal target exists on first paint. */}
         <span id="pm-topbar-back-mobile" className="flex items-center empty:hidden" />
-        {/* On inner pages, the page name; on the home screen, the business. */}
-        <span className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">
+        {/* On inner pages, the page name; on the home screen, the business.
+            An <h1>, not a <span>: PageHeader suppresses its own heading when
+            the shell owns the mobile header, and this was a plain span — so
+            NO trainer screen had a heading at all on a phone. Measured: one
+            heading at 1280px, zero at 390px. That's a screen reader with
+            nothing to jump to on every page. The desktop bar is md:-only and
+            this one is md:hidden, so exactly one h1 ever renders. */}
+        <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">
           {showTitle ? title : businessName ?? 'PupManager'}
-        </span>
+        </h1>
         {/* Page-actions slot — always present (empty:hidden). */}
         <span id="pm-topbar-actions-mobile" className="flex items-center gap-1.5 empty:hidden" />
         {/* Create "+" — the phone counterpart to the desktop control bar's. */}
