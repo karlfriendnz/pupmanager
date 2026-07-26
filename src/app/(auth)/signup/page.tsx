@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { SOLO_PRICE, PLAN_NAME, DEFAULT_CURRENCY } from '@/lib/pricing'
@@ -31,6 +32,11 @@ export default async function SignupPage() {
   const perSeatPrice = SOLO_PRICE[DEFAULT_CURRENCY]
   const planName = PLAN_NAME
 
+  // Vercel's edge tells us where the request came from. Used ONLY to preselect
+  // the country — the trainer confirms it, so a VPN or a missing header just
+  // means they pick from the list. Same rule as /register.
+  const geoCountry = (await headers()).get('x-vercel-ip-country')?.toUpperCase() || null
+
   return (
     <div className="flex flex-col gap-6">
       <div className="text-center">
@@ -50,6 +56,7 @@ export default async function SignupPage() {
         planName={planName}
         perSeatPrice={perSeatPrice}
         purchasable={false}
+        defaultCountry={geoCountry}
       />
 
       <p className="text-center text-sm text-slate-500">

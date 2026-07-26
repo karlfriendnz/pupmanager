@@ -43,6 +43,10 @@ const schema = z.object({
   password: z.string().min(8),
   // Optional promo code — when valid it sets the total trial length.
   promoCode: z.string().max(40).optional(),
+  // The country the trainer chose. The form requires it; optional here so an
+  // older client (a page cached mid-deploy) still saves, falling back to the
+  // geo header below.
+  signupCountry: z.string().regex(/^[A-Za-z]{2}$/).optional(),
 })
 
 function generateCode(): string {
@@ -128,9 +132,13 @@ export async function POST(req: Request) {
         // get added on /billing/setup once they're past verification.
         trialEndsAt,
         promoCodeId,
-        // Country of signup from Vercel's IP geo header (ISO alpha-2), for the
-        // admin flag. Null in local dev / when the header is absent.
-        signupCountry: req.headers.get('x-vercel-ip-country')?.toUpperCase() || null,
+        // Country of signup. What the trainer told us wins; the IP geo header
+        // is only a fallback for callers that don't send one. It decides their
+        // currency and seeds Stripe onboarding, so it must not be left null —
+        // the header alone is absent in local dev and wrong behind a VPN.
+        signupCountry: parsed.data.signupCountry?.toUpperCase()
+          || req.headers.get('x-vercel-ip-country')?.toUpperCase()
+          || null,
       },
     })
 

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { COUNTRIES } from '@/lib/countries'
 
 const schema = z.object({
   businessName: z.string().min(2, 'Business name is required'),
@@ -14,6 +15,10 @@ const schema = z.object({
   publicEmail: z.union([z.string().email('Enter a valid email'), z.literal('')]).optional(),
   password: z.string().min(8, 'At least 8 characters'),
   promoCode: z.string().optional(),
+  // Asked for, not guessed — same rule as /register. It decides the currency a
+  // trainer is priced and paid in and what Stripe onboarding opens with, so an
+  // IP header (absent locally, wrong behind a VPN) can only preselect it.
+  signupCountry: z.string().regex(/^[A-Za-z]{2}$/, 'Please choose your country'),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -23,6 +28,9 @@ interface Props {
   planName: string
   perSeatPrice: number
   purchasable: boolean
+  // ISO alpha-2 guessed from the request's IP geo, used only as the starting
+  // selection in the country list.
+  defaultCountry?: string | null
 }
 
 // Minimal, single-column account creation. Captures only what auth needs
@@ -35,12 +43,15 @@ interface Props {
 //
 // `purchasable` left in the Props for parity with /billing/plans but
 // not used here — Stripe never runs from this page anymore.
-export function SignupForm({ planId: _planId, planName, perSeatPrice, purchasable: _purchasable }: Props) {
+export function SignupForm({ planId: _planId, planName, perSeatPrice, purchasable: _purchasable, defaultCountry }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
+    // The network's guess is the starting selection, not the answer — they
+    // confirm or change it before the form will submit.
+    defaultValues: { signupCountry: defaultCountry ?? '' },
   })
 
   async function onSubmit(values: FormValues) {
@@ -119,6 +130,17 @@ export function SignupForm({ planId: _planId, planName, perSeatPrice, purchasabl
           autoComplete="email"
           className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+      </Field>
+
+      <Field label="Country" error={errors.signupCountry?.message} hint="Sets the currency you're priced and paid in.">
+        <select
+          {...register('signupCountry')}
+          aria-label="Country"
+          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Select your country…</option>
+          {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+        </select>
       </Field>
 
       <Field label="Password" error={errors.password?.message} hint="At least 8 characters.">

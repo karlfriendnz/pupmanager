@@ -57,8 +57,8 @@ const body = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
-const req = (b: unknown) =>
-  new Request('https://app.pupmanager.com/api/auth/x', { method: 'POST', body: JSON.stringify(b) })
+const req = (b: unknown, headers?: Record<string, string>) =>
+  new Request('https://app.pupmanager.com/api/auth/x', { method: 'POST', body: JSON.stringify(b), headers })
 
 beforeEach(() => {
   Object.values(h).forEach(fn => fn.mockReset())
@@ -150,6 +150,38 @@ describe.each(routes)('POST /api/auth/%s — validation, duplicates, role escala
     const res = await POST(req(body()))
     expect(res.status, label).toBe(201)
     expect(h.verificationTokenCreate).toHaveBeenCalledTimes(1)
+  })
+})
+
+// The country is the one field that decides a trainer's currency and seeds
+// Stripe onboarding, and it was silently missing on /signup — that route only
+// ever read the IP geo header, which is absent in local dev and wrong behind a
+// VPN. Both credential routes must persist what the trainer chose.
+describe.each(routes)('POST /api/auth/%s — signup country capture', (label, POST) => {
+  it('persists the country the trainer chose, upper-cased', async () => {
+    await POST(req(body({ signupCountry: 'gb' })))
+    expect(h.profileCreate.mock.calls[0][0].data.signupCountry, label).toBe('GB')
+  })
+
+  it('never lets the IP header override a chosen country', async () => {
+    await POST(req(body({ signupCountry: 'NZ' }), { 'x-vercel-ip-country': 'US' }))
+    expect(h.profileCreate.mock.calls[0][0].data.signupCountry, label).toBe('NZ')
+  })
+
+  it('falls back to the IP header when the client sends no country', async () => {
+    await POST(req(body(), { 'x-vercel-ip-country': 'au' }))
+    expect(h.profileCreate.mock.calls[0][0].data.signupCountry, label).toBe('AU')
+  })
+
+  it('stores null when neither the form nor the header knows', async () => {
+    await POST(req(body()))
+    expect(h.profileCreate.mock.calls[0][0].data.signupCountry, label).toBeNull()
+  })
+
+  it('rejects a malformed country rather than storing junk', async () => {
+    const res = await POST(req(body({ signupCountry: 'New Zealand' })))
+    expect(res.status, label).toBe(400)
+    expect(h.profileCreate).not.toHaveBeenCalled()
   })
 })
 
