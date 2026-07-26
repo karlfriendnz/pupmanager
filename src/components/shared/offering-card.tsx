@@ -57,6 +57,15 @@ const BADGE_TONE: Record<NonNullable<OfferingBadge['tone']>, string> = {
   muted: 'bg-slate-100 text-slate-600',
 }
 
+// How much of the title row the floating action buttons eat, by how many there
+// are. Measured from the card's CONTENT box: 36px a button + 2px between them
+// + the 12px inset, less the card's own 16px of padding — so three buttons
+// need 108px and one needs 32px, rounded up to the nearest step for air. A
+// flat reserve was 32px too generous for one button and 16px short for three,
+// and on a 358px phone card every one of those pixels is title.
+// Listed, not computed: Tailwind only ships class names it can see in source.
+const TITLE_RESERVE = ['', 'pr-12', 'pr-20', 'pr-28']
+
 /**
  * A single offering. `href` makes the body a link to the detail page; the
  * actions sit OUTSIDE it (a button inside an anchor is invalid HTML and breaks
@@ -110,9 +119,19 @@ export function OfferingCard({
           </div>
         )}
 
-        <div className={cn('min-w-0 flex-1', actions.length > 0 && !imageUrl && 'pr-24')}>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="font-semibold text-slate-900 break-words">{title}</p>
+        <div className="min-w-0 flex-1">
+          {/* Only the TITLE row keeps clear of the floating actions — the
+              description and the facts start below them and had no reason to
+              give up the width. The reserve is sized to the buttons that are
+              actually there (36px each, 2px apart, 12px inset); a flat pr-24
+              was too much for one button and too little for three, and three
+              is what a package card has. */}
+          <div className={cn('flex flex-wrap items-center gap-x-2 gap-y-1', TITLE_RESERVE[Math.min(actions.length, 3)])}>
+            {/* Never clamped, never truncated, never ellipsised: the name of
+                the thing is the one line on the card that has to be readable
+                at every width. It wraps — onto three lines if that's what the
+                trainer called it. */}
+            <p className="min-w-0 break-words font-semibold text-slate-900">{title}</p>
             {badges.map((b, i) => (
               <span
                 key={i}
