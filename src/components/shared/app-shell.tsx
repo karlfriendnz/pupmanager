@@ -12,7 +12,6 @@ import {
   X, Inbox, GraduationCap, Bell,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, Megaphone, Lock, ClipboardList,
-  Download,
   type LucideIcon, Ticket, CircleDollarSign,} from 'lucide-react'
 import { InstagramIcon } from '@/components/icons/instagram-icon'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
@@ -73,7 +72,10 @@ const TRAINER_NAV: NavItem[] = [
   // a place a trainer goes to do a job, not a sub-setting of one — nesting them
   // cost a tap and hid them. Top level in Business now (Karl, 2026-07-26).
   { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'business' },
-  { href: '/lead-magnets', label: 'Lead magnets', icon: Download,        section: 'business' },
+  // Lead magnets hidden for now (Karl, 2026-07-27), same treatment as Doggy
+  // Daycare — the page and route still work, it just isn't offered in the nav.
+  // To restore: uncomment, and re-add `Download` to the lucide import above.
+  // { href: '/lead-magnets', label: 'Lead magnets', icon: Download,     section: 'business' },
   { href: '/instagram',    label: 'Instagram link', icon: InstagramIcon as unknown as LucideIcon, section: 'business' },
   { href: '/email-templates', label: 'Emails',      icon: Mail,           section: 'business' },
 
