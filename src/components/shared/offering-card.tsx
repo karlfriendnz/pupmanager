@@ -5,7 +5,8 @@ import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
 import { Plus, GripVertical, LayoutGrid, List as ListIcon } from 'lucide-react'
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { DndArea } from './dnd-area'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
@@ -429,13 +430,13 @@ export function SortableOfferingList({
   }
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+    <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       {/* rect, not vertical-list: the cards wrap into columns from sm: up, and
           the vertical strategy assumes a single column. */}
       <SortableContext items={ids} strategy={rectSortingStrategy}>
         {children}
       </SortableContext>
-    </DndContext>
+    </DndArea>
   )
 }
 

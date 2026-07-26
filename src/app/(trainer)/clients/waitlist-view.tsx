@@ -9,10 +9,18 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { Plus, X, GripVertical, Clock, CalendarCheck, UserCheck, Trash2, Pencil } from 'lucide-react'
 import {
-  DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
 } from '@dnd-kit/core'
+import { DndArea } from '@/components/shared/dnd-area'
 import {
-  SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
@@ -166,7 +174,7 @@ export function WaitlistView({
             </CardBody>
           </Card>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={visible.map(e => e.id)} strategy={verticalListSortingStrategy}>
               <div className="flex flex-col gap-3">
                 {visible.map(e => (
@@ -182,7 +190,7 @@ export function WaitlistView({
                 ))}
               </div>
             </SortableContext>
-          </DndContext>
+          </DndArea>
         )}
 
       {(showAdd || editing) && (

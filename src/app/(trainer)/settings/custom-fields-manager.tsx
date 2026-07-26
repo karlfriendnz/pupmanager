@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  DndContext,
   DragOverlay,
   PointerSensor,
   useSensor,
@@ -12,6 +11,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
+import { DndArea } from '@/components/shared/dnd-area'
 import {
   SortableContext,
   useSortable,
@@ -490,7 +490,7 @@ export function CustomFieldsManager({
         <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>
       )}
 
-      <DndContext
+      <DndArea
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
@@ -594,7 +594,7 @@ export function CustomFieldsManager({
           {activeField && <FieldDragPreview field={activeField} />}
           {activeSection && <SectionDragPreview section={activeSection} />}
         </DragOverlay>
-      </DndContext>
+      </DndArea>
 
       <p className="text-xs text-slate-400">
         Every field is asked on the <strong>New client</strong>{' '}form. The columns choose whether

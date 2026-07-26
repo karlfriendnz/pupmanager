@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  DndContext,
   PointerSensor,
   useSensor,
   useSensors,
   closestCenter,
   type DragEndEvent,
 } from '@dnd-kit/core'
+import { DndArea } from '@/components/shared/dnd-area'
 import {
   SortableContext,
   useSortable,
@@ -22,8 +22,12 @@ import { ModalPortal } from '@/components/shared/modal-portal'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import {
-  FORM_INPUT, FORM_QUIET_ACTION, FORM_TEXTAREA,
-  FormEditorSection, FormEditorShell, FormField,
+  FORM_INPUT,
+  FORM_QUIET_ACTION,
+  FORM_TEXTAREA,
+  FormEditorSection,
+  FormEditorShell,
+  FormField,
 } from '../_form-editor-shell'
 
 // The question model + its pure helpers live in @/lib/session-form-builder
@@ -36,10 +40,19 @@ export {
   type QuestionType,
 } from '@/lib/session-form-builder'
 import {
-  NEW_QUESTION_TYPES, TYPE_LABELS,
-  addQuestion, createCustomFieldQuestion, createQuestion, hasOptions,
-  newQuestionId, removeQuestion as removeQuestionFrom, reorderQuestions,
-  serializeQuestions, updateQuestion, usedCustomFieldIds, validateForm,
+  NEW_QUESTION_TYPES,
+  TYPE_LABELS,
+  addQuestion,
+  createCustomFieldQuestion,
+  createQuestion,
+  hasOptions,
+  newQuestionId,
+  removeQuestion as removeQuestionFrom,
+  reorderQuestions,
+  serializeQuestions,
+  updateQuestion,
+  usedCustomFieldIds,
+  validateForm,
 } from '@/lib/session-form-builder'
 import type { CustomFieldOption, Question, QuestionType } from '@/lib/session-form-builder'
 
@@ -210,7 +223,7 @@ function QuestionCard({
               onChange={e => onPatch({ isPrivate: e.target.checked })}
               className="h-3.5 w-3.5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
             />
-            Staff only
+            Team only
           </label>
         </div>
       </div>
@@ -387,7 +400,7 @@ export function SessionFormEditor({
             </>
           }
         >
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={questions.map(q => q.id)} strategy={verticalListSortingStrategy}>
               <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
                 {questions.map((q, i) => (
@@ -403,7 +416,7 @@ export function SessionFormEditor({
                 ))}
               </div>
             </SortableContext>
-          </DndContext>
+          </DndArea>
         </FormEditorSection>
 
         <FormEditorSection title="What the client sees" hint="Both optional — top and tail of their report.">

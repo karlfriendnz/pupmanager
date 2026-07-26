@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Plus, X, ArrowRight, Info, ChevronDown, Check, Copy, GripVertical } from 'lucide-react'
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { DndArea } from './dnd-area'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { RecurrenceField } from '@/components/shared/recurrence-field'
@@ -121,7 +122,7 @@ export function SessionSlotsEditor({
         <span className="text-xs font-semibold text-slate-500">{value.length} {value.length === 1 ? 'time' : 'times'}</span>
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <SortableContext items={value.map(s => s.id)} strategy={verticalListSortingStrategy}>
       {value.map(s => (
         <SortableSlot key={s.id} id={s.id}>
@@ -250,7 +251,7 @@ export function SessionSlotsEditor({
         </SortableSlot>
       ))}
       </SortableContext>
-      </DndContext>
+      </DndArea>
 
       {addLocForSlot && (
         <AddLocationModal

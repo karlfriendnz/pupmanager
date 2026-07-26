@@ -3,7 +3,8 @@
 import { useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
 import type { Editor } from '@tiptap/react'
 import { ImagePlus, Trash2, Loader2, Plus, GripVertical, Type } from 'lucide-react'
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { DndArea } from './dnd-area'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
@@ -167,7 +168,7 @@ export function EmailBodyBuilder({
 
   return (
     <div className="flex flex-col gap-3">
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
       {blocks.map(block => (
         <SortableBlock key={block.id} id={block.id} disabled={disabled || blocks.length < 2}>
@@ -243,7 +244,7 @@ export function EmailBodyBuilder({
         </SortableBlock>
       ))}
       </SortableContext>
-      </DndContext>
+      </DndArea>
 
       {/* Shared hidden input feeds whichever image block requested it. */}
       <input

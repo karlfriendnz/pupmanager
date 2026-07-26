@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  DndContext,
   PointerSensor,
   useSensor,
   useSensors,
   closestCenter,
   type DragEndEvent,
 } from '@dnd-kit/core'
+import { DndArea } from '@/components/shared/dnd-area'
 import {
   SortableContext,
   useSortable,
@@ -572,7 +572,7 @@ export function InstagramEditor({
             </Button>
           </div>
 
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={buttons.map((b) => b.id)} strategy={verticalListSortingStrategy}>
               <div className="flex flex-col gap-2">
                 {buttons.map((b) => (
@@ -595,7 +595,7 @@ export function InstagramEditor({
                 )}
               </div>
             </SortableContext>
-          </DndContext>
+          </DndArea>
         </section>
 
         {/* Socials — kept at the bottom of the form */}

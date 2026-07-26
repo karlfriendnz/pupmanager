@@ -3,13 +3,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  DndContext,
   PointerSensor,
   useSensor,
   useSensors,
   closestCenter,
   type DragEndEvent,
 } from '@dnd-kit/core'
+import { DndArea } from '@/components/shared/dnd-area'
 import {
   SortableContext,
   useSortable,
@@ -78,7 +78,7 @@ export function StepsView({ steps: initialSteps }: { steps: OnboardingStepItem[]
   if (steps.length === 0) return <p className="text-slate-500 py-8">No onboarding steps seeded.</p>
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={steps.map(s => s.id)} strategy={verticalListSortingStrategy}>
         <div className="flex flex-col gap-3">
           {steps.map((step, i) => (
@@ -94,7 +94,7 @@ export function StepsView({ steps: initialSteps }: { steps: OnboardingStepItem[]
           ))}
         </div>
       </SortableContext>
-    </DndContext>
+    </DndArea>
   )
 }
 

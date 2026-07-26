@@ -5,7 +5,6 @@ import { Loader2, Plus, Trash2, Search, Layers, GripVertical, Repeat } from 'luc
 import { VoiceInput } from '@/components/voice-input'
 import { ImageUploadButton, ImageGallery } from '@/components/image-uploader'
 import {
-  DndContext,
   closestCenter,
   PointerSensor,
   KeyboardSensor,
@@ -13,6 +12,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
+import { DndArea } from '@/components/shared/dnd-area'
 import {
   arrayMove,
   SortableContext,
@@ -351,7 +351,7 @@ export function SessionLibraryTasks({
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
             Tasks for this session
           </p>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={attached.map(t => t.id)} strategy={verticalListSortingStrategy}>
               <div className="flex flex-col gap-2">
                 {attached.map(t => (
@@ -369,7 +369,7 @@ export function SessionLibraryTasks({
                 ))}
               </div>
             </SortableContext>
-          </DndContext>
+          </DndArea>
         </div>
       )}
     </div>

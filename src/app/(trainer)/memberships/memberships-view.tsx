@@ -8,7 +8,8 @@ import { ImageUploadButton } from '@/components/image-uploader'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
 import { Ticket, Plus, Trash2, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, Palette, GripVertical } from 'lucide-react'
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { DndArea } from '@/components/shared/dnd-area'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { ReactNode, HTMLAttributes } from 'react'
@@ -16,8 +17,15 @@ import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { Switch } from '@/components/ui/switch'
 import {
-  OfferingCard, OfferingEmpty, OfferingListBar, useOfferingView, OfferingItems,
-  SortableOfferingList, SortableOfferingCard, AddOfferingLink,   type OfferingFact,
+  OfferingCard,
+  OfferingEmpty,
+  OfferingListBar,
+  useOfferingView,
+  OfferingItems,
+  SortableOfferingList,
+  SortableOfferingCard,
+  AddOfferingLink,
+  type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { resolveButtonColors, MIN_CONTRAST, type ButtonColors } from '@/lib/membership-card-colors'
@@ -448,7 +456,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
             <div className={tab === 'included' ? 'p-5' : 'hidden'}>
               <div className="text-sm font-medium text-slate-700 mb-2">What&#39;s included</div>
               <div className="flex flex-col gap-2">
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderItems}>
+                <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderItems}>
                 <SortableContext items={draft.items.map(it => it.key)} strategy={verticalListSortingStrategy}>
                 {draft.items.map(it => {
                   const off = offeringOf(it)
@@ -517,7 +525,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
                   )
                 })}
                 </SortableContext>
-                </DndContext>
+                </DndArea>
               </div>
               <button onClick={addItem} className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50"><Plus className="h-4 w-4" /> Add item</button>
               {saving > 0 && priceCents > 0 && (
