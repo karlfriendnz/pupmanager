@@ -3,14 +3,16 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { optionalAssetUrlSchema } from '@/lib/asset-url'
 
 const patchSchema = z.object({
   name: z.string().min(1).max(120).optional(),
-  description: z.string().max(2000).nullable().optional(),
+  // Rich text (Tiptap HTML) — see the create route for why this is generous.
+  description: z.string().max(20_000).nullable().optional(),
   kind: z.enum(['PHYSICAL', 'DIGITAL']).optional(),
   priceCents: z.number().int().min(0).nullable().optional(),
-  imageUrl: z.string().url().optional().or(z.literal('')).nullable(),
-  downloadUrl: z.string().url().optional().or(z.literal('')).nullable(),
+  imageUrl: optionalAssetUrlSchema(),
+  downloadUrl: optionalAssetUrlSchema(),
   category: z.string().max(60).nullable().optional(),
   featured: z.boolean().optional(),
   xeroAccountCode: z.string().max(50).nullable().optional(),

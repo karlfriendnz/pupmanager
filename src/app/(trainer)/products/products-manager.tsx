@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { compressImageFile } from '@/lib/compress-image'
+import { readApiError } from '@/lib/api-error'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 
@@ -300,7 +301,7 @@ function ProductEditor({
       )
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setError(typeof body.error === 'string' ? body.error : 'Save failed')
+        setError(readApiError(body))
         return
       }
       onSave({

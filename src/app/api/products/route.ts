@@ -3,14 +3,17 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { optionalAssetUrlSchema } from '@/lib/asset-url'
 
 const createSchema = z.object({
   name: z.string().min(1).max(120),
-  description: z.string().max(2000).optional().nullable(),
+  // Rich text (Tiptap HTML), so the bound is generous — the old 2000 was tight
+  // enough that a formatted description could be rejected.
+  description: z.string().max(20_000).optional().nullable(),
   kind: z.enum(['PHYSICAL', 'DIGITAL']).default('PHYSICAL'),
   priceCents: z.number().int().min(0).optional().nullable(),
-  imageUrl: z.string().url().optional().or(z.literal('')).nullable(),
-  downloadUrl: z.string().url().optional().or(z.literal('')).nullable(),
+  imageUrl: optionalAssetUrlSchema(),
+  downloadUrl: optionalAssetUrlSchema(),
   category: z.string().max(60).optional().nullable(),
   featured: z.boolean().optional(),
   active: z.boolean().optional(),
