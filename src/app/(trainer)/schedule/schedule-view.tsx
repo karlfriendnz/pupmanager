@@ -13,8 +13,8 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
-  ChevronLeft, ChevronRight, Plus, Calendar, CalendarDays, Columns3, List,
-  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, BarChart2, Users, Check,
+  ChevronLeft, ChevronRight, Plus, Calendar, CalendarDays,
+  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, Users, Check,
 } from 'lucide-react'
 import {
   AssignPackageFromScheduleModal,
@@ -3227,6 +3227,22 @@ export function ScheduleView({
   // the global top-bar search), keeping the schedule header uncluttered.
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef<HTMLFormElement>(null)
+  // Week-jump menu, behind the calendar icon on the date row.
+  const [jumpOpen, setJumpOpen] = useState(false)
+  const jumpRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!jumpOpen) return
+    function onPointer(e: MouseEvent | TouchEvent) {
+      if (jumpRef.current && !jumpRef.current.contains(e.target as Node)) setJumpOpen(false)
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setJumpOpen(false) }
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [jumpOpen])
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchTokens = search.trim().toLocaleLowerCase('en-NZ').split(/\s+/).filter(Boolean)
   function sessionMatchesSearch(s: Session): boolean {
@@ -3665,7 +3681,50 @@ export function ScheduleView({
         {/* Date nav — fills the row on phones, sits next to the title on
             tablet+. `flex-1` claims the whole width on mobile so the
             chevrons sit at the screen edges and the date label centres. */}
-        <div className="flex items-center gap-1 flex-1 sm:flex-initial w-full sm:w-auto justify-center sm:justify-start">
+        {/* One row on every width: jump · ‹ date › · View. It used to claim the
+            full width here (w-full), which pushed the action cluster onto a
+            second row of its own. */}
+        <div className="flex min-w-0 flex-1 items-center gap-1 sm:flex-initial justify-start">
+          {/* Week jump sits left of the date; View sits right of it. */}
+          <div ref={jumpRef} className="relative flex items-center">
+            <button
+              type="button"
+              onClick={() => setJumpOpen(o => !o)}
+              disabled={navigatingWeek}
+              aria-label="Jump to a week"
+              aria-haspopup="menu"
+              aria-expanded={jumpOpen}
+              title="Jump to a week"
+              className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:text-slate-700 disabled:opacity-40"
+            >
+              <CalendarDays className="h-4 w-4" />
+            </button>
+            {jumpOpen && (
+              <div
+                role="menu"
+                className="absolute left-0 top-11 z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+              >
+                <button
+                  type="button"
+                  onClick={() => { setJumpOpen(false); goToToday() }}
+                  className="block w-full px-4 py-2.5 text-left text-sm font-medium text-slate-900 hover:bg-slate-50"
+                >
+                  This week
+                </button>
+                <div className="my-1 border-t border-slate-100" />
+                {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => { setJumpOpen(false); jumpWeeks(n) }}
+                    className="block w-full px-4 py-2 text-left text-sm text-slate-600 hover:bg-slate-50"
+                  >
+                    +{n} {n === 1 ? 'week' : 'weeks'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => navigate(-1)}
             disabled={navigatingWeek}
@@ -3680,8 +3739,14 @@ export function ScheduleView({
                 {weekStart.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })} – {addDays(weekStart, 6).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
               </p>
             ) : (
-              <p className="font-semibold text-slate-900 text-sm">
-                {fmtFullDate(selectedDate)}{selectedDate === today && <span className="ml-1 text-xs text-blue-600 font-medium">· Today</span>}
+              <p className="font-semibold text-slate-900 text-sm whitespace-nowrap">
+                {/* Short on a phone: the full "Monday, 27 July 2026" wrapped to
+                    two lines once the jump and View buttons shared this row. */}
+                <span className="sm:hidden">
+                  {new Date(`${selectedDate}T12:00:00Z`).toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })}
+                </span>
+                <span className="hidden sm:inline">{fmtFullDate(selectedDate)}</span>
+                {selectedDate === today && <span className="ml-1 text-xs text-blue-600 font-medium">· Today</span>}
               </p>
             )}
           </div>
@@ -3695,35 +3760,11 @@ export function ScheduleView({
           </button>
         </div>
 
-        {/* Jump-to control — Today plus forward 1–10 weeks in one dropdown, so
-            the trainer can reposition the calendar without repeated arrow taps.
-            Wraps to its own row on phones; sits by the arrows on tablet+. */}
-        <div className="flex items-center gap-1.5">
-          <select
-            value=""
-            onChange={e => {
-              const v = e.target.value
-              if (v === 'today') goToToday()
-              else if (v) jumpWeeks(Number(v))
-            }}
-            disabled={navigatingWeek}
-            aria-label="Jump to a date"
-            title="Jump to…"
-            className="h-8 rounded-lg border border-slate-200 bg-white px-1.5 text-xs text-slate-600 focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-40"
-          >
-            <option value="">Jump to…</option>
-            <option value="today">Today</option>
-            {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
-              <option key={n} value={n}>+{n} {n === 1 ? 'week' : 'weeks'}</option>
-            ))}
-          </select>
-        </div>
-
         {/* Action cluster — left-aligned and full-width on phones (its own
             row underneath the date nav); tablet+ it's right-aligned (ml-auto)
             and hosts the slide-out search first, so opening the search grows the
             cluster leftward into the gap rather than wrapping to a new row. */}
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full sm:w-auto sm:ml-auto sm:flex-shrink-0 justify-start sm:justify-end">
+        <div className="flex flex-nowrap items-center gap-1.5 ml-auto flex-shrink-0 justify-end">
           {/* Tablet+ slide-out search — collapsed icon that grows into a field
               on click (mirrors the global top-bar search). Phones use the
               icon-button + drawer below. */}
@@ -3771,18 +3812,8 @@ export function ScheduleView({
             )}
           </form>
 
-          {/* Mobile-only search trigger — sits alongside the other action
-              icons so the header reads as a single button row. */}
-          <button
-            type="button"
-            onClick={() => setSearchOpenMobile(v => !v)}
-            aria-label="Search sessions"
-            className={`sm:hidden inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
-              search || searchOpenMobile ? 'border-blue-300 bg-blue-50 text-blue-600' : 'border-slate-200 bg-white text-slate-500'
-            }`}
-          >
-            <Search className="h-4 w-4" />
-          </button>
+          {/* No search trigger on phones — the top bar's search covers finding
+              a session, and this one cost the header a second row. */}
 
           {/* Google Calendar sync is hidden for now — needs live
               GOOGLE_CLIENT_ID/SECRET + an end-to-end OAuth test before we
@@ -3802,25 +3833,28 @@ export function ScheduleView({
             </span>
           ))}
 
-          {/* Staff-member switcher — only for whole-company viewers with a
-              team. Filters the calendar to one member / the unassigned pile. */}
-          {showMemberSwitcher && (
-            <MemberSwitcher
-              members={members}
-              value={memberFilter}
-              hasUnassigned={hasUnassignedSessions}
-              onChange={handleMemberChange}
-            />
-          )}
-
-          <Button variant="secondary" size="sm" onClick={() => setShowReport(true)} title="Weekly report" aria-label="Weekly report">
-            <BarChart2 className="h-4 w-4" /> <span className="hidden sm:inline">Reports</span>
-          </Button>
-
+          {/* One control now. Layout, whose calendar, availability hours and
+              the weekly report all used to be their own icon out here — five
+              buttons across a phone, four of them unlabelled. */}
           <span className="relative inline-flex">
-            <Button variant="secondary" size="sm" onClick={() => setShowAvail(true)} title="Availability hours" aria-label="Availability hours">
-              <Clock className="h-4 w-4" /> <span className="hidden sm:inline">Hours</span>
-            </Button>
+            <ScheduleSettings
+              startHour={scheduleStartHour}
+              endHour={scheduleEndHour}
+              mobileStartHour={scheduleMobileStartHour}
+              mobileEndHour={scheduleMobileEndHour}
+              days={scheduleDays}
+              extraFields={extraFields}
+              customFields={customFields}
+              view={view}
+              onView={setView}
+              onOpenAvailability={() => setShowAvail(true)}
+              onOpenReport={() => setShowReport(true)}
+              members={members}
+              memberFilter={memberFilter}
+              onMemberChange={handleMemberChange}
+              hasUnassigned={hasUnassignedSessions}
+              showMemberFilter={showMemberSwitcher}
+            />
             {showHints && availSlots.length === 0 && (
               <span
                 aria-hidden
@@ -3828,47 +3862,6 @@ export function ScheduleView({
               />
             )}
           </span>
-
-          <ScheduleSettings
-            startHour={scheduleStartHour}
-            endHour={scheduleEndHour}
-            mobileStartHour={scheduleMobileStartHour}
-            mobileEndHour={scheduleMobileEndHour}
-            days={scheduleDays}
-            extraFields={extraFields}
-            customFields={customFields}
-          />
-
-          {/* Day / 3-Day / Week toggle (icon-only) — fixed-size squares so
-              every button renders at the exact same dimensions regardless of
-              icon viewBox quirks. The 3-day button is mobile-only because
-              the full-week grid already fits comfortably on tablet+. */}
-          <div className="flex p-0.5 bg-slate-100 rounded-xl gap-0.5">
-            <button
-              onClick={() => setView('day')}
-              title="Day view"
-              aria-label="Day view"
-              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${view === 'day' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-            >
-              <List className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => setView('threeDay')}
-              title="3-day view"
-              aria-label="3-day view"
-              className={`sm:hidden flex h-7 w-7 items-center justify-center rounded-lg transition-all ${view === 'threeDay' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-            >
-              <Columns3 className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => setView('week')}
-              title="Week view"
-              aria-label="Week view"
-              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${view === 'week' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-            >
-              <CalendarDays className="h-3.5 w-3.5" />
-            </button>
-          </div>
         </div>
       </div>
 

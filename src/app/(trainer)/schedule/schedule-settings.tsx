@@ -44,9 +44,32 @@ export function ScheduleSettings({
   days,
   extraFields,
   customFields,
+  view,
+  onView,
+  onOpenAvailability,
+  onOpenReport,
+  members = [],
+  memberFilter = 'all',
+  onMemberChange,
+  hasUnassigned = false,
+  showMemberFilter = false,
 }: {
   startHour: number
   endHour: number
+  /** Current grid layout, and how to change it — used to live as an icon trio
+   *  in the toolbar. */
+  view?: 'day' | 'threeDay' | 'week'
+  onView?: (v: 'day' | 'threeDay' | 'week') => void
+  /** Opens the availability-hours editor (was its own toolbar button). */
+  onOpenAvailability?: () => void
+  /** Opens the weekly report (was its own toolbar button). */
+  onOpenReport?: () => void
+  /** Staff filter (was its own toolbar dropdown). */
+  members?: { id: string; name: string }[]
+  memberFilter?: string
+  onMemberChange?: (v: string) => void
+  hasUnassigned?: boolean
+  showMemberFilter?: boolean
   // Mobile-specific override. Null = "use desktop hours on mobile too" —
   // when the trainer hasn't customised it, the controls show the
   // desktop hours and stay disabled until they tick the override.
@@ -128,21 +151,102 @@ export function ScheduleSettings({
 
   return (
     <>
-      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
-        <Settings2 className="h-4 w-4" /> View
+      {/* Icon only — the panel names itself once open, and the label cost the
+          date row width it needed. */}
+      <Button variant="secondary" size="sm" onClick={() => setOpen(true)} aria-label="Schedule view options" title="View options">
+        <Settings2 className="h-4 w-4" />
       </Button>
+      {/* A whole screen on a phone, a centred card from sm: up. It had no
+          max-height and no scroll, so on a phone the content ran past the
+          bottom of the screen and took Save — and the X — with it. */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-50 flex justify-center sm:items-center sm:p-4" onClick={() => setOpen(false)}>
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-          <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+          <div
+            className="relative z-50 flex h-full w-full flex-col bg-white sm:h-auto sm:max-h-[85vh] sm:max-w-sm sm:rounded-2xl sm:shadow-2xl"
+            style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-5">
               <h2 className="font-semibold text-slate-900">Schedule view</h2>
-              <button onClick={() => setOpen(false)} className="p-1 text-slate-400 hover:text-slate-600">
+              <button onClick={() => setOpen(false)} aria-label="Close" className="grid h-11 w-11 place-items-center rounded-lg text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="p-5 flex flex-col gap-4">
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
               {error && <p className="text-sm text-red-600">{error}</p>}
+
+              {/* Everything that used to be its own toolbar icon lives here:
+                  layout, whose calendar you're looking at, and availability. */}
+              {view && onView && (
+                <div>
+                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Layout</label>
+                  <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+                    {([
+                      { id: 'day' as const, label: 'Day' },
+                      { id: 'threeDay' as const, label: '3 days' },
+                      { id: 'week' as const, label: 'Week' },
+                    ]).map(v => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => onView(v.id)}
+                        aria-pressed={view === v.id}
+                        className={`h-9 rounded-lg text-sm font-medium transition-colors ${
+                          view === v.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        {v.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {showMemberFilter && onMemberChange && (
+                <div>
+                  <label htmlFor="pm-schedule-member" className="text-sm font-medium text-slate-700 block mb-1.5">
+                    Whose calendar
+                  </label>
+                  <select
+                    id="pm-schedule-member"
+                    value={memberFilter}
+                    onChange={e => onMemberChange(e.target.value)}
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">Everyone</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    {hasUnassigned && <option value="unassigned">Unassigned</option>}
+                  </select>
+                </div>
+              )}
+
+              {(onOpenAvailability || onOpenReport) && (
+                <div className="overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
+                  {onOpenAvailability && (
+                    <button
+                      type="button"
+                      onClick={() => { setOpen(false); onOpenAvailability() }}
+                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Availability hours
+                      <span className="text-xs text-slate-400">When you take bookings</span>
+                    </button>
+                  )}
+                  {/* The weekly report kept its own toolbar icon for one modal.
+                      It lives here now rather than being deleted outright. */}
+                  {onOpenReport && (
+                    <button
+                      type="button"
+                      onClick={() => { setOpen(false); onOpenReport() }}
+                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Weekly report
+                      <span className="text-xs text-slate-400">Hours and sessions</span>
+                    </button>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="text-sm font-medium text-slate-700 block mb-0.5">Visible hours · Desktop</label>
@@ -285,13 +389,19 @@ export function ScheduleSettings({
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-1">
-                <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button size="sm" onClick={handleSave} disabled={saving}>
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  Save
-                </Button>
-              </div>
+            </div>
+
+            {/* Pinned so Save is reachable however long the form gets, and
+                clear of the home indicator. */}
+            <div
+              className="flex shrink-0 justify-end gap-2 border-t border-slate-100 p-4"
+              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
+            >
+              <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Save
+              </Button>
             </div>
           </div>
         </div>
