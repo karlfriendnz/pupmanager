@@ -23,8 +23,11 @@ test.describe('email templates — owner happy path', () => {
     await page.getByLabel('Choose an email template').selectOption('__new')
 
     const name = `Welcome ${Date.now()}`
-    await page.getByPlaceholder('Welcome to the pack').fill(name)
-    await page.getByPlaceholder('A warm welcome from {{businessName}}').fill('Hello {{clientName}}')
+    // exact: getByPlaceholder matches case-insensitive SUBSTRINGS, and the
+    // subject placeholder is now "A warm welcome to the pack" — which contains
+    // the name field's placeholder, so a loose match hits both inputs.
+    await page.getByPlaceholder('Welcome to the pack', { exact: true }).fill(name)
+    await page.getByPlaceholder('A warm welcome to the pack').fill('Hello {{clientName}}')
     // Body is a rich-text (contenteditable) editor — type into it directly.
     const editor = page.locator('[contenteditable="true"]').first()
     await editor.click()

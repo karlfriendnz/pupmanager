@@ -33,7 +33,7 @@ test.describe('multi-trainer business', () => {
     await openTeamTab(page)
 
     for (const invitee of SEED.invitees) {
-      await page.getByRole('button', { name: 'Invite staff' }).click()
+      await page.getByRole('button', { name: 'Invite a team member' }).first().click()
       const form = page.getByTestId('invite-form')
       await form.getByPlaceholder('Jess Carter').fill(invitee.name)
       await form.getByPlaceholder('jess@example.com').fill(invitee.email)
