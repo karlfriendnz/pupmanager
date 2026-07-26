@@ -223,6 +223,85 @@ test.describe('an offering with a start date is scheduled', () => {
       await prisma.$disconnect()
     }
   })
+
+  // …but "not scheduled" must not mean "your answers were thrown away". The
+  // venue used to live only on the ClassRun, so an offering defined before it
+  // was scheduled accepted the address, saved 201, and lost it.
+  test('a venue typed before the class is scheduled survives, and the run inherits it', async ({ page }) => {
+    const prisma = await makePrisma()
+    const cleanup: Array<() => Promise<unknown>> = []
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      const created = await page.request.post('/api/packages', {
+        data: {
+          name: 'E2E Unscheduled Venue',
+          sessionCount: 2, weeksBetween: 1, durationMins: 60,
+          isGroup: true,
+          location: '9 Riverbank Road',
+          // No startAt — defined, not scheduled. Nothing to hold the venue.
+        },
+      })
+      expect(created.status(), await created.text()).toBe(201)
+      const pkg = await created.json()
+      cleanup.push(() => prisma.package.delete({ where: { id: pkg.id } }).catch(() => {}))
+
+      expect(pkg.classRunId).toBeNull()
+      expect(await prisma.classRun.count({ where: { packageId: pkg.id } })).toBe(0)
+      // The whole point: it is still there.
+      const stored = await prisma.package.findUnique({
+        where: { id: pkg.id }, select: { location: true },
+      })
+      expect(stored?.location, 'the venue must not be discarded').toBe('9 Riverbank Road')
+
+      // Schedule it later, saying nothing about where — it inherits.
+      const scheduled = await page.request.post('/api/class-runs', {
+        data: {
+          packageId: pkg.id,
+          name: 'E2E Unscheduled Venue — Term 1',
+          startDate: inDays(20).toISOString(),
+        },
+      })
+      expect(scheduled.status(), await scheduled.text()).toBe(201)
+      const run = await scheduled.json()
+      cleanup.push(() => prisma.classRun.delete({ where: { id: run.id } }).catch(() => {}))
+
+      const runRow = await prisma.classRun.findUnique({
+        where: { id: run.id }, select: { location: true },
+      })
+      expect(runRow?.location).toBe('9 Riverbank Road')
+      // Sessions carry it too — that address is what the client is told.
+      const sessions = await prisma.trainingSession.findMany({
+        where: { classRunId: run.id }, select: { location: true },
+      })
+      expect(sessions.length).toBeGreaterThan(0)
+      for (const s of sessions) expect(s.location).toBe('9 Riverbank Road')
+
+      // A second cohort naming its own venue keeps it, and the first is
+      // untouched — inheritance is a default, not a rewrite.
+      const second = await page.request.post('/api/class-runs', {
+        data: {
+          packageId: pkg.id,
+          name: 'E2E Unscheduled Venue — Term 2',
+          startDate: inDays(90).toISOString(),
+          location: 'The scout hall',
+        },
+      })
+      expect(second.status(), await second.text()).toBe(201)
+      const run2 = await second.json()
+      cleanup.push(() => prisma.classRun.delete({ where: { id: run2.id } }).catch(() => {}))
+
+      expect((await prisma.classRun.findUnique({
+        where: { id: run2.id }, select: { location: true },
+      }))?.location).toBe('The scout hall')
+      expect((await prisma.classRun.findUnique({
+        where: { id: run.id }, select: { location: true },
+      }))?.location).toBe('9 Riverbank Road')
+    } finally {
+      for (const fn of cleanup.reverse()) await fn()
+      await prisma.$disconnect()
+    }
+  })
 })
 
 test.describe('editing a scheduled offering moves the class', () => {
