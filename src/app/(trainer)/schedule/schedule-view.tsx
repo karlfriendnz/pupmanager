@@ -3728,7 +3728,7 @@ export function ScheduleView({
           <button
             onClick={() => navigate(-1)}
             disabled={navigatingWeek}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-40"
+            className="grid h-11 w-11 place-items-center rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-40"
             aria-label="Previous"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -3753,7 +3753,7 @@ export function ScheduleView({
           <button
             onClick={() => navigate(1)}
             disabled={navigatingWeek}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-40"
+            className="grid h-11 w-11 place-items-center rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-40"
             aria-label="Next"
           >
             <ChevronRight className="h-4 w-4" />
