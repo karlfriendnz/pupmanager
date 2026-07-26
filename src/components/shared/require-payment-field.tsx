@@ -1,15 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Switch } from '@/components/ui/switch'
 
-// Tri-state "require payment to book" control for a package / class / product.
-//   true  → Require payment (pay up front via Stripe)
-//   false → Don't require (book now, pay later — an invoice is raised)
-//   null  → Use my default (falls back to the trainer's defaultRequirePayment)
+// "Require payment to book" for a package / class / product.
 //
-// It fetches the trainer's current default so the "Use my default" option can
-// spell out what that default resolves to. Self-contained so any form can drop
-// it in without threading the default through props.
+// The stored value is still tri-state — true / false / null (= inherit the
+// trainer's defaultRequirePayment) — because that's what the API and existing
+// rows use. The CONTROL, though, is one switch: it starts on whatever the
+// trainer's default resolves to, and flipping it writes an explicit true/false.
+// Leaving it alone keeps the stored null, which resolves to the same thing.
+//
+// It fetches the trainer's default itself, so any form can drop it in without
+// threading the default through props.
 export function RequirePaymentField({
   value,
   onChange,
@@ -32,47 +35,32 @@ export function RequirePaymentField({
     return () => { cancelled = true }
   }, [])
 
-  const defaultWord =
-    trainerDefault == null ? 'your default' : trainerDefault ? 'Require payment' : 'Don’t require'
-
-  const options: { val: boolean | null; label: string }[] = [
-    { val: true, label: 'Require payment' },
-    { val: false, label: 'Don’t require' },
-    { val: null, label: `Use my default (${defaultWord})` },
-  ]
+  // What will actually happen: the explicit choice if there is one, otherwise
+  // the trainer's default (off until we know it).
+  const on = value ?? trainerDefault ?? false
+  const usingDefault = value === null
 
   return (
     <div>
-      <label className="text-sm font-medium text-slate-700 block mb-1.5">Payment to book</label>
-      <div className="flex flex-wrap gap-1.5">
-        {options.map(opt => {
-          const on = opt.val === value
-          // On "Use my default", the option that default resolves to is what
-          // will actually happen — so it's shown as in force too, softly, and
-          // the trainer doesn't have to read the bracket to know which it is.
-          const inEffect = value === null && trainerDefault != null && opt.val === trainerDefault
-          return (
-            <button
-              key={String(opt.val)}
-              type="button"
-              onClick={() => onChange(opt.val)}
-              aria-pressed={on}
-              className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border transition-colors ${
-                on
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : inEffect
-                    ? 'border-blue-200 bg-blue-50/60 text-blue-600'
-                    : 'border-slate-200 text-slate-600 hover:border-slate-300'
-              }`}
-            >
-              {opt.label}
-              {inEffect && <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-400">in effect</span>}
-            </button>
-          )
-        })}
+      <div className="flex items-start gap-3">
+        <Switch
+          checked={on}
+          onChange={() => onChange(!on)}
+          aria-label="Require payment to book"
+        />
+        <div className="min-w-0">
+          <label className="text-sm font-medium text-slate-700 block">
+            Require payment to book
+          </label>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            {on
+              ? 'Clients pay up front to confirm their spot.'
+              : 'Clients book now and you raise an invoice.'}
+            {usingDefault && ' Your default — change it here just for this one.'}
+          </p>
+        </div>
       </div>
-      <p className="text-[11px] text-slate-400 mt-1">
-        When on, clients pay up front to confirm. When off, they book now and you raise an invoice.
+      <p className="text-[11px] text-slate-400 mt-1.5">
         Only applies once you can take card payments.
       </p>
     </div>
