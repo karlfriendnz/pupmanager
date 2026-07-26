@@ -4,10 +4,8 @@ import { nextSessionByClient as nextSessionForClients } from '@/lib/client-sessi
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { UserPlus } from 'lucide-react'
 import { ClientsList } from './clients-list'
-import { QuickAddButton, QuickAddModal } from './quick-add-contact'
+import { QuickAddModal } from './quick-add-contact'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddonNudge } from '@/components/shared/addon-nudge'
 import { isNudgeDismissed } from '@/lib/nudge-dismissals'
@@ -198,26 +196,10 @@ export default async function ClientsPage({
 
   return (
     <>
-      <PageHeader
-        title="Clients"
-        // No subtitle: the tabs below already carry these counts ("Active 55",
-        // "Inactive 6"), so it was the same numbers twice.
-        actions={
-          // Desktop only. On a phone these portal into the control bar, where
-          // they sat as two near-identical person-add glyphs next to the global
-          // "+" — which offers these same two choices (Quick / Full client) by
-          // name on its create screen.
-          <div className="hidden md:flex items-center gap-2">
-            <QuickAddButton />
-            <Link href="/clients/invite">
-              <Button size="sm">
-                <UserPlus className="h-4 w-4" />
-                <span className="hidden sm:inline">Create new client</span>
-              </Button>
-            </Link>
-          </div>
-        }
-      />
+      {/* No subtitle: the tabs below already carry these counts ("Active 55",
+          "Inactive 6"). No add buttons either — the global "+" offers Quick
+          client and Full client by name, on every page and both layouts. */}
+      <PageHeader title="Clients" />
       {/* Single quick-add modal for the whole page — opens from ?new=1 (the
           header button, the top bar's + menu, or the mobile FAB). Mounted once
           here so it never double-renders like a header action would. */}

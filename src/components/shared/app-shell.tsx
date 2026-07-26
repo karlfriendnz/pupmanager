@@ -910,6 +910,12 @@ function TrainerShell({
     }
   }
   const desktopNav = trainerNav.filter(i => !i.desktopHidden && !i.child)
+  // The daily three (Dashboard / Messages / Schedule) sit across the top of the
+  // rail as one row rather than three stacked rows — they're the most-used
+  // items and don't need to cost three rows of height. Collapsed, the rail is
+  // icons only and everything stacks as before.
+  const desktopTopRow = desktopNav.filter(i => i.section === 'overview')
+  const desktopRest = desktopNav.filter(i => i.section !== 'overview')
   const [collapsed, setCollapsed] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   // Submenu flyouts render position:fixed so they escape the nav's
@@ -1040,7 +1046,37 @@ function TrainerShell({
             one the collapsed rail was getting from its icon tiles, and
             .no-scrollbar hides the vertical track while keeping the scroll. */}
         <nav className={cn('flex-1 overflow-y-auto overflow-x-hidden no-scrollbar py-4 space-y-1', collapsed ? 'px-2' : 'px-3')}>
-          {desktopNav.map((item, idx, arr) => {
+          {!collapsed && desktopTopRow.length > 0 && (
+            <div className="mb-2 grid grid-cols-3 gap-1">
+              {desktopTopRow.map(item => {
+                const Icon = item.icon
+                const active = pathname === item.href || pathname.startsWith(item.href + '/')
+                const unread = unreadCounts[item.href] ?? 0
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      'relative flex flex-col items-center gap-1 rounded-xl px-1 py-2.5 text-[11px] font-medium transition-colors',
+                      active ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                    <span className="max-w-full truncate">{item.label}</span>
+                    {unread > 0 && (
+                      <span
+                        aria-label={`${unread} unread`}
+                        className="absolute right-1.5 top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white tabular-nums"
+                      >
+                        {unread > 9 ? '9+' : unread}
+                      </span>
+                    )}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+          {(collapsed ? desktopNav : desktopRest).map((item, idx, arr) => {
             // Section grouping: emit a small header (expanded) or a divider
             // (collapsed / system group) at each section boundary.
             const sectionChanged = idx === 0 || arr[idx - 1].section !== item.section

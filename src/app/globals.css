@@ -289,6 +289,16 @@ button, a, [role="button"] {
 .tiptap-light.is-editor-empty:first-child::before,
 .tiptap-light p.is-editor-empty:first-child::before { color: #94a3b8; }
 
+/* Phone widths: scroll everywhere, show a bar nowhere.
+   A real phone draws an overlay scrollbar that fades out on its own; a desktop
+   browser at phone width leaves a permanent grey rail down every scrollable
+   panel, which reads as chrome nobody asked for. Scrolling is untouched —
+   only the bar is hidden, and only below md. */
+@media (max-width: 767px) {
+  * { scrollbar-width: none; -ms-overflow-style: none; }
+  *::-webkit-scrollbar { width: 0; height: 0; display: none; }
+}
+
 /* Wide screens: stop centering page content — hug the left instead. Each page
    wraps its content in `max-w-… mx-auto` as a direct child of the trainer
    <main>; above 1600px we override the auto side-margins to left-align it, so

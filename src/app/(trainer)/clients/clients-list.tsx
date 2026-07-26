@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -624,12 +624,16 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
             {/* Phone: one block of hairline-divided rows. Desktop: the cards
                 keep their own borders and spacing (md:contents dissolves this
                 wrapper so the gap-2 above still applies to them). */}
-            <div className={cn(
-              'overflow-hidden rounded-xl border border-slate-200 bg-white',
-              '[&>*+*]:border-t [&>*+*]:border-slate-200',
-              'md:contents md:rounded-none md:border-0 md:[&>*+*]:border-t-0',
-            )}>
-            {group.rows.map(c => (
+            {/* Phone: one block of rows separated by real hairline elements.
+                Border utilities lost this fight twice — the row's own
+                `border-0` cancelled a `border-b`, and a wrapper `border-t` was
+                painted over by the white card sitting flush against it. An
+                actual 1px div can't be overridden by either. Desktop dissolves
+                the wrapper (md:contents) and hides the dividers. */}
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white md:contents md:rounded-none md:border-0">
+            {group.rows.map((c, i) => (
+              <Fragment key={c.id}>
+              {i > 0 && <div className="h-px bg-slate-200 md:hidden" aria-hidden />}
               <ClientRowCard
                 key={c.id}
                 client={c}
@@ -642,6 +646,7 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
                 isSelected={selected.has(c.id)}
                 onToggleSelect={onToggleSelect}
               />
+              </Fragment>
             ))}
             </div>
           </div>
