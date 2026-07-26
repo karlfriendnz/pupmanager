@@ -95,6 +95,50 @@ describe('groupByClient — one line per person (per dog)', () => {
   })
 })
 
+describe('a multi-ticket event guest is still one guest', () => {
+  // The event screen's own flavour of the same fault: an event sells named
+  // tickets, so one owner can hold "General × 3" AND "VIP × 3" — two enrolment
+  // rows, one person. The guest snapshot listed raw enrolments, so they read as
+  // two guests, over a badge that disagreed with the table below it.
+  it('folds two ticket types bought by one person into one row, keeping both labels', () => {
+    const groups = groupByClient([
+      enrol({ type: 'FULL', ticketName: 'General', quantity: 3 }),
+      enrol({ type: 'FULL', ticketName: 'VIP', quantity: 3 }),
+    ])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].ticketLabel).toBe('General × 3 · VIP × 3')
+  })
+
+  it('still gives one owner with two dogs two rows on an event', () => {
+    const groups = groupByClient([
+      enrol({ type: 'FULL', dogName: 'Bailey', ticketName: 'General', quantity: 1 }),
+      enrol({ type: 'FULL', dogName: 'Milo', ticketName: 'General', quantity: 1 }),
+    ])
+    expect(groups).toHaveLength(2)
+  })
+})
+
+describe('the detail screens read their counts off the folded rows', () => {
+  // A source check rather than a render: the arithmetic lives inline in two
+  // client components. What must never come back is `.slice(0, 6)` over the
+  // RAW enrolments — that is exactly what printed the same owner three times.
+  const screens = {
+    'classes/[runId]/run-detail.tsx': 'src/app/(trainer)/classes/[runId]/run-detail.tsx',
+    'events/[eventId]/event-detail.tsx': 'src/app/(trainer)/events/[eventId]/event-detail.tsx',
+  }
+
+  for (const [name, rel] of Object.entries(screens)) {
+    it(`${name} slices groups, not enrolments`, async () => {
+      const { readFileSync } = await import('node:fs')
+      const path = await import('node:path')
+      const src = readFileSync(path.resolve(__dirname, '../..', rel), 'utf8')
+      expect(src, name).toMatch(/groupByClient\(/)
+      expect(src, name).toMatch(/(presentGroups|pastGroups)\.slice\(0, 6\)/)
+      expect(src, name).not.toMatch(/\bpresent\.slice\(/)
+    })
+  }
+})
+
 describe('worstInvoiceState — the thing to chase wins', () => {
   it('ranks no-invoice worst, then unsent, sent, paid', () => {
     expect(worstInvoiceState(['PAID', null])).toBeNull()

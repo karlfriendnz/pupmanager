@@ -25,8 +25,9 @@ import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { DiscountManager } from '@/components/trainer/discount-manager'
+import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
 import {
-  EnrollTable, EnrolModal, Detail, DeleteRunButton,
+  EnrollTable, EnrolModal, Detail, DeleteRunButton, groupByClient,
   type Enrollment, type ClientOpt, type TicketTier,
 } from '@/components/trainer/run-roster'
 
@@ -73,6 +74,18 @@ export function EventDetail({
   const waitlisted = enrollments.filter(e => e.status === 'WAITLISTED')
   const present = enrollments.filter(e => e.status === 'ENROLLED' || e.status === 'WAITLISTED')
   const past = enrollments.filter(e => e.status === 'WITHDRAWN' || e.status === 'COMPLETED')
+  // ONE ROW PER PERSON (per dog, strictly — the same owner bringing two dogs is
+  // genuinely two lines, because attendance and invoices are per dog). An
+  // enrolment is a BOOKING, not a person: someone who bought General AND VIP,
+  // or came back for a second ticket, holds several, and the snapshot listed
+  // their name once per booking. The guest TABLE already folded them with
+  // groupByClient; this side panel and the counts beside it did not, so the
+  // card read the same owner three times over a badge that disagreed with the
+  // table underneath it. Same grouping everywhere now — the number on the tab
+  // is the number of lines you'll find under it.
+  const presentGroups = groupByClient(present)
+  const pastGroups = groupByClient(past)
+  const rosterCount = presentGroups.length + pastGroups.length
 
   // A ticket can be several places, so the headline is places sold, not rows.
   const placesTaken = going.reduce((n, e) => n + Math.max(1, e.quantity), 0)
@@ -100,9 +113,9 @@ export function EventDetail({
     router.refresh()
   }
 
-  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
+  const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
-    { id: 'guests', label: 'Guest list', icon: Users, badge: enrollments.length > 0 ? enrollments.length : undefined },
+    { id: 'guests', label: 'Guest list', icon: Users, badge: rosterCount > 0 ? rosterCount : undefined },
     { id: 'messages', label: 'Reminders & messages', icon: Bell },
     { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
@@ -133,33 +146,9 @@ export function EventDetail({
       <div className="p-4 md:p-8 w-full">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Scrolls sideways on a narrow phone rather than wrapping to two rows. */}
-      <div className="mb-6 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-2xl">
-          {tabs.map(t => {
-            const Icon = t.icon
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`relative shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
-                  tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {t.label}
-                {t.badge != null && (
-                  <span className={`min-w-4 h-4 px-1 text-[10px] font-semibold tabular-nums rounded-full flex items-center justify-center ${
-                    tab === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
-                  }`}>
-                    {t.badge}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      {/* Icon on top on a phone — the labels are too long to sit beside one
+          at 390px, which used to push the last tab off-screen. */}
+      <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
 
       {/* Details: what the event is and what it sells (left), a compact guest
           snapshot (right). No sessions card — an event is one occasion. */}
@@ -282,24 +271,24 @@ export function EventDetail({
               >
                 Guests
               </CardHeading>
-              {present.length === 0 ? (
+              {presentGroups.length === 0 ? (
                 <p className="text-sm text-slate-500 py-4 text-center">Nobody signed up yet.</p>
               ) : (
                 <>
                   <ul className="divide-y divide-slate-100">
-                    {present.slice(0, 6).map(e => (
+                    {presentGroups.slice(0, 6).map(g => (
                       <ClientSnapshotRow
-                        key={e.id}
-                        clientId={e.clientId}
-                        clientName={e.clientName}
-                        dogName={e.dogName}
-                        badge={e.status === 'WAITLISTED' ? 'Waitlist' : null}
+                        key={g.key}
+                        clientId={g.clientId}
+                        clientName={g.clientName}
+                        dogName={g.dogName}
+                        badge={g.status === 'WAITLISTED' ? 'Waitlist' : null}
                       />
                     ))}
                   </ul>
-                  {enrollments.length > 6 && (
+                  {rosterCount > 6 && (
                     <button type="button" onClick={() => setTab('guests')} className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700">
-                      View all {enrollments.length} →
+                      View all {rosterCount} →
                     </button>
                   )}
                 </>
@@ -326,9 +315,11 @@ export function EventDetail({
             ) : (
               <>
                 <div className="mb-3 inline-flex gap-1 rounded-2xl bg-slate-100 p-1.5">
+                  {/* Counts of ROWS THE TABLE WILL SHOW — folded per person per
+                      dog, not of raw enrolments. See presentGroups above. */}
                   {([
-                    { id: 'current' as const, label: 'Going', count: present.length },
-                    { id: 'past' as const, label: 'Past', count: past.length },
+                    { id: 'current' as const, label: 'Going', count: presentGroups.length },
+                    { id: 'past' as const, label: 'Past', count: pastGroups.length },
                   ]).map(t => (
                     <button
                       key={t.id}
