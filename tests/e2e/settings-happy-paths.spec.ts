@@ -19,7 +19,8 @@ test.describe('email templates — owner happy path', () => {
     await login(page, SEED.owner.email, SEED.owner.password)
     // Email templates moved out of Settings to their own page under Communication.
     await page.goto('/email-templates')
-    await page.getByRole('button', { name: 'New template' }).click()
+    // Templates are chosen from one dropdown now; creating is its last option.
+    await page.getByLabel('Choose an email template').selectOption('__new')
 
     const name = `Welcome ${Date.now()}`
     await page.getByPlaceholder('Welcome to the pack').fill(name)
@@ -30,8 +31,9 @@ test.describe('email templates — owner happy path', () => {
     await editor.pressSequentially('Welcome to the pack — great to have you!')
 
     await page.getByRole('button', { name: 'Create template' }).click()
-    // The new template shows as a chip in the list.
-    await expect(page.getByText(name)).toBeVisible({ timeout: 10_000 })
+    // The new template joins the picker. Its <option> counts as hidden to
+    // Playwright, so assert the select's contents rather than visibility.
+    await expect(page.getByLabel('Choose an email template')).toContainText(name, { timeout: 10_000 })
   })
 })
 

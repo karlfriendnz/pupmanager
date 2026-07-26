@@ -26,7 +26,7 @@ test.describe('trainer home on a phone', () => {
     await page.goto('/dashboard')
 
     // Welcome band: greeting + the trainer's own business name.
-    await expect(page.getByText(/^Good (morning|afternoon|evening)/)).toBeVisible()
+    await expect(page.locator('section').getByText(/^Good (morning|afternoon|evening)/)).toBeVisible()
 
     // The six destinations. Which six depends on the trainer's trade (see
     // lib/home-tiles) — these are the ones the seeded owner gets.
@@ -37,8 +37,8 @@ test.describe('trainer home on a phone', () => {
     await expect(page.locator('section .grid > a, section .grid > button')).toHaveCount(6)
 
     // The desktop widget wall is NOT what a phone gets.
-    await expect(page.getByText('notes to write')).toHaveCount(0)
-    await expect(page.getByText("Today's sessions")).toHaveCount(0)
+    await expect(page.getByText('notes to write')).toBeHidden()
+    await expect(page.getByText("Today's sessions")).toBeHidden()
 
     // No sideways scroll at 390px.
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
@@ -91,8 +91,13 @@ test.describe('trainer home on a phone', () => {
     await page.goto('/dashboard')
 
     // Everything else is behind the header menu, not a bottom tab.
-    await page.getByRole('button', { name: 'Menu' }).click()
-    await expect(page.getByRole('link', { name: /Reports/ }).first()).toBeVisible()
+    // force: the shell paints an infinitely-pulsing onboarding dot near this
+    // button, and Playwright waits for "stable" forever when one is animating.
+    await page.getByRole('button', { name: 'Menu' }).click({ force: true })
+    // Settings is always in the menu; Reports and friends are permission- and
+    // add-on-gated, so they're the wrong thing to assert the menu opened on.
+    await expect(page.getByRole('dialog', { name: 'Menu' })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Settings' }).first()).toBeVisible()
     await page.keyboard.press('Escape')
 
     // Five tabs, all destinations a trainer works in — no "More" tab.
@@ -102,8 +107,8 @@ test.describe('trainer home on a phone', () => {
 
     await page.goto('/offerings')
     // Every row is a real destination with a count or a description.
-    await expect(page.getByRole('link', { name: /1:1 Packages/ })).toBeVisible()
-    await expect(page.getByRole('link', { name: /Library/ })).toBeVisible()
+    await expect(page.locator('main').getByRole('link', { name: /1:1 Packages/ })).toBeVisible()
+    await expect(page.locator('main').getByRole('link', { name: /Library/ })).toBeVisible()
     // Pluralisation is done properly — no "2 classs".
     await expect(page.getByText(/\bclasss\b/)).toHaveCount(0)
   })

@@ -2,6 +2,7 @@
 
 import { type ReactNode, type HTMLAttributes, useCallback, useSyncExternalStore } from 'react'
 import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
+import { cn } from '@/lib/utils'
 import Link from 'next/link'
 import { Plus, GripVertical, LayoutGrid, List as ListIcon } from 'lucide-react'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
@@ -109,7 +110,7 @@ export function OfferingCard({
           </div>
         )}
 
-        <div className="min-w-0 flex-1">
+        <div className={cn('min-w-0 flex-1', actions.length > 0 && !imageUrl && 'pr-24')}>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <p className="font-semibold text-slate-900 break-words">{title}</p>
             {badges.map((b, i) => (
@@ -177,14 +178,23 @@ export function OfferingCard({
   // needs on a phone.
   return (
     <div
-      className={`group relative flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_8px_rgba(15,31,36,0.04)] transition-colors hover:border-blue-200 ${dimmed ? 'opacity-60' : ''}`}
-    >
-      {(dragHandle || actions.length > 0) && (
-        <div className="mb-1 flex items-center justify-between">
-          {dragHandle ?? <span />}
-          {actionBar}
-        </div>
+      className={cn(
+        'group relative flex h-full flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_8px_rgba(15,31,36,0.04)] transition-colors hover:border-blue-200',
+        // Room for the absolutely-placed grip on the left.
+        dragHandle && 'pl-9',
+        dimmed && 'opacity-60',
       )}
+    >
+      {/* Actions float top-right and the content starts at the top beside them,
+          rather than the buttons taking a row of their own and leaving that
+          space empty. The title block reserves room so text stops short of
+          them instead of running underneath. */}
+      {actions.length > 0 && (
+        <div className="absolute right-3 top-3 z-10">{actionBar}</div>
+      )}
+      {/* Grip sits beside the content, not on a row above it — that row left
+          the whole width next to it empty. */}
+      {dragHandle && <div className="absolute left-3 top-4">{dragHandle}</div>}
       {href ? (
         <Link href={href} className="flex min-w-0 flex-1 flex-col">{body}</Link>
       ) : onOpen ? (
@@ -275,10 +285,16 @@ export function OfferingViewToggle({ value, onChange }: { value: OfferingView; o
   )
 }
 
-/** The row that carries the tabs (if any) on the left and the view toggle right. */
+/**
+ * The row that carries the tabs (if any) on the left and the view toggle right.
+ *
+ * Pulled up on md+ so the toggle sits level with the page description instead
+ * of taking a row of its own underneath it — the description is short, and the
+ * space to its right was empty.
+ */
 export function OfferingListBar({ children, view, onView }: { children?: ReactNode; view: OfferingView; onView: (v: OfferingView) => void }) {
   return (
-    <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+    <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 md:-mt-12">
       <div className="min-w-0">{children}</div>
       <OfferingViewToggle value={view} onChange={onView} />
     </div>

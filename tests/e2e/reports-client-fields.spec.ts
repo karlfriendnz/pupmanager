@@ -57,9 +57,8 @@ test.describe('Reports — access control', () => {
 test.describe('Client capture — quick-add (UAT)', () => {
   test('owner creates a contact via quick-add respecting required fields', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto('/clients')
+    await page.goto('/clients?new=1')  // quick-add opens from the global "+" now
 
-    await page.getByRole('button', { name: /Quick add/i }).click()
     const dialog = page.getByRole('heading', { name: 'Quick add contact' })
     await expect(dialog).toBeVisible()
 
@@ -79,9 +78,8 @@ test.describe('Client capture — quick-add (UAT)', () => {
 
   test('quick-add blocks submit when a required field is empty', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto('/clients')
+    await page.goto('/clients?new=1')  // quick-add opens from the global "+" now
 
-    await page.getByRole('button', { name: /Quick add/i }).click()
     await expect(page.getByRole('heading', { name: 'Quick add contact' })).toBeVisible()
 
     // Phone and email are shown on quick-add but aren't required, so leaving
@@ -95,9 +93,8 @@ test.describe('Client capture — quick-add (UAT)', () => {
 
   test('a walk-in with only a name saves — quick-add fields are shown, not demanded', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto('/clients')
+    await page.goto('/clients?new=1')  // quick-add opens from the global "+" now
 
-    await page.getByRole('button', { name: /Quick add/i }).click()
     await expect(page.getByRole('heading', { name: 'Quick add contact' })).toBeVisible()
 
     // No phone, no email — the exact case that broke when email was added to

@@ -39,7 +39,8 @@ test('swiping the mobile day view moves to the next / previous day', async ({ pa
   await page.goto('/schedule')
 
   // The single-day view shows a full date header (e.g. "Sunday, 19 July 2026").
-  const dateHeader = page.getByText(/\w+day, \d{1,2} \w+ \d{4}/).first()
+  // Phones show the short form ("Mon, 27 Jul"); desktop keeps the long one.
+  const dateHeader = page.getByText(/\w{3,},? \d{1,2} \w{3}/).first()
   await expect(dateHeader).toBeVisible({ timeout: 20_000 })
   const day0 = (await dateHeader.textContent())?.trim()
   expect(day0).toBeTruthy()
@@ -56,7 +57,10 @@ test('swiping the mobile day view moves to the next / previous day', async ({ pa
 test('swiping the 3-day view moves to the next set of days', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   await page.goto('/schedule')
-  await page.getByRole('button', { name: '3-day view' }).click()
+  // Layout lives in the View panel now, as words rather than icons.
+  await page.getByRole('button', { name: 'Schedule view options' }).click()
+  await page.getByRole('button', { name: '3 days', exact: true }).click()
+  await page.getByRole('button', { name: 'Close' }).click()
 
   const range = page.getByText(/\d{1,2} \w{3} – \d{1,2} \w{3}/).first()
   await expect(range).toBeVisible({ timeout: 20_000 })

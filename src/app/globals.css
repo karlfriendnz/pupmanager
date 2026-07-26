@@ -292,12 +292,15 @@ button, a, [role="button"] {
 /* NEVER two scrollbars (standing rule). While any modal/sheet/full-screen
    overlay is mounted, the page behind it must not scroll — otherwise the
    overlay scrolls, the page scrolls, and two rails run down the screen.
-   `:has()` does it for every overlay that declares itself, with no per-modal
-   JS: mark the overlay root `.pm-overlay`, or give it the ARIA a modal should
-   have anyway. Individual overlays may still lock in JS; this is the net that
-   catches the ones that forget. */
-body:has(.pm-overlay),
-body:has([role="dialog"][aria-modal="true"]) {
+   `:has()` does it with no per-modal JS — mark the overlay root `.pm-overlay`.
+   Individual overlays may still lock in JS; this is the net for the ones that
+   forget.
+
+   Opt-in via `.pm-overlay` ONLY. Keying off [role=dialog][aria-modal=true] as
+   well looked tempting, but :has() matches an element that is merely PRESENT —
+   so any dialog left mounted-but-hidden would lock the page permanently, and
+   the trainer couldn't scroll a screen with no visible modal on it. */
+body:has(.pm-overlay) {
   overflow: hidden;
 }
 
