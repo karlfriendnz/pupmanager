@@ -1,9 +1,10 @@
-import { Wallet, ArrowUpRight } from 'lucide-react'
+import { Wallet } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import { isConnectConfigured, readAccountFlags } from '@/lib/connect'
 import { stripeFor } from '@/lib/stripe'
 import { ConnectButton, AcceptPaymentsToggle, PassFeeToggle, AutoSendInvoicesToggle, DefaultRequirePaymentToggle } from './payments-actions'
 import { CancellationFeeCard } from './cancellation-fee-card'
+import { StripeDashboardLink } from './stripe-dashboard-link'
 
 // Trainer-facing setup for taking payments from their clients (Stripe Connect
 // Express). Owner-only; rendered as a tab on Settings. Three states: not
@@ -131,13 +132,7 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
                     Paid out in <strong className="text-slate-800">{profile.payoutCurrency.toUpperCase()}</strong>
                   </span>
                 )}
-                <a
-                  href="/api/connect/login-link"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                >
-                  Open Stripe dashboard
-                  <ArrowUpRight className="h-4 w-4" />
-                </a>
+                <StripeDashboardLink />
               </div>
               <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
                 Powered by

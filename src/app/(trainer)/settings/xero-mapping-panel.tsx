@@ -27,11 +27,17 @@ function Step({ n, title, required, hint, visible = true, children }: { n: numbe
   )
 }
 
-// A "do this in Xero" outbound link.
+// A "do this in Xero" outbound link. The -my-2/py-2 gives it a thumb-sized
+// target on a phone without opening a gap in the desktop layout.
 function XeroLink({ href, label }: { href: string; label: string }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-[#13B5EA] hover:underline">
-      {label} <ExternalLink className="h-3 w-3" />
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="-my-2 inline-flex items-center gap-1.5 py-2 text-xs font-medium text-[#13B5EA] hover:underline"
+    >
+      {label} <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
     </a>
   )
 }
@@ -68,7 +74,7 @@ function AccountSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full max-w-md rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#13B5EA] focus:outline-none focus:ring-1 focus:ring-[#13B5EA]"
+      className="min-h-11 w-full max-w-md rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#13B5EA] focus:outline-none focus:ring-1 focus:ring-[#13B5EA]"
     >
       <option value="">{placeholder}</option>
       {options.map((a) => (
@@ -214,18 +220,32 @@ export function XeroMappingPanel() {
           </Step>
 
           <Step n={2} title="Your Stripe clearing account" required visible={!!bank}>
-            <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-900">
-              Stripe doesn’t pay the full invoice into your bank — it takes its fee first. If a client pays a {sym}150 invoice,
-              about {sym}145 turns up in your bank, so a payment recorded as {sym}150 straight to your bank account will never
-              match your bank feed.
-              <br /><br />
-              A <strong>clearing account</strong> fixes that. We record the payment there in full, then record Stripe’s fee
-              and PupManager’s fee coming out of it. What’s left is exactly what Stripe pays you — so when the payout hits
-              your bank feed, it matches to the cent, and both fees land in your books as expenses you can claim.
-              <br /><br />
-              In Xero, add a new <strong>bank account</strong> called something like “Stripe Clearing” (Xero → Add Bank Account →
-              choose the manual option), then pick it below.
-            </p>
+            {/* Four paragraphs of theory filled half a phone screen before you
+                could reach the picker. The instruction stays in view; the
+                reasoning folds away. Neutral surface — a tinted block this
+                size is decoration, not an alert. */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <p className="text-xs leading-relaxed text-slate-600">
+                In Xero, add a new <strong className="font-semibold text-slate-800">bank account</strong> called something
+                like “Stripe Clearing” (Xero → Add Bank Account → choose the manual option), then pick it below.
+              </p>
+              <details className="group mt-2">
+                <summary className="-my-1.5 cursor-pointer list-none py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700">
+                  Why you need one
+                  <span className="ml-1 inline-block transition-transform group-open:rotate-90">›</span>
+                </summary>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
+                  Stripe doesn’t pay the full invoice into your bank — it takes its fee first. If a client pays a {sym}150
+                  invoice, about {sym}145 turns up in your bank, so a payment recorded as {sym}150 straight to your bank
+                  account will never match your bank feed.
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                  A clearing account fixes that. We record the payment there in full, then record Stripe’s fee and
+                  PupManager’s fee coming out of it. What’s left is exactly what Stripe pays you — so when the payout hits
+                  your bank feed, it matches to the cent, and both fees land in your books as expenses you can claim.
+                </p>
+              </details>
+            </div>
             <AccountSelect value={clearing} onChange={setClearing} options={data.options.bankAccounts} placeholder="Select your Stripe clearing account…" />
             {clearingIsBank && (
               <p className="text-xs text-rose-600">
@@ -267,39 +287,48 @@ export function XeroMappingPanel() {
           </Step>
 
           <Step n={5} title="Accounts you use" visible={!!bank && !!clearing && !clearingIsBank && !!feeAccount && !!tax} hint="Add the income accounts you sell against and name each one however makes sense to you. Mark one as the default — it’s the fallback for anything without its own account. You can add the same Xero account more than once under different names.">
+            {/* One entry per block, two lines: the name gets the full width
+                (it was squeezed to ~90px on a phone, clipping every account
+                name), then the controls sit under it. "Default" is a radio —
+                exactly one entry can hold it — rather than a 24px pill you
+                had to hit twice to be sure of. */}
             {shortlist.length > 0 && (
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 {shortlist.map((a, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5">
+                  <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
                     <input
                       value={a.name}
                       onChange={(e) => setShortlist((s) => s.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
                       placeholder="Name this account"
-                      className={`min-w-0 flex-1 rounded-md border bg-white px-2 py-1 text-sm text-slate-700 focus:outline-none focus:ring-1 ${
+                      aria-label="Account name"
+                      className={`min-h-11 w-full min-w-0 rounded-md border bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-1 ${
                         a.name.trim() === '' || isDupe(a.name)
                           ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-400'
                           : 'border-slate-200 focus:border-[#13B5EA] focus:ring-[#13B5EA]'
                       }`}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShortlist((s) => s.map((x, j) => ({ ...x, default: j === i })))}
-                      title="Use this as the default (fallback) income account"
-                      style={{ minHeight: 0, minWidth: 0, height: 24 }}
-                      className={`inline-flex items-center shrink-0 rounded-full px-2.5 text-[11px] font-semibold leading-none transition-colors ${
-                        a.default ? 'bg-[#13B5EA] text-white' : 'text-slate-400 hover:text-[#13B5EA]'
-                      }`}
-                    >
-                      {a.default ? 'Default' : 'Set default'}
-                    </button>
-                    <span className="shrink-0 text-xs text-slate-400" title="Xero account code">{a.code}</span>
-                    <button
-                      type="button"
-                      onClick={() => setShortlist((s) => s.filter((_, j) => j !== i))}
-                      className="shrink-0 text-xs font-medium text-slate-400 hover:text-rose-500"
-                    >
-                      Remove
-                    </button>
+                    <div className="mt-1 flex items-center gap-3">
+                      <label className="-my-1.5 inline-flex min-w-0 cursor-pointer items-center gap-2 py-1.5 text-xs font-medium text-slate-600">
+                        <input
+                          type="radio"
+                          name="xero-default-account"
+                          checked={!!a.default}
+                          onChange={() => setShortlist((s) => s.map((x, j) => ({ ...x, default: j === i })))}
+                          className="h-4 w-4 shrink-0 accent-[#13B5EA]"
+                        />
+                        Default
+                      </label>
+                      <span className="min-w-0 flex-1 truncate text-xs text-slate-400" title="Xero account code">
+                        Code {a.code}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShortlist((s) => s.filter((_, j) => j !== i))}
+                        className="-my-1.5 shrink-0 py-1.5 text-xs font-medium text-slate-400 hover:text-rose-500"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -314,7 +343,8 @@ export function XeroMappingPanel() {
               <select
                 value={toAdd}
                 onChange={(e) => setToAdd(e.target.value)}
-                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#13B5EA] focus:outline-none focus:ring-1 focus:ring-[#13B5EA]"
+                aria-label="Add an account"
+                className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-[#13B5EA] focus:outline-none focus:ring-1 focus:ring-[#13B5EA]"
               >
                 <option value="">Add an account…</option>
                 {data.options.revenueAccounts.map((a) => (
@@ -328,7 +358,7 @@ export function XeroMappingPanel() {
                   const acc = data.options.revenueAccounts.find((a) => a.code === toAdd)
                   if (acc) { setShortlist((s) => [...s, { code: acc.code, name: acc.name }]); setToAdd('') }
                 }}
-                className="shrink-0 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                className="min-h-11 shrink-0 rounded-lg bg-slate-100 px-4 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
               >
                 Add
               </button>
@@ -356,7 +386,7 @@ export function XeroMappingPanel() {
                 type="button"
                 onClick={save}
                 disabled={saving || !shortlistValid}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#13B5EA] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#0f9fce] disabled:opacity-50"
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#13B5EA] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0f9fce] disabled:opacity-50 sm:w-auto"
               >
                 {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                 Save setup

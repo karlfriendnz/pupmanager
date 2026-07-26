@@ -7,6 +7,7 @@ import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, 
 import { useIsNative } from '@/lib/native'
 import { cn } from '@/lib/utils'
 import { TabIntro } from './tab-intro'
+import { SettingsBackLink } from './settings-back-link'
 
 // Settings is the only left menu on screen in here (the app's own sidebar is
 // hidden), so it wears the same clothes: identical row shape, active state,
@@ -253,16 +254,10 @@ export function SettingsTabs({
           master-detail panels (Forms, Email templates) use the full width.
           md:ml-64 clears the fixed left rail (which is out of flow). */}
       <div className={cn('min-w-0 flex-1 md:ml-64', showMobileMenu && 'hidden md:block')}>
-        {/* Phone: which setting you're in, and the way back to the menu. */}
-        {!showMobileMenu && (
-          <Link
-            href="/settings"
-            className="-mt-1 mb-3 flex items-center gap-2 text-sm font-medium text-slate-600 active:text-slate-900 md:hidden"
-          >
-            <ArrowLeft className="h-[18px] w-[18px]" />
-            All settings
-          </Link>
-        )}
+        {/* Phone: the way back to the settings menu lives in the top bar, in
+            place of the app menu — same as any other detail screen. The tab's
+            own name is the heading below (TabIntro), so nothing repeats. */}
+        {!showMobileMenu && <SettingsBackLink />}
         {/* What this tab is for, and how to get it working — every tab, same shape. */}
         <TabIntro tab={tab} />
         {profile != null && <div className={tab === 'profile' ? 'max-w-6xl' : 'hidden'}>{profile}</div>}
