@@ -1,10 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Trash2, Loader2, Check, Eye, Mail } from 'lucide-react'
+import type { Editor } from '@tiptap/react'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { emailBodyToHtml, htmlHasText } from '@/lib/email-html'
+import { CLIENT_EMAIL_PLACEHOLDER_OPTIONS, CLIENT_INVITE_PLACEHOLDER_OPTIONS } from '@/lib/placeholder-labels'
+import { PlaceholderButtons, insertTokenAtCursor } from '@/components/shared/placeholder-buttons'
 
 type Template = {
   id: string
@@ -22,7 +25,11 @@ const SAMPLE: Record<string, string> = {
   '{{businessName}}': 'your business',
   '{{dogName}}': 'Bailey',
 }
-const fillTokens = (s: string) => Object.entries(SAMPLE).reduce((out, [k, v]) => out.split(k).join(v), s)
+// Only fill the tokens the engine behind THIS template actually substitutes —
+// the invite renderer knows two of the four, so its preview must leave the
+// others visible rather than pretending they resolve.
+const fillTokens = (s: string, options: readonly { token: string }[]) =>
+  options.reduce((out, { token }) => out.split(token).join(SAMPLE[token] ?? token), s)
 
 // Sentinel id for the pinned, non-deletable "Client invitation" entry. It is
 // backed by TrainerProfile.inviteTemplate (saved via PATCH /api/trainer/profile),
@@ -50,6 +57,25 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
   const [error, setError] = useState<string | null>(null)
 
   const isInvite = draft?.id === INVITE_ID
+  // Placeholder insertion targets: the subject box and the body editor.
+  const subjectRef = useRef<HTMLInputElement | null>(null)
+  const bodyEditorRef = useRef<Editor | null>(null)
+  const lastFocused = useRef<'subject' | 'body'>('body')
+
+  // The invite is rendered by renderClientInviteEmail, which only knows two
+  // tokens — offering the rest would print them verbatim in a real invite.
+  const placeholderOptions = isInvite ? CLIENT_INVITE_PLACEHOLDER_OPTIONS : CLIENT_EMAIL_PLACEHOLDER_OPTIONS
+
+  // Inserts the raw token, unchanged — the button text is the only thing
+  // that's been translated into plain language.
+  function insertPlaceholder(token: string) {
+    if (!draft) return
+    if (lastFocused.current === 'subject' && !isInvite) {
+      patch({ subject: insertTokenAtCursor(subjectRef.current, draft.subject, token) })
+      return
+    }
+    bodyEditorRef.current?.chain().focus().insertContent(token).run()
+  }
 
   useEffect(() => {
     fetch('/api/email-templates')
@@ -156,9 +182,7 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
       <div>
         <p className="text-sm text-slate-500">
           Reusable email templates you can pick from when emailing a client (the ✉️ button in Messages).
-          Use <code className="bg-slate-100 px-1 rounded text-slate-600">{'{{clientName}}'}</code>,{' '}
-          <code className="bg-slate-100 px-1 rounded text-slate-600">{'{{dogName}}'}</code>,{' '}
-          <code className="bg-slate-100 px-1 rounded text-slate-600">{'{{businessName}}'}</code> as placeholders.
+          Add a placeholder — the client&apos;s name, the dog&apos;s name — and it fills itself in when the email goes out.
         </p>
       </div>
 
@@ -204,10 +228,6 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Client invitation</h3>
                 <p className="mt-0.5 text-xs text-slate-500">The default copy sent when you invite a client.</p>
-                <p className="mt-2 text-xs text-slate-400">
-                  Use <code className="bg-slate-100 px-1 rounded">{'{{clientName}}'}</code> and{' '}
-                  <code className="bg-slate-100 px-1 rounded">{'{{dogName}}'}</code> as placeholders.
-                </p>
               </div>
             ) : (
               <>
@@ -220,25 +240,27 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
                   </Field>
                 </div>
                 <Field label="Subject">
-                  <input value={draft.subject} onChange={e => patch({ subject: e.target.value })} className={inputCls} placeholder="A warm welcome from {{businessName}}" />
+                  <input ref={subjectRef} value={draft.subject} onFocus={() => { lastFocused.current = 'subject' }} onChange={e => patch({ subject: e.target.value })} className={inputCls} placeholder="A warm welcome to the pack" />
                 </Field>
               </>
             )}
-            <div>
+            <div onFocusCapture={() => { lastFocused.current = 'body' }}>
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Message</label>
-              <RichTextEditor key={editorKey} theme="light" value={draft.body} onChange={html => patch({ body: html })} minHeight={200} />
+              <RichTextEditor key={editorKey} theme="light" value={draft.body} onEditorReady={editor => { bodyEditorRef.current = editor }} onChange={html => patch({ body: html })} minHeight={200} />
             </div>
+
+            <PlaceholderButtons options={placeholderOptions} onInsert={insertPlaceholder} />
 
             <div>
               <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5"><Eye className="h-3.5 w-3.5" /> Preview (sample data)</p>
               <div className="rounded-xl border border-slate-200 overflow-hidden">
                 {!isInvite && (
                   <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-                    <p className="text-sm font-semibold text-slate-900 truncate">{fillTokens(draft.subject) || '(no subject)'}</p>
+                    <p className="text-sm font-semibold text-slate-900 truncate">{fillTokens(draft.subject, placeholderOptions) || '(no subject)'}</p>
                   </div>
                 )}
                 <div className="bg-white p-5">
-                  <div className="tiptap-body tiptap-light text-sm text-slate-800" dangerouslySetInnerHTML={{ __html: emailBodyToHtml(fillTokens(draft.body || '<p>(empty)</p>')) }} />
+                  <div className="tiptap-body tiptap-light text-sm text-slate-800" dangerouslySetInnerHTML={{ __html: emailBodyToHtml(fillTokens(draft.body || '<p>(empty)</p>', placeholderOptions)) }} />
                 </div>
               </div>
             </div>

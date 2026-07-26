@@ -4,9 +4,12 @@ import { useCallback, useEffect, useRef, useState, useTransition, Fragment } fro
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { Loader2, Bell, Mail, Smartphone, Send } from 'lucide-react'
+import type { Editor } from '@tiptap/react'
 import { NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { htmlHasText } from '@/lib/email-html'
+import { notificationPlaceholderLabel } from '@/lib/placeholder-labels'
+import { PlaceholderButtons, insertTokenAtCursor } from '@/components/shared/placeholder-buttons'
 
 type NotificationType = keyof typeof NOTIFICATION_TYPES
 type Channel = 'PUSH' | 'EMAIL' | 'IN_APP'
@@ -210,6 +213,12 @@ function PrefRowEditor({
   const [error, setError] = useState<string | null>(null)
   // Latest editor HTML (EMAIL channel) so we can save on blur without an event.
   const bodyRef = useRef(row.customBody ?? '')
+  // Where a placeholder button should drop its token: whichever field the
+  // trainer last had the caret in, defaulting to the body.
+  const titleInputRef = useRef<HTMLInputElement | null>(null)
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const bodyEditorRef = useRef<Editor | null>(null)
+  const lastFocused = useRef<'title' | 'body'>('body')
   const [testState, setTestState] = useState<
     | { kind: 'idle' } | { kind: 'sending' } | { kind: 'sent' } | { kind: 'sentEmail'; to: string }
     | { kind: 'noDevices' } | { kind: 'noEmail' } | { kind: 'unsupported' } | { kind: 'error'; message: string }
@@ -245,6 +254,28 @@ function PrefRowEditor({
     } catch (e) { setTestState({ kind: 'error', message: e instanceof Error ? e.message : 'Network error' }) }
   }
 
+  // Drop a raw token into whichever field was last focused. What lands in the
+  // field is byte-identical to what the sender substitutes — the button only
+  // renames it for the trainer.
+  function insertPlaceholder(token: string) {
+    if (lastFocused.current === 'title') {
+      const next = insertTokenAtCursor(titleInputRef.current, row.customTitle ?? '', token)
+      onLocalChange({ customTitle: next || null })
+      return
+    }
+    if (row.channel === 'EMAIL') {
+      bodyEditorRef.current?.chain().focus().insertContent(token).run()
+      return
+    }
+    const next = insertTokenAtCursor(bodyTextareaRef.current, row.customBody ?? '', token)
+    onLocalChange({ customBody: next || null })
+  }
+
+  const placeholderOptions = meta.placeholders.map(p => ({
+    token: `{{${p}}}`,
+    label: notificationPlaceholderLabel(p),
+  }))
+
   const channelMeta = CHANNELS.find(c => c.id === row.channel) ?? CHANNELS[0]
   const ChannelIcon = channelMeta.Icon
   const channelLabel = channelMeta.label
@@ -277,9 +308,9 @@ function PrefRowEditor({
         <>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-slate-600">Title</label>
-            <input type="text" className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm" placeholder={meta.defaults.title} value={row.customTitle ?? ''} onChange={(e) => onLocalChange({ customTitle: e.target.value || null })} onBlur={(e) => save({ customTitle: e.target.value.trim() || null })} />
+            <input ref={titleInputRef} type="text" className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm" placeholder={meta.defaults.title} value={row.customTitle ?? ''} onFocus={() => { lastFocused.current = 'title' }} onChange={(e) => onLocalChange({ customTitle: e.target.value || null })} onBlur={(e) => save({ customTitle: e.target.value.trim() || null })} />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1" onFocusCapture={() => { lastFocused.current = 'body' }}>
             <label className="text-xs text-slate-600">Body</label>
             {row.channel === 'EMAIL' ? (
               // Rich-text for the email body; push stays plain text below.
@@ -287,14 +318,17 @@ function PrefRowEditor({
                 theme="light"
                 minHeight={90}
                 value={row.customBody ?? ''}
+                onEditorReady={(editor) => { bodyEditorRef.current = editor }}
                 onChange={(html) => { bodyRef.current = html; onLocalChange({ customBody: html || null }) }}
                 onBlur={() => save({ customBody: htmlHasText(bodyRef.current) ? bodyRef.current : null })}
               />
             ) : (
-              <textarea rows={2} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm resize-y" placeholder={meta.defaults.body} value={row.customBody ?? ''} onChange={(e) => onLocalChange({ customBody: e.target.value || null })} onBlur={(e) => save({ customBody: e.target.value.trim() || null })} />
+              <textarea ref={bodyTextareaRef} rows={2} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm resize-y" placeholder={meta.defaults.body} value={row.customBody ?? ''} onFocus={() => { lastFocused.current = 'body' }} onChange={(e) => onLocalChange({ customBody: e.target.value || null })} onBlur={(e) => save({ customBody: e.target.value.trim() || null })} />
             )}
           </div>
-          <p className="text-[11px] text-slate-400">Placeholders: {meta.placeholders.map(p => <code key={p} className="ml-1 px-1 rounded bg-slate-200/60">{`{{${p}}}`}</code>)}</p>
+          {placeholderOptions.length > 0 && (
+            <PlaceholderButtons options={placeholderOptions} onInsert={insertPlaceholder} />
+          )}
         </>
       ) : (
         <p className="text-[11px] text-slate-500 italic">Auto-curated — we look after the timing and copy.</p>

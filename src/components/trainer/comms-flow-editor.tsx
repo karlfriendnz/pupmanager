@@ -15,7 +15,7 @@ import { RichText } from '@/components/shared/rich-text'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { sortStepsByTime, channelsForAudience } from '@/lib/comms-flow-steps'
-import { COMMS_PLACEHOLDER_OPTIONS } from '@/lib/placeholder-labels'
+import { commsPlaceholderOptionsFor, type PlaceholderOption } from '@/lib/placeholder-labels'
 
 type Channel = 'PUSH' | 'EMAIL' | 'IN_APP'
 type Direction = 'BEFORE_SESSION' | 'AFTER_SESSION' | 'AFTER_PURCHASE' | 'BEFORE_PERIOD_END'
@@ -68,12 +68,20 @@ const AUDIENCES: { key: Audience; label: string; hint: string }[] = [
 // into the message. Labels live in one shared place so "Dog name" reads the
 // same here as it does in the email composer — see lib/placeholder-labels.ts
 // for why the tokens themselves must never be renamed.
-const PLACEHOLDER_OPTIONS = COMMS_PLACEHOLDER_OPTIONS
-const PLACEHOLDERS = PLACEHOLDER_OPTIONS.map(p => p.token)
+//
+// WHICH SET depends on what the flow hangs off — see commsPlaceholderOptionsFor
+// in lib/placeholder-labels.ts. A membership step has no session behind it, so
+// the session vocabulary would offer tokens that substitute to nothing.
+//
+// Preview substitutes EVERY token the engine knows, not just the ones this
+// screen offers: a step written before a token was withdrawn from the picker
+// still holds it, and previewing it raw would be a lie about what sends.
 const SAMPLE: Record<string, string> = {
   '{{name}}': 'Sam', '{{dog}}': 'Bailey', '{{time}}': '6:00 pm', '{{date}}': 'Tue 5 Aug',
   '{{class}}': 'Puppy Class', '{{business}}': 'your business', '{{location}}': 'the hall',
+  '{{membership}}': 'Puppy Club',
 }
+const PLACEHOLDERS = Object.keys(SAMPLE)
 
 function audienceLabel(a: Audience): string {
   return AUDIENCES.find(x => x.key === a)?.label ?? ''
@@ -104,7 +112,9 @@ function preview(
   const values: Record<string, string> = { ...SAMPLE }
   if (who?.name) values['{{name}}'] = who.name.split(' ')[0]
   if (who?.dog) values['{{dog}}'] = who.dog
-  if (offering?.name) values['{{class}}'] = offering.name
+  // A membership flow's name lands in BOTH — `processMembershipStep` sets
+  // `class` and `membership` to the membership's name.
+  if (offering?.name) { values['{{class}}'] = offering.name; values['{{membership}}'] = offering.name }
   if (offering?.location) values['{{location}}'] = offering.location
   return PLACEHOLDERS.reduce((acc, p) => acc.split(p).join(values[p]), text)
 }
@@ -125,8 +135,10 @@ export function CommsFlowEditor({ runId, packageId, membershipId, clients = [], 
     : membershipId
       ? `/api/trainer/memberships/${membershipId}/comms-flow`
       : `/api/trainer/packages/${packageId}/comms-flow`
-  // A membership has no timetable, so its steps hang off the purchase instead.
+  // A membership has no timetable, so its steps hang off the purchase instead —
+  // which also decides which placeholders genuinely substitute.
   const isMembership = !!membershipId
+  const placeholderOptions = commsPlaceholderOptionsFor(isMembership ? 'membership' : 'session')
   const [steps, setSteps] = useState<Step[] | null>(null)
   const [templates, setTemplates] = useState<TemplateSummary[]>([])
   const [draft, setDraft] = useState<Step | null>(null)
@@ -316,6 +328,7 @@ export function CommsFlowEditor({ runId, packageId, membershipId, clients = [], 
           draft={draft}
           clients={clients}
           isMembership={isMembership}
+          placeholders={placeholderOptions}
           busy={busy}
           onPatch={patchDraft}
           onToggleChannel={toggleChannel}
@@ -435,12 +448,14 @@ function Sheet({ title, onClose, children, footer }: { title: string; onClose: (
   )
 }
 
-function StepSheet({ draft, clients, busy, isMembership = false, onPatch, onToggleChannel, onSave, onDelete, onPreview, onCancel }: {
+function StepSheet({ draft, clients, busy, isMembership = false, placeholders, onPatch, onToggleChannel, onSave, onDelete, onPreview, onCancel }: {
   draft: Step
   clients: ClientOpt[]
   busy: boolean
   /** A membership step anchors on the purchase, not a session. */
   isMembership?: boolean
+  /** Only the tokens THIS flow's engine substitutes — see placeholderOptionsFor. */
+  placeholders: readonly PlaceholderOption[]
   onPatch: (p: Partial<Step>) => void
   onToggleChannel: (c: Channel) => void
   onSave: () => void
@@ -544,7 +559,7 @@ function StepSheet({ draft, clients, busy, isMembership = false, onPatch, onTogg
           <div className="mt-3">
             <p className="mb-1.5 text-xs font-medium text-slate-600">Insert a placeholder</p>
             <div className="flex flex-wrap gap-1.5">
-              {PLACEHOLDER_OPTIONS.map(({ token, label }) => (
+              {placeholders.map(({ token, label }) => (
                 <button
                   key={token}
                   type="button"

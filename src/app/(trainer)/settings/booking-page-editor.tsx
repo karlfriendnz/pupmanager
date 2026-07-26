@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,8 @@ import { Alert } from '@/components/ui/alert'
 import { Switch } from '@/components/ui/switch'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { isRichTextEmpty } from '@/lib/rich-text'
+import { BOOKING_PAGE_PLACEHOLDER_OPTIONS } from '@/lib/placeholder-labels'
+import { PlaceholderButtons, insertTokenAtCursor } from '@/components/shared/placeholder-buttons'
 import type { BookingPageRow, AutomationRow, AutomationTrigger, PkgOption } from './booking-pages-manager'
 
 const DAYS: { n: number; label: string }[] = [
@@ -382,7 +384,7 @@ function AutomationsSection({ pageId, initial }: { pageId: string; initial: Auto
         <div>
           <p className="text-sm font-semibold text-slate-900">Automations</p>
           <p className="mt-0.5 text-xs text-slate-400">
-            Auto-send emails off this page. Use {'{name}'} {'{dog}'} {'{time}'} {'{business}'} as placeholders.
+            Auto-send emails off this page. Drop in a placeholder and it fills itself in when the email goes out.
           </p>
         </div>
         <div className="relative">
@@ -438,6 +440,19 @@ function AutomationCard({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const meta = TRIGGER_META[cfg.trigger]
+  const subjectRef = useRef<HTMLInputElement | null>(null)
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null)
+  const lastFocused = useRef<'subject' | 'body'>('body')
+
+  // Single-brace tokens on purpose — these emails are filled by
+  // `booking-automations.ts`, a different engine from the `{{…}}` ones.
+  function insertPlaceholder(token: string) {
+    if (lastFocused.current === 'subject') {
+      set('subject', insertTokenAtCursor(subjectRef.current, cfg.subject, token))
+      return
+    }
+    set('body', insertTokenAtCursor(bodyRef.current, cfg.body, token))
+  }
 
   function set<K extends keyof AutomationRow>(key: K, value: AutomationRow[K]) {
     setCfg(c => ({ ...c, [key]: value }))
@@ -491,18 +506,23 @@ function AutomationCard({
       </div>
 
       <input
+        ref={subjectRef}
         value={cfg.subject}
+        onFocus={() => { lastFocused.current = 'subject' }}
         onChange={e => set('subject', e.target.value)}
         placeholder="Subject"
         className="mt-3 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
       <textarea
+        ref={bodyRef}
         value={cfg.body}
+        onFocus={() => { lastFocused.current = 'body' }}
         onChange={e => set('body', e.target.value)}
         rows={4}
         placeholder="Email body"
         className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
+      <PlaceholderButtons className="mt-2" options={BOOKING_PAGE_PLACEHOLDER_OPTIONS} onInsert={insertPlaceholder} />
       <div className="mt-2 flex items-center gap-3">
         <Button type="button" size="sm" onClick={() => patch()} loading={saving}>Save</Button>
         {saved && <span className="inline-flex items-center gap-1 text-xs text-emerald-600"><Check className="h-3.5 w-3.5" /> Saved</span>}

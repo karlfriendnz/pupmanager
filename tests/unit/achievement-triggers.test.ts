@@ -39,6 +39,36 @@ describe('the trigger catalog agrees with the API routes', () => {
   })
 })
 
+// "Packages" was renamed: a Package is now the bundled offering, and the 1:1
+// thing these two triggers count became a "consult". The trigger TYPES are
+// stored on every existing achievement row and must never move — only the
+// words the trainer reads.
+describe('the 1:1 triggers say consult, not package', () => {
+  const renamed = TRIGGERS.filter(t => t.type === 'FIRST_PACKAGE_ASSIGNED' || t.type === 'PACKAGES_COMPLETED')
+
+  it('still stores the original trigger types', () => {
+    expect(renamed.map(t => t.type)).toEqual(['FIRST_PACKAGE_ASSIGNED', 'PACKAGES_COMPLETED'])
+  })
+
+  it('reads as consults everywhere the trainer sees it', () => {
+    for (const t of renamed) {
+      expect(t.label.toLowerCase(), t.type).not.toContain('package')
+      expect(t.label.toLowerCase(), t.type).toContain('consult')
+      expect(t.group).toBe('1:1 Consults')
+      expect(t.preview(2).toLowerCase(), t.type).not.toContain('package')
+      expect(t.preview(2).toLowerCase(), t.type).toContain('consult')
+      if (t.valueLabel) expect(t.valueLabel.toLowerCase(), t.type).not.toContain('package')
+    }
+  })
+
+  it('no trigger anywhere in the catalog still says "package"', () => {
+    for (const t of TRIGGERS) {
+      const words = [t.label, t.group, t.valueLabel ?? '', t.preview(3)].join(' ').toLowerCase()
+      expect(words, t.type).not.toContain('package')
+    }
+  })
+})
+
 describe('triggerLine', () => {
   it('says "Manual" for a hand-awarded badge', () => {
     expect(triggerLine({ triggerType: 'MANUAL', triggerValue: null })).toBe('Manual')

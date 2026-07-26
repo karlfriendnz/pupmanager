@@ -17,10 +17,18 @@ import {
   COMMS_PLACEHOLDER_OPTIONS,
   MEMBERSHIP_PLACEHOLDER_OPTIONS,
   CLIENT_EMAIL_PLACEHOLDER_OPTIONS,
+  CLIENT_INVITE_PLACEHOLDER_OPTIONS,
+  BOOKING_PAGE_PLACEHOLDER_OPTIONS,
+  commsPlaceholderOptionsFor,
+  NOTIFICATION_PLACEHOLDER_LABELS,
+  notificationPlaceholderLabel,
   placeholderLabel,
 } from '@/lib/placeholder-labels'
 import { COMMS_PLACEHOLDERS, MEMBERSHIP_PLACEHOLDERS, renderCommsMessage, type CommsVars } from '@/lib/comms-flows'
 import { buildClientEmail, fillPlaceholders } from '@/lib/client-email'
+import { AUTOMATION_PLACEHOLDERS, renderAutomationEmail } from '@/lib/booking-automations'
+import { renderClientInviteEmail } from '@/lib/client-invite-email'
+import { NOTIFICATION_TYPES, renderTemplate } from '@/lib/notification-types'
 
 const ALL = [
   ...COMMS_PLACEHOLDER_OPTIONS,
@@ -46,14 +54,56 @@ describe('placeholder tokens are unchanged', () => {
       .toEqual(new Set(MEMBERSHIP_PLACEHOLDERS))
   })
 
+  // The bug this locks: the comms-flow editor hard-coded the class vocabulary,
+  // so a MEMBERSHIP flow offered "Session time / Session date / Class name /
+  // Location" — none of which say anything about a membership — and never
+  // offered {{membership}}, which processMembershipStep does fill. Offering a
+  // token that renders literally is the fault, so the set has to be chosen by
+  // what the flow hangs off.
+  it('a membership flow is offered the membership vocabulary, not the class one', () => {
+    expect(commsPlaceholderOptionsFor('membership')).toBe(MEMBERSHIP_PLACEHOLDER_OPTIONS)
+    expect(commsPlaceholderOptionsFor('session')).toBe(COMMS_PLACEHOLDER_OPTIONS)
+
+    const membershipTokens = commsPlaceholderOptionsFor('membership').map(o => o.token)
+    expect(membershipTokens).toContain('{{membership}}')
+    // The four that had nothing to substitute against a purchase.
+    for (const dead of ['{{time}}', '{{class}}', '{{location}}']) {
+      expect(membershipTokens).not.toContain(dead)
+    }
+    // …and the class flow must not start advertising {{membership}}, which its
+    // own engine leaves as an empty string.
+    expect(commsPlaceholderOptionsFor('session').map(o => o.token)).not.toContain('{{membership}}')
+  })
+
   it('the client-email vocabulary is exactly the tokens buildClientEmail fills', () => {
     expect(CLIENT_EMAIL_PLACEHOLDER_OPTIONS.map(o => o.token)).toEqual([
       '{{clientName}}', '{{trainerName}}', '{{businessName}}', '{{dogName}}',
     ])
   })
 
+  it('the invite vocabulary is only what renderClientInviteEmail substitutes', () => {
+    expect(CLIENT_INVITE_PLACEHOLDER_OPTIONS.map(o => o.token)).toEqual([
+      '{{clientName}}', '{{dogName}}',
+    ])
+  })
+
   it('every token is still `{{...}}` — the labels are display only', () => {
     for (const { token } of ALL) expect(token).toMatch(/^\{\{[a-zA-Z]+\}\}$/)
+  })
+
+  // Booking-page automations are a SEPARATE engine: `fill()` in
+  // booking-automations.ts matches /\{name\}/g, so its tokens carry ONE brace
+  // and neither engine can read the other's. Labelling them must not "tidy"
+  // them into the {{…}} house style.
+  it('the booking-page vocabulary is single-brace and matches its own engine', () => {
+    expect(BOOKING_PAGE_PLACEHOLDER_OPTIONS.map(o => o.token)).toEqual([
+      '{name}', '{dog}', '{time}', '{business}',
+    ])
+    expect(BOOKING_PAGE_PLACEHOLDER_OPTIONS.map(o => o.token)).toEqual([...AUTOMATION_PLACEHOLDERS])
+    for (const { token } of BOOKING_PAGE_PLACEHOLDER_OPTIONS) {
+      expect(token).toMatch(/^\{[a-zA-Z]+\}$/)
+      expect(token).not.toContain('{{')
+    }
   })
 })
 
@@ -116,6 +166,93 @@ describe('every labelled token still substitutes at send time', () => {
 
   it('an unknown token is left visible rather than silently blanked', () => {
     expect(fillPlaceholders('{{clientName}} {{bogus}}', { clientName: 'Sam' })).toBe('Sam {{bogus}}')
+  })
+
+  it('renderAutomationEmail fills each booking-page token', () => {
+    const body = BOOKING_PAGE_PLACEHOLDER_OPTIONS.map(o => o.token).join(' ')
+    const out = renderAutomationEmail(
+      { subject: body, body },
+      { name: 'Sam', dog: 'Bailey', time: 'Tue 5 Aug, 6:00 pm', business: 'Waggy Tails' },
+    )
+    expect(out.subject).toBe('Sam Bailey Tue 5 Aug, 6:00 pm Waggy Tails')
+    expect(out.html).toContain('Sam Bailey Tue 5 Aug, 6:00 pm Waggy Tails')
+  })
+
+  it('renderClientInviteEmail fills each invite token — and only those', () => {
+    const rendered = renderClientInviteEmail({
+      clientName: 'Sam',
+      dogNames: ['Bailey'],
+      trainer: {
+        businessName: 'Paws',
+        logoUrl: null,
+        emailAccentColor: null,
+        user: { name: 'Jess Carter', email: 'jess@paws.test' },
+      },
+      bodyTemplate: CLIENT_INVITE_PLACEHOLDER_OPTIONS.map(o => o.token).join(' '),
+      inviteUrl: 'https://app/invite?token=t',
+    })
+    expect(rendered.text).toContain('Sam Bailey')
+    // The tokens the invite renderer does NOT know stay literal — which is why
+    // the invite editor must not offer them.
+    const notOffered = CLIENT_EMAIL_PLACEHOLDER_OPTIONS
+      .filter(o => !CLIENT_INVITE_PLACEHOLDER_OPTIONS.some(i => i.token === o.token))
+      .map(o => o.token)
+    expect(notOffered).toEqual(['{{trainerName}}', '{{businessName}}'])
+    const leftover = renderClientInviteEmail({
+      clientName: 'Sam',
+      dogNames: ['Bailey'],
+      trainer: {
+        businessName: 'Paws',
+        logoUrl: null,
+        emailAccentColor: null,
+        user: { name: 'Jess Carter', email: 'jess@paws.test' },
+      },
+      bodyTemplate: notOffered.join(' '),
+      inviteUrl: 'https://app/invite?token=t',
+    })
+    expect(leftover.text).toContain('{{trainerName}} {{businessName}}')
+  })
+})
+
+// Settings → Notifications is a FOURTH vocabulary: notification-types.ts stores
+// placeholder names bare (`dogName`) per type and the panel wraps them in
+// braces. Same rule — the stored names never move, only the labels are new.
+describe('notification placeholder labels', () => {
+  const declared = [...new Set(Object.values(NOTIFICATION_TYPES).flatMap(m => m.placeholders))].sort()
+
+  it('every name a notification type declares has a plain-language label', () => {
+    for (const name of declared) {
+      expect(NOTIFICATION_PLACEHOLDER_LABELS[name], `${name} has no label`).toBeTruthy()
+    }
+  })
+
+  it('carries no labels for names no notification type offers', () => {
+    expect(Object.keys(NOTIFICATION_PLACEHOLDER_LABELS).sort()).toEqual(declared)
+  })
+
+  it('no label leaks a brace or reads as code', () => {
+    for (const [name, label] of Object.entries(NOTIFICATION_PLACEHOLDER_LABELS)) {
+      expect(label, name).not.toContain('{')
+      expect(label, name).not.toBe(name)
+      expect(label, name).toMatch(/^[A-Z]/)
+    }
+  })
+
+  it('falls back to the raw name for anything unknown', () => {
+    expect(notificationPlaceholderLabel('nope')).toBe('nope')
+  })
+
+  it('every offered name is one the sender actually substitutes', () => {
+    // sampleValues is the per-type map the "Send test" button renders with, and
+    // the crons build the same shape — a name missing from it would render as a
+    // literal {{token}} in a real notification.
+    for (const meta of Object.values(NOTIFICATION_TYPES)) {
+      for (const name of meta.placeholders) {
+        expect(meta.sampleValues[name], `${meta.type}.${name} has no value to substitute`).toBeDefined()
+      }
+      const body = meta.placeholders.map(p => `{{${p}}}`).join(' ')
+      expect(renderTemplate(body, meta.sampleValues), meta.type).not.toContain('{{')
+    }
   })
 })
 
