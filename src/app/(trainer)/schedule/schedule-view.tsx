@@ -3684,9 +3684,10 @@ export function ScheduleView({
         {/* One row on every width: jump · ‹ date › · View. It used to claim the
             full width here (w-full), which pushed the action cluster onto a
             second row of its own. */}
-        <div className="flex min-w-0 flex-1 items-center gap-1 sm:flex-initial justify-start">
-          {/* Week jump sits left of the date; View sits right of it. */}
-          <div ref={jumpRef} className="relative flex items-center">
+        {/* Sibling of the date group, not part of it — so the gap to the
+            chevron matches the parent's gap between the date group and View.
+            Inside the group the chevrons hug the date at gap-1. */}
+        <div ref={jumpRef} className="relative flex items-center">
             <button
               type="button"
               onClick={() => setJumpOpen(o => !o)}
@@ -3724,7 +3725,9 @@ export function ScheduleView({
                 ))}
               </div>
             )}
-          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-center gap-1 sm:flex-initial justify-start">
           <button
             onClick={() => navigate(-1)}
             disabled={navigatingWeek}
