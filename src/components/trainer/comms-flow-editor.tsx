@@ -61,7 +61,7 @@ const AUDIENCES: { key: Audience; label: string; hint: string }[] = [
   { key: 'ENROLLED', label: 'Everyone booked', hint: 'Every client with a place on this offering.' },
   { key: 'ENROLLED_AND_WAITLIST', label: 'Booked + waitlist', hint: 'Also the people waiting for a place.' },
   { key: 'CUSTOM', label: 'Chosen people', hint: 'Only the clients you pick below.' },
-  { key: 'STAFF', label: 'Your team', hint: 'Your staff, not your clients — whoever is running this, or everyone in the business if nobody is assigned.' },
+  { key: 'STAFF', label: 'Your team', hint: 'Your staff, not your clients — whoever is assigned to that session. If nobody is, it goes to the business owner.' },
 ]
 const PLACEHOLDERS = ['{{name}}', '{{dog}}', '{{time}}', '{{date}}', '{{class}}', '{{business}}', '{{location}}']
 const SAMPLE: Record<string, string> = {
@@ -601,7 +601,7 @@ function PreviewSheet({ step, clients, offering, onClose }: {
         <div className="flex flex-wrap items-center gap-2">
           <Users className="h-4 w-4 text-slate-500" strokeWidth={1.75} />
           {toStaff ? (
-            <p className="text-sm text-slate-600">What your team sees. It goes to whoever is running this.</p>
+            <p className="text-sm text-slate-600">What your team sees. It goes to whoever is assigned to that session.</p>
           ) : pickable.length ? (
             <>
               <label htmlFor="preview-as" className="text-sm text-slate-600">Preview as</label>

@@ -209,34 +209,78 @@ const RECIPIENT_USER_SELECT = { id: true, name: true, email: true, notifyPush: t
 
 type SessionRecipients = { scheduledAt: Date; byUser: Map<string, { user: RecipientUser; dogs: string[] }> }
 
+// ─── Who a STAFF step reaches ───────────────────────────────────────────────
+// The people working THAT session, and nobody else. A reminder about Tuesday's
+// 4pm class has no business on the phone of someone who isn't on it, so there
+// is no whole-team fallback. The cascade is:
+//
+//   1. TrainingSession.assignedTrainer — the member down to take this one
+//      session. Drop-in slots snapshot their staffing onto each session they
+//      generate (see class-runs.ts), so per-slot staff arrive here too.
+//   2. The ClassRunTrainer rows — who is running this class in general. Only
+//      class runs have this; a 1:1 package's sessions carry their own.
+//   3. The main trainer — the business's own user, plus any other OWNER-role
+//      member. Nobody assigned is a gap in the trainer's setup, not a reason to
+//      swallow the message: a staff reminder that reaches no one looks like a
+//      broken feature and reports itself to nobody.
+//
+// Note the fallback can't be "the OWNER memberships" alone. A solo or legacy
+// trainer may have NO TrainerMembership row at all (see lib/membership.ts, the
+// "legacy owner without a membership row yet" branch) — for them that query
+// returns nothing, which is the exact silence this is here to prevent. So
+// TrainerProfile.user is always in the list, and the two are de-duplicated.
+const ASSIGNED_MEMBER_SELECT = { acceptedAt: true, user: { select: RECIPIENT_USER_SELECT } } as const
+type AssignedMember = { acceptedAt: Date | null; user: RecipientUser | null } | null | undefined
+
+function dedupeUsers(users: (RecipientUser | null | undefined)[]): RecipientUser[] {
+  const byId = new Map<string, RecipientUser>()
+  for (const u of users) if (u?.id) byId.set(u.id, u)
+  return [...byId.values()]
+}
+
+/** An assignment only counts once the member has actually accepted their invite. */
+function acceptedUser(member: AssignedMember): RecipientUser | null {
+  return member?.acceptedAt && member.user?.id ? member.user : null
+}
+
 /**
- * Who a STAFF-audience step reaches: the members assigned to run this class if
- * it has any (no point telling the whole company about one trainer's Tuesday
- * class), otherwise every accepted member of the business. Package and
- * membership steps have no per-offering assignment, so they always take the
- * whole team.
+ * Build the per-session staff resolver for one step. The run-level list and the
+ * owners are each fetched at most once per step, then reused for every session.
  */
-async function staffRecipients(companyId: string, classRunId: string | null): Promise<RecipientUser[]> {
-  const dedupe = (users: (RecipientUser | null | undefined)[]) => {
-    const byId = new Map<string, RecipientUser>()
-    for (const u of users) if (u?.id) byId.set(u.id, u)
-    return [...byId.values()]
+async function staffResolver(companyId: string, classRunId: string | null) {
+  const runLevel = classRunId
+    ? dedupeUsers(
+        (await prisma.classRunTrainer.findMany({
+          where: { classRunId, membership: { acceptedAt: { not: null } } },
+          select: { membership: { select: { user: { select: RECIPIENT_USER_SELECT } } } },
+        })).map(a => a.membership?.user),
+      )
+    : []
+  let mainTrainers: RecipientUser[] | null = null
+
+  async function resolveMainTrainers(): Promise<RecipientUser[]> {
+    const [profile, ownerMembers] = await Promise.all([
+      prisma.trainerProfile.findUnique({
+        where: { id: companyId },
+        select: { user: { select: RECIPIENT_USER_SELECT } },
+      }),
+      prisma.trainerMembership.findMany({
+        where: { companyId, role: 'OWNER', acceptedAt: { not: null } },
+        select: { user: { select: RECIPIENT_USER_SELECT } },
+      }),
+    ])
+    // The business's own user first, then any co-owner. dedupeUsers keys by id,
+    // so an owner who also holds a membership row is listed once.
+    return dedupeUsers([profile?.user, ...ownerMembers.map(m => m.user)])
   }
 
-  if (classRunId) {
-    const assigned = await prisma.classRunTrainer.findMany({
-      where: { classRunId, membership: { acceptedAt: { not: null } } },
-      select: { membership: { select: { user: { select: RECIPIENT_USER_SELECT } } } },
-    })
-    const users = dedupe(assigned.map(a => a.membership?.user))
-    if (users.length) return users
+  return async function forSession(assigned: AssignedMember): Promise<RecipientUser[]> {
+    const own = acceptedUser(assigned)
+    if (own) return [own]
+    if (runLevel.length) return runLevel
+    mainTrainers ??= await resolveMainTrainers()
+    return mainTrainers
   }
-
-  const members = await prisma.trainerMembership.findMany({
-    where: { companyId, acceptedAt: { not: null } },
-    select: { user: { select: RECIPIENT_USER_SELECT } },
-  })
-  return dedupe(members.map(m => m.user))
 }
 
 export async function processCommsFlows(now: Date = new Date()): Promise<{ steps: number; sent: number }> {
@@ -278,17 +322,17 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
     // own single client.
     const perSession = new Map<string, SessionRecipients>()
 
-    // A staff step is about the session, not about one client's booking: every
-    // member on it hears the same thing, with {{dog}} standing in for the dogs
-    // booked that day.
+    // A staff step is about the session, not about one client's booking: the
+    // people working it hear the same thing, with {{dog}} standing in for the
+    // dogs booked that day. Resolved per session — the same class can be
+    // covered by different people week to week.
     const toStaff = step.audience === 'STAFF'
-    const staff = toStaff ? await staffRecipients(owner.trainerId, step.classRunId) : []
-    if (toStaff && staff.length === 0) continue
+    const staffFor = toStaff ? await staffResolver(owner.trainerId, step.classRunId) : null
 
     if (step.classRunId) {
       const sessions = await prisma.trainingSession.findMany({
         where: { classRunId: step.classRunId, scheduledAt: scheduledWhere },
-        select: { id: true, scheduledAt: true },
+        select: { id: true, scheduledAt: true, assignedTrainer: { select: ASSIGNED_MEMBER_SELECT } },
       })
       if (sessions.length === 0) continue
       // Everyone on the run in an allowed status (CUSTOM narrows to picked clients).
@@ -315,12 +359,15 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
           if (e.dog?.name && !entry.dogs.includes(e.dog.name)) entry.dogs.push(e.dog.name)
           byUser.set(u.id, entry)
         }
-        if (toStaff) {
+        if (staffFor) {
           // Staff hear about the session even when nobody has booked yet.
-          perSession.set(s.id, {
-            scheduledAt: s.scheduledAt,
-            byUser: new Map(staff.map(u => [u.id, { user: u, dogs: attending }])),
-          })
+          const staff = await staffFor(s.assignedTrainer)
+          if (staff.length) {
+            perSession.set(s.id, {
+              scheduledAt: s.scheduledAt,
+              byUser: new Map(staff.map(u => [u.id, { user: u, dogs: attending }])),
+            })
+          }
         } else if (byUser.size) {
           perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser })
         }
@@ -333,12 +380,19 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
           scheduledAt: scheduledWhere,
           ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
         },
-        select: { id: true, scheduledAt: true, dog: { select: { name: true } }, client: { select: { user: { select: RECIPIENT_USER_SELECT } } } },
+        select: {
+          id: true, scheduledAt: true, dog: { select: { name: true } },
+          assignedTrainer: { select: ASSIGNED_MEMBER_SELECT },
+          client: { select: { user: { select: RECIPIENT_USER_SELECT } } },
+        },
       })
       for (const s of sessions) {
         const dogs = s.dog?.name ? [s.dog.name] : []
-        if (toStaff) {
-          perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser: new Map(staff.map(u => [u.id, { user: u, dogs }])) })
+        if (staffFor) {
+          // A 1:1 has no run to fall back on — "assigned to the session" is the
+          // session's own trainer, then the owner.
+          const staff = await staffFor(s.assignedTrainer)
+          if (staff.length) perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser: new Map(staff.map(u => [u.id, { user: u, dogs }])) })
           continue
         }
         const u = s.client?.user
@@ -438,6 +492,7 @@ async function processMembershipStep(
       dog: { select: { name: true } },
       dogs: { select: { name: true } },
       user: { select: RECIPIENT_USER_SELECT },
+      assignedTrainer: { select: ASSIGNED_MEMBER_SELECT },
     },
   })
   const clientById = new Map(clients.map(c => [c.id, c]))
@@ -448,11 +503,12 @@ async function processMembershipStep(
   })
   const alreadySent = new Set(already.map(a => `${a.purchaseId}|${a.userId}`))
 
-  // A staff step tells the team about the member ("someone just joined"), so the
-  // recipients are the business's members and the link is the trainer-side page.
+  // A staff step tells the team about the member ("someone just joined"). A
+  // membership has no sessions, so the equivalent of "assigned to the session"
+  // is the member's own assigned trainer — the person who looks after them —
+  // and the owner when nobody is. The link goes to the trainer-side page.
   const toStaff = step.audience === 'STAFF'
-  const staff = toStaff ? await staffRecipients(membership.trainerId, null) : []
-  if (toStaff && staff.length === 0) return 0
+  const staffFor = toStaff ? await staffResolver(membership.trainerId, null) : null
 
   let sent = 0
   for (const purchase of purchases) {
@@ -462,7 +518,7 @@ async function processMembershipStep(
       .filter((n): n is string => !!n)
       .filter((n, i, arr) => arr.indexOf(n) === i)
     const anchorDate = step.direction === 'AFTER_PURCHASE' ? purchase.purchasedAt : purchase.currentPeriodEnd
-    const recipients = toStaff ? staff : [client.user]
+    const recipients = staffFor ? await staffFor(client.assignedTrainer) : [client.user]
 
     for (const user of recipients) {
       if (alreadySent.has(`${purchase.id}|${user.id}`)) continue

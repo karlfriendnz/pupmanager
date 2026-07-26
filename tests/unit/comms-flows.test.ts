@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   notificationCreate: vi.fn(),
   classRunTrainerFindMany: vi.fn(),
   trainerMembershipFindMany: vi.fn(),
+  trainerProfileFindUnique: vi.fn(),
   sendPush: vi.fn(),
   sendEmail: vi.fn(),
   renderEmail: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock('@/lib/prisma', () => ({
     clientProfile: { findMany: h.clientFindMany },
     classRunTrainer: { findMany: h.classRunTrainerFindMany },
     trainerMembership: { findMany: h.trainerMembershipFindMany },
+    trainerProfile: { findUnique: h.trainerProfileFindUnique },
   },
 }))
 vi.mock('@/lib/push', () => ({ sendPush: h.sendPush }))
@@ -88,6 +90,7 @@ beforeEach(() => {
   h.clientFindMany.mockResolvedValue([])
   h.classRunTrainerFindMany.mockResolvedValue([])
   h.trainerMembershipFindMany.mockResolvedValue([])
+  h.trainerProfileFindUnique.mockResolvedValue(null)
   h.sendCreate.mockResolvedValue({})
   h.notificationCreate.mockResolvedValue({})
   h.sendPush.mockResolvedValue({ sent: 1, total: 1, results: [] })
@@ -211,35 +214,140 @@ describe('processCommsFlows', () => {
 })
 
 // ─── Staff audience ─────────────────────────────────────────────────────────
-// A step can address the trainer's own team instead of the clients: the members
-// assigned to the class if it has any, otherwise everyone in the business.
+// A staff step reaches the people working THAT session and nobody else:
+// the session's own assigned trainer, else the class's assigned members, else
+// the business owner. There is no whole-company fallback.
+const assigned = (user: ReturnType<typeof staffUser>) => ({ acceptedAt: new Date('2026-01-01'), user })
+
 describe('processCommsFlows — staff audience', () => {
-  it('sends to the members assigned to the class, not the clients', async () => {
+  it('sends to the member assigned to that session, not the clients', async () => {
     h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF', channels: ['PUSH', 'IN_APP'] })])
     h.enrollmentFindMany.mockResolvedValue([enrollment()])
-    h.classRunTrainerFindMany.mockResolvedValue([{ membership: { user: staffUser() } }])
+    h.sessionFindMany.mockResolvedValue([{ id: 'sess1', scheduledAt: SESSION_AT, assignedTrainer: assigned(staffUser()) }])
+    // The class also has a general list — the session's own person wins.
+    h.classRunTrainerFindMany.mockResolvedValue([{ membership: { user: staffUser({ id: 'staff2' }) } }])
 
     const res = await processCommsFlows(NOW)
 
     expect(res.sent).toBe(1)
     expect(h.sendPush.mock.calls[0][0]).toBe('staff1')
-    // The client on the run hears nothing.
+    // The client on the run hears nothing…
     expect(h.sendPush.mock.calls.some(c => c[0] === 'u1')).toBe(false)
-    // …and their bell row deep-links to the trainer-side class page.
+    // …and neither does a team member who isn't on this session.
+    expect(h.sendPush.mock.calls.some(c => c[0] === 'staff2')).toBe(false)
+    // Their bell row deep-links to the trainer-side class page.
     expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({ userId: 'staff1', link: '/classes/run1' })
     expect(h.trainerMembershipFindMany).not.toHaveBeenCalled()
   })
 
-  it('falls back to the whole team when nobody is assigned to the class', async () => {
+  it('falls back to the class’s assigned members when the session names nobody', async () => {
     h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
     h.enrollmentFindMany.mockResolvedValue([enrollment()])
-    h.classRunTrainerFindMany.mockResolvedValue([])
-    h.trainerMembershipFindMany.mockResolvedValue([{ user: staffUser({ id: 'owner1' }) }, { user: staffUser({ id: 'staff2' }) }])
+    h.classRunTrainerFindMany.mockResolvedValue([{ membership: { user: staffUser() } }, { membership: { user: staffUser({ id: 'staff2' }) } }])
 
     const res = await processCommsFlows(NOW)
 
     expect(res.sent).toBe(2)
-    expect(h.trainerMembershipFindMany.mock.calls[0][0].where).toMatchObject({ companyId: 'co1' })
+    expect(h.sendPush.mock.calls.map(c => c[0]).sort()).toEqual(['staff1', 'staff2'])
+    expect(h.trainerMembershipFindMany).not.toHaveBeenCalled()
+  })
+
+  it('never reaches a team member who is on neither the session nor the class', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.classRunTrainerFindMany.mockResolvedValue([{ membership: { user: staffUser() } }])
+    // A bystander exists in the business, but is never queried for, let alone sent to.
+    h.trainerMembershipFindMany.mockResolvedValue([{ user: staffUser({ id: 'bystander' }) }])
+
+    await processCommsFlows(NOW)
+
+    expect(h.sendPush.mock.calls.map(c => c[0])).toEqual(['staff1'])
+    expect(h.notificationCreate.mock.calls.some(c => c[0].data.userId === 'bystander')).toBe(false)
+  })
+
+  it('falls back to the main trainer — never silence — when nobody is assigned at all', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.classRunTrainerFindMany.mockResolvedValue([])
+    h.trainerProfileFindUnique.mockResolvedValue({ user: staffUser({ id: 'owner1' }) })
+    h.trainerMembershipFindMany.mockResolvedValue([{ user: staffUser({ id: 'owner1' }) }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendPush.mock.calls[0][0]).toBe('owner1')
+    // Owner-role members only — never the whole company.
+    expect(h.trainerMembershipFindMany.mock.calls[0][0].where).toMatchObject({ companyId: 'co1', role: 'OWNER' })
+  })
+
+  // A solo/legacy trainer may have no TrainerMembership row at all (see
+  // lib/membership.ts "legacy owner"), so the profile's own user has to be in
+  // the fallback or the message would go nowhere for the commonest setup there is.
+  it('reaches a solo trainer who has no membership row', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.trainerProfileFindUnique.mockResolvedValue({ user: staffUser({ id: 'solo1' }) })
+    h.trainerMembershipFindMany.mockResolvedValue([]) // no rows at all
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendPush.mock.calls[0][0]).toBe('solo1')
+  })
+
+  it('reaches every owner when the business has more than one', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.trainerProfileFindUnique.mockResolvedValue({ user: staffUser({ id: 'owner1' }) })
+    h.trainerMembershipFindMany.mockResolvedValue([
+      { user: staffUser({ id: 'owner1' }) }, // the same person, via their membership row
+      { user: staffUser({ id: 'owner2' }) },
+    ])
+
+    const res = await processCommsFlows(NOW)
+
+    // Both owners, and the one listed twice still counted once.
+    expect(res.sent).toBe(2)
+    expect(h.sendPush.mock.calls.map(c => c[0]).sort()).toEqual(['owner1', 'owner2'])
+  })
+
+  it('sends one message, not two, when the owner is also the assignee', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.sessionFindMany.mockResolvedValue([{ id: 'sess1', scheduledAt: SESSION_AT, assignedTrainer: assigned(staffUser({ id: 'owner1' })) }])
+    h.trainerProfileFindUnique.mockResolvedValue({ user: staffUser({ id: 'owner1' }) })
+    h.trainerMembershipFindMany.mockResolvedValue([{ user: staffUser({ id: 'owner1' }) }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendPush.mock.calls.map(c => c[0])).toEqual(['owner1'])
+    expect(h.notificationCreate.mock.calls.filter(c => c[0].data.userId === 'owner1')).toHaveLength(1)
+  })
+
+  it('sends one message when the same person is on the class twice over', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.classRunTrainerFindMany.mockResolvedValue([
+      { membership: { user: staffUser() } },
+      { membership: { user: staffUser() } }, // duplicate assignment row
+    ])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendPush.mock.calls.map(c => c[0])).toEqual(['staff1'])
+  })
+
+  it('ignores an assignment the member has not accepted yet', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.sessionFindMany.mockResolvedValue([{ id: 'sess1', scheduledAt: SESSION_AT, assignedTrainer: { acceptedAt: null, user: staffUser({ id: 'invitee' }) } }])
+    h.classRunTrainerFindMany.mockResolvedValue([{ membership: { user: staffUser() } }])
+
+    await processCommsFlows(NOW)
+
+    expect(h.sendPush.mock.calls.map(c => c[0])).toEqual(['staff1'])
   })
 
   it('still tells staff about a session nobody has booked', async () => {
@@ -253,14 +361,60 @@ describe('processCommsFlows — staff audience', () => {
     expect(h.notificationCreate.mock.calls[0][0].data.body).toBe('Dogs today: ')
   })
 
-  it('sends nothing when the business has no accepted members', async () => {
+  it('sends nothing when the business itself has been deleted out from under it', async () => {
     h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
     h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.trainerProfileFindUnique.mockResolvedValue(null)
 
     const res = await processCommsFlows(NOW)
 
     expect(res.sent).toBe(0)
     expect(h.sendPush).not.toHaveBeenCalled()
+  })
+
+  it('a 1:1 package step goes to the session’s own trainer', async () => {
+    h.stepFindMany.mockResolvedValue([{
+      id: 'pstep', classRunId: null, packageId: 'pkg1',
+      direction: 'BEFORE_SESSION', offsetMinutes: 1440, channels: ['PUSH'],
+      audience: 'STAFF', customClientIds: [], important: false,
+      title: 'You have {{name}} at {{time}}', body: '{{class}} with {{dog}}',
+      classRun: null, package: { name: 'Puppy 101', trainerId: 'co1', trainer },
+    }])
+    h.sessionFindMany.mockResolvedValue([{
+      id: 'ps1', scheduledAt: SESSION_AT, dog: { name: 'Rex' },
+      assignedTrainer: assigned(staffUser()),
+      client: { user: { id: 'u9', name: 'Pat', email: 'pat@x.com', notifyPush: true, productEmailOptOut: false } },
+    }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendPush.mock.calls[0][0]).toBe('staff1')
+    // The 1:1 client doesn't get the staff copy.
+    expect(h.sendPush.mock.calls.some(c => c[0] === 'u9')).toBe(false)
+    // No run to fall back on, so the class-level lookup never happens.
+    expect(h.classRunTrainerFindMany).not.toHaveBeenCalled()
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'pstep', sessionId: 'ps1', userId: 'staff1' } })
+  })
+
+  it('a 1:1 package step with no assigned trainer falls back to the main trainer', async () => {
+    h.stepFindMany.mockResolvedValue([{
+      id: 'pstep', classRunId: null, packageId: 'pkg1',
+      direction: 'BEFORE_SESSION', offsetMinutes: 1440, channels: ['PUSH'],
+      audience: 'STAFF', customClientIds: [], important: false,
+      title: 't', body: 'b',
+      classRun: null, package: { name: 'Puppy 101', trainerId: 'co1', trainer },
+    }])
+    h.sessionFindMany.mockResolvedValue([{
+      id: 'ps1', scheduledAt: SESSION_AT, dog: null, assignedTrainer: null,
+      client: { user: { id: 'u9', name: 'Pat', email: 'pat@x.com', notifyPush: true, productEmailOptOut: false } },
+    }])
+    h.trainerProfileFindUnique.mockResolvedValue({ user: staffUser({ id: 'owner1' }) })
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendPush.mock.calls[0][0]).toBe('owner1')
   })
 })
 
@@ -357,17 +511,34 @@ describe('processCommsFlows — membership scope', () => {
     expect(h.sendPush).not.toHaveBeenCalled()
   })
 
-  it('a STAFF membership step tells the team, linked to the trainer-side page', async () => {
+  // A membership has no sessions, so "assigned to the session" becomes the
+  // member's own assigned trainer — the person who looks after that client.
+  it('a STAFF membership step goes to the client’s assigned trainer', async () => {
     h.stepFindMany.mockResolvedValue([membershipStep({ audience: 'STAFF' })])
     h.purchaseFindMany.mockResolvedValue([PURCHASE])
-    h.clientFindMany.mockResolvedValue([CLIENT])
-    h.trainerMembershipFindMany.mockResolvedValue([{ user: staffUser() }])
+    h.clientFindMany.mockResolvedValue([{ ...CLIENT, assignedTrainer: { acceptedAt: new Date('2026-01-01'), user: staffUser() } }])
 
     const res = await processCommsFlows(NOW)
 
     expect(res.sent).toBe(1)
     expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({ userId: 'staff1', link: '/memberships' })
     expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'mstep', purchaseId: 'pur1', userId: 'staff1' } })
+    // The client themselves doesn't get the staff copy.
+    expect(h.notificationCreate.mock.calls.some(c => c[0].data.userId === 'u1')).toBe(false)
+    expect(h.trainerMembershipFindMany).not.toHaveBeenCalled()
+  })
+
+  it('a STAFF membership step falls back to the main trainer when the client has no trainer', async () => {
+    h.stepFindMany.mockResolvedValue([membershipStep({ audience: 'STAFF' })])
+    h.purchaseFindMany.mockResolvedValue([PURCHASE])
+    h.clientFindMany.mockResolvedValue([CLIENT])
+    h.trainerProfileFindUnique.mockResolvedValue({ user: staffUser({ id: 'owner1' }) })
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({ userId: 'owner1' })
+    expect(h.trainerMembershipFindMany.mock.calls[0][0].where).toMatchObject({ companyId: 'co1', role: 'OWNER' })
   })
 
   it('a renewal step counts back from the period end instead', async () => {
