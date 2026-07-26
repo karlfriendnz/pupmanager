@@ -326,7 +326,8 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           <div className={tab === 'messages' ? '' : 'hidden'}>
             <CommsFlowEditor
               packageId={pkg.id}
-              clients={Array.from(new Map(clients.map(c => [c.clientId, { id: c.clientId, name: c.clientName }])).values())}
+              offeringName={pkg.name}
+              clients={Array.from(new Map(clients.map(c => [c.clientId, { id: c.clientId, name: c.clientName, dog: c.dogName }])).values())}
             />
           </div>
         )}

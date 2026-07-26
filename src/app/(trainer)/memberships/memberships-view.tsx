@@ -479,7 +479,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
               {showMessages && (
                 draft.id ? (
                   <div className="mt-4">
-                    <CommsFlowEditor membershipId={draft.id} />
+                    <CommsFlowEditor membershipId={draft.id} offeringName={draft.name} />
                   </div>
                 ) : (
                   <p className="mt-3 text-sm text-slate-500">Save the membership first, then you can add a welcome message and reminders for the people who join it.</p>

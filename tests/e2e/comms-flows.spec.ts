@@ -198,6 +198,65 @@ test.describe('automated communication flows', () => {
     }
   })
 
+  // The screen is a timeline: read top to bottom in the order the messages will
+  // actually go out, never the order they were added. Each stop states its own
+  // when / how / who on separate lines, and opening one offers a preview of
+  // what a real client receives.
+  test('the flow reads as a timeline, in time order, with a preview', async ({ page }) => {
+    const prisma = await makePrisma()
+    const cleanup: Array<() => Promise<unknown>> = []
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      const res = await page.request.post('/api/packages', {
+        data: { name: 'E2E Timeline Class', sessionCount: 2, weeksBetween: 1, durationMins: 60, isGroup: true, startAt: inDays(10).toISOString() },
+      })
+      const b = await res.json()
+      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+
+      // Added deliberately out of order: last-to-fire first.
+      for (const s of [
+        { direction: 'AFTER_SESSION', offsetMinutes: 120, title: 'E2E Third' },
+        { direction: 'BEFORE_SESSION', offsetMinutes: 15, title: 'E2E Second' },
+        { direction: 'BEFORE_SESSION', offsetMinutes: 10080, title: 'E2E First' },
+      ]) {
+        const r = await page.request.post(`/api/trainer/class-runs/${b.classRunId}/comms-flow`, {
+          data: { ...s, channels: ['PUSH'], audience: 'ENROLLED', important: false, body: 'Hi {{name}}, {{dog}} has {{class}} soon.', enabled: true },
+        })
+        expect(r.status(), await r.text()).toBe(201)
+      }
+
+      await page.goto(`/classes/${b.classRunId}`)
+      await page.getByRole('button', { name: 'Reminders & messages' }).click()
+      await expect(page.getByText('E2E First')).toBeVisible({ timeout: 15_000 })
+
+      const stops = page.locator('ol > li')
+      await expect(stops).toHaveCount(3)
+      // Time order, not the order they were created in.
+      await expect(stops.nth(0)).toContainText('E2E First')
+      await expect(stops.nth(1)).toContainText('E2E Second')
+      await expect(stops.nth(2)).toContainText('E2E Third')
+      // …and each stop carries its own when / how / who.
+      await expect(stops.nth(0)).toContainText('1 week before')
+      await expect(stops.nth(0)).toContainText('Push')
+      await expect(stops.nth(0)).toContainText('Everyone booked')
+
+      // Opening a stop offers the preview, which fills the placeholders in.
+      await stops.nth(0).getByRole('button').first().click()
+      await expect(page.getByRole('dialog', { name: 'Message' })).toBeVisible()
+      await page.getByRole('button', { name: 'Preview', exact: true }).click()
+      const preview = page.getByRole('dialog', { name: 'Preview' })
+      await expect(preview).toBeVisible()
+      await expect(preview).not.toContainText('{{name}}')
+      await expect(preview).toContainText('E2E Timeline Class') // the real offering, not a sample
+    } finally {
+      for (const fn of cleanup.reverse()) await fn()
+      await prisma.$disconnect()
+    }
+  })
+
   test('an unauthenticated caller cannot create a flow step', async ({ page, browser }) => {
     const prisma = await makePrisma()
     const cleanup: Array<() => Promise<unknown>> = []

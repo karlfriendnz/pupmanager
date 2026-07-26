@@ -470,11 +470,13 @@ export function RunDetail({
       <div className={tab === 'messages' ? '' : 'hidden'}>
         <CommsFlowEditor
           runId={run.id}
+          offeringName={run.name}
+          location={run.location}
           clients={Array.from(
             new Map(
               enrollments
                 .filter(e => e.status !== 'WITHDRAWN')
-                .map(e => [e.clientId, { id: e.clientId, name: e.clientName }]),
+                .map(e => [e.clientId, { id: e.clientId, name: e.clientName, dog: e.dogName }]),
             ).values(),
           )}
         />

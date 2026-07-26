@@ -1,18 +1,24 @@
 'use client'
 
 // The trainer-facing editor for a class / drop-in / event's automated messages.
-// Designed to be dead simple: a timeline of message cards, each answering
-// "when · how · who · what". Add one, pick a time, pick channels, type the
-// message. Starter reminders and saveable/reusable templates in one tap.
-import { useState, useEffect, useCallback } from 'react'
-import { Bell, Mail, Smartphone, Plus, Trash2, Loader2, Star, Check, Sparkles, Save, Pencil, X } from 'lucide-react'
+//
+// The flow is a TIMELINE, read top to bottom in the order it will actually
+// happen. Each stop states its own three facts on their own lines down the left
+// — WHEN it fires, HOW it's sent, WHO it reaches — with the message itself to
+// the right of the rail. Tapping a stop opens it full screen; "Preview" shows
+// the message as a real client will receive it.
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Bell, Mail, Smartphone, Plus, Trash2, Loader2, Star, Check, Sparkles, Save, X, Users, Eye, ChevronLeft } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { RichText } from '@/components/shared/rich-text'
+import { ModalPortal } from '@/components/shared/modal-portal'
 import { isRichTextEmpty } from '@/lib/rich-text'
+import { sortStepsByTime, channelsForAudience } from '@/lib/comms-flow-steps'
 
 type Channel = 'PUSH' | 'EMAIL' | 'IN_APP'
 type Direction = 'BEFORE_SESSION' | 'AFTER_SESSION' | 'AFTER_PURCHASE' | 'BEFORE_PERIOD_END'
-type Audience = 'ENROLLED' | 'ENROLLED_AND_WAITLIST' | 'CUSTOM'
+type Audience = 'ENROLLED' | 'ENROLLED_AND_WAITLIST' | 'CUSTOM' | 'STAFF'
 
 interface Step {
   id: string
@@ -29,7 +35,7 @@ interface Step {
   order: number
 }
 interface TemplateSummary { id: string; name: string; stepCount: number }
-interface ClientOpt { id: string; name: string }
+interface ClientOpt { id: string; name: string; dog?: string | null }
 
 const OFFSETS: { label: string; min: number }[] = [
   { label: '15 minutes', min: 15 },
@@ -41,20 +47,30 @@ const OFFSETS: { label: string; min: number }[] = [
   { label: '3 days', min: 4320 },
   { label: '1 week', min: 10080 },
 ]
-const CHANNELS: { key: Channel; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+const CHANNELS: { key: Channel; label: string; Icon: React.ComponentType<{ className?: string; strokeWidth?: number }> }[] = [
   { key: 'PUSH', label: 'Push', Icon: Bell },
   { key: 'EMAIL', label: 'Email', Icon: Mail },
   { key: 'IN_APP', label: 'In‑app', Icon: Smartphone },
 ]
-const AUDIENCES: { key: Audience; label: string }[] = [
-  { key: 'ENROLLED', label: 'Everyone booked' },
-  { key: 'ENROLLED_AND_WAITLIST', label: 'Booked + waitlist' },
-  { key: 'CUSTOM', label: 'Choose people' },
+// In-app is deliberately absent for clients: they already get the push and the
+// email, and mirroring both into their feed made the feed useless. Staff read
+// their bell, so it stays for them. (Enforced server-side too.)
+const STAFF_ONLY_CHANNELS: Channel[] = ['IN_APP']
+
+const AUDIENCES: { key: Audience; label: string; hint: string }[] = [
+  { key: 'ENROLLED', label: 'Everyone booked', hint: 'Every client with a place on this offering.' },
+  { key: 'ENROLLED_AND_WAITLIST', label: 'Booked + waitlist', hint: 'Also the people waiting for a place.' },
+  { key: 'CUSTOM', label: 'Chosen people', hint: 'Only the clients you pick below.' },
+  { key: 'STAFF', label: 'Your team', hint: 'Your staff, not your clients — whoever is running this, or everyone in the business if nobody is assigned.' },
 ]
 const PLACEHOLDERS = ['{{name}}', '{{dog}}', '{{time}}', '{{date}}', '{{class}}', '{{business}}', '{{location}}']
 const SAMPLE: Record<string, string> = {
   '{{name}}': 'Sam', '{{dog}}': 'Bailey', '{{time}}': '6:00 pm', '{{date}}': 'Tue 5 Aug',
   '{{class}}': 'Puppy Class', '{{business}}': 'your business', '{{location}}': 'the hall',
+}
+
+function audienceLabel(a: Audience): string {
+  return AUDIENCES.find(x => x.key === a)?.label ?? ''
 }
 
 // What a step's timing reads as. A membership has no session, so its anchor is
@@ -67,18 +83,35 @@ function humanWhen(direction: Direction, min: number): string {
   if (direction === 'BEFORE_PERIOD_END') return `${label} before it renews`
   return `${label} ${direction === 'BEFORE_SESSION' ? 'before' : 'after'}`
 }
-// Read the flow top-to-bottom in real time order: earliest "before" first,
-// through the session, then "after".
-function timelinePos(s: Step): number {
-  if (s.direction === 'BEFORE_PERIOD_END') return 1_000_000 - s.offsetMinutes
-  if (s.direction === 'AFTER_PURCHASE') return s.offsetMinutes
-  return s.direction === 'BEFORE_SESSION' ? -s.offsetMinutes : s.offsetMinutes
-}
-function preview(body: string): string {
-  return PLACEHOLDERS.reduce((acc, p) => acc.split(p).join(SAMPLE[p]), body)
+
+/**
+ * Fill the placeholders with what one particular recipient would see. Anything
+ * the screen actually knows (this offering's name, where it meets, who's on it)
+ * beats the sample — a preview showing a stranger and someone else's class
+ * doesn't answer the question the trainer opened it to ask.
+ */
+function preview(
+  text: string,
+  who?: { name?: string | null; dog?: string | null },
+  offering?: { name?: string | null; location?: string | null },
+): string {
+  const values: Record<string, string> = { ...SAMPLE }
+  if (who?.name) values['{{name}}'] = who.name.split(' ')[0]
+  if (who?.dog) values['{{dog}}'] = who.dog
+  if (offering?.name) values['{{class}}'] = offering.name
+  if (offering?.location) values['{{location}}'] = offering.location
+  return PLACEHOLDERS.reduce((acc, p) => acc.split(p).join(values[p]), text)
 }
 
-export function CommsFlowEditor({ runId, packageId, membershipId, clients = [] }: { runId?: string; packageId?: string; membershipId?: string; clients?: ClientOpt[] }) {
+export function CommsFlowEditor({ runId, packageId, membershipId, clients = [], offeringName, location }: {
+  runId?: string
+  packageId?: string
+  membershipId?: string
+  clients?: ClientOpt[]
+  /** This offering's name + venue, so the preview reads as the real thing. */
+  offeringName?: string | null
+  location?: string | null
+}) {
   // Scoped to a class run (group / drop-in / event / puppy school), a 1:1
   // package, or a membership. The API trees mirror each other.
   const base = runId
@@ -90,9 +123,12 @@ export function CommsFlowEditor({ runId, packageId, membershipId, clients = [] }
   const isMembership = !!membershipId
   const [steps, setSteps] = useState<Step[] | null>(null)
   const [templates, setTemplates] = useState<TemplateSummary[]>([])
-  const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Step | null>(null)
+  const [previewing, setPreviewing] = useState<Step | null>(null)
   const [busy, setBusy] = useState(false)
+  // Applying a template writes a whole flow server-side and can take a beat —
+  // it gets its own flag so the screen can say so, rather than looking dead.
+  const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -127,7 +163,7 @@ export function CommsFlowEditor({ runId, packageId, membershipId, clients = [] }
     if (!res) return
     const step: Step = await res.json()
     setSteps(prev => [...(prev ?? []), step])
-    startEdit(step)
+    setDraft({ ...step })
   }
   async function seedStarter() {
     const res = await api(base, { method: 'POST', body: JSON.stringify({ seed: 'starter' }) })
@@ -144,7 +180,6 @@ export function CommsFlowEditor({ runId, packageId, membershipId, clients = [] }
     if (!res) return
     const saved: Step = await res.json()
     setSteps(prev => (prev ?? []).map(s => (s.id === saved.id ? saved : s)))
-    setEditingId(null)
     setDraft(null)
   }
   async function toggleEnabled(step: Step) {
@@ -153,11 +188,19 @@ export function CommsFlowEditor({ runId, packageId, membershipId, clients = [] }
   }
   async function remove(id: string) {
     const res = await api(`${base}/${id}`, { method: 'DELETE' })
-    if (res) setSteps(prev => (prev ?? []).filter(s => s.id !== id))
+    if (res) {
+      setSteps(prev => (prev ?? []).filter(s => s.id !== id))
+      setDraft(d => (d?.id === id ? null : d))
+    }
   }
   async function applyTemplate(templateId: string) {
-    const res = await api(`${base}/apply-template`, { method: 'POST', body: JSON.stringify({ templateId }) })
-    if (res) setSteps(await res.json())
+    setApplying(true)
+    try {
+      const res = await api(`${base}/apply-template`, { method: 'POST', body: JSON.stringify({ templateId }) })
+      if (res) setSteps(await res.json())
+    } finally {
+      setApplying(false)
+    }
   }
   async function saveAsTemplate() {
     const name = window.prompt('Name this template (e.g. "Standard class reminders")')?.trim()
@@ -166,222 +209,466 @@ export function CommsFlowEditor({ runId, packageId, membershipId, clients = [] }
     if (res) load()
   }
 
-  function startEdit(step: Step) {
-    setDraft({ ...step })
-    setEditingId(step.id)
+  function patchDraft(p: Partial<Step>) {
+    setDraft(d => {
+      if (!d) return d
+      const next = { ...d, ...p }
+      // Moving a step off the team takes its in-app channel with it, so the
+      // screen never shows a state the server would reject.
+      next.channels = channelsForAudience(next.channels, next.audience) as Channel[]
+      return next
+    })
   }
-  function patchDraft(p: Partial<Step>) { setDraft(d => (d ? { ...d, ...p } : d)) }
   function toggleChannel(ch: Channel) {
     if (!draft) return
     const has = draft.channels.includes(ch)
-    patchDraft({ channels: has ? draft.channels.filter(c => c !== ch) : [...draft.channels, ch] })
+    const channels = has ? draft.channels.filter(c => c !== ch) : [...draft.channels, ch]
+    if (channels.length === 0) return // always leave one way to send
+    patchDraft({ channels })
   }
+
+  // The flow only makes sense read in the order it happens, not the order the
+  // trainer happened to add the messages in.
+  const ordered = useMemo(() => sortStepsByTime(steps ?? []), [steps])
 
   if (steps === null) {
     return <div className="flex items-center gap-2 text-sm text-slate-500 py-8"><Loader2 className="h-4 w-4 animate-spin" /> Loading messages…</div>
   }
 
-  const ordered = [...steps].sort((a, b) => timelinePos(a) - timelinePos(b))
-
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white">
-      <div className="flex flex-wrap items-start justify-between gap-3 p-5 border-b border-slate-100">
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5">
         <div>
-          <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2"><Bell className="h-4 w-4 text-blue-600" /> Reminders &amp; messages</h3>
-          <p className="text-sm text-slate-500 mt-0.5 max-w-prose">Send automatic reminders to everyone booked — before and after each session, by push, email or in‑app.</p>
+          <h3 className="text-base font-semibold text-slate-900">Reminders &amp; messages</h3>
+          <p className="text-sm text-slate-500 mt-0.5 max-w-prose">Messages that send themselves around each session — by push or email to your clients, and in‑app to your team.</p>
         </div>
         {steps.length > 0 && (
-          <div className="flex items-center gap-2">
-            <button onClick={saveAsTemplate} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-              <Save className="h-4 w-4 text-slate-400" /> Save as template
-            </button>
-          </div>
+          <button onClick={saveAsTemplate} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+            <Save className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Save as template
+          </button>
         )}
       </div>
 
-      {error && <div className="mx-5 mt-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2">{error}</div>}
+      {/* Applying a template rewrites the whole flow — say so out loud. */}
+      {applying && (
+        <div className="border-t border-slate-200 px-4 sm:px-5 py-2.5" role="status" aria-live="polite">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} /> Applying template…
+          </div>
+          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full w-1/3 rounded-full bg-slate-400 animate-pm-progress-slide" />
+          </div>
+        </div>
+      )}
+
+      {error && <div className="border-t border-slate-200 px-4 sm:px-5 py-2.5 text-sm text-rose-700">{error}</div>}
 
       {steps.length === 0 ? (
-        <div className="p-6 text-center">
-          <div className="mx-auto w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center mb-3"><Bell className="h-5 w-5 text-blue-600" /></div>
+        <div className="border-t border-slate-200 p-6 text-center">
+          <Bell className="h-6 w-6 text-slate-400 mx-auto mb-3" strokeWidth={1.75} />
           <p className="text-sm text-slate-600 mb-4 max-w-sm mx-auto">No messages yet. Add reminders that go out automatically around each session.</p>
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <button onClick={seedStarter} disabled={busy} className="inline-flex items-center gap-1.5 h-10 px-4 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
-              <Sparkles className="h-4 w-4" /> Use starter reminders
+            <button onClick={seedStarter} disabled={busy} className="inline-flex items-center gap-1.5 h-10 px-4 text-sm font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60">
+              <Sparkles className="h-4 w-4" strokeWidth={1.75} /> Use starter reminders
             </button>
             <button onClick={addMessage} disabled={busy} className="inline-flex items-center gap-1.5 h-10 px-4 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-              <Plus className="h-4 w-4" /> Add a message
+              <Plus className="h-4 w-4" strokeWidth={1.75} /> Add a message
             </button>
           </div>
           {templates.length > 0 && (
-            <div className="mt-4"><TemplatePicker templates={templates} onApply={applyTemplate} busy={busy} /></div>
+            <div className="mt-4"><TemplatePicker templates={templates} onApply={applyTemplate} busy={busy} applying={applying} /></div>
           )}
         </div>
       ) : (
-        <div className="p-4 sm:p-5 flex flex-col gap-3">
-          {ordered.map(step =>
-            editingId === step.id && draft ? (
-              <StepEditor
+        <>
+          <ol className="border-t border-slate-200">
+            {ordered.map((step, i) => (
+              <TimelineStop
                 key={step.id}
-                draft={draft}
-                clients={clients}
-                isMembership={isMembership}
+                step={step}
+                first={i === 0}
+                last={i === ordered.length - 1}
                 busy={busy}
-                onPatch={patchDraft}
-                onToggleChannel={toggleChannel}
-                onSave={saveDraft}
-                onCancel={() => { setEditingId(null); setDraft(null) }}
+                onEdit={() => setDraft({ ...step })}
+                onPreview={() => setPreviewing(step)}
+                onToggle={() => toggleEnabled(step)}
               />
-            ) : (
-              <StepRow key={step.id} step={step} onEdit={() => startEdit(step)} onDelete={() => remove(step.id)} onToggle={() => toggleEnabled(step)} busy={busy} />
-            ),
-          )}
+            ))}
+          </ol>
 
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <button onClick={addMessage} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50 disabled:opacity-60">
-              <Plus className="h-4 w-4" /> Add a message
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 p-4 sm:px-5">
+            <button onClick={addMessage} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+              <Plus className="h-4 w-4" strokeWidth={1.75} /> Add a message
             </button>
-            {templates.length > 0 && <TemplatePicker templates={templates} onApply={applyTemplate} busy={busy} />}
+            {templates.length > 0 && <TemplatePicker templates={templates} onApply={applyTemplate} busy={busy} applying={applying} />}
           </div>
-        </div>
+        </>
+      )}
+
+      {draft && (
+        <StepSheet
+          draft={draft}
+          clients={clients}
+          isMembership={isMembership}
+          busy={busy}
+          onPatch={patchDraft}
+          onToggleChannel={toggleChannel}
+          onSave={saveDraft}
+          onDelete={() => remove(draft.id)}
+          onPreview={() => setPreviewing(draft)}
+          onCancel={() => setDraft(null)}
+        />
+      )}
+
+      {previewing && (
+        <PreviewSheet
+          step={previewing}
+          clients={clients}
+          offering={{ name: offeringName, location }}
+          onClose={() => setPreviewing(null)}
+        />
       )}
     </div>
   )
 }
 
-function StepRow({ step, onEdit, onDelete, onToggle, busy }: { step: Step; onEdit: () => void; onDelete: () => void; onToggle: () => void; busy: boolean }) {
+/**
+ * One stop on the timeline. The three facts each get their own line down the
+ * left of the rail — when it fires, how it's sent, who it reaches — because
+ * crammed onto one line with dots between them they read as one long sentence
+ * nobody finishes.
+ */
+function TimelineStop({ step, first, last, busy, onEdit, onPreview, onToggle }: {
+  step: Step
+  first: boolean
+  last: boolean
+  busy: boolean
+  onEdit: () => void
+  onPreview: () => void
+  onToggle: () => void
+}) {
   const chans = CHANNELS.filter(c => step.channels.includes(c.key))
-  const audience = AUDIENCES.find(a => a.key === step.audience)?.label ?? ''
   return (
-    <div className={`rounded-xl border border-slate-200 p-3.5 flex items-start gap-3 ${step.enabled ? 'bg-white' : 'bg-slate-50 opacity-70'}`}>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-          <span className="font-semibold text-slate-900">{humanWhen(step.direction, step.offsetMinutes)}</span>
-          <span className="text-slate-300">·</span>
-          <span className="inline-flex items-center gap-1 text-slate-600">
-            {chans.map(c => <c.Icon key={c.key} className="h-3.5 w-3.5" />)}
-            {chans.map(c => c.label).join(' + ')}
+    <li className={`flex items-stretch gap-2 border-b border-slate-100 last:border-b-0 ${step.enabled ? '' : 'opacity-55'}`}>
+      <button
+        type="button"
+        onClick={onEdit}
+        disabled={busy}
+        className="flex min-w-0 flex-1 items-stretch gap-2 sm:gap-3 py-3.5 pl-4 text-left hover:bg-slate-50 disabled:opacity-60"
+      >
+        {/* WHEN · HOW · WHO — one fact per line, hugging the rail. Crammed onto
+            one line they read as a sentence nobody finishes; truncated, the
+            second channel disappears. So each wraps rather than clipping. */}
+        <div className="w-[100px] sm:w-[160px] shrink-0 text-right">
+          <span className="block text-sm font-medium text-slate-900 leading-snug">{humanWhen(step.direction, step.offsetMinutes)}</span>
+          <span className="mt-1 flex flex-wrap items-center justify-end gap-x-1 gap-y-0.5 text-xs text-slate-500">
+            {chans.map(c => <c.Icon key={c.key} className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />)}
+            <span>{chans.map(c => c.label).join(' + ') || 'No channel'}</span>
           </span>
-          <span className="text-slate-300">·</span>
-          <span className="text-slate-500">{audience}</span>
-          {step.important && <span className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700"><Star className="h-3 w-3" /> Important</span>}
+          <span className="mt-0.5 block text-xs text-slate-500">{audienceLabel(step.audience)}</span>
+          {!step.enabled && <span className="mt-0.5 block text-xs text-slate-400">Paused</span>}
         </div>
-        <p className="text-sm font-medium text-slate-800 mt-1 truncate">{step.title}</p>
-        <p className="text-xs text-slate-500 truncate">{step.body}</p>
+
+        {/* The rail itself. */}
+        <span className="relative w-2.5 shrink-0" aria-hidden>
+          <span className={`absolute left-1/2 w-px -translate-x-1/2 bg-slate-200 ${first ? 'top-2' : 'top-0'} ${last ? 'h-2' : 'bottom-0'}`} />
+          <span className={`absolute left-1/2 top-1 h-2 w-2 -translate-x-1/2 rounded-full border ${step.enabled ? 'border-slate-400 bg-slate-400' : 'border-slate-300 bg-white'}`} />
+        </span>
+
+        <span className="min-w-0 flex-1">
+          <span className="flex items-start gap-1.5">
+            <span className="min-w-0 text-sm font-medium text-slate-900 line-clamp-2">{step.title}</span>
+            {step.important && <Star className="h-3.5 w-3.5 shrink-0 mt-0.5 text-slate-500" strokeWidth={1.75} aria-label="Always sends" />}
+          </span>
+          <span className="mt-0.5 text-xs text-slate-500 line-clamp-2">{step.body}</span>
+        </span>
+      </button>
+
+      <div className="flex shrink-0 items-center gap-1 pr-3 sm:pr-4">
+        {/* On a phone the row has no width to spare — preview lives one tap in,
+            on the message itself. */}
+        <button type="button" onClick={onPreview} disabled={busy} title="Preview" className="hidden sm:block p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-60">
+          <Eye className="h-4 w-4" strokeWidth={1.75} /><span className="sr-only">Preview {step.title}</span>
+        </button>
+        <Switch checked={step.enabled} onChange={onToggle} disabled={busy} onColor="bg-slate-900" aria-label={step.enabled ? `Turn off ${step.title}` : `Turn on ${step.title}`} />
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <Switch checked={step.enabled} onChange={onToggle} disabled={busy} onColor="bg-blue-600" aria-label={step.enabled ? 'Turn off' : 'Turn on'} />
-        <button onClick={onEdit} disabled={busy} title="Edit" className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-60"><Pencil className="h-4 w-4" /></button>
-        <button onClick={onDelete} disabled={busy} title="Delete" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-60"><Trash2 className="h-4 w-4" /></button>
-      </div>
-    </div>
+    </li>
   )
 }
 
-function StepEditor({ draft, clients, busy, isMembership = false, onPatch, onToggleChannel, onSave, onCancel }: {
+/** A full screen on a phone, a centred panel on a desktop. */
+function Sheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    // Never two scrollbars: the page behind holds still while this is open.
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+  }, [onClose])
+
+  return (
+    <ModalPortal>
+      <div className="fixed inset-0 z-[100] flex sm:items-center sm:justify-center sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
+        <div className="absolute inset-0 bg-slate-900/40 sm:backdrop-blur-sm" onMouseDown={onClose} />
+        <div className="relative flex h-full w-full flex-col bg-white sm:h-auto sm:max-h-[88vh] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-200 sm:shadow-xl">
+          <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
+            <button onClick={onClose} className="p-1.5 -ml-1.5 rounded-lg text-slate-500 hover:bg-slate-100 sm:hidden" aria-label="Back">
+              <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />
+            </button>
+            <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">{title}</h2>
+            <button onClick={onClose} className="hidden p-1.5 -mr-1.5 rounded-lg text-slate-500 hover:bg-slate-100 sm:block" aria-label="Close">
+              <X className="h-5 w-5" strokeWidth={1.75} />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar px-4 py-4 sm:px-5">{children}</div>
+          {footer && <div className="shrink-0 border-t border-slate-200 px-4 py-3 sm:px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">{footer}</div>}
+        </div>
+      </div>
+    </ModalPortal>
+  )
+}
+
+function StepSheet({ draft, clients, busy, isMembership = false, onPatch, onToggleChannel, onSave, onDelete, onPreview, onCancel }: {
   draft: Step
   clients: ClientOpt[]
   busy: boolean
-  onPatch: (p: Partial<Step>) => void
   /** A membership step anchors on the purchase, not a session. */
   isMembership?: boolean
+  onPatch: (p: Partial<Step>) => void
   onToggleChannel: (c: Channel) => void
   onSave: () => void
+  onDelete: () => void
+  onPreview: () => void
   onCancel: () => void
 }) {
   const canSave = draft.channels.length > 0 && draft.title.trim() && draft.body.trim()
+  const toStaff = draft.audience === 'STAFF'
+  const channels = CHANNELS.filter(c => toStaff || !STAFF_ONLY_CHANNELS.includes(c.key))
+  const audienceHint = AUDIENCES.find(a => a.key === draft.audience)?.hint
+
   return (
-    <div className="rounded-xl border-2 border-blue-200 bg-blue-50/40 p-4 flex flex-col gap-4">
-      {/* WHEN */}
-      <Field label="When">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg bg-white border border-slate-200 p-0.5">
-            {(isMembership
-              ? (['AFTER_PURCHASE', 'BEFORE_PERIOD_END'] as Direction[])
-              : (['BEFORE_SESSION', 'AFTER_SESSION'] as Direction[])
-            ).map(d => (
-              <button key={d} onClick={() => onPatch({ direction: d })} className={`px-3 h-8 text-sm font-medium rounded-md ${draft.direction === d ? 'bg-blue-600 text-white' : 'text-slate-600'}`}>
-                {d === 'BEFORE_SESSION' ? 'Before' : d === 'AFTER_SESSION' ? 'After' : d === 'AFTER_PURCHASE' ? 'After they join' : 'Before it renews'}
-              </button>
-            ))}
+    <Sheet
+      title="Message"
+      onClose={onCancel}
+      footer={
+        <div className="flex items-center gap-2">
+          <button onClick={onDelete} disabled={busy} className="inline-flex items-center gap-1.5 h-10 px-3 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-60">
+            <Trash2 className="h-4 w-4" strokeWidth={1.75} /> Delete
+          </button>
+          <div className="flex-1" />
+          <button onClick={onPreview} className="inline-flex items-center gap-1.5 h-10 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+            <Eye className="h-4 w-4" strokeWidth={1.75} /> Preview
+          </button>
+          <button onClick={onSave} disabled={busy || !canSave} className="inline-flex items-center gap-1.5 h-10 px-4 text-sm font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} /> : <Check className="h-4 w-4" strokeWidth={1.75} />} Save
+          </button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        {/* WHEN */}
+        <Field label="When">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
+              {(isMembership
+                ? (['AFTER_PURCHASE', 'BEFORE_PERIOD_END'] as Direction[])
+                : (['BEFORE_SESSION', 'AFTER_SESSION'] as Direction[])
+              ).map(d => (
+                <button key={d} onClick={() => onPatch({ direction: d })} className={`px-3 h-8 text-sm font-medium rounded-md ${draft.direction === d ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>
+                  {d === 'BEFORE_SESSION' ? 'Before' : d === 'AFTER_SESSION' ? 'After' : d === 'AFTER_PURCHASE' ? 'After they join' : 'Before it renews'}
+                </button>
+              ))}
+            </div>
+            <select value={draft.offsetMinutes} onChange={e => onPatch({ offsetMinutes: Number(e.target.value) })} aria-label="How long" className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
+              {OFFSETS.map(o => <option key={o.min} value={o.min}>{o.label}</option>)}
+            </select>
+            {!isMembership && <span className="text-sm text-slate-500">the session</span>}
           </div>
-          <select value={draft.offsetMinutes} onChange={e => onPatch({ offsetMinutes: Number(e.target.value) })} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
-            {OFFSETS.map(o => <option key={o.min} value={o.min}>{o.label}</option>)}
+          <p className="mt-1.5 text-xs text-slate-500">Sends {humanWhen(draft.direction, draft.offsetMinutes).toLowerCase()}.</p>
+        </Field>
+
+        {/* WHO — before HOW, because who it's for decides what can carry it. */}
+        <Field label="Who">
+          <select value={draft.audience} onChange={e => onPatch({ audience: e.target.value as Audience })} aria-label="Who it goes to" className="h-9 w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
+            {AUDIENCES.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
           </select>
-          <span className="text-sm text-slate-500">the session</span>
-        </div>
-      </Field>
+          {audienceHint && <p className="mt-1.5 text-xs text-slate-500">{audienceHint}</p>}
+          {draft.audience === 'CUSTOM' && (
+            <div className="mt-2 rounded-lg border border-slate-200 divide-y divide-slate-100 max-h-52 overflow-y-auto no-scrollbar">
+              {clients.length === 0 ? (
+                <p className="text-xs text-slate-500 px-3 py-2">Add clients to this offering first.</p>
+              ) : clients.map(c => {
+                const on = draft.customClientIds.includes(c.id)
+                return (
+                  <label key={c.id} className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-slate-700 cursor-pointer hover:bg-slate-50">
+                    <input type="checkbox" checked={on} onChange={() => onPatch({ customClientIds: on ? draft.customClientIds.filter(id => id !== c.id) : [...draft.customClientIds, c.id] })} />
+                    <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                    {c.dog && <span className="text-xs text-slate-400 truncate">{c.dog}</span>}
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </Field>
 
-      {/* HOW */}
-      <Field label="How">
-        <div className="flex flex-wrap gap-2">
-          {CHANNELS.map(({ key, label, Icon }) => {
-            const on = draft.channels.includes(key)
-            return (
-              <button key={key} onClick={() => onToggleChannel(key)} className={`inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border ${on ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
-                <Icon className="h-4 w-4" /> {label} {on && <Check className="h-3.5 w-3.5" />}
-              </button>
-            )
-          })}
-        </div>
-      </Field>
-
-      {/* WHO */}
-      <Field label="Who">
-        <select value={draft.audience} onChange={e => onPatch({ audience: e.target.value as Audience })} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
-          {AUDIENCES.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
-        </select>
-        {draft.audience === 'CUSTOM' && (
-          <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2 max-h-40 overflow-y-auto">
-            {clients.length === 0 ? (
-              <p className="text-xs text-slate-500 px-1 py-1">Add clients to this class first.</p>
-            ) : clients.map(c => {
-              const on = draft.customClientIds.includes(c.id)
+        {/* HOW */}
+        <Field label="How">
+          <div className="flex flex-wrap gap-2">
+            {channels.map(({ key, label, Icon }) => {
+              const on = draft.channels.includes(key)
               return (
-                <label key={c.id} className="flex items-center gap-2 px-1 py-1 text-sm text-slate-700 cursor-pointer hover:bg-slate-50 rounded">
-                  <input type="checkbox" checked={on} onChange={() => onPatch({ customClientIds: on ? draft.customClientIds.filter(id => id !== c.id) : [...draft.customClientIds, c.id] })} />
-                  {c.name}
-                </label>
+                <button key={key} onClick={() => onToggleChannel(key)} aria-pressed={on} className={`inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border ${on ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                  <Icon className="h-4 w-4" strokeWidth={1.75} /> {label} {on && <Check className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                </button>
               )
             })}
           </div>
-        )}
-      </Field>
+          <p className="mt-1.5 text-xs text-slate-500">
+            {toStaff
+              ? 'In‑app lands in your team’s notification bell.'
+              : 'In‑app is for your team only — clients get the push and the email.'}
+          </p>
+        </Field>
 
-      {/* WHAT */}
-      <Field label="Message">
-        <input value={draft.title} onChange={e => onPatch({ title: e.target.value })} placeholder="Title (e.g. See you tomorrow 🐾)" className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800" />
-        <textarea value={draft.body} onChange={e => onPatch({ body: e.target.value })} rows={3} placeholder="Your message…" className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800" />
-        <div className="flex flex-wrap gap-1 mt-2">
-          {PLACEHOLDERS.map(p => (
-            <button key={p} onClick={() => onPatch({ body: `${draft.body}${draft.body && !draft.body.endsWith(' ') ? ' ' : ''}${p}` })} className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-white border border-slate-200 text-blue-700 hover:bg-blue-50">{p}</button>
-          ))}
-        </div>
-        {draft.body.trim() && <p className="mt-2 text-xs text-slate-500"><span className="font-medium text-slate-400">Preview:</span> {preview(draft.body)}</p>}
-        {draft.channels.includes('EMAIL') && (
-          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1.5">
-              <Mail className="h-3.5 w-3.5" /> Email content
-              <span className="font-normal text-slate-400">— the rich version sent by email (push & in-app use the short message above)</span>
-            </div>
-            <RichTextEditor key={draft.id} value={draft.emailBody ?? ''} onChange={html => onPatch({ emailBody: isRichTextEmpty(html) ? null : html })} minHeight={140} theme="light" />
-            <p className="mt-1.5 text-[11px] text-slate-400">Placeholders like {'{{dog}}'} work here too. Leave empty to use the short message for email as well.</p>
+        {/* WHAT */}
+        <Field label="Message">
+          <input value={draft.title} onChange={e => onPatch({ title: e.target.value })} aria-label="Title" placeholder="Title (e.g. See you tomorrow 🐾)" className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800" />
+          <textarea value={draft.body} onChange={e => onPatch({ body: e.target.value })} aria-label="Message" rows={4} placeholder="Your message…" className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800" />
+          <div className="flex flex-wrap gap-1 mt-2">
+            {PLACEHOLDERS.map(p => (
+              <button key={p} onClick={() => onPatch({ body: `${draft.body}${draft.body && !draft.body.endsWith(' ') ? ' ' : ''}${p}` })} className="text-[11px] font-mono px-1.5 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">{p}</button>
+            ))}
           </div>
-        )}
-      </Field>
+          {draft.channels.includes('EMAIL') && (
+            <div className="mt-3 rounded-lg border border-slate-200 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1.5">
+                <Mail className="h-3.5 w-3.5" strokeWidth={1.75} /> Email content
+              </div>
+              <p className="text-xs text-slate-500 mb-2">The formatted version sent by email. Push and in‑app use the short message above.</p>
+              <RichTextEditor key={draft.id} value={draft.emailBody ?? ''} onChange={html => onPatch({ emailBody: isRichTextEmpty(html) ? null : html })} minHeight={140} theme="light" />
+              <p className="mt-1.5 text-[11px] text-slate-500">Placeholders like {'{{dog}}'} work here too. Leave it empty to use the short message for email as well.</p>
+            </div>
+          )}
+        </Field>
 
-      {/* IMPORTANT */}
-      <label className="flex items-start gap-2.5 cursor-pointer">
-        <Switch checked={draft.important} onChange={() => onPatch({ important: !draft.important })} onColor="bg-amber-500" className="mt-0.5" aria-label="Mark important" />
-        <span className="text-sm text-slate-700"><span className="font-medium inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 text-amber-500" /> Mark important</span><br /><span className="text-xs text-slate-500">Always send, even if the client muted their notifications. Use for cancellations or venue changes.</span></span>
-      </label>
-
-      <div className="flex items-center justify-end gap-2 pt-1">
-        <button onClick={onCancel} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-60"><X className="h-4 w-4" /> Cancel</button>
-        <button onClick={onSave} disabled={busy || !canSave} className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save message
-        </button>
+        {/* IMPORTANT */}
+        <label className="flex items-start gap-2.5 cursor-pointer">
+          <Switch checked={draft.important} onChange={() => onPatch({ important: !draft.important })} onColor="bg-slate-900" className="mt-0.5" aria-label="Always send" />
+          <span className="text-sm text-slate-700">
+            <span className="font-medium inline-flex items-center gap-1"><Star className="h-3.5 w-3.5 text-slate-500" strokeWidth={1.75} /> Always send</span>
+            <span className="mt-0.5 block text-xs text-slate-500">Goes out even to someone who muted their notifications. Use it for cancellations or a change of venue.</span>
+          </span>
+        </label>
       </div>
+    </Sheet>
+  )
+}
+
+/**
+ * What this message actually lands as. Shows only the channels the step uses,
+ * filled in for one real person — a trainer's first question about an automated
+ * message is always "what will they see?".
+ */
+function PreviewSheet({ step, clients, offering, onClose }: {
+  step: Step
+  clients: ClientOpt[]
+  offering: { name?: string | null; location?: string | null }
+  onClose: () => void
+}) {
+  const toStaff = step.audience === 'STAFF'
+  const pickable = step.audience === 'CUSTOM' && step.customClientIds.length
+    ? clients.filter(c => step.customClientIds.includes(c.id))
+    : clients
+  const [who, setWho] = useState<string>(pickable[0]?.id ?? '')
+  const person = toStaff
+    ? { name: 'you', dog: null }
+    : (pickable.find(c => c.id === who) ?? { name: SAMPLE['{{name}}'], dog: SAMPLE['{{dog}}'] })
+
+  const title = preview(step.title, person, offering)
+  const body = preview(step.body, person, offering)
+  const emailHtml = step.emailBody ? preview(step.emailBody, person, offering) : null
+
+  return (
+    <Sheet
+      title="Preview"
+      onClose={onClose}
+      footer={
+        <button onClick={onClose} className="w-full sm:w-auto sm:ml-auto sm:block inline-flex items-center justify-center h-10 px-4 text-sm font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800">Done</button>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Users className="h-4 w-4 text-slate-500" strokeWidth={1.75} />
+          {toStaff ? (
+            <p className="text-sm text-slate-600">What your team sees. It goes to whoever is running this.</p>
+          ) : pickable.length ? (
+            <>
+              <label htmlFor="preview-as" className="text-sm text-slate-600">Preview as</label>
+              <select id="preview-as" value={who} onChange={e => setWho(e.target.value)} className="h-9 min-w-0 flex-1 sm:flex-none rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
+                {pickable.map(c => <option key={c.id} value={c.id}>{c.name}{c.dog ? ` & ${c.dog}` : ''}</option>)}
+              </select>
+            </>
+          ) : (
+            <p className="text-sm text-slate-600">Nobody has booked yet, so this shows a sample client.</p>
+          )}
+        </div>
+        <p className="text-xs text-slate-500 -mt-2">Sends {humanWhen(step.direction, step.offsetMinutes).toLowerCase()}, to {audienceLabel(step.audience).toLowerCase()}.</p>
+
+        {step.channels.includes('PUSH') && (
+          <PreviewPane label="On their phone" Icon={Bell}>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                <span className="h-3.5 w-3.5 rounded-[4px] bg-slate-300" aria-hidden /> PupManager
+                <span className="ml-auto font-normal normal-case tracking-normal">now</span>
+              </div>
+              <p className="mt-1.5 text-sm font-semibold text-slate-900">{title}</p>
+              <p className="text-sm text-slate-600">{body}</p>
+            </div>
+          </PreviewPane>
+        )}
+
+        {step.channels.includes('EMAIL') && (
+          <PreviewPane label="In their inbox" Icon={Mail}>
+            <div className="rounded-xl border border-slate-200">
+              <div className="border-b border-slate-100 px-3 py-2">
+                <p className="text-xs text-slate-500">Subject</p>
+                <p className="text-sm font-medium text-slate-900">{title}</p>
+              </div>
+              <div className="px-3 py-3 text-sm text-slate-700">
+                {emailHtml ? <RichText html={emailHtml} /> : <p className="whitespace-pre-wrap">{body}</p>}
+              </div>
+            </div>
+          </PreviewPane>
+        )}
+
+        {step.channels.includes('IN_APP') && (
+          <PreviewPane label="In the notification bell" Icon={Smartphone}>
+            <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5">
+              <Bell className="h-4 w-4 mt-0.5 shrink-0 text-slate-500" strokeWidth={1.75} />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-900">{title}</p>
+                <p className="text-sm text-slate-600">{body}</p>
+              </div>
+            </div>
+          </PreviewPane>
+        )}
+
+        {step.important && (
+          <p className="text-xs text-slate-500">This one always sends, even to someone who muted their notifications.</p>
+        )}
+      </div>
+    </Sheet>
+  )
+}
+
+function PreviewPane({ label, Icon, children }: { label: string; Icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        <Icon className="h-3.5 w-3.5" strokeWidth={1.75} /> {label}
+      </div>
+      {children}
     </div>
   )
 }
@@ -395,15 +682,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function TemplatePicker({ templates, onApply, busy }: { templates: TemplateSummary[]; onApply: (id: string) => void; busy: boolean }) {
+function TemplatePicker({ templates, onApply, busy, applying }: { templates: TemplateSummary[]; onApply: (id: string) => void; busy: boolean; applying: boolean }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="relative inline-block">
-      <button onClick={() => setOpen(o => !o)} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-        <Sparkles className="h-4 w-4 text-slate-400" /> Apply a template
+      <button onClick={() => setOpen(o => !o)} disabled={busy || applying} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+        {applying
+          ? <><Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} /> Applying template…</>
+          : <><Sparkles className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Apply a template</>}
       </button>
-      {open && (
-        <div className="absolute z-10 mt-1 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-1">
+      {open && !applying && (
+        <div className="absolute z-10 mt-1 w-60 rounded-xl border border-slate-200 bg-white shadow-lg p-1">
           {templates.map(t => (
             <button key={t.id} onClick={() => { setOpen(false); onApply(t.id) }} className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50 flex items-center justify-between">
               <span className="truncate">{t.name}</span>

@@ -341,3 +341,13 @@ body:has(.pm-overlay) {
      opts back in to real centering. */
   .pm-main > .mx-auto.pm-centered { margin-left: auto; margin-right: auto; }
 }
+
+/* Indeterminate progress bar — for work that takes a beat and has no percentage
+   to report (applying a comms-flow template writes a whole flow server-side).
+   A spinner alone reads as "stuck"; a bar travelling the track reads as
+   "working". Put it on a 1/3-width child of an overflow-hidden track. */
+@keyframes pm-progress-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+.animate-pm-progress-slide { animation: pm-progress-slide 1.2s ease-in-out infinite; }
