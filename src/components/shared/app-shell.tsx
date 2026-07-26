@@ -1426,7 +1426,14 @@ function TrainerShell({
         // --app-top-offset reserves the desktop top-bar height (the fixed bar is
         // out of flow) so content clears it and PageHeader toolbar rows stick
         // just beneath it. 0 on mobile (no top bar there).
-        className={cn('pm-main flex-1 flex flex-col min-h-0 pb-20 md:pb-0 transition-all duration-200 [--app-top-offset:0px] md:[--app-top-offset:3.5rem]', mainOffset)}
+        // Bottom reserve = what the tab bar ACTUALLY occupies. The bar is 58px
+        // of content PLUS env(safe-area-inset-bottom), which is ~34px on a
+        // notched iPhone — so a flat pb-20 (80px) left the last row of every
+        // phone screen sitting under the bar and untappable. Emulators report a
+        // 0px inset, which is why this survived so long: it only reproduces on
+        // real hardware. 5rem keeps today's spacing identical where the inset
+        // is 0, and simply adds it where it isn't.
+        className={cn('pm-main flex-1 flex flex-col min-h-0 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0 transition-all duration-200 [--app-top-offset:0px] md:[--app-top-offset:3.5rem]', mainOffset)}
         // Clear the fixed top bar on desktop; on mobile fall back to a capped
         // safe-area pad below iOS chrome. Pages that own a sticky bar can break
         // out via negative margin and handle safe-area themselves.
