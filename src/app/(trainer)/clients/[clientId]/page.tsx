@@ -12,7 +12,7 @@ import { routeDistance } from '@/lib/routing'
 import { formatDate } from '@/lib/utils'
 import { ClientProfileTabs } from './client-profile-tabs'
 import { ClientSummaryCard } from './client-summary-card'
-import { ClientActionsMenu } from './client-actions-menu'
+import { ClientActionsPanel } from './client-actions-panel'
 import { AssignedTrainerControl } from './assigned-trainer-control'
 import { PageHeader } from '@/components/shared/page-header'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
@@ -219,65 +219,72 @@ export default async function ClientDetailPage({
   const allDogs = [...(client.dog ? [client.dog] : []), ...client.dogs]
   const dogNames = Object.fromEntries(allDogs.map(d => [d.id, d.name]))
 
+  // Every per-client action — Edit, View as client, Re-invite, Assign consult,
+  // Share, Delete — now lives ON the page, at the foot of the Overview tab,
+  // instead of behind an "Actions" dropdown in the header. Built here because
+  // the props come from this page's queries; rendered by ClientProfileTabs.
+  const actionsPanel = (
+    <ClientActionsPanel
+      clientId={client.id}
+      clientName={client.user.name ?? client.user.email}
+      clientEmail={client.user.email ?? ''}
+      canEdit={canEdit}
+      isPrimaryTrainer={isPrimaryTrainer}
+      clientAppEnabled={clientAppEnabled}
+      needsInvite={!client.user.emailVerified}
+      members={teamMembers.map(m => ({
+        id: m.id,
+        name: m.user.name ?? m.user.email,
+        role: m.role,
+      }))}
+      currentMembershipId={trainerCtx?.membershipId ?? null}
+      dogs={allDogs.map(d => ({ id: d.id, name: d.name }))}
+      packages={packages.map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        sessionCount: p.sessionCount,
+        weeksBetween: p.weeksBetween,
+        durationMins: p.durationMins,
+        sessionType: p.sessionType,
+      }))}
+      classes={openClasses.map(c => {
+        const cap = c.capacity ?? c.package.capacity ?? null
+        // Same shared per-session-spaces helper the client wizard uses,
+        // so both views agree on what's bookable.
+        const spaces = classSessionSpaces(cap, c.enrollments)
+        return {
+          id: c.id,
+          name: c.name,
+          scheduleNote: c.scheduleNote,
+          startLabel: c.startDate.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' }),
+          seatsLeft: cap == null ? null : Math.max(0, cap - spaces.fullSeats),
+          allowDropIn: c.package.allowDropIn,
+          sessions: c.sessions.map(s => ({
+            id: s.id,
+            label: s.scheduledAt.toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }),
+            spacesLeft: spaces.spacesLeftFor(s.id, sessionCapacity(s.packageSessionSlot, c.capacity, c.package.capacity)),
+          })),
+        }
+      })}
+      availability={availabilitySlots.map(s => ({
+        id: s.id,
+        dayOfWeek: s.dayOfWeek,
+        date: s.date ? s.date.toISOString().split('T')[0] : null,
+        startTime: s.startTime,
+        endTime: s.endTime,
+      }))}
+    />
+  )
+
   return (
     <>
+      {/* Header carries the client's name, the co-managed note and Back —
+          nothing else. */}
       <PageHeader
         title={client.user.name ?? client.user.email ?? 'Client'}
         subtitle={!isPrimaryTrainer ? 'Co-managed' : undefined}
         back={{ href: '/clients', label: 'Back to clients' }}
-        actions={
-          <ClientActionsMenu
-            clientId={client.id}
-            clientName={client.user.name ?? client.user.email}
-            clientEmail={client.user.email ?? ''}
-            canEdit={canEdit}
-            isPrimaryTrainer={isPrimaryTrainer}
-            clientAppEnabled={clientAppEnabled}
-            needsInvite={!client.user.emailVerified}
-            members={teamMembers.map(m => ({
-              id: m.id,
-              name: m.user.name ?? m.user.email,
-              role: m.role,
-            }))}
-            currentMembershipId={trainerCtx?.membershipId ?? null}
-            dogs={allDogs.map(d => ({ id: d.id, name: d.name }))}
-            packages={packages.map(p => ({
-              id: p.id,
-              name: p.name,
-              description: p.description,
-              sessionCount: p.sessionCount,
-              weeksBetween: p.weeksBetween,
-              durationMins: p.durationMins,
-              sessionType: p.sessionType,
-            }))}
-            classes={openClasses.map(c => {
-              const cap = c.capacity ?? c.package.capacity ?? null
-              // Same shared per-session-spaces helper the client wizard uses,
-              // so both views agree on what's bookable.
-              const spaces = classSessionSpaces(cap, c.enrollments)
-              return {
-                id: c.id,
-                name: c.name,
-                scheduleNote: c.scheduleNote,
-                startLabel: c.startDate.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' }),
-                seatsLeft: cap == null ? null : Math.max(0, cap - spaces.fullSeats),
-                allowDropIn: c.package.allowDropIn,
-                sessions: c.sessions.map(s => ({
-                  id: s.id,
-                  label: s.scheduledAt.toLocaleString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }),
-                  spacesLeft: spaces.spacesLeftFor(s.id, sessionCapacity(s.packageSessionSlot, c.capacity, c.package.capacity)),
-                })),
-              }
-            })}
-            availability={availabilitySlots.map(s => ({
-              id: s.id,
-              dayOfWeek: s.dayOfWeek,
-              date: s.date ? s.date.toISOString().split('T')[0] : null,
-              startTime: s.startTime,
-              endTime: s.endTime,
-            }))}
-          />
-        }
       />
       <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
 
@@ -342,6 +349,7 @@ export default async function ClientDetailPage({
       <ClientProfileTabs
         clientId={client.id}
         canEdit={canEdit}
+        actions={actionsPanel}
         communications={communications}
         canViewBilling={canViewBilling}
         stats={{

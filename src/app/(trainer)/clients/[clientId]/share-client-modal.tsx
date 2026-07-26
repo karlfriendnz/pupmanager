@@ -18,7 +18,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 // External `open` + `onOpenChange` make this controllable from the
-// new ClientActionsMenu — when provided, the internal Share button
+// ClientActionsPanel — when provided, the internal Share button
 // is hidden and the modal opens/closes from outside. Without them
 // (legacy callers) the component renders its own trigger and manages
 // state itself, unchanged.

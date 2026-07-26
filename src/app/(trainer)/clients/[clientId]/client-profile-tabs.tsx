@@ -135,6 +135,11 @@ interface Props {
   // Recent practice logs the client recorded against their homework tasks
   // (newest first) — powers the Training log tab.
   trainingLogs: TrainerTrainingLog[]
+  // The per-client action rows (Edit, View as client, Re-invite, Assign,
+  // Share, Delete) — rendered at the foot of the Overview tab. Passed in as a
+  // slot because the server page owns the data they need. Used to be an
+  // "Actions" dropdown in the page header.
+  actions?: React.ReactNode
 }
 
 function groupByCategory<T extends { category: string | null }>(items: T[]) {
@@ -166,6 +171,7 @@ export function ClientProfileTabs({
   notes,
   clientAppEnabled,
   trainingLogs,
+  actions,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [pendingRequests, setPendingRequests] = useState(initialPendingRequests)
@@ -495,6 +501,11 @@ export function ClientProfileTabs({
               </CardBody>
             </Card>
           )}
+
+          {/* Per-client actions, on the page. Last thing on the default tab:
+              a trainer reads the client first, then acts. The "Actions"
+              dropdown that used to live in the header is gone. */}
+          {actions}
         </div>
       )}
 
