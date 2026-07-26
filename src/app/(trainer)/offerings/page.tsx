@@ -4,10 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
 import { getEnabledAddons } from '@/lib/billing'
 import { ONE_OFF_EVENT_PACKAGE } from '@/lib/class-runs'
-import {
-  Package, GraduationCap, Ticket, CalendarPlus, Dog, ShoppingBag, Layers,
-} from 'lucide-react'
-import { FlatBlock, FlatRow } from '@/components/shared/flat-list'
+import { OfferingsList, type OfferingRowData } from './offerings-list'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Offerings' }
@@ -43,38 +40,40 @@ export default async function OfferingsPage() {
   ])
 
   // Same gating as the nav: a type whose add-on is off simply isn't offered.
+  // `icon` is a plain key, not a component — see offerings-list.tsx for why.
   const rows = [
-    { href: '/packages', label: '1:1 Packages', icon: Package, count: packages, one: 'package', many: 'packages', on: true },
-    { href: '/classes', label: 'Group Classes', icon: GraduationCap, count: classes, one: 'class', many: 'classes', on: addons.has('classes') },
-    { href: '/casual-classes', label: 'Casual Classes', icon: Ticket, count: casual, one: 'class', many: 'classes', on: addons.has('dropins') },
-    { href: '/events', label: 'Events', icon: CalendarPlus, count: events, one: 'event', many: 'events', on: addons.has('events') },
-    { href: '/doggy-daycare', label: 'Doggy Daycare', icon: Dog, count: daycare, one: 'programme', many: 'programmes', on: addons.has('puppyschool') },
-    { href: '/memberships', label: 'Memberships', icon: Ticket, count: memberships, one: 'membership', many: 'memberships', on: addons.has('memberships') },
-    { href: '/products', label: 'Products', icon: ShoppingBag, count: products, one: 'product', many: 'products', on: addons.has('shop') },
-    { href: '/templates', label: 'Library', icon: Layers, count: null, one: '', many: '', on: true },
-  ].filter(r => r.on)
+    { href: '/packages', label: '1:1 Consults', icon: 'packages', count: packages, one: 'consult', many: 'consults', on: true },
+    { href: '/classes', label: 'Group Classes', icon: 'classes', count: classes, one: 'class', many: 'classes', on: addons.has('classes') },
+    { href: '/casual-classes', label: 'Casual Classes', icon: 'casual', count: casual, one: 'class', many: 'classes', on: addons.has('dropins') },
+    { href: '/events', label: 'Events', icon: 'events', count: events, one: 'event', many: 'events', on: addons.has('events') },
+    // Doggy Daycare is hidden for now (Karl, 2026-07-26), matching the nav —
+    // the page still works, it just isn't offered. Restore `on` to
+    // `addons.has('puppyschool')` to bring it back.
+    { href: '/doggy-daycare', label: 'Doggy Daycare', icon: 'daycare', count: daycare, one: 'programme', many: 'programmes', on: false },
+    { href: '/memberships', label: 'Packages', icon: 'memberships', count: memberships, one: 'package', many: 'packages', on: addons.has('memberships') },
+    { href: '/products', label: 'Products', icon: 'products', count: products, one: 'product', many: 'products', on: addons.has('shop') },
+    { href: '/templates', label: 'Library', icon: 'library', count: null, one: '', many: '', on: true },
+  ] as const
+
+  const visible: OfferingRowData[] = rows
+    .filter(r => r.on)
+    .map(r => ({
+      href: r.href,
+      label: r.label,
+      icon: r.icon,
+      sub:
+        r.count === null
+          ? 'Session plans & templates'
+          : r.count === 0
+            ? `No ${r.many} yet — tap to create one`
+            : `${r.count} ${r.count === 1 ? r.one : r.many}`,
+    }))
 
   return (
     <>
       <PageHeader title="Offerings" />
       <div className="p-4 md:p-8 w-full md:max-w-2xl">
-        <FlatBlock>
-          {rows.map(r => (
-            <FlatRow
-              key={r.href}
-              href={r.href}
-              icon={r.icon}
-              label={r.label}
-              sub={
-                r.count === null
-                  ? 'Session plans & templates'
-                  : r.count === 0
-                    ? `No ${r.many} yet — tap to create one`
-                    : `${r.count} ${r.count === 1 ? r.one : r.many}`
-              }
-            />
-          ))}
-        </FlatBlock>
+        <OfferingsList rows={visible} />
       </div>
     </>
   )
