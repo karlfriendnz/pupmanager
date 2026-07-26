@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { Resend } from 'resend'
+import { trainerMailStopped } from '@/lib/access'
 
 function escapeHtml(str: string): string {
   return str
@@ -38,7 +39,19 @@ export async function GET(req: Request) {
     },
     include: {
       user: { select: { email: true, name: true, timezone: true } },
-      trainer: { select: { businessName: true } },
+      // subscriptionStatus & co. drive the access check below: this cron talks
+      // to Resend directly, so it never passes through sendEmail() and does NOT
+      // inherit the trainerMailStopped guard that stops mail to lapsed trainers.
+      // deactivatedAt lives on User, not TrainerProfile — a deactivated account
+      // is a deactivated person. Selecting it on the profile silently
+      // invalidates the whole select (tsc caught it as 9 cascading errors).
+      trainer: {
+        select: {
+          businessName: true, subscriptionStatus: true, trialEndsAt: true,
+          stripeSubscriptionId: true, gracePeriodUntil: true,
+          user: { select: { deactivatedAt: true } },
+        },
+      },
       diaryEntries: {
         where: { date: today },
         include: { completion: true },
@@ -49,9 +62,22 @@ export async function GET(req: Request) {
   let sent = 0
   const errors: string[] = []
 
+  let skippedLapsed = 0
+
   for (const client of clients) {
     const pendingTasks = client.diaryEntries.filter(t => !t.completion)
     if (pendingTasks.length === 0) continue
+
+    // Karl's call (2026-07-27): when a trainer's subscription lapses, their
+    // clients stop getting these too. The homework is the trainer's programme —
+    // nagging an owner about tasks for a trainer who can no longer open the app,
+    // reply, or mark anything off is a reminder nobody can act on, sent under
+    // that trainer's business name. Same helper as the paywall and sendEmail(),
+    // so the three can't drift apart.
+    if (trainerMailStopped({ ...client.trainer, deactivatedAt: client.trainer.user?.deactivatedAt ?? null })) {
+      skippedLapsed++
+      continue
+    }
 
     try {
       await resend.emails.send({
@@ -83,5 +109,7 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ sent, errors })
+  // skippedLapsed is reported so a sudden drop in `sent` is explainable rather
+  // than looking like the cron silently breaking.
+  return NextResponse.json({ sent, skippedLapsed, errors })
 }
