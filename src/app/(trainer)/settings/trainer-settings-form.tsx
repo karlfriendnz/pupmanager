@@ -314,7 +314,11 @@ export function TrainerSettingsForm({
         <Accordion>
       {/* Design */}
       <AccordionItem title="Design" subtitle="Logo and brand colour" defaultOpen>
-        <div className="flex flex-col gap-6">
+        {/* Controls left, live preview right — one card, two columns. The
+            preview used to sit BELOW the controls with the card's right-hand
+            half empty. On a phone it stacks, preview under the controls,
+            since the controls are what you came here to change. */}
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1">
         {designMsg && <Alert variant={designMsg === 'Saved!' ? 'success' : 'error'} className="mb-3">{designMsg}</Alert>}
         <form onSubmit={designForm.handleSubmit(saveDesign)} className="flex flex-col gap-4">
@@ -434,7 +438,7 @@ export function TrainerSettingsForm({
           <Button type="submit" size="sm" className="self-start" loading={designForm.formState.isSubmitting}>Save design</Button>
         </form>
         </div>
-        <div className="hidden lg:block">
+        <div className="lg:w-[260px] lg:flex-shrink-0" data-testid="brand-preview-column">
           <div className="w-[228px] mx-auto">
             <BrandPreview
               businessName={businessForm.watch('businessName')}
