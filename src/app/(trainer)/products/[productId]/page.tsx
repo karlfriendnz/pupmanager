@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
+import { effectivePriceCents } from '@/lib/product-price'
 import { PageHeader } from '@/components/shared/page-header'
 import { ProductDetail } from './product-detail'
 import type { Purchase } from './product-purchases'
@@ -85,7 +86,9 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
       clientName: r.client.user?.name ?? 'A client',
       dogName: r.client.dog?.name ?? null,
       state: r.status === 'FULFILLED' ? 'OWING' : 'REQUESTED',
-      amountCents: r.status === 'FULFILLED' ? (product.salePriceCents ?? product.priceCents) : null,
+      // What they'll be billed — the sale price when there is one, same as the
+      // invoice raised for them.
+      amountCents: r.status === 'FULFILLED' ? effectivePriceCents(product) : null,
       at: r.createdAt.toISOString(),
     }))
 
