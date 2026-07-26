@@ -1,5 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
-import { SEED } from './test-db'
+import { PrismaClient } from '../../src/generated/prisma/index.js'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { SEED, TEST_DATABASE_URL } from './test-db'
 
 // End-to-end for the payment-agnostic invoicing flow (assign → receivable →
 // Finances + client profile, edit line items, partial-payment display, and the
@@ -17,6 +19,25 @@ async function login(page: Page, email: string, password: string) {
 
 const INV = SEED.invoicing
 const futureIso = () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+
+// The line-editing test below edits the SHARED seeded "Editable Invoice", and
+// saving lines legitimately relabels the invoice after its first line (see the
+// PATCH on receivables/[id]: `description: lines[0].description`). So the row
+// stops being findable as "Editable Invoice" — it becomes "Consult" — for every
+// later spec that looks for it by name. Put the seeded fixture back.
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
+
+test.afterAll(async () => {
+  await prisma.invoice.updateMany({
+    where: { id: INV.editableInvoiceId },
+    data: { description: 'Editable Invoice', amountCents: 20000 },
+  })
+  await prisma.invoiceLineItem.updateMany({
+    where: { invoiceId: INV.editableInvoiceId },
+    data: { unitAmountCents: 20000, amountCents: 20000 },
+  })
+  await prisma.$disconnect()
+})
 
 test.describe('invoicing — assign a priced package raises a receivable', () => {
   test('"Create an invoice" → invoice appears in Finances and on the client profile', async ({ page }) => {

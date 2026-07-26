@@ -1,5 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
-import { SEED } from './test-db'
+import { PrismaClient } from '../../src/generated/prisma/index.js'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { SEED, TEST_DATABASE_URL } from './test-db'
 
 // The schedule's layout choice follows the trainer, per device class: a phone
 // remembers the day column, a desktop remembers the week, and neither
@@ -8,6 +10,21 @@ import { SEED } from './test-db'
 
 const PHONE = { width: 390, height: 844 }
 const DESKTOP = { width: 1440, height: 900 }
+
+// This spec is the only one that deliberately writes a layout preference, and
+// the whole suite shares one seeded trainer. Leaving `scheduleView: 'day'`
+// behind swaps every later spec's desktop schedule from the week GRID to the
+// day LIST — and only the grid renders session blocks — so put the seeded
+// default (null ⇒ week on desktop, day on phone) back afterwards.
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
+
+test.afterAll(async () => {
+  await prisma.trainerProfile.updateMany({
+    where: { businessName: SEED.owner.businessName },
+    data: { scheduleView: null, scheduleMobileView: null },
+  })
+  await prisma.$disconnect()
+})
 
 async function login(page: Page, email: string, password: string) {
   await page.goto('/login')

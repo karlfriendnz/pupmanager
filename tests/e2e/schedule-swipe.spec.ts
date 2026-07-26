@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
+import { PrismaClient } from '../../src/generated/prisma/index.js'
+import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
 
 // On mobile the schedule can be swiped left/right to move through days:
@@ -6,7 +8,19 @@ import { SEED, TEST_DATABASE_URL } from './test-db'
 // - 3-day view → next / previous set of 3 days
 // This mirrors the existing Prev/Next controls, wired to touch.
 
-void TEST_DATABASE_URL
+// Picking "3 days" below is a real trainer action, so it PERSISTS on the shared
+// seeded trainer (TrainerProfile.scheduleMobileView). Put the seeded default
+// back or every later phone-sized spec opens the 3-day grid instead of the day
+// list it expects.
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
+
+test.afterAll(async () => {
+  await prisma.trainerProfile.updateMany({
+    where: { businessName: SEED.owner.businessName },
+    data: { scheduleView: null, scheduleMobileView: null },
+  })
+  await prisma.$disconnect()
+})
 
 // Phone-sized viewport so the schedule renders its mobile day view
 // (isMobile = innerWidth < 640; the parent also defaults to the day view < 768).
