@@ -94,6 +94,18 @@ export default async function globalSetup() {
     await prisma.trainerAddon.create({
       data: { trainerId: profile.id, itemId: 'todos', active: true },
     })
+    // Achievements is a PAID add-on, so unlike the free ones above it cannot be
+    // switched on through /api/addons from a trial account — the achievement
+    // specs were hitting the add-on gate and being redirected to the Add-ons
+    // tab. That made the cross-tenant test read a 200 and look like a tenancy
+    // leak, when the tenancy query was never reached at all. Seeded as an
+    // admin-granted comp, which is the real mechanism for free access.
+    await prisma.billingItem.create({
+      data: { id: 'achievements', kind: 'ADDON', name: 'Client achievements', description: 'Branded badges clients earn', priceMonthly: 19, sortOrder: 11, isActive: true },
+    })
+    await prisma.trainerAddon.create({
+      data: { trainerId: profile.id, itemId: 'achievements', active: true, grantedByAdmin: true },
+    })
     // Group classes is free + default-on (no TrainerAddon row = enabled), but
     // toggling it writes a TrainerAddon whose itemId is an FK to BillingItem —
     // without this row the toggle 500s on the constraint.
