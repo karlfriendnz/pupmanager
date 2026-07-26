@@ -420,7 +420,7 @@ export function IntakeGate({ businessName, trainerLogoUrl, customFields, section
                 value={contact.phone}
                 onChange={v => setContact(c => ({ ...c, phone: v }))}
                 type="tel"
-                placeholder="So your trainer can reach you"
+                placeholder={`So ${businessName} can reach you`}
               />
             )}
             {currentStep.fields.map(({ field, valueKey }) => (

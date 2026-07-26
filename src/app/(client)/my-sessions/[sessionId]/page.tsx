@@ -133,7 +133,7 @@ export default async function ClientSessionPage({
         form: { ...form, questions: Array.isArray(form.questions) ? form.questions as unknown as ReportQuestion[] : [] },
       }]
     } else {
-      pendingMessage = 'Your trainer hasn’t written up this session yet — check back after the class.'
+      pendingMessage = 'This session hasn’t been written up yet — check back after the class.'
     }
   }
 

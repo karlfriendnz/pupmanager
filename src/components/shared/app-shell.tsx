@@ -387,7 +387,7 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
   }
   const pathname = usePathname()
   // Append a "Switch trainer" entry when the client works with 2+ trainers.
-  const switchItem = { href: '/switch-trainer', label: 'Switch trainer', icon: ArrowLeftRight }
+  const switchItem = { href: '/switch-trainer', label: 'Switch', icon: ArrowLeftRight }
   // Hide any nav item the trainer's add-ons disable (e.g. /my-shop when the
   // client-shop add-on is off).
   const shown = <T extends { href: string }>(items: T[]) => items.filter(i => !hiddenNavHrefs.includes(i.href))

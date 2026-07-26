@@ -31,7 +31,7 @@ export default async function MyDogsPage() {
           <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-8 text-center">
             <div className="mx-auto h-12 w-12 rounded-2xl bg-accent-soft flex items-center justify-center"><DogIcon className="h-6 w-6 text-accent" /></div>
             <p className="mt-3 text-sm font-semibold text-slate-700">No dogs added yet</p>
-            <p className="mt-1 text-xs text-slate-400">Your trainer will add your dog after onboarding.</p>
+            <p className="mt-1 text-xs text-slate-400">Your dog will show up here once they&apos;ve been added.</p>
           </div>
         )}
         {dogs.map(d => {

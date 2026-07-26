@@ -97,7 +97,7 @@ export function SessionReport({
       {formResponses.length === 0 && tasks.length === 0 && attachments.length === 0 && (
         <Card>
           <CardBody className="py-8 text-center text-slate-400 text-sm">
-            Your trainer hasn&apos;t added a report for this session yet.
+            There&apos;s no report for this session yet.
           </CardBody>
         </Card>
       )}

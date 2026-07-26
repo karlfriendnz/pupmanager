@@ -34,7 +34,7 @@ export default async function InvitePage({
   }
 
   if (record.expires < new Date()) {
-    return <InvalidInvite reason="This invitation link has expired. Ask your trainer to send a new one." />
+    return <InvalidInvite reason="This invitation link has expired. Ask whoever invited you to send a new one." />
   }
 
   const user = await prisma.user.findUnique({
@@ -137,8 +137,8 @@ export default async function InvitePage({
                 ? `${trainerLabel} has set up a training space for ${dogList}.`
                 : `${trainerLabel} has set up your training space.`
               : dogList
-                ? `Your trainer has set up a training space for ${dogList}.`
-                : 'Your trainer has set up your training space.'
+                ? `A training space has been set up for ${dogList}.`
+                : 'Your training space is ready.'
             : isClient
               ? 'Your account is ready.'
               : "You've been invited to join a training team."}
@@ -149,7 +149,7 @@ export default async function InvitePage({
         <CardBody className="pt-6 flex flex-col gap-4 text-sm text-slate-600">
           <p>
             {branded && dogList
-              ? `Set a password to finish setting up your account and follow ${dogList}'s training, message your trainer, and see every session.`
+              ? `Set a password to finish setting up your account and follow ${dogList}'s training, send messages, and see every session.`
               : 'Set a password to finish setting up your account — you’ll use it to sign in here and in the app.'}
           </p>
           <InviteFlow

@@ -29,7 +29,7 @@ export function PublicClasses({ formId, runs, currency }: { formId: string; runs
           <div className="mx-auto h-12 w-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl">✓</div>
           <h1 className="mt-4 text-lg font-semibold text-slate-900">Request sent</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Thanks! Your trainer will be in touch to confirm your spot{selected ? ` in ${selected.name}` : ''}.
+            Thanks! You&apos;ll hear back to confirm your spot{selected ? ` in ${selected.name}` : ''}.
           </p>
         </div>
       </div>

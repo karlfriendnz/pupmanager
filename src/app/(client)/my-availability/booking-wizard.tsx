@@ -927,7 +927,7 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogIds, onT
 
       {paidButNoPayments ? (
         <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 text-sm text-slate-500">
-          This class needs payment your trainer hasn&apos;t switched on yet — ask them to enrol you.
+          This class needs payment, which isn&apos;t switched on yet — ask to be enrolled.
         </div>
       ) : dropping ? (
         <StickyCta disabled={needsSession} onClick={onContinue}>
@@ -1055,7 +1055,7 @@ function EventTicketStep({ ev, tz, currency, acceptPayments, dogs, dogIds, onTog
 
       {paidButNoPayments ? (
         <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 text-sm text-slate-500">
-          This event needs payment your trainer hasn&apos;t switched on yet — ask them to book you in.
+          This event needs payment, which isn&apos;t switched on yet — ask to be booked in.
         </div>
       ) : soldOut ? (
         <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 text-sm text-slate-500">

@@ -95,7 +95,7 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
 
         {task.trainerNote && (
           <div className="mt-4 rounded-2xl bg-accent-soft p-3.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">From your trainer</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">Note for you</p>
             <p className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{task.trainerNote}</p>
           </div>
         )}

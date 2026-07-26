@@ -426,7 +426,7 @@ export function ClientHomeView({
           {/* ─── Trainer note ─── */}
           {latestMessage && (
             <section className="px-4">
-              <SectionHeader title="From your trainer" />
+              <SectionHeader title={`From ${businessName}`} />
               <Link href="/my-messages" className="mt-3 flex items-start gap-3 rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 active:scale-[0.99] transition-transform">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent font-semibold text-sm flex-shrink-0">{latestMessage.from[0]?.toUpperCase() ?? '?'}</div>
                 <div className="flex-1 min-w-0">

@@ -43,7 +43,7 @@ export default async function PayPage({ params, searchParams }: {
   })
 
   if (!invoice) {
-    return <NeutralCard title="Invoice not found" body="This payment link is invalid or has expired. Please check with your trainer." />
+    return <NeutralCard title="Invoice not found" body="This payment link is invalid or has expired. Ask for a new one." />
   }
   if (invoice.status === 'CANCELLED') {
     return <NeutralCard title="Invoice cancelled" body="This invoice has been cancelled — no payment is needed." />

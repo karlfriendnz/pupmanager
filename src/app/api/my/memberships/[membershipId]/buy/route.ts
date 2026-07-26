@@ -45,7 +45,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ member
     select: { acceptPaymentsEnabled: true, connectChargesEnabled: true, connectAccountId: true, payoutCurrency: true, sandboxBilling: true },
   })
   if (!trainer?.acceptPaymentsEnabled || !trainer.connectChargesEnabled || !trainer.connectAccountId) {
-    return NextResponse.json({ error: 'Your trainer hasn’t enabled payments yet.' }, { status: 409 })
+    return NextResponse.json({ error: 'Payments aren’t switched on yet.' }, { status: 409 })
   }
   const sandbox = trainer.sandboxBilling
   if (!isConnectConfigured(sandbox)) return NextResponse.json({ error: 'Payments are not configured yet' }, { status: 503 })

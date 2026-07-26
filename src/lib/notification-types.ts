@@ -340,7 +340,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   CLIENT_ADDED_TO_PLAN: {
     type: 'CLIENT_ADDED_TO_PLAN',
     label: 'Added to a plan',
-    description: "When your trainer books you into a consult, class or session.",
+    description: "When you're booked into a consult, class or session.",
     trigger: 'event',
     audience: 'client',
     channels: ['PUSH', 'EMAIL', 'IN_APP'],
@@ -406,7 +406,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   CLIENT_PAYMENT_REQUEST: {
     type: 'CLIENT_PAYMENT_REQUEST',
     label: 'Payment requests',
-    description: 'When your trainer asks you to pay for something you booked.',
+    description: "When you're asked to pay for something you booked.",
     trigger: 'event',
     audience: 'client',
     channels: ['PUSH', 'IN_APP'],
@@ -427,7 +427,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   CLIENT_RECAP_READY: {
     type: 'CLIENT_RECAP_READY',
     label: 'Session recaps',
-    description: "When your trainer posts the write-up for a session.",
+    description: 'When the write-up for a session is posted.',
     trigger: 'event',
     audience: 'client',
     channels: ['PUSH', 'EMAIL', 'IN_APP'],
@@ -445,7 +445,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   CLIENT_NEW_MESSAGE: {
     type: 'CLIENT_NEW_MESSAGE',
     label: 'Messages',
-    description: 'When your trainer sends you a message.',
+    description: 'When you get a new message.',
     trigger: 'event',
     audience: 'client',
     channels: ['PUSH', 'EMAIL', 'IN_APP'],
@@ -467,8 +467,8 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   },
   TRAINER_COMMENTED_LOG: {
     type: 'TRAINER_COMMENTED_LOG',
-    label: 'Trainer replies to your log',
-    description: "When your trainer comments on one of your practice logs.",
+    label: 'Replies to your log',
+    description: 'When one of your practice logs gets a reply.',
     trigger: 'event',
     audience: 'client',
     channels: ['PUSH', 'EMAIL', 'IN_APP'],

@@ -57,7 +57,7 @@ export default async function AchievementsPage() {
           <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-8 text-center">
             <p className="text-4xl">🏆</p>
             <p className="mt-2 text-sm font-semibold text-slate-700">No badges yet</p>
-            <p className="mt-1 text-xs text-slate-400">Your trainer hasn’t set up achievements yet.</p>
+            <p className="mt-1 text-xs text-slate-400">No achievements have been set up yet.</p>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-3">

@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: 'Help' }
 
 const FAQ = [
   { q: 'How do I log my training?', a: 'Open "My Diary", find today\'s tasks, and tap the circle next to each task to mark it complete. You can also add a note or video link.' },
-  { q: 'Why can\'t I see my tasks?', a: 'Your trainer assigns tasks each day. If nothing appears, check that you\'re viewing today\'s date or contact your trainer.' },
+  { q: 'Why can\'t I see my tasks?', a: 'Tasks are set for you each day. If nothing appears, check that you\'re viewing today\'s date, or get in touch using the contact details on this page.' },
   { q: 'How do I upload a video of my dog?', a: 'After completing a task, tap "Add a note or video". You can paste a YouTube link or upload a video directly from your device.' },
   { q: 'How do I change my notification settings?', a: 'Go to My Profile and toggle "Email reminders" on or off.' },
 ]
@@ -46,7 +46,7 @@ export default async function ClientHelpPage() {
       {/* Trainer contact — HELP-03 */}
       {trainer && (
         <div className="mb-8">
-          <h2 className="font-semibold text-slate-900 mb-3">Contact your trainer</h2>
+          <h2 className="font-semibold text-slate-900 mb-3">Get in touch</h2>
           <Card>
             <CardBody className="pt-4 pb-4">
               <p className="font-medium text-slate-900">{trainer.businessName}</p>

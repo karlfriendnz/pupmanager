@@ -126,7 +126,7 @@ export function TrainingLogPanel({
               onChange={e => setNote(e.target.value)}
               rows={3}
               maxLength={2000}
-              placeholder="How was the practice? Anything to flag for your trainer?"
+              placeholder="How was the practice? Anything to flag?"
               className="mt-1.5 w-full rounded-2xl border border-slate-200 px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
@@ -220,7 +220,7 @@ export function TrainingLogPanel({
                   {log.videoUrl && <VideoPlayer src={log.videoUrl} className="mt-2" />}
                   {log.trainerComment && (
                     <div className="mt-2 rounded-2xl bg-accent-soft p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">From your trainer</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-accent/80">Reply</p>
                       <p className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">{log.trainerComment}</p>
                     </div>
                   )}

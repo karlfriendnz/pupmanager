@@ -28,8 +28,8 @@ function priceLabel(m: ClientMembership, currency: string): string {
 // Plain-language reason a package can't just be bought, shown beside the
 // Request button so the client is never left guessing what happened.
 const BLOCKED_COPY: Record<'RECURRING' | 'NO_PRICE', string> = {
-  RECURRING: 'This one bills you regularly, so your trainer has to set it up at their end.',
-  NO_PRICE: 'Your trainer hasn’t put a price on this one yet.',
+  RECURRING: 'This one bills you regularly, so it has to be set up for you before you can buy it.',
+  NO_PRICE: 'This one doesn’t have a price on it yet.',
 }
 
 export function MembershipCards({ memberships, currency }: { memberships: ClientMembership[]; currency: string }) {
@@ -136,7 +136,7 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
                     </p>
                     {requested[m.id] ? (
                       <p className="mt-2 flex items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-600">
-                        <Check className="h-4 w-4" /> Requested — your trainer will be in touch
+                        <Check className="h-4 w-4" /> Requested — you&apos;ll hear back soon
                       </p>
                     ) : (
                       <button onClick={() => request(m.id)} disabled={busy === m.id} className="mt-2 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: btn.background, color: btn.color }}>

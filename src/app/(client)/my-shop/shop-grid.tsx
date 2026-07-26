@@ -128,7 +128,7 @@ export function ShopGrid({
         </div>
         <p className="mt-4 text-sm font-medium text-slate-600">Shop is opening soon</p>
         <p className="mt-1 text-xs text-slate-400 max-w-xs">
-          Your trainer is curating products for you and your dog.
+          Products for you and your dog are on their way.
         </p>
       </div>
     )
@@ -314,7 +314,7 @@ function ProductModal({
             </div>
           ) : !inStock(product.stockCount) ? (
             <div className="w-full rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-center text-sm text-slate-500">
-              Out of stock — ask your trainer when it&apos;s back.
+              Out of stock — ask when it&apos;s back.
             </div>
           ) : payable ? (
             <button
@@ -355,7 +355,7 @@ function ProductModal({
 
           {!canDownload && !payable && (
             <p className="text-[11px] text-slate-400 text-center">
-              Your trainer will bring this to your next session.
+              You&apos;ll get this at your next session.
             </p>
           )}
           {payable && !digitalBlockedNative && (

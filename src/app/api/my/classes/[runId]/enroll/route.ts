@@ -252,7 +252,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       select: { acceptPaymentsEnabled: true, connectChargesEnabled: true, connectAccountId: true, payoutCurrency: true, sandboxBilling: true, defaultRequirePayment: true },
     })
     if (!trainer?.acceptPaymentsEnabled || !trainer.connectChargesEnabled || !trainer.connectAccountId) {
-      return NextResponse.json({ error: 'This class needs payment, which your trainer hasn’t enabled yet.' }, { status: 409 })
+      return NextResponse.json({ error: 'This class needs payment, which isn’t switched on yet.' }, { status: 409 })
     }
     if (!resolveRequirePayment(run.requirePayment, trainer.defaultRequirePayment)) {
       payLater = true

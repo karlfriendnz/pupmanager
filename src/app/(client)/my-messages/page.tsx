@@ -51,9 +51,11 @@ export default async function ClientMessagesPage() {
         <div className="h-9 w-9 rounded-full bg-accent-soft text-accent font-bold text-sm flex items-center justify-center flex-shrink-0">
           {trainerName[0].toUpperCase()}
         </div>
+        {/* The name alone is the whole label — a chat header doesn't need to
+            say what the other person is, and "your trainer" is wrong for a
+            groomer, walker or daycare. */}
         <div className="min-w-0">
           <p className="font-semibold text-slate-900 text-sm truncate">{trainerName}</p>
-          <p className="text-xs text-slate-500">Your trainer</p>
         </div>
       </div>
 

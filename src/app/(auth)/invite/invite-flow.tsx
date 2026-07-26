@@ -50,7 +50,7 @@ export function InviteFlow({
     })
 
     if (!res || res.error) {
-      setError('This invitation could not be accepted. Ask your trainer to send a new link.')
+      setError('This invitation could not be accepted. Ask whoever invited you to send a new link.')
       setLoading(false)
       return
     }

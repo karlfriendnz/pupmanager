@@ -99,7 +99,7 @@ export default async function MyInvoicesPage() {
             </div>
             <p className="mt-3 text-sm font-semibold text-slate-700">No invoices yet</p>
             <p className="mt-1 text-xs text-slate-400">
-              When {data.businessName ?? 'your trainer'} invoices you, it will show up here — with a way to pay it.
+              {data.businessName ? `When ${data.businessName} invoices you, it` : 'When you get an invoice, it'} will show up here — with a way to pay it.
             </p>
           </div>
         ) : (

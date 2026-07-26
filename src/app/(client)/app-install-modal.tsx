@@ -61,7 +61,7 @@ export function AppInstallModal() {
         <div className="text-4xl" aria-hidden>🎉</div>
         <h2 className="mt-2 text-xl font-bold text-slate-900">You&apos;re all set!</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Get the app to follow your dog&apos;s training, message your trainer, and get
+          Get the app to follow your dog&apos;s training, send messages, and get
           session reminders — wherever you are.
         </p>
 
