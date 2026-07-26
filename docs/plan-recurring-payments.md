@@ -95,16 +95,48 @@ Any recurring design that doesn't reproduce all four is a regression.
 
 What genuinely transfers:
 
-- **The dual-mode pattern.** `stripeFor(sandbox)` picks the live vs test key
-  pair off `TrainerProfile.sandboxBilling`. Every Stripe call in the new code
-  must go through it. Every new row must carry a `sandbox` boolean, like
-  `Payment.sandbox` and `MembershipPurchase.sandbox` already do.
+- **The dual-mode pattern.** `stripeFor(sandbox)` (`src/lib/stripe.ts:36`) picks
+  the live vs test key pair (`STRIPE_SECRET_KEY` vs `STRIPE_SECRET_KEY_TEST`)
+  off `TrainerProfile.sandboxBilling`. API version is pinned at
+  `2026-04-22.dahlia` (`stripe.ts:17`) — subscription code must be written
+  against that version, not whatever the docs show today. Every Stripe call in
+  the new code must go through `stripeFor()`. Every new row must carry a
+  `sandbox` boolean, like `Payment.sandbox` and `MembershipPurchase.sandbox`
+  already do.
 - **The webhook shape** — dual signing-secret verification (try live secret,
   then test secret; whichever verifies tells you the mode). Copy
   `connect/route.ts:57-91` exactly.
 - **Storing a price id per currency in the DB rather than in code**
   (`resolvePriceId`). The idea transfers; the table does not, because Prices
   will now be per-trainer.
+
+**What it does NOT give us — worth knowing before you assume it's a template:**
+
+- It handles only four events (`checkout.session.completed`,
+  `customer.subscription.created/updated/deleted`). **There is no
+  `invoice.paid` or `invoice.payment_failed` handler anywhere in this
+  codebase.** `past_due` is only ever reached indirectly, by
+  `mapStripeStatus()` reading the subscription object's status.
+- **It has no event-deduplication table.** Dedupe is effect-level only —
+  idempotent field updates, plus one-off guards like `isFounder` and
+  `convertedAt`. That is survivable for four events on our own account; it is
+  not survivable for a per-cycle billing loop across hundreds of connected
+  accounts (see §6).
+
+So the dunning, retry and invoice-lifecycle code is genuinely **new work**, not
+a copy.
+
+### 1.2b Refunds already work — and already do the right thing
+
+`src/app/api/trainer/payments/[id]/refund/route.ts` exists: OWNER-only, CSRF
+guarded, rate-limited, issues the refund in the connected account's context
+**with `refund_application_fee`** so PupManager's cut is reversed
+proportionally, writes a `Refund` row (`prisma/schema.prisma:2534`), and lets
+the existing `charge.refunded` webhook reconcile `Payment.amountRefunded` and
+status.
+
+That answers §5.6's "do we give our cut back?" — **the code already says yes**,
+and recurring should reuse this route unchanged.
 
 ### 1.3 The rollout gate — the allowlist is GONE
 
@@ -129,7 +161,7 @@ Any rollout plan must be built on these, not on a reinstated allowlist.
 
 ### 1.4 The membership model
 
-`prisma/schema.prisma` (~line 3100 onward):
+`prisma/schema.prisma` (lines 3060–3236):
 
 - **`Membership`** — `priceCents`, `cadence` (`ONE_OFF` | `RECURRING`),
   `interval` (`WEEK` | `FORTNIGHT` | `MONTH`), `minTermCount` (minimum
@@ -143,12 +175,45 @@ Any rollout plan must be built on these, not on a reinstated allowlist.
 - **`MembershipItem`** — what's included. Note `regrantOnRenewal: Boolean` —
   already there, currently unused. It decides whether a bundled product is
   granted once or every cycle.
-- **`MembershipPurchase`** — `status`, `purchasedAt`, `currentPeriodEnd`
-  (marked "RECURRING", currently never written), `committedUntil` (end of the
-  minimum term), `paymentId`, `sandbox`. **The recurring fields already exist
-  and are dead. Phase 1 brings them to life rather than adding new ones.**
-- **`MembershipRequest`** — the interim ask-the-trainer flow, with `reason`,
-  `status`, `fulfilledAt`.
+- **`MembershipPurchase`** (`:3214`) — `status`
+  (`MembershipPurchaseStatus { ACTIVE, CANCELLED, LAPSED }`), `purchasedAt`,
+  `currentPeriodEnd` (marked "RECURRING"), `committedUntil` (end of the minimum
+  term), `paymentId`, `sandbox`. **The recurring fields already exist and are
+  dead — `currentPeriodEnd`, `committedUntil`, `minTermCount` and
+  `earlyTermFeeCents` are never read or written by any code path, and only
+  `status: 'ACTIVE'` is ever set (`src/lib/memberships.ts:80`). Phase 1 brings
+  them to life rather than adding new ones.** Note: `trainerId`, `clientId` and
+  `paymentId` on this model are **bare strings with no foreign keys** — only
+  `membership` is a real relation. Anything new we hang off it should not assume
+  referential integrity is enforced.
+- **`MembershipRequest`** — the interim ask-the-trainer flow.
+  `MembershipRequestReason { RECURRING, NO_PRICE }`,
+  `MembershipRequestStatus { PENDING, FULFILLED, DECLINED }`.
+
+The schema itself already names the missing piece
+(`prisma/schema.prisma:3057-3058`): recurring *"rides on the off-session mandate
+layer, **shared with puppy-school recurring billing**"*. Worth remembering — the
+module built here is meant to serve puppy school too, so keep the Stripe glue in
+a general `connect-subscriptions.ts` rather than burying it in membership code.
+
+### 1.4b How a membership is fulfilled today
+
+`src/lib/memberships.ts` → `fulfilMembershipInTx(tx, {...})`:
+
+- `PACKAGE` items → `materializeBooking()` per unit.
+- `PRODUCT` items → `takeStock()` + a `FULFILLED` `ProductRequest` per unit.
+- `CLASS` items → collected and enrolled **post-commit** (`enrollInRun` opens
+  its own transaction, so it cannot nest).
+- Then creates the `MembershipPurchase` with `status: 'ACTIVE'`.
+
+Its own comment (`memberships.ts:77-78`) says: *"Phase 1 is ONE_OFF — no term /
+period. Recurring fills committedUntil + currentPeriodEnd from the mandate
+billing run later."* That is exactly this plan.
+
+Called from two places: the Connect webhook (`route.ts:271-284`, with the real
+`payment.id`) and the trainer accept route
+(`src/app/api/membership-requests/[requestId]/route.ts`, with `paymentId: null`
+— a deliberate record that no money moved).
 
 ### 1.5 Where `buyable` is decided — in two places that agree
 
@@ -273,10 +338,20 @@ about minimum terms or early-finish fees.
 Every one of these needs a **hand-written SQL migration** in
 `prisma/migrations/`. `npm run db:push:dev` writes no migration file, and prod
 runs `prisma migrate deploy` — a pushed-but-unmigrated column is a prod build
-break. And per
-`~/.claude/.../feedback_prisma_migration_table_names.md`: **hand-written SQL must
-use the `@@map` snake_case table names** (`membership_purchases`, not
-`MembershipPurchase`), or `migrate deploy` fails 42P01 and takes the build down.
+break.
+
+**The house convention** (see `prisma/migrations/20260727140000_membership_requests/`):
+a timestamped directory, a leading `--` prose comment explaining *why*, then
+`CREATE TYPE … AS ENUM`, `CREATE TABLE "snake_case_table"` with quoted camelCase
+columns, `TIMESTAMP(3)` / `DEFAULT CURRENT_TIMESTAMP`, an explicit
+`CONSTRAINT "<table>_pkey" PRIMARY KEY`, then separate `CREATE INDEX` and
+`ALTER TABLE … ADD CONSTRAINT "<table>_<col>_fkey"` statements. No
+Prisma-generated banners, no transaction wrapper.
+
+**The trap** (recorded in `feedback_prisma_migration_table_names.md`):
+hand-written SQL must use the `@@map` snake_case table names
+(`membership_purchases`, not `MembershipPurchase`), or `migrate deploy` fails
+42P01 and takes the prod build down.
 
 ### 4.1 `MembershipPlan` — cache the Stripe Price ids
 
@@ -303,7 +378,8 @@ Prefer the backfill: one code path is worth a migration.
 planId                 String?   // which MembershipPlan was bought
 stripeSubscriptionId   String?   @unique
 stripeCustomerId       String?
-status                 → add PAST_DUE, CANCELLING, CANCELLED, PAUSED
+status                 → enum is currently { ACTIVE, CANCELLED, LAPSED };
+                         add PAST_DUE, CANCELLING, PAUSED
 currentPeriodStart     DateTime?
 cancelAtPeriodEnd      Boolean   @default(false)
 cancelledAt            DateTime?
@@ -440,17 +516,20 @@ without a word is a support ticket every time.
 
 ### 5.6 Refunds
 
-Refunding a subscription invoice is refunding the underlying charge:
-`stripe.refunds.create({ charge }, { stripeAccount })`. The existing
-`charge.refunded` handler (`connect/route.ts:598-617`) already reconciles
-`Payment.amountRefunded` idempotently from `charge.amount_refunded`, and will
-work unchanged **if** each cycle also produces a `Payment` row.
+**Mostly already solved.** `src/app/api/trainer/payments/[id]/refund/route.ts`
+refunds in the connected account's context and passes `refund_application_fee`,
+so our cut goes back proportionally — a trainer is never charged a platform fee
+on money they gave back. The `charge.refunded` handler
+(`connect/route.ts:598-617`) reconciles `Payment.amountRefunded` idempotently
+from `charge.amount_refunded`.
 
-**The application fee does not come back automatically.** When a trainer refunds
-a client, our cut stays with us unless we pass `refund_application_fee: true`.
-Charging a trainer a platform fee on money they gave back is indefensible.
-**Decide: always refund our fee proportionally.** (Open question in §10, but the
-answer is obvious.)
+All of that works unchanged for recurring **provided each cycle also produces a
+`Payment` row** (§6.5). That is the main reason to create one.
+
+The only new bit is the trainer-facing UI: a refund button on a *cycle* rather
+than on a one-off purchase, and a decision about whether refunding a cycle also
+cancels the subscription (it should not, automatically — offer it as a separate
+tick).
 
 ### 5.7 Disputes / chargebacks
 
@@ -518,6 +597,8 @@ Stripe now sends events *forever*, not once per checkout.
 2. **Natural keys.** `MembershipInvoice.stripeInvoiceId` is `@unique`.
    `MembershipPurchase.stripeSubscriptionId` is `@unique`. Upsert against them
    rather than create. Even with a bug upstream, the DB refuses the duplicate.
+   (`Payment` already does this — `stripeCheckoutSessionId` and
+   `stripePaymentIntentId` are both `@unique`. Keep the habit.)
 3. **Re-check inside the transaction**, exactly as `markPaidAndFulfil` does at
    `route.ts:216-218`.
 
@@ -618,7 +699,7 @@ No allowlist exists any more (§1.3), so the gate is built from what's there:
 1. **Test keys only.** A trainer with `sandboxBilling = true` and a Connect
    Express test account. Every Stripe call already routes to test keys through
    `stripeFor(sandbox)`. Real cards cannot be charged. Prove the full lifecycle
-   here with test clocks (§10... §Test strategy below).
+   here with test clocks (§10).
 2. **A feature flag on the trainer.** Add
    `TrainerProfile.recurringPaymentsEnabled Boolean @default(false)`. `buyable`
    in `client-memberships.ts` and the buy route both check it. This is the
@@ -641,7 +722,7 @@ that `STRIPE_CONNECT_WEBHOOK_SECRET` / `_TEST` are set.
 
 Per `AGENTS.md`, tests ship **with** the feature, not after.
 
-**Unit (`tests/unit/**/*.test.ts`, vitest, Prisma mocked with `vi.hoisted`):**
+**Unit** — `tests/unit/`, vitest, Prisma mocked with `vi.hoisted`:
 
 - Price/Product resolution: cache hit, cache miss, invalidation after a price
   edit.
@@ -737,6 +818,41 @@ The smallest thing that is genuinely useful.
 
 ---
 
+## 11b. The files that change
+
+So the size is concrete rather than abstract.
+
+**New:**
+
+- `src/lib/connect-subscriptions.ts` — the whole Stripe subscription layer
+  (ensure Customer, ensure Product/Price, create subscription checkout, cancel,
+  update card). Kept general because puppy-school recurring billing is meant to
+  share it (`schema.prisma:3057-3058`).
+- `src/lib/membership-billing.ts` — the PupManager-side lifecycle: activate,
+  renew, mark past due, cancel, regrant `regrantOnRenewal` items.
+- Migrations under `prisma/migrations/` (§4).
+- Client cancel + update-card screens under `src/app/(client)/my-memberships/`.
+- Tests under `tests/unit/`, `tests/unit/security/`, `tests/e2e/`.
+
+**Changed:**
+
+- `src/app/api/my/memberships/[membershipId]/buy/route.ts` — the 409 at `:36-38`
+  becomes the subscription branch.
+- `src/lib/client-memberships.ts:96` — `buyable` stops meaning "ONE_OFF only".
+- `src/app/api/webhooks/stripe/connect/route.ts` — the event ledger at the top,
+  plus the eight new handlers in §6.1.
+- `src/lib/memberships.ts` — `fulfilMembershipInTx` gains the recurring path
+  (write `currentPeriodEnd`, `committedUntil`, `planId`).
+- `src/components/shared/membership-cards.tsx` — the "no mandate layer yet"
+  branch at `:122` becomes a real Subscribe button.
+- `prisma/schema.prisma`.
+- Trainer side: `src/app/(trainer)/memberships/` for viewing/cancelling a
+  client's subscription; `src/app/(trainer)/dashboard/pending-requests-panel.tsx`
+  and `src/lib/membership-request-shape.ts` lose the `RECURRING` reason once
+  clients can just buy (keep `NO_PRICE`).
+
+---
+
 ## 12. Open questions — only Karl can answer these
 
 The schema depends on the first three. **Answer before Phase 1 starts.**
@@ -760,11 +876,12 @@ The schema depends on the first three. **Answer before Phase 1 starts.**
    setting** rather than a global rule. *(Affects §5.2 and adds a
    `TrainerProfile` column if it's a setting.)*
 
-4. **Refund policy.** Do we always refund our application fee proportionally
-   when a trainer refunds a client? (I think obviously yes.) And is a mid-cycle
-   cancellation refunded pro-rata, or do they simply keep the rest of the
-   period? Recommendation: **keep the rest of the period, no pro-rata** — it's
-   simpler, and it's what almost every subscription does.
+4. **Refund policy for a mid-cycle cancellation** — pro-rata refund, or do they
+   simply keep the rest of the period they've paid for? Recommendation: **keep
+   the rest of the period, no pro-rata.** Simpler, and it's what almost every
+   subscription does. *(The related question — do we give our platform cut back
+   on a refund? — is already answered: yes, proportionally, see §1.2b. No
+   decision needed.)*
 
 5. **Does the early-termination fee actually get charged**, or is it just a
    deterrent shown on screen? Charging it is a one-off invoice on the connected
@@ -797,9 +914,11 @@ Stated honestly rather than guessed:
   each market before enabling that market.
 - **Whether Card Account Updater is active** for our connected accounts — it
   materially changes how often expiry causes a failure.
-- **The exact `MembershipPurchaseStatus` enum values currently defined** — I
-  read the model but not the enum; §4.2's additions assume `ACTIVE` and
-  something like `EXPIRED`/`CANCELLED` already exist and may partly overlap.
+- **Whether Stripe's `2026-04-22.dahlia` API version (pinned at
+  `src/lib/stripe.ts:17`) changes any subscription field names** from what I've
+  described. The shapes here are the long-stable ones, but check
+  `node_modules/stripe` types before writing the calls rather than trusting this
+  document.
 - **Whether a nightly reconciliation cron can be added given the broken-cron
   problem** recorded in `project_broken_supabase_crons.md` — ~7 existing pg_cron
   jobs silently 401 because `app.cron_secret` is unset. **That must be fixed
