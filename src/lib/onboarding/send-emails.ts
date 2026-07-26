@@ -14,8 +14,14 @@
 //    AFTER a successful send, so a failed send retries next tick and a raced
 //    tick can't double-send.
 //  - Platform/demo addresses (@pupmanager.com) are skipped.
+//  - A trainer who cancelled, lapsed or closed their account drops out of the
+//    sequence (see the mailStopped check below). The ONE exception is the
+//    win-back — the "your trial has ended" mail exists for exactly that person,
+//    so a lapsed free trial still receives it. Someone who actively cancelled
+//    does not.
 
 import { prisma } from '@/lib/prisma'
+import { trainerMailStopped } from '@/lib/access'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { escapeHtml } from '@/lib/enquiries'
 import { getOnboardingState } from '@/lib/onboarding/state'
@@ -94,6 +100,8 @@ type ProgressRow = {
     businessName: string
     subscriptionStatus: string
     trialEndsAt: Date | null
+    stripeSubscriptionId: string | null
+    gracePeriodUntil: Date | null
     isInternal: boolean
     user: { name: string | null; email: string | null; createdAt: Date; deactivatedAt: Date | null; timezone: string }
   } | null
@@ -270,6 +278,8 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
           businessName: true,
           subscriptionStatus: true,
           trialEndsAt: true,
+          stripeSubscriptionId: true,
+          gracePeriodUntil: true,
           isInternal: true,
           user: { select: { name: true, email: true, createdAt: true, deactivatedAt: true, timezone: true } },
         },
@@ -305,6 +315,21 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
       continue
     }
 
+    // Cancel the trial, cancel the emails. Anyone the paywall locks out — a
+    // cancelled subscription, a trial that ran out, an account gone inactive —
+    // stops hearing from the sequence. Checked per-template below so the
+    // win-back can still reach a lapsed free trial. We must NOT simply let the
+    // send be swallowed downstream: this loop writes an email-log row after a
+    // "successful" send, which would burn that template's one chance for a
+    // trainer who later comes back.
+    const mailStopped = trainerMailStopped({
+      subscriptionStatus: t!.subscriptionStatus as 'ACTIVE' | 'INACTIVE' | 'TRIALING' | 'PAST_DUE' | 'CANCELLED',
+      trialEndsAt: t!.trialEndsAt,
+      stripeSubscriptionId: t!.stripeSubscriptionId,
+      gracePeriodUntil: t!.gracePeriodUntil,
+      deactivatedAt: t!.user.deactivatedAt,
+    })
+
     const alreadySent = new Set(p.emails.map(e => e.emailKey))
     const firstName = t!.user.name?.split(' ')[0]?.trim() || 'there'
     const daysLeft = t!.trialEndsAt ? Math.max(0, Math.ceil((t!.trialEndsAt.getTime() - now) / DAY_MS)) : 0
@@ -323,6 +348,15 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
       // trainer's 9am window. Skip non-immediate templates outside that window.
       const immediate = rule.type === 'on_signup'
       if (!immediate && !isSendHour) continue
+      // The win-back: "your trial has ended" is written FOR someone whose free
+      // trial ran out, so it's the one template that survives the stop — but
+      // only for a genuine lapse. A trainer who cancelled has told us to go
+      // away, and gets nothing.
+      const winback = rule.type === 'trial_ended' && t!.subscriptionStatus === 'TRIALING'
+      if (mailStopped && !winback) {
+        base.skipped++
+        continue
+      }
       base.evaluated++
       if (!(await isEligible(rule, p as ProgressRow, now))) {
         base.skipped++
@@ -330,7 +364,7 @@ export async function runOnboardingEmailDispatch(): Promise<OnboardingDispatchSt
       }
       try {
         const r = renderOnboardingEmail(tmpl, ctx)
-        await sendEmail({ to: email, subject: r.subject, html: r.html, text: r.text, from: r.from, replyTo: r.replyTo })
+        await sendEmail({ to: email, subject: r.subject, html: r.html, text: r.text, from: r.from, replyTo: r.replyTo, alwaysSend: winback })
         // Log only after a successful send; unique (progressId, emailKey) guards races.
         await prisma.trainerOnboardingEmailLog.create({ data: { progressId: p.id, emailKey: tmpl.key } }).catch(() => {})
         base.sent++

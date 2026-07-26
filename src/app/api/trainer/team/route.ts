@@ -205,6 +205,9 @@ export async function POST(req: Request) {
       replyTo: company.user.email ?? undefined,
       text: rendered.text,
       html: rendered.html,
+      // An invite is addressed to a person, not a subscription — the invitee
+      // may hold a lapsed trainer account of their own and must still get it.
+      alwaysSend: true,
     })
     if (result.error) emailError = result.error.message
   } catch (err) {

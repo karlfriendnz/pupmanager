@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import { env } from './env'
+import { isTrainerMailStopped } from './trainer-mail'
 
 let _client: Resend | null = null
 function client(): Resend {
@@ -24,9 +25,29 @@ type SendArgs = {
   // File attachments (e.g. a generated PDF). `content` is the raw bytes
   // (Buffer) or a base64 string — Resend accepts both.
   attachments?: { filename: string; content: Buffer | string }[]
+  /**
+   * Send even to a trainer we've otherwise stopped mailing (cancelled, lapsed
+   * trial, closed account). For mail a person is entitled to whatever their
+   * billing state: verification codes, password resets, a team invite, money
+   * that needs their attention, and the win-back mail asking them back.
+   * Everything else — drips, nudges, summaries, reminders, announcements — is
+   * held. See `trainerMailStopped` in lib/access.
+   */
+  alwaysSend?: boolean
 }
 
-export async function sendEmail({ to, subject, html, text, from, replyTo, attachments }: SendArgs) {
+/**
+ * The single gate every PupManager email passes through. Beyond handing the
+ * message to Resend it enforces one rule: a trainer who cancelled (or whose
+ * trial lapsed, or whose account was closed) stops hearing from us unless the
+ * caller marks the message `alwaysSend`. Held mail returns the same
+ * `{ data, error }` shape with no error, so a caller that only checks for
+ * failures treats it as a clean send.
+ */
+export async function sendEmail({ to, subject, html, text, from, replyTo, attachments, alwaysSend }: SendArgs) {
+  if (!alwaysSend && await isTrainerMailStopped(to)) {
+    return { data: null, error: null }
+  }
   return client().emails.send({
     from: from ?? PLATFORM_FROM,
     to,

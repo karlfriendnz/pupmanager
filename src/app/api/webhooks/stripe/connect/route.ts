@@ -398,6 +398,9 @@ async function fulfilClassEnrolments(
         subject: 'Action needed: a paid class enrolment couldn’t be seated',
         html: `<p>A client paid to join a class but it filled up before their payment cleared, so they weren’t enrolled.</p><p>Please seat them, offer another class, or refund from <strong>Settings → Payments</strong>.</p>`,
         text: 'A client paid to join a class but it was full when payment cleared. Seat them or refund from Settings → Payments.',
+        // Someone's money is sitting in the wrong place — this reaches them
+        // whatever their own subscription is doing.
+        alwaysSend: true,
       }).catch(err => console.error('[connect webhook] class alert failed', err))
     }
   }
@@ -448,6 +451,8 @@ async function runBookingSideEffects(
       subject: 'Action needed: a paid booking couldn’t be scheduled',
       html: `<p>A client paid for a booking but the time (${when}) was taken before their payment cleared, so it wasn’t added to your calendar.</p><p>Please rebook them at another time or refund the payment from <strong>Settings → Payments</strong>.</p>`,
       text: `A client paid but their slot (${when}) was taken before payment cleared. Rebook or refund from Settings → Payments.`,
+      // Money that needs their attention — never held back.
+      alwaysSend: true,
     }).catch(err => console.error('[connect webhook] collision alert failed', err))
   }
 }
