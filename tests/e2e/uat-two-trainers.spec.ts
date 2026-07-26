@@ -44,7 +44,7 @@ async function dismissAppPrompt(page: Page) {
 async function clearIntakeGate(page: Page) {
   const save = page.getByRole('button', { name: 'Save and continue' })
   if (!(await save.isVisible().catch(() => false))) return
-  const phone = page.getByPlaceholder('So your trainer can reach you')
+  const phone = page.getByPlaceholder(/can reach you/)
   if (await phone.isVisible().catch(() => false)) {
     if (!(await phone.inputValue())) await phone.fill('021 555 0199')
   }
@@ -254,7 +254,7 @@ test.describe('UAT — one dog owner, two trainers', () => {
       // The new trainer's gate opens with it filled in, ready to confirm or change.
       await expect(page.getByRole('heading', { name: 'Before you get started' }))
         .toBeVisible({ timeout: 15_000 })
-      await expect(page.getByPlaceholder('So your trainer can reach you'))
+      await expect(page.getByPlaceholder(/can reach you/))
         .toHaveValue('021 555 0123')
 
       // Suggested, not silently copied: this trainer's own record is still empty
