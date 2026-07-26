@@ -100,7 +100,10 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
                     <SortableOfferingCard key={e.id} id={e.id}>
                       {handle => (
                         <OfferingCard
-                          href={`/classes/${e.id}`}
+                          // An event has its own screen. It used to open the
+                          // group-class one, which lit up Group Classes in the
+                          // nav for something that isn't a class.
+                          href={`/events/${e.id}`}
                           title={e.name}
                           description={e.description}
                           imageUrl={e.imageUrl}

@@ -44,6 +44,8 @@ export async function ClassRunDetailContent({
             // without this the roster shows the same name twice with nothing
             // to tell the two bookings apart.
             dropInSession: { select: { scheduledAt: true } },
+            // Null on a class — only an event sells named ticket types.
+            ticketTier: { select: { id: true, name: true, priceCents: true } },
           },
         },
         assignedTrainers: {
@@ -133,6 +135,10 @@ export async function ClassRunDetailContent({
           dogPhotoUrl: e.dog?.photoUrl ?? null,
           attendedCount: attended,
           markedCount: e.attendance.length,
+          ticketTierId: e.ticketTier?.id ?? null,
+          ticketName: e.ticketTier?.name ?? null,
+          ticketPriceCents: e.ticketTier?.priceCents ?? null,
+          quantity: e.quantity,
           // null = no invoice raised at all; otherwise where it's got to.
           invoiceState: !inv ? null
             : inv.status === 'PAID' ? 'PAID'
