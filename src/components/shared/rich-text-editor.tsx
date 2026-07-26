@@ -9,10 +9,27 @@ import { Color } from '@tiptap/extension-color'
 import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Link as LinkIcon, Unlink, Baseline } from 'lucide-react'
 import { emailBodyToHtml } from '@/lib/email-html'
 
-// Preset text colours for the toolbar swatch. A curated palette (slate ink +
-// the accent-friendly brights) keeps descriptions readable rather than letting
-// people pick unreadable low-contrast colours.
-const TEXT_COLORS = ['#0f172a', '#ef4444', '#f97316', '#eab308', '#16a34a', '#0ea5e9', '#6366f1', '#db2777']
+// Preset text colours for the toolbar swatch. Deliberately small and on-brand —
+// ink + muted slate, the two PupManager brand colours (teal, amber), then four
+// utility brights. All are dark enough to stay readable on a white card, which
+// a free-form colour input could not guarantee.
+const TEXT_COLORS = ['#0f172a', '#64748b', '#2a9da9', '#f59e0b', '#ef4444', '#16a34a', '#0ea5e9', '#db2777']
+
+// The trainer's own brand colour (TrainerProfile.emailAccentColor) is offered as
+// an extra first swatch. Fetched once per page load and shared by every editor
+// instance — on surfaces with no trainer session (admin onboarding emails) the
+// request 401s and we simply show the presets.
+let accentPromise: Promise<string | null> | null = null
+function fetchTrainerAccent(): Promise<string | null> {
+  accentPromise ??= fetch('/api/trainer/profile')
+    .then(r => (r.ok ? r.json() : null))
+    .then((p: unknown) => {
+      const c = p && typeof p === 'object' ? (p as { emailAccentColor?: unknown }).emailAccentColor : null
+      return typeof c === 'string' && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c) ? c : null
+    })
+    .catch(() => null)
+  return accentPromise
+}
 
 // Basic rich-text editor for email bodies — headings, bold/italic, lists, links.
 // Emits HTML via onChange. `value` is the stored body (HTML, or legacy plain
@@ -107,6 +124,15 @@ function Toolbar({ editor, theme }: { editor: Editor; theme: Theme }) {
   const [showColors, setShowColors] = useState(false)
   const currentColor = editor.getAttributes('textStyle').color as string | undefined
 
+  // Trainer's brand colour first, then the presets (skipped if it's already one).
+  const [brand, setBrand] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetchTrainerAccent().then(c => { if (!cancelled) setBrand(c) })
+    return () => { cancelled = true }
+  }, [])
+  const swatches = brand && !TEXT_COLORS.includes(brand.toLowerCase()) ? [brand, ...TEXT_COLORS] : TEXT_COLORS
+
   const cls = { activeCls, idleCls }
   return (
     <div className={THEME[theme].toolbar}>
@@ -121,10 +147,10 @@ function Toolbar({ editor, theme }: { editor: Editor; theme: Theme }) {
         </ToolbarBtn>
         {showColors && (
           <div className={`absolute z-20 top-9 left-0 flex flex-wrap gap-1.5 w-[152px] p-2 rounded-lg shadow-lg border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-            {TEXT_COLORS.map(c => (
-              <button key={c} type="button" aria-label={`Colour ${c}`}
+            {swatches.map(c => (
+              <button key={c} type="button" aria-label={c === brand ? `Brand colour ${c}` : `Colour ${c}`}
                 onMouseDown={e => { e.preventDefault(); editor.chain().focus().setColor(c).run(); setShowColors(false) }}
-                className="h-6 w-6 rounded-full border border-black/10 hover:scale-110 transition-transform"
+                className={`h-6 w-6 rounded-full border hover:scale-110 transition-transform ${c === brand ? 'border-2 border-slate-400' : 'border-black/10'}`}
                 style={{ backgroundColor: c }} />
             ))}
             <button type="button"

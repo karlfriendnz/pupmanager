@@ -53,6 +53,68 @@ describe('sanitizeRichHtml', () => {
     expect(out).not.toContain('javascript')
   })
 
+  // The toolbar colour picker is the only way a trainer sets colour, so the
+  // exact markup Tiptap's TextStyle+Color mark emits must survive intact —
+  // including the trainer's own brand accent, which can be any hex.
+  it('keeps a colour set from the toolbar palette (every preset)', () => {
+    for (const c of ['#0f172a', '#64748b', '#2a9da9', '#f59e0b', '#ef4444', '#16a34a', '#0ea5e9', '#db2777']) {
+      // sanitize-html re-serialises the declaration without the space.
+      expect(sanitizeRichHtml(`<p><span style="color: ${c}">hi</span></p>`)).toBe(`<p><span style="color:${c}">hi</span></p>`)
+    }
+  })
+
+  it('keeps a 3-digit brand hex (trainer accent swatch)', () => {
+    expect(sanitizeRichHtml('<span style="color:#0a9">brand</span>')).toContain('color:#0a9')
+  })
+
+  it('keeps colour nested inside headings, lists and links', () => {
+    expect(sanitizeRichHtml('<h2><span style="color:#2a9da9">Week one</span></h2>')).toContain('color:#2a9da9')
+    expect(sanitizeRichHtml('<ul><li><span style="color:#ef4444">Sit</span></li></ul>')).toContain('color:#ef4444')
+    const link = sanitizeRichHtml('<a href="https://example.com"><span style="color:#16a34a">book</span></a>')
+    expect(link).toContain('color:#16a34a')
+    expect(link).toContain('href="https://example.com"')
+  })
+
+  it('keeps the colour but drops handlers riding on the same span', () => {
+    const out = sanitizeRichHtml('<span style="color:#ef4444" onclick="steal()" onmouseover="x()">red</span>')
+    expect(out).toContain('color:#ef4444')
+    expect(out).not.toContain('onclick')
+    expect(out).not.toContain('onmouseover')
+  })
+
+  it('drops a style attribute smuggled onto a non-span tag', () => {
+    expect(sanitizeRichHtml('<p style="color:red">x</p>')).toBe('<p>x</p>')
+    expect(sanitizeRichHtml('<h2 style="position:fixed">x</h2>')).toBe('<h2>x</h2>')
+    expect(sanitizeRichHtml('<a href="https://e.com" style="color:red">x</a>')).not.toContain('style')
+  })
+
+  it('drops CSS injection dressed up as a colour value', () => {
+    for (const bad of [
+      '<span style="color:expression(alert(1))">x</span>',
+      '<span style="color:red;background:url(javascript:alert(1))">x</span>',
+      '<span style="color:red;behavior:url(#x)">x</span>',
+      '<span style="COLOR:#fff;-moz-binding:url(evil.xml)">x</span>',
+    ]) {
+      const out = sanitizeRichHtml(bad)
+      expect(out).not.toContain('expression')
+      expect(out).not.toContain('url(')
+      expect(out).not.toContain('binding')
+      expect(out).not.toContain('behavior')
+      expect(out).not.toContain('background')
+    }
+  })
+
+  it('does not let a coloured span carry a <script> through', () => {
+    const out = sanitizeRichHtml('<span style="color:#ef4444">red<script>alert(1)</script></span>')
+    expect(out).toContain('color:#ef4444')
+    expect(out).not.toContain('script')
+    expect(out).not.toContain('alert')
+  })
+
+  it('richTextToPlain drops the colour markup but keeps the words', () => {
+    expect(richTextToPlain('<p><span style="color:#ef4444">Bring treats</span></p>')).toBe('Bring treats')
+  })
+
   it('passes plain text through unchanged (legacy descriptions stay safe)', () => {
     expect(sanitizeRichHtml('Just a plain description')).toBe('Just a plain description')
   })
