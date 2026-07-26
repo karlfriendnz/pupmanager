@@ -81,32 +81,70 @@ type RowProps = {
   trailing?: ReactNode
   /** The trainer's brand colour, for the icon. */
   accent?: string
+  /** Marks where you already are — used by the menu. */
+  active?: boolean
+  /** Greyed and inert, with a "Soon" tag. */
+  comingSoon?: boolean
   className?: string
 }
 
 /** One row inside a FlatBlock. */
-export function FlatRow({ icon: Icon, label, sub, href, onClick, trailing, accent, className }: RowProps) {
+export function FlatRow({ icon: Icon, label, sub, href, onClick, trailing, accent, active, comingSoon, className }: RowProps) {
   const inner = (
     <>
       {Icon && (
         <Icon
-          className="h-[18px] w-[18px] flex-shrink-0 text-slate-700"
-          style={iconStyle(accent)}
+          className={cn(
+            'h-[18px] w-[18px] flex-shrink-0',
+            comingSoon ? 'text-slate-300' : active ? 'text-blue-600' : 'text-slate-700',
+          )}
+          style={active || comingSoon ? undefined : iconStyle(accent)}
           strokeWidth={1.75}
         />
       )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-slate-900">{label}</span>
+        <span className={cn(
+          'block truncate text-sm font-medium',
+          comingSoon ? 'text-slate-400' : active ? 'text-blue-700' : 'text-slate-900',
+        )}>
+          {label}
+        </span>
         {sub && <span className="mt-0.5 block truncate text-[13px] text-slate-500">{sub}</span>}
       </span>
-      {trailing ?? ((href || onClick) && <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />)}
+      {comingSoon
+        ? <span className="flex-shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-400">Soon</span>
+        : trailing ?? ((href || onClick) && <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />)}
     </>
   )
+
+  if (comingSoon) {
+    return <div className={cn('flex w-full items-center gap-3 px-4 py-3.5', className)}>{inner}</div>
+  }
   const cls = cn('flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50', className)
 
   if (href) return <Link href={href} className={cls}>{inner}</Link>
   if (onClick) return <button type="button" onClick={onClick} className={cls}>{inner}</button>
   return <div className={cls}>{inner}</div>
+}
+
+/**
+ * Two-up grid of COMPACT rows (icon beside label, not above it) in one block.
+ *
+ * For menus long enough that one column scrolls — twenty destinations at row
+ * height, two across, keeps the sections visible without turning each entry
+ * into a tile.
+ */
+export function FlatRowGrid({ children, count }: { children: ReactNode; count: number }) {
+  return (
+    <div className={cn(
+      'grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white',
+      '[&>*]:border-b [&>*]:border-r [&>*]:border-slate-200',
+      '[&>*:nth-child(2n)]:border-r-0',
+      count % 2 === 0 ? '[&>*:nth-last-child(-n+2)]:border-b-0' : '[&>*:last-child]:border-b-0',
+    )}>
+      {children}
+    </div>
+  )
 }
 
 /**

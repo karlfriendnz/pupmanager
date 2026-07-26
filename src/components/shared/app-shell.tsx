@@ -22,6 +22,7 @@ import { NotificationToaster } from './notification-toaster'
 import { TopBarControls } from './top-bar-controls'
 import { FloatingCreateButton } from './floating-create-button'
 import { PageTitleProvider, usePageTitle, usePageHasBack } from './page-title'
+import { FlatRow, FlatRowGrid } from './flat-list'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
 const NAV_GROUPS_KEY = 'k10.trainerNavGroups'
@@ -32,7 +33,7 @@ const NAV_GROUPS_KEY = 'k10.trainerNavGroups'
 //   • Help + the profile/org switcher moved to the top-right control bar
 // `desktopHidden` keeps Help out of the desktop sidebar while still showing it
 // in the mobile "More" sheet (mobile has no top-right bar).
-type NavSection = 'overview' | 'clients' | 'programs' | 'business' | 'system'
+type NavSection = 'overview' | 'clients' | 'programs' | 'tools' | 'business' | 'system'
 // `child` items render indented under the item above them (a sub-menu off
 // their parent, e.g. Route + Notes under Schedule).
 // `group: true` marks a non-navigating parent that only toggles its children
@@ -47,12 +48,7 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
   { href: '/clients/waitlist', label: 'Waitlist', icon: ClipboardList,   section: 'clients', child: true },
   { href: '/schedule',     label: 'Schedule',     icon: Calendar,        section: 'clients' },
-  { href: '/schedule/route',       label: 'Route', icon: Navigation,     section: 'clients', child: true },
   { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'clients' },
-  { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'clients' },
-  { href: '/lead-magnets', label: 'Lead magnets', icon: Download,        section: 'clients', child: true },
-  { href: '/instagram',    label: 'Instagram link', icon: InstagramIcon as unknown as LucideIcon, section: 'clients', child: true },
-  { href: '/email-templates', label: 'Email templates', icon: Mail,       section: 'clients', child: true },
 
   { href: '/packages',     label: '1:1 Packages', icon: Package,         section: 'programs' },
   { href: '/classes',      label: 'Group Classes', icon: GraduationCap,  section: 'programs' },
@@ -60,9 +56,19 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/events',       label: 'Events',       icon: CalendarPlus,    section: 'programs' },
   { href: '/doggy-daycare', label: 'Doggy Daycare', icon: Dog,            section: 'programs' },
   { href: '/memberships',  label: 'Memberships',  icon: Ticket,          section: 'programs' },
-  { href: '/templates',    label: 'Library',      icon: Layers,          section: 'programs' },
-  { href: '/products',     label: 'Products',     icon: ShoppingBag,     section: 'programs' },
-  { href: '/achievements', label: 'Achievements', icon: Trophy,          section: 'programs' },
+
+  // Not offerings themselves — the things that support them.
+  { href: '/schedule/route', label: 'Route',      icon: Navigation,      section: 'tools' },
+  { href: '/templates',    label: 'Library',      icon: Layers,          section: 'tools' },
+  { href: '/products',     label: 'Products',     icon: ShoppingBag,     section: 'tools' },
+  { href: '/achievements', label: 'Achievements', icon: Trophy,          section: 'tools' },
+
+  // Marketing sits in Business, not Clients: reaching people who aren't
+  // clients yet is running the business, not servicing the book.
+  { href: '/marketing',    label: 'Marketing',    icon: Megaphone,       section: 'business' },
+  { href: '/lead-magnets', label: 'Lead magnets', icon: Download,        section: 'business', child: true },
+  { href: '/instagram',    label: 'Instagram link', icon: InstagramIcon as unknown as LucideIcon, section: 'business', child: true },
+  { href: '/email-templates', label: 'Email templates', icon: Mail,       section: 'business', child: true },
 
   { href: '/finances',     label: 'Finances',     icon: Wallet,          section: 'business' },
   { href: '/finances/stripe', label: 'Stripe dashboard', icon: ExternalLink, section: 'business', child: true },
@@ -81,6 +87,7 @@ const NAV_SECTION_LABEL: Record<NavSection, string | null> = {
   overview: null,
   clients: 'Clients',
   programs: 'Offerings',
+  tools: 'Tools',
   business: 'Business',
   system: null,
 }
@@ -88,11 +95,12 @@ const NAV_SECTION_LABEL: Record<NavSection, string | null> = {
 // The phone menu labels every group and takes them in this order. The sidebar
 // leaves the first and last unlabelled, which works beside a heading but not as
 // a bare grid of tiles.
-const MENU_SECTION_ORDER: NavSection[] = ['overview', 'clients', 'programs', 'business', 'system']
+const MENU_SECTION_ORDER: NavSection[] = ['overview', 'clients', 'programs', 'tools', 'business', 'system']
 const MENU_SECTION_LABEL: Record<NavSection, string> = {
   overview: 'Overview',
   clients: 'Clients',
   programs: 'Offerings',
+  tools: 'Tools',
   business: 'Business',
   system: 'Account',
 }
@@ -1338,43 +1346,21 @@ function TrainerShell({
                   <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-400">
                     {MENU_SECTION_LABEL[section]}
                   </p>
-                  <div className={cn(
-                    'grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white',
-                    '[&>*]:border-b [&>*]:border-r [&>*]:border-slate-200',
-                    '[&>*:nth-child(2n)]:border-r-0',
-                    inSection.length % 2 === 0
-                      ? '[&>*:nth-last-child(-n+2)]:border-b-0'
-                      : '[&>*:last-child]:border-b-0',
-                  )}>
-                    {inSection.map(item => {
-                      const active = pathname === item.href || pathname.startsWith(item.href + '/')
-                      const Icon = item.icon
-                      const cls = 'flex min-h-[84px] flex-col items-start justify-center px-4 py-4 text-left active:bg-slate-50'
-                      if (item.comingSoon) {
-                        return (
-                          <div key={item.href} className={cn(cls, 'cursor-default')}>
-                            <Icon className="h-[22px] w-[22px] text-slate-300" strokeWidth={1.75} />
-                            <span className="mt-2.5 text-[15px] font-semibold leading-tight text-slate-400">{item.label}</span>
-                            <span className="mt-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Soon</span>
-                          </div>
-                        )
-                      }
-                      return (
-                        <Link key={item.href} href={item.href} className={cls}>
-                          <Icon
-                            className={cn('h-[22px] w-[22px]', active ? 'text-blue-600' : 'text-slate-700')}
-                            strokeWidth={1.75}
-                          />
-                          <span className={cn(
-                            'mt-2.5 text-[15px] font-semibold leading-tight',
-                            active ? 'text-blue-700' : 'text-slate-900',
-                          )}>
-                            {item.label}
-                          </span>
-                        </Link>
-                      )
-                    })}
-                  </div>
+                  {/* Two across at row height — the sections stay visible
+                      without a tile's worth of vertical space per entry. */}
+                  <FlatRowGrid count={inSection.length}>
+                    {inSection.map(item => (
+                      <FlatRow
+                        key={item.href}
+                        href={item.comingSoon ? undefined : item.href}
+                        icon={item.icon}
+                        label={item.label}
+                        active={pathname === item.href || pathname.startsWith(item.href + '/')}
+                        comingSoon={item.comingSoon}
+                        trailing={<span />}
+                      />
+                    ))}
+                  </FlatRowGrid>
                 </div>
               )
             })}
