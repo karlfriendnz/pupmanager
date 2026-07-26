@@ -4,6 +4,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { computeAchievementProgress } from '@/lib/achievements'
 import { PageHeader } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
+import { AchievementBadge } from '@/components/shared/achievement-badge'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Achievements' }
@@ -19,7 +20,7 @@ export default async function AchievementsPage() {
     prisma.achievement.findMany({
       where: { trainerId: profile.trainerId, published: true },
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
-      select: { id: true, name: true, icon: true },
+      select: { id: true, name: true, icon: true, imageUrl: true },
     }),
     prisma.clientAchievement.findMany({ where: { clientId: profile.id }, select: { achievementId: true } }),
     computeAchievementProgress(profile.id),
@@ -43,7 +44,7 @@ export default async function AchievementsPage() {
 
         {next && (
           <div className="rounded-3xl bg-accent-soft p-4 flex items-center gap-3">
-            <span className="text-3xl">{next.icon || '🏅'}</span>
+            <AchievementBadge imageUrl={next.imageUrl} icon={next.icon || '🏅'} name={next.name} size="lg" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-slate-900 truncate">Almost there: {next.name}</p>
               <div className="mt-1.5 h-2 rounded-full bg-white/70 overflow-hidden"><div className="h-full bg-accent" style={{ width: `${Math.min(100, (next.progress!.current / next.progress!.target) * 100)}%` }} /></div>
@@ -62,7 +63,7 @@ export default async function AchievementsPage() {
           <div className="grid grid-cols-3 gap-3">
             {badges.map(b => (
               <div key={b.id} className={cn('aspect-square rounded-2xl flex flex-col items-center justify-center p-2 text-center', b.earned ? 'bg-white shadow-[0_2px_14px_rgba(15,31,36,0.06)]' : 'bg-slate-100')}>
-                <span className={cn('text-3xl', !b.earned && 'opacity-30 grayscale')}>{b.icon || '🏆'}</span>
+                <AchievementBadge imageUrl={b.imageUrl} icon={b.icon} name={b.name} size="lg" dimmed={!b.earned} />
                 <span className={cn('text-[10px] font-medium mt-1 leading-tight line-clamp-2', b.earned ? 'text-slate-700' : 'text-slate-400')}>{b.name}</span>
                 {!b.earned && b.progress && b.progress.target > 1 && <span className="text-[9px] text-accent font-bold mt-0.5">{b.progress.current}/{b.progress.target}</span>}
               </div>

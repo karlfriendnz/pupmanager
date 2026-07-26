@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { AchievementsManager } from './achievements-manager'
+import type { TriggerType } from './triggers'
 import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
@@ -27,20 +28,17 @@ export default async function AchievementsPage() {
   return (
     <>
       <PageHeader title="Achievements" subtitle="Badges and milestones dogs earn as they train, to keep clients motivated." />
-      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
-      <p className="text-sm text-slate-500 mb-6">
-        Build a catalogue of badges your clients can earn — first session completed, off-leash recall, 30-day streak, anything that fits your programme.
-      </p>
-
+      <div className="p-4 md:p-8 w-full max-w-3xl mx-auto">
       <AchievementsManager
         initial={achievements.map(a => ({
           id: a.id,
           name: a.name,
           description: a.description,
           icon: a.icon,
+          imageUrl: a.imageUrl,
           color: a.color,
           published: a.published,
-          triggerType: a.triggerType,
+          triggerType: a.triggerType as TriggerType,
           triggerValue: a.triggerValue,
         }))}
       />

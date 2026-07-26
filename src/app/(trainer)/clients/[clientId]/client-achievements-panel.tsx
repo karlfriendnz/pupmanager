@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Trophy, Plus, Check, Loader2, X } from 'lucide-react'
+import { AchievementBadge } from '@/components/shared/achievement-badge'
 
 type TriggerType =
   | 'MANUAL' | 'FIRST_SESSION' | 'SESSIONS_COMPLETED' | 'IN_PERSON_SESSIONS' | 'VIRTUAL_SESSIONS'
@@ -14,6 +15,7 @@ interface Row {
   name: string
   description: string | null
   icon: string | null
+  imageUrl: string | null
   color: string | null
   triggerType: TriggerType
   triggerValue: number | null
@@ -145,9 +147,12 @@ export function ClientAchievementsPanel({ clientId, canEdit }: { clientId: strin
               const t = tone(r.color)
               return (
                 <li key={r.id} className={`rounded-2xl bg-white border border-slate-100 shadow-sm p-3 ring-1 ${t.ring} flex items-center gap-3`}>
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl ${t.bgChip} shrink-0`}>
-                    {r.icon || '🏆'}
-                  </div>
+                  <AchievementBadge
+                    imageUrl={r.imageUrl}
+                    icon={r.icon}
+                    name={r.name}
+                    className={r.imageUrl ? undefined : `rounded-xl ${t.bgChip}`}
+                  />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-900 truncate">{r.name}</p>
                     <p className="text-[11px] text-slate-500 truncate">
@@ -184,9 +189,13 @@ export function ClientAchievementsPanel({ clientId, canEdit }: { clientId: strin
               const isManual = r.triggerType === 'MANUAL'
               return (
                 <li key={r.id} className="rounded-2xl bg-white border border-slate-100 p-3 flex items-center gap-3">
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl ${t.bgChip} shrink-0 grayscale opacity-60`}>
-                    {r.icon || '🏆'}
-                  </div>
+                  <AchievementBadge
+                    imageUrl={r.imageUrl}
+                    icon={r.icon}
+                    name={r.name}
+                    dimmed
+                    className={r.imageUrl ? undefined : `rounded-xl ${t.bgChip}`}
+                  />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-700 truncate">{r.name}</p>
                     <p className="text-[11px] text-slate-400 truncate">{triggerSummary(r.triggerType, r.triggerValue)}</p>

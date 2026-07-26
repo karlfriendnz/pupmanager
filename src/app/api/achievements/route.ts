@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { evaluateAchievementForAllClients } from '@/lib/achievements'
 import { z } from 'zod'
+import { optionalAssetUrlSchema } from '@/lib/asset-url'
 
 const TRIGGER_TYPES = [
   'MANUAL',
@@ -42,8 +43,12 @@ const TRIGGERS_NEEDING_VALUE = new Set([
 
 const schema = z.object({
   name: z.string().min(1).max(80),
-  description: z.string().max(500).optional().nullable(),
+  // Rich text (Tiptap HTML) — the old 500 cap was tight enough that a
+  // formatted description could be rejected.
+  description: z.string().max(20_000).optional().nullable(),
   icon: z.string().max(8).optional().nullable(),
+  // Uploaded badge artwork. Null = fall back to the emoji in `icon`.
+  imageUrl: optionalAssetUrlSchema(),
   color: z.string().max(20).optional().nullable(),
   published: z.boolean().optional(),
   triggerType: z.enum(TRIGGER_TYPES).default('MANUAL'),
@@ -94,6 +99,7 @@ export async function POST(req: Request) {
       name: parsed.data.name,
       description: parsed.data.description ?? null,
       icon: parsed.data.icon ?? null,
+      imageUrl: parsed.data.imageUrl || null,
       color: parsed.data.color ?? null,
       order: count,
       published: parsed.data.published ?? true,

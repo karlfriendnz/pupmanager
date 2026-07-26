@@ -21,6 +21,8 @@ import { cn } from '@/lib/utils'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 import { effectivePriceCents, isOnSale } from '@/lib/product-price'
+// Aliased: this file already has an `AchievementBadge` shape for its props.
+import { AchievementBadge as BadgeArt } from '@/components/shared/achievement-badge'
 
 interface Dog {
   id: string
@@ -92,6 +94,7 @@ interface AchievementBadge {
   id: string
   name: string
   icon: string | null
+  imageUrl: string | null
   color: string | null
   earned: boolean
   progress?: { current: number; target: number } | null
@@ -499,7 +502,7 @@ export function ClientHomeView({
               <SectionHeader title="Achievements" linkHref="/my-achievements" linkLabel="See all" />
               {nextBadge && (
                 <div className="mt-3 rounded-3xl bg-accent-soft p-4 flex items-center gap-4">
-                  <div className="text-4xl">{nextBadge.icon || '🏅'}</div>
+                  <BadgeArt imageUrl={nextBadge.imageUrl} icon={nextBadge.icon || '🏅'} name={nextBadge.name} size="lg" />
                   <div className="flex-1 min-w-0">
                     <p className="font-display font-bold text-slate-900">Almost there!</p>
                     <p className="text-xs text-slate-600 truncate">{nextBadge.progress!.current}/{nextBadge.progress!.target} toward <b>{nextBadge.name}</b></p>
@@ -512,7 +515,7 @@ export function ClientHomeView({
               <div className="mt-3 grid grid-cols-4 gap-2.5">
                 {achievements.slice(0, 4).map(b => (
                   <div key={b.id} className={cn('aspect-square rounded-2xl flex flex-col items-center justify-center p-2 text-center', b.earned ? 'bg-white shadow-[0_2px_14px_rgba(15,31,36,0.06)]' : 'bg-slate-100')}>
-                    <span className={cn('text-2xl', !b.earned && 'opacity-30 grayscale')}>{b.icon || '🏆'}</span>
+                    <BadgeArt imageUrl={b.imageUrl} icon={b.icon} name={b.name} dimmed={!b.earned} />
                   </div>
                 ))}
               </div>

@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { evaluateAchievementForAllClients } from '@/lib/achievements'
 import { z } from 'zod'
+import { optionalAssetUrlSchema } from '@/lib/asset-url'
 
 const TRIGGER_TYPES = [
   'MANUAL',
@@ -40,8 +41,11 @@ const TRIGGERS_NEEDING_VALUE = new Set([
 
 const patchSchema = z.object({
   name: z.string().min(1).max(80).optional(),
-  description: z.string().max(500).optional().nullable(),
+  // Rich text (Tiptap HTML) — see the create route for why this is generous.
+  description: z.string().max(20_000).optional().nullable(),
   icon: z.string().max(8).optional().nullable(),
+  // Uploaded badge artwork. Null clears it and restores the emoji.
+  imageUrl: optionalAssetUrlSchema(),
   color: z.string().max(20).optional().nullable(),
   order: z.number().int().optional(),
   published: z.boolean().optional(),
@@ -87,6 +91,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ achievementId
     where: { id: achievementId },
     data: {
       ...parsed.data,
+      // '' from a cleared field means "no artwork", not an empty string URL.
+      ...(parsed.data.imageUrl !== undefined && { imageUrl: parsed.data.imageUrl || null }),
       ...(nextValue !== undefined && { triggerValue: nextValue }),
     },
   })

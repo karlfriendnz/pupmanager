@@ -23,17 +23,18 @@ const SAMPLE_CLIENT_NAME = 'Sarah'
 // Fake badges so the demo's achievements section looks alive even before the
 // trainer has published any of their own.
 const SAMPLE_BADGES = [
-  { id: 'b1', name: 'First session', icon: '🐾', color: 'blue', earned: true },
-  { id: 'b2', name: '5 sessions together', icon: '⭐', color: 'amber', earned: true },
-  { id: 'b3', name: 'First homework done', icon: '📓', color: 'sky', earned: true },
-  { id: 'b4', name: 'Perfect week', icon: '🏆', color: 'violet', earned: false },
-  { id: 'b5', name: '1 month together', icon: '📅', color: 'emerald', earned: false },
+  { id: 'b1', name: 'First session', icon: '🐾', imageUrl: null, color: 'blue', earned: true },
+  { id: 'b2', name: '5 sessions together', icon: '⭐', imageUrl: null, color: 'amber', earned: true },
+  { id: 'b3', name: 'First homework done', icon: '📓', imageUrl: null, color: 'sky', earned: true },
+  { id: 'b4', name: 'Perfect week', icon: '🏆', imageUrl: null, color: 'violet', earned: false },
+  { id: 'b5', name: '1 month together', icon: '📅', imageUrl: null, color: 'emerald', earned: false },
 ]
 
 interface AchievementShape {
   id: string
   name: string
   icon: string | null
+  imageUrl?: string | null
   color: string | null
 }
 
@@ -103,7 +104,7 @@ export function DemoClientPreview({
             libraryItems={[]}
             pendingRequests={[]}
             achievements={achievements.length
-              ? achievements.map(a => ({ id: a.id, name: a.name, icon: a.icon, color: a.color, earned: true }))
+              ? achievements.map(a => ({ id: a.id, name: a.name, icon: a.icon, imageUrl: a.imageUrl ?? null, color: a.color, earned: true }))
               : SAMPLE_BADGES}
           />
         </AppShell>

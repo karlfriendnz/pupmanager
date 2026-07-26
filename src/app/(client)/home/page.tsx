@@ -173,7 +173,7 @@ export default async function ClientHomePage() {
       // client sees").
       where: { trainerId: clientProfile.trainer.id, published: true },
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
-      select: { id: true, name: true, icon: true, color: true },
+      select: { id: true, name: true, icon: true, imageUrl: true, color: true },
     }),
     prisma.clientAchievement.findMany({
       where: { clientId: clientProfile.id },
@@ -269,6 +269,7 @@ export default async function ClientHomePage() {
         id: a.id,
         name: a.name,
         icon: a.icon,
+        imageUrl: a.imageUrl,
         color: a.color,
         earned: earnedSet.has(a.id),
         progress: achievementProgress[a.id] ?? null,
