@@ -106,6 +106,17 @@ export default async function globalSetup() {
     await prisma.trainerAddon.create({
       data: { trainerId: profile.id, itemId: 'achievements', active: true, grantedByAdmin: true },
     })
+    // Client shop — same story as achievements: PAID, so it can't be toggled on
+    // from a trial account, and the product specs (editor page, purchases tab,
+    // sale price, stock) all hit the add-on gate and read the redirect instead
+    // of the page. Including the "another trainer's product is a 404" test,
+    // which was failing for the gate rather than for tenancy.
+    await prisma.billingItem.create({
+      data: { id: 'shop', kind: 'ADDON', name: 'Client shop', description: 'In-app checkout for extras', priceMonthly: 29, sortOrder: 12, isActive: true },
+    })
+    await prisma.trainerAddon.create({
+      data: { trainerId: profile.id, itemId: 'shop', active: true, grantedByAdmin: true },
+    })
     // Group classes is free + default-on (no TrainerAddon row = enabled), but
     // toggling it writes a TrainerAddon whose itemId is an FK to BillingItem —
     // without this row the toggle 500s on the constraint.
