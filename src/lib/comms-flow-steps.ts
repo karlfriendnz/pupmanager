@@ -61,7 +61,7 @@ export const DEFAULT_MEMBERSHIP_STEP_FIELDS: StepFields = {
   ...DEFAULT_STEP_FIELDS,
   direction: 'AFTER_PURCHASE',
   offsetMinutes: 0,
-  title: 'Welcome to {{membership}} 🎉',
+  title: 'Welcome to {{package}} 🎉',
   body: "Hi {{name}}, you're all set — everything included is ready to book in the app.",
 }
 

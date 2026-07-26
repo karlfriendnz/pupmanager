@@ -23,9 +23,20 @@ export const COMMS_PLACEHOLDERS = [
 ] as const
 
 // A membership has no session, so time/date/location have nothing to say.
+//
+// Trainer-facing copy calls these "Packages" now, so the token offered for
+// insertion is `{{package}}`. `{{membership}}` is the SAME value under its
+// pre-rename spelling and is substituted for ever: CommsFlowStep rows written
+// before the rename hold that literal string, and a trainer can still type it.
+// Renaming without keeping the alias would print "{{membership}}" verbatim to a
+// client — which is why the alias lands with (not after) the backfill in
+// migration 20260727200000_comms_flow_package_token.
 export const MEMBERSHIP_PLACEHOLDERS = [
-  '{{name}}', '{{dog}}', '{{membership}}', '{{business}}', '{{date}}',
+  '{{name}}', '{{dog}}', '{{package}}', '{{business}}', '{{date}}',
 ] as const
+
+/** The pre-rename spelling of `{{package}}`. Accepted, never offered. */
+export const LEGACY_MEMBERSHIP_TOKEN = '{{membership}}'
 
 export interface CommsVars {
   name: string
@@ -48,7 +59,10 @@ function fill(template: string, vars: CommsVars): string {
     .replace(/\{\{\s*class\s*\}\}/g, vars.class)
     .replace(/\{\{\s*business\s*\}\}/g, vars.business)
     .replace(/\{\{\s*location\s*\}\}/g, vars.location)
-    .replace(/\{\{\s*membership\s*\}\}/g, vars.membership ?? '')
+    // One value, two spellings. `{{package}}` is what the editor inserts now;
+    // `{{membership}}` is what every step saved before the rename contains.
+    // Both must fill, or a saved step renders a literal token to a client.
+    .replace(/\{\{\s*(?:package|membership)\s*\}\}/g, vars.membership ?? '')
 }
 
 /** Render a step's title + body (+ optional rich email body) with the
@@ -107,7 +121,7 @@ export const MEMBERSHIP_STARTER_STEPS = [
     offsetMinutes: 0,
     channels: ['PUSH', 'EMAIL'] as NotificationChannel[],
     important: false,
-    title: 'Welcome to {{membership}}, {{name}} 🎉',
+    title: 'Welcome to {{package}}, {{name}} 🎉',
     body: "You're all set. Everything included is ready to book in the app — see you soon!",
   },
   {
@@ -116,7 +130,7 @@ export const MEMBERSHIP_STARTER_STEPS = [
     channels: ['PUSH'] as NotificationChannel[],
     important: false,
     title: 'How’s it going, {{name}}?',
-    body: "Hope you and {{dog}} are enjoying {{membership}}. Anything you need, just message us.",
+    body: "Hope you and {{dog}} are enjoying {{package}}. Anything you need, just message us.",
   },
 ]
 

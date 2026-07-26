@@ -16,6 +16,7 @@ void h
 import {
   COMMS_PLACEHOLDER_OPTIONS,
   MEMBERSHIP_PLACEHOLDER_OPTIONS,
+  LEGACY_PLACEHOLDER_OPTIONS,
   CLIENT_EMAIL_PLACEHOLDER_OPTIONS,
   CLIENT_INVITE_PLACEHOLDER_OPTIONS,
   BOOKING_PAGE_PLACEHOLDER_OPTIONS,
@@ -24,7 +25,10 @@ import {
   notificationPlaceholderLabel,
   placeholderLabel,
 } from '@/lib/placeholder-labels'
-import { COMMS_PLACEHOLDERS, MEMBERSHIP_PLACEHOLDERS, renderCommsMessage, type CommsVars } from '@/lib/comms-flows'
+import {
+  COMMS_PLACEHOLDERS, MEMBERSHIP_PLACEHOLDERS, LEGACY_MEMBERSHIP_TOKEN,
+  MEMBERSHIP_STARTER_STEPS, renderCommsMessage, type CommsVars,
+} from '@/lib/comms-flows'
 import { buildClientEmail, fillPlaceholders } from '@/lib/client-email'
 import { AUTOMATION_PLACEHOLDERS, renderAutomationEmail } from '@/lib/booking-automations'
 import { renderClientInviteEmail } from '@/lib/client-invite-email'
@@ -48,7 +52,7 @@ describe('placeholder tokens are unchanged', () => {
 
   it('the membership vocabulary is exactly the tokens the engine substitutes', () => {
     expect(MEMBERSHIP_PLACEHOLDER_OPTIONS.map(o => o.token)).toEqual([
-      '{{name}}', '{{dog}}', '{{membership}}', '{{business}}', '{{date}}',
+      '{{name}}', '{{dog}}', '{{package}}', '{{business}}', '{{date}}',
     ])
     expect(new Set(MEMBERSHIP_PLACEHOLDER_OPTIONS.map(o => o.token)))
       .toEqual(new Set(MEMBERSHIP_PLACEHOLDERS))
@@ -65,14 +69,35 @@ describe('placeholder tokens are unchanged', () => {
     expect(commsPlaceholderOptionsFor('session')).toBe(COMMS_PLACEHOLDER_OPTIONS)
 
     const membershipTokens = commsPlaceholderOptionsFor('membership').map(o => o.token)
-    expect(membershipTokens).toContain('{{membership}}')
+    expect(membershipTokens).toContain('{{package}}')
     // The four that had nothing to substitute against a purchase.
     for (const dead of ['{{time}}', '{{class}}', '{{location}}']) {
       expect(membershipTokens).not.toContain(dead)
     }
-    // …and the class flow must not start advertising {{membership}}, which its
-    // own engine leaves as an empty string.
-    expect(commsPlaceholderOptionsFor('session').map(o => o.token)).not.toContain('{{membership}}')
+    // …and the class flow must not start advertising the package token, which
+    // its own engine leaves as an empty string.
+    const sessionTokens = commsPlaceholderOptionsFor('session').map(o => o.token)
+    expect(sessionTokens).not.toContain('{{package}}')
+    expect(sessionTokens).not.toContain('{{membership}}')
+  })
+
+  // The one rename in the whole file, done the only way a rename is safe: the
+  // old spelling is still SUBSTITUTED, it just isn't OFFERED any more. Saved
+  // steps hold `{{membership}}` verbatim, so dropping it from `fill` would
+  // print a raw token to a client. Migration 20260727200000 rewrites the stored
+  // rows; the alias is what makes that a tidy-up rather than a cutover.
+  it('the retired {{membership}} spelling is accepted but never offered', () => {
+    expect(LEGACY_MEMBERSHIP_TOKEN).toBe('{{membership}}')
+    expect(LEGACY_PLACEHOLDER_OPTIONS.map(o => o.token)).toContain(LEGACY_MEMBERSHIP_TOKEN)
+
+    // Not offered anywhere a trainer picks a token…
+    for (const context of ['session', 'membership'] as const) {
+      expect(commsPlaceholderOptionsFor(context).map(o => o.token))
+        .not.toContain(LEGACY_MEMBERSHIP_TOKEN)
+    }
+    // …but it still reads as the same thing, and still fills.
+    expect(placeholderLabel(LEGACY_MEMBERSHIP_TOKEN)).toBe('Package name')
+    expect(placeholderLabel('{{package}}')).toBe('Package name')
   })
 
   it('the client-email vocabulary is exactly the tokens buildClientEmail fills', () => {
@@ -143,6 +168,29 @@ describe('every labelled token still substitutes at send time', () => {
       expect(out.title, `${token} left unfilled in the title`).not.toContain('{{')
       expect(out.body, `${token} left unfilled in the body`).not.toContain('{{')
     }
+  })
+
+  // The step rows already in the database contain `{{membership}}`. If the
+  // rename to `{{package}}` had shipped without this, every one of them would
+  // have sent a client the literal text "{{membership}}".
+  it('fills BOTH spellings of the package token to the same value', () => {
+    expect(renderCommsMessage({ title: '{{package}}', body: '{{membership}}' }, vars))
+      .toMatchObject({ title: 'Gold Club', body: 'Gold Club' })
+    // Whitespace inside the braces is tolerated on both, which is why the
+    // migration's exact-string REPLACE can safely miss those rows.
+    expect(renderCommsMessage({ title: 'x', body: '{{ membership }} / {{ package }}' }, vars).body)
+      .toBe('Gold Club / Gold Club')
+    // A step written in either spelling, mixed, still renders whole.
+    expect(renderCommsMessage({ title: 'x', body: 'Welcome to {{membership}}, {{name}} — enjoy {{package}}!' }, vars).body)
+      .toBe('Welcome to Gold Club, Sam — enjoy Gold Club!')
+  })
+
+  // Nothing NEW may be written in the old spelling, or the backfill just has to
+  // run again.
+  it('the membership starter flow inserts the new spelling', () => {
+    const written = MEMBERSHIP_STARTER_STEPS.map(s => `${s.title} ${s.body}`).join(' ')
+    expect(written).not.toContain(LEGACY_MEMBERSHIP_TOKEN)
+    expect(written).toContain('{{package}}')
   })
 
   it('a whole message built from labelled tokens renders with no leftovers', () => {

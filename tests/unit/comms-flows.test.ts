@@ -448,6 +448,8 @@ const membershipStep = (over: Record<string, unknown> = {}) => ({
   id: 'mstep', classRunId: null, packageId: null, membershipId: 'mem1',
   direction: 'AFTER_PURCHASE', offsetMinutes: 1440, channels: ['PUSH', 'IN_APP'],
   audience: 'ENROLLED', customClientIds: [], important: false,
+  // Deliberately the PRE-RENAME spelling — this is the shape of every step row
+  // already in the database. The editor inserts {{package}} now; both fill.
   title: 'Welcome {{name}}', body: 'Enjoy {{membership}} with {{dog}}',
   emailBody: null, enabled: true,
   membership: { name: 'Puppy Starter', trainerId: 'co1', trainer },

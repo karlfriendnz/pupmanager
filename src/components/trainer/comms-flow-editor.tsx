@@ -79,7 +79,10 @@ const AUDIENCES: { key: Audience; label: string; hint: string }[] = [
 const SAMPLE: Record<string, string> = {
   '{{name}}': 'Sam', '{{dog}}': 'Bailey', '{{time}}': '6:00 pm', '{{date}}': 'Tue 5 Aug',
   '{{class}}': 'Puppy Class', '{{business}}': 'your business', '{{location}}': 'the hall',
-  '{{membership}}': 'Puppy Club',
+  // Both spellings of the same value — a step saved before the Packages rename
+  // still contains {{membership}}, and previewing it raw would be a lie about
+  // what sends (the engine fills both).
+  '{{package}}': 'Puppy Club', '{{membership}}': 'Puppy Club',
 }
 const PLACEHOLDERS = Object.keys(SAMPLE)
 
@@ -114,7 +117,11 @@ function preview(
   if (who?.dog) values['{{dog}}'] = who.dog
   // A membership flow's name lands in BOTH — `processMembershipStep` sets
   // `class` and `membership` to the membership's name.
-  if (offering?.name) { values['{{class}}'] = offering.name; values['{{membership}}'] = offering.name }
+  if (offering?.name) {
+    values['{{class}}'] = offering.name
+    values['{{package}}'] = offering.name
+    values['{{membership}}'] = offering.name
+  }
   if (offering?.location) values['{{location}}'] = offering.location
   return PLACEHOLDERS.reduce((acc, p) => acc.split(p).join(values[p]), text)
 }

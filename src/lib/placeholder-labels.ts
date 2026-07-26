@@ -40,9 +40,25 @@ export const COMMS_PLACEHOLDER_OPTIONS: readonly PlaceholderOption[] = [
 export const MEMBERSHIP_PLACEHOLDER_OPTIONS: readonly PlaceholderOption[] = [
   { token: '{{name}}', label: 'Client name' },
   { token: '{{dog}}', label: 'Dog name' },
-  { token: '{{membership}}', label: 'Membership name' },
+  { token: '{{package}}', label: 'Package name' },
   { token: '{{business}}', label: 'Business name' },
   { token: '{{date}}', label: 'Date' },
+] as const
+
+/**
+ * Tokens that are no longer OFFERED but must still be understood.
+ *
+ * The one exception to "a token only ever gains a label". Trainer-facing copy
+ * renamed memberships to "Packages", so the token inserted from now on is
+ * `{{package}}` — but saved CommsFlowStep rows literally contain
+ * `{{membership}}`, so `fill()` in lib/comms-flows.ts substitutes both, and
+ * they need to read as the same thing wherever a stored message is displayed.
+ *
+ * A token belongs here only when the substitution engine still fills it. This
+ * is a display alias, never permission to drop the old spelling from `fill`.
+ */
+export const LEGACY_PLACEHOLDER_OPTIONS: readonly PlaceholderOption[] = [
+  { token: '{{membership}}', label: 'Package name' },
 ] as const
 
 /**
@@ -55,7 +71,7 @@ export const MEMBERSHIP_PLACEHOLDER_OPTIONS: readonly PlaceholderOption[] = [
  *
  * Offering the session set on a membership therefore handed the trainer
  * "Session time / Session date / Class name / Location" — tokens that
- * substitute to nothing or to the wrong noun — while hiding `{{membership}}`,
+ * substitute to nothing or to the wrong noun — while hiding `{{package}}`,
  * the one token that flow actually fills. Picking the set here rather than at
  * the screen keeps the choice testable against the engine.
  */
@@ -165,6 +181,9 @@ export const PLACEHOLDER_LABELS: Record<string, string> = Object.fromEntries(
     ...MEMBERSHIP_PLACEHOLDER_OPTIONS,
     ...CLIENT_EMAIL_PLACEHOLDER_OPTIONS,
     ...CLIENT_INVITE_PLACEHOLDER_OPTIONS,
+    // Retired spellings still present in saved messages — a step written before
+    // the Packages rename must not display as an unlabelled raw token.
+    ...LEGACY_PLACEHOLDER_OPTIONS,
   ].map(o => [o.token, o.label]),
 )
 
