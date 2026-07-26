@@ -46,7 +46,8 @@ test.describe('automated communication flows', () => {
       const runA = await makeClass('E2E Flow Class A')
       const runB = await makeClass('E2E Flow Class B')
 
-      // Build a step on run A.
+      // Build a step on run A. In-app is staff-only now, so asking for it on a
+      // client-facing step must come back without it.
       const create = await page.request.post(`/api/trainer/class-runs/${runA}/comms-flow`, {
         data: {
           direction: 'BEFORE_SESSION', offsetMinutes: 1440, channels: ['PUSH', 'IN_APP'],
@@ -55,6 +56,7 @@ test.describe('automated communication flows', () => {
         },
       })
       expect(create.status(), await create.text()).toBe(201)
+      expect((await create.json()).channels).toEqual(['PUSH'])
       expect(await prisma.commsFlowStep.count({ where: { classRunId: runA } })).toBe(1)
 
       // It renders on the class page, under its own "Reminders & messages" tab.
@@ -80,7 +82,7 @@ test.describe('automated communication flows', () => {
       const copied = await prisma.commsFlowStep.findFirst({ where: { classRunId: runB } })
       expect(copied?.title).toBe('E2E Bring treats')
       expect(copied?.important).toBe(true)
-      expect(copied?.channels).toEqual(['PUSH', 'IN_APP'])
+      expect(copied?.channels).toEqual(['PUSH'])
     } finally {
       for (const fn of cleanup.reverse()) await fn()
       await prisma.$disconnect()
@@ -149,6 +151,47 @@ test.describe('automated communication flows', () => {
       await page.goto(`/classes/${b.classRunId}`)
       await page.getByRole('button', { name: 'Reminders & messages' }).click()
       await expect(page.getByText('E2E What to bring')).toBeVisible({ timeout: 15_000 })
+    } finally {
+      for (const fn of cleanup.reverse()) await fn()
+      await prisma.$disconnect()
+    }
+  })
+
+  // In-app is a staff-only channel: a client already gets the push/email, and
+  // mirroring every one into their feed made the feed useless. Staff DO read
+  // their bell, so a STAFF step keeps it — including when the audience is
+  // switched over on an existing step.
+  test('in-app is kept for staff and stripped for clients', async ({ page }) => {
+    const prisma = await makePrisma()
+    const cleanup: Array<() => Promise<unknown>> = []
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      const res = await page.request.post('/api/packages', {
+        data: { name: 'E2E Staff Flow Class', sessionCount: 2, weeksBetween: 1, durationMins: 60, isGroup: true, startAt: inDays(10).toISOString() },
+      })
+      const b = await res.json()
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+
+      const create = await page.request.post(`/api/trainer/class-runs/${b.classRunId}/comms-flow`, {
+        data: {
+          direction: 'BEFORE_SESSION', offsetMinutes: 60, channels: ['PUSH', 'IN_APP'],
+          audience: 'STAFF', important: false, title: 'E2E Staff heads-up',
+          body: 'You are on {{class}} at {{time}}.', enabled: true,
+        },
+      })
+      expect(create.status(), await create.text()).toBe(201)
+      const step = await create.json()
+      expect(step.audience).toBe('STAFF')
+      expect(step.channels).toEqual(['PUSH', 'IN_APP'])
+
+      // Point the same step at clients and the in-app channel goes with it.
+      const patch = await page.request.patch(`/api/trainer/class-runs/${b.classRunId}/comms-flow/${step.id}`, {
+        data: { audience: 'ENROLLED' },
+      })
+      expect(patch.status(), await patch.text()).toBe(200)
+      expect((await patch.json()).channels).toEqual(['PUSH'])
     } finally {
       for (const fn of cleanup.reverse()) await fn()
       await prisma.$disconnect()

@@ -209,13 +209,43 @@ const RECIPIENT_USER_SELECT = { id: true, name: true, email: true, notifyPush: t
 
 type SessionRecipients = { scheduledAt: Date; byUser: Map<string, { user: RecipientUser; dogs: string[] }> }
 
+/**
+ * Who a STAFF-audience step reaches: the members assigned to run this class if
+ * it has any (no point telling the whole company about one trainer's Tuesday
+ * class), otherwise every accepted member of the business. Package and
+ * membership steps have no per-offering assignment, so they always take the
+ * whole team.
+ */
+async function staffRecipients(companyId: string, classRunId: string | null): Promise<RecipientUser[]> {
+  const dedupe = (users: (RecipientUser | null | undefined)[]) => {
+    const byId = new Map<string, RecipientUser>()
+    for (const u of users) if (u?.id) byId.set(u.id, u)
+    return [...byId.values()]
+  }
+
+  if (classRunId) {
+    const assigned = await prisma.classRunTrainer.findMany({
+      where: { classRunId, membership: { acceptedAt: { not: null } } },
+      select: { membership: { select: { user: { select: RECIPIENT_USER_SELECT } } } },
+    })
+    const users = dedupe(assigned.map(a => a.membership?.user))
+    if (users.length) return users
+  }
+
+  const members = await prisma.trainerMembership.findMany({
+    where: { companyId, acceptedAt: { not: null } },
+    select: { user: { select: RECIPIENT_USER_SELECT } },
+  })
+  return dedupe(members.map(m => m.user))
+}
+
 export async function processCommsFlows(now: Date = new Date()): Promise<{ steps: number; sent: number }> {
   const steps = await prisma.commsFlowStep.findMany({
     where: { enabled: true, channels: { isEmpty: false } },
     include: {
-      classRun: { select: { name: true, location: true, trainer: { select: TRAINER_BRAND_SELECT } } },
-      package: { select: { name: true, trainer: { select: TRAINER_BRAND_SELECT } } },
-      membership: { select: { name: true, trainer: { select: TRAINER_BRAND_SELECT } } },
+      classRun: { select: { name: true, location: true, trainerId: true, trainer: { select: TRAINER_BRAND_SELECT } } },
+      package: { select: { name: true, trainerId: true, trainer: { select: TRAINER_BRAND_SELECT } } },
+      membership: { select: { name: true, trainerId: true, trainer: { select: TRAINER_BRAND_SELECT } } },
     },
   })
 
@@ -248,6 +278,13 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
     // own single client.
     const perSession = new Map<string, SessionRecipients>()
 
+    // A staff step is about the session, not about one client's booking: every
+    // member on it hears the same thing, with {{dog}} standing in for the dogs
+    // booked that day.
+    const toStaff = step.audience === 'STAFF'
+    const staff = toStaff ? await staffRecipients(owner.trainerId, step.classRunId) : []
+    if (toStaff && staff.length === 0) continue
+
     if (step.classRunId) {
       const sessions = await prisma.trainingSession.findMany({
         where: { classRunId: step.classRunId, scheduledAt: scheduledWhere },
@@ -268,15 +305,25 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
         // FULL enrolments (dropInSessionId null) attend every session; a drop-in
         // only its one. Dedup by user, collecting their dog name(s).
         const byUser = new Map<string, { user: RecipientUser; dogs: string[] }>()
+        const attending: string[] = []
         for (const e of enrollments) {
           if (e.dropInSessionId && e.dropInSessionId !== s.id) continue
+          if (e.dog?.name && !attending.includes(e.dog.name)) attending.push(e.dog.name)
           const u = e.client?.user
           if (!u?.id) continue
           const entry = byUser.get(u.id) ?? { user: u, dogs: [] }
           if (e.dog?.name && !entry.dogs.includes(e.dog.name)) entry.dogs.push(e.dog.name)
           byUser.set(u.id, entry)
         }
-        if (byUser.size) perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser })
+        if (toStaff) {
+          // Staff hear about the session even when nobody has booked yet.
+          perSession.set(s.id, {
+            scheduledAt: s.scheduledAt,
+            byUser: new Map(staff.map(u => [u.id, { user: u, dogs: attending }])),
+          })
+        } else if (byUser.size) {
+          perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser })
+        }
       }
     } else {
       // 1:1 package: each session belongs to one client. CUSTOM narrows to picked clients.
@@ -289,14 +336,21 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
         select: { id: true, scheduledAt: true, dog: { select: { name: true } }, client: { select: { user: { select: RECIPIENT_USER_SELECT } } } },
       })
       for (const s of sessions) {
+        const dogs = s.dog?.name ? [s.dog.name] : []
+        if (toStaff) {
+          perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser: new Map(staff.map(u => [u.id, { user: u, dogs }])) })
+          continue
+        }
         const u = s.client?.user
         if (!u?.id) continue
-        perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser: new Map([[u.id, { user: u, dogs: s.dog?.name ? [s.dog.name] : [] }]]) })
+        perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser: new Map([[u.id, { user: u, dogs }]]) })
       }
     }
 
     if (perSession.size === 0) continue
-    const link = '/my-sessions'
+    // Staff live on the trainer side of the app, so their link goes to the work,
+    // not to a client's session list.
+    const link = toStaff ? (step.classRunId ? `/classes/${step.classRunId}` : '/schedule') : '/my-sessions'
 
     for (const [sessionId, { scheduledAt, byUser }] of perSession) {
       const already = await prisma.commsFlowSend.findMany({ where: { stepId: step.id, sessionId }, select: { userId: true } })
@@ -346,7 +400,7 @@ async function processMembershipStep(
     body: string
     emailBody: string | null
   },
-  membership: { name: string; trainer: TrainerBrand },
+  membership: { name: string; trainerId: string; trainer: TrainerBrand },
   now: Date,
 ): Promise<number> {
   const offsetMs = step.offsetMinutes * 60_000
@@ -394,42 +448,50 @@ async function processMembershipStep(
   })
   const alreadySent = new Set(already.map(a => `${a.purchaseId}|${a.userId}`))
 
+  // A staff step tells the team about the member ("someone just joined"), so the
+  // recipients are the business's members and the link is the trainer-side page.
+  const toStaff = step.audience === 'STAFF'
+  const staff = toStaff ? await staffRecipients(membership.trainerId, null) : []
+  if (toStaff && staff.length === 0) return 0
+
   let sent = 0
   for (const purchase of purchases) {
     const client = clientById.get(purchase.clientId)
     if (!client?.user?.id) continue
-    const user = client.user
-    if (alreadySent.has(`${purchase.id}|${user.id}`)) continue
-
     const dogs = [client.dog?.name, ...client.dogs.map(d => d.name)]
       .filter((n): n is string => !!n)
       .filter((n, i, arr) => arr.indexOf(n) === i)
     const anchorDate = step.direction === 'AFTER_PURCHASE' ? purchase.purchasedAt : purchase.currentPeriodEnd
-    const vars: CommsVars = {
-      name: user.name ?? 'there',
-      dog: dogs.join(', '),
-      time: anchorDate ? fmtTime(anchorDate, tz) : '',
-      date: anchorDate ? fmtDate(anchorDate, tz) : '',
-      class: membership.name,
-      membership: membership.name,
-      business: membership.trainer.businessName,
-      location: '',
+    const recipients = toStaff ? staff : [client.user]
+
+    for (const user of recipients) {
+      if (alreadySent.has(`${purchase.id}|${user.id}`)) continue
+      const vars: CommsVars = {
+        name: user.name ?? 'there',
+        dog: dogs.join(', '),
+        time: anchorDate ? fmtTime(anchorDate, tz) : '',
+        date: anchorDate ? fmtDate(anchorDate, tz) : '',
+        class: membership.name,
+        membership: membership.name,
+        business: membership.trainer.businessName,
+        location: '',
+      }
+      const { title, body, emailBody } = renderCommsMessage(step, vars)
+      await deliver({
+        channels: step.channels,
+        important: step.important,
+        user,
+        trainer: membership.trainer,
+        title,
+        body,
+        emailBody,
+        link: toStaff ? '/memberships' : '/my-memberships',
+      })
+      await prisma.commsFlowSend
+        .create({ data: { stepId: step.id, purchaseId: purchase.id, userId: user.id } })
+        .catch(() => {})
+      sent++
     }
-    const { title, body, emailBody } = renderCommsMessage(step, vars)
-    await deliver({
-      channels: step.channels,
-      important: step.important,
-      user,
-      trainer: membership.trainer,
-      title,
-      body,
-      emailBody,
-      link: '/my-memberships',
-    })
-    await prisma.commsFlowSend
-      .create({ data: { stepId: step.id, purchaseId: purchase.id, userId: user.id } })
-      .catch(() => {})
-    sent++
   }
   return sent
 }

@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
   sendFindMany: vi.fn(),
   sendCreate: vi.fn(),
   notificationCreate: vi.fn(),
+  classRunTrainerFindMany: vi.fn(),
+  trainerMembershipFindMany: vi.fn(),
   sendPush: vi.fn(),
   sendEmail: vi.fn(),
   renderEmail: vi.fn(),
@@ -28,6 +30,8 @@ vi.mock('@/lib/prisma', () => ({
     notification: { create: h.notificationCreate },
     membershipPurchase: { findMany: h.purchaseFindMany },
     clientProfile: { findMany: h.clientFindMany },
+    classRunTrainer: { findMany: h.classRunTrainerFindMany },
+    trainerMembership: { findMany: h.trainerMembershipFindMany },
   },
 }))
 vi.mock('@/lib/push', () => ({ sendPush: h.sendPush }))
@@ -58,10 +62,14 @@ function step(over: Record<string, unknown> = {}) {
     important: false,
     title: 'Hi {{name}} & {{dog}}',
     body: '{{class}} at {{time}} — {{business}}',
-    classRun: { name: 'Puppy Class', location: 'The Hall', trainer },
+    classRun: { name: 'Puppy Class', location: 'The Hall', trainerId: 'co1', trainer },
     ...over,
   }
 }
+
+const staffUser = (over: Record<string, unknown> = {}) => ({
+  id: 'staff1', name: 'Bree', email: 'bree@waggy.com', notifyPush: true, productEmailOptOut: false, ...over,
+})
 
 function enrollment(over: Record<string, unknown> = {}) {
   return {
@@ -78,6 +86,8 @@ beforeEach(() => {
   h.sendFindMany.mockResolvedValue([])
   h.purchaseFindMany.mockResolvedValue([])
   h.clientFindMany.mockResolvedValue([])
+  h.classRunTrainerFindMany.mockResolvedValue([])
+  h.trainerMembershipFindMany.mockResolvedValue([])
   h.sendCreate.mockResolvedValue({})
   h.notificationCreate.mockResolvedValue({})
   h.sendPush.mockResolvedValue({ sent: 1, total: 1, results: [] })
@@ -200,6 +210,60 @@ describe('processCommsFlows', () => {
   })
 })
 
+// ─── Staff audience ─────────────────────────────────────────────────────────
+// A step can address the trainer's own team instead of the clients: the members
+// assigned to the class if it has any, otherwise everyone in the business.
+describe('processCommsFlows — staff audience', () => {
+  it('sends to the members assigned to the class, not the clients', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF', channels: ['PUSH', 'IN_APP'] })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.classRunTrainerFindMany.mockResolvedValue([{ membership: { user: staffUser() } }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendPush.mock.calls[0][0]).toBe('staff1')
+    // The client on the run hears nothing.
+    expect(h.sendPush.mock.calls.some(c => c[0] === 'u1')).toBe(false)
+    // …and their bell row deep-links to the trainer-side class page.
+    expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({ userId: 'staff1', link: '/classes/run1' })
+    expect(h.trainerMembershipFindMany).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the whole team when nobody is assigned to the class', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.classRunTrainerFindMany.mockResolvedValue([])
+    h.trainerMembershipFindMany.mockResolvedValue([{ user: staffUser({ id: 'owner1' }) }, { user: staffUser({ id: 'staff2' }) }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(2)
+    expect(h.trainerMembershipFindMany.mock.calls[0][0].where).toMatchObject({ companyId: 'co1' })
+  })
+
+  it('still tells staff about a session nobody has booked', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF', body: 'Dogs today: {{dog}}' })])
+    h.enrollmentFindMany.mockResolvedValue([])
+    h.classRunTrainerFindMany.mockResolvedValue([{ membership: { user: staffUser() } }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.notificationCreate.mock.calls[0][0].data.body).toBe('Dogs today: ')
+  })
+
+  it('sends nothing when the business has no accepted members', async () => {
+    h.stepFindMany.mockResolvedValue([step({ audience: 'STAFF' })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(0)
+    expect(h.sendPush).not.toHaveBeenCalled()
+  })
+})
+
 describe('processCommsFlows — 1:1 package scope', () => {
   it("sends to each session's own client (no enrolments involved)", async () => {
     h.stepFindMany.mockResolvedValue([{
@@ -207,7 +271,7 @@ describe('processCommsFlows — 1:1 package scope', () => {
       direction: 'BEFORE_SESSION', offsetMinutes: 1440, channels: ['IN_APP'],
       audience: 'ENROLLED', customClientIds: [], important: false,
       title: 'Hi {{name}} & {{dog}}', body: '{{class}} at {{time}}',
-      classRun: null, package: { name: 'Puppy 101', trainer },
+      classRun: null, package: { name: 'Puppy 101', trainerId: 'co1', trainer },
     }])
     // The package branch queries sessions with the client + dog attached.
     h.sessionFindMany.mockResolvedValue([
@@ -232,7 +296,7 @@ const membershipStep = (over: Record<string, unknown> = {}) => ({
   audience: 'ENROLLED', customClientIds: [], important: false,
   title: 'Welcome {{name}}', body: 'Enjoy {{membership}} with {{dog}}',
   emailBody: null, enabled: true,
-  membership: { name: 'Puppy Starter', trainer },
+  membership: { name: 'Puppy Starter', trainerId: 'co1', trainer },
   classRun: null, package: null,
   ...over,
 })
@@ -291,6 +355,19 @@ describe('processCommsFlows — membership scope', () => {
 
     expect(res.sent).toBe(0)
     expect(h.sendPush).not.toHaveBeenCalled()
+  })
+
+  it('a STAFF membership step tells the team, linked to the trainer-side page', async () => {
+    h.stepFindMany.mockResolvedValue([membershipStep({ audience: 'STAFF' })])
+    h.purchaseFindMany.mockResolvedValue([PURCHASE])
+    h.clientFindMany.mockResolvedValue([CLIENT])
+    h.trainerMembershipFindMany.mockResolvedValue([{ user: staffUser() }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({ userId: 'staff1', link: '/memberships' })
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'mstep', purchaseId: 'pur1', userId: 'staff1' } })
   })
 
   it('a renewal step counts back from the period end instead', async () => {

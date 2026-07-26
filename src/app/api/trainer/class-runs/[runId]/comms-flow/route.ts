@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
 import { COMMS_STARTER_STEPS } from '@/lib/comms-flows'
-import { stepCreateSchema, withDefaults } from '@/lib/comms-flow-steps'
+import { stepCreateSchema, withDefaults, channelsForAudience } from '@/lib/comms-flow-steps'
 
 // List + create the automated-message steps of a class / drop-in / event
 // (ClassRun). Guarded by classes.manage and scoped to the trainer's own run.
@@ -67,7 +67,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     return NextResponse.json(steps, { status: 201 })
   }
 
-  const fields = withDefaults(parsed.data)
+  const base = withDefaults(parsed.data)
+  // In-app is staff-only — a client's feed shouldn't mirror every push.
+  const fields = { ...base, channels: channelsForAudience(base.channels, base.audience) }
   const step = await prisma.commsFlowStep.create({
     data: { classRunId: runId, order, ...fields },
   })

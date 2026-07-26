@@ -7,7 +7,10 @@ export const channelEnum = z.enum(['PUSH', 'EMAIL', 'IN_APP'])
 // BEFORE/AFTER_SESSION are for offerings with a timetable; the PURCHASE and
 // PERIOD_END anchors are for memberships, which have no sessions.
 export const directionEnum = z.enum(['BEFORE_SESSION', 'AFTER_SESSION', 'AFTER_PURCHASE', 'BEFORE_PERIOD_END'])
-export const audienceEnum = z.enum(['ENROLLED', 'ENROLLED_AND_WAITLIST', 'CUSTOM'])
+// STAFF targets the trainer's own team rather than clients.
+export const audienceEnum = z.enum(['ENROLLED', 'ENROLLED_AND_WAITLIST', 'CUSTOM', 'STAFF'])
+export type Audience = z.infer<typeof audienceEnum>
+export type Channel = z.infer<typeof channelEnum>
 
 // Offsets are minutes; cap at 60 days so a stray value can't scan the whole DB.
 const MAX_OFFSET_MIN = 60 * 24 * 60
@@ -68,3 +71,59 @@ export function withMembershipDefaults(partial: Partial<StepFields>): StepFields
 
 // Validator for a template's stored `steps` JSON when applying it to a run.
 export const templateStepsSchema = z.array(stepFieldsSchema)
+
+// ─── In-app is staff-only ────────────────────────────────────────────────────
+// A client already gets the push and/or the email; mirroring every one of those
+// into their notification feed made the feed useless. Staff DO read their bell,
+// so IN_APP survives only on staff-targeted steps. Enforced here rather than in
+// the zod schema so an older step (or an older template) is quietly corrected
+// instead of failing to save.
+export function channelsForAudience<T extends string>(channels: T[], audience: Audience): T[] {
+  if (audience === 'STAFF') return channels
+  const kept = channels.filter(c => c !== 'IN_APP')
+  return kept.length ? kept : (['PUSH'] as unknown as T[])
+}
+
+/**
+ * Apply the staff-only-in-app rule to a whole (possibly partial) step patch.
+ * A PATCH can move either half of the pair — switch the audience to clients, or
+ * add in-app to a step that's already client-facing — so the row's current
+ * values fill in whichever half the patch didn't send. A patch touching
+ * neither is returned untouched.
+ */
+export function normalizeStepChannels<T extends object>(
+  fields: T,
+  currentAudience: Audience = 'ENROLLED',
+  currentChannels: Channel[] = [],
+): T & { channels?: Channel[] } {
+  const patch = fields as { channels?: Channel[]; audience?: Audience }
+  if (patch.channels === undefined && patch.audience === undefined) return fields
+  return {
+    ...fields,
+    channels: channelsForAudience(patch.channels ?? currentChannels, patch.audience ?? currentAudience),
+  }
+}
+
+// ─── Reading a flow in time order ────────────────────────────────────────────
+// The list is authored in whatever order the trainer added messages, but it
+// only makes sense read as a timeline: earliest "before" first, through the
+// session, then everything "after". Shared with the editor so the screen and
+// any other reader agree.
+export function commsTimelinePos(s: { direction: string; offsetMinutes: number }): number {
+  // A membership's two anchors are different moments in the client's life, so
+  // they can't share a number line with 0 = the session. Purchase-anchored
+  // steps come first (they fire from day one); period-end ones sit after, and
+  // within them the biggest lead time is the earliest.
+  if (s.direction === 'BEFORE_PERIOD_END') return 1_000_000 - s.offsetMinutes
+  if (s.direction === 'AFTER_PURCHASE') return s.offsetMinutes
+  return s.direction === 'BEFORE_SESSION' ? -s.offsetMinutes : s.offsetMinutes
+}
+
+/** Sort a flow into the order it will actually happen in. Stable on ties. */
+export function sortStepsByTime<T extends { direction: string; offsetMinutes: number; order?: number }>(steps: T[]): T[] {
+  return [...steps].sort((a, b) => {
+    const d = commsTimelinePos(a) - commsTimelinePos(b)
+    if (d !== 0) return d
+    return (a.order ?? 0) - (b.order ?? 0)
+  })
+}

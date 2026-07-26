@@ -2852,6 +2852,13 @@ enum CommsFlowAudience {
   ENROLLED // ENROLLED enrolments only (default)
   ENROLLED_AND_WAITLIST // also WAITLISTED
   CUSTOM // only the clients in customClientIds
+  // The trainer's own team, not clients — "you're teaching Puppy Class in an
+  // hour", "a new member joined". Recipients are the ClassRun's assigned
+  // members when it has any, otherwise every accepted TrainerMembership of the
+  // company. Staff-only steps are the ONLY ones allowed the IN_APP channel:
+  // the trainer bell reads Notification, the client feed shouldn't fill with
+  // duplicated reminder rows.
+  STAFF
 }
 
 // One timed message in a class/drop-in/event's flow. channels reuses the
