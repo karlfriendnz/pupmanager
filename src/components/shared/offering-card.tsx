@@ -157,8 +157,20 @@ export function OfferingCard({
           {facts.length > 0 && (
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
               {facts.map((f, i) => (
-                <span key={i} className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs ${FACT_TONE[f.tone ?? 'default']}`}>
-                  <span className="shrink-0 opacity-70">{f.icon}</span>
+                <span
+                  key={i}
+                  className={cn(
+                    'inline-flex max-w-full items-start gap-1.5 text-xs',
+                    // A long one wraps onto its own lines instead of running
+                    // off the card: "17 Russley Drive, Mount Maunganui 3116,
+                    // New Zealand" is 50 characters and a phone card has room
+                    // for about 40, so nowrap sent the country over the edge
+                    // where it couldn't be read at all.
+                    f.label.length > 36 ? '[overflow-wrap:anywhere]' : 'whitespace-nowrap',
+                    FACT_TONE[f.tone ?? 'default'],
+                  )}
+                >
+                  <span className="mt-px shrink-0 opacity-70">{f.icon}</span>
                   {f.label}
                 </span>
               ))}
