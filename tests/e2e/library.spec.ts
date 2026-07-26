@@ -33,7 +33,11 @@ test('the old /templates library links still land on the library', async ({ page
   // links pointed here for a long time.
   await page.goto('/templates')
   await expect(page).toHaveURL(/\/library$/)
-  await expect(page.getByRole('link', { name: new RegExp(LIB.typeName) })).toBeVisible()
+  // .first(): at desktop width a category is legitimately linked twice — once
+  // from the left-hand tree and once from the landing grid. Both are meant to
+  // be there, so this asserts the redirect landed on a page showing the
+  // library, not that only one link exists.
+  await expect(page.getByRole('link', { name: new RegExp(LIB.typeName) }).first()).toBeVisible()
 
   // …and the training-template screens under it are untouched by the move.
   await page.goto('/templates/new')

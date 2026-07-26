@@ -62,7 +62,10 @@ test.describe('automated communication flows', () => {
       // It renders on the class page, under its own "Reminders & messages" tab.
       await page.goto(`/classes/${runA}`)
       await page.getByRole('button', { name: 'Reminders & messages' }).click()
-      await expect(page.getByText('E2E Bring treats')).toBeVisible({ timeout: 15_000 })
+      // exact: the Preview icon button carries an sr-only "Preview <title>" label,
+      // so a substring match hits both it and the row title. The sr-only label is
+      // correct a11y, not duplication — the assertion just has to be precise.
+      await expect(page.getByText('E2E Bring treats', { exact: true })).toBeVisible({ timeout: 15_000 })
       await expect(page.getByText('1 day before', { exact: false })).toBeVisible()
 
       // Save the flow as a template…
@@ -150,7 +153,8 @@ test.describe('automated communication flows', () => {
       // And the editor shows the email content, not just the push line.
       await page.goto(`/classes/${b.classRunId}`)
       await page.getByRole('button', { name: 'Reminders & messages' }).click()
-      await expect(page.getByText('E2E What to bring')).toBeVisible({ timeout: 15_000 })
+      // exact: see above — the Preview button's sr-only label also contains this.
+      await expect(page.getByText('E2E What to bring', { exact: true })).toBeVisible({ timeout: 15_000 })
     } finally {
       for (const fn of cleanup.reverse()) await fn()
       await prisma.$disconnect()
@@ -230,7 +234,8 @@ test.describe('automated communication flows', () => {
 
       await page.goto(`/classes/${b.classRunId}`)
       await page.getByRole('button', { name: 'Reminders & messages' }).click()
-      await expect(page.getByText('E2E First')).toBeVisible({ timeout: 15_000 })
+      // exact: as above, the Preview button's sr-only label contains the title.
+      await expect(page.getByText('E2E First', { exact: true })).toBeVisible({ timeout: 15_000 })
 
       const stops = page.locator('ol > li')
       await expect(stops).toHaveCount(3)
