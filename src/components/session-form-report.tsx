@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
-import { Plus, Loader2, FileText, Pencil, Trash2, Star, Link2, X, Sparkles, Check, Lock, List, Layers, ChevronLeft, ChevronRight, Send } from 'lucide-react'
+import { Plus, Loader2, FileText, Pencil, Trash2, Star, Link2, X, Sparkles, Check, Lock, List, Layers, ChevronLeft, ChevronRight, ChevronDown, Send } from 'lucide-react'
 import { VoiceInput } from '@/components/voice-input'
 import { ImageUploadButton, ImageGallery } from '@/components/image-uploader'
 import { HomeworkFlow } from '@/components/homework-flow'
@@ -203,9 +203,11 @@ export function SessionFormReport({
 
   // INLINE MODE — the surface that lives at /sessions/[id].
   if (layout === 'inline') {
+    // Inline states carry their own row padding — the caller wraps this in a
+    // bare FlatBlock, so anything without it sits flush against the border.
     if (!loaded) {
       return (
-        <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
+        <div className="flex items-center gap-2 px-4 py-3.5 text-sm text-slate-400">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading…
         </div>
       )
@@ -214,7 +216,7 @@ export function SessionFormReport({
     // No templates exist anywhere — surface a one-time setup nudge.
     if ((templates?.length ?? 0) === 0) {
       return (
-        <p className="text-sm text-slate-400">
+        <p className="px-4 py-3.5 text-sm text-slate-500">
           No session forms yet. Create one in <a href="/settings?tab=forms" className="text-accent hover:underline">Settings → Forms</a>.
         </p>
       )
@@ -262,8 +264,9 @@ export function SessionFormReport({
     // No form yet — offer a dropdown to pick one. Selecting attaches it
     // immediately by writing an empty response, which then re-renders into
     // the always-editable form view above.
+    // One row, like every other empty section on the page — the FlatBlock the
+    // caller wraps this in supplies the border, so no padding of our own.
     return (
-      <div className="p-5">
       <FormDropdown
         templates={templates ?? []}
         sessionId={sessionId}
@@ -285,7 +288,6 @@ export function SessionFormReport({
             .catch(() => {})
         }}
       />
-      </div>
     )
   }
 
@@ -576,19 +578,47 @@ function FormDropdown({
 
   return (
     <div>
-      <label className="text-sm font-medium text-slate-700 block mb-1.5">Choose a form for this session</label>
-      <select
-        value=""
-        onChange={e => handleSelect(e.target.value)}
-        disabled={attaching}
-        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
-      >
-        <option value="" disabled>{attaching ? 'Attaching…' : 'Select a form…'}</option>
-        {templates.map(t => (
-          <option key={t.id} value={t.id}>{t.name}</option>
-        ))}
-      </select>
-      {error && <p className="text-xs text-red-600 mt-1.5">{error}</p>}
+      {/*
+        A ROW that opens the platform's own picker.
+
+        It used to be a label plus a 48px bordered field, sitting inside a card
+        of its own — so an unstarted write-up cost ~130px, and the browser's
+        option list dropped out of that little box as an unbounded white panel
+        over the rows beneath it. It read as broken.
+
+        The control here is still a real native <select> — on a phone that means
+        the OS wheel/sheet, which is the right answer (AGENTS.md prefers the
+        platform, and "full screens, not dropdowns" is about hand-built menus,
+        not the system one). It's laid transparently over the row so the row is
+        the tap target and the popup anchors to a full-width row instead of
+        bursting out of a small field. No portal, no overlay, no second
+        scrollbar, and it works before hydration.
+      */}
+      <div className="relative flex w-full items-center gap-3 px-4 py-3.5">
+        <FileText className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-slate-900">
+            {attaching ? 'Attaching…' : 'Write up this session'}
+          </span>
+          <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+            Choose a form
+          </span>
+        </span>
+        <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-400" />
+        <select
+          value=""
+          onChange={e => handleSelect(e.target.value)}
+          disabled={attaching}
+          aria-label="Choose a form for this session"
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
+        >
+          <option value="" disabled>Choose a form…</option>
+          {templates.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+      </div>
+      {error && <p className="px-4 pb-3 text-[13px] text-rose-600">{error}</p>}
     </div>
   )
 }

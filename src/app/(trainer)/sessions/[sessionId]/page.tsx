@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Calendar, ChevronDown, MapPin, Video, User, Clock, History, Paperclip, PawPrint, Eye, ListChecks } from 'lucide-react'
+import { Calendar, ChevronDown, Video, User, Clock, History, Paperclip, PawPrint, Eye, ListChecks } from 'lucide-react'
 import { formatSessionTitle } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
 import { SessionFormReport } from '@/components/session-form-report'
@@ -38,15 +38,13 @@ export default async function SessionPage({
 
   const { sessionId } = await params
 
+  // Tenant scope only. Do NOT also filter on `clientId: { not: null }` — a
+  // GROUP-CLASS session has clientId null BY DESIGN (schema: attendance is
+  // per-enrollee via SessionAttendance), so that filter 404'd every class
+  // session in the app. On this dev data that was 588 of 898 sessions. The two
+  // null-client cases are told apart below by `classRunId`.
   const trainingSession = await prisma.trainingSession.findFirst({
-    where: {
-      id: sessionId,
-      trainerId,
-      // Orphan sessions (client deleted, clientId set null) are hidden
-      // everywhere else — 404 the detail page too so a stale link can't
-      // surface them.
-      clientId: { not: null },
-    },
+    where: { id: sessionId, trainerId },
     include: {
       client: { select: { id: true, isSample: true, user: { select: { name: true, email: true } } } },
       dog: {
@@ -69,7 +67,40 @@ export default async function SessionPage({
       },
     },
   })
+  // No such session for this trainer — a genuine 404, and the tenant guard.
   if (!trainingSession) notFound()
+
+  // A class session belongs to a cohort, not to one client, and already has a
+  // screen built for it (attendance per enrollee). The schedule and
+  // session-row-card link there directly; anything landing here — a bookmark, a
+  // notification, an old link — gets sent to the same place rather than a wall.
+  if (trainingSession.classRunId) {
+    redirect(`/classes/${trainingSession.classRunId}/sessions/${trainingSession.id}`)
+  }
+
+  // Neither a client nor a class: the client was deleted and the session was
+  // left behind. There's nothing to show, but a bare 404 for a row a trainer
+  // just tapped reads as a bug. Say what happened instead.
+  if (!trainingSession.clientId && !trainingSession.dog) {
+    return (
+      <>
+        <PageHeader title="Session notes" back={{ href: '/schedule', label: 'Back to schedule' }} />
+        <div className="p-4 md:p-8 w-full max-w-3xl mx-auto">
+          <FlatBlock>
+            <div className="px-4 py-4">
+              <p className="text-sm font-medium text-slate-900">This session has no client</p>
+              <p className="mt-1 text-[13px] text-slate-500">
+                {formatSessionTitle(trainingSession.title)} on{' '}
+                {trainingSession.scheduledAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' })}.
+                Its client was removed, so there are no notes to write up.
+              </p>
+            </div>
+            <LinkRow icon={Calendar} label="Back to the schedule" href="/schedule" />
+          </FlatBlock>
+        </div>
+      </>
+    )
+  }
 
   // What's owed for this session, and how to collect it. Two shapes:
   //
@@ -172,15 +203,10 @@ export default async function SessionPage({
   const clientId = trainingSession.clientId ?? trainingSession.dog?.primaryFor[0]?.id
   const d = trainingSession.scheduledAt
 
-  // Where this session sits in its lifecycle. A word and a dot in the identity
-  // row — not a tinted pill, and never repeated further down the page.
-  const STATUS_META: Record<string, { label: string; dot: string }> = {
-    UPCOMING:  { label: 'Upcoming',  dot: 'bg-slate-300' },
-    COMPLETED: { label: 'Completed', dot: 'bg-slate-500' },
-    COMMENTED: { label: 'Commented', dot: 'bg-amber-500' },
-    INVOICED:  { label: 'Invoiced',  dot: 'bg-emerald-500' },
-  }
-  const status = STATUS_META[trainingSession.status] ?? STATUS_META.UPCOMING
+  // No status word in the header. "Upcoming" is the default state of most
+  // sessions, so it told the trainer nothing, and every state it CAN show is
+  // already said by the Complete / Invoice cells directly below it — the page
+  // must not say the same thing twice (AGENTS.md).
 
   // Homework already attached — a count for the row, so an empty section costs
   // one line instead of two full-width buttons.
@@ -279,34 +305,36 @@ export default async function SessionPage({
                   {[clientName, formatSessionTitle(trainingSession.title)].filter(Boolean).join(' · ')}
                 </span>
               </span>
-              <span className="flex flex-shrink-0 items-center gap-1.5 text-[13px] text-slate-500">
-                <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
-                {status.label}
-              </span>
             </div>
 
+            {/* Date, time, duration and — when there IS one — the place, all on
+                one row. "In-person" had a row to itself and spent it saying the
+                default; a real address is worth showing but not worth a row. */}
             <FactRow
               icon={Calendar}
               accent={accent}
               label={d.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-              sub={`${d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })} · ${trainingSession.durationMins} min`}
+              sub={[
+                `${d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })} · ${trainingSession.durationMins} min`,
+                trainingSession.sessionType === 'VIRTUAL'
+                  // A joinable virtual session gets its own row below, because
+                  // that row DOES something. One with no link yet is just a
+                  // fact, so it rides here.
+                  ? (trainingSession.virtualLink ? null : 'Virtual')
+                  : trainingSession.location || null,
+              ].filter(Boolean).join(' · ')}
             />
 
-            {trainingSession.sessionType === 'VIRTUAL' ? (
-              trainingSession.virtualLink ? (
-                <LinkRow
-                  icon={Video}
-                  accent={accent}
-                  label="Virtual session"
-                  href={trainingSession.virtualLink}
-                  external
-                  trailingLabel="Join"
-                />
-              ) : (
-                <FactRow icon={Video} accent={accent} label="Virtual session" />
-              )
-            ) : (
-              <FactRow icon={MapPin} accent={accent} label={trainingSession.location || 'In-person'} />
+            {/* Only when it DOES something: a virtual session you can join. */}
+            {trainingSession.sessionType === 'VIRTUAL' && trainingSession.virtualLink && (
+              <LinkRow
+                icon={Video}
+                accent={accent}
+                label="Virtual session"
+                href={trainingSession.virtualLink}
+                external
+                trailingLabel="Join"
+              />
             )}
 
             {/* The three things a trainer does at the end of a session, as one
