@@ -289,6 +289,33 @@ button, a, [role="button"] {
 .tiptap-light.is-editor-empty:first-child::before,
 .tiptap-light p.is-editor-empty:first-child::before { color: #94a3b8; }
 
+/* NEVER two scrollbars (standing rule). While any modal/sheet/full-screen
+   overlay is mounted, the page behind it must not scroll — otherwise the
+   overlay scrolls, the page scrolls, and two rails run down the screen.
+   `:has()` does it for every overlay that declares itself, with no per-modal
+   JS: mark the overlay root `.pm-overlay`, or give it the ARIA a modal should
+   have anyway. Individual overlays may still lock in JS; this is the net that
+   catches the ones that forget. */
+body:has(.pm-overlay),
+body:has([role="dialog"][aria-modal="true"]) {
+  overflow: hidden;
+}
+
+/* Anything scrolling inside an overlay keeps its own bar hidden at every
+   width — the below-md rule keys off VIEWPORT width, so a narrow desktop
+   window would still show a rail. */
+.pm-overlay [class*="overflow-y-auto"],
+[role="dialog"][aria-modal="true"] [class*="overflow-y-auto"] {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pm-overlay [class*="overflow-y-auto"]::-webkit-scrollbar,
+[role="dialog"][aria-modal="true"] [class*="overflow-y-auto"]::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* Phone widths: scroll everywhere, show a bar nowhere.
    A real phone draws an overlay scrollbar that fades out on its own; a desktop
    browser at phone width leaves a permanent grey rail down every scrollable

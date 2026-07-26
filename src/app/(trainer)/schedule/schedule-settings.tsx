@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Settings2, X, Loader2 } from 'lucide-react'
+import { ModalPortal } from '@/components/shared/modal-portal'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
 
@@ -97,6 +98,16 @@ export function ScheduleSettings({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Standing rule: never two scrollbars. While this panel is up the page
+  // behind it must not scroll — otherwise the panel scrolls, the page scrolls,
+  // and you get two rails down the screen.
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [open])
+
   function toggleDay(d: number) {
     setDraftDays(prev => {
       const next = new Set(prev)
@@ -160,7 +171,8 @@ export function ScheduleSettings({
           max-height and no scroll, so on a phone the content ran past the
           bottom of the screen and took Save — and the X — with it. */}
       {open && (
-        <div className="fixed inset-0 z-50 flex justify-center sm:items-center sm:p-4" onClick={() => setOpen(false)}>
+        <ModalPortal>
+        <div className="pm-overlay fixed inset-0 z-[70] flex justify-center sm:items-center sm:p-4" onClick={() => setOpen(false)}>
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
           <div
             className="relative z-50 flex h-full w-full flex-col bg-white sm:h-auto sm:max-h-[85vh] sm:max-w-sm sm:rounded-2xl sm:shadow-2xl"
@@ -173,7 +185,7 @@ export function ScheduleSettings({
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto no-scrollbar p-5">
               {error && <p className="text-sm text-red-600">{error}</p>}
 
               {/* Everything that used to be its own toolbar icon lives here:
@@ -248,7 +260,7 @@ export function ScheduleSettings({
                 </div>
               )}
 
-              <div>
+              <div className="hidden sm:block">
                 <label className="text-sm font-medium text-slate-700 block mb-0.5">Visible hours · Desktop</label>
                 <p className="text-[11px] text-slate-400 mb-1.5">Used on tablet and desktop screens.</p>
                 <div className="flex items-center gap-2">
@@ -276,19 +288,25 @@ export function ScheduleSettings({
 
               <div>
                 <div className="flex items-center justify-between mb-0.5">
-                  <label className="text-sm font-medium text-slate-700">Visible hours · Mobile</label>
+                  <label className="text-sm font-medium text-slate-700">
+                    <span className="sm:hidden">Visible hours</span>
+                    <span className="hidden sm:inline">Visible hours · Mobile</span>
+                  </label>
                   <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={mobileOverride}
                       onChange={e => setMobileOverride(e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span>Different from desktop</span>
+                    <span className="sm:hidden">Set for phone</span>
+                    <span className="hidden sm:inline">Different from desktop</span>
                   </label>
                 </div>
                 <p className="text-[11px] text-slate-400 mb-1.5">
-                  {mobileOverride ? 'Used on phones (under 640px wide).' : 'Phones use the desktop range above.'}
+                  {mobileOverride
+                    ? 'Used on phones (under 640px wide).'
+                    : 'Phones use the same range as desktop.'}
                 </p>
                 <div className={`flex items-center gap-2 ${mobileOverride ? '' : 'opacity-50 pointer-events-none'}`}>
                   <select
@@ -316,8 +334,20 @@ export function ScheduleSettings({
               </div>
 
               <div>
-                <label className="text-sm font-medium text-slate-700 block mb-1.5">Days shown</label>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="mb-1.5 flex items-baseline justify-between">
+                  <label className="text-sm font-medium text-slate-700">Days shown</label>
+                  <div className="flex gap-3 text-[11px]">
+                    <button onClick={() => setDraftDays(new Set([1, 2, 3, 4, 5]))} className="text-blue-600 hover:underline">
+                      Weekdays
+                    </button>
+                    <button onClick={() => setDraftDays(new Set([1, 2, 3, 4, 5, 6, 7]))} className="text-blue-600 hover:underline">
+                      All week
+                    </button>
+                  </div>
+                </div>
+                {/* Seven across, one row. Big round pills wrapped 6-then-1 on a
+                    phone, which read as a mistake rather than a control. */}
+                <div className="grid grid-cols-7 gap-1">
                   {DAY_LABELS.map((label, idx) => {
                     const dayValue = idx + 1   // 1=Mon..7=Sun
                     const active = draftDays.has(dayValue)
@@ -325,31 +355,20 @@ export function ScheduleSettings({
                       <button
                         key={dayValue}
                         onClick={() => toggleDay(dayValue)}
-                        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                        aria-pressed={active}
+                        className={`h-10 rounded-lg border text-[11px] font-medium transition-colors ${
                           active
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                         }`}
                       >
-                        {label}
+                        {/* Two letters, not one — "T" and "S" each name two
+                            days. */}
+                        {label.slice(0, 2)}
+                        <span className="hidden sm:inline">{label.slice(2)}</span>
                       </button>
                     )
                   })}
-                </div>
-                <div className="mt-2 flex gap-2 text-[11px]">
-                  <button
-                    onClick={() => setDraftDays(new Set([1, 2, 3, 4, 5]))}
-                    className="text-blue-600 hover:underline"
-                  >
-                    Weekdays
-                  </button>
-                  <span className="text-slate-300">·</span>
-                  <button
-                    onClick={() => setDraftDays(new Set([1, 2, 3, 4, 5, 6, 7]))}
-                    className="text-blue-600 hover:underline"
-                  >
-                    All week
-                  </button>
                 </div>
               </div>
 
@@ -405,6 +424,7 @@ export function ScheduleSettings({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   )

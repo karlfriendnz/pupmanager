@@ -305,7 +305,7 @@ export function SaleComposer({
           interruption to one, and the 8vh of scrim above the old sheet only
           made the keyboard-plus-form squeeze worse. Still a centred card with
           a scrim from sm: up. */}
-      <div className="fixed inset-0 z-[60] flex justify-center bg-white sm:items-center sm:bg-slate-900/40 sm:backdrop-blur-sm">
+      <div className="pm-overlay fixed inset-0 z-[60] flex justify-center bg-white sm:items-center sm:bg-slate-900/40 sm:backdrop-blur-sm">
         <div
           className="flex h-full w-full flex-col overflow-hidden bg-white sm:h-[min(46rem,88vh)] sm:max-w-lg sm:rounded-3xl sm:shadow-xl"
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}

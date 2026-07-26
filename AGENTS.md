@@ -54,6 +54,13 @@ it gets broken:
 - **One layout per component.** A `variant` prop that reflows a component two
   different ways is how the offering card ended up crushing its title on a
   phone. Let the CONTAINER be responsive; keep the component itself fixed.
+- **Never two scrollbars on screen. Ever.** (Karl's standing rule.) A panel
+  that scrolls while the page scrolls behind it is two, and it reads as a
+  broken window. Any overlay — modal, sheet, full screen — MUST lock body
+  scroll for as long as it's open (`document.body.style.overflow = 'hidden'`
+  in an effect, restored on close), and its own scrolling region carries
+  `no-scrollbar`. Don't rely on the below-md rule in globals.css for this: it
+  keys off VIEWPORT width, so a narrow desktop window still shows rails.
 
 Shared primitives live in `src/components/shared/flat-list.tsx`
 (`FlatBlock`, `FlatRow`, `FlatTileGrid`, `FlatTile`, `SectionLabel`). Use them
