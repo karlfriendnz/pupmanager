@@ -74,6 +74,19 @@ vi.mock('@/lib/class-runs', () => {
     enrollInRun: h.enrollInRun, ClassError,
     decideEnrollment: h.decideEnrollment, effectiveCapacity: h.effectiveCapacity,
     enrolledCount: h.enrolledCount, dropInPriceCents: h.dropInPriceCents,
+    // The enrol route reads these AT MODULE SCOPE to build its zod schema
+    // (`.max(MAX_TICKET_QUANTITY)`), so a factory mock that omits them makes
+    // the constant undefined and zod throws while the module is still being
+    // imported — the whole test file dies before a single test runs. Keep the
+    // constant in step with src/lib/class-runs.ts.
+    MAX_TICKET_QUANTITY: 20,
+    normalizeTicketQuantity: (v: unknown) => {
+      const n = typeof v === 'number' && Number.isFinite(v) ? Math.floor(v) : 1
+      return Math.max(1, Math.min(n, 20))
+    },
+    sessionAttendeeCount: h.sessionAttendeeCount ?? (() => 0),
+    sessionDropInPriceCents: h.sessionDropInPriceCents ?? (() => null),
+    sessionCapacity: h.sessionCapacity ?? (() => null),
   }
 })
 vi.mock('@/lib/env', () => ({ env: { NEXT_PUBLIC_APP_URL: 'https://app.test' } }))
@@ -222,6 +235,10 @@ describe('POST /api/my/classes/[runId]/enroll require-payment gate', () => {
       package: {
         isGroup: true, priceCents: 5000, specialPriceCents: null, allowDropIn: false,
         allowWaitlist: false, capacity: null, sessionCount: 6, dropInPriceCents: null,
+        // The route includes ticketTiers and branches on its length — an
+        // ordinary class sells no tickets, so an empty list is the shape a
+        // non-ticketed offering really has.
+        ticketTiers: [],
       },
       ...runOver,
     })

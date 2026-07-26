@@ -116,6 +116,18 @@ vi.mock('@/lib/class-runs', () => ({
   // waitlist-promote notification); reuse the same stub — it returns the
   // promotedEnrollmentId shape the route expects.
   withdrawEnrollmentAndNotify: h.withdrawEnrollment,
+  // Read at MODULE SCOPE by the client enrol route to build its zod schema
+  // (`.max(MAX_TICKET_QUANTITY)`). Omitting it from this factory makes the
+  // constant undefined and zod throws during import, killing the whole file
+  // before any test runs. Keep in step with src/lib/class-runs.ts.
+  MAX_TICKET_QUANTITY: 20,
+  normalizeTicketQuantity: (v: unknown) => {
+    const n = typeof v === 'number' && Number.isFinite(v) ? Math.floor(v) : 1
+    return Math.max(1, Math.min(n, 20))
+  },
+  sessionAttendeeCount: () => 0,
+  sessionDropInPriceCents: () => null,
+  sessionCapacity: () => null,
 }))
 vi.mock('@/lib/env', () => ({ env: { NEXT_PUBLIC_APP_URL: 'https://app.pupmanager.com' } }))
 
@@ -198,7 +210,9 @@ describe('class enrol → CLIENT_BOOKED_SESSION', () => {
   beforeEach(() => {
     h.classRunFindFirst.mockResolvedValue({
       id: 'run1', name: 'Puppy Class', status: 'SCHEDULED', capacity: 10, requirePayment: false,
-      package: { isGroup: true, allowDropIn: false, specialPriceCents: null, priceCents: 0, sessionCount: 6, capacity: 10, allowWaitlist: false, dropInPriceCents: null },
+      // ticketTiers: the route includes them and branches on length; a free
+      // class sells no tickets, so an empty list is its real shape.
+      package: { isGroup: true, allowDropIn: false, specialPriceCents: null, priceCents: 0, sessionCount: 6, capacity: 10, allowWaitlist: false, dropInPriceCents: null, ticketTiers: [] },
     })
     h.classEnrollmentFindFirst.mockResolvedValue(null)
     h.decideEnrollment.mockReturnValue('ENROLLED')
