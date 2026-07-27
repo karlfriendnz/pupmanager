@@ -52,7 +52,7 @@ function casualEnrolment(over: Record<string, unknown> = {}) {
     dropInSession: null,
     classRun: {
       name: 'Mantrailing Progression | Mersea Island',
-      package: { priceCents: null, specialPriceCents: null, dropInPriceCents: 3000 },
+      package: { priceCents: null, specialPriceCents: null, dropInPriceCents: 3000, sessionSlots: [] },
     },
     ...over,
   }
@@ -88,7 +88,7 @@ describe('invoicing a casual class', () => {
     h.enrFindFirst.mockResolvedValue(casualEnrolment({
       classRun: {
         name: 'Six-week course',
-        package: { priceCents: 18000, specialPriceCents: null, dropInPriceCents: 3000 },
+        package: { priceCents: 18000, specialPriceCents: null, dropInPriceCents: 3000, sessionSlots: [] },
       },
     }))
     await raise()
@@ -99,7 +99,7 @@ describe('invoicing a casual class', () => {
     h.enrFindFirst.mockResolvedValue(casualEnrolment({
       classRun: {
         name: 'Six-week course',
-        package: { priceCents: 18000, specialPriceCents: 15000, dropInPriceCents: 3000 },
+        package: { priceCents: 18000, specialPriceCents: 15000, dropInPriceCents: 3000, sessionSlots: [] },
       },
     }))
     await raise()
@@ -112,7 +112,7 @@ describe('invoicing a casual class', () => {
     h.enrFindFirst.mockResolvedValue(casualEnrolment({
       classRun: {
         name: 'Free taster',
-        package: { priceCents: null, specialPriceCents: null, dropInPriceCents: null },
+        package: { priceCents: null, specialPriceCents: null, dropInPriceCents: null, sessionSlots: [] },
       },
     }))
     expect(await raise()).toBeNull()
@@ -123,5 +123,107 @@ describe('invoicing a casual class', () => {
     h.enrFindFirst.mockResolvedValue(casualEnrolment({ quantity: 3 }))
     await raise()
     expect(created().amountCents).toBe(9000)
+  })
+})
+
+describe('a FULL seat on a casual class is the whole run, not one session', () => {
+  // The direct cost of the fallback above. A full-run enrolment was billed the
+  // PER-SESSION price once, so a six-week casual class invoiced for one session.
+  // Same customer reported it: "enrolling a client onto a casual class with
+  // full run selected only charges for one session".
+  const slots = (...prices: (number | null)[]) =>
+    prices.map(p => ({ priceCents: p, specialPriceCents: null }))
+
+  it('sums every session in the run', async () => {
+    h.enrFindFirst.mockResolvedValue(casualEnrolment({
+      classRun: {
+        name: 'Six-week mantrailing',
+        package: {
+          priceCents: null, specialPriceCents: null, dropInPriceCents: 3000,
+          sessionSlots: slots(3000, 3000, 3000, 3000, 3000, 3000),
+        },
+      },
+    }))
+    await raise()
+    expect(created().amountCents).toBe(18000) // not 3000
+  })
+
+  it('honours a session priced differently from the rest', async () => {
+    // A casual class sets a price per session row, so they need not agree.
+    h.enrFindFirst.mockResolvedValue(casualEnrolment({
+      classRun: {
+        name: 'Three sessions, one dearer',
+        package: {
+          priceCents: null, specialPriceCents: null, dropInPriceCents: 3000,
+          sessionSlots: [
+            { priceCents: 3000, specialPriceCents: null },
+            { priceCents: 4500, specialPriceCents: null },
+            { priceCents: 3000, specialPriceCents: 2500 },
+          ],
+        },
+      },
+    }))
+    await raise()
+    expect(created().amountCents).toBe(10_000) // 3000 + 4500 + 2500
+  })
+
+  it('falls back to the package per-session price for a slot with none', async () => {
+    h.enrFindFirst.mockResolvedValue(casualEnrolment({
+      classRun: {
+        name: 'Two sessions, one unpriced',
+        package: {
+          priceCents: null, specialPriceCents: null, dropInPriceCents: 3000,
+          sessionSlots: slots(4000, null),
+        },
+      },
+    }))
+    await raise()
+    expect(created().amountCents).toBe(7000) // 4000 + the package's 3000
+  })
+
+  it('a DROP_IN still pays for the one session they booked', async () => {
+    // The whole point of the distinction — this must not start billing the run.
+    h.enrFindFirst.mockResolvedValue(casualEnrolment({
+      type: 'DROP_IN',
+      joinedAtIndex: 2,
+      dropInSession: { packageSessionSlot: { priceCents: 3000, specialPriceCents: null } },
+      classRun: {
+        name: 'Six-week mantrailing',
+        package: {
+          priceCents: null, specialPriceCents: null, dropInPriceCents: 3000,
+          sessionSlots: slots(3000, 3000, 3000, 3000, 3000, 3000),
+        },
+      },
+    }))
+    await raise()
+    expect(created().amountCents).toBe(3000)
+  })
+
+  it('a free casual class with priced-nothing slots still raises no invoice', async () => {
+    h.enrFindFirst.mockResolvedValue(casualEnrolment({
+      classRun: {
+        name: 'Free taster series',
+        package: {
+          priceCents: null, specialPriceCents: null, dropInPriceCents: null,
+          sessionSlots: slots(null, null),
+        },
+      },
+    }))
+    expect(await raise()).toBeNull()
+    expect(h.invoiceCreate).not.toHaveBeenCalled()
+  })
+
+  it('a real course price still beats the sum of sessions', async () => {
+    h.enrFindFirst.mockResolvedValue(casualEnrolment({
+      classRun: {
+        name: 'Priced course that also lists sessions',
+        package: {
+          priceCents: 15000, specialPriceCents: null, dropInPriceCents: 3000,
+          sessionSlots: slots(3000, 3000, 3000, 3000, 3000, 3000),
+        },
+      },
+    }))
+    await raise()
+    expect(created().amountCents).toBe(15000)
   })
 })

@@ -28,6 +28,33 @@ function money(minor: number, currency: string): string {
   return `${currencySymbol(currency)}${(minor / 100).toFixed(2)}`
 }
 
+/**
+ * What the WHOLE run costs when the offering is only priced per session.
+ *
+ * A casual class has no course price — the trainer sets a price on each session
+ * row — so a full-run seat is the sum of those, slot by slot, because each
+ * session is free to cost something different. Falls back to the package-level
+ * per-session price for a slot that doesn't carry its own.
+ *
+ * Returns null when nothing anywhere has a price, so a genuinely free class
+ * still raises no invoice rather than a £0 one.
+ */
+function wholeRunFromSessions(pkg: {
+  dropInPriceCents: number | null
+  sessionSlots: { priceCents: number | null; specialPriceCents: number | null }[]
+}): number | null {
+  if (pkg.sessionSlots.length === 0) return pkg.dropInPriceCents
+  let total = 0
+  let priced = false
+  for (const slot of pkg.sessionSlots) {
+    const each = sessionDropInPriceCents(slot, pkg)
+    if (each == null) continue
+    total += each
+    priced = true
+  }
+  return priced ? total : null
+}
+
 export interface AssignmentInvoiceInput {
   trainerId: string
   clientId: string
@@ -119,7 +146,14 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
           classRun: {
             select: {
               name: true,
-              package: { select: { priceCents: true, specialPriceCents: true, dropInPriceCents: true } },
+              package: {
+                select: {
+                  priceCents: true, specialPriceCents: true, dropInPriceCents: true,
+                  // Needed to bill a FULL seat on a casual class, which has no
+                  // whole-course price — only a price per session. See below.
+                  sessionSlots: { select: { priceCents: true, specialPriceCents: true } },
+                },
+              },
             },
           },
         },
@@ -165,20 +199,27 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
         // is the package (special) price; a DROP_IN is the price of the ONE
         // session they booked. A single named ticket is that ticket's price.
         //
-        // The `?? dropInPriceCents` on the FULL branch is not a nicety. A CASUAL
+        // The per-session fallback on the FULL branch is not a nicety. A CASUAL
         // class carries its price per session — the trainer types it into the
-        // session row, and it lands in dropInPriceCents (and on the slot), while
+        // session row, and it lands on the slot (and in dropInPriceCents), while
         // the package's own priceCents stays null because there is no
         // whole-course price to set. Enrol someone as FULL on such a class and
         // this read returned null, so invoicing refused with "this class has no
         // price set" while £30 sat on screen in the price box. Reported by a
         // live customer who could not bill a casual class at all.
+        //
+        // But a FULL seat is the WHOLE RUN, so falling back to the per-session
+        // price and billing it once undercharged by every session bar one — a
+        // six-week casual class billed as £30 instead of £180. Same customer,
+        // and the direct cost of the fix above. The whole run is the sum of its
+        // sessions, taken slot by slot because a casual class is free to price
+        // each session differently.
         quantity = Math.max(1, enr.quantity ?? 1)
         unitAmountCents = enr.ticketTier
           ? enr.ticketTier.priceCents
           : enr.type === 'DROP_IN'
             ? sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)
-            : (pkg.specialPriceCents ?? pkg.priceCents ?? pkg.dropInPriceCents)
+            : (pkg.specialPriceCents ?? pkg.priceCents ?? wholeRunFromSessions(pkg))
         amountCents = unitAmountCents == null ? null : unitAmountCents * quantity
         const ticketNote = enr.ticketTier
           ? ` (${enr.ticketTier.name}${quantity > 1 ? ` × ${quantity}` : ''})`
