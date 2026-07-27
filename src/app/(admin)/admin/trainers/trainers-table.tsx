@@ -1,13 +1,22 @@
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import type { SubscriptionStatus } from '@/generated/prisma'
-import { ChevronRight } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight } from 'lucide-react'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { TrainerRow } from './trainer-row'
 import { isPayingCustomer, lifecycleProfileFilter, type TrainerLifecycle } from '@/lib/trainer-lifecycle'
 import { getEnabledAddonsBatch } from '@/lib/billing'
 import { planValueFor, type PlanValue } from '@/lib/plan-value'
 import { formatMoney } from '@/lib/money'
+import {
+  SORT_COLUMNS,
+  isColumnHidden,
+  nextDir,
+  resolveSort,
+  sortTrainers,
+  visibleSortColumns,
+  type SortKey,
+} from './trainer-sort'
 
 // The canonical trainers table — the body of the merged admin screen
 // ((admin)/admin/page.tsx). Desktop (md+) renders the full at-a-glance table
@@ -21,16 +30,26 @@ import { formatMoney } from '@/lib/money'
 // trialist. `deactivated` filters soft-delete state: 'exclude' (default) hides
 // deactivated accounts, 'only' shows just them, 'all' ignores the flag.
 // `internal` does the same for PupManager-owned ("Ours") accounts.
+//
+// `sort`/`dir` come straight off the URL and re-order the fetched rows in JS
+// (trainer-sort.ts says why not Prisma). `tab` is here so the header links can
+// carry the tab you're on — and so the table knows which columns that tab hides.
 export async function TrainersTable({
   q = '',
   bucket,
   deactivated = 'exclude',
   internal = 'exclude',
+  tab,
+  sort,
+  dir,
 }: {
   q?: string
   bucket?: TrainerLifecycle
   deactivated?: 'exclude' | 'only' | 'all'
   internal?: 'exclude' | 'only' | 'all'
+  tab?: string
+  sort?: string
+  dir?: string
 }) {
   const and: Array<Record<string, unknown>> = []
   // Business name included deliberately: this screen is titled "Businesses" and
@@ -150,15 +169,112 @@ export async function TrainersTable({
     }))
   }
 
+  // ONE row object per business, carrying everything both layouts need, so the
+  // desktop table and the mobile cards render from the SAME sorted array — a
+  // phone can never end up in a different order from the URL it is showing.
+  const rows = trainers.map((t, i) => {
+    const p = t.trainerProfile!
+    return {
+      id: t.id,
+      name: t.name,
+      email: t.email,
+      businessName: p.businessName ?? null,
+      subscriptionPlanName: p.subscriptionPlan?.name ?? null,
+      subscriptionStatus: p.subscriptionStatus ?? null,
+      stripeSubscriptionId: p.stripeSubscriptionId ?? null,
+      conversionLikelihood: (p.conversionLikelihood as string | null) ?? null,
+      trialEndsAt: p.trialEndsAt ?? null,
+      isInternal: p.isInternal ?? false,
+      signupCountry: p.signupCountry ?? null,
+      clientCount: p._count?.clients ?? 0,
+      sampleClientCount: sampleByTrainer.get(p.id) ?? 0,
+      onboardingCompleted: onboarding[i].completed,
+      onboardingTotal: onboarding[i].total,
+      onboardingEmails: p.onboardingProgress?._count?.emails ?? 0,
+      gracePeriodUntil: p.gracePeriodUntil ?? null,
+      seatCount: p.seatCount ?? 1,
+      seatsUsed: p._count?.members ?? 0,
+      deactivatedAt: t.deactivatedAt ?? null,
+      createdAt: t.createdAt,
+      lastLoginAt: t.lastLoginAt ?? null,
+      planValue: planValueByUser.get(t.id) ?? null,
+    }
+  })
+
+  // No `sort` param (or one naming a column this tab hides) = keep the order the
+  // query already chose — In Trial still leads with whoever runs out first.
+  const active = resolveSort(sort, dir, tab)
+  const sorted = sortTrainers(rows, active)
+  const columns = visibleSortColumns(tab)
+  const hiddenColumns = SORT_COLUMNS.filter(c => isColumnHidden(c.key, tab)).map(c => c.key)
+  const showValue = !isColumnHidden('value', tab)
+
+  // Sort links keep `tab` and `q`: losing the tab or the search you were looking
+  // at because you clicked a column heading is the obvious way to get this
+  // wrong. `key === null` clears the sort back to the tab's default.
+  const hrefFor = (key: SortKey | null) => {
+    const params = new URLSearchParams()
+    if (tab) params.set('tab', tab)
+    if (q) params.set('q', q)
+    if (key) {
+      params.set('sort', key)
+      params.set('dir', nextDir(key, active))
+    }
+    const qs = params.toString()
+    return qs ? `/admin?${qs}` : '/admin'
+  }
+
+  // Phones get the same sort, spelled as a swipe strip of chips rather than
+  // clickable headings (a card list has no header row to click). Same shape as
+  // the lifecycle tabs directly above it, so it reads as part of the same
+  // control — and it lists every sortable column, so an order chosen on desktop
+  // is always visible and changeable here rather than silently applied.
+  const sortStrip = (
+    <nav
+      aria-label="Sort businesses"
+      data-testid="mobile-sort"
+      className="md:hidden mb-3 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <span className="shrink-0 pr-0.5 text-xs uppercase tracking-wide text-slate-500">Sort</span>
+      <Link
+        href={hrefFor(null)}
+        className={`shrink-0 rounded-full border px-3 py-1.5 text-xs whitespace-nowrap transition-colors ${
+          active ? 'border-slate-700 bg-slate-800 text-slate-400' : 'border-blue-500/40 bg-blue-600/20 text-blue-200'
+        }`}
+      >
+        Default
+      </Link>
+      {columns.map(col => {
+        const on = active?.key === col.key
+        return (
+          <Link
+            key={col.key}
+            href={hrefFor(col.key)}
+            aria-current={on ? 'true' : undefined}
+            className={`shrink-0 inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs whitespace-nowrap transition-colors ${
+              on ? 'border-blue-500/40 bg-blue-600/20 text-blue-200' : 'border-slate-700 bg-slate-800 text-slate-400'
+            }`}
+          >
+            {col.label}
+            {/* aria-hidden — aria-current already says which chip is active,
+                and a labelled icon would rename the link on every click. */}
+            {on && (active!.dir === 'asc'
+              ? <ArrowUp className="h-3 w-3" aria-hidden />
+              : <ArrowDown className="h-3 w-3" aria-hidden />)}
+          </Link>
+        )
+      })}
+    </nav>
+  )
+
   const cards = (
     <ul className="rounded-2xl border border-slate-700 bg-slate-800 divide-y divide-slate-700/60">
-      {trainers.map(t => {
-        const p = t.trainerProfile!
+      {sorted.map(t => {
         const isActive = !t.deactivatedAt
-        const graceActive = !!p.gracePeriodUntil && new Date(p.gracePeriodUntil).getTime() > Date.now()
-        const flag = flagEmoji(p.signupCountry)
-        const clients = p._count.clients
-        const value = planValueByUser.get(t.id)
+        const graceActive = !!t.gracePeriodUntil && new Date(t.gracePeriodUntil).getTime() > Date.now()
+        const flag = flagEmoji(t.signupCountry)
+        const clients = t.clientCount
+        const value = t.planValue
         return (
           <li key={t.id}>
             <Link
@@ -168,9 +284,9 @@ export async function TrainersTable({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-white truncate">
-                    {p.businessName?.trim() || t.name?.trim() || '—'}
+                    {t.businessName?.trim() || t.name?.trim() || '—'}
                   </p>
-                  {p.isInternal && (
+                  {t.isInternal && (
                     <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-purple-900 text-purple-300 shrink-0">Ours</span>
                   )}
                   {!isActive && (
@@ -180,16 +296,18 @@ export async function TrainersTable({
                 <p className="text-xs text-slate-400 truncate">
                   {t.name?.trim() || t.email} · <span className="tabular-nums">{clients}</span> client{clients === 1 ? '' : 's'} · <span className="tabular-nums">{joinedLabel(t.createdAt)}</span>
                 </p>
-                {value && (
+                {/* Same per-tab rule as the desktop Value column — a tab where
+                    the value is always empty doesn't get a value line. */}
+                {showValue && value && (
                   <p className="text-xs text-green-300 mt-0.5 tabular-nums">
                     {formatMoney(value.monthly * 100, value.currency)}/mo · {formatMoney(value.annual * 100, value.currency)}/yr
                   </p>
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {flag && <span aria-hidden className="text-sm leading-none" title={`Signed up in ${p.signupCountry}`}>{flag}</span>}
+                {flag && <span aria-hidden className="text-sm leading-none" title={`Signed up in ${t.signupCountry}`}>{flag}</span>}
                 {graceActive && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-900 text-amber-300 shrink-0">Grace</span>}
-                {statusChip(p.subscriptionStatus, p.stripeSubscriptionId, p.subscriptionPlan?.name ?? null)}
+                {statusChip(t.subscriptionStatus, t.stripeSubscriptionId, t.subscriptionPlanName)}
                 <ChevronRight className="h-4 w-4 text-slate-500 shrink-0" />
               </div>
             </Link>
@@ -201,7 +319,7 @@ export async function TrainersTable({
 
   return (
     <>
-      <div className="md:hidden">{cards}</div>
+      <div className="md:hidden">{sortStrip}{cards}</div>
       <div className="hidden md:block bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
         {/* overflow-x-auto + min-w keeps the 10 columns readable on a narrow
             desktop window instead of squashing into an unreadable mess. */}
@@ -211,47 +329,54 @@ export async function TrainersTable({
               keeps every column (and the icon row) vertically centered. */}
           <table className="w-full min-w-[900px] text-sm [&_td]:align-middle">
             <thead>
+              {/* Headers are LINKS, not buttons: this is a server component, so
+                  the sort lives in the URL (?sort=&dir=) alongside tab and q —
+                  shareable, bookmarkable, and it survives a refresh. Both the
+                  header row and the body below derive from `columns`, so the
+                  per-tab hidden columns can never knock them out of alignment. */}
               <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
-                <th className="text-left px-4 py-3">Name</th>
-                <th className="text-left px-4 py-3">Business</th>
-                <th className="text-left px-4 py-3">Country</th>
-                <th className="text-left px-4 py-3">Likely</th>
-                <th className="text-left px-4 py-3">Clients</th>
-                <th className="text-left px-4 py-3">Onboarding</th>
-                <th className="text-left px-4 py-3">Emails</th>
-                <th className="text-left px-4 py-3">Joined</th>
-                <th className="text-left px-4 py-3">Last seen</th>
-                <th className="text-left px-4 py-3">Trial ends</th>
-                <th className="text-left px-4 py-3">Value</th>
+                {columns.map(col => {
+                  const on = active?.key === col.key
+                  return (
+                    <th
+                      key={col.key}
+                      scope="col"
+                      className="text-left px-4 py-3 font-normal"
+                      aria-sort={on ? (active!.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    >
+                      <Link
+                        href={hrefFor(col.key)}
+                        scroll={false}
+                        title={`Sort by ${col.label}`}
+                        className={`group inline-flex items-center gap-1 transition-colors ${
+                          on ? 'text-white' : 'hover:text-slate-200'
+                        }`}
+                      >
+                        {col.label}
+                        {/* aria-hidden on every arrow: the direction is already
+                            announced by aria-sort on the columnheader, and a
+                            labelled icon would fold into the link's accessible
+                            name ("Business sorted ascending"), which changes the
+                            control's name every time you click it. */}
+                        {on ? (
+                          active!.dir === 'asc'
+                            ? <ArrowUp className="h-3 w-3 shrink-0" aria-hidden />
+                            : <ArrowDown className="h-3 w-3 shrink-0" aria-hidden />
+                        ) : (
+                          // Only on hover: eleven permanent arrows would be
+                          // decoration on a screen that's already dense.
+                          <ArrowUpDown className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-60" aria-hidden />
+                        )}
+                      </Link>
+                    </th>
+                  )
+                })}
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {trainers.map((t, i) => (
-                <TrainerRow key={t.id} trainer={{
-                  id: t.id,
-                  name: t.name,
-                  email: t.email,
-                  businessName: t.trainerProfile?.businessName ?? null,
-                  subscriptionPlanName: t.trainerProfile?.subscriptionPlan?.name ?? null,
-                  subscriptionStatus: t.trainerProfile?.subscriptionStatus ?? null,
-                  conversionLikelihood: t.trainerProfile?.conversionLikelihood ?? null,
-                  trialEndsAt: t.trainerProfile?.trialEndsAt ?? null,
-                  isInternal: t.trainerProfile?.isInternal ?? false,
-                  signupCountry: t.trainerProfile?.signupCountry ?? null,
-                  clientCount: t.trainerProfile?._count?.clients ?? 0,
-                  sampleClientCount: t.trainerProfile?.id ? (sampleByTrainer.get(t.trainerProfile.id) ?? 0) : 0,
-                  onboardingCompleted: onboarding[i].completed,
-                  onboardingTotal: onboarding[i].total,
-                  onboardingEmails: t.trainerProfile?.onboardingProgress?._count?.emails ?? 0,
-                  gracePeriodUntil: t.trainerProfile?.gracePeriodUntil ?? null,
-                  seatCount: t.trainerProfile?.seatCount ?? 1,
-                  seatsUsed: t.trainerProfile?._count?.members ?? 0,
-                  deactivatedAt: t.deactivatedAt ?? null,
-                  createdAt: t.createdAt,
-                  lastLoginAt: t.lastLoginAt ?? null,
-                  planValue: planValueByUser.get(t.id) ?? null,
-                }} />
+              {sorted.map(t => (
+                <TrainerRow key={t.id} trainer={t} hiddenColumns={hiddenColumns} />
               ))}
             </tbody>
           </table>

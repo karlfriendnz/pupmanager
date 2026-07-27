@@ -8,6 +8,9 @@ import { formatMoney } from '@/lib/money'
 // The table (and its row) still live next to the trainer detail route they link
 // into; only the LIST SCREEN moved here. /admin/trainers now redirects to /admin.
 import { TrainersTable } from './trainers/trainers-table'
+// Column sorting + which columns each tab hides — one declaration, shared by the
+// table, its rows, the mobile cards and the links below.
+import { isColumnHidden, resolveSort } from './trainers/trainer-sort'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Businesses' }
@@ -51,6 +54,10 @@ async function loadPayingValueSummary(): Promise<CurrencyTotal[]> {
 // The ARR target the bar measures against. One place to move the goalposts.
 const ARR_GOAL = 200_000
 
+// Which COLUMNS each of these tabs hides lives next door in
+// trainers/trainer-sort.ts (HIDDEN_COLUMNS_BY_TAB), keyed by the same `key` —
+// it has to be importable by the table, the row and the mobile cards, and one
+// declaration is what keeps the header row aligned with the body.
 const TABS: { key: string; label: string; bucket?: TrainerLifecycle; ours?: boolean; inactive?: boolean }[] = [
   // No "All" tab (Karl, 2026-07-27): In Trial is the screen that matters, and
   // browsing every business isn't a job anyone does — looking one up is.
@@ -79,10 +86,14 @@ const TABS: { key: string; label: string; bucket?: TrainerLifecycle; ours?: bool
 export default async function AdminDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; tab?: string }>
+  searchParams: Promise<{ q?: string; tab?: string; sort?: string; dir?: string }>
 }) {
-  const { q = '', tab = 'trial' } = await searchParams
+  const { q = '', tab = 'trial', sort, dir } = await searchParams
   const current = TABS.find(t => t.key === tab) ?? TABS[0]
+  // The chosen column sort (trainer-sort.ts) rides along on every tab and search
+  // link, so switching tabs or searching never silently resets your ordering —
+  // and `resolveSort` drops it if the new tab hides that column.
+  const sortParams = resolveSort(sort, dir, current.key)
 
   // Lifecycle counts cover real, active accounts: not deactivated and not
   // internal ("Ours"). Those two get their own tabs/counts.
@@ -211,7 +222,12 @@ export default async function AdminDashboardPage({
       <div className="flex items-center gap-1 mb-6 border-b border-slate-700 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {TABS.map(t => {
           const active = t.key === current.key
-          const href = `/admin?tab=${t.key}${q ? `&q=${encodeURIComponent(q)}` : ''}`
+          // Carry the sort across tabs — unless the tab you're moving TO hides
+          // that column, in which case it would be an invisible ordering.
+          const keepSort = sortParams && !isColumnHidden(sortParams.key, t.key)
+            ? `&sort=${sortParams.key}&dir=${sortParams.dir}`
+            : ''
+          const href = `/admin?tab=${t.key}${q ? `&q=${encodeURIComponent(q)}` : ''}${keepSort}`
           return (
             <Link
               key={t.key}
@@ -236,8 +252,12 @@ export default async function AdminDashboardPage({
       </div>
 
       <form className="mb-6">
-        {/* Keep the active tab when searching. */}
+        {/* Keep the active tab AND the chosen column sort when searching — a
+            GET form submits only its own fields, so anything not carried here
+            is silently dropped from the URL. */}
         <input type="hidden" name="tab" value={current.key} />
+        {sortParams && <input type="hidden" name="sort" value={sortParams.key} />}
+        {sortParams && <input type="hidden" name="dir" value={sortParams.dir} />}
         <input
           name="q"
           defaultValue={q}
@@ -251,6 +271,9 @@ export default async function AdminDashboardPage({
         bucket={current.bucket}
         deactivated={current.inactive ? 'only' : 'exclude'}
         internal={current.ours ? 'only' : current.inactive ? 'all' : 'exclude'}
+        tab={current.key}
+        sort={sortParams?.key}
+        dir={sortParams?.dir}
       />
     </div>
   )

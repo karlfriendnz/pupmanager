@@ -106,6 +106,129 @@ test.describe('admin /admin — companies, not individual trainers', () => {
     await expect(page.getByRole('link', { name: /Paying customer/ })).toBeVisible()
   })
 
+  // Column sorting is URL-driven (?sort=&dir=) so it survives a refresh and can
+  // be shared — the same way tab and q already work. The two seeded businesses
+  // are "E2E Dog School" (owner, seeded first) and "Rival Dog Co" (seeded
+  // second), so alphabetical and newest-first are opposite orders — which is
+  // what makes these assertions mean something.
+  const firstBusiness = (page: Page) =>
+    page.locator('table tbody tr').first().locator('td').nth(1)
+  // BOTH layouts are in the DOM at every width (one is hidden by breakpoint), so
+  // every locator must say which one it means or it matches two elements.
+  const header = (page: Page, name: string) =>
+    page.locator('table thead').getByRole('link', { name, exact: true })
+
+  test('no sort param leaves the default order alone', async ({ page }) => {
+    await loginAdmin(page)
+    await page.goto('/admin?q=Dog')
+    // Default is newest-first, so the business seeded second leads.
+    await expect(firstBusiness(page)).toContainText(SEED.businessB.businessName)
+    // Nothing claims to be the sorted column.
+    await expect(page.locator('table th[aria-sort="ascending"], table th[aria-sort="descending"]')).toHaveCount(0)
+  })
+
+  test('clicking a column header sorts, and clicking it again reverses', async ({ page }) => {
+    await loginAdmin(page)
+    await page.goto('/admin?q=Dog')
+
+    await header(page, 'Business').click()
+    await page.waitForURL(/sort=business&dir=asc/, { timeout: 30_000 })
+    await expect(firstBusiness(page)).toContainText(SEED.owner.businessName)
+    await expect(page.locator('table th[aria-sort="ascending"]')).toHaveCount(1)
+
+    await header(page, 'Business').click()
+    await page.waitForURL(/sort=business&dir=desc/, { timeout: 30_000 })
+    await expect(firstBusiness(page)).toContainText(SEED.businessB.businessName)
+    await expect(page.locator('table th[aria-sort="descending"]')).toHaveCount(1)
+  })
+
+  test('sorting keeps the active tab and the search, and searching keeps the sort', async ({ page }) => {
+    await loginAdmin(page)
+    await page.goto('/admin?tab=paying&q=Dog')
+
+    await header(page, 'Business').click()
+    await page.waitForURL(/sort=business/, { timeout: 30_000 })
+    // Losing your tab or your filter because you sorted is the obvious failure.
+    await expect(page).toHaveURL(/tab=paying/)
+    await expect(page).toHaveURL(/q=Dog/)
+    await expect(firstBusiness(page)).toContainText(SEED.owner.businessName)
+
+    // …and the GET search form carries the sort back out again.
+    await page.getByPlaceholder('Search by name or email...').fill('Dog')
+    await page.getByPlaceholder('Search by name or email...').press('Enter')
+    await page.waitForURL(/sort=business/, { timeout: 30_000 })
+    await expect(page).toHaveURL(/tab=paying/)
+    await expect(firstBusiness(page)).toContainText(SEED.owner.businessName)
+  })
+
+  // Columns that can never say anything on a tab are hidden there rather than
+  // printed as a column of dashes.
+  test('each tab only shows the columns that can say something', async ({ page }) => {
+    await loginAdmin(page)
+    const header = (name: string) => page.locator('table thead th').filter({ hasText: new RegExp(`^${name}$`) })
+
+    await page.goto('/admin?tab=trial&q=Dog')
+    await expect(header('Value')).toHaveCount(0)          // trialists have no plan value
+    await expect(header('Trial ends')).toHaveCount(1)
+
+    await page.goto('/admin?tab=paying&q=Dog')
+    await expect(header('Likely')).toHaveCount(0)         // they already converted
+    await expect(header('Trial ends')).toHaveCount(0)
+    await expect(header('Onboarding')).toHaveCount(0)
+    await expect(header('Value')).toHaveCount(1)
+
+    // Churned drops Value for the same reason (a cancelled account can't be
+    // paying) but keeps everything that still describes how they went.
+    await page.goto('/admin?tab=churned&q=Dog')
+    await expect(header('Value')).toHaveCount(0)
+    await expect(header('Likely')).toHaveCount(1)
+    await expect(header('Onboarding')).toHaveCount(1)
+    await expect(header('Trial ends')).toHaveCount(1)
+  })
+
+  // The non-obvious interaction between the two features.
+  test('a sort on a column the tab hides falls back to the default order', async ({ page }) => {
+    await loginAdmin(page)
+    // Value sorts fine on Paying, the tab where it always has something to say…
+    await page.goto('/admin?tab=paying&q=Dog&sort=value&dir=desc')
+    await expect(page.locator('table th[aria-sort="descending"]')).toHaveCount(1)
+
+    // …but In Trial hides Value, so the same URL must not sort by an invisible
+    // column (which reads as a random order) — it reverts to newest-first.
+    await page.goto('/admin?tab=trial&q=Dog&sort=value&dir=desc')
+    await expect(page.locator('table th[aria-sort="ascending"], table th[aria-sort="descending"]')).toHaveCount(0)
+    await expect(firstBusiness(page)).toContainText(SEED.businessB.businessName)
+
+    // Switching tabs doesn't carry a sort into a tab that can't show it.
+    await page.goto('/admin?tab=paying&q=Dog&sort=value&dir=desc')
+    await page.getByRole('link', { name: /^In Trial \d+$/ }).click()
+    await page.waitForURL(/tab=trial/, { timeout: 30_000 })
+    await expect(page).not.toHaveURL(/sort=value/)
+  })
+
+  // Phones get the same URL sort as a chip strip — the card list has no header
+  // row to click, and leaving it silently in a different order is not an option.
+  test('mobile cards carry the same sort, changeable from the sort strip', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await loginAdmin(page)
+    await page.goto('/admin?q=Dog')
+
+    const strip = page.getByTestId('mobile-sort')
+    await expect(strip).toBeVisible()
+    const cards = page.locator('ul li a[href^="/admin/trainers/"]')
+    await expect(cards.first()).toContainText(SEED.businessB.businessName)
+
+    // The strip lists the sortable columns; picking one reorders the cards.
+    await strip.getByRole('link', { name: 'Business', exact: true }).click()
+    await page.waitForURL(/sort=business&dir=asc/, { timeout: 30_000 })
+    await expect(cards.first()).toContainText(SEED.owner.businessName)
+
+    // "Default" clears it again.
+    await strip.getByRole('link', { name: 'Default' }).click()
+    await page.waitForURL(u => !u.searchParams.has('sort'), { timeout: 30_000 })
+    await expect(cards.first()).toContainText(SEED.businessB.businessName)
+  })
+
   // The admin guard lives in (admin)/layout.tsx and must still hold for the
   // merged screen — a trainer signing in has no business seeing the platform.
   test('a non-admin cannot reach /admin', async ({ page }) => {

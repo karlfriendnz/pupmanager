@@ -8,6 +8,7 @@ import { formatDate, formatDateTime } from '@/lib/utils'
 import { LIKELIHOODS, LIKELIHOOD_META, type ConversionLikelihood } from '@/lib/conversion-likelihood'
 import { formatMoney } from '@/lib/money'
 import type { PlanValue } from '@/lib/plan-value'
+import { SORT_COLUMNS, type SortKey } from './trainer-sort'
 
 // Shape returned by GET /api/admin/trainers/[trainerId]/onboarding-emails
 type EmailReport = {
@@ -63,9 +64,13 @@ type Trainer = {
   planValue: PlanValue | null
 }
 
-// Total column count (11 data columns + actions) — keeps the expanded rows
-// (edit panel, email report) spanning the full table width.
-const COLS = 12
+// Column count for the expanded rows (edit panel, email report) so they span the
+// full table width. Derived, not a literal: tabs hide columns they can't say
+// anything on (HIDDEN_COLUMNS_BY_TAB), and a hardcoded 12 would leave those
+// panels overhanging the table.
+function colSpanFor(hidden: readonly SortKey[]): number {
+  return SORT_COLUMNS.length - hidden.length + 1 // + the actions column
+}
 
 // ISO 3166-1 alpha-2 → flag emoji (regional indicator pair). Null for anything
 // that isn't a clean 2-letter code.
@@ -103,7 +108,11 @@ function lastSeenLabel(d: Date | string | null): string {
   }).format(new Date(d))
 }
 
-export function TrainerRow({ trainer }: { trainer: Trainer }) {
+// `hiddenColumns` comes from the tab (see trainer-sort.HIDDEN_COLUMNS_BY_TAB) —
+// the SAME list the header row is built from, so cells and headers stay lined up.
+export function TrainerRow({ trainer, hiddenColumns = [] }: { trainer: Trainer; hiddenColumns?: readonly SortKey[] }) {
+  const show = (key: SortKey) => !hiddenColumns.includes(key)
+  const COLS = colSpanFor(hiddenColumns)
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -432,6 +441,7 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
   return (
     <>
     <tr className={`border-b border-slate-700/50 hover:bg-slate-700/30 ${isActive ? '' : 'opacity-60'}`}>
+      {show('name') && (
       <td className="px-4 py-3 text-white">
         <span className="group relative inline-flex items-center gap-1.5">
           {/* Name links to the trainer's full view. The whole span is the hover
@@ -459,12 +469,16 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           </span>
         </span>
       </td>
+      )}
+      {show('business') && (
       <td className="px-4 py-3 text-slate-300">
         <div>{trainer.businessName?.trim() || '—'}</div>
         <div className="text-xs text-slate-500 mt-0.5 tabular-nums">
           {trainer.seatsUsed} of {trainer.seatCount} seat{trainer.seatCount === 1 ? '' : 's'}
         </div>
       </td>
+      )}
+      {show('country') && (
       <td className="px-4 py-3">
         {trainer.signupCountry ? (
           <span
@@ -478,10 +492,13 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           <span className="text-slate-600">—</span>
         )}
       </td>
+      )}
       {/* "Likely" — our own read on whether they'll convert. Editable in place;
           the Plan column that used to sit here is hidden (the status chip in the
           Business column already carries plan/trial state). The Grace badge
-          moved here so hiding Plan didn't take it with it. */}
+          moved here so hiding Plan didn't take it with it. Hidden entirely on
+          the Paying tab — a customer who has converted has no "will they?". */}
+      {show('likely') && (
       <td className="px-4 py-3">
         <div className="flex items-center gap-1.5">
           <select
@@ -507,7 +524,9 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           )}
         </div>
       </td>
-      <td className="px-4 py-3 text-slate-300">{trainer.clientCount}</td>
+      )}
+      {show('clients') && <td className="px-4 py-3 text-slate-300">{trainer.clientCount}</td>}
+      {show('onboarding') && (
       <td className="px-4 py-3">
         {(() => {
           // While the trainer is still on first-run sample data, onboarding
@@ -537,11 +556,15 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           )
         })()}
       </td>
+      )}
+      {show('emails') && (
       <td className="px-4 py-3">
         <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 tabular-nums" title={`${trainer.onboardingEmails} onboarding email${trainer.onboardingEmails === 1 ? '' : 's'} sent`}>
           {trainer.onboardingEmails} sent
         </span>
       </td>
+      )}
+      {show('joined') && (
       <td className="px-4 py-3 text-slate-400">
         <span className="group relative inline-block">
           <span className="cursor-default border-b border-dotted border-slate-500/60 tabular-nums">
@@ -554,6 +577,8 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           </span>
         </span>
       </td>
+      )}
+      {show('lastSeen') && (
       <td className="px-4 py-3 text-slate-400">
         {trainer.lastLoginAt ? (
           <span className="group relative inline-block">
@@ -568,6 +593,8 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           <span className="text-slate-500" title="No sign-in recorded yet">Never</span>
         )}
       </td>
+      )}
+      {show('trialEnds') && (
       <td className="px-4 py-3">
         {(() => {
           if (!trialEnds) return <span className="text-slate-500">—</span>
@@ -586,9 +613,12 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           )
         })()}
       </td>
+      )}
+      {show('value') && (
       <td className="px-4 py-3">
         {/* Plan value — monthly + annual in the customer's own currency. Only a
-            live ACTIVE subscription carries a value; everyone else shows "—". */}
+            live ACTIVE subscription carries a value; everyone else shows "—",
+            which is why the tabs that can only ever show "—" hide it. */}
         {trainer.planValue ? (
           <div className="tabular-nums leading-tight" title="Monthly / annual plan value">
             <div className="text-sm text-green-300">{formatMoney(trainer.planValue.monthly * 100, trainer.planValue.currency)}<span className="text-xs text-slate-500">/mo</span></div>
@@ -598,6 +628,7 @@ export function TrainerRow({ trainer }: { trainer: Trainer }) {
           <span className="text-slate-600">—</span>
         )}
       </td>
+      )}
       <td className="px-4 py-3 align-middle">
         {/* Center the icon inside every control identically. The impersonate
             action is an <a> while the rest are <button>s, so relying on default
