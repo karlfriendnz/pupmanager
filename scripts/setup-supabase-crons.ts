@@ -6,7 +6,12 @@
 // never printed, never committed.
 //
 // Run: tsx scripts/setup-supabase-crons.ts
-import { prisma } from '../src/lib/prisma'
+// scriptPrisma falls back to DIRECT_URL: .env leaves DATABASE_URL blank, so the
+// app client connected to a local database named after the shell user instead
+// of prod ("database 'karl' does not exist").
+import { scriptPrisma } from '../src/lib/prisma-script'
+
+const prisma = scriptPrisma()
 
 const BASE = 'https://app.pupmanager.com/api/cron'
 const JOBS: Array<{ name: string; schedule: string; path: string }> = [
@@ -18,18 +23,45 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   // Client "before each session" reminders. The route dedups (ClientReminderSent),
   // so it's safe to run often — every 15 min keeps reminder times tight.
   { name: 'pm-client-session-reminders', schedule: '*/15 * * * *', path: 'client-session-reminders' },
-  // NOTE: pm-enquiry-followups is intentionally NOT listed here. This script
-  // inlines the local CRON_SECRET, which has drifted from the prod value, so
-  // these jobs currently 401 (verify via net._http_response). The followups
-  // job is instead registered with the GUC form (current_setting(
-  // 'app.cron_secret')) by 20260530_enquiry_followup_reminders, matching the
-  // working pupmanager-* jobs. Prefer the GUC form for any new jobs.
+  // These three were registered with the GUC form — Bearer ' ||
+  // current_setting('app.cron_secret') — which resolves to an EMPTY token,
+  // because that setting was never set and cannot be: `ALTER DATABASE postgres
+  // SET app.cron_secret` returns "permission denied to set parameter" on
+  // Supabase, whose postgres role is not a superuser (verified 2026-07-27).
+  // So the GUC form can never work here and the inlined form is the only
+  // option. Measured before this fix: 57 × 401 against 89 × 200 over 3 days.
+  { name: 'pm-booking-automations', schedule: '*/15 * * * *', path: 'booking-automations' },
+  { name: 'pm-google-calendar-busy-refresh', schedule: '0 */3 * * *', path: 'google-calendar-busy-refresh' },
+  { name: 'pm-purge-deactivated', schedule: '15 3 * * *', path: 'purge-deactivated' },
+  // NOTE: pm-enquiry-followups is also GUC-registered (by
+  // 20260530_enquiry_followup_reminders) but is NOT re-scheduled here — it was
+  // returning 200s at the time of writing, so it is being left alone rather
+  // than churned. If it starts 401ing, add it to this list.
 ]
+
+// cron.schedule() on an existing jobname REPLACES that job in place, so this
+// script is idempotent and safe to re-run.
 
 async function main() {
   const secret = process.env.CRON_SECRET
   if (!secret) {
-    console.error('CRON_SECRET not in env — load .env.local first.')
+    console.error('CRON_SECRET not in env.')
+    console.error('Note: `vercel env pull` writes sensitive values as EMPTY, so .env')
+    console.error('will have the key with no value. Get it from Vercel → Settings →')
+    console.error('Environment Variables → CRON_SECRET → Reveal.')
+    process.exit(1)
+  }
+
+  // Refuse anything that looks like an unsubstituted placeholder or a stub.
+  // This script REPLACES seven live production jobs, including ones that are
+  // currently working — writing a bad token silently breaks all of them, and
+  // there is no error at write time to notice, because cron.schedule() happily
+  // stores any string. That happened twice on 2026-07-27, taking three healthy
+  // jobs down. Fail loudly here instead.
+  const looksFake = /[<>]|paste|your|secret_here|xxx|todo|changeme/i.test(secret) || secret.length < 16
+  if (looksFake) {
+    console.error(`Refusing to write CRON_SECRET: looks like a placeholder (length ${secret.length}).`)
+    console.error('Paste the real value from Vercel — this would have broken all seven jobs.')
     process.exit(1)
   }
 

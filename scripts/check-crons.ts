@@ -1,6 +1,11 @@
 // Diagnostic: dump Supabase pg_cron job commands so we can match the
 // existing auth pattern. Run: tsx scripts/check-crons.ts
-import { prisma } from '../src/lib/prisma'
+// scriptPrisma falls back to DIRECT_URL: .env leaves DATABASE_URL blank, so the
+// app client connected to a local database named after the shell user instead
+// of prod ("database 'karl' does not exist").
+import { scriptPrisma } from '../src/lib/prisma-script'
+
+const prisma = scriptPrisma()
 
 async function main() {
   try {
