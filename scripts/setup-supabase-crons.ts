@@ -46,6 +46,21 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   // duplicate job running the same route twice rather than updating it.
   { name: 'pupmanager-daily-summary', schedule: '0 * * * *', path: 'daily-summary' },
   { name: 'pupmanager-session-reminders', schedule: '*/5 * * * *', path: 'session-reminders' },
+  // Registered by MIGRATIONS rather than by hand, which is why they were missing
+  // here — and missing from the 2026-07-27 rotation, which therefore left all
+  // five on the old secret, 401ing silently. comms-flows is the visible symptom:
+  // six flow steps configured in production and zero sends, ever.
+  //
+  // Names and schedules copied from the migrations that registered them, because
+  // cron.schedule() replaces by jobname — a typo creates a SECOND job running the
+  // same route on the new secret while the original keeps failing on the old one.
+  //   20260724120500_comms_flows_cron, 20260725120500_addon_grant_expiry_cron,
+  //   20260726090000_missing_crons
+  { name: 'pm-comms-flows', schedule: '*/5 * * * *', path: 'comms-flows' },
+  { name: 'pm-addon-grant-expiry', schedule: '10 9 * * *', path: 'addon-grant-expiry' },
+  { name: 'pm-weekly-summary', schedule: '0 * * * *', path: 'weekly-summary' },
+  { name: 'pm-message-email-fallback', schedule: '*/15 * * * *', path: 'message-email-fallback' },
+  { name: 'pm-xero-reconcile', schedule: '25 * * * *', path: 'xero-reconcile' },
 ]
 
 // Every scheduled job that sends a bearer token is in this list. That is the
