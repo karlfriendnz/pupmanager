@@ -6,7 +6,7 @@ import { getActiveClient, noActiveClientDestination } from '@/lib/client-context
 import { CurrencyProvider } from '@/components/currency-context'
 import { AppShell } from '@/components/shared/app-shell'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
-import { countUnreadMessages } from '@/lib/unread-messages'
+import { countClientUnreadTotal } from '@/lib/client-message-threads'
 import { getEnabledAddons } from '@/lib/billing'
 import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { mergeClientDogs } from '@/lib/dogs'
@@ -214,12 +214,18 @@ export default async function ClientLayout({ children }: { children: React.React
     )
   }
 
-  // Count unread messages for this client — anything in their thread the trainer
-  // (or another sender) wrote that they haven't seen yet. Trainer-in-preview gets
-  // a 0 (the badge would otherwise show the real client's pending messages).
+  // Count unread messages for this client — anything the trainer (or another
+  // sender) wrote that they haven't seen yet, across their 1:1 thread AND the
+  // groups this same business put them in. Scoped to the ACTIVE business, so a
+  // group at another trainer never shows up on this badge. Trainer-in-preview
+  // gets a 0 (the badge would otherwise show the real client's pending messages).
   const unreadMessageCount = active.isPreview
     ? 0
-    : await countUnreadMessages({ kind: 'client', clientId: clientProfile.id, userId: clientProfile.userId })
+    : await countClientUnreadTotal({
+        clientId: clientProfile.id,
+        userId: clientProfile.userId,
+        trainerId: clientProfile.trainer.id,
+      })
 
   // Per-trainer brand colour. A single solid colour drives --accent (and
   // re-derives the soft/tint/surface shades on this wrapper so they follow the

@@ -10,6 +10,7 @@ import { dateParts, displayEmail } from '@/lib/utils'
 import { PhoneRowList } from '@/components/shared/flat-list'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { BulkEmailModal } from './bulk-email-modal'
+import { GroupComposer } from '../messages/group-composer'
 
 type BuiltinColumnId = 'email' | 'dog' | 'breed' | 'extraDogs' | 'nextSession' | 'compliance' | 'shared'
 
@@ -211,6 +212,7 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
   const [selectModeOn, setSelectModeOn] = useState(false)
   const selectMode = selectModeOn || selected.size > 0
   const [composeOpen, setComposeOpen] = useState(false)
+  const [groupOpen, setGroupOpen] = useState(false)
   const [sentSummary, setSentSummary] = useState<string | null>(null)
 
   function exitSelectMode() {
@@ -519,16 +521,21 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
                 </p>
               )}
               {soleSelectedId === null && (
-                <p className="truncate text-xs text-slate-500">Messages go to one client at a time</p>
+                <p className="truncate text-xs text-slate-500">Starts a group with these {selectedCount}</p>
               )}
             </div>
             <Button
               type="button"
               size="sm"
               variant="secondary"
-              onClick={() => { if (soleSelectedId) router.push(`/messages?client=${soleSelectedId}`) }}
-              disabled={soleSelectedId === null}
-              title={soleSelectedId ? 'Open this client’s message thread' : 'Pick a single client to message'}
+              // One person is a conversation, so go straight to their thread.
+              // Several is a group — hand the selection to the composer rather
+              // than making the trainer tick the same people again.
+              onClick={() => {
+                if (soleSelectedId) router.push(`/messages?client=${soleSelectedId}`)
+                else setGroupOpen(true)
+              }}
+              title={soleSelectedId ? 'Open this client’s message thread' : `Start a group with these ${selectedCount}`}
             >
               <MessageSquare className="h-4 w-4" strokeWidth={1.75} />
               Message
@@ -560,6 +567,28 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
             exitSelectMode()
             router.refresh()
           }}
+        />
+      )}
+
+      {groupOpen && (
+        <GroupComposer
+          // Hand the ticked people straight through, so the composer opens on
+          // the mode question rather than asking them to pick the same clients
+          // a second time. Same stored selection the email path uses, so a
+          // client ticked on the Active tab still counts from the Inactive one.
+          initialClientIds={selectedTargets.map(t => t.id)}
+          clients={selectedTargets.map(t => ({
+            id: t.id,
+            displayName: t.name ?? t.email,
+            dogName: t.dogName,
+          }))}
+          activeClientCount={selectedTargets.length}
+          // The audience shortcuts belong to the Messages screen; from here the
+          // audience is already decided.
+          classRuns={[]}
+          packages={[]}
+          memberships={[]}
+          onClose={() => { setGroupOpen(false); exitSelectMode() }}
         />
       )}
     </>

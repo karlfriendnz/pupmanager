@@ -142,6 +142,8 @@ model User {
 
   // Messages sent by this user
   sentMessages Message[]
+  groupParticipations MessageGroupParticipant[]
+  groupMessages       GroupMessage[]
 
   // Push notification device tokens (one user can have multiple devices)
   deviceTokens DeviceToken[]
@@ -655,6 +657,7 @@ model TrainerProfile {
   enquiries          Enquiry[]
   emailTemplates     EmailTemplate[]
   broadcasts         EmailBroadcast[]
+  messageGroups      MessageGroup[]
   timeRates          TimeRate[]
   timesheets         Timesheet[]
   sentNotifications  ClientNotification[]
@@ -1149,6 +1152,7 @@ model ClientProfile {
   bookingRequests   BookingRequest[]
   shares            ClientShare[]
   messages          Message[]            @relation("ClientMessages")
+  groupParticipations MessageGroupParticipant[]
   customFieldValues CustomFieldValue[]
   dogs              Dog[]                @relation("AdditionalDogs")
   timeEntries       TimeEntry[]          @relation("ClientTimeEntries")
@@ -1836,6 +1840,7 @@ model ClassRun {
   enrollments      ClassEnrollment[]
   assignedTrainers ClassRunTrainer[]
   commsFlowSteps   CommsFlowStep[]
+  messageGroups    MessageGroup[]
 
   @@index([trainerId])
   @@index([packageId])
@@ -2235,6 +2240,171 @@ model Message {
   // Hot path for the fallback cron: unread, un-emailed messages by age.
   @@index([channel, readAt, emailFallbackSentAt, createdAt])
   @@map("messages")
+}
+
+// ─── Group messaging ──────────────────────────────────────────────────────────
+//
+// A group is a THREAD, not a fan-out. It sits in the messages list beside the
+// 1:1 client threads and you post into it over time — Facebook/WhatsApp group
+// semantics, not "send once to many". See docs/plan-group-messaging.md §2(b).
+//
+// These are DELIBERATELY separate models from Message. Making Message.clientId
+// nullable and bolting a groupId on would silently change the meaning of every
+// existing query — the client-list query on the messages screen, the unread
+// _count, countUnreadMessages(), the SSE poll and the email-fallback cron all
+// assume a message has exactly ONE reader, which is what makes the single
+// `readAt` column work. A group has N readers. So groups carry their own read
+// state (per-participant lastReadAt watermark) and 1:1 messaging is left
+// exactly as it was.
+
+enum MessageGroupMode {
+  // Trainer/staff posts go to everyone; a client's reply is seen ONLY by the
+  // trainer's team. Members never see each other. No consent step needed —
+  // nothing about one client is disclosed to another.
+  BROADCAST
+  // Everyone sees everyone. This makes dog owners visible to each other, which
+  // is a disclosure they did not agree to when they handed details to a
+  // trainer — so it is opt-in per client, per group, and default off.
+  COMMUNITY
+}
+
+enum MessageGroupScope {
+  MANUAL // hand-picked clients
+  ALL_CLIENTS // every active client of this business
+  CLASS_RUN // everyone enrolled on a ClassRun
+  PACKAGE // everyone holding a ClientPackage for a Package
+  MEMBERSHIP // everyone with an active MembershipPurchase
+}
+
+enum MessageGroupRole {
+  OWNER // the business owner — always a moderator
+  STAFF // a team member
+  CLIENT // a dog owner
+}
+
+// Who can see one post. This is the ONE field the two modes differ by, rather
+// than two code paths: in BROADCAST a client's reply is written TRAINER_ONLY,
+// in COMMUNITY everything is EVERYONE.
+enum GroupMessageVisibility {
+  EVERYONE
+  TRAINER_ONLY
+}
+
+model MessageGroup {
+  id           String            @id @default(cuid())
+  trainerId    String
+  // Shown in the messages list, so it is required. Defaulted from the source
+  // (the class name, "Everyone") at creation and editable afterwards.
+  name         String
+  mode         MessageGroupMode
+  scope        MessageGroupScope
+  // Whichever the scope points at. classRunId is a real FK (SetNull) so a
+  // deleted class doesn't take its group's history with it.
+  classRunId   String?
+  packageId    String?
+  membershipId String?
+  // CLASS_RUN only — whether the waitlist counts as members. The trainer
+  // chooses this when creating the group; it is not a default.
+  includeWaitlist Boolean        @default(false)
+  // Overrides a muted push preference, same rule comms flows use.
+  important    Boolean           @default(false)
+  // Locked by the trainer: readable, no new posts.
+  archivedAt   DateTime?
+  // Denormalised so the merged messages list can sort threads and groups
+  // together by activity without a correlated subquery per group.
+  lastMessageAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer      TrainerProfile           @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  classRun     ClassRun?                @relation(fields: [classRunId], references: [id], onDelete: SetNull)
+  participants MessageGroupParticipant[]
+  messages     GroupMessage[]
+
+  @@index([trainerId, lastMessageAt])
+  @@map("message_groups")
+}
+
+// One person's membership of one group. A person can be in many groups — the
+// unique is on the PAIR, deliberately, and nothing may narrow it to userId.
+model MessageGroupParticipant {
+  id              String           @id @default(cuid())
+  groupId         String
+  // The underlying User — the identity that reads and posts. Always set.
+  userId          String
+  // The ClientProfile this membership came from, for a dog owner. Null for
+  // trainer/staff participants.
+  clientProfileId String?
+  role            MessageGroupRole
+  // The ONLY identity other members ever see. First name by default; a client
+  // can change it for that group. Never the login email, never the phone,
+  // never an address — making it a stored column rather than a join is what
+  // makes that promise structural instead of something every query must
+  // remember.
+  displayName     String
+  invitedAt       DateTime         @default(now())
+  // Null = invited but not accepted. THIS is the opt-in. A COMMUNITY group
+  // leaves it null until the client agrees; a BROADCAST group sets it at
+  // creation, because nothing about one member is exposed to another.
+  joinedAt        DateTime?
+  // No longer a member. Their posts stay in the thread but render as
+  // "Removed member" — a tombstone, never a hole in the conversation.
+  leftAt          DateTime?
+  // Set ONLY when the person themselves left, or a moderator removed them —
+  // never when the roster simply changed. This is what makes leaving STICK:
+  // the audience refresh will happily re-add someone the roster dropped and
+  // later restored, but must never silently drag back someone who walked out.
+  // Two columns because "you withdrew from the class" and "I don't want to be
+  // in this group" are different facts and only one of them is a choice.
+  optedOutAt      DateTime?
+  // Read WATERMARK. Replaces Message.readAt, which is a single timestamp and
+  // cannot express "read" for N people (and is also the email-fallback
+  // trigger). One column per person beats an N×M read table.
+  lastReadAt      DateTime?
+  mutedAt         DateTime?
+
+  createdAt DateTime @default(now())
+
+  group  MessageGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client ClientProfile? @relation(fields: [clientProfileId], references: [id], onDelete: SetNull)
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@index([clientProfileId])
+  @@map("message_group_participants")
+}
+
+model GroupMessage {
+  id         String                 @id @default(cuid())
+  groupId    String
+  senderId   String
+  body       String                 @db.Text
+  bodyHtml   String?                @db.Text
+  visibility GroupMessageVisibility @default(EVERYONE)
+  // The post being answered. A broadcast is an open question and the replies
+  // are just sentences — no structure is imposed on them — but a group holding
+  // three broadcasts still has to say which reply belongs to which, and this
+  // is the only thing that can.
+  replyToId  String?
+  // Moderation tombstone — never hard-deleted, so the thread doesn't silently
+  // rewrite itself around a removed post.
+  deletedAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  group   MessageGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender  User           @relation(fields: [senderId], references: [id])
+  replyTo GroupMessage?  @relation("GroupMessageReplies", fields: [replyToId], references: [id], onDelete: Cascade)
+  replies GroupMessage[] @relation("GroupMessageReplies")
+
+  @@index([groupId, createdAt])
+  @@index([senderId])
+  // The responses view: every reply to one broadcast, by person.
+  @@index([replyToId])
+  @@map("group_messages")
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────

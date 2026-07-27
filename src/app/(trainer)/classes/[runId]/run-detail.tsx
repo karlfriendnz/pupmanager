@@ -15,6 +15,7 @@ import { Users, UserPlus, CalendarDays, ClipboardCheck, Info, Bell, Tag } from '
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
+import { ClassGroupPanel } from '@/components/trainer/class-group-panel'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { DiscountManager } from '@/components/trainer/discount-manager'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
@@ -403,8 +404,12 @@ export function RunDetail({
           </Card>
       </div>
 
-      {/* Reminders & messages tab — automated comms for this class. */}
+      {/* Reminders & messages tab — automated comms for this class, plus the
+          way into a GROUP for it. Its natural home: no new nav, and it is
+          where a trainer already comes to think about talking to this class.
+          A comms flow is timed and one-way; a group is a conversation. */}
       <div className={tab === 'messages' ? '' : 'hidden'}>
+        <ClassGroupPanel runId={run.id} runName={run.name} />
         <CommsFlowEditor
           runId={run.id}
           offeringName={run.name}
