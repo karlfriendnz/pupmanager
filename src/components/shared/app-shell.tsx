@@ -20,7 +20,7 @@ import { VersionGuard } from './version-guard'
 import { NotificationToaster } from './notification-toaster'
 import { TopBarControls } from './top-bar-controls'
 import { FloatingCreateButton } from './floating-create-button'
-import { PageTitleProvider, usePageTitle, usePageHasBack } from './page-title'
+import { PageTitleProvider, usePageTitle, usePageHasBack, usePageImmersive } from './page-title'
 import { FlatRow, FlatRowGrid } from './flat-list'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
@@ -890,6 +890,17 @@ function TrainerMobileHeader({
   )
 }
 
+/**
+ * Renders children unless the current page has declared itself immersive.
+ *
+ * Must be used INSIDE PageTitleProvider. TrainerShell renders that provider, so
+ * a usePageImmersive() call in TrainerShell's own body sits above it in the tree
+ * and always reads the default `false` — which is exactly the bug this replaced.
+ */
+function HideWhenImmersive({ children }: { children: React.ReactNode }) {
+  return usePageImmersive() ? null : <>{children}</>
+}
+
 function TrainerShell({
   children,
   userName,
@@ -1058,7 +1069,13 @@ function TrainerShell({
           logo and business name, never "PupManager". Sticky (not fixed) so it
           occupies flow and no page needs new top padding; pads the safe-area
           inset so it clears the notch. */}
-      <TrainerMobileHeader businessName={businessName} fallbackTitle={navFallbackTitle} canSell={canSell} currency={currency} />
+      {/* Hidden in an immersive page (an open message thread): the thread
+          renders its own sticky header with a back arrow, the client's avatar
+          and their name, so the shell's bar would be a second header saying
+          less. Safe to hide — the way out lives in the thread's own header. */}
+      <HideWhenImmersive>
+        <TrainerMobileHeader businessName={businessName} fallbackTitle={navFallbackTitle} canSell={canSell} currency={currency} />
+      </HideWhenImmersive>
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
           Hidden inside Settings, which brings its own rail. */}
@@ -1318,8 +1335,14 @@ function TrainerShell({
           the desktop control bar, so it's reachable from every page. */}
 
       {/* Mobile bottom tab bar — 4 primary destinations + More. Hidden on the
-          offering wizard, whose own Back/Next bar owns the bottom of the phone. */}
+          offering wizard, whose own Back/Next bar owns the bottom of the phone,
+          and on any page that declares itself immersive (an open message
+          thread, where the composer sits at the bottom and five tabs beneath it
+          just read as clutter). A thread is /messages?client=…, a query param —
+          so the page reports it rather than the shell sniffing the URL, which
+          would need useSearchParams and bail the whole app out of SSR. */}
       {pathname !== '/offerings/new' && (
+      <HideWhenImmersive>
       <nav
         className="md:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-slate-100 z-40"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
@@ -1361,6 +1384,7 @@ function TrainerShell({
               five slots down here all go to places a trainer works in. */}
         </div>
       </nav>
+      </HideWhenImmersive>
       )}
 
       {/* Mobile menu — a whole screen of grouped tiles, the same shape as the

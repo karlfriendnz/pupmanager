@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { PhoneRowList } from '@/components/shared/flat-list'
 import { MessageThread } from './[clientId]/message-thread'
+import { SetPageImmersive } from '@/components/shared/page-title'
 
 export interface ClientRow {
   id: string
@@ -110,6 +111,10 @@ export function MessagesView({
 
   // Mobile (<md): swap which pane is visible based on whether a thread
   // is selected. Desktop keeps both visible side-by-side.
+  // With a thread open the phone shows only the thread, and its composer sits
+  // at the bottom of the screen — five nav tabs beneath that read as clutter
+  // and made it unclear what you were looking at. Desktop is unaffected: the
+  // tab bar is md:hidden, and both panes stay side by side there.
   const listVisibility = selectedClient ? 'hidden md:flex' : 'flex'
   const threadVisibility = selectedClient ? 'flex' : 'hidden md:flex'
 
@@ -118,6 +123,8 @@ export function MessagesView({
     // to main's edges. No top margin — PageHeader has its own bottom
     // border, so the two-pane content sits cleanly below it.
     <div className="flex flex-1 min-h-0 -mx-4 md:-mx-8">
+      {/* Hides the phone's bottom tab bar while a thread is open. */}
+      <SetPageImmersive value={!!selectedClient} />
       {/* ── Thread list (left pane) ─────────────────────────────────────── */}
       <aside
         className={cn(

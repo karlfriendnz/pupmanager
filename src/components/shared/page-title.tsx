@@ -11,6 +11,9 @@ type PageTitleCtx = {
   /** Whether the current page portals a back arrow into the top bar. */
   hasBack: boolean
   setHasBack: (b: boolean) => void
+  /** Whether the page has taken over the phone screen (see SetPageImmersive). */
+  immersive: boolean
+  setImmersive: (b: boolean) => void
 }
 
 const Ctx = createContext<PageTitleCtx | null>(null)
@@ -18,7 +21,12 @@ const Ctx = createContext<PageTitleCtx | null>(null)
 export function PageTitleProvider({ children }: { children: ReactNode }) {
   const [title, setTitle] = useState<string | null>(null)
   const [hasBack, setHasBack] = useState(false)
-  return <Ctx.Provider value={{ title, setTitle, hasBack, setHasBack }}>{children}</Ctx.Provider>
+  const [immersive, setImmersive] = useState(false)
+  return (
+    <Ctx.Provider value={{ title, setTitle, hasBack, setHasBack, immersive, setImmersive }}>
+      {children}
+    </Ctx.Provider>
+  )
 }
 
 export function usePageTitle(): string | null {
@@ -34,6 +42,30 @@ export function usePageTitle(): string | null {
  */
 export function usePageHasBack(): boolean {
   return useContext(Ctx)?.hasBack ?? false
+}
+
+/**
+ * True while a page has taken over the phone screen and the bottom tab bar
+ * should stand down — an open message thread, for instance, where the composer
+ * sits at the bottom and five tabs underneath it read as clutter.
+ *
+ * A page reports this rather than the shell guessing from the URL: a thread is
+ * `/messages?client=…`, a query param, and reading that in the shell would mean
+ * useSearchParams — which opts the whole app into a client-side bailout. This
+ * is the same shape as hasBack above.
+ */
+export function usePageImmersive(): boolean {
+  return useContext(Ctx)?.immersive ?? false
+}
+
+/** Hides the phone's bottom tab bar while mounted. */
+export function SetPageImmersive({ value }: { value: boolean }) {
+  const setImmersive = useContext(Ctx)?.setImmersive
+  useEffect(() => {
+    setImmersive?.(value)
+    return () => setImmersive?.(false)
+  }, [value, setImmersive])
+  return null
 }
 
 /** Set by PageHeader for the length of a page that has a back arrow. */
