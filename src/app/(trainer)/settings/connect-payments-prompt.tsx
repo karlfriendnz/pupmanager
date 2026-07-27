@@ -3,6 +3,7 @@
 import { ShieldCheck } from 'lucide-react'
 import { FeaturePromoCard, FeaturePromoModal, PROMO_ICON, type FeaturePromoProps } from '@/components/shared/feature-promo'
 import { currencyMeta, isCurrencyCode } from '@/lib/pricing'
+import { processingRate, processingRateLabel } from '@/lib/connect'
 import { ConnectButton } from './payments-actions'
 
 // Payment-flow step icons.
@@ -51,21 +52,18 @@ const TRUST = (
   </>
 )
 
-// Per-payment processing fee by payout currency. Mirrors the marketing pricing
-// page (and lib/connect SURCHARGE_RATES) so the modal quotes the real cost.
-const FEES: Record<string, { pct: string; fixed: number }> = {
-  NZD: { pct: '3.5%', fixed: 30 },
-  AUD: { pct: '2.7%', fixed: 30 },
-  GBP: { pct: '2.5%', fixed: 20 },
-  CAD: { pct: '3.9%', fixed: 30 },
-  USD: { pct: '3.9%', fixed: 30 },
-  ZAR: { pct: '3.9%', fixed: 50 },
-}
+// DERIVED from the fees actually charged — never hand-written here.
+//
+// This table used to carry its own numbers and had drifted: it promised GBP
+// trainers 2.5% + 20p while they were charged 3.5% + 20p, and AUD 2.7% against
+// a real 3.5%. Mersea Mutts found it in their Stripe statement and stopped
+// taking payments. A quote a trainer decides on must come from the same place
+// as the charge, or the two are free to disagree quietly for months.
 function feeRate(currency: string): string {
   const cur = isCurrencyCode(currency) ? currency : 'NZD'
-  const f = FEES[cur] ?? FEES.NZD
+  const { fixed } = processingRate(cur)
   const sym = currencyMeta(cur).symbol
-  return `${f.pct} + ${sym}${(f.fixed / 100).toFixed(2)}`
+  return `${processingRateLabel(cur)} + ${sym}${(fixed / 100).toFixed(2)}`
 }
 
 // Everything except the CTA (which differs between page + modal use).

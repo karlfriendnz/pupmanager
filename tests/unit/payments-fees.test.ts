@@ -50,37 +50,39 @@ describe('currencyForCountry — payout currency defaulting', () => {
 })
 
 describe('platformFeeAmount — our margin on a client payment', () => {
-  // pupmanager.com/pricing advertises "3.5% + $0.30 /payment". These are direct
-  // charges, so the trainer pays Stripe's rate; our cut is the gap up to 3.5%.
-  it('takes the advertised spread over Stripe in each supported currency', () => {
-    expect(platformFeeBps('nzd')).toBe(85)   // Stripe NZ 2.65% → 3.50%
-    expect(platformFeeBps('aud')).toBe(180)  // Stripe AU 1.70% → 3.50%
-    expect(platformFeeBps('gbp')).toBe(200)  // Stripe UK 1.50% → 3.50%
-    expect(platformFeeBps('usd')).toBe(60)
-    expect(platformFeeBps('cad')).toBe(60)
+  // We take 1%, everywhere (Karl, 2026-07-28). It used to be a per-currency
+  // spread reverse-engineered to land the all-in on a flat 3.5%, which charged
+  // GBP trainers 2% against a promised 2.5% all-in. See platform-fee.test.ts.
+  it('is 1% in every supported currency', () => {
+    expect(platformFeeBps('nzd')).toBe(100)  // Stripe NZ 2.65% → 3.65%
+    expect(platformFeeBps('aud')).toBe(100)  // Stripe AU 1.70% → 2.70%
+    expect(platformFeeBps('gbp')).toBe(100)  // Stripe UK 1.50% → 2.50%
+    expect(platformFeeBps('usd')).toBe(100)
+    expect(platformFeeBps('cad')).toBe(100)
   })
 
   it('is case-insensitive about the currency', () => {
-    expect(platformFeeBps('NZD')).toBe(85)
-    expect(platformFeeAmount(10_000, 'NZD')).toBe(85)
+    expect(platformFeeBps('NZD')).toBe(100)
+    expect(platformFeeAmount(10_000, 'NZD')).toBe(100)
   })
 
-  it('takes NOTHING for a currency whose Stripe rate we have not confirmed', () => {
-    // Better to earn 0 than to charge a trainer more than the pricing page promises.
-    expect(platformFeeBps('zar')).toBe(0)
-    expect(platformFeeAmount(10_000, 'zar')).toBe(0)
-    expect(platformFeeBps('jpy')).toBe(0)
-    expect(platformFeeAmount(10_000, 'jpy')).toBe(0)
+  it('still takes 1% in a currency whose Stripe rate we have not confirmed', () => {
+    // Our margin doesn't depend on knowing Stripe's base — only the all-in
+    // figure we QUOTE does, and that is the thing to hold back, not the fee.
+    expect(platformFeeBps('zar')).toBe(100)
+    expect(platformFeeAmount(10_000, 'zar')).toBe(100)
+    expect(platformFeeBps('jpy')).toBe(100)
+    expect(platformFeeAmount(10_000, 'jpy')).toBe(100)
   })
 
   it('charges the margin on the gross, in minor units', () => {
-    expect(platformFeeAmount(10_000, 'nzd')).toBe(85)   // 0.85% of $100.00 = 85c
-    expect(platformFeeAmount(5_000, 'aud')).toBe(90)    // 1.80% of $50.00 = 90c
-    expect(platformFeeAmount(10_000, 'gbp')).toBe(200)  // 2.00% of £100.00 = £2
+    expect(platformFeeAmount(10_000, 'nzd')).toBe(100)  // 1% of $100.00 = $1.00
+    expect(platformFeeAmount(5_000, 'aud')).toBe(50)    // 1% of $50.00 = 50c
+    expect(platformFeeAmount(10_000, 'gbp')).toBe(100)  // 1% of £100.00 = £1
   })
 
   it('rounds to the nearest cent and never goes negative', () => {
-    expect(platformFeeAmount(10_394, 'nzd')).toBe(88)   // 0.85% of 10394 = 88.3 → 88
+    expect(platformFeeAmount(10_410, 'nzd')).toBe(104)  // 1% of 10410 = 104.1 → 104
     expect(platformFeeAmount(1, 'nzd')).toBe(0)         // rounds to nothing
     expect(platformFeeAmount(0, 'nzd')).toBe(0)
     expect(platformFeeAmount(-500, 'nzd')).toBe(0)

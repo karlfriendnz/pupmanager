@@ -5,7 +5,13 @@ import { describe, it, expect, vi } from 'vitest'
 const h = vi.hoisted(() => ({ env: { PLATFORM_FEE_BPS: 0, NEXT_PUBLIC_APP_URL: 'https://app.test' } }))
 vi.mock('@/lib/env', () => ({ env: h.env }))
 
-import { estimateProcessingSurcharge } from '@/lib/connect'
+import { estimateProcessingSurcharge, processingRate } from '@/lib/connect'
+
+/** What the payment really costs, derived — never a rate typed into a test. */
+function cost(gross: number, currency = 'nzd'): number {
+  const { bps, fixed } = processingRate(currency)
+  return Math.round((gross * bps) / 10_000) + fixed
+}
 
 // When a trainer passes the card fee on, the client is quoted the invoice amount
 // in THREE places — the emailed "Pay $X" button, the pay page total, and Stripe's
@@ -19,25 +25,23 @@ import { estimateProcessingSurcharge } from '@/lib/connect'
 // the three can't silently drift apart again.
 describe('card surcharge — what the client is asked to pay', () => {
   it('grosses up so the trainer still nets the invoice amount', () => {
-    // NZD: 3.5% + 30c. On a $1.00 invoice the 30c FIXED fee dominates — the
-    // client pays $1.35 to have the trainer receive $1.00. That's not a bug, it's
-    // what a card costs on a tiny amount, and it's why the fee has to be visible
-    // BEFORE they click rather than sprung on them at Stripe.
+    // NZD: Stripe's 2.65% plus our 1% = 3.65% + 30c. On a $1.00 invoice the 30c
+    // FIXED fee dominates — the client pays ~$1.35 to have the trainer receive
+    // $1.00. That's not a bug, it's what a card costs on a tiny amount, and it's
+    // why the fee has to be visible BEFORE they click rather than sprung on them
+    // at Stripe.
     const surcharge = estimateProcessingSurcharge(100, 'nzd')
     expect(surcharge).toBe(35)
     const clientPays = 100 + surcharge
-    // Stripe takes 3.5% of the gross + 30c; what's left is the invoice amount.
-    const stripeFee = Math.round(clientPays * 0.035) + 30
-    expect(clientPays - stripeFee).toBe(100)
+    expect(clientPays - cost(clientPays)).toBe(100)
   })
 
   it('scales on a realistic invoice', () => {
     // $150.00 session package.
     const surcharge = estimateProcessingSurcharge(15_000, 'nzd')
     const clientPays = 15_000 + surcharge
-    const stripeFee = Math.round(clientPays * 0.035) + 30
-    expect(clientPays - stripeFee).toBeGreaterThanOrEqual(15_000 - 1) // ±1c rounding
-    expect(clientPays - stripeFee).toBeLessThanOrEqual(15_000 + 1)
+    expect(clientPays - cost(clientPays)).toBeGreaterThanOrEqual(15_000 - 1) // ±1c rounding
+    expect(clientPays - cost(clientPays)).toBeLessThanOrEqual(15_000 + 1)
   })
 
   it('is zero for a zero balance, so a paid invoice never sprouts a fee', () => {

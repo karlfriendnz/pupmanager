@@ -89,22 +89,25 @@ export function currencyForCountry(country?: string | null): string {
  * processing fee themselves. Our cut rides on top as an `application_fee_amount`,
  * which Stripe transfers to the platform automatically.
  *
- * pupmanager.com/pricing advertises client payments at "3.5% + $0.30 /payment",
- * so the margin is that headline minus what Stripe actually charges the trainer
- * in their country — and the trainer's all-in cost lands on the advertised rate:
+ * We take a flat 1%. The trainer's all-in cost is therefore Stripe's rate in
+ * their country plus one point, and it differs by country because Stripe's does:
  *
  *   currency  Stripe domestic      our margin   trainer pays
- *   nzd       2.65% + $0.30   ✓    0.85%        3.50% + $0.30
- *   aud       1.70% + A$0.30  ✓    1.80%        3.50% + A$0.30
- *   gbp       1.50% + 20p     ✓    2.00%        3.50% + 20p
- *   usd       2.90% + $0.30   ~    0.60%        3.50% + $0.30
- *   cad       2.90% + C$0.30  ~    0.60%        3.50% + C$0.30
- *   zar       unverified      ✗    0%           Stripe's rate only
+ *   nzd       2.65% + $0.30   ✓    1%           3.65% + $0.30
+ *   aud       1.70% + A$0.30  ✓    1%           2.70% + A$0.30
+ *   gbp       1.50% + 20p     ✓    1%           2.50% + 20p
+ *   usd       2.90% + $0.30   ~    1%           3.90% + $0.30
+ *   cad       2.90% + C$0.30  ~    1%           3.90% + C$0.30
+ *   zar       2.90% + R0.50   ✗    1%           3.90% + R0.50
  *
  * ✓ = checked against Stripe's live rate card (July 2026). ~ = the widely
- * published rate, not re-verified. ✗ = we take NOTHING rather than risk
- * charging a trainer more than the pricing page promises. Confirm the rate,
- * then set the margin.
+ * published rate, not re-verified. ✗ = unverified; the 1% is still ours to
+ * take, but confirm Stripe's ZA base before quoting that all-in figure.
+ *
+ * NOTE FOR THE MARKETING SITE (separate repo, pupmanager-marketing): its pricing
+ * page advertises a single "3.5% + $0.30 /payment". That was only ever true of
+ * NZD, and is now not true of any market. It needs updating to per-country
+ * rates, or to "Stripe's rate + 1%".
  *
  * We take no fixed component: Stripe's fixed fee already equals the advertised
  * one, and a fixed markup would quietly overcharge on small payments.
@@ -114,21 +117,31 @@ export function currencyForCountry(country?: string | null): string {
  * fee is fixed when the checkout is created — before the card is known — so it
  * cannot vary by card type.
  */
-const PLATFORM_MARKUP_BPS: Record<string, number> = {
-  nzd: 85,
-  aud: 180,
-  gbp: 200,
-  usd: 60,
-  cad: 60,
-  zar: 0,
-}
-/** Unknown currency → take nothing. Never overcharge on a rate we haven't checked. */
-const PLATFORM_MARKUP_DEFAULT = 0
+/**
+ * We take 1% on top of Stripe. One number, every currency (Karl, 2026-07-28).
+ *
+ * It used to be a per-currency table — nzd 85, aud 180, gbp 200, usd/cad 60,
+ * zar 0 — reverse-engineered so the all-in landed on a flat 3.5% everywhere.
+ * That made the margin a different number in every market and, worse, it
+ * disagreed with what trainers were actually shown: the settings screen
+ * promised GBP 2.5% and AUD 2.7%, so those trainers were charged a full 1% and
+ * 0.8% more than we told them. Mersea Mutts spotted it in their Stripe fees and
+ * stopped taking payments over it.
+ *
+ * A flat 1% is what the published rates were always built on: it reproduces
+ * GBP 2.5%, AUD 2.7%, USD/CAD/ZAR 3.9% exactly. NZD becomes 3.65% rather than
+ * the 3.5% previously quoted, because Stripe NZ is 2.65% — the old quote was
+ * the one that didn't add up.
+ *
+ * Everything customer-facing is DERIVED from this via processingRate(), so a
+ * hand-written table can't drift away from it again.
+ */
+const PLATFORM_MARKUP_BPS = 100
 
-/** Our margin in basis points for a payout currency. PLATFORM_FEE_BPS overrides. */
-export function platformFeeBps(currency: string): number {
+/** Our margin in basis points. PLATFORM_FEE_BPS overrides for a one-off test. */
+export function platformFeeBps(_currency: string): number {
   if (env.PLATFORM_FEE_BPS > 0) return env.PLATFORM_FEE_BPS
-  return PLATFORM_MARKUP_BPS[currency.toLowerCase()] ?? PLATFORM_MARKUP_DEFAULT
+  return PLATFORM_MARKUP_BPS
 }
 
 /**
@@ -167,16 +180,40 @@ const STRIPE_BASE_DEFAULT = { bps: 290, fixed: 50 }
  * to cover BOTH fees that come out of the payment — Stripe's AND ours — or the
  * trainer doesn't net the price of the thing they sold.
  *
- * These two tables used to be written by hand and had drifted apart: AUD grossed
- * up at 2.7% while the real cost was Stripe 1.7% + our 1.8% = 3.5%, so every
- * Australian trainer quietly lost 0.8% of every payment. USD grossed up at 3.9%
- * against a true 3.5%, overcharging the client. Deriving the surcharge from the
- * fees it exists to cover means they can't disagree again.
+ * It is the same number as processingRate() by definition — the surcharge exists
+ * to recover exactly what the payment costs — so it is that function, not a copy
+ * of it. A hand-written second table is what caused the last two bugs here: the
+ * surcharge once grossed up AUD at 2.7% against a real cost of 3.5%, losing
+ * Australian trainers 0.8% of every payment, and the settings screen quoted GBP
+ * at 2.5% while we charged 3.5%.
  */
 function surchargeRate(currency: string): { bps: number; fixed: number } {
+  return processingRate(currency)
+}
+
+/**
+ * What a payment ACTUALLY costs a trainer, all in: Stripe's domestic-card rate
+ * plus our margin. `{ bps, fixed }` in basis points and minor units.
+ *
+ * This is the single source of truth for the number, and every customer-facing
+ * quote must come from here. Mersea Mutts was shown 2.5% + 20p and charged
+ * 3.5% + 20p because the settings screen carried its own hand-written table
+ * that had drifted from the fees — the same class of bug as the AUD surcharge
+ * one directly above, which is why this is now derived rather than repeated.
+ */
+export function processingRate(currency: string): { bps: number; fixed: number } {
   const cur = currency.toLowerCase()
   const base = STRIPE_BASE_RATES[cur] ?? STRIPE_BASE_DEFAULT
   return { bps: base.bps + platformFeeBps(cur), fixed: base.fixed }
+}
+
+/**
+ * The all-in rate as a trainer reads it — "2.5%". Trailing zeros trimmed, so
+ * 250bps is "2.5%" and 290bps is "2.9%", never "2.50%".
+ */
+export function processingRateLabel(currency: string): string {
+  const pct = processingRate(currency).bps / 100
+  return `${Number(pct.toFixed(2))}%`
 }
 
 /**
