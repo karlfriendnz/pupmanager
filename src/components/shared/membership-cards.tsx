@@ -5,6 +5,7 @@ import { RichText } from '@/components/shared/rich-text'
 import { Ticket, Loader2, Check } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { resolveButtonColors } from '@/lib/membership-card-colors'
+import { MembershipConsentScreen } from '@/components/shared/membership-consent-screen'
 import type { ClientMembership, ClientMembershipInterval } from '@/lib/client-memberships'
 
 const INTERVAL_LABEL: Record<ClientMembershipInterval, string> = {
@@ -35,6 +36,9 @@ const BLOCKED_COPY: Record<'RECURRING' | 'NO_PRICE', string> = {
 export function MembershipCards({ memberships, currency }: { memberships: ClientMembership[]; currency: string }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Which membership's consent screen is open. A recurring plan never goes
+  // straight to Stripe — it has to be agreed to first.
+  const [consentFor, setConsentFor] = useState<string | null>(null)
   // Seeded from the server (a PENDING MembershipRequest row), so "Requested"
   // is still there after a reload rather than a state flip that forgets.
   const [requested, setRequested] = useState<Record<string, boolean>>(
@@ -57,10 +61,20 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
     }
   }
 
-  async function buy(id: string) {
+  /**
+   * Start checkout. A one-off goes straight to Stripe; a recurring plan only
+   * reaches here once the consent screen has been agreed to, and sends
+   * `consent: true` — the route refuses the subscription without it, so a
+   * client can never be signed up to a repeating charge by a stray tap.
+   */
+  async function buy(id: string, opts?: { consent?: boolean; planId?: string }) {
     setBusy(id); setError(null)
     try {
-      const res = await fetch(`/api/my/memberships/${id}/buy`, { method: 'POST' })
+      const res = await fetch(`/api/my/memberships/${id}/buy`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ consent: opts?.consent ?? false, planId: opts?.planId }),
+      })
       const b = await res.json().catch(() => ({}))
       if (!res.ok) { setError(typeof b.error === 'string' ? b.error : 'Could not start checkout.'); return }
       if (b.url) window.location.href = b.url
@@ -70,6 +84,8 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
       setBusy(null)
     }
   }
+
+  const consenting = memberships.find(m => m.id === consentFor) ?? null
 
   if (memberships.length === 0) {
     return <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">No packages available right now.</div>
@@ -125,9 +141,21 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
                     someone, they get one tap that tells the trainer — with the
                     reason still stated right above it, and the trainer's own
                     button colours so the card doesn't look half-styled. */}
-                {m.buyable ? (
-                  <button onClick={() => buy(m.id)} disabled={busy === m.id} className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: btn.background, color: btn.color }}>
-                    {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {m.buttonText?.trim() || 'Get this package'}
+                {m.subscribed ? (
+                  // Already paying for it. Selling it again would stack a second
+                  // recurring charge on the same plan.
+                  <p className="mt-4 flex items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-600">
+                    <Check className="h-4 w-4" strokeWidth={1.75} /> You&apos;re on this plan
+                  </p>
+                ) : m.buyable ? (
+                  <button
+                    onClick={() => (m.needsConsent ? setConsentFor(m.id) : buy(m.id))}
+                    disabled={busy === m.id}
+                    className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50"
+                    style={{ backgroundColor: btn.background, color: btn.color }}
+                  >
+                    {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {m.buttonText?.trim() || (m.needsConsent ? 'Subscribe' : 'Get this package')}
                   </button>
                 ) : (
                   <>
@@ -150,6 +178,15 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
           )
         })}
       </div>
+      {consenting && (
+        <MembershipConsentScreen
+          membership={consenting}
+          busy={busy === consenting.id}
+          error={error}
+          onCancel={() => { setConsentFor(null); setError(null) }}
+          onConfirm={() => buy(consenting.id, { consent: true, planId: consenting.plans[0]?.id })}
+        />
+      )}
     </>
   )
 }

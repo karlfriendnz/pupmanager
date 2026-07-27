@@ -13,6 +13,24 @@ type Tx = Prisma.TransactionClient
 
 export interface MembershipClassGrant { classRunId: string }
 
+/**
+ * The recurring shape, supplied when the grant comes from a Stripe Subscription
+ * rather than a one-off checkout. Stripe is the source of truth for every date
+ * in here — none of it is computed locally, and the billing date is simply the
+ * anniversary of the day they subscribed.
+ */
+export interface MembershipRecurringInput {
+  planId: string | null
+  stripeSubscriptionId: string
+  stripeCustomerId: string | null
+  status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLING' | 'CANCELLED' | 'PAUSED'
+  currentPeriodStart: Date | null
+  currentPeriodEnd: Date | null
+  committedUntil: Date | null
+  cancelAtPeriodEnd: boolean
+  applicationFeePercent: number | null
+}
+
 export async function fulfilMembershipInTx(
   tx: Tx,
   args: {
@@ -25,6 +43,12 @@ export async function fulfilMembershipInTx(
      */
     paymentId: string | null
     sandbox: boolean
+    /**
+     * Present for a RECURRING membership bought via a Stripe Subscription. Its
+     * absence is what makes a purchase one-off, so existing callers are
+     * unaffected.
+     */
+    recurring?: MembershipRecurringInput
   },
 ): Promise<{ classGrants: MembershipClassGrant[] }> {
   const membership = await tx.membership.findUnique({
@@ -74,10 +98,33 @@ export async function fulfilMembershipInTx(
     }
   }
 
-  // Record the purchase. Phase 1 is ONE_OFF — no term / period. Recurring fills
-  // committedUntil + currentPeriodEnd from the mandate billing run later.
+  // Record the purchase. A ONE_OFF has no term or period and is ACTIVE from the
+  // moment it is paid. A RECURRING one carries the Stripe subscription and the
+  // period/term dates Stripe reported — all of them read back from Stripe, never
+  // computed here, so our row can never claim a billing date Stripe disagrees
+  // with.
+  const r = args.recurring
   await tx.membershipPurchase.create({
-    data: { membershipId: membership.id, trainerId: args.trainerId, clientId: args.clientId, paymentId: args.paymentId, sandbox: args.sandbox, status: 'ACTIVE' },
+    data: {
+      membershipId: membership.id,
+      trainerId: args.trainerId,
+      clientId: args.clientId,
+      paymentId: args.paymentId,
+      sandbox: args.sandbox,
+      status: r ? r.status : 'ACTIVE',
+      ...(r
+        ? {
+            planId: r.planId,
+            stripeSubscriptionId: r.stripeSubscriptionId,
+            stripeCustomerId: r.stripeCustomerId,
+            currentPeriodStart: r.currentPeriodStart,
+            currentPeriodEnd: r.currentPeriodEnd,
+            committedUntil: r.committedUntil,
+            cancelAtPeriodEnd: r.cancelAtPeriodEnd,
+            applicationFeePercent: r.applicationFeePercent,
+          }
+        : {}),
+    },
   })
 
   return { classGrants }

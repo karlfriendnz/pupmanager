@@ -8,6 +8,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const h = vi.hoisted(() => ({
   membership: { findMany: vi.fn() },
   membershipRequest: { findMany: vi.fn() },
+  membershipPurchase: { findMany: vi.fn() },
+  trainerProfile: { findUnique: vi.fn() },
   package: { findMany: vi.fn() },
   classRun: { findMany: vi.fn() },
   product: { findMany: vi.fn() },
@@ -29,6 +31,12 @@ beforeEach(() => {
   h.classRun.findMany.mockResolvedValue([])
   h.product.findMany.mockResolvedValue([])
   h.membershipRequest.findMany.mockResolvedValue([])
+  h.membershipPurchase.findMany.mockResolvedValue([])
+  // Recurring is OFF by default for every trainer — that column is the rollout
+  // allowlist now that the env var is gone.
+  h.trainerProfile.findUnique.mockResolvedValue({
+    recurringPaymentsEnabled: false, businessName: 'E2E Dog School', payoutCurrency: 'nzd',
+  })
 })
 
 describe('loadPublishedMemberships', () => {
@@ -72,10 +80,10 @@ describe('loadPublishedMemberships', () => {
     ])
   })
 
-  // A one-off with a price is the only thing POST /api/my/memberships/[id]/buy
-  // will take — it 409s a recurring plan ("not available to buy yet") and a
-  // zero price. `buyable` mirrors that exactly so the card can never offer a
-  // button the API refuses.
+  // `buyable` mirrors exactly what POST /api/my/memberships/[id]/buy will take:
+  // a priced one-off, or a priced recurring plan on a trainer switched on for
+  // recurring payments. Anything else is refused there, so the card must never
+  // offer a button the API rejects.
   it('marks a one-off with a price buyable', async () => {
     h.membership.findMany.mockResolvedValue([{
       id: 'm1', name: 'Bundle', description: null, priceCents: 12000, cadence: 'ONE_OFF', interval: null,
@@ -137,6 +145,78 @@ describe('loadPublishedMemberships', () => {
     const [m] = await loadPublishedMemberships('t1')
     expect(m.requested).toBe(false)
     expect(h.membershipRequest.findMany).not.toHaveBeenCalled()
+  })
+
+  // ─── Recurring (Phase 1) ──────────────────────────────────────────────────
+
+  const RECURRING = {
+    id: 'm9', name: 'Juniors', description: null, priceCents: 40000,
+    cadence: 'RECURRING' as const, interval: 'MONTH' as const, ...CARD, items: [],
+    plans: [{ id: 'pl1', interval: 'MONTH', priceCents: 40000, minTermCount: 0, earlyTermFeeCents: null }],
+  }
+
+  it('makes a recurring plan buyable once the trainer is switched on', async () => {
+    h.trainerProfile.findUnique.mockResolvedValue({
+      recurringPaymentsEnabled: true, businessName: 'E2E Dog School', payoutCurrency: 'nzd',
+    })
+    h.membership.findMany.mockResolvedValue([RECURRING])
+
+    const [m] = await loadPublishedMemberships('t1', 'c1')
+
+    expect(m).toMatchObject({ buyable: true, blockedReason: null, needsConsent: true, subscribed: false })
+  })
+
+  it('falls back to "Request this" while the trainer is NOT switched on', async () => {
+    // recurringPaymentsEnabled is the rollout allowlist — off means the old
+    // ask-the-trainer path, not a broken button.
+    h.membership.findMany.mockResolvedValue([RECURRING])
+    const [m] = await loadPublishedMemberships('t1', 'c1')
+    expect(m).toMatchObject({ buyable: false, blockedReason: 'RECURRING', needsConsent: false })
+    expect(m.consent).toBeNull()
+  })
+
+  it('builds the consent copy server-side from the plan', async () => {
+    h.trainerProfile.findUnique.mockResolvedValue({
+      recurringPaymentsEnabled: true, businessName: 'Mersea Mutts', payoutCurrency: 'gbp',
+    })
+    h.membership.findMany.mockResolvedValue([{
+      ...RECURRING,
+      plans: [{ id: 'pl1', interval: 'MONTH', priceCents: 40000, minTermCount: 3, earlyTermFeeCents: 5000 }],
+    }])
+
+    const [m] = await loadPublishedMemberships('t1', 'c1')
+
+    // The trainer is named as the party charging, in their own currency.
+    expect(m.consent?.text).toBe('I agree Mersea Mutts can charge my card £400.00 every month until I cancel.')
+    expect(m.consent?.termLabel).toBe("You're committing to 3 months.")
+    expect(m.consent?.earlyTermFeeLabel).toContain('£50.00')
+  })
+
+  it('stops selling a plan the client is already subscribed to', async () => {
+    // Otherwise a second tap stacks a second monthly charge on the same plan.
+    h.trainerProfile.findUnique.mockResolvedValue({
+      recurringPaymentsEnabled: true, businessName: 'X', payoutCurrency: 'nzd',
+    })
+    h.membership.findMany.mockResolvedValue([RECURRING])
+    h.membershipPurchase.findMany.mockResolvedValue([{ membershipId: 'm9' }])
+
+    const [m] = await loadPublishedMemberships('t1', 'c1')
+
+    expect(m).toMatchObject({ subscribed: true, buyable: false, blockedReason: null })
+    // Not "blocked" — the card says "You're on this plan", not an excuse.
+    expect(m.consent).toBeNull()
+    expect(h.membershipPurchase.findMany.mock.calls[0][0].where).toMatchObject({
+      clientId: 'c1',
+      status: { in: ['ACTIVE', 'PAST_DUE', 'CANCELLING'] },
+    })
+  })
+
+  it('never offers an archived plan', async () => {
+    // Archived plans keep billing their existing subscribers but must not be
+    // sold again — that is what archiving means.
+    h.membership.findMany.mockResolvedValue([])
+    await loadPublishedMemberships('t1')
+    expect(h.membership.findMany.mock.calls[0][0].include.plans.where).toEqual({ archivedAt: null })
   })
 
   it('drops items whose offering no longer exists rather than rendering a blank row', async () => {

@@ -37,7 +37,37 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (d.items.length) await tx.membershipItem.createMany({ data: itemRows(id, d.items) })
     }
     if (d.plans !== undefined) {
-      await tx.membershipPlan.deleteMany({ where: { membershipId: id } })
+      // A plan someone is actually subscribed to must NOT be deleted. Stripe
+      // Prices are immutable and a live subscription bills against the Price
+      // minted from its plan row — dropping the row would strip planId off the
+      // purchase and lose the price, term and interval that client agreed to.
+      //
+      // So: archive the ones with live subscribers (they stop being sold, but
+      // keep billing exactly as agreed), delete the rest, then write the new
+      // set. A price edit therefore applies to NEW subscribers only, which is
+      // the whole point — nobody's monthly charge changes behind their back.
+      const subscribed = await tx.membershipPurchase.findMany({
+        where: {
+          membershipId: id,
+          planId: { not: null },
+          status: { in: ['ACTIVE', 'PAST_DUE', 'CANCELLING'] },
+        },
+        select: { planId: true },
+        distinct: ['planId'],
+      })
+      const keepIds = subscribed.map(s => s.planId).filter((p): p is string => !!p)
+
+      if (keepIds.length) {
+        await tx.membershipPlan.updateMany({
+          where: { membershipId: id, id: { in: keepIds }, archivedAt: null },
+          data: { archivedAt: new Date() },
+        })
+      }
+      await tx.membershipPlan.deleteMany({
+        where: { membershipId: id, ...(keepIds.length ? { id: { notIn: keepIds } } : {}) },
+      })
+      // New rows carry null Stripe ids, so the next sale mints a fresh Price
+      // rather than reusing one built for a different amount.
       if (d.plans.length) await tx.membershipPlan.createMany({ data: planRows(id, d.plans) })
     }
     return tx.membership.update({

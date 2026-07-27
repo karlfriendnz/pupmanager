@@ -596,6 +596,18 @@ model TrainerProfile {
   // (the client pays it) instead of being absorbed by the trainer, so the
   // trainer nets the full amount. On by default — trainers can opt out.
   passProcessingFeeToClient Boolean   @default(true)
+  // Phase-1 rollout gate for RECURRING memberships (client→trainer Stripe
+  // Subscriptions on the connected account). The old CONNECT_LIVE_ALLOWLIST env
+  // var is gone, so this column IS the allowlist: off for everyone until a
+  // trainer is deliberately switched on, visible + flippable per trainer in the
+  // admin Businesses screen, no deploy needed.
+  //
+  // NOTE: passProcessingFeeToClient is NOT honoured on recurring plans. A
+  // one-off checkout appends a grossed-up surcharge LINE, which on a
+  // subscription would only apply to the first cycle and silently under-recover
+  // from cycle two. Supporting it properly needs a second recurring Price
+  // (Phase 3). The plan editor says so rather than ignoring the flag quietly.
+  recurringPaymentsEnabled  Boolean   @default(false)
 
   // ─── Receivables (payment-method-agnostic invoicing) ────────────────────────
   // When true, a receivable Invoice raised on a priced package/product
@@ -1156,6 +1168,16 @@ model ClientProfile {
   clientPackages    ClientPackage[]
   productRequests   ProductRequest[]
   membershipRequests MembershipRequest[]
+  membershipConsents MembershipConsent[]
+
+  // The Stripe Customer for this client ON THIS TRAINER'S connected account, for
+  // recurring memberships. A Customer belongs to exactly one account, so a
+  // client who trains with two businesses genuinely has two unrelated Customers
+  // and enters their card twice — that is a Stripe constraint, not a choice.
+  // ClientProfile is already the (userId, trainerId) pair, so it is the correct
+  // home for the id. Split live/test: a sandbox cus_… means nothing in live mode.
+  stripeCustomerId     String?
+  stripeCustomerIdTest String?
   buddySessions     SessionBuddy[]
   achievements      ClientAchievement[]
   payments          Payment[]
@@ -3108,6 +3130,27 @@ enum MembershipPurchaseStatus {
   ACTIVE
   CANCELLED
   LAPSED
+  // ─── Recurring only ────────────────────────────────────────────────────────
+  // A payment failed and Stripe is still retrying. Access CONTINUES through the
+  // retry window — we do not cut a client off from their dog's classes because
+  // a card bounced on a Tuesday. Only Stripe giving up moves them out of here.
+  PAST_DUE
+  // They cancelled but have paid through to currentPeriodEnd. "I cancelled and
+  // I still get my sessions until the 14th" and "I'm cut off" are different
+  // states and the client screen must say different words for them — that is
+  // the whole reason this is separate from CANCELLED.
+  CANCELLING
+  PAUSED
+}
+
+// A Stripe invoice's lifecycle, mirrored per billing cycle. Deliberately the
+// same vocabulary Stripe uses so a support conversation can quote either side.
+enum MembershipInvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  UNCOLLECTIBLE
+  VOID
 }
 
 // Why a client had to ask instead of just buying. Kept on the row so the
@@ -3186,6 +3229,7 @@ model Membership {
   requests       MembershipRequest[]
   commsFlowSteps CommsFlowStep[]
   plans     MembershipPlan[]
+  consents  MembershipConsent[]
 
   @@unique([trainerId, slug])
   @@index([trainerId])
@@ -3206,7 +3250,30 @@ model MembershipPlan {
   earlyTermFeeCents Int?
   order             Int                @default(0)
 
-  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  // Cached Stripe Product/Price ids for THIS plan, on the TRAINER'S connected
+  // account. Split live/test exactly like BillingItem does, because a sandbox
+  // trainer's ids mean nothing in live mode and vice versa.
+  //
+  // Minted lazily on first sale. Stripe Prices are IMMUTABLE, so a trainer
+  // editing priceCents/interval must NULL these out (see the plan-editor write
+  // path) — the next sale then mints a fresh Price and existing subscribers keep
+  // the one they agreed to. That is what stops a price edit silently re-pricing
+  // everybody who already subscribed.
+  stripeProductId     String?
+  stripeProductIdTest String?
+  stripePriceId       String?
+  stripePriceIdTest   String?
+
+  // Set when the trainer edits a membership whose plans already have live
+  // subscribers. The plan stops being offered to NEW clients, but the row (and
+  // its immutable Stripe Price) survives so everyone already subscribed keeps
+  // billing on exactly what they agreed to. Deleting it instead would strip
+  // MembershipPurchase.planId off live subscriptions and lose the price, term
+  // and interval they signed up for.
+  archivedAt DateTime?
+
+  membership Membership           @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  purchases  MembershipPurchase[]
 
   @@index([membershipId])
   @@map("membership_plans")
@@ -3254,13 +3321,136 @@ model MembershipPurchase {
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
 
-  membership     Membership      @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  // ─── RECURRING (Phase 1) ───────────────────────────────────────────────────
+  // Which billing option they chose ($10/wk vs $35/mo). Null for a ONE_OFF.
+  planId               String?
+  // The Stripe Subscription on the TRAINER'S connected account. Unique so a
+  // replayed webhook or a double-tapped Subscribe can never produce two rows for
+  // one subscription — the DB refuses it even if a guard upstream is buggy.
+  stripeSubscriptionId String? @unique
+  // The Customer on the trainer's account. One per (client, trainer) pair — a
+  // client training with two businesses has two unrelated Customers, mirroring
+  // ClientProfile's own (userId, trainerId) composite identity.
+  stripeCustomerId     String?
+  currentPeriodStart   DateTime?
+  cancelAtPeriodEnd    Boolean @default(false)
+  cancelledAt          DateTime?
+  cancelReason         String?
+  lastPaymentFailedAt  DateTime?
+  failedPaymentCount   Int     @default(0)
+  // The application_fee_percent we ACTUALLY set on the subscription, recorded so
+  // a later margin change is a visible, deliberate migration of existing
+  // subscriptions rather than invisible drift between the row and Stripe.
+  applicationFeePercent Decimal? @db.Decimal(5, 2)
+
+  membership     Membership          @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  plan           MembershipPlan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
   commsFlowSends CommsFlowSend[]
+  invoices       MembershipInvoice[]
 
   @@index([membershipId])
   @@index([trainerId])
   @@index([clientId])
+  @@index([planId])
+  @@index([status])
   @@map("membership_purchases")
+}
+
+// The client's recorded, explicit permission for a trainer to charge their card
+// while nobody is watching. Written BEFORE the Stripe redirect — the same
+// "record it first, reconcile after" shape as the PENDING Payment — so a consent
+// always exists for any subscription that can possibly come into being.
+//
+// consentText is stored VERBATIM on purpose. In a dispute six months later,
+// "our template at the time said X" is a far weaker answer than "here is exactly
+// what they were shown, here is the tick, here is the timestamp".
+model MembershipConsent {
+  id           String  @id @default(cuid())
+  clientId     String
+  membershipId String
+  planId       String?
+  // What was on screen when they ticked the box. Snapshotted rather than joined,
+  // because the plan can be edited afterwards and the agreement cannot.
+  priceCents   Int
+  currency     String
+  interval     MembershipInterval
+
+  consentText    String  @db.Text
+  consentVersion String
+  // Stripe's own record of the mandate, written back once the subscription
+  // exists. Null until then (and for a consent whose checkout was abandoned).
+  stripeMandateId      String?
+  stripeSubscriptionId String?
+
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  client     ClientProfile @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  membership Membership    @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([membershipId])
+  @@index([stripeSubscriptionId])
+  @@map("membership_consents")
+}
+
+// One row per billing cycle, mirrored from the Stripe Invoice.
+//
+// Exists so the client can see "here is what you have been charged", the trainer
+// can refund a single cycle, and Xero has something per-cycle to reconcile.
+// stripeInvoiceId is @unique — that natural key is idempotency layer 2 for the
+// invoice.* handlers (layer 1 is the StripeWebhookEvent ledger, layer 3 is the
+// re-check inside the transaction).
+model MembershipInvoice {
+  id                   String @id @default(cuid())
+  membershipPurchaseId String
+  stripeInvoiceId      String @unique
+
+  periodStart DateTime?
+  periodEnd   DateTime?
+  amountDue   Int
+  amountPaid  Int    @default(0)
+  currency    String
+  status      MembershipInvoiceStatus @default(OPEN)
+
+  // Stripe's hosted page for this invoice. Phase 1 stores it; Phase 2 surfaces
+  // it as the "your bank needs you to approve this payment" action.
+  hostedInvoiceUrl String?
+  attemptCount     Int     @default(0)
+  // The Payment row this cycle produced, so the EXISTING refund route, dispute
+  // handler and Xero sync keep working unchanged on a recurring charge.
+  paymentId        String?
+
+  sandbox   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchase MembershipPurchase @relation(fields: [membershipPurchaseId], references: [id], onDelete: Cascade)
+
+  @@index([membershipPurchaseId])
+  @@index([paymentId])
+  @@map("membership_invoices")
+}
+
+// Idempotency ledger for EVERY Stripe webhook event we process, keyed on
+// Stripe's own event id.
+//
+// The existing PENDING→PAID transition stops double-FULFILMENT, but it does not
+// stop a re-delivered invoice.paid from creating a second Payment row — the
+// recurring flow is exposed to that because Stripe now sends events forever, not
+// once per checkout. Insert-or-skip at the top of the handler is the only thing
+// that reliably stops replays, and it protects the existing one-off flow too.
+model StripeWebhookEvent {
+  id          String   @id // Stripe's event id, evt_…
+  type        String
+  accountId   String? // the connected account (event.account), null on platform events
+  sandbox     Boolean  @default(false)
+  processedAt DateTime @default(now())
+
+  @@index([type])
+  @@index([accountId])
+  @@map("stripe_webhook_events")
 }
 
 // ─── Trainer-defined Achievements ────────────────────────────────────────────
