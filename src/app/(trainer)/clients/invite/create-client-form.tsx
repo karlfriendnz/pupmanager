@@ -81,6 +81,11 @@ export function CreateClientForm({
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [sendInvite, setSendInvite] = useState(true)
   const [emailBody, setEmailBody] = useState(defaultTemplate)
+  // Client forms this trainer has published as intake. Fetched rather than
+  // passed in because this component is already a client component several
+  // levels down; a trainer with none never sees the picker at all.
+  const [intakeForms, setIntakeForms] = useState<{ id: string; name: string; inviteBody: string | null }[]>([])
+  const [selectedFormId, setSelectedFormId] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -101,6 +106,28 @@ export function CreateClientForm({
   const dogNamesFmt = dogNames.length === 0 ? '{{dogName}}'
     : dogNames.length === 1 ? dogNames[0]
     : dogNames.slice(0, -1).join(', ') + ' and ' + dogNames[dogNames.length - 1]
+  useEffect(() => {
+    fetch('/api/forms')
+      .then(r => (r.ok ? r.json() : []))
+      .then((all: { id: string; name: string; usableAsIntake: boolean; isActive: boolean; inviteBody: string | null }[]) => {
+        // Drafts stay out of the picker — a half-written form must not be the
+        // first thing a brand-new client is asked to fill in.
+        setIntakeForms(
+          all.filter(f => f.usableAsIntake && f.isActive)
+             .map(f => ({ id: f.id, name: f.name, inviteBody: f.inviteBody })),
+        )
+      })
+      .catch(() => {})
+  }, [])
+
+  // Picking a form loads the invite copy saved ON that form, so the email the
+  // client gets matches the form they're about to be asked to fill in.
+  function pickForm(id: string) {
+    setSelectedFormId(id)
+    const form = intakeForms.find(f => f.id === id)
+    setEmailBody(form?.inviteBody?.trim() ? form.inviteBody : defaultTemplate)
+  }
+
   const previewBody = emailBody.replace(/{{clientName}}/g, name || '{{clientName}}').replace(/{{dogName}}/g, dogNamesFmt)
 
   const namedDogs = dogs.filter(d => d.name.trim())
@@ -142,6 +169,7 @@ export function CreateClientForm({
           customValues: customValuesPayload,
           sendInvite: willInvite,
           emailBody,
+          formId: selectedFormId || null,
         }),
       })
       const body = await res.json().catch(() => ({}))
@@ -296,6 +324,23 @@ export function CreateClientForm({
 
           {/* ── Invitation email ───────────────────────────────────────── */}
           <div className={step === 'invite' ? 'flex flex-col gap-4' : 'hidden'}>
+            {intakeForms.length > 0 && (
+              <div>
+                <label htmlFor="intake-form" className="text-sm font-medium text-slate-700 block mb-1.5">Ask them to fill in</label>
+                <select
+                  id="intake-form"
+                  value={selectedFormId}
+                  onChange={e => pickForm(e.target.value)}
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="">Just your usual fields</option>
+                  {intakeForms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  They answer this before they reach their home screen. Picking one loads its invitation email below.
+                </p>
+              </div>
+            )}
             <label className="flex items-center gap-3 cursor-pointer">
               <input type="checkbox" checked={sendInvite} onChange={e => setSendInvite(e.target.checked)} disabled={!email.trim()} className="h-5 w-5 rounded accent-[var(--accent)]" />
               <span>

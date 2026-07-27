@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { Card } from '@/components/ui/card'
 import { EnquiryActions } from './enquiry-actions'
 import { PageHeader } from '@/components/shared/page-header'
+import type { Question } from '@/lib/session-form-builder'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Enquiry' }
@@ -22,6 +23,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
     where: { id, trainerId },
     include: {
       form: { select: { title: true } },
+      unifiedForm: { select: { name: true, questions: true } },
       messages: { orderBy: { createdAt: 'asc' } },
       clientProfile: { select: { id: true } },
     },
@@ -45,6 +47,36 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
     : []
   const labelById = Object.fromEntries(fields.map(f => [f.id, f.label]))
 
+  // A unified-Form enquiry carries its FULL answer set in formAnswers, keyed by
+  // question id. Resolve it in question order so the trainer reads the enquiry
+  // in the order it was asked, rather than whatever order the object happens to
+  // enumerate in.
+  let formResponses: { label: string; value: string }[] = []
+  if (enquiry.unifiedForm) {
+    const questions = (Array.isArray(enquiry.unifiedForm.questions) ? enquiry.unifiedForm.questions : []) as unknown as Question[]
+    const answers = (enquiry.formAnswers ?? {}) as Record<string, string | string[]>
+    const linkedIds = questions
+      .filter((q): q is Extract<Question, { type: 'CUSTOM_FIELD' }> => q.type === 'CUSTOM_FIELD')
+      .map(q => q.customFieldId)
+    const linkedLabels = linkedIds.length
+      ? Object.fromEntries(
+          (await prisma.customField.findMany({
+            // Scoped to this trainer: a stale question id must not surface
+            // another business's field label on this screen.
+            where: { id: { in: linkedIds }, trainerId },
+            select: { id: true, label: true },
+          })).map(f => [f.id, f.label]),
+        )
+      : {}
+    formResponses = questions.flatMap(q => {
+      const raw = answers[q.id]
+      const value = Array.isArray(raw) ? raw.join(', ') : (raw ?? '')
+      if (!value.trim()) return []
+      const label = q.type === 'CUSTOM_FIELD' ? (linkedLabels[q.customFieldId] ?? 'Field') : q.label
+      return [{ label, value }]
+    })
+  }
+
   // Format the requested booking slot (if any) in the trainer's timezone.
   let bookedLabel: string | null = null
   if (enquiry.bookedSlotAt) {
@@ -66,7 +98,11 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         subtitle={
           enquiry.source === 'SELF_SIGNUP'
             ? `Signed up ${enquiry.createdAt.toLocaleString()}`
-            : `Submitted ${enquiry.createdAt.toLocaleString()}${enquiry.form ? ` via "${enquiry.form.title}"` : ''}`
+            : `Submitted ${enquiry.createdAt.toLocaleString()}${
+                enquiry.form ? ` via "${enquiry.form.title}"`
+                : enquiry.unifiedForm ? ` via "${enquiry.unifiedForm.name}"`
+                : ''
+              }`
         }
         back={{ href: '/enquiries', label: 'Back to enquiries' }}
         actions={<StatusPill status={enquiry.status} />}
@@ -131,7 +167,18 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         </Card>
       )}
 
-      {fields.length > 0 && (
+      {formResponses.length > 0 && (
+        <Card className="p-5 mb-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Their answers</h2>
+          {formResponses.map((r, i) => (
+            <Field key={i} label={r.label} value={r.value} />
+          ))}
+        </Card>
+      )}
+
+      {/* The snapshotted custom fields are already IN the answer set above for
+          a unified-Form enquiry, so showing both would say it twice. */}
+      {!enquiry.unifiedForm && fields.length > 0 && (
         <Card className="p-5 mb-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Other</h2>
           {fields.map(f => (

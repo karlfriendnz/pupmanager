@@ -2,6 +2,7 @@ import { NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission, getTrainerContext, scopeForMember } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@/generated/prisma'
 import { z } from 'zod'
 import crypto from 'crypto'
 import { sendEmail, fromTrainer } from '@/lib/email'
@@ -40,6 +41,9 @@ const schema = z.object({
   })).optional(),
   sendInvite: z.boolean().default(false),
   emailBody: z.string().optional(),
+  // The client form to assign as this client's intake — they are gated behind
+  // it until they complete it.
+  formId: z.string().nullable().optional(),
 })
 
 // A blank email still needs a unique, non-deliverable address (email is the
@@ -145,6 +149,18 @@ export async function POST(req: Request) {
   })
   if (!trainerProfile) return NextResponse.json({ error: 'Trainer profile not found' }, { status: 404 })
 
+  // Resolve the form against the CALLER's own trainer, and only accept one
+  // that is actually usable as intake — a body-supplied id must never be able
+  // to gate a client behind another business's form.
+  let assignFormId: string | null = null
+  if (data.formId) {
+    const form = await prisma.form.findFirst({
+      where: { id: data.formId, trainerId: trainerProfile.id, usableAsIntake: true },
+      select: { id: true },
+    })
+    assignFormId = form?.id ?? null
+  }
+
   const fieldConfig = resolveClientFieldConfig(trainerProfile.clientFieldConfig)
   const customFields = await prisma.customField.findMany({
     where: { trainerId: trainerProfile.id },
@@ -236,6 +252,16 @@ export async function POST(req: Request) {
         invitedAt: sendInvite ? new Date() : null,
       })
       await writeCustomValues(result.clientProfileId, result.createdDogIds)
+      // Assign the chosen client form; clear any previous completion so a
+      // re-assigned form re-gates the client rather than being skipped.
+      if (assignFormId) {
+        await tx.clientProfile.update({
+          where: { id: result.clientProfileId },
+          // Prisma.DbNull, not null: a nullable Json column needs the sentinel to
+          // be set back to SQL NULL.
+          data: { intakeFormId: assignFormId, intakeCompletedAt: null, intakeAnswers: Prisma.DbNull },
+        })
+      }
       if (sendInvite) {
         await tx.verificationToken.create({
           data: { identifier: email, token: inviteToken, expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
@@ -270,6 +296,7 @@ export async function POST(req: Request) {
         addressLng: data.address?.lng ?? null,
         addressPlaceId: data.address?.placeId ?? null,
         dogId: createdDogs[0]?.id ?? null,
+        intakeFormId: assignFormId,
         invitedAt: sendInvite ? new Date() : null,
         dogs: createdDogs.length > 1 ? { connect: createdDogs.slice(1).map(d => ({ id: d.id })) } : undefined,
       },

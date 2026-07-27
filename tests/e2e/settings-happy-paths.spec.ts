@@ -155,7 +155,9 @@ test.describe('fields & forms — owner happy path', () => {
     await page.goto('/settings?tab=forms')
 
     // Forms opens first, so the forms list isn't buried under the field editor.
-    await expect(page.getByText('Intake form', { exact: true })).toBeVisible()
+    // The field library is listed as the client form it becomes — "Your
+    // fields", asked when a client joins unless they were sent a client form.
+    await expect(page.getByText('Your fields', { exact: true })).toBeVisible()
 
     // Every settings tab leads with what it's for and how to set it up.
     await expect(page.getByRole('heading', { name: 'Fields & forms' })).toBeVisible()

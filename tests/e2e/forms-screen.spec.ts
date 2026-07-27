@@ -126,14 +126,18 @@ test.describe('forms screen — owner happy path', () => {
     // Question 1 → a dropdown, so question 2 has something to branch on.
     await page.getByLabel('Question 1', { exact: true }).fill('Has your dog been groomed before?')
     await page.getByLabel('Answer type for question 1').selectOption('DROPDOWN')
-    await page.getByLabel('Option 1').fill('Yes')
-    await page.getByLabel('Option 2').fill('No')
+    // exact: true — "Option 1" also matches the "Remove option 1" button.
+    await page.getByLabel('Option 1', { exact: true }).fill('Yes')
+    await page.getByLabel('Option 2', { exact: true }).fill('No')
 
     await page.getByRole('button', { name: 'Add question' }).click()
     await page.getByLabel('Question 2', { exact: true }).fill('When was the last groom?')
-    // The conditional row only offers EARLIER questions that have options.
-    await page.getByLabel('Only ask this question when').nth(1)
-      .selectOption({ label: 'Has your dog been groomed before?' })
+    // Only question 2 gets a conditional row at all: the rule can only key on
+    // an EARLIER question that has a fixed option list, and question 1 has
+    // nothing before it. So there is exactly one of these on the page.
+    const condition = page.getByLabel('Only ask this question when')
+    await expect(condition).toHaveCount(1)
+    await condition.selectOption({ label: 'Has your dog been groomed before?' })
     await page.getByLabel('Answer that reveals this question').selectOption('Yes')
 
     // It is an intake form by default; also publish it as a website enquiry so
@@ -159,6 +163,16 @@ test.describe('forms screen — owner happy path', () => {
     await page.waitForURL('**/forms/client/**')
     await expect(page.getByLabel('Form name')).toHaveValue(formName)
     await expect(page.getByLabel('Answer that reveals this question')).toHaveValue('Yes')
+
+    // The public enquiry page renders the same form, and the conditional
+    // question stays hidden until its trigger is answered.
+    const publicPage = await page.context().newPage()
+    await publicPage.goto(`/form/${formId}`)
+    await expect(publicPage.getByText('Has your dog been groomed before?')).toBeVisible()
+    await expect(publicPage.getByText('When was the last groom?')).toHaveCount(0)
+    await publicPage.getByLabel('Has your dog been groomed before?').selectOption('Yes')
+    await expect(publicPage.getByText('When was the last groom?')).toBeVisible()
+    await publicPage.close()
 
     // Clean up — the suite shares one database and one trainer.
     await page.request.delete(`/api/forms/${formId}`)

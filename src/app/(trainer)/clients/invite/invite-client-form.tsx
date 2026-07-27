@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -31,11 +31,17 @@ export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string 
   // adding a record now and inviting later, so default the toggle off.
   const [sendInvite, setSendInvite] = useState(searchParams.get('notify') !== '0')
 
+  // Published client forms this trainer can send. Drafts stay out — a
+  // half-written form must not be the first thing a new client is asked for.
+  const [intakeForms, setIntakeForms] = useState<{ id: string; name: string; inviteBody: string | null }[]>([])
+  const [selectedFormId, setSelectedFormId] = useState('')
+
   const {
     register,
     handleSubmit,
     watch,
     control,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     // The schema was being defined but never wired in — the form was
@@ -64,6 +70,26 @@ export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string 
       ? dogNamesList[0]
       : dogNamesList.slice(0, -1).join(', ') + ' and ' + dogNamesList[dogNamesList.length - 1]
 
+  useEffect(() => {
+    fetch('/api/forms')
+      .then(r => (r.ok ? r.json() : []))
+      .then((all: { id: string; name: string; usableAsIntake: boolean; isActive: boolean; inviteBody: string | null }[]) => {
+        setIntakeForms(
+          all.filter(f => f.usableAsIntake && f.isActive)
+             .map(f => ({ id: f.id, name: f.name, inviteBody: f.inviteBody })),
+        )
+      })
+      .catch(() => {})
+  }, [])
+
+  // Picking a form loads the invite copy saved ON that form, so the email
+  // matches the form the client is about to be asked to fill in.
+  function pickForm(id: string) {
+    setSelectedFormId(id)
+    const form = intakeForms.find(f => f.id === id)
+    setValue('emailBody', form?.inviteBody?.trim() ? form.inviteBody : defaultTemplate)
+  }
+
   const emailBody = watch('emailBody')
     ?.replace(/{{clientName}}/g, clientName)
     ?.replace(/{{dogName}}/g, dogNamesFormatted)
@@ -79,6 +105,7 @@ export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string 
         dogNames: data.dogs.map(d => d.name),
         clientEmail: data.clientEmail,
         emailBody: data.emailBody,
+        formId: selectedFormId || null,
         sendInvite,
       }),
     })
@@ -174,6 +201,26 @@ export function InviteClientForm({ defaultTemplate }: { defaultTemplate: string 
           ))}
         </CardBody>
       </Card>
+
+      {intakeForms.length > 0 && (
+        <Card>
+          <CardBody className="pt-6 flex flex-col gap-2">
+            <label htmlFor="intake-form" className="font-semibold text-slate-900">Ask them to fill in</label>
+            <p className="text-xs text-slate-500">
+              They answer this before they reach their home screen. Picking one loads its invitation email below.
+            </p>
+            <select
+              id="intake-form"
+              value={selectedFormId}
+              onChange={e => pickForm(e.target.value)}
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            >
+              <option value="">Just your usual fields</option>
+              {intakeForms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardBody className="pt-6 flex flex-col gap-4">

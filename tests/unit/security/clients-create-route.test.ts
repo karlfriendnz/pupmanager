@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   customFieldValueCreate: vi.fn(),
   verificationTokenCreate: vi.fn(),
   onboardingUpdateMany: vi.fn(),
+  formFindFirst: vi.fn(),
   $transaction: vi.fn(),
   safeEvaluate: vi.fn(),
   sendEmail: vi.fn(),
@@ -49,6 +50,7 @@ vi.mock('@/lib/prisma', () => ({
     customFieldValue: { create: h.customFieldValueCreate },
     verificationToken: { create: h.verificationTokenCreate },
     trainerOnboardingProgress: { updateMany: h.onboardingUpdateMany },
+    form: { findFirst: h.formFindFirst },
     $transaction: h.$transaction,
   },
 }))
@@ -104,6 +106,7 @@ beforeEach(() => {
   h.clientProfileCreate.mockResolvedValue({ id: 'profile-1' })
   h.clientProfileFindUnique.mockResolvedValue(null) // no existing profile → create
   h.clientProfileUpdate.mockResolvedValue({})
+  h.formFindFirst.mockResolvedValue(null) // default: no intake form matches
 })
 
 describe('POST /api/clients — authorisation', () => {
@@ -190,6 +193,31 @@ describe('POST /api/clients — required-field enforcement (per company config)'
     expect(body.ok).toBe(true)
     expect(body.clientId).toBe('profile-1')
     expect(h.clientProfileCreate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('POST /api/clients — intake form assignment', () => {
+  it('assigns an owned, intake-usable form, looked up within the caller company', async () => {
+    grant('company-A')
+    h.formFindFirst.mockResolvedValue({ id: 'form-1' })
+    // No email → the placeholder-create branch, where intakeFormId lands on
+    // the clientProfile.create itself.
+    const res = await POST(req({ mode: 'full', name: 'Jess', formId: 'form-1' }))
+    expect(res.status).toBe(201)
+    expect(h.formFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'form-1', trainerId: 'company-A', usableAsIntake: true } }),
+    )
+    expect(h.clientProfileCreate.mock.calls[0][0].data.intakeFormId).toBe('form-1')
+  })
+
+  it("ignores a formId the caller doesn't own, or that isn't usable as intake", async () => {
+    grant('company-A')
+    h.formFindFirst.mockResolvedValue(null) // nothing matches in scope
+    const res = await POST(req({ mode: 'full', name: 'Jess', formId: 'someone-elses' }))
+    // Silently unassigned rather than a 400: the client is still created, and
+    // they simply get the trainer's usual fields.
+    expect(res.status).toBe(201)
+    expect(h.clientProfileCreate.mock.calls[0][0].data.intakeFormId).toBeNull()
   })
 })
 

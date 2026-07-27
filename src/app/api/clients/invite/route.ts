@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@/generated/prisma'
 import { z } from 'zod'
 import crypto from 'crypto'
 import { sendEmail, fromTrainer } from '@/lib/email'
@@ -15,6 +16,9 @@ const schema = z.object({
   clientEmail: z.string().email(),
   sendInvite: z.boolean().default(true),
   emailBody: z.string().optional(),
+  // The client form to assign as this client's intake — they are gated behind
+  // it until they complete it.
+  formId: z.string().nullable().optional(),
 })
 
 export async function POST(req: Request) {
@@ -39,7 +43,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message, details: flat }, { status: 400 })
   }
 
-  const { clientName, dogNames, clientEmail, sendInvite, emailBody } = parsed.data
+  const { clientName, dogNames, clientEmail, sendInvite, emailBody, formId } = parsed.data
+
+  // Resolve the form against the CALLER's own trainer, and only accept one
+  // that is actually usable as intake — a body-supplied id must never be able
+  // to gate a client behind another business's form.
+  let assignFormId: string | null = null
+  if (formId) {
+    const form = await prisma.form.findFirst({
+      where: { id: formId, trainerId: guard.companyId, usableAsIntake: true },
+      select: { id: true },
+    })
+    assignFormId = form?.id ?? null
+  }
 
   // Resolve the business by company id (works for managers too, not just the
   // owner). Email branding uses the business profile.
@@ -65,7 +81,7 @@ export async function POST(req: Request) {
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
   await prisma.$transaction(async (tx) => {
-    await findOrJoinClient(tx, {
+    const result = await findOrJoinClient(tx, {
       email: clientEmail,
       trainerId: trainerProfile.id,
       name: clientName,
@@ -75,6 +91,18 @@ export async function POST(req: Request) {
       // so the "Invite your first client" onboarding step stays pending.
       invitedAt: sendInvite ? new Date() : null,
     })
+
+    // Assign the chosen client form, and clear any previous completion so a
+    // re-assigned form is genuinely filled in again rather than being skipped
+    // because the client once finished a different one.
+    if (assignFormId) {
+      await tx.clientProfile.update({
+        where: { id: result.clientProfileId },
+        // Prisma.DbNull, not null: a nullable Json column needs the sentinel to
+          // be set back to SQL NULL.
+          data: { intakeFormId: assignFormId, intakeCompletedAt: null, intakeAnswers: Prisma.DbNull },
+      })
+    }
 
     // Store invite token for magic-link style onboarding.
     await tx.verificationToken.create({

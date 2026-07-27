@@ -11,6 +11,8 @@ import { getEnabledAddons } from '@/lib/billing'
 import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { mergeClientDogs } from '@/lib/dogs'
 import { IntakeGate } from './intake-gate'
+import { FormIntakeGate } from './form-intake-gate'
+import { renderUnifiedForm } from '@/lib/unified-form-render'
 import { PreviewBanner, PREVIEW_SHELL_CLASS } from './preview-banner'
 import { PreviewOnboardingGuide } from './preview-onboarding-guide'
 
@@ -133,6 +135,41 @@ export default async function ClientLayout({ children }: { children: React.React
       </>
     )
     : null
+
+  // ── The assigned client form comes first ──────────────────────────────────
+  // If this client was sent a client form when they were invited, that is what
+  // their trainer wants asked — so it takes priority over the field-library
+  // gate below. Same exemptions: a trainer in preview, and the trainer
+  // switcher, which must always stay reachable.
+  const showFormGate =
+    !active.isPreview && !onSwitcher &&
+    !!clientProfile.intakeFormId && !clientProfile.intakeCompletedAt
+
+  if (showFormGate) {
+    const assigned = await prisma.form.findFirst({
+      // Scoped to the client's own trainer: a form reassigned across tenants,
+      // or a stale id, must not render another business's questions.
+      where: { id: clientProfile.intakeFormId!, trainerId: clientProfile.trainer.id },
+      select: { id: true, trainerId: true, name: true, description: true, questions: true, steps: true },
+    })
+    // A deleted form leaves intakeFormId dangling (the FK is SetNull, but a
+    // race can still land here). Falling through to the field gate is the
+    // right failure: never lock a client out of their own app.
+    if (assigned) {
+      const { runnable, linkedFields } = await renderUnifiedForm(assigned)
+      const brand = clientProfile.trainer.emailAccentColor ?? DEFAULT_BRAND_COLOR
+      return (
+        <div style={{ ['--accent' as string]: brand } as React.CSSProperties}>
+          <FormIntakeGate
+            businessName={clientProfile.trainer.businessName}
+            trainerLogoUrl={clientProfile.trainer.logoUrl}
+            form={runnable}
+            linkedFields={linkedFields}
+          />
+        </div>
+      )
+    }
+  }
 
   if (showIntakeGate) {
     // Render the intake form WITHOUT the AppShell — no top nav, no
