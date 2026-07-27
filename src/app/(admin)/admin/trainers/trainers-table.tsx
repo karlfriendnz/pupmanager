@@ -130,7 +130,13 @@ export async function TrainersTable({
   const planValueByUser = new Map<string, PlanValue>()
   for (const t of trainers) {
     const p = t.trainerProfile
-    if (!p || p.isInternal || p.subscriptionStatus !== 'ACTIVE') continue
+    // isPayingCustomer, not status === 'ACTIVE': a trainer who subscribed
+    // while still inside their carried-over trial sits at TRIALING with a real
+    // stripeSubscriptionId. They are billed, and their seats are revenue — but
+    // an ACTIVE-only test showed them as "—" and left them out of MRR entirely.
+    // (Journey Dog Training, 3 seats, was missing for exactly this reason.)
+    // The helper already encodes the rule the lifecycle tabs use.
+    if (!p || p.isInternal || !isPayingCustomer(p)) continue
     planValueByUser.set(t.id, planValueFor({
       payoutCurrency: p.payoutCurrency,
       seatCount: p.seatCount,
