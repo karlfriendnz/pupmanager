@@ -164,12 +164,21 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
         // A class enrolment prices off the run's backing group package: a FULL seat
         // is the package (special) price; a DROP_IN is the price of the ONE
         // session they booked. A single named ticket is that ticket's price.
+        //
+        // The `?? dropInPriceCents` on the FULL branch is not a nicety. A CASUAL
+        // class carries its price per session — the trainer types it into the
+        // session row, and it lands in dropInPriceCents (and on the slot), while
+        // the package's own priceCents stays null because there is no
+        // whole-course price to set. Enrol someone as FULL on such a class and
+        // this read returned null, so invoicing refused with "this class has no
+        // price set" while £30 sat on screen in the price box. Reported by a
+        // live customer who could not bill a casual class at all.
         quantity = Math.max(1, enr.quantity ?? 1)
         unitAmountCents = enr.ticketTier
           ? enr.ticketTier.priceCents
           : enr.type === 'DROP_IN'
             ? sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)
-            : (pkg.specialPriceCents ?? pkg.priceCents)
+            : (pkg.specialPriceCents ?? pkg.priceCents ?? pkg.dropInPriceCents)
         amountCents = unitAmountCents == null ? null : unitAmountCents * quantity
         const ticketNote = enr.ticketTier
           ? ` (${enr.ticketTier.name}${quantity > 1 ? ` × ${quantity}` : ''})`

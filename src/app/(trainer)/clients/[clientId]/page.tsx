@@ -153,7 +153,7 @@ export default async function ClientDetailPage({
   // open/click status) + the message/email thread — for the Communication tab.
   // Billing visibility gates the Invoices tab + the Overview unpaid-invoices card
   // (both read the new payment-agnostic Invoice model, fetched client-side).
-  const [broadcastEmails, threadMessages, trainerCtx] = await Promise.all([
+  const [broadcastEmails, threadMessages, clientNotifications, trainerCtx] = await Promise.all([
     prisma.emailBroadcastRecipient.findMany({
       where: { clientProfileId: clientId },
       orderBy: { createdAt: 'desc' },
@@ -166,6 +166,19 @@ export default async function ClientDetailPage({
       take: 50,
       select: { id: true, body: true, senderId: true, createdAt: true, readAt: true },
     }),
+    // Notifications sent TO this client — session notes, homework, reminders.
+    // Sending session notes calls notifyClient(), which writes a Notification
+    // and nothing else, so a trainer who sent notes saw no trace of it here:
+    // the tab read only broadcasts and thread messages. Reported by a live
+    // customer as "no comms show on clients who have had session notes sent".
+    client.userId
+      ? prisma.notification.findMany({
+          where: { userId: client.userId },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          select: { id: true, title: true, body: true, createdAt: true, readAt: true },
+        })
+      : Promise.resolve([]),
     getTrainerContext(),
   ])
   const canViewBilling = !!trainerCtx && can('billing.view', trainerCtx.role, trainerCtx.permissions)
@@ -185,6 +198,16 @@ export default async function ClientDetailPage({
       subject: m.body.replace(/^📧\s*/, '').split('\n')[0].slice(0, 140),
       status: null as string | null,
       date: m.createdAt.toISOString(),
+    })),
+    ...clientNotifications.map(n => ({
+      id: `n-${n.id}`,
+      kind: 'message' as const,
+      // Always outbound: these are things WE sent them, never a reply.
+      direction: 'outbound' as const,
+      subject: n.title,
+      // readAt is a real signal here — the client opened it in their app.
+      status: (n.readAt ? 'OPENED' : 'SENT') as string | null,
+      date: n.createdAt.toISOString(),
     })),
   ].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 60)
 
