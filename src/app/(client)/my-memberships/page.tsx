@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { getActiveClient } from '@/lib/client-context'
 import { prisma } from '@/lib/prisma'
-import { loadPublishedMemberships, PACKAGES_HIDDEN_FROM_CLIENTS } from '@/lib/client-memberships'
+import { loadPublishedMemberships } from '@/lib/client-memberships'
+import { PACKAGES_HIDDEN_FROM_CLIENTS } from '@/lib/feature-flags'
 import { ClientMembershipsView } from './memberships-view'
 
 export const metadata: Metadata = { title: 'Packages' }

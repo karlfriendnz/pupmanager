@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
+import { PACKAGES_HIDDEN_FROM_CLIENTS } from '../../src/lib/feature-flags'
 
 // Memberships — a trainer bundles offerings into one buyable package.
 // Covers the builder UI, the recurring pricing options (per week/fortnight/
@@ -103,6 +104,10 @@ test.describe('memberships — trainer builds, client sees', () => {
   })
 
   test('a client sees their trainer’s published memberships — never a draft, never a rival’s', async ({ page }) => {
+    // Packages are hidden from clients right now (see feature-flags.ts).
+    // This spec covers the client-facing package journey, which therefore
+    // does not exist. It un-skips itself the moment the flag flips back.
+    test.skip(PACKAGES_HIDDEN_FROM_CLIENTS, 'Packages hidden from clients')
     const prisma = await makePrisma()
     const made: string[] = []
     try {
@@ -146,6 +151,10 @@ test.describe('memberships — trainer builds, client sees', () => {
   })
 
   test('a client can request a package they can’t check out, and it sticks', async ({ page }) => {
+    // Packages are hidden from clients right now (see feature-flags.ts).
+    // This spec covers the client-facing package journey, which therefore
+    // does not exist. It un-skips itself the moment the flag flips back.
+    test.skip(PACKAGES_HIDDEN_FROM_CLIENTS, 'Packages hidden from clients')
     const prisma = await makePrisma()
     let id: string | null = null
     try {
@@ -224,6 +233,10 @@ test.describe('memberships — trainer builds, client sees', () => {
   }
 
   test('the trainer meets the request on the dashboard and accepting takes no money', async ({ page }) => {
+    // Packages are hidden from clients right now (see feature-flags.ts).
+    // This spec covers the client-facing package journey, which therefore
+    // does not exist. It un-skips itself the moment the flag flips back.
+    test.skip(PACKAGES_HIDDEN_FROM_CLIENTS, 'Packages hidden from clients')
     const prisma = await makePrisma()
     const name = `E2E Requested Plan ${Date.now()}`
     let membershipId: string | null = null
@@ -556,6 +569,10 @@ test.describe('memberships — trainer builds, client sees', () => {
   })
 
   test('button colours round-trip, and an unreadable pair is corrected before a client sees it', async ({ page }) => {
+    // Packages are hidden from clients right now (see feature-flags.ts).
+    // This spec covers the client-facing package journey, which therefore
+    // does not exist. It un-skips itself the moment the flag flips back.
+    test.skip(PACKAGES_HIDDEN_FROM_CLIENTS, 'Packages hidden from clients')
     const prisma = await makePrisma()
     let id: string | null = null
     try {

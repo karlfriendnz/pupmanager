@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
+import { PACKAGES_HIDDEN_FROM_CLIENTS } from '../../src/lib/feature-flags'
 
 // Dragging an offering list saves the order, and that same order is what a
 // client sees in the booking flow. Covers the endpoint behind the drag (all
@@ -23,6 +24,10 @@ test.use({ viewport: { width: 1280, height: 900 } })
 
 test.describe('offering lists keep a trainer-arranged order', () => {
   test('reordering memberships persists and reaches the client Offerings flow', async ({ page }) => {
+    // Packages are hidden from clients right now (see feature-flags.ts).
+    // This spec covers the client-facing package journey, which therefore
+    // does not exist. It un-skips itself the moment the flag flips back.
+    test.skip(PACKAGES_HIDDEN_FROM_CLIENTS, 'Packages hidden from clients')
     const prisma = await makePrisma()
     const made: string[] = []
     try {

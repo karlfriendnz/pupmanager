@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { SEED } from './test-db'
+import { PACKAGES_HIDDEN_FROM_CLIENTS } from '../../src/lib/feature-flags'
 
 // Client-facing booking wizard on /my-availability (the Calendly-style refresh):
 // step 1 choose a session/class, step 2 pick a time, step 3 confirm.
@@ -51,6 +52,10 @@ test.describe('my-availability booking wizard — client happy path', () => {
 
   // Memberships are a type INSIDE this flow rather than their own nav entry.
   test('memberships are an offering type, not a nav entry', async ({ page }) => {
+    // Packages are hidden from clients right now (see feature-flags.ts).
+    // This spec covers the client-facing package journey, which therefore
+    // does not exist. It un-skips itself the moment the flag flips back.
+    test.skip(PACKAGES_HIDDEN_FROM_CLIENTS, 'Packages hidden from clients')
     await loginAsClient(page)
     await page.goto('/my-availability')
 

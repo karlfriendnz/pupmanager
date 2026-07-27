@@ -43,22 +43,6 @@ export interface ClientMembership {
  * booking flow, and no explanation. Showing it and saying it has to be set up
  * by the trainer is honest; hiding their published work is not.
  */
-/**
- * Packages (memberships) are hidden from clients for now — Karl, 2026-07-27.
- *
- * The trainer nav and the Offerings hub hide them too, so leaving the client
- * side live would mean a client could request a package the trainer has no menu
- * entry to go and look at.
- *
- * Checked by the two client PAGES that list packages, not inside the loader
- * below: this is a display decision, and burying it in the loader would make
- * that function silently return nothing for everyone, tests included — the
- * loader's own behaviour still needs to be testable for when this comes back.
- *
- * Set to false to bring packages back. No data is touched either way.
- */
-export const PACKAGES_HIDDEN_FROM_CLIENTS = true
-
 export async function loadPublishedMemberships(trainerId: string, clientId?: string): Promise<ClientMembership[]> {
   // Memberships are a trainer add-on: switched off, clients see none of them —
   // including in the Offerings flow, where they'd otherwise still be buyable.

@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
+import { PACKAGES_HIDDEN_FROM_CLIENTS } from '../../src/lib/feature-flags'
 
 // The same offering, set up several ways, checked from both ends. A trainer
 // configures it; a client meets the result. These are the variants that change
@@ -201,6 +202,10 @@ test.describe('UAT — offerings set up several ways', () => {
   // SELL-6 from both sides at once: the trainer can build a recurring
   // membership, and it stays out of the client's shop until it can be bought.
   test('a recurring membership is configurable by the trainer and invisible to clients', async ({ page }) => {
+    // Packages are hidden from clients right now (see feature-flags.ts).
+    // This spec covers the client-facing package journey, which therefore
+    // does not exist. It un-skips itself the moment the flag flips back.
+    test.skip(PACKAGES_HIDDEN_FROM_CLIENTS, 'Packages hidden from clients')
     const prisma = await makePrisma()
     let membershipId: string | null = null
     const name = `E2E Recurring Scenario ${Date.now()}`
