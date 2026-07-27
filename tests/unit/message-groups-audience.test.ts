@@ -220,10 +220,14 @@ describe('visibility — the one field the two modes differ by', () => {
     expect(visibleMessagesWhere({ userId: 'u1', isTrainerSide: true })).toEqual({ deletedAt: null })
   })
 
-  it('hides the responses view from clients in a broadcast, shows it in a community', () => {
+  it('hides the responses view from clients in BOTH modes', () => {
+    // It is a trainer's tool for reading a broadcast, not a member's view of
+    // the room. Even in a community it lists people who were invited and never
+    // accepted, plus the clientProfileId handle into the trainer's records.
     expect(canSeeResponses('BROADCAST', false)).toBe(false)
+    expect(canSeeResponses('COMMUNITY', false)).toBe(false)
     expect(canSeeResponses('BROADCAST', true)).toBe(true)
-    expect(canSeeResponses('COMMUNITY', false)).toBe(true)
+    expect(canSeeResponses('COMMUNITY', true)).toBe(true)
   })
 })
 

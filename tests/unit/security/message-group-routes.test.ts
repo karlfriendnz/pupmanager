@@ -388,7 +388,15 @@ describe('GET responses — the broadcast privacy guarantee', () => {
     expect(res.status).toBe(403)
   })
 
-  it('allows a client in a COMMUNITY group, where they can see each other anyway', async () => {
+  it('403s a CLIENT in a COMMUNITY group too — the roster is not theirs to read', async () => {
+    // "They can see each other anyway" is not true of this screen. It lists
+    // EVERY participant, including people still sitting on an unaccepted
+    // invitation — someone who has not opted in, and whose presence must not be
+    // announced to the room by the very screen they haven't agreed to appear
+    // on. It also carries clientProfileId, a handle into the trainer's client
+    // record. Community members lose nothing: every reply is already visible
+    // inline in the thread. The only thing this adds is who HASN'T answered,
+    // which is the trainer's business, not the group's.
     asClient()
     h.groupFindUnique.mockResolvedValue({ id: GROUP, trainerId: CO, mode: 'COMMUNITY', name: 'Chat', archivedAt: null })
     h.participantFindUnique.mockResolvedValue({
@@ -397,7 +405,21 @@ describe('GET responses — the broadcast privacy guarantee', () => {
     h.participantFindMany.mockResolvedValue([])
     h.msgFindMany.mockResolvedValue([])
     const res = await getResponses(req(GROUP, 'm1'), params(GROUP, 'm1'))
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(403)
+  })
+
+  it('never discloses an unaccepted invitation to anyone but the business', async () => {
+    // The row that made the mode check unsafe: someone invited to a COMMUNITY
+    // group who has not opted in still appears here, flagged invitedOnly. The
+    // trainer needs that; the other members must not have it.
+    h.participantFindMany.mockResolvedValue([
+      { id: 'p1', userId: 'cu1', clientProfileId: 'c1', displayName: 'Sarah', joinedAt: new Date(), leftAt: null },
+      { id: 'p2', userId: 'cu2', clientProfileId: 'c2', displayName: 'Nadia', joinedAt: null, leftAt: null },
+    ])
+    h.msgFindMany.mockResolvedValue([])
+    const res = await getResponses(req(GROUP, 'm1'), params(GROUP, 'm1'))
+    const data = await res.json()
+    expect(data.rows.find((r: { displayName: string }) => r.displayName === 'Nadia').invitedOnly).toBe(true)
   })
 
   it('lists everyone, including the people who never answered', async () => {

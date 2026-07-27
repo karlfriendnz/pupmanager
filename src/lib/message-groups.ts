@@ -330,13 +330,22 @@ export function visibilityForPost(mode: MessageGroupMode, isTrainerSide: boolean
  * Can this viewer see the responses view — the list of who said what to one
  * broadcast?
  *
- * Trainer/staff always. Clients NEVER in BROADCAST: the whole guarantee of the
- * mode is that one client's reply is invisible to another, and this view is
- * precisely the thing that would break it. In COMMUNITY members can see each
- * other by definition, so it discloses nothing new. Anything unrecognised
- * defaults to hidden.
+ * **Trainer and staff only, in both modes.** In BROADCAST that is the whole
+ * guarantee of the mode: one client's reply is invisible to another, and this
+ * view is precisely the thing that would break it.
+ *
+ * COMMUNITY was briefly allowed here on the reasoning that members already see
+ * each other, so a roster discloses nothing new. It does. The view lists EVERY
+ * participant, including people still sitting on an unaccepted invitation —
+ * someone who has not opted in, and whose presence must not be announced to the
+ * room by the very screen they haven't agreed to appear on. It also carries
+ * `clientProfileId`, a handle into the trainer's client record, which is exactly
+ * the "no link to a client profile" line in the privacy rules.
+ *
+ * Community members lose nothing: in that mode every reply is already visible
+ * inline in the thread. The only thing this view adds for them is who HASN'T
+ * answered, which is the trainer's business, not the group's.
  */
-export function canSeeResponses(mode: MessageGroupMode, isTrainerSide: boolean): boolean {
-  if (isTrainerSide) return true
-  return mode === 'COMMUNITY'
+export function canSeeResponses(_mode: MessageGroupMode, isTrainerSide: boolean): boolean {
+  return isTrainerSide
 }

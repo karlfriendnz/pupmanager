@@ -90,7 +90,9 @@ export async function getGroupAccess(groupId: string): Promise<GroupAccess | Nex
  * themselves visible to the others by posting.
  */
 export function canPost(access: GroupAccess): boolean {
-  if (access.archivedAt) return access.isTrainerSide ? false : false
+  // Archived locks the group for everyone, the business included — an archived
+  // group is a record, not a paused conversation.
+  if (access.archivedAt) return false
   if (access.isTrainerSide) return true
   return !!access.participant?.joinedAt
 }
