@@ -9,33 +9,26 @@ import { getEnabledAddonsBatch } from '@/lib/billing'
 import { planValueFor, type PlanValue } from '@/lib/plan-value'
 import { formatMoney } from '@/lib/money'
 
-// The canonical trainers table — used on the dedicated Trainers page and on the
-// admin dashboard so the two never drift apart. Desktop (md+) renders the full
-// at-a-glance table (name/business/country/plan/clients/onboarding/emails/
-// joined/last seen/trial ends + inline actions); phones get the same rows as
-// stacked cards that tap through to the trainer's full view
-// (/admin/trainers/[id]).
+// The canonical trainers table — the body of the merged admin screen
+// ((admin)/admin/page.tsx). Desktop (md+) renders the full at-a-glance table
+// (name/business/country/plan/clients/onboarding/emails/joined/last seen/trial
+// ends + inline actions); phones get the same rows as stacked cards that tap
+// through to the trainer's full view (/admin/trainers/[id]).
 //
 // `q` filters by name/email (empty = no filter); `bucket` keeps only one
 // lifecycle bucket (undefined = all) — see lib/trainer-lifecycle, which treats a
 // subscribed trainer inside their carried-over trial window as PAYING, not a
-// trialist; `limit` caps the rows; `onlyNonPaying` keeps just trainers who
-// haven't started a plan. `deactivated`
-// filters soft-delete state: 'exclude' (default) hides deactivated accounts,
-// 'only' shows just them, 'all' ignores the flag. `internal` does the same for
-// PupManager-owned ("Ours") accounts.
+// trialist. `deactivated` filters soft-delete state: 'exclude' (default) hides
+// deactivated accounts, 'only' shows just them, 'all' ignores the flag.
+// `internal` does the same for PupManager-owned ("Ours") accounts.
 export async function TrainersTable({
   q = '',
   bucket,
-  limit,
-  onlyNonPaying = false,
   deactivated = 'exclude',
   internal = 'exclude',
 }: {
   q?: string
   bucket?: TrainerLifecycle
-  limit?: number
-  onlyNonPaying?: boolean
   deactivated?: 'exclude' | 'only' | 'all'
   internal?: 'exclude' | 'only' | 'all'
 }) {
@@ -45,9 +38,6 @@ export async function TrainersTable({
     { email: { contains: q, mode: 'insensitive' } },
   ] })
   if (bucket) and.push({ trainerProfile: lifecycleProfileFilter(bucket) })
-  // "Not yet paying" = hasn't completed checkout, so a carried-over-trial
-  // subscriber is correctly excluded here too.
-  if (onlyNonPaying) and.push({ trainerProfile: { stripeSubscriptionId: null } })
   if (deactivated === 'exclude') and.push({ deactivatedAt: null })
   if (deactivated === 'only') and.push({ deactivatedAt: { not: null } })
   if (internal === 'exclude') and.push({ NOT: { trainerProfile: { isInternal: true } } })
@@ -62,7 +52,6 @@ export async function TrainersTable({
       ...(and.length ? { AND: and } : {}),
     },
     orderBy: { createdAt: 'desc' },
-    ...(limit ? { take: limit } : {}),
     include: {
       trainerProfile: {
         select: {

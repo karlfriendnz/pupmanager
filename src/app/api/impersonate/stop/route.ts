@@ -28,7 +28,8 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
-  const res = NextResponse.redirect(new URL('/admin/trainers', req.url))
+  // Back to the merged admin list screen (the old /admin/trainers).
+  const res = NextResponse.redirect(new URL('/admin', req.url))
   await setSessionCookie(res, {
     id: admin.id,
     sub: admin.id,

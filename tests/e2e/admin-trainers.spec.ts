@@ -1,9 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
 import { SEED } from './test-db'
 
-// /admin/trainers must list one row per COMPANY (account owners), not every
-// individual trainer. Invited team members are TRAINER users with no profile of
-// their own and must NOT appear as separate rows.
+// /admin is the ONE Super Admin businesses screen (platform totals + recurring
+// revenue + lifecycle tabs + the table). It must list one row per COMPANY
+// (account owners), not every individual trainer: invited team members are
+// TRAINER users with no profile of their own and must NOT appear as separate
+// rows.
 //
 // The page renders BOTH layouts and hides one by breakpoint — mobile cards
 // (md:hidden) come first in the DOM, then the desktop table (hidden md:block).
@@ -18,12 +20,12 @@ async function loginAdmin(page: Page) {
   await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 30_000 })
 }
 
-test.describe('admin /admin/trainers — companies, not individual trainers', () => {
+test.describe('admin /admin — companies, not individual trainers', () => {
   test('lists businesses and hides invited team members', async ({ page }) => {
     await loginAdmin(page)
     // The "All" tab — the seeded businesses are ACTIVE without a Stripe
     // subscription, so they sit in no lifecycle bucket (default tab is trial).
-    await page.goto('/admin/trainers?tab=all')
+    await page.goto('/admin?tab=all')
 
     await expect(page.getByRole('heading', { name: 'Businesses' })).toBeVisible()
 
@@ -38,7 +40,7 @@ test.describe('admin /admin/trainers — companies, not individual trainers', ()
 
   test('a row opens the trainer full view with detail + actions', async ({ page }) => {
     await loginAdmin(page)
-    await page.goto('/admin/trainers?tab=all')
+    await page.goto('/admin?tab=all')
 
     // Each row links into that trainer's full view. The desktop table links the
     // OWNER'S NAME while the mobile card links the business name, so match on the
@@ -57,8 +59,58 @@ test.describe('admin /admin/trainers — companies, not individual trainers', ()
     await expect(page.getByText('Danger zone')).toBeVisible()
     await expect(page.getByRole('link', { name: 'Log in as' })).toBeVisible()
 
-    // Back link returns to the list.
-    await page.getByRole('link', { name: 'Trainers' }).first().click()
+    // Back link returns to the merged list.
+    await page.getByRole('link', { name: 'Businesses' }).first().click()
     await expect(page.getByRole('heading', { name: 'Businesses' })).toBeVisible()
+  })
+
+  // The lifecycle tabs (including the internal "Ours" and soft-deleted
+  // "Inactive" ones) moved onto /admin wholesale and must still filter + count.
+  test('lifecycle tabs still filter and carry their counts', async ({ page }) => {
+    await loginAdmin(page)
+    await page.goto('/admin?tab=all')
+
+    for (const label of ['All', 'In Trial', 'Paying customer', 'Churned', 'Ours', 'Inactive']) {
+      await expect(page.getByRole('link', { name: new RegExp(`^${label} \\d+$`) })).toBeVisible()
+    }
+
+    // "Ours" shows only internal accounts — the seeded businesses aren't, so
+    // switching tabs must drop them.
+    await page.getByRole('link', { name: /^Ours \d+$/ }).click()
+    await page.waitForURL(/tab=ours/, { timeout: 30_000 })
+    await expect(page.getByText(SEED.owner.businessName)).toHaveCount(0)
+
+    // Search keeps the active tab rather than bouncing back to the default.
+    await page.getByPlaceholder('Search by name or email...').fill('zzz-no-such-trainer')
+    await page.getByPlaceholder('Search by name or email...').press('Enter')
+    await page.waitForURL(/tab=ours/, { timeout: 30_000 })
+    await expect(page.getByText('No trainers found')).toBeVisible()
+  })
+
+  // Bookmarks and older links point at the old list URL.
+  test('/admin/trainers redirects to /admin, keeping the tab', async ({ page }) => {
+    await loginAdmin(page)
+
+    await page.goto('/admin/trainers')
+    await expect(page).toHaveURL(/\/admin(\?|$)/)
+    await expect(page.getByRole('heading', { name: 'Businesses' })).toBeVisible()
+
+    await page.goto('/admin/trainers?tab=all')
+    await expect(page).toHaveURL(/\/admin\?tab=all/)
+    await expect(page.getByText(SEED.owner.businessName).locator('visible=true').first()).toBeVisible()
+  })
+
+  // The admin guard lives in (admin)/layout.tsx and must still hold for the
+  // merged screen — a trainer signing in has no business seeing the platform.
+  test('a non-admin cannot reach /admin', async ({ page }) => {
+    await page.goto('/login')
+    await page.getByLabel('Email address').fill(SEED.owner.email)
+    await page.getByLabel('Password').fill(SEED.owner.password)
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 30_000 })
+
+    await page.goto('/admin')
+    await expect(page).not.toHaveURL(/\/admin(\?|$)/)
+    await expect(page.getByRole('heading', { name: 'Businesses' })).toHaveCount(0)
   })
 })

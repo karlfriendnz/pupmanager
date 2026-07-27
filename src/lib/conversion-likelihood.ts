@@ -1,5 +1,5 @@
 // Internal sales judgement of how likely a trialing trainer is to convert.
-// Set by hand from the "Likely" column on /admin/trainers — never derived from
+// Set by hand from the "Likely" column on the /admin businesses table — never derived from
 // behaviour, and never shown to the trainer themselves.
 
 export const LIKELIHOODS = ['NAH', 'MAYBE', 'YEAH', 'DEFINITELY'] as const

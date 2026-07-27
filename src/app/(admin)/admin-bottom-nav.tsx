@@ -14,7 +14,7 @@ import { ADMIN_TABS, isAdminTabActive } from './admin-tab-nav'
 // Only three destinations are pinned so each tap target is wide and reliable;
 // everything else lives behind "More". Kept as hrefs so ADMIN_TABS stays the
 // single source of truth for both nav renderers.
-const PRIMARY_HREFS = ['/admin', '/admin/trainers', '/admin/promo-codes']
+const PRIMARY_HREFS = ['/admin', '/admin/announcements', '/admin/promo-codes']
 
 export function AdminBottomNav() {
   const pathname = usePathname()

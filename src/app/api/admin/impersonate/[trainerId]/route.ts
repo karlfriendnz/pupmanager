@@ -12,7 +12,7 @@ import { setSessionCookie } from '@/lib/session-cookie'
 // the "Exit impersonation" banner and the /api/impersonate/stop restore route.
 //
 // [trainerId] is the trainer's User.id (the id the admin trainers table keys
-// its rows off — see (admin)/admin/trainers/page.tsx).
+// its rows off — see (admin)/admin/page.tsx, where the list now lives).
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ trainerId: string }> },
@@ -28,7 +28,7 @@ export async function GET(
     select: { id: true, name: true, email: true, role: true },
   })
   if (!target || target.role !== 'TRAINER') {
-    return NextResponse.redirect(new URL('/admin/trainers', req.url))
+    return NextResponse.redirect(new URL('/admin', req.url))
   }
 
   const res = NextResponse.redirect(new URL('/dashboard', req.url))

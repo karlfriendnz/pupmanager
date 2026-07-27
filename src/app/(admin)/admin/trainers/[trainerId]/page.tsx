@@ -103,8 +103,10 @@ export default async function AdminTrainerDetailPage({
 
   return (
     <div className="max-w-4xl">
-      <Link href="/admin/trainers" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white mb-5">
-        <ArrowLeft className="h-4 w-4" /> Trainers
+      {/* Back to the merged list screen (/admin) — the old /admin/trainers list
+          now lives there. */}
+      <Link href="/admin" className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-white mb-5">
+        <ArrowLeft className="h-4 w-4" /> Businesses
       </Link>
 
       {/* Header */}

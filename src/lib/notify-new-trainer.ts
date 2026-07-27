@@ -57,7 +57,7 @@ export async function notifyTrainerDeletion({
       <table style="border-collapse:collapse;margin-top:8px">
         ${rows.map(([k, v]) => `<tr><td style="padding:4px 16px 4px 0;color:#5b7682;vertical-align:top">${esc(k)}</td><td style="padding:4px 0;font-weight:600;white-space:pre-wrap">${esc(v)}</td></tr>`).join('')}
       </table>
-      <p style="margin-top:12px;color:#5b7682;font-size:13px">The account is deactivated and recoverable for 30 days — reinstate from /admin/trainers if they reach out.</p>
+      <p style="margin-top:12px;color:#5b7682;font-size:13px">The account is deactivated and recoverable for 30 days — reinstate from the Inactive tab on /admin if they reach out.</p>
     </div>`
   const text = `Trainer cancelled PupManager\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}`
 
