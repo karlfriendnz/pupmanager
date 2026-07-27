@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette } from 'lucide-react'
+import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette, CalendarDays } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 import { cn } from '@/lib/utils'
 import { TabIntro } from './tab-intro'
@@ -42,6 +42,7 @@ const ALL_TABS = [
   { id: 'forms', label: 'Fields & forms', icon: Pencil, section: 'business' },
   { id: 'locations', label: 'Locations', icon: MapPin, section: 'business' },
   { id: 'integration', label: 'Connect Website', icon: Globe, section: 'business' },
+  { id: 'calendar', label: 'Calendar', icon: CalendarDays, section: 'business' },
   { id: 'team', label: 'Team', icon: Users, section: 'business' },
   { id: 'payments', label: 'Payments', icon: Wallet, section: 'money' },
   { id: 'xero', label: 'Xero', icon: Landmark, section: 'money' },
@@ -58,6 +59,7 @@ export function SettingsTabs({
   forms,
   locations,
   integration,
+  calendar,
   addons,
   team,
   payments,
@@ -74,6 +76,7 @@ export function SettingsTabs({
   forms?: React.ReactNode
   locations?: React.ReactNode
   integration?: React.ReactNode
+  calendar?: React.ReactNode
   addons?: React.ReactNode
   team?: React.ReactNode
   payments?: React.ReactNode
@@ -82,7 +85,7 @@ export function SettingsTabs({
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, addons, team, payments, xero, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, calendar, addons, team, payments, xero, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -266,6 +269,7 @@ export function SettingsTabs({
         {forms != null && <div className={tab === 'forms' ? '' : 'hidden'}>{forms}</div>}
         {locations != null && <div className={tab === 'locations' ? '' : 'hidden'}>{locations}</div>}
         {integration != null && <div className={tab === 'integration' ? '' : 'hidden'}>{integration}</div>}
+        {calendar != null && <div className={tab === 'calendar' ? 'max-w-2xl' : 'hidden'}>{calendar}</div>}
         {addons != null && <div className={tab === 'addons' ? '' : 'hidden'}>{addons}</div>}
         {team != null && <div className={tab === 'team' ? 'max-w-2xl' : 'hidden'}>{team}</div>}
         {payments != null && <div className={tab === 'payments' ? 'max-w-2xl' : 'hidden'}>{payments}</div>}

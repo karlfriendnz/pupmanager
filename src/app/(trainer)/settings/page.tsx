@@ -13,6 +13,7 @@ import { ActivityPanel } from './activity-panel'
 import { AddonsTab } from './addons-tab'
 import { IntegrationTab } from './integration-tab'
 import { XeroTab } from './xero-tab'
+import { GoogleCalendarTab } from './google-calendar-tab'
 import { hasAddon } from '@/lib/billing'
 import { FormsManager } from '../forms/forms-manager'
 import { trainerRegionCode } from '@/lib/country'
@@ -46,6 +47,11 @@ export default async function TrainerSettingsPage() {
     : []
   // The Xero tab only exists when the (free) Xero add-on is enabled.
   const xeroEnabled = canEditSettings && (await hasAddon(ctx.companyId, 'xero'))
+  // Same pattern for Google Calendar. Connecting previously had no permanent
+  // home at all — see google-calendar-tab.tsx. Not gated on settings.edit:
+  // the connection is the MEMBER's own calendar, so anyone on the team must be
+  // able to connect theirs without permission to change company settings.
+  const gcalEnabled = await hasAddon(ctx.companyId, 'googlecalendar')
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
@@ -145,6 +151,7 @@ export default async function TrainerSettingsPage() {
         team={<TeamPanel />}
         payments={ctx.role === 'OWNER' ? <PaymentsPanel companyId={ctx.companyId} /> : undefined}
         xero={xeroEnabled ? <XeroTab companyId={ctx.companyId} /> : undefined}
+        calendar={gcalEnabled ? <GoogleCalendarTab /> : undefined}
         billing={ctx.role === 'OWNER' ? (
           <>
             <BillingPanel companyId={ctx.companyId} />

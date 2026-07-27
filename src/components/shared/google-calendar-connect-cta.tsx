@@ -5,9 +5,14 @@ import { Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EnableAddonButton } from './enable-addon-button'
 
-// The Google Calendar add-on promo CTA. Google Calendar has no settings page —
-// connect AND disconnect both live here in the add-on popup. Shows a Connect
-// button when disconnected, and a Connected badge + Disconnect when connected.
+// Connect / Connected+Disconnect for Google Calendar.
+//
+// Used in two places, and it needs both: the add-on promo popup, and
+// Settings → Calendar. The popup was once the ONLY home, which meant the single
+// route to connecting vanished the moment you enabled the add-on — enable it
+// from a phone and you were left with the feature on, nothing connected, and no
+// button anywhere. Anything that offers this must be reachable AFTER the add-on
+// is on, not only before.
 export function GoogleCalendarConnectCta() {
   const [status, setStatus] = useState<'loading' | 'connected' | 'disconnected'>('loading')
   const [busy, setBusy] = useState(false)
