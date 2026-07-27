@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { lifecycleProfileFilter, type TrainerLifecycle } from '@/lib/trainer-lifecycle'
 import { getEnabledAddonsBatch } from '@/lib/billing'
 import { planValueFor, summarisePlanValues, type CurrencyTotal } from '@/lib/plan-value'
+import { sumToNzd, toNzd, NZD_RATES_UPDATED } from '@/lib/fx'
 import { formatMoney } from '@/lib/money'
 // The table (and its row) still live next to the trainer detail route they link
 // into; only the LIST SCREEN moved here. /admin/trainers now redirects to /admin.
@@ -47,6 +48,9 @@ async function loadPayingValueSummary(): Promise<CurrencyTotal[]> {
 // `bucket` is a lifecycle bucket from lib/trainer-lifecycle (which knows that a
 // subscribed trainer inside their carried-over trial window is a PAYING
 // customer, not a trialist). undefined = no filter (All).
+// The ARR target the bar measures against. One place to move the goalposts.
+const ARR_GOAL = 200_000
+
 const TABS: { key: string; label: string; bucket?: TrainerLifecycle; ours?: boolean; inactive?: boolean }[] = [
   // No "All" tab (Karl, 2026-07-27): In Trial is the screen that matters, and
   // browsing every business isn't a job anyone does — looking one up is.
@@ -114,8 +118,56 @@ export default async function AdminDashboardPage({
       {/* Recurring-revenue summary across all paying customers. Grouped by
           currency — customers bill in six different currencies, so a single
           blended total would be meaningless; each currency stands on its own. */}
-      {valueSummary.length > 0 && (
+      {valueSummary.length > 0 && (() => {
+        // Progress to the ARR goal, everything converted to NZD. The rates are
+        // hand-maintained approximations (src/lib/fx.ts) — right for "how big is
+        // the book", never for anything a customer is charged.
+        const arrTotal = sumToNzd(valueSummary.map(c => ({ currency: c.currency, amount: c.arr })))
+        const mrrTotal = sumToNzd(valueSummary.map(c => ({ currency: c.currency, amount: c.mrr })))
+        const pct = Math.min(100, (arrTotal / ARR_GOAL) * 100)
+        const mixed = valueSummary.length > 1
+        return (
         <div className="mb-6 rounded-2xl border border-slate-700 bg-slate-800 p-4">
+          <div className="mb-5">
+            <div className="flex items-baseline justify-between gap-3 mb-2">
+              <h2 className="text-sm font-semibold text-white">
+                ARR goal
+                <span className="ml-2 text-[11px] font-normal text-slate-400">
+                  NZD{mixed ? ` · ${valueSummary.map(c => c.currency).join(' + ')} at ${NZD_RATES_UPDATED} rates` : ''}
+                </span>
+              </h2>
+              <span className="text-xs tabular-nums text-slate-400">
+                {pct.toFixed(1)}%
+              </span>
+            </div>
+            <div
+              className="h-3 w-full overflow-hidden rounded-full bg-slate-900"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={ARR_GOAL}
+              aria-valuenow={Math.round(arrTotal)}
+              aria-label={`Annual recurring revenue, ${Math.round(arrTotal).toLocaleString()} of ${ARR_GOAL.toLocaleString()}`}
+            >
+              <div
+                className="h-full rounded-full bg-green-400 transition-[width] duration-500"
+                style={{ width: `${Math.max(pct, arrTotal > 0 ? 1.5 : 0)}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-baseline justify-between gap-3 text-xs tabular-nums">
+              <span className="text-lg font-semibold text-green-300">
+                ${Math.round(arrTotal).toLocaleString()}
+                <span className="ml-2 text-xs font-normal text-slate-400">
+                  ${Math.round(mrrTotal).toLocaleString()}/mo
+                </span>
+              </span>
+              <span className="text-slate-500">
+                of ${ARR_GOAL.toLocaleString()}
+                <span className="ml-2 text-slate-400">
+                  ${Math.max(0, Math.round(ARR_GOAL - arrTotal)).toLocaleString()} to go
+                </span>
+              </span>
+            </div>
+          </div>
           <div className="flex items-baseline justify-between gap-3 mb-3">
             <h2 className="text-sm font-semibold text-white">Recurring revenue</h2>
             {valueSummary.length > 1 && (
@@ -137,13 +189,22 @@ export default async function AdminDashboardPage({
                   <div className="text-right">
                     <div className="text-[11px] uppercase tracking-wide text-slate-500">ARR</div>
                     <div className="text-lg font-semibold text-white tabular-nums">{formatMoney(c.arr * 100, c.currency)}</div>
+                    {/* NZD equivalent, so cards in different currencies can be
+                        compared at a glance. Omitted for NZD itself — repeating
+                        the same figure would be noise. */}
+                    {c.currency !== 'NZD' && (
+                      <div className="text-[11px] tabular-nums text-slate-500">
+                        ≈ ${Math.round(toNzd(c.arr, c.currency)).toLocaleString()} NZD
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* Lifecycle tabs — horizontally scrollable on mobile (six tabs don't fit
           a phone width); scrollbar hidden so it reads as a clean swipe strip. */}
