@@ -33,11 +33,26 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   { name: 'pm-booking-automations', schedule: '*/15 * * * *', path: 'booking-automations' },
   { name: 'pm-google-calendar-busy-refresh', schedule: '0 */3 * * *', path: 'google-calendar-busy-refresh' },
   { name: 'pm-purge-deactivated', schedule: '15 3 * * *', path: 'purge-deactivated' },
-  // NOTE: pm-enquiry-followups is also GUC-registered (by
-  // 20260530_enquiry_followup_reminders) but is NOT re-scheduled here — it was
-  // returning 200s at the time of writing, so it is being left alone rather
-  // than churned. If it starts 401ing, add it to this list.
+  // These two were already returning 200s on an inlined token — but that token
+  // is the OLD secret. Rotating CRON_SECRET (which is the only way to fix the
+  // others, since the Production value is marked Sensitive in Vercel and cannot
+  // be read back) would leave these two holding a stale token and they would
+  // start failing at the next deploy. Every job that authenticates has to be
+  // re-written together, or a rotation silently breaks whatever it misses.
+  { name: 'pm-enquiry-followups', schedule: '0 * * * *', path: 'enquiry-followups' },
+  { name: 'pm-onboarding-emails', schedule: '0 * * * *', path: 'onboarding-emails' },
+  // Same again for the two older pupmanager-* jobs. Exact names matter:
+  // cron.schedule() replaces by jobname, so a different prefix would create a
+  // duplicate job running the same route twice rather than updating it.
+  { name: 'pupmanager-daily-summary', schedule: '0 * * * *', path: 'daily-summary' },
+  { name: 'pupmanager-session-reminders', schedule: '*/5 * * * *', path: 'session-reminders' },
 ]
+
+// Every scheduled job that sends a bearer token is in this list. That is the
+// point: CRON_SECRET can only be rotated, never read back (Vercel marks the
+// Production value Sensitive), so a rotation has to rewrite ALL of them at once
+// or it silently breaks the ones it skips — with no error anywhere except a
+// 401 buried in net._http_response. Add any new cron job here.
 
 // cron.schedule() on an existing jobname REPLACES that job in place, so this
 // script is idempotent and safe to re-run.
