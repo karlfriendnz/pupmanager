@@ -62,12 +62,36 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   return (
     <>
       <PageHeader
-        title="Enquiry"
-        subtitle={`Submitted ${enquiry.createdAt.toLocaleString()}${enquiry.form ? ` via "${enquiry.form.title}"` : ''}`}
+        title={enquiry.source === 'SELF_SIGNUP' ? 'Join request' : 'Enquiry'}
+        subtitle={
+          enquiry.source === 'SELF_SIGNUP'
+            ? `Signed up ${enquiry.createdAt.toLocaleString()}`
+            : `Submitted ${enquiry.createdAt.toLocaleString()}${enquiry.form ? ` via "${enquiry.form.title}"` : ''}`
+        }
         back={{ href: '/enquiries', label: 'Back to enquiries' }}
         actions={<StatusPill status={enquiry.status} />}
       />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+
+      {/* Self-signup differs from a form lead in one way that matters: the
+          person already has a working PupManager login and is sitting on a
+          "waiting for your trainer" screen right now. Accepting attaches them
+          to that same account — it never creates a second one. */}
+      {enquiry.source === 'SELF_SIGNUP' && (
+        <Card className="p-5 mb-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">How they found you</h2>
+          <p className="text-sm text-slate-700">
+            {enquiry.name} created their own PupManager account and asked to join you.
+          </p>
+          <p className="text-xs text-slate-500 mt-1">
+            {enquiry.status === 'NEW'
+              ? 'They can’t see anything until you add them. Accepting puts them on your client list and opens their app.'
+              : enquiry.status === 'ACCEPTED'
+                ? 'They’re on your client list and can sign in with the password they set.'
+                : 'They were not added to your client list.'}
+          </p>
+        </Card>
+      )}
 
       {bookedLabel && (
         <Card className="p-5 mb-4 border-violet-200 bg-violet-50/50">

@@ -20,10 +20,13 @@ export function ClientLoginForm({
   accentColor = null,
   businessName,
   contactHref = null,
+  joinHref = null,
 }: {
   accentColor?: string | null
   businessName: string
   contactHref?: string | null
+  /** /c/<slug>/join — present whenever the trainer has a public handle. */
+  joinHref?: string | null
 }) {
   const [linkSent, setLinkSent] = useState(false)
   const [sendingLink, setSendingLink] = useState(false)
@@ -111,7 +114,21 @@ export function ClientLoginForm({
         Email me a sign-in link
       </Button>
 
-      {contactHref && (
+      {/* This used to say "Contact <business>" — a dead end that sent every
+          prospective client to email. They can now create their own account;
+          the trainer still decides whether to accept them. */}
+      {joinHref ? (
+        <p className="text-center text-sm text-slate-500">
+          New here?{' '}
+          <a
+            href={joinHref}
+            className="font-medium hover:underline"
+            style={accentColor ? { color: accentColor } : undefined}
+          >
+            Create an account
+          </a>
+        </p>
+      ) : contactHref ? (
         <p className="text-center text-sm text-slate-500">
           Not a client yet?{' '}
           <a
@@ -122,7 +139,7 @@ export function ClientLoginForm({
             Contact {businessName}
           </a>
         </p>
-      )}
+      ) : null}
     </form>
   )
 }

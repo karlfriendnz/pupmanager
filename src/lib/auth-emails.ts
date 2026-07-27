@@ -164,6 +164,136 @@ function renderVerificationEmail({
 </html>`
 }
 
+interface ClientVerificationEmailArgs {
+  to: string
+  name: string
+  /** The trainer they asked to join, when they signed up from a trainer's page. */
+  businessName: string | null
+  code: string
+}
+
+/**
+ * The dog-owner twin of sendVerificationEmail. Same code + one-click link and
+ * the same VerificationToken row, but the copy is written for someone who was
+ * told "we use PupManager, go sign up" — no trial, no business setup, and an
+ * honest line about what happens next (their trainer has to add them).
+ *
+ * Confirming is NOT a gate: lib/auth.ts only blocks unverified TRAINERs, and
+ * gating clients would lock out everyone a trainer ever added by hand. It
+ * stamps User.emailVerified so we know the address is real.
+ *
+ * Best-effort, like its sibling — callers swallow + log.
+ */
+export async function sendClientVerificationEmail({
+  to,
+  name,
+  businessName,
+  code,
+}: ClientVerificationEmailArgs): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY
+  const fromAddress = process.env.RESEND_FROM_EMAIL
+  if (!apiKey || !fromAddress) {
+    console.warn('[auth-email] client verification skipped — Resend env not configured')
+    return
+  }
+
+  const firstName = name.split(' ')[0] || name
+  const verifyUrl = `${APP_URL}/verify-account?email=${encodeURIComponent(to)}&code=${code}`
+  const logoUrl = `${emailAssetOrigin()}/email-logo.png`
+
+  const resend = new Resend(apiKey)
+  const result = await resend.emails.send({
+    from: fromAddress,
+    to,
+    subject: businessName
+      ? `Confirm your email — your request to join ${businessName}`
+      : 'Confirm your PupManager email',
+    html: renderClientVerificationEmail({ firstName, businessName, code, verifyUrl, logoUrl }),
+  })
+
+  if (result.error) {
+    console.error('[auth-email] Resend returned error', { to, error: result.error })
+    throw new Error(result.error.message)
+  }
+  console.log('[auth-email] client verification sent', { to, resendId: result.data?.id })
+}
+
+function renderClientVerificationEmail({
+  firstName,
+  businessName,
+  code,
+  verifyUrl,
+  logoUrl,
+}: {
+  firstName: string
+  businessName: string | null
+  code: string
+  verifyUrl: string
+  logoUrl: string
+}): string {
+  const nextStep = businessName
+    ? `We've let <strong>${escapeHtml(businessName)}</strong> know you'd like to join. They'll add you to their client list, and we'll email you the moment they do.`
+    : `Next, find your dog trainer in the app and ask to join them. Once they add you, your sessions, notes and messages all show up here.`
+
+  return `<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f1f5f9;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:20px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,0.04);">
+          <tr>
+            <td align="center" style="padding:36px 32px 20px;background:#ffffff;">
+              <img src="${escapeAttr(logoUrl)}" alt="PupManager" width="210" style="display:block;width:210px;max-width:66%;height:auto;border:0;outline:none;text-decoration:none;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="height:4px;line-height:4px;font-size:0;background:linear-gradient(90deg,#0d9488,#14b8a6,#2dd4bf);">&nbsp;</td>
+          </tr>
+
+          <tr>
+            <td style="padding:32px;">
+              <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;line-height:1.3;">Hi ${escapeHtml(firstName)} 👋</h1>
+              <p style="margin:0 0 20px;font-size:15px;line-height:1.55;color:#475569;">
+                Your PupManager account is set up. ${nextStep}
+              </p>
+
+              <div style="margin:24px 0;text-align:center;">
+                <p style="margin:0 0 8px;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#64748b;font-weight:600;">Confirm your email</p>
+                <div style="display:inline-block;padding:18px 32px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:14px;">
+                  <span style="font-size:32px;font-weight:700;letter-spacing:0.4em;color:#0f766e;font-family:'SFMono-Regular',Menlo,Consolas,monospace;">
+                    ${escapeHtml(code)}
+                  </span>
+                </div>
+                <p style="margin:8px 0 0;font-size:12px;color:#94a3b8;">Expires in 10 minutes.</p>
+              </div>
+
+              <p style="margin:0 0 8px;text-align:center;">
+                <a href="${escapeAttr(verifyUrl)}" style="display:inline-block;padding:14px 28px;background:#0d9488;color:#ffffff;text-decoration:none;border-radius:12px;font-weight:600;font-size:15px;">
+                  Confirm my email
+                </a>
+              </p>
+              <p style="margin:12px 0 0;font-size:13px;line-height:1.5;color:#64748b;text-align:center;">
+                You can sign in straight away — confirming just tells us the address is really yours.
+              </p>
+
+              <p style="margin:32px 0 0;font-size:12px;line-height:1.5;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:20px;">
+                If this wasn't you, you can ignore this email.
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;">
+          PupManager · Made for dog trainers, in New Zealand 🇳🇿
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')

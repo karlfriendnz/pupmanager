@@ -11,6 +11,7 @@ import { AddonNudge } from '@/components/shared/addon-nudge'
 import { isNudgeDismissed } from '@/lib/nudge-dismissals'
 import { addonNudge } from '@/components/shared/addon-nudge-registry'
 import { hasAddon } from '@/lib/billing'
+import { JoinRequestActions } from './join-request-actions'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Enquiries' }
@@ -50,7 +51,7 @@ export default async function EnquiriesPage({
         id: true, name: true, email: true, phone: true,
         dogName: true, dogBreed: true, message: true,
         status: true, viewedAt: true, createdAt: true,
-        clientProfileId: true,
+        clientProfileId: true, source: true,
       },
     }),
   ])
@@ -76,7 +77,8 @@ export default async function EnquiriesPage({
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
       >
       <p className="text-sm text-slate-500 mb-6">
-        Form submissions awaiting your decision. Accept turns them into a client; decline closes them out.
+        Form submissions and join requests awaiting your decision. Accept turns them
+        into a client; decline closes them out.
       </p>
 
       <div className="mb-5 flex gap-1 border-b border-slate-200">
@@ -106,54 +108,73 @@ export default async function EnquiriesPage({
         <EmptyState tab={tab} />
       ) : (
         <PhoneRowList className="md:flex md:flex-col md:gap-2">
-          {enquiries.map(e => (
-            <Link
-              key={e.id}
-              href={`/enquiries/${e.id}`}
-              // `active:` gives the tap an immediate pressed state. `hover:` is
-              // `@media (hover:hover)` in Tailwind v4, so on a phone the row had
-              // no feedback at all between the tap and the next screen painting.
-              className="block min-h-14 active:bg-slate-50"
-            >
-              <Card className={cn(
+          {enquiries.map(e => {
+            // A dog owner who signed themselves up and asked to be added. There
+            // is nothing to read before deciding, so the two buttons sit on the
+            // row — one tap and acceptEnquiry makes them a client.
+            const isJoinRequest = e.source === 'SELF_SIGNUP'
+            const quickActions = isJoinRequest && e.status === 'NEW'
+            return (
+              <Card key={e.id} className={cn(
                 'px-4 py-3 md:p-4 hover:border-violet-200 transition-colors',
                 // Phone: a row in the shared block.
                 'rounded-none border-0 shadow-none md:rounded-2xl md:border md:shadow-sm',
                 tab === 'NEW' && !e.viewedAt && 'border-violet-200 bg-violet-50/30',
               )}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-semibold text-slate-900 truncate">{e.name}</p>
-                      {tab === 'NEW' && !e.viewedAt && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-600 text-white uppercase tracking-wide">
-                          New
-                        </span>
+                {/* The Card wraps the Link (rather than the other way round) so
+                    the accept/decline buttons can live inside the same block —
+                    a <button> inside an <a> is invalid. */}
+                <Link
+                  href={`/enquiries/${e.id}`}
+                  // `active:` gives the tap an immediate pressed state. `hover:` is
+                  // `@media (hover:hover)` in Tailwind v4, so on a phone the row had
+                  // no feedback at all between the tap and the next screen painting.
+                  className="block min-h-14 active:opacity-70"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-semibold text-slate-900 truncate">{e.name}</p>
+                        {tab === 'NEW' && !e.viewedAt && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-600 text-white uppercase tracking-wide">
+                            New
+                          </span>
+                        )}
+                      </div>
+                      {isJoinRequest && (
+                        <p className="text-xs font-medium text-slate-600 mb-0.5">
+                          Wants to join you · signed up themselves
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-500 truncate">
+                        {e.email}
+                        {e.phone && <span> · {e.phone}</span>}
+                      </p>
+                      {(e.dogName || e.dogBreed) && (
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">
+                          🐶 {e.dogName ?? '—'}{e.dogBreed ? ` · ${e.dogBreed}` : ''}
+                        </p>
+                      )}
+                      {e.message && (
+                        <p className="text-sm text-slate-600 mt-2 line-clamp-2 italic">
+                          &ldquo;{e.message}&rdquo;
+                        </p>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500 truncate">
-                      {e.email}
-                      {e.phone && <span> · {e.phone}</span>}
-                    </p>
-                    {(e.dogName || e.dogBreed) && (
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
-                        🐶 {e.dogName ?? '—'}{e.dogBreed ? ` · ${e.dogBreed}` : ''}
-                      </p>
-                    )}
-                    {e.message && (
-                      <p className="text-sm text-slate-600 mt-2 line-clamp-2 italic">
-                        &ldquo;{e.message}&rdquo;
-                      </p>
-                    )}
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      <span className="text-[11px] text-slate-400 tabular-nums">{timeAgo(e.createdAt)}</span>
+                      <ArrowRight className="h-4 w-4 text-slate-400" />
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                    <span className="text-[11px] text-slate-400 tabular-nums">{timeAgo(e.createdAt)}</span>
-                    <ArrowRight className="h-4 w-4 text-slate-400" />
+                </Link>
+                {quickActions && (
+                  <div className="mt-3 flex justify-end border-t border-slate-200 pt-3">
+                    <JoinRequestActions enquiryId={e.id} name={e.name} />
                   </div>
-                </div>
+                )}
               </Card>
-            </Link>
-          ))}
+            )
+          })}
         </PhoneRowList>
       )}
       </div>
@@ -167,7 +188,7 @@ export default async function EnquiriesPage({
 function EmptyState({ tab }: { tab: TabKey }) {
   const Icon = tab === 'ACCEPTED' ? CheckCircle2 : tab === 'DECLINED' ? XCircle : Inbox
   const label =
-    tab === 'NEW'      ? 'No new enquiries — once someone submits one of your forms, it lands here.'
+    tab === 'NEW'      ? 'No new enquiries — form submissions and people asking to join you land here.'
   : tab === 'ACCEPTED' ? 'No accepted enquiries yet.'
   :                      'No declined enquiries.'
   return (

@@ -3480,6 +3480,17 @@ model Enquiry {
   // { customFieldId: value } map of custom-field answers, snapshotted
   customFieldValues Json      @default("{}")
 
+  // Where this enquiry came from. Drives the wording on the trainer's list
+  // ("enquiry" vs "wants to join") and nothing else — the accept path is the
+  // same for all of them, which is the point: one approval mechanism.
+  //   FORM        — an embed / lead-capture form submission (the original, default)
+  //   BOOKING     — the public Calendly-style booking page (bookedSlotAt set)
+  //   SELF_SIGNUP — a dog owner who created their own PupManager login and
+  //                 asked to be added to this trainer. The User row ALREADY
+  //                 exists (with a password); accepting attaches the
+  //                 ClientProfile via findOrJoinClient like any other accept.
+  source                String        @default("FORM")
+
   status                EnquiryStatus @default(NEW)
   // Set when the trainer first opens the enquiry — drives the dashboard badge.
   viewedAt              DateTime?

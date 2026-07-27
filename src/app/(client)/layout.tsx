@@ -2,7 +2,7 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getActiveClient } from '@/lib/client-context'
+import { getActiveClient, noActiveClientDestination } from '@/lib/client-context'
 import { CurrencyProvider } from '@/components/currency-context'
 import { AppShell } from '@/components/shared/app-shell'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
@@ -15,7 +15,10 @@ import { PreviewOnboardingGuide } from './preview-onboarding-guide'
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const active = await getActiveClient()
-  if (!active) redirect('/login')
+  // Redirect TARGET only — the gate itself is unchanged. A dog owner who signed
+  // themselves up has an account but no ClientProfile until a trainer accepts
+  // them, and sending them to /login was an infinite bounce.
+  if (!active) redirect(await noActiveClientDestination())
 
   const clientProfile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },

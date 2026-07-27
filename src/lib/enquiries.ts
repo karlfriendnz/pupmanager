@@ -186,6 +186,34 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
     }
   }
 
+  // A dog owner who signed themselves up is sitting on /find-trainer waiting to
+  // be let in, and they already set their own password — so no magic link, just
+  // "you're in, sign in". Without this the approval is silent and they have no
+  // way of knowing to come back.
+  if (!magicLinkToken && enquiry.source === 'SELF_SIGNUP') {
+    const businessName = enquiry.trainer.businessName
+    try {
+      await sendEmail({
+        to: enquiry.email,
+        subject: `${businessName} added you on PupManager`,
+        html: `
+          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
+            <h2 style="color:#0f172a;margin-bottom:8px;">You're in, ${escapeHtml(enquiry.name.split(' ')[0] || enquiry.name)}!</h2>
+            <p style="color:#475569;margin-bottom:24px;">
+              ${escapeHtml(businessName)} has added you to their client list. Sign in with the
+              email and password you chose to see your sessions, notes and messages.
+            </p>
+            <a href="${options.appUrl}/login" style="display:inline-block;background:#0d9488;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;">
+              Open PupManager
+            </a>
+          </div>
+        `,
+      })
+    } catch {
+      // Courtesy email — never fails the accept. They can still sign in.
+    }
+  }
+
   if (magicLinkToken) {
     // Magic link goes via NextAuth's Resend callback so the client lands logged
     // in on first click. URL host comes from the request so dev/prod both work.

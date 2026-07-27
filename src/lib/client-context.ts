@@ -83,6 +83,29 @@ export const getActiveClient = cache(async (): Promise<ActiveClient | null> => {
   return null
 })
 
+/**
+ * Where to send someone the (client) group could not resolve a profile for.
+ *
+ * Historically this was always /login, which is a redirect loop for the one
+ * case that now exists: a dog owner who signed themselves up and is waiting for
+ * a trainer to accept them. A ClientProfile requires a trainerId, so that
+ * person legitimately has an account and no profile — /login bounces them to
+ * /, which bounces them to /home, which bounces them back to /login.
+ *
+ * Access (not `role`) decides, so this keeps working when one login can be both
+ * a trainer and a client: only somebody with NEITHER side gets the waiting
+ * room. A trainer holding a stale preview cookie still lands on /login exactly
+ * as before.
+ */
+export async function noActiveClientDestination(): Promise<string> {
+  const session = await auth()
+  if (!session?.user?.id) return '/login'
+  const { getAccountAccess } = await import('./account-access')
+  const access = await getAccountAccess(session.user.id)
+  if (!access.hasClientAccess && !access.hasTrainerAccess) return '/find-trainer'
+  return '/login'
+}
+
 // The client profiles (one per trainer) available to the signed-in user, for
 // the trainer chooser/switcher. Returns [] for non-clients.
 export async function getClientTrainerOptions() {

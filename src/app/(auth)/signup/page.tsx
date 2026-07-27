@@ -4,6 +4,7 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { SOLO_PRICE, PLAN_NAME, DEFAULT_CURRENCY } from '@/lib/pricing'
+import { RoleChooser } from '../role-chooser'
 import { SignupForm } from './signup-form'
 
 export const metadata: Metadata = {
@@ -17,7 +18,11 @@ export const metadata: Metadata = {
 // pupmanager.com/pricing) so we don't need to round-trip the database
 // to render this page — that keeps it CI-safe and lets it render
 // even before SubscriptionPlan rows are seeded in a fresh env.
-export default async function SignupPage() {
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ as?: string }>
+}) {
   // Authed trainers landing on /signup (most often via the trial-chip
   // "Pick a plan" CTA, which intentionally uses /signup as the
   // universal entry to "start a paid subscription") get sent straight
@@ -26,6 +31,20 @@ export default async function SignupPage() {
   const session = await auth()
   if (session?.user?.role === 'TRAINER') redirect('/billing/setup')
   if (session?.user?.role === 'CLIENT') redirect('/home')
+
+  // Step 0: who are you? Without it a dog owner following their trainer's
+  // "go sign up" lands on this form and becomes a trainer on a free trial.
+  // ?as=pro skips it, so pupmanager.com/pricing can keep linking people who
+  // have already declared themselves straight to the trial form.
+  const { as } = await searchParams
+  if (as !== 'pro') {
+    return (
+      <RoleChooser
+        proHref="/signup?as=pro"
+        proSub="A trainer, walker, groomer or behaviourist running your own business. 10-day free trial."
+      />
+    )
+  }
 
   // Static pricing footer — actual plan-id / Stripe-price wiring
   // happens later on /billing/setup once the trainer is authed.

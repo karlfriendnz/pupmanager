@@ -130,6 +130,7 @@ export default async function TrainerClientLoginPage({
                 accentColor={accent}
                 businessName={businessName}
                 contactHref={contactHref}
+                joinHref={`/c/${slug}/join`}
               />
             )}
           </CardBody>
