@@ -142,12 +142,12 @@ export function LoginForm({ error, callbackUrl, enabledOAuth }: LoginFormProps) 
               </Button>
 
               <p className="text-center text-sm text-slate-500">
-                New trainer?{' '}
+                New dog pro?{' '}
                 <Link
                   href="/register"
                   className="font-medium text-blue-600 transition-colors hover:text-blue-700 hover:underline"
                 >
-                  Create an account
+                  Create account
                 </Link>
               </p>
             </form>

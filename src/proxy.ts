@@ -7,7 +7,9 @@ import { PROFILE_COOKIE } from '@/lib/account-access'
 const { auth } = NextAuth(authConfig)
 
 const PUBLIC_PATHS = [
-  '/login', '/register', '/signup', '/logout', '/forgot-password', '/reset-password', '/verify-email', '/verify-account', '/invite',
+  // /welcome is the signed-out splash / routes to it, so it MUST be public
+  // or the middleware bounces straight back to /login and the splash never shows.
+  '/welcome', '/login', '/register', '/signup', '/logout', '/forgot-password', '/reset-password', '/verify-email', '/verify-account', '/invite',
   '/api/auth',
   '/api/cron',   // Bearer-token authed inside the route handler
   '/api/webhooks', // Stripe + future inbound webhooks (signature-gated inside)
@@ -66,6 +68,11 @@ export default auth((req) => {
   const isPublic = PUBLIC_PATHS.some(p => pathname.startsWith(p))
 
   if (!req.auth && !isPublic) {
+    // Landing on the root signed out means "show me the app", not "I have an
+    // account" — send them to the splash so they can choose log in or sign up.
+    // Every other protected path still goes to the login form with a
+    // callbackUrl, because there the person WAS heading somewhere specific.
+    if (pathname === '/') return NextResponse.redirect(new URL('/welcome', req.url))
     const loginUrl = new URL('/login', req.url)
     loginUrl.searchParams.set('callbackUrl', pathname)
     return NextResponse.redirect(loginUrl)
