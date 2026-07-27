@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { formatDate } from '@/lib/utils'
-import { isClassRunPast } from '@/lib/class-runs'
+import { isClassRunPast, NON_EVENT_PACKAGE } from '@/lib/class-runs'
 import { DropInsView } from './drop-ins-view'
 import type { Metadata } from 'next'
 
@@ -44,7 +44,10 @@ export default async function DropInsPage() {
     prisma.classRun.findMany({
       // Puppy schools are drop-in-flagged (each day-part books like a drop-in)
       // but live in their own workspace, so keep them off the drop-ins list.
-      where: { trainerId, package: { allowDropIn: true, isPuppySchool: false } },
+      // Events are excluded for the same reason: one offering, one list. The
+      // packages API won't let a row be both, but the four list queries must
+      // agree with runKind() anyway or something appears twice or nowhere.
+      where: { trainerId, package: { allowDropIn: true, isPuppySchool: false, ...NON_EVENT_PACKAGE } },
       // Trainer's arranged order first; date breaks ties.
       orderBy: [{ order: 'asc' }, { startDate: 'asc' }],
       include: {

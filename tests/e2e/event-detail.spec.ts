@@ -37,6 +37,7 @@ async function createEvent(page: Page) {
       weeksBetween: 0,
       durationMins: 120,
       isGroup: true,
+      isEvent: true,
       capacity: 30,
       priceCents: 4500,
       startAt: inDays(21).toISOString(),

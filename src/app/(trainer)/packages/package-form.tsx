@@ -67,6 +67,10 @@ export interface PkgRow {
   // Group-class config (optional so an older loader that doesn't select
   // them still satisfies the type — the form defaults them).
   isGroup?: boolean
+  /** Declared at creation: this offering is a one-off EVENT, not a class.
+   *  Never re-derived from the shape — that's what made a one-session class
+   *  turn into an event the moment it was saved. */
+  isEvent?: boolean
   capacity?: number | null
   allowDropIn?: boolean
   dropInPriceCents?: number | null
@@ -364,13 +368,15 @@ export function PackageForm({
     return () => { off = true }
   }, [])
   // The offering kind drives the card selection + which schedule fields show.
-  // It's a UI discriminator over the persisted flags: a one-off event is a
-  // group with a single session and no recurrence.
+  // Read from what the offering SAYS it is. This used to re-derive "event" from
+  // the shape (one session, no recurrence) — so opening an ordinary class that
+  // runs once showed it as an event and saving re-persisted it as one, moving
+  // it off the trainer's Classes list for good.
   const [kind, setKind] = useState<OfferingKind>(() => {
     if (!existing) return initialKind ?? 'onetoone'
     if (!existing.isGroup) return 'onetoone'
     if (existing.allowDropIn) return 'dropin'
-    if (existing.sessionCount === 1 && !existing.recurrenceRule) return 'oneoff'
+    if (existing.isEvent) return 'oneoff'
     return 'group'
   })
   function selectKind(k: OfferingKind) {
@@ -484,6 +490,12 @@ export function PackageForm({
         // single occasion that either happened or didn't.
         requireSessionNotes: kind === 'oneoff' ? false : requireSessionNotes,
         isGroup,
+        // WHAT THIS IS, stated outright. The one place that knows an offering is
+        // an event is the trainer picking "One-off event" here (or arriving from
+        // /offerings/new?kind=oneoff); before this it was never persisted and
+        // every screen guessed from the shape instead. Sent on edit too — always
+        // the current selection, so re-saving a class keeps it a class.
+        isEvent: kind === 'oneoff',
         capacity: isGroup && capacity.trim() ? Math.max(0, Math.floor(Number(capacity))) : null,
         allowDropIn: isGroup && allowDropIn,
         dropInPriceCents: isGroup && allowDropIn ? dollarsToCents(dropInPrice) : null,

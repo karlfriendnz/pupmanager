@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
-import { ONE_OFF_EVENT_PACKAGE } from '@/lib/class-runs'
+import { EVENT_PACKAGE } from '@/lib/class-runs'
 import { formatDate } from '@/lib/utils'
 import { EventsView } from './events-view'
 
@@ -26,7 +26,7 @@ export default async function EventsPage() {
   if (!(await hasAddon(trainerId, 'events'))) redirect('/settings?tab=addons')
 
   const runs = await prisma.classRun.findMany({
-    where: { trainerId, package: ONE_OFF_EVENT_PACKAGE },
+    where: { trainerId, package: EVENT_PACKAGE },
     // Trainer's arranged order first; date breaks ties (and is the whole order
     // until anything has been dragged).
     orderBy: [{ order: 'asc' }, { startDate: 'asc' }],

@@ -66,7 +66,7 @@ export default async function EditPackagePage({
 
   // Name the thing you're editing, and send Back where you came from — the
   // class itself when it's scheduled, else its list.
-  const isEvent = pkg.isGroup && pkg.sessionCount === 1 && !pkg.recurrenceRule
+  const isEvent = pkg.isGroup && pkg.isEvent
   const kindLabel = !pkg.isGroup ? 'package' : pkg.allowDropIn ? 'drop-in class' : isEvent ? 'event' : 'class'
   const back = run
     ? { href: `/classes/${run.id}`, label: `Back to ${pkg.name}` }
@@ -99,6 +99,7 @@ export default async function EditPackagePage({
             defaultSessionFormId: pkg.defaultSessionFormId ?? null,
             requireSessionNotes: pkg.requireSessionNotes,
             isGroup: pkg.isGroup,
+            isEvent: pkg.isEvent,
             capacity: pkg.capacity,
             allowDropIn: pkg.allowDropIn,
             dropInPriceCents: pkg.dropInPriceCents,

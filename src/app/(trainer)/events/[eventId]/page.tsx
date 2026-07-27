@@ -3,7 +3,7 @@ import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
-import { isOneOffEventPackage } from '@/lib/class-runs'
+import { isEventPackage } from '@/lib/class-runs'
 import { EventDetail } from './event-detail'
 
 export const metadata: Metadata = { title: 'Event' }
@@ -39,7 +39,7 @@ export default async function EventPage({
             id: true, name: true, description: true, capacity: true, durationMins: true,
             sessionType: true, priceCents: true, specialPriceCents: true,
             allowWaitlist: true, allowDropIn: true, isGroup: true,
-            sessionCount: true, recurrenceRule: true,
+            sessionCount: true, recurrenceRule: true, isEvent: true,
             ticketTiers: {
               orderBy: { order: 'asc' },
               select: { id: true, name: true, priceCents: true, capacity: true },
@@ -76,8 +76,9 @@ export default async function EventPage({
   ])
   if (!run) notFound()
   // A group class opened at an /events URL is not an event — don't render it as
-  // one (its sessions and single price would silently go missing).
-  if (!isOneOffEventPackage(run.package)) notFound()
+  // one (its sessions and single price would silently go missing). The offering
+  // says which it is; nothing here re-derives it from the shape.
+  if (!isEventPackage(run.package)) notFound()
 
   const bySourceId = new Map(enrolmentInvoices.map(i => [i.sourceId, i]))
   // Several ticket types bought in one action are several enrolment rows on ONE

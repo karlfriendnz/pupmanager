@@ -1596,6 +1596,18 @@ model Package {
   // a session a parent books like a drop-in) + sessionCount 0 (ongoing). The
   // flag lets the workspace and the week board find these without heuristics.
   isPuppySchool            Boolean     @default(false)
+  // A one-off EVENT — a workshop, seminar or meet-up people buy a ticket to.
+  // An event is a ClassRun like any other (same cohort, roster, capacity and
+  // invoicing machinery, just a single occasion); this flag is the ONLY thing
+  // that makes it an event rather than a class.
+  //
+  // It used to be inferred from the shape — isGroup && !allowDropIn &&
+  // sessionCount === 1 && !recurrenceRule — but an ordinary group class that
+  // runs once has exactly that shape, so those classes were filtered off
+  // /classes and shown under /events instead. The kind is DECLARED at creation
+  // (the /offerings/new?kind=oneoff route) and never re-derived, so editing an
+  // offering can no longer change what it is. See lib/run-kind.ts.
+  isEvent                  Boolean     @default(false)
   // Max enrolments per run (null = unlimited). A run may override this.
   capacity                 Int?
   // Allow clients to book a single session on its own (drop-in), at

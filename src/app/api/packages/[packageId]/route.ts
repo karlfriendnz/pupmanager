@@ -28,6 +28,10 @@ const updateSchema = z.object({
   defaultSessionFormId: z.string().nullable().optional(),
   requireSessionNotes: z.boolean().optional(),
   isGroup: z.boolean().optional(),
+  // Whether this offering is a one-off EVENT. Optional like everything else
+  // here: omitting it leaves the stored kind alone, so a caller that doesn't
+  // know about events can never reclassify one by accident.
+  isEvent: z.boolean().optional(),
   capacity: z.number().int().min(0).max(1000).nullable().optional(),
   allowDropIn: z.boolean().optional(),
   dropInPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
@@ -124,6 +128,8 @@ export async function PATCH(
         extra = {
           capacity: null,
           allowDropIn: false,
+          // A 1:1 consult is never an event.
+          isEvent: false,
           dropInPriceCents: null,
           recurrenceRule: null,
           publicEnrollment: false,
@@ -151,6 +157,20 @@ export async function PATCH(
     ...columns
   } = parsed.data
   const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
+
+  // What this offering IS may only change when the caller says so — and only to
+  // something coherent. An event is a group offering that is neither a drop-in
+  // class nor a daycare programme, so resolve the flag against what the row will
+  // BE after this patch rather than against the payload alone. Omitting the key
+  // leaves the stored kind untouched: editing a class cannot silently make it an
+  // event, which is precisely how one customer's classes used to disappear.
+  if (columns.isEvent !== undefined) {
+    const nextGroup = columns.isGroup !== undefined ? columns.isGroup : current.isGroup
+    const nextDropIn = dropIn
+      ? dropIn.allowDropIn
+      : columns.allowDropIn !== undefined ? columns.allowDropIn : current.allowDropIn
+    columns.isEvent = columns.isEvent && nextGroup && !nextDropIn && !current.isPuppySchool
+  }
 
   // Sessions the schedule change created / removed, mirrored to Google after
   // the transaction commits.

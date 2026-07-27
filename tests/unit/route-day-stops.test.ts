@@ -25,29 +25,16 @@ const DATE = '2026-08-04'
 const at = (hour: number, min = 0) => new Date(Date.UTC(2026, 7, 3, hour - 12, min))
 
 type Pkg = {
-  isGroup: boolean
+  isEvent: boolean
   allowDropIn: boolean
-  sessionCount: number
-  recurrenceRule: string | null
   isPuppySchool: boolean
 }
 
-const GROUP_PKG: Pkg = {
-  isGroup: true, allowDropIn: false, sessionCount: 6,
-  recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU', isPuppySchool: false,
-}
-const EVENT_PKG: Pkg = {
-  isGroup: true, allowDropIn: false, sessionCount: 1,
-  recurrenceRule: null, isPuppySchool: false,
-}
-const DROPIN_PKG: Pkg = {
-  isGroup: true, allowDropIn: true, sessionCount: 0,
-  recurrenceRule: null, isPuppySchool: false,
-}
-const DAYCARE_PKG: Pkg = {
-  isGroup: true, allowDropIn: true, sessionCount: 0,
-  recurrenceRule: null, isPuppySchool: true,
-}
+const GROUP_PKG: Pkg = { isEvent: false, allowDropIn: false, isPuppySchool: false }
+// An event because it SAYS so — not because it happens to have one session.
+const EVENT_PKG: Pkg = { isEvent: true, allowDropIn: false, isPuppySchool: false }
+const DROPIN_PKG: Pkg = { isEvent: false, allowDropIn: true, isPuppySchool: false }
+const DAYCARE_PKG: Pkg = { isEvent: false, allowDropIn: true, isPuppySchool: true }
 
 function groupSession(over: {
   id: string

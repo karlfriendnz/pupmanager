@@ -116,6 +116,7 @@ test.describe('an offering with a start date is scheduled', () => {
           weeksBetween: 0,
           durationMins: 180,
           isGroup: true,
+          isEvent: true,
           capacity: 20,
           startAt: inDays(14).toISOString(),
           location: 'Community Hall',

@@ -139,7 +139,7 @@ export async function getDayStops(
           package: {
             select: {
               isGroup: true, allowDropIn: true, sessionCount: true,
-              recurrenceRule: true, isPuppySchool: true,
+              recurrenceRule: true, isPuppySchool: true, isEvent: true,
             },
           },
           _count: { select: { enrollments: true } },

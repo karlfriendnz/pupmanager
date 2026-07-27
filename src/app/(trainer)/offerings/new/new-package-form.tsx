@@ -4,12 +4,12 @@ import { useRouter } from 'next/navigation'
 import { PackageForm, type PkgRow, type SessionFormOption } from '../../packages/package-form'
 
 /** Where a newly-created offering belongs — the list it will now appear on.
- *  Mirrors the form's own `kind` derivation over the persisted flags: a one-off
- *  event is a group with a single session and no recurrence. */
+ *  Reads the kind the offering was SAVED as (the server echoes the row back),
+ *  so a class that happens to run once lands on /classes like every other. */
 function listFor(saved: PkgRow): string {
   if (!saved.isGroup) return '/packages'
   if (saved.allowDropIn) return '/casual-classes'
-  if (saved.sessionCount === 1 && !saved.recurrenceRule) return '/events'
+  if (saved.isEvent) return '/events'
   return '/classes'
 }
 

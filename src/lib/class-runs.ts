@@ -54,7 +54,7 @@ export function generateSessionDates(
 // predicates themselves live in the client-safe run-kind module, because the
 // schedule grid (a client component) routes with them too and can't pull this
 // file's prisma import across the boundary.
-export { ONE_OFF_EVENT_PACKAGE, isOneOffEventPackage } from './run-kind'
+export { EVENT_PACKAGE, NON_EVENT_PACKAGE, isEventPackage } from './run-kind'
 
 // ─── Drop-in schedule slots ──────────────────────────────────────────────────
 
@@ -581,6 +581,13 @@ export async function createClassWithPackage(args: {
         sessionType: args.sessionType,
         priceCents: args.priceCents ?? null,
         isGroup: true,
+        // A class made here is a CLASS, however few times it meets. Stated
+        // rather than left to the column default: this is the path behind the
+        // class form's "Doesn't repeat (one-off)" option, which writes
+        // sessionCount 1 — the exact shape that used to be read as an event and
+        // filed the class away under /events. Session count and offering type
+        // are independent now, and this is where that starts.
+        isEvent: false,
         capacity: args.capacity ?? null,
         color: args.color ?? null,
         defaultSessionFormId: args.defaultSessionFormId ?? null,

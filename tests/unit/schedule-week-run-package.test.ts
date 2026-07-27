@@ -41,10 +41,8 @@ import { GET } from '@/app/api/schedule/week/route'
 import { runKind, type RunKindPackage } from '@/lib/run-kind'
 
 const EVENT_PKG: RunKindPackage = {
-  isGroup: true,
+  isEvent: true,
   allowDropIn: false,
-  sessionCount: 1,
-  recurrenceRule: null,
   isPuppySchool: false,
 }
 
@@ -74,11 +72,11 @@ describe('GET /api/schedule/week — the run package rides along', () => {
     // Every field runKind() reads must be selected, or routing a class block
     // throws on the client.
     expect(select.package.select).toMatchObject({
-      isGroup: true,
       allowDropIn: true,
-      sessionCount: true,
-      recurrenceRule: true,
       isPuppySchool: true,
+      // The declared kind. Without it every event block on the week grid would
+      // route to /classes/… instead of /events/….
+      isEvent: true,
     })
   })
 

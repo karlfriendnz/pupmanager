@@ -10,7 +10,7 @@ export function offeringHome(pkg: PkgRow): string {
   if (pkg.classRunId) return `/classes/${pkg.classRunId}`
   if (!pkg.isGroup) return '/packages'
   if (pkg.allowDropIn) return '/casual-classes'
-  if (pkg.sessionCount === 1 && !pkg.recurrenceRule) return '/events'
+  if (pkg.isEvent) return '/events'
   return '/classes'
 }
 

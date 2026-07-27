@@ -195,7 +195,7 @@ const RUN_KINDS = [
     // The exception, and it isn't an oversight: an event is one session by
     // definition, so /events/[eventId] IS the session screen.
     kind: 'one-off event',
-    pkg: { isGroup: true, capacity: 8, allowDropIn: false, sessionCount: 1 },
+    pkg: { isGroup: true, capacity: 8, allowDropIn: false, sessionCount: 1, isEvent: true },
     expectedPath: (runId: string) => `/events/${runId}`,
   },
 ] as const

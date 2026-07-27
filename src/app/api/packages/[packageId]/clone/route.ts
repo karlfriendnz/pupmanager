@@ -55,6 +55,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ packag
       defaultSessionFormId: src.defaultSessionFormId,
       requireSessionNotes: src.requireSessionNotes,
       isGroup: src.isGroup,
+      // A copy of an event is an event, and a copy of a class is a class. This
+      // has to be carried explicitly now the kind is declared rather than
+      // inferred — otherwise duplicating an event would quietly produce a class.
+      isEvent: src.isEvent,
       capacity: src.capacity,
       allowDropIn: src.allowDropIn,
       dropInPriceCents: src.dropInPriceCents,

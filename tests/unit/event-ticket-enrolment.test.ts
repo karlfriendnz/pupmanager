@@ -12,7 +12,7 @@ import {
   normalizeTicketQuantity,
   decideEnrollment,
   classSessionSpaces,
-  isOneOffEventPackage,
+  isEventPackage,
   MAX_TICKET_QUANTITY,
 } from '../../src/lib/class-runs'
 
@@ -95,23 +95,16 @@ describe('classSessionSpaces — places, not rows', () => {
   })
 })
 
-describe('isOneOffEventPackage — what makes a run an event', () => {
-  const event = { isGroup: true, allowDropIn: false, sessionCount: 1, recurrenceRule: null }
-
-  it('recognises the one-off event shape', () => {
-    expect(isOneOffEventPackage(event)).toBe(true)
+describe('isEventPackage — what makes a run an event', () => {
+  // An offering DECLARES that it is an event. It used to be inferred from the
+  // shape (group + one session + no recurrence), which is also the shape of an
+  // ordinary class that runs once — so those classes disappeared off /classes
+  // and turned up under /events. Nothing below may reintroduce a shape test.
+  it('an offering flagged as an event is one', () => {
+    expect(isEventPackage({ isEvent: true })).toBe(true)
   })
 
-  it('a multi-session course is not an event', () => {
-    expect(isOneOffEventPackage({ ...event, sessionCount: 6 })).toBe(false)
-  })
-
-  it('a repeating single-session class is not an event', () => {
-    expect(isOneOffEventPackage({ ...event, recurrenceRule: 'FREQ=WEEKLY' })).toBe(false)
-  })
-
-  it('a drop-in class is not an event, nor is a 1:1 package', () => {
-    expect(isOneOffEventPackage({ ...event, allowDropIn: true })).toBe(false)
-    expect(isOneOffEventPackage({ ...event, isGroup: false })).toBe(false)
+  it('an offering not flagged as an event is not one, however few sessions it has', () => {
+    expect(isEventPackage({ isEvent: false })).toBe(false)
   })
 })

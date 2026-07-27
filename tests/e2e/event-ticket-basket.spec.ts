@@ -40,6 +40,7 @@ async function createEvent(page: Page, over: Record<string, unknown> = {}) {
       weeksBetween: 0,
       durationMins: 120,
       isGroup: true,
+      isEvent: true,
       capacity: 30,
       priceCents: 4500,
       startAt: inDays(24).toISOString(),

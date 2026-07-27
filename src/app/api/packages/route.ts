@@ -38,6 +38,12 @@ const schema = z.object({
   // School workspace. Implies isGroup + allowDropIn (each day-part books like a
   // drop-in session).
   isPuppySchool: z.boolean().optional(),
+  // A one-off EVENT — a workshop/seminar/meet-up people buy a ticket to. The
+  // creation surface is the only thing that knows this (the trainer picked
+  // "One-off event", or came in on /offerings/new?kind=oneoff), so it is stored
+  // rather than guessed later from the shape. Defaults false: anything created
+  // by any other path is a class.
+  isEvent: z.boolean().optional(),
   capacity: z.number().int().min(0).max(1000).nullable().optional(),
   allowDropIn: z.boolean().optional(),
   dropInPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
@@ -131,6 +137,16 @@ export async function POST(req: Request) {
   let runId: string | null = null
   let createdSessionIds: string[] = []
 
+  // What kind of thing this is, settled once. An event is a GROUP offering that
+  // isn't a drop-in class or a daycare programme — those have their own screens,
+  // and a row flagged as two kinds at once would appear on both or neither.
+  // Everything else is false, which is why a class created as a class stays one
+  // no matter how few sessions it has.
+  const isGroup = parsed.data.isGroup ?? false
+  const isPuppySchool = parsed.data.isPuppySchool ?? false
+  const allowDropIn = dropIn ? dropIn.allowDropIn : (parsed.data.allowDropIn ?? false)
+  const isEvent = (parsed.data.isEvent ?? false) && isGroup && !allowDropIn && !isPuppySchool
+
   const pkg = await prisma.$transaction(async (tx) => {
     const created = await tx.package.create({
       data: {
@@ -152,10 +168,11 @@ export async function POST(req: Request) {
         color: parsed.data.color ?? null,
         defaultSessionFormId: parsed.data.defaultSessionFormId ?? null,
         requireSessionNotes: parsed.data.requireSessionNotes ?? true,
-        isGroup: parsed.data.isGroup ?? false,
-        isPuppySchool: parsed.data.isPuppySchool ?? false,
+        isGroup,
+        isPuppySchool,
+        isEvent,
         capacity: parsed.data.capacity ?? null,
-        allowDropIn: dropIn ? dropIn.allowDropIn : (parsed.data.allowDropIn ?? false),
+        allowDropIn,
         dropInPriceCents: dropIn ? dropIn.dropInPriceCents : (parsed.data.dropInPriceCents ?? null),
         recurrenceRule: parsed.data.recurrenceRule || null,
         allowWaitlist: parsed.data.allowWaitlist ?? false,

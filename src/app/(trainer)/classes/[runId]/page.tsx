@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { isOneOffEventPackage } from '@/lib/class-runs'
+import { isEventPackage } from '@/lib/class-runs'
 import { ClassRunDetailContent } from './run-detail-content'
 
 export const metadata: Metadata = { title: 'Class run' }
@@ -22,9 +22,9 @@ export default async function ClassRunPage({
   // the destination gates on the trainer's own scope and the events add-on.
   const run = await prisma.classRun.findUnique({
     where: { id: runId },
-    select: { package: { select: { isGroup: true, allowDropIn: true, sessionCount: true, recurrenceRule: true } } },
+    select: { package: { select: { isEvent: true } } },
   })
-  if (run?.package && isOneOffEventPackage(run.package)) redirect(`/events/${runId}`)
+  if (run?.package && isEventPackage(run.package)) redirect(`/events/${runId}`)
 
   return <ClassRunDetailContent runId={runId} basePath="/classes" backLabel="Classes" />
 }

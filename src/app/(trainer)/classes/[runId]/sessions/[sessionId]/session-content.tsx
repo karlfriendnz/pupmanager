@@ -36,7 +36,7 @@ export async function ClassSessionContent({
           package: {
             select: {
               isGroup: true, allowDropIn: true, sessionCount: true,
-              recurrenceRule: true, isPuppySchool: true,
+              recurrenceRule: true, isPuppySchool: true, isEvent: true,
             },
           },
           trainer: { select: { user: { select: { timezone: true } } } },

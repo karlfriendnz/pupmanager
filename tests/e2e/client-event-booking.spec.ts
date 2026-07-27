@@ -40,6 +40,8 @@ async function createEvent(page: Page, name: string, tiers: { name: string; pric
       weeksBetween: 0,
       durationMins: 90,
       isGroup: true,
+      // Declared, not inferred — an offering is an event because it says so.
+      isEvent: true,
       capacity: 30,
       priceCents: 4500,
       startAt: inDays(14).toISOString(),

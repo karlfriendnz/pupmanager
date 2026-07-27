@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
 import { getEnabledAddons } from '@/lib/billing'
-import { ONE_OFF_EVENT_PACKAGE } from '@/lib/class-runs'
+import { EVENT_PACKAGE, NON_EVENT_PACKAGE } from '@/lib/class-runs'
 import { OfferingsList, type OfferingRowData } from './offerings-list'
 import type { Metadata } from 'next'
 
@@ -30,10 +30,10 @@ export default async function OfferingsPage() {
   const [packages, classes, casual, events, daycare, memberships, products] = await Promise.all([
     prisma.package.count({ where: { trainerId, isGroup: false } }),
     prisma.classRun.count({
-      where: { trainerId, package: { allowDropIn: false }, NOT: { package: ONE_OFF_EVENT_PACKAGE } },
+      where: { trainerId, package: { allowDropIn: false, ...NON_EVENT_PACKAGE } },
     }),
-    prisma.classRun.count({ where: { trainerId, package: { allowDropIn: true, isPuppySchool: false } } }),
-    prisma.classRun.count({ where: { trainerId, package: ONE_OFF_EVENT_PACKAGE } }),
+    prisma.classRun.count({ where: { trainerId, package: { allowDropIn: true, isPuppySchool: false, ...NON_EVENT_PACKAGE } } }),
+    prisma.classRun.count({ where: { trainerId, package: EVENT_PACKAGE } }),
     prisma.package.count({ where: { trainerId, isPuppySchool: true } }),
     prisma.membership.count({ where: { trainerId } }),
     prisma.product.count({ where: { trainerId } }),

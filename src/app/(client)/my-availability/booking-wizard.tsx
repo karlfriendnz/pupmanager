@@ -65,7 +65,8 @@ export interface WizardEventTier {
 }
 
 /**
- * A one-off EVENT — a single-session group run. Separate from WizardClass
+ * A one-off EVENT — a group run the trainer created as an event. Separate from
+ * WizardClass
  * because the two are priced differently: a class sells a seat (or a drop-in)
  * at the package price, while a ticketed event sells a TICKET at its tier's
  * price. `priceCents` is only populated when there are no tiers.

@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isConnectConfigured } from '@/lib/connect'
 import { hasAddon } from '@/lib/billing'
-import { isClassRunPast, ONE_OFF_EVENT_PACKAGE } from '@/lib/class-runs'
+import { isClassRunPast, NON_EVENT_PACKAGE } from '@/lib/class-runs'
 import { formatDate } from '@/lib/utils'
 import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
@@ -25,13 +25,17 @@ export default async function ClassesPage({
 
   const [runs, trainer] = await Promise.all([
     prisma.classRun.findMany({
-      // Recurring group classes only. Drop-in classes and one-off events are
-      // ClassRuns too, but they have their own pages — without this they'd be
-      // listed here as well, and every one of them three times over.
+      // Group classes only. Drop-in classes and one-off events are ClassRuns
+      // too, but they have their own pages — without this they'd be listed here
+      // as well, and every one of them three times over.
+      //
+      // Events are excluded by their DECLARED flag, not by their shape. The old
+      // shape test ("a group offering with one session and no recurrence") also
+      // matched an ordinary class that runs once, and silently hid it from this
+      // list — see lib/run-kind.ts.
       where: {
         trainerId,
-        package: { allowDropIn: false },
-        NOT: { package: ONE_OFF_EVENT_PACKAGE },
+        package: { allowDropIn: false, ...NON_EVENT_PACKAGE },
       },
       // Trainer's arranged order first; date breaks ties (and is the whole
       // order until anything has been dragged).

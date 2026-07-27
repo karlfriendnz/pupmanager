@@ -4,7 +4,7 @@ import {
   runKindLabel,
   runHref,
   runSessionHref,
-  isOneOffEventPackage,
+  isEventPackage,
   type RunKindPackage,
 } from '@/lib/run-kind'
 
@@ -13,12 +13,9 @@ import {
 // the schedule grid both sent casual, event and daycare sessions to /classes/…
 // These lock the derivation down.
 
-const CLASS: RunKindPackage = {
-  isGroup: true, allowDropIn: false, sessionCount: 6,
-  recurrenceRule: null, isPuppySchool: false,
-}
-const CASUAL: RunKindPackage = { ...CLASS, allowDropIn: true, sessionCount: 1 }
-const EVENT: RunKindPackage = { ...CLASS, sessionCount: 1 }
+const CLASS: RunKindPackage = { isEvent: false, allowDropIn: false, isPuppySchool: false }
+const CASUAL: RunKindPackage = { ...CLASS, allowDropIn: true }
+const EVENT: RunKindPackage = { ...CLASS, isEvent: true }
 const DAYCARE: RunKindPackage = { ...CLASS, isPuppySchool: true }
 
 describe('runKind', () => {
@@ -29,20 +26,29 @@ describe('runKind', () => {
     expect(runKind(DAYCARE)).toBe('daycare')
   })
 
-  it('puts daycare first — a puppy-school run can also match the event shape', () => {
-    const daycareShapedLikeAnEvent: RunKindPackage = {
-      ...EVENT, isPuppySchool: true,
-    }
-    expect(isOneOffEventPackage(daycareShapedLikeAnEvent)).toBe(true)
-    expect(runKind(daycareShapedLikeAnEvent)).toBe('daycare')
+  it('puts daycare first — a daycare programme flagged as an event is still daycare', () => {
+    const daycareFlaggedAsEvent: RunKindPackage = { ...EVENT, isPuppySchool: true }
+    expect(isEventPackage(daycareFlaggedAsEvent)).toBe(true)
+    expect(runKind(daycareFlaggedAsEvent)).toBe('daycare')
   })
 
-  it('a recurring single-session group run is a class, not an event', () => {
-    expect(runKind({ ...EVENT, recurrenceRule: 'FREQ=WEEKLY' })).toBe('class')
+  // The bug this file exists to prevent a repeat of: "event" used to be a
+  // SHAPE — a group offering with one session and no recurrence — and an
+  // ordinary class that runs once matched it exactly, so it vanished off the
+  // trainer's Classes list and turned up under Events. The kind is DECLARED
+  // now, and nothing about how often a class meets can change it.
+  it('a class that runs once is still a class', () => {
+    expect(runKind(CLASS)).toBe('class')
+    expect(isEventPackage(CLASS)).toBe(false)
+    expect(runHref('r1', CLASS)).toBe('/classes/r1')
   })
 
-  it('a one-off drop-in is casual, not an event (an event is never drop-in)', () => {
-    expect(runKind({ ...EVENT, allowDropIn: true })).toBe('casual')
+  // Contradictory flags can't be created — the packages API refuses to mark a
+  // drop-in or a daycare programme as an event — but if one ever existed the
+  // declaration wins, and it wins the same way in the list queries (/classes
+  // and /casual-classes both exclude events), so it can't appear twice.
+  it('the declared kind wins over the drop-in flag', () => {
+    expect(runKind({ ...EVENT, allowDropIn: true })).toBe('event')
   })
 
   it('labels read the way a trainer would say them', () => {

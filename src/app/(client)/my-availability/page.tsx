@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { classSessionSpaces, sessionDropInPriceCents, sessionCapacity, isOneOffEventPackage, MAX_TICKET_QUANTITY } from '@/lib/class-runs'
+import { classSessionSpaces, sessionDropInPriceCents, sessionCapacity, isEventPackage, MAX_TICKET_QUANTITY } from '@/lib/class-runs'
 import { toWizardEvent } from '@/lib/client-wizard-events'
 import { getActiveClient } from '@/lib/client-context'
 import { todayInTz } from '@/lib/timezone'
@@ -168,9 +168,9 @@ export default async function MyAvailabilityPage() {
         select: {
           name: true, priceCents: true, specialPriceCents: true, allowDropIn: true, dropInPriceCents: true,
           capacity: true, allowWaitlist: true,
-          // Needed to tell an EVENT (a one-off run) from a class, and to price
-          // a ticketed event off its tiers rather than the package price.
-          isGroup: true, sessionCount: true, recurrenceRule: true,
+          // Needed to tell an EVENT from a class, and to price a ticketed
+          // event off its tiers rather than the package price.
+          isEvent: true, isGroup: true, sessionCount: true, recurrenceRule: true,
           ticketTiers: { orderBy: { order: 'asc' }, select: { id: true, name: true, priceCents: true, capacity: true } },
         },
       },
@@ -186,13 +186,13 @@ export default async function MyAvailabilityPage() {
       },
     },
   })
-  // An EVENT is a one-off run (isGroup, no drop-in, a single session, no
-  // recurrence) — the same predicate the trainer's Events list uses. They were
+  // An EVENT is an offering the trainer declared as one — the same predicate
+  // the trainer's Events list uses, so the two ends can't disagree. They were
   // being listed here as "Group classes", and a ticketed one was quoted at the
   // package price: the $45 shown for a $200 ticket. Split out, they get their
   // own type and are priced by the ticket.
-  const eventRuns = openRuns.filter(r => isOneOffEventPackage(r.package))
-  const classRuns = openRuns.filter(r => !isOneOffEventPackage(r.package))
+  const eventRuns = openRuns.filter(r => isEventPackage(r.package))
+  const classRuns = openRuns.filter(r => !isEventPackage(r.package))
 
   const events: WizardEvent[] = eventRuns.map(toWizardEvent)
 

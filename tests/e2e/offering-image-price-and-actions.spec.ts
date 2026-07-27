@@ -235,7 +235,7 @@ test.describe('offering — the session-notes reminder is not an event thing', (
     const prisma = await makePrisma()
     // A one-off event: group, one session, no recurrence — with the flag on.
     const pkg = await makeOffering(prisma, {
-      isGroup: true, sessionCount: 1, recurrenceRule: null, requireSessionNotes: true,
+      isGroup: true, isEvent: true, sessionCount: 1, recurrenceRule: null, requireSessionNotes: true,
     })
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
