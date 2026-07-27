@@ -250,6 +250,23 @@ describe('batching & success', () => {
     expect(h.sendEmailBatch.mock.calls[2][0]).toHaveLength(50)
   })
 
+  it('does NOT write the broadcast into each client\'s message thread', async () => {
+    // A marketing broadcast is not a conversation. It used to copy itself into
+    // every recipient's TRAINER_CLIENT thread, which put campaigns clients
+    // cannot reply to into their messages, listed every send twice in the
+    // trainer's Comms tab, and needed an emailFallbackSentAt stamp to stop the
+    // unread-messages cron nudging about its own rows.
+    grant()
+    h.clientFindMany.mockResolvedValue([client('a'), client('b')])
+    h.sendEmailBatch.mockResolvedValue({ data: [{ id: 'e1' }, { id: 'e2' }], error: null })
+    const res = await POST(req({ clientIds: ['a', 'b'], subject: 's', body: 'b' }))
+    expect(res.status).toBe(201)
+    expect((await res.json()).sent).toBe(2)
+    expect(h.messageCreateMany).not.toHaveBeenCalled()
+    // The send is still recorded — on the broadcast, which is what Comms reads.
+    expect(h.recipientCreateMany.mock.calls[0][0].data).toHaveLength(2)
+  })
+
   it('records failed recipients when a batch errors but still 201s', async () => {
     grant()
     h.clientFindMany.mockResolvedValue([client('a'), client('b')])
@@ -257,7 +274,12 @@ describe('batching & success', () => {
     const res = await POST(req({ clientIds: ['a', 'b'], subject: 's', body: 'b' }))
     expect(res.status).toBe(201)
     expect((await res.json()).sent).toBe(0)
-    // The recipient rows are still persisted (as FAILED) via the transaction.
-    expect(h.$transaction).toHaveBeenCalled()
+    // The recipient rows are still persisted (as FAILED). Asserted on the
+    // write itself rather than on $transaction: a broadcast no longer copies
+    // itself into each client's message thread, so there is only one write and
+    // no transaction to wrap it.
+    expect(h.recipientCreateMany).toHaveBeenCalled()
+    expect(h.recipientCreateMany.mock.calls[0][0].data).toHaveLength(2)
+    expect(h.recipientCreateMany.mock.calls[0][0].data[0].status).toBe('FAILED')
   })
 })

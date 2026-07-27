@@ -196,11 +196,15 @@ export async function POST(req: Request) {
     status: string
   }
   const recipientRows: RecipientRow[] = []
-  // We've already emailed each recipient directly, so stamp emailFallbackSentAt
-  // to keep the message-email-fallback cron from sending a second "unread
-  // messages" nudge for every one of these logged rows.
-  const fallbackHandledAt = new Date()
-  const messageRows: { clientId: string; senderId: string; channel: 'TRAINER_CLIENT'; body: string; bodyHtml: string; emailFallbackSentAt: Date }[] = []
+  // A marketing broadcast is NOT a conversation, so it no longer writes a
+  // Message into each client's thread (Karl, 2026-07-27). It used to, and that
+  // was wrong three ways: the client's message thread filled with campaigns
+  // they can't reply to, the trainer's Comms tab listed every send TWICE (once
+  // as the broadcast, once as the message copy), and the copy tripped the
+  // unread-messages cron — which had to be suppressed with an
+  // emailFallbackSentAt stamp, a workaround for a side effect of the row's own
+  // existence. EmailBroadcastRecipient already records who was sent what, and
+  // the Comms tab reads it directly, so nothing is lost.
   let sent = 0
 
   for (const group of chunk(built, BATCH_SIZE)) {
@@ -223,21 +227,10 @@ export async function POST(req: Request) {
       const resendEmailId = ids[i] ?? null
       sent += 1
       recipientRows.push({ broadcastId: broadcast.id, clientProfileId: g.client.id, email: g.to, resendEmailId, status: 'SENT' })
-      messageRows.push({
-        clientId: g.client.id,
-        senderId: session.user.id,
-        channel: 'TRAINER_CLIENT',
-        body: `📧 ${g.email.subject}\n\n${g.email.text}`,
-        bodyHtml: g.email.bodyHtml,
-        emailFallbackSentAt: fallbackHandledAt,
-      })
     })
   }
 
-  await prisma.$transaction([
-    prisma.emailBroadcastRecipient.createMany({ data: recipientRows }),
-    ...(messageRows.length ? [prisma.message.createMany({ data: messageRows })] : []),
-  ])
+  await prisma.emailBroadcastRecipient.createMany({ data: recipientRows })
 
   return NextResponse.json({ broadcastId: broadcast.id, sent, skipped }, { status: 201 })
 }
