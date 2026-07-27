@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { ModalPortal } from '@/components/shared/modal-portal'
-import { X, Loader2, Check, Send, FileText, AlertTriangle, Search, Minus, Plus, Trash2 } from 'lucide-react'
+import { X, Check, Send, FileText, AlertTriangle, Search, Minus, Plus } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 
@@ -830,70 +830,3 @@ export function EnrolModal({
   )
 }
 
-/** Shared delete control for a run's page header: confirm inline, then DELETE.
- *  Same two-step shape on both detail screens so the destructive action never
- *  behaves differently depending on which one you're standing on. */
-export function DeleteRunButton({
-  runId,
-  label,
-  confirmText,
-  onDeleted,
-  onError,
-}: {
-  runId: string
-  label: string
-  confirmText: string
-  onDeleted: () => void
-  onError: (message: string) => void
-}) {
-  const [confirming, setConfirming] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-
-  async function handleDelete() {
-    setDeleting(true)
-    try {
-      const res = await fetch(`/api/class-runs/${runId}`, { method: 'DELETE' })
-      if (res.ok) { onDeleted(); return }
-      const body = await res.json().catch(() => null)
-      onError(typeof body?.error === 'string' ? body.error : `Could not delete this ${label} — try again.`)
-    } catch {
-      onError(`Could not delete this ${label} — check your connection and try again.`)
-    }
-    setDeleting(false)
-    setConfirming(false)
-  }
-
-  if (!confirming) {
-    return (
-      <button
-        onClick={() => setConfirming(true)}
-        title={`Delete ${label}`}
-        className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-      >
-        <Trash2 className="h-4 w-4 text-rose-500" strokeWidth={1.75} />
-        <span className="hidden sm:inline">Delete</span>
-      </button>
-    )
-  }
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-xs text-slate-600 hidden sm:inline">{confirmText}</span>
-      <button
-        onClick={() => setConfirming(false)}
-        disabled={deleting}
-        aria-label="Cancel"
-        className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60"
-      >
-        <X className="h-4 w-4" />
-      </button>
-      <button
-        onClick={handleDelete}
-        disabled={deleting}
-        className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
-      >
-        {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" strokeWidth={1.75} />}
-        Yes, delete
-      </button>
-    </div>
-  )
-}

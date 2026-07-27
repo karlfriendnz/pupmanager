@@ -10,7 +10,8 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { CardHeading } from '@/components/shared/card-heading'
-import { Users, UserPlus, CalendarDays, ClipboardCheck, Pencil, Info, Bell, Tag } from 'lucide-react'
+import { OfferingActions } from '@/components/trainer/offering-actions'
+import { Users, UserPlus, CalendarDays, ClipboardCheck, Info, Bell, Tag } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
@@ -20,7 +21,7 @@ import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tab
 // The roster, the enrol flow and the label/value rows are shared with the event
 // detail screen — see components/trainer/run-roster.tsx for why.
 import {
-  EnrollTable, EnrolModal, Detail, DetailPair, DeleteRunButton, groupByClient,
+  EnrollTable, EnrolModal, Detail, DetailPair, groupByClient,
   type Enrollment, type ClientOpt, type SessionRow,
 } from '@/components/trainer/run-roster'
 
@@ -134,6 +135,14 @@ export function RunDetail({
     router.refresh()
   }
 
+  // What to call this thing in the action menu. The same component serves
+  // /classes, /casual-classes and /doggy-daycare, and "Delete this class" on a
+  // daycare programme reads as somebody else's screen.
+  const offeringNoun =
+    basePath === '/casual-classes' ? 'casual class'
+    : basePath === '/doggy-daycare' ? 'programme'
+    : 'class'
+
   const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: rosterCount > 0 ? rosterCount : undefined },
@@ -143,34 +152,12 @@ export function RunDetail({
 
   return (
     <>
+      {/* Name and the way back, nothing else. Edit and Delete are things you do
+          to THIS class, so they sit on the card that describes it — the same
+          place, and the same component, as every other offering. */}
       <PageHeader
         title={run.name}
         back={{ href: basePath, label: backLabel }}
-        // Delete / Edit belong with the other page-level controls in the top
-        // bar, not floating above the content.
-        actions={
-          <div className="flex items-center gap-2">
-            <DeleteRunButton
-              runId={run.id}
-              label="class"
-              confirmText="Delete this class?"
-              onError={setError}
-              onDeleted={() => {
-                // refresh() first so the /classes list re-renders without the
-                // run — pushing alone can serve the cached (stale) render.
-                router.refresh()
-                router.push(basePath)
-              }}
-            />
-            {/* The whole class is edited on one full page — the same form, in
-                the same order, as the wizard that created it. */}
-            <Link href={`/packages/${run.packageId}/edit`}>
-              <Button variant="secondary">
-                <Pencil className="h-4 w-4" /> <span className="hidden sm:inline">Edit</span>
-              </Button>
-            </Link>
-          </div>
-        }
       />
 
       {/* Full width — two columns of detail need the room, and capping it
@@ -206,7 +193,23 @@ export function RunDetail({
           {/* Class details */}
           <Card>
             <CardBody className="py-5">
-              <CardHeading icon={<Info className="h-4 w-4 text-slate-400" />}>Details</CardHeading>
+              {/* Edit at the top of what it edits; duplicate, convert and
+                  delete behind More. */}
+              <CardHeading
+                icon={<Info className="h-4 w-4 text-slate-400" />}
+                action={
+                  <OfferingActions
+                    name={run.name}
+                    noun={offeringNoun}
+                    editHref={`/packages/${run.packageId}/edit`}
+                    packageId={run.packageId}
+                    runId={run.id}
+                    backHref={basePath}
+                  />
+                }
+              >
+                Details
+              </CardHeading>
               <div className="divide-y divide-slate-100">
                 {/* Read-only here, like every other fact on this card. It's
                     changed on the edit page, with the rest of the class. */}

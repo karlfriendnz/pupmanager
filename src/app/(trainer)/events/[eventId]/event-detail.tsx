@@ -11,15 +11,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { CardHeading } from '@/components/shared/card-heading'
+import { OfferingActions } from '@/components/trainer/offering-actions'
 import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
-import { Users, UserPlus, Pencil, Info, Bell, Tag, Ticket } from 'lucide-react'
+import { Users, UserPlus, Info, Bell, Tag, Ticket } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
@@ -27,7 +27,7 @@ import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { DiscountManager } from '@/components/trainer/discount-manager'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
 import {
-  EnrollTable, EnrolModal, Detail, DeleteRunButton, groupByClient,
+  EnrollTable, EnrolModal, Detail, groupByClient,
   type Enrollment, type ClientOpt, type TicketTier,
 } from '@/components/trainer/run-roster'
 
@@ -122,25 +122,11 @@ export function EventDetail({
 
   return (
     <>
+      {/* Name and the way back. Edit and Delete live on the Details card with
+          the rest of what you do to this event — same as every offering. */}
       <PageHeader
         title={event.name}
         back={{ href: '/events', label: 'Events' }}
-        actions={
-          <div className="flex items-center gap-2">
-            <DeleteRunButton
-              runId={event.id}
-              label="event"
-              confirmText="Delete this event?"
-              onError={setError}
-              onDeleted={() => { router.refresh(); router.push('/events') }}
-            />
-            <Link href={`/packages/${event.packageId}/edit`}>
-              <Button variant="secondary">
-                <Pencil className="h-4 w-4" /> <span className="hidden sm:inline">Edit</span>
-              </Button>
-            </Link>
-          </div>
-        }
       />
 
       <div className="p-4 md:p-8 w-full">
@@ -165,7 +151,21 @@ export function EventDetail({
 
           <Card>
             <CardBody className="py-5">
-              <CardHeading icon={<Info className="h-4 w-4 text-slate-400" strokeWidth={1.75} />}>Details</CardHeading>
+              <CardHeading
+                icon={<Info className="h-4 w-4 text-slate-400" strokeWidth={1.75} />}
+                action={
+                  <OfferingActions
+                    name={event.name}
+                    noun="event"
+                    editHref={`/packages/${event.packageId}/edit`}
+                    packageId={event.packageId}
+                    runId={event.id}
+                    backHref="/events"
+                  />
+                }
+              >
+                Details
+              </CardHeading>
               <div className="divide-y divide-slate-100">
                 <Detail label="Status" value={event.status.charAt(0) + event.status.slice(1).toLowerCase()} />
                 <Detail

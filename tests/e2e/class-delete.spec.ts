@@ -52,15 +52,15 @@ test('deleting a class with an enrolled client removes the class AND its session
     await page.goto(`/classes/${run.id}`)
     await expect(page.getByText('Delete Me Class').first()).toBeVisible()
 
-    page.once('dialog', d => d.accept()) // in case the UI confirms
-    await page.getByRole('button', { name: /Delete/i }).first().click()
-    const confirm = page.getByRole('button', { name: /^(Confirm|Delete class|Yes, delete)/i }).first()
-    if (await confirm.isVisible().catch(() => false)) {
-      await Promise.all([
-        page.waitForResponse(r => r.url().includes('/api/class-runs/') && r.request().method() === 'DELETE'),
-        confirm.click(),
-      ])
-    }
+    // Delete moved off the page header and into the details card's More sheet,
+    // alongside Duplicate and Convert — one place per action, on every offering
+    // detail screen.
+    await page.getByRole('button', { name: /More actions/ }).click()
+    await page.getByRole('button', { name: /^Delete this/ }).click()
+    await Promise.all([
+      page.waitForResponse(r => r.url().includes('/api/class-runs/') && r.request().method() === 'DELETE'),
+      page.getByRole('button', { name: 'Delete', exact: true }).click(),
+    ])
 
     // Gone from the list the trainer is looking at...
     await page.waitForURL('**/classes', { timeout: 15_000 })

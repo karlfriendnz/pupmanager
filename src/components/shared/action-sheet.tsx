@@ -4,7 +4,10 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { ModalPortal } from '@/components/shared/modal-portal'
 
-// Overflow actions for a document toolbar (the invoice document's "More").
+// The overflow menu ("More") for a toolbar or a card heading. Shared: the
+// invoice document opened the first one, the offering detail screens opened the
+// second, and a second copy of a scroll-locking portal is a second copy of
+// every bug it ever had.
 //
 // House style: a 56px menu hanging off a corner is not a phone UI, so this
 // opens as a full-width sheet off the bottom edge on a phone with room to
@@ -22,6 +25,8 @@ export interface SheetAction {
   icon: ReactNode
   onSelect: () => void
   disabled?: boolean
+  /** Destructive — red, and separated from what came before it. */
+  danger?: boolean
 }
 
 export function ActionSheet({
@@ -79,11 +84,15 @@ export function ActionSheet({
                 type="button"
                 disabled={a.disabled}
                 onClick={a.onSelect}
-                className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-slate-50 active:bg-slate-50 disabled:opacity-50"
+                // A destructive option gets the red and a thicker rule above it,
+                // so it can't be picked by momentum on the way down the list.
+                className={`flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-slate-50 active:bg-slate-50 disabled:opacity-50 ${
+                  a.danger ? 'border-t-4 border-t-slate-100 hover:bg-red-50 active:bg-red-50' : ''
+                }`}
               >
-                <span className="shrink-0 text-slate-700">{a.icon}</span>
+                <span className={`shrink-0 ${a.danger ? 'text-red-600' : 'text-slate-700'}`}>{a.icon}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-slate-900">{a.label}</span>
+                  <span className={`block text-sm font-medium ${a.danger ? 'text-red-600' : 'text-slate-900'}`}>{a.label}</span>
                   {a.hint && <span className="block text-xs text-slate-400">{a.hint}</span>}
                 </span>
               </button>

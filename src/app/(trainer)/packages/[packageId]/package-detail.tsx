@@ -10,7 +10,8 @@ import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { CardHeading } from '@/components/shared/card-heading'
-import { Info, Users, Pencil, Trash2, Package as PackageIcon, Bell, MessageSquare } from 'lucide-react'
+import { OfferingActions } from '@/components/trainer/offering-actions'
+import { Info, Users, Package as PackageIcon, Bell, MessageSquare } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
@@ -72,29 +73,8 @@ const STATUS_BADGE: Record<'Active' | 'Completed' | 'Inactive', string> = {
 }
 
 export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; clients: PackageClientRow[]; currency: string }) {
-  const router = useRouter()
   const [tab, setTab] = useState<Tab>('details')
   const [clientTab, setClientTab] = useState<'current' | 'past'>('current')
-  // Deleting asks first, inline — a blocking window.confirm is the one dialog
-  // a phone renders worst, and this is a destructive, unrecoverable action.
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-
-  async function handleDelete() {
-    if (deleting) return
-    setDeleting(true)
-    setDeleteError(null)
-    const res = await fetch(`/api/packages/${pkg.id}`, { method: 'DELETE' })
-    if (res.ok) {
-      router.push('/packages')
-      router.refresh()
-      return
-    }
-    setDeleteError('Could not delete this package.')
-    setDeleting(false)
-    setConfirmDelete(false)
-  }
 
   const formatPrice = (cents: number | null): string =>
     cents === null || cents === undefined ? '—' : formatMoney(cents, currency)
@@ -165,7 +145,23 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             {/* Package details */}
             <Card>
               <CardBody className="py-5">
-                <CardHeading icon={<Info className="h-4 w-4 text-slate-400" />}>Details</CardHeading>
+                {/* Edit sits here, at the top of what it edits — one tap, no
+                    scrolling to the foot of the card to find it. Everything
+                    occasional (duplicate, convert, delete) is behind More. */}
+                <CardHeading
+                  icon={<Info className="h-4 w-4 text-slate-400" />}
+                  action={
+                    <OfferingActions
+                      name={pkg.name}
+                      noun={pkg.isGroup ? 'class' : 'package'}
+                      editHref={`/packages/${pkg.id}/edit`}
+                      packageId={pkg.id}
+                      backHref="/packages"
+                    />
+                  }
+                >
+                  Details
+                </CardHeading>
                 <div className="divide-y divide-slate-100">
                   <Detail label="Type" value={pkg.isGroup ? 'Group class' : '1:1'} />
                   <Detail label="Sessions" value={pkg.sessionCount === 0 ? 'Ongoing' : String(pkg.sessionCount)} />
@@ -202,50 +198,11 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                   </div>
                 )}
 
-                {/* What you can DO with this offering, at the end of what it is.
-                    Two plain rows on hairline dividers — Delete last, set apart,
-                    and it asks before it goes. */}
-                <div className="mt-4 -mx-6 border-t border-slate-100">
-                  <Link
-                    href={`/packages/${pkg.id}/edit`}
-                    className="flex items-center gap-3 px-6 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    <Pencil className="h-4 w-4 text-slate-400" strokeWidth={1.75} />
-                    Edit this package
-                  </Link>
-                  <div className="border-t border-slate-100">
-                    {confirmDelete ? (
-                      <div className="flex flex-wrap items-center gap-2 px-6 py-3">
-                        <p className="flex-1 min-w-0 text-sm text-slate-600">Delete “{pkg.name}”? This can’t be undone.</p>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDelete(false)}
-                          className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700"
-                        >
-                          Keep it
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleDelete}
-                          disabled={deleting}
-                          className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
-                        >
-                          {deleting ? 'Deleting…' : 'Delete'}
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDelete(true)}
-                        className="flex w-full items-center gap-3 px-6 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-                        Delete this package
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {deleteError && <p className="px-1 pt-3 text-sm text-red-600">{deleteError}</p>}
+                {/* The Edit and Delete rows that used to close this card are
+                    gone: Edit was ~500px below the Edit in the card heading, so
+                    the same action appeared twice on one screen. Both now live
+                    once, at the top right — Edit as a button, Delete inside
+                    More, still red and still asking first. */}
               </CardBody>
             </Card>
 

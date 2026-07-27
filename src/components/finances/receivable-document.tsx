@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X, Loader2, Check, Send, Printer, Pencil, Plus, Trash2, Link2, MoreHorizontal } from 'lucide-react'
-import { ActionSheet, type SheetAction } from '@/components/finances/action-sheet'
+import { ActionSheet, type SheetAction } from '@/components/shared/action-sheet'
 import { planInvoiceActions, type InvoiceActionKey } from '@/components/finances/invoice-actions'
 import { formatMoney } from '@/lib/money'
 

@@ -259,26 +259,74 @@ test.describe('offering — the session-notes reminder is not an event thing', (
 test.describe('offering details page — actions on the page', () => {
   test.use({ viewport: PHONE })
 
-  test('Edit and Delete live in the details box, Delete asks first', async ({ page }) => {
+  // Karl: "it's simply a UX change I'm wanting, so edit is easier to find, and
+  // then More you can (clone the package or other offering, delete it, or
+  // convert the type of offering)". Edit used to be at the FOOT of the details
+  // card, a scroll below the card heading — and on classes and events it was in
+  // the page header as well, so the same action appeared twice on one screen.
+  // Now: Edit is a button in the card heading, everything occasional is behind
+  // More, and each of them exists exactly once.
+  test('Edit is in the details card heading, once, with More beside it', async ({ page }) => {
     const prisma = await makePrisma()
     const pkg = await makeOffering(prisma)
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       await page.goto(`/packages/${pkg.id}`)
 
-      // Not in the header chrome any more.
-      await expect(page.getByRole('link', { name: 'Edit this package' })).toBeVisible()
-      const del = page.getByRole('button', { name: 'Delete this package' })
-      await expect(del).toBeVisible()
+      const edit = page.getByRole('link', { name: 'Edit', exact: true })
+      await expect(edit).toHaveCount(1)
+      await expect(edit).toHaveAttribute('href', `/packages/${pkg.id}/edit`)
+
+      // The old duplicate rows at the foot of the card are gone.
+      await expect(page.getByRole('link', { name: 'Edit this package' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Delete this package' })).toHaveCount(0)
+
+      // Edit sits at the TOP of the details card, not below its rows — that's
+      // the whole point of the move, so measure it rather than trust it.
+      const above = await page.evaluate(() => {
+        const link = Array.from(document.querySelectorAll('a'))
+          .find(a => a.textContent?.trim() === 'Edit')!
+        const firstRow = Array.from(document.querySelectorAll('div'))
+          .find(d => d.textContent?.trim().startsWith('Sessions'))!
+        return link.getBoundingClientRect().top < firstRow.getBoundingClientRect().top
+      })
+      expect(above).toBe(true)
+
+      // More opens the house-style sheet with the three occasional actions.
+      await page.getByRole('button', { name: /More actions/ }).click()
+      const sheet = page.getByRole('dialog')
+      await expect(sheet.getByRole('button', { name: /Duplicate this/ })).toBeVisible()
+      await expect(sheet.getByRole('button', { name: /Convert to a group class/ })).toBeVisible()
+      await expect(sheet.getByRole('button', { name: /Delete this/ })).toBeVisible()
+
+      // Escape closes it and the body scroll lock is released — never two
+      // scrollbars, and never a page you can't scroll after closing a sheet.
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden')
+    } finally {
+      await prisma.package.deleteMany({ where: { id: pkg.id } })
+      await prisma.$disconnect()
+    }
+  })
+
+  test('Delete lives in More, still asks first, and still deletes', async ({ page }) => {
+    const prisma = await makePrisma()
+    const pkg = await makeOffering(prisma)
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto(`/packages/${pkg.id}`)
 
       // It asks, and backing out leaves the offering alone.
-      await del.click()
+      await page.getByRole('button', { name: /More actions/ }).click()
+      await page.getByRole('button', { name: /Delete this/ }).click()
       await expect(page.getByText(/can’t be undone/)).toBeVisible()
       await page.getByRole('button', { name: 'Keep it' }).click()
       expect(await prisma.package.count({ where: { id: pkg.id } })).toBe(1)
 
       // …and confirming actually deletes it.
-      await page.getByRole('button', { name: 'Delete this package' }).click()
+      await page.getByRole('button', { name: /More actions/ }).click()
+      await page.getByRole('button', { name: /Delete this/ }).click()
       await page.getByRole('button', { name: 'Delete', exact: true }).click()
       await page.waitForURL('**/packages', { timeout: 30_000 })
       expect(await prisma.package.count({ where: { id: pkg.id } })).toBe(0)
