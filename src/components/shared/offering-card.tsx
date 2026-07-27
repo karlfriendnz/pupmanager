@@ -348,15 +348,24 @@ export function OfferingViewToggle({ value, onChange }: { value: OfferingView; o
 /**
  * The row that carries the tabs (if any) on the left and the view toggle right.
  *
- * Pulled up on md+ so the toggle sits level with the page description instead
- * of taking a row of its own underneath it — the description is short, and the
- * space to its right was empty.
+ * This used to be pulled up 48px on md+ (`md:-mt-12`) to sit the view toggle
+ * level with the page description, which was empty to its right. But the bar is
+ * one justify-between row, so the TABS were dragged up by the same 48px — and
+ * they're left-aligned, directly over the description, whose `bg-slate-100`
+ * pill track then painted out the sentence. It was worst on /classes, whose
+ * subtitle is the longest and wraps to two lines, and it fired even with page
+ * descriptions switched off, because the offset was unconditional.
+ *
+ * Now it's an ordinary row in the flow: tabs left, toggle right, on the shared
+ * hairline the underline tabs sit on. Nothing overlaps at any width.
  */
 export function OfferingListBar({ children, view, onView }: { children?: ReactNode; view: OfferingView; onView: (v: OfferingView) => void }) {
   return (
-    <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 md:-mt-12">
+    <div className={`mb-3 flex items-end justify-between gap-3 ${children ? 'border-b border-slate-200' : ''}`}>
       <div className="min-w-0">{children}</div>
-      <OfferingViewToggle value={view} onChange={onView} />
+      <div className={`flex-shrink-0 ${children ? 'pb-1.5' : ''}`}>
+        <OfferingViewToggle value={view} onChange={onView} />
+      </div>
     </div>
   )
 }
@@ -461,7 +470,15 @@ export function OfferingItems({ view, children }: { view: OfferingView; children
   )
 }
 
-/** Current / Past style pill tabs, shared by classes, drop-ins and events. */
+/**
+ * Current / Past tabs, shared by classes, drop-ins, packages and events.
+ *
+ * Flat underline tabs, not a pill track. Two reasons: the house style has no
+ * chip controls, and the opaque `bg-slate-100` track was the thing that made
+ * the description underneath unreadable — a transparent 36px row can't hide
+ * anything even if something above it moves. This is the same treatment their
+ * own detail screens already use, so a class list and a class now match.
+ */
 export function OfferingTabs<T extends string>({
   tabs,
   value,
@@ -472,31 +489,23 @@ export function OfferingTabs<T extends string>({
   onChange: (id: T) => void
 }) {
   return (
-    // Full width on a phone (thumb-sized targets), its natural width on a
-    // desktop — a two-tab bar stretched across 1200px reads as a header.
-    //
-    // The radii have to agree or the active pill reads as bulging out of its
-    // track: track radius (16) = pill radius (10) + the track's padding (6).
-    // 4px of padding isn't enough — the active pill's shadow closes the gap.
-    <div className="mb-1.5 flex gap-1 rounded-2xl bg-slate-100 p-1.5 sm:inline-flex sm:self-start">
+    // The hairline these sit on belongs to OfferingListBar, so the view toggle
+    // shares it; `-mb-px` laps the active underline over it.
+    <div className="flex gap-5">
       {tabs.map(t => (
         <button
           key={t.id}
           type="button"
           onClick={() => onChange(t.id)}
           aria-pressed={value === t.id}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-[10px] px-3.5 py-2 text-sm font-medium transition-all duration-150 ${
-            value === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          className={`-mb-px shrink-0 border-b-2 py-2 text-sm font-medium transition-colors ${
+            value === t.id
+              ? 'border-slate-900 text-slate-900'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
           }`}
         >
           {t.label}
-          <span
-            className={`min-w-5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums ${
-              value === t.id ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
-            }`}
-          >
-            {t.count}
-          </span>
+          <span className="ml-1.5 text-[11px] font-normal tabular-nums text-slate-400">{t.count}</span>
         </button>
       ))}
     </div>
