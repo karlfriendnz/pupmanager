@@ -1,11 +1,11 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers, CheckSquare, Mail, CheckCircle2 } from 'lucide-react'
+import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers, CheckSquare, Mail, MessageSquare, CheckCircle2 } from 'lucide-react'
 import { dateParts, displayEmail } from '@/lib/utils'
 import { PhoneRowList } from '@/components/shared/flat-list'
 import { ClientAvatar } from '@/components/shared/client-avatar'
@@ -30,6 +30,68 @@ function isBuiltinId(value: string): value is BuiltinColumnId {
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+// A picked client, carried whole rather than as a bare id: the New / Active /
+// Inactive tabs are separate server renders, so a client selected on one tab
+// isn't in `clients` on the next one, and the email composer still needs their
+// name and address. sessionStorage (not localStorage) so it dies with the tab
+// rather than greeting the trainer next week with six people still ticked.
+export interface EmailTarget {
+  id: string
+  name: string | null
+  email: string
+  dogName: string | null
+}
+
+const SELECTION_KEY = 'pm.clients.selection'
+
+// sessionStorage IS the selection, read through useSyncExternalStore — the same
+// shape the offering list uses for its remembered view. Storing it in component
+// state instead would mean a setState in an effect on every mount, which is
+// both a cascading render and a lint error.
+//
+// The snapshot is the raw JSON string, deliberately: useSyncExternalStore
+// compares snapshots by identity, and a freshly-parsed Map is a new object
+// every time, which spins forever.
+const selectionListeners = new Set<() => void>()
+
+function subscribeSelection(cb: () => void) {
+  selectionListeners.add(cb)
+  return () => { selectionListeners.delete(cb) }
+}
+
+function selectionSnapshot(): string {
+  try { return window.sessionStorage.getItem(SELECTION_KEY) ?? '' } catch { return '' }
+}
+
+/** The server has no sessionStorage — it always renders "nothing selected". */
+const serverSelectionSnapshot = (): string => ''
+
+function parseSelection(raw: string): Map<string, EmailTarget> {
+  if (!raw) return new Map()
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Map()
+    return new Map(parsed
+      .filter((v): v is EmailTarget =>
+        !!v && typeof v === 'object'
+        && typeof (v as EmailTarget).id === 'string'
+        && typeof (v as EmailTarget).email === 'string')
+      .map(v => [v.id, { id: v.id, name: v.name ?? null, email: v.email, dogName: v.dogName ?? null }] as const))
+  } catch {
+    return new Map()   // corrupt storage is not worth breaking the page over
+  }
+}
+
+function writeSelection(selected: Map<string, EmailTarget>) {
+  try {
+    if (selected.size === 0) window.sessionStorage.removeItem(SELECTION_KEY)
+    else window.sessionStorage.setItem(SELECTION_KEY, JSON.stringify(Array.from(selected.values())))
+  } catch {
+    /* private mode / quota — the selection just won't survive the tab switch */
+  }
+  selectionListeners.forEach(l => l())
+}
 
 interface CustomFieldMeta {
   id: string
@@ -133,43 +195,62 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
     })
   }, [clients, query, searchScope])
 
-  // ── Multi-select + bulk email ──────────────────────────────────────────────
-  const [selectMode, setSelectMode] = useState(false)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  // ── Multi-select + bulk actions ────────────────────────────────────────────
+  // The selection KEEPS people who fall out of view. Both the New/Active/
+  // Inactive tabs (a server navigation that remounts this component) and the
+  // live search hide rows, and silently dropping someone you'd already ticked
+  // is the worse surprise — you'd send to five of the six you picked and never
+  // know. So the picked rows are stored whole (id + the fields the email
+  // composer needs) in sessionStorage, survive the remount, and the action bar
+  // always states the total plus how many of them aren't on screen right now.
+  const raw = useSyncExternalStore(subscribeSelection, selectionSnapshot, serverSelectionSnapshot)
+  const selected = useMemo(() => parseSelection(raw), [raw])
+  // Selection mode is ON whenever something is picked, so returning to a
+  // non-empty selection (tab switch, back button) shows the checkboxes rather
+  // than hiding them while the bar still claims six people are picked.
+  const [selectModeOn, setSelectModeOn] = useState(false)
+  const selectMode = selectModeOn || selected.size > 0
   const [composeOpen, setComposeOpen] = useState(false)
   const [sentSummary, setSentSummary] = useState<string | null>(null)
 
   function exitSelectMode() {
-    setSelectMode(false)
-    setSelected(new Set())     // selection must reset when leaving selection mode
+    setSelectModeOn(false)
+    writeSelection(new Map())     // leaving selection mode clears it, here and in storage
     setComposeOpen(false)
   }
 
-  function toggleSelected(id: string) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
+  function toggleSelected(client: ClientRow) {
+    const next = new Map(selected)
+    if (next.has(client.id)) next.delete(client.id)
+    else next.set(client.id, { id: client.id, name: client.name, email: client.email, dogName: client.dogName })
+    writeSelection(next)
   }
 
-  // "Select all" operates on the currently filtered list. If every filtered row
-  // is already selected, the control clears them instead.
-  const filteredIds = filtered.map(c => c.id)
-  const allFilteredSelected = filteredIds.length > 0 && filteredIds.every(id => selected.has(id))
+  // "Select all" operates on what is VISIBLE — the current tab, narrowed by the
+  // current search — never on every client in the database. If every visible
+  // row is already ticked the same control clears just those rows, leaving any
+  // selection made on another tab alone.
+  const allFilteredSelected = filtered.length > 0 && filtered.every(c => selected.has(c.id))
   function toggleSelectAll() {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (allFilteredSelected) {
-        for (const id of filteredIds) next.delete(id)
-      } else {
-        for (const id of filteredIds) next.add(id)
-      }
-      return next
-    })
+    const next = new Map(selected)
+    if (allFilteredSelected) {
+      for (const c of filtered) next.delete(c.id)
+    } else {
+      for (const c of filtered) next.set(c.id, { id: c.id, name: c.name, email: c.email, dogName: c.dogName })
+    }
+    writeSelection(next)
   }
 
   const selectedCount = selected.size
+  const visibleSelectedCount = filtered.reduce((n, c) => n + (selected.has(c.id) ? 1 : 0), 0)
+  const offscreenSelectedCount = selectedCount - visibleSelectedCount
+  const selectedTargets = Array.from(selected.values())
+
+  // A message thread is one client — the schema has no group conversation, and
+  // faking one would put a reply from one owner in front of five others. So
+  // "Message" hands off to the existing thread only when the selection is a
+  // single person; with more than one picked it says so instead of pretending.
+  const soleSelectedId = selectedCount === 1 ? selectedTargets[0].id : null
 
   return (
     <>
@@ -276,7 +357,7 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
         </div>
         <button
           type="button"
-          onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+          onClick={() => selectMode ? exitSelectMode() : setSelectModeOn(true)}
           aria-pressed={selectMode}
           aria-label={selectMode ? 'Done selecting clients' : 'Select clients to email'}
           className={`h-11 px-3 inline-flex items-center gap-1.5 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -353,18 +434,44 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
         </div>
       </div>
 
-      {selectMode && filtered.length > 0 && (
+      {/* Way IN to selection on a phone. The desktop toolbar above carries its
+          own Select button, but that whole row is md-only, so on a phone there
+          was no checkbox anywhere. Flat text control, no chip. */}
+      {!selectMode && clients.length > 0 && (
+        <div className="md:hidden mb-3 flex justify-end px-1">
+          <button
+            type="button"
+            onClick={() => setSelectModeOn(true)}
+            className="inline-flex items-center gap-1.5 py-1 text-sm font-medium text-slate-700"
+          >
+            <CheckSquare className="h-4 w-4" strokeWidth={1.75} />
+            Select
+          </button>
+        </div>
+      )}
+
+      {selectMode && (
         <div className="flex items-center justify-between mb-3 px-1">
           <button
             type="button"
             onClick={toggleSelectAll}
-            className="text-sm font-medium text-[var(--pm-brand-700)] hover:underline"
+            disabled={filtered.length === 0}
+            className="py-1 text-sm font-medium text-[var(--pm-brand-700)] hover:underline disabled:opacity-40 disabled:no-underline"
           >
-            {allFilteredSelected ? 'Clear' : `Select all (${filtered.length})`}
+            {/* Counts what is on screen, so it can never read as "select the
+                whole database". */}
+            {allFilteredSelected ? 'Clear these' : `Select all (${filtered.length})`}
           </button>
-          {selectedCount > 0 && (
-            <span className="text-xs text-slate-400">{selectedCount} selected</span>
-          )}
+          {/* Phone only — on desktop the toolbar's Select button turns into
+              Done, and the same control twice on one screen is the thing the
+              house style forbids. */}
+          <button
+            type="button"
+            onClick={exitSelectMode}
+            className="py-1 text-sm font-medium text-slate-500 hover:text-slate-700 md:hidden"
+          >
+            Done
+          </button>
         </div>
       )}
 
@@ -389,33 +496,54 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
         />
       )}
 
-      {/* Pinned, floating action bar (app-style) — sits above the mobile bottom
-          nav (z-40) and clears it + the iOS home indicator via safe-area pad. */}
-      {selectMode && (
-        <div
-          className="fixed inset-x-0 bottom-0 z-50 px-4 pointer-events-none"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
-        >
-          <div className="md:hidden h-16" aria-hidden /> {/* spacer so the bar clears the mobile tab bar */}
-          <div className="pointer-events-auto mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-slate-900 text-white shadow-xl px-4 py-3">
-            <span className="text-sm font-medium flex-1">
-              {selectedCount} selected
-            </span>
+      {/* Keeps the last client clear of the pinned bar rather than under it.
+          On a phone the shell already reserves the tab bar with
+          pb-[calc(5rem+safe-area)], so this only has to cover the bar itself. */}
+      {selectMode && selectedCount > 0 && <div className="h-24" aria-hidden />}
+
+      {/* Pinned action bar — appears the moment something is ticked. Full-width
+          and flat (hairline top border, white), not a floating dark slab: three
+          controls and a two-line count do not fit a 56px pill at 390px.
+          Bottom padding clears the mobile tab bar (5rem) AND the iOS home
+          indicator; on md+ the tab bar is gone so only the padding remains. */}
+      {selectMode && selectedCount > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-4 pt-3 backdrop-blur pb-[calc(5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:pb-4">
+          <div className="mx-auto flex w-full max-w-4xl xl:max-w-7xl items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-slate-900">
+                {selectedCount} selected
+              </p>
+              {offscreenSelectedCount > 0 && (
+                <p className="truncate text-xs text-slate-500">
+                  {offscreenSelectedCount} not shown here — still included
+                </p>
+              )}
+              {soleSelectedId === null && (
+                <p className="truncate text-xs text-slate-500">Messages go to one client at a time</p>
+              )}
+            </div>
             <Button
               type="button"
               size="sm"
-              onClick={() => setComposeOpen(true)}
-              disabled={selectedCount === 0}
+              variant="secondary"
+              onClick={() => { if (soleSelectedId) router.push(`/messages?client=${soleSelectedId}`) }}
+              disabled={soleSelectedId === null}
+              title={soleSelectedId ? 'Open this client’s message thread' : 'Pick a single client to message'}
             >
-              <Mail className="h-4 w-4" />
+              <MessageSquare className="h-4 w-4" strokeWidth={1.75} />
+              Message
+            </Button>
+            <Button type="button" size="sm" onClick={() => setComposeOpen(true)}>
+              <Mail className="h-4 w-4" strokeWidth={1.75} />
               Email
             </Button>
             <button
               type="button"
               onClick={exitSelectMode}
-              className="text-sm font-medium text-slate-300 hover:text-white px-1"
+              aria-label="Clear selection"
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700"
             >
-              Cancel
+              <X className="h-4 w-4" strokeWidth={1.75} />
             </button>
           </div>
         </div>
@@ -423,9 +551,9 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
 
       {composeOpen && (
         <BulkEmailModal
-          candidates={clients
-            .filter(c => selected.has(c.id))
-            .map(c => ({ id: c.id, name: c.name, email: c.email, dogName: c.dogName }))}
+          // From the stored selection, not from `clients` — someone ticked on
+          // the Active tab must still be emailable from the Inactive one.
+          candidates={selectedTargets}
           onClose={() => setComposeOpen(false)}
           onSent={(summary) => {
             setSentSummary(summary)
@@ -576,8 +704,8 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
   groupBy: string | null
   tz: string
   selectMode: boolean
-  selected: Set<string>
-  onToggleSelect: (id: string) => void
+  selected: Map<string, EmailTarget>
+  onToggleSelect: (client: ClientRow) => void
 }) {
   const dataColumns = buildDataColumns(visible, customFields, customValues, tz)
   // Identity column (avatar+name) is always present and gets generous space.
@@ -657,12 +785,14 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
   gridTemplate: string
   selectMode: boolean
   isSelected: boolean
-  onToggleSelect: (id: string) => void
+  onToggleSelect: (client: ClientRow) => void
 }) {
   const showShared = visible.has('shared') && client.shared
   const checkbox = selectMode ? (
     <span
       aria-hidden
+      data-testid="client-checkbox"
+      data-checked={isSelected ? 'true' : 'false'}
       className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border ${
         isSelected ? 'bg-[var(--pm-brand-600)] border-[var(--pm-brand-600)] text-white' : 'border-slate-300 bg-white'
       }`}
@@ -763,8 +893,10 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
     return (
       <button
         type="button"
-        onClick={() => onToggleSelect(client.id)}
+        onClick={() => onToggleSelect(client)}
         aria-pressed={isSelected}
+        aria-label={`${isSelected ? 'Deselect' : 'Select'} ${client.name ?? client.email}`}
+        data-testid="client-select-row"
         className="block w-full text-left"
       >
         {inner}
