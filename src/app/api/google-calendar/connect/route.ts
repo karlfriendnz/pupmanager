@@ -11,8 +11,8 @@ import { isGoogleCalendarConfigured, googleCalendarAuthorizeUrl } from '@/lib/go
 // is the OAuth integrity guard; the callback verifies it before trusting the code.
 export async function GET(req: Request) {
   const ctx = await getTrainerContext()
-  // Google Calendar has no settings page — the add-on popup is its home.
   const addons = `${process.env.NEXT_PUBLIC_APP_URL}/add-ons`
+  const settings = `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=calendar`
 
   // Where to land after a successful connect. Only same-origin relative paths are
   // honoured — no open redirects.
@@ -25,8 +25,11 @@ export async function GET(req: Request) {
   if (!(await hasAddon(ctx.companyId, 'googlecalendar'))) {
     return NextResponse.redirect(addons)
   }
+  // No Google credentials on this deployment. This used to land on /add-ons
+  // with a query param nothing rendered, so the button simply appeared to do
+  // nothing — indistinguishable from a hang. Settings → Calendar now says so.
   if (!isGoogleCalendarConfigured()) {
-    return NextResponse.redirect(`${addons}?googlecalendar=unconfigured`)
+    return NextResponse.redirect(`${settings}&googlecalendar=unconfigured`)
   }
 
   // We key the connection on the individual's membership. Legacy owners without a

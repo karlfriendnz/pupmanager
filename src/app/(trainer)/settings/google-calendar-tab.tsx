@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
 import { GoogleCalendarConnectCta } from '@/components/shared/google-calendar-connect-cta'
+import { Suspense } from 'react'
+import { GoogleCalendarStatus } from './google-calendar-status'
 
 // Settings → Calendar tab. Only rendered when the Google Calendar add-on is
 // enabled (gated in page.tsx via hasAddon), mirroring the Xero tab.
@@ -26,6 +28,12 @@ export async function GoogleCalendarTab() {
 
   return (
     <div className="w-full max-w-2xl">
+      {/* Says what happened on the way back from Google. Suspense because it
+          reads searchParams, which opts the subtree into client rendering. */}
+      <Suspense fallback={null}>
+        <GoogleCalendarStatus />
+      </Suspense>
+
       <div className="rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-200 p-4">
           <h2 className="text-base font-semibold text-slate-900">Google Calendar</h2>

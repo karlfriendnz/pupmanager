@@ -9,11 +9,22 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
   const stateToken = searchParams.get('state')
-  // Google Calendar has no settings page — the add-on popup is its home.
-  const addons = `${process.env.NEXT_PUBLIC_APP_URL}/add-ons`
-  const fail = `${addons}?googlecalendar=error`
+  const settings = `${process.env.NEXT_PUBLIC_APP_URL}/settings?tab=calendar`
 
-  if (!code || !stateToken) return NextResponse.redirect(fail)
+  // Every exit from here used to be the SAME `?googlecalendar=error`, on a page
+  // that rendered no message for it. So a trainer clicked Connect, went to
+  // Google, came back, and landed on a page that looked exactly as it had
+  // before — reported to us as the connection "hanging". It never hung; it
+  // failed silently, and there was no way to tell which of five reasons it was.
+  //
+  // Each reason now names itself, and Settings → Calendar says what it means.
+  const fail = (reason: string) => `${settings}&googlecalendar=${reason}`
+
+  // The trainer said no on Google's consent screen, or closed it.
+  const denied = searchParams.get('error')
+  if (denied) return NextResponse.redirect(fail(denied === 'access_denied' ? 'denied' : 'google'))
+
+  if (!code || !stateToken) return NextResponse.redirect(fail('nocode'))
 
   // Verify + consume the one-time state token, recovering the membership id.
   const stateRecord = await prisma.verificationToken.findFirst({
@@ -23,7 +34,9 @@ export async function GET(req: Request) {
       expires: { gt: new Date() },
     },
   })
-  if (!stateRecord) return NextResponse.redirect(fail)
+  // Expired (10 min) or already used — the commonest real failure, and the
+  // one most likely to be read as a hang: the trainer left the Google tab open.
+  if (!stateRecord) return NextResponse.redirect(fail('expired'))
   await prisma.verificationToken.delete({
     where: { identifier_token: { identifier: stateRecord.identifier, token: stateToken } },
   })
@@ -40,20 +53,24 @@ export async function GET(req: Request) {
   }
   const done = returnTo
     ? `${process.env.NEXT_PUBLIC_APP_URL}${returnTo}${returnTo.includes('?') ? '&' : '?'}googlecalendar=connected`
-    : `${addons}?googlecalendar=connected`
+    : `${settings}&googlecalendar=connected`
 
   // Resolve the company from the membership (also validates the id is still real).
   const membership = await prisma.trainerMembership.findUnique({
     where: { id: membershipId },
     select: { companyId: true },
   })
-  if (!membership) return NextResponse.redirect(fail)
+  if (!membership) return NextResponse.redirect(fail('nomember'))
 
   try {
     const tokens = await exchangeCodeForTokens(code)
     // Without a refresh token we can't keep the connection alive — treat as a
-    // failed connect (usually means prompt=consent wasn't honoured).
-    if (!tokens.refresh_token) return NextResponse.redirect(fail)
+    // failed connect. Means prompt=consent wasn't honoured, which Google does
+    // when the account has already granted this client (every trainer who signs
+    // in with Google has). googleCalendarAuthorizeUrl sends access_type=offline
+    // AND prompt=consent precisely to force one; if this fires, that is what
+    // stopped working.
+    if (!tokens.refresh_token) return NextResponse.redirect(fail('norefresh'))
 
     const data = {
       companyId: membership.companyId,
@@ -67,8 +84,11 @@ export async function GET(req: Request) {
       update: data,
     })
   } catch (err) {
+    // The token exchange itself was rejected. redirect_uri_mismatch lands here,
+    // which is what a missing /api/google-calendar/callback entry in the Google
+    // console looks like from our side.
     console.error('[google-calendar] callback failed', err)
-    return NextResponse.redirect(fail)
+    return NextResponse.redirect(fail('exchange'))
   }
 
   // Immediately pull the member's busy window so overlap warnings work right away.
