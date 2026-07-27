@@ -105,9 +105,11 @@ describe('loadPublishedMemberships', () => {
     }])
     const [m] = await loadPublishedMemberships('t1')
     expect(m).toMatchObject({ id: 'm2', cadence: 'RECURRING', interval: 'MONTH', buyable: false })
+    // Each option now also carries a display label and (when buyable) its own
+    // consent wording — null here, because this trainer isn't switched on.
     expect(m.plans).toEqual([
-      { id: 'pl1', interval: 'WEEK', priceCents: 10000 },
-      { id: 'pl2', interval: 'MONTH', priceCents: 40000 },
+      { id: 'pl1', interval: 'WEEK', priceCents: 10000, priceLabel: '$100.00 / week', consent: null },
+      { id: 'pl2', interval: 'MONTH', priceCents: 40000, priceLabel: '$400.00 / month', consent: null },
     ])
   })
 
@@ -209,6 +211,40 @@ describe('loadPublishedMemberships', () => {
       clientId: 'c1',
       status: { in: ['ACTIVE', 'PAST_DUE', 'CANCELLING'] },
     })
+  })
+
+  it('gives EVERY billing option its own consent wording', async () => {
+    // A weekly and a monthly plan are two different agreements. One set of
+    // words for both would store a consent that didn't match the screen.
+    h.trainerProfile.findUnique.mockResolvedValue({
+      recurringPaymentsEnabled: true, businessName: 'E2E Dog School', payoutCurrency: 'nzd',
+    })
+    h.membership.findMany.mockResolvedValue([{
+      ...RECURRING,
+      plans: [
+        { id: 'weekly', interval: 'WEEK', priceCents: 1000, minTermCount: 0, earlyTermFeeCents: null },
+        { id: 'monthly', interval: 'MONTH', priceCents: 3500, minTermCount: 6, earlyTermFeeCents: 2000 },
+      ],
+    }])
+
+    const [m] = await loadPublishedMemberships('t1', 'c1')
+
+    expect(m.plans.map(p => p.priceLabel)).toEqual(['$10.00 / week', '$35.00 / month'])
+    expect(m.plans[0].consent?.text).toContain('$10.00 every week')
+    expect(m.plans[1].consent?.text).toContain('$35.00 every month')
+    // Terms and fees follow the option, not the membership.
+    expect(m.plans[0].consent?.termLabel).toBe('Cancel any time.')
+    expect(m.plans[1].consent?.termLabel).toBe("You're committing to 6 months.")
+    expect(m.plans[1].consent?.earlyTermFeeLabel).toContain('$20.00')
+    // The card headline still describes the FIRST option — the one the buy
+    // route falls back to when no planId is sent.
+    expect(m.consent?.text).toBe(m.plans[0].consent?.text)
+  })
+
+  it('leaves plan consent null when the plan cannot be bought', async () => {
+    h.membership.findMany.mockResolvedValue([RECURRING])
+    const [m] = await loadPublishedMemberships('t1', 'c1')
+    expect(m.plans[0].consent).toBeNull()
   })
 
   it('never offers an archived plan', async () => {

@@ -33,6 +33,8 @@ const h = vi.hoisted(() => ({
   trainerUpdate: vi.fn(),
   subCancel: vi.fn(),
   sendEmail: vi.fn(),
+  regrantRenewalItems: vi.fn(),
+  syncPaymentToXero: vi.fn(),
   notifyClient: vi.fn(),
   notifyTrainer: vi.fn(),
 }))
@@ -74,7 +76,9 @@ vi.mock('@/lib/prisma', () => {
 vi.mock('@/lib/memberships', () => ({
   fulfilMembershipInTx: h.fulfilMembershipInTx,
   enrolMembershipClasses: h.enrolMembershipClasses,
+  regrantRenewalItems: h.regrantRenewalItems,
 }))
+vi.mock('@/lib/xero-sync', () => ({ syncPaymentToXero: h.syncPaymentToXero }))
 // Partial: the suspend/restore calls are spied on, but the RULE itself
 // (membershipGrantsAccess) stays real — these tests assert the real policy.
 vi.mock('@/lib/membership-access', async (importOriginal) => ({
@@ -139,6 +143,8 @@ beforeEach(() => {
   h.subCancel.mockResolvedValue({})
   h.sendEmail.mockResolvedValue(undefined)
   h.purchaseFindMany.mockResolvedValue([])
+  h.regrantRenewalItems.mockResolvedValue(0)
+  h.syncPaymentToXero.mockResolvedValue({ ok: true })
 })
 
 describe('ensureConsent', () => {
@@ -550,5 +556,81 @@ describe('handleAccountDeauthorized', () => {
     expect(h.notifyClient).not.toHaveBeenCalled()
     // The account flags are still cleared — they have disconnected either way.
     expect(h.trainerUpdate).toHaveBeenCalled()
+  })
+})
+
+// ─── Renewal grants ─────────────────────────────────────────────────────────
+describe('regrantOnRenewal is a RENEWAL behaviour', () => {
+  const PURCHASE = { id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1', status: 'ACTIVE', accessPausedAt: null }
+
+  beforeEach(() => {
+    h.purchaseFindUnique.mockResolvedValue(PURCHASE)
+    h.invoiceFindUnique.mockResolvedValue(null)
+    h.paymentCreate.mockResolvedValue({ id: 'pay1' })
+    h.regrantRenewalItems.mockResolvedValue(1)
+  })
+
+  it('re-grants the bundle’s consumables on a renewal cycle', async () => {
+    await recordInvoicePaid(invoice({ billing_reason: 'subscription_cycle' }), false, 'sub_1')
+    expect(h.regrantRenewalItems).toHaveBeenCalledWith(expect.anything(), {
+      membershipId: 'm1', trainerId: 't1', clientId: 'c1',
+    })
+  })
+
+  it('does NOT re-grant on the first invoice of a new subscription', async () => {
+    // Those items were already granted when the subscription was set up.
+    // Granting again here would double every new subscriber's opening order.
+    await recordInvoicePaid(invoice({ billing_reason: 'subscription_create' }), false, 'sub_1')
+    expect(h.regrantRenewalItems).not.toHaveBeenCalled()
+  })
+
+  it('does not re-grant on a mid-cycle update or a manual invoice', async () => {
+    for (const reason of ['subscription_update', 'manual', 'subscription_threshold']) {
+      h.invoiceFindUnique.mockResolvedValue(null)
+      await recordInvoicePaid(invoice({ id: `in_${reason}`, billing_reason: reason }), false, 'sub_1')
+    }
+    expect(h.regrantRenewalItems).not.toHaveBeenCalled()
+  })
+
+  it('re-grants exactly once per cycle — a redelivery grants nothing', async () => {
+    await recordInvoicePaid(invoice({ billing_reason: 'subscription_cycle' }), false, 'sub_1')
+    // Second delivery of the SAME invoice: the natural key short-circuits it.
+    h.invoiceFindUnique.mockResolvedValue({ id: 'mi1', paymentId: 'pay1' })
+    await recordInvoicePaid(invoice({ billing_reason: 'subscription_cycle' }), false, 'sub_1')
+
+    expect(h.regrantRenewalItems).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ─── Xero ───────────────────────────────────────────────────────────────────
+describe('recurring cycles reach Xero', () => {
+  it('syncs the cycle’s Payment row after the transaction commits', async () => {
+    // Works unchanged because each cycle produces a real Payment — which is the
+    // main reason to create one at all.
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1', status: 'ACTIVE', accessPausedAt: null })
+    h.invoiceFindUnique.mockResolvedValue(null)
+    h.paymentCreate.mockResolvedValue({ id: 'pay_new' })
+
+    await recordInvoicePaid(invoice(), false, 'sub_1')
+
+    expect(h.syncPaymentToXero).toHaveBeenCalledWith('pay_new')
+  })
+
+  it('does not try to sync a cycle that produced no Payment', async () => {
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1', status: 'ACTIVE', accessPausedAt: null })
+    h.invoiceFindUnique.mockResolvedValue(null)
+    await recordInvoicePaid(invoice({ amount_paid: 0 }), false, 'sub_1')
+    expect(h.syncPaymentToXero).not.toHaveBeenCalled()
+  })
+
+  it('never lets a Xero failure fail the webhook', async () => {
+    // A Xero hiccup must not 500 this handler and start a Stripe retry loop
+    // over a payment that already succeeded.
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1', status: 'ACTIVE', accessPausedAt: null })
+    h.invoiceFindUnique.mockResolvedValue(null)
+    h.paymentCreate.mockResolvedValue({ id: 'pay_new' })
+    h.syncPaymentToXero.mockRejectedValue(new Error('xero down'))
+
+    await expect(recordInvoicePaid(invoice(), false, 'sub_1')).resolves.toBeUndefined()
   })
 })

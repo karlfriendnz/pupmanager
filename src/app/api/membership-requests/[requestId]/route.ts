@@ -20,7 +20,11 @@ import { safeEvaluate } from '@/lib/achievements'
 // record must not pretend otherwise.
 
 const patchSchema = z.object({
-  status: z.enum(['FULFILLED', 'DECLINED']),
+  // INVITED is the third answer, and the one recurring billing makes possible:
+  // rather than granting an ongoing plan for free, ask the client to subscribe
+  // and pay for it. Kept distinct from FULFILLED so the trainer's list can tell
+  // "I gave it to them" apart from "I'm waiting for them to pay".
+  status: z.enum(['FULFILLED', 'DECLINED', 'INVITED']),
 })
 
 export async function PATCH(
@@ -66,6 +70,55 @@ export async function PATCH(
       data: { status: 'DECLINED', fulfilledAt: null },
     })
     return NextResponse.json({ ok: true, status: 'DECLINED' })
+  }
+
+  // ── Invite them to subscribe ──────────────────────────────────────────────
+  // Nothing is granted and no money moves here: the client is pointed at the
+  // storefront to subscribe themselves, which is the whole point of recurring
+  // billing existing. Only offered for a plan they can actually buy — inviting
+  // someone to pay for something checkout would refuse is a dead end, and the
+  // trainer would never find out why.
+  if (parsed.data.status === 'INVITED') {
+    const trainerForInvite = await prisma.trainerProfile.findUnique({
+      where: { id: trainerId },
+      select: { businessName: true, recurringPaymentsEnabled: true },
+    })
+    const membership = await prisma.membership.findFirst({
+      where: { id: request.membershipId, trainerId },
+      select: { cadence: true, plans: { where: { archivedAt: null }, select: { id: true } } },
+    })
+    if (membership?.cadence !== 'RECURRING' || !membership.plans.length || !trainerForInvite?.recurringPaymentsEnabled) {
+      return NextResponse.json(
+        { error: 'This package can’t be subscribed to yet — set up an ongoing price first.' },
+        { status: 409 },
+      )
+    }
+
+    const claimed = await prisma.membershipRequest.updateMany({
+      where: { id: requestId, status: 'PENDING' },
+      data: { status: 'INVITED', fulfilledAt: new Date() },
+    })
+    if (claimed.count === 0) {
+      return NextResponse.json({ ok: true, alreadyActioned: true, status: 'INVITED' })
+    }
+
+    if (request.client.userId) {
+      await notifyClient({
+        userId: request.client.userId,
+        trainerId,
+        type: 'CLIENT_ADDED_TO_PLAN',
+        vars: {
+          trainerName: trainerForInvite.businessName ?? 'Your trainer',
+          dogName: request.client.dog?.name ?? 'you',
+          planName: request.membership.name,
+          detail: 'It’s ready for you to start — tap to see the price and subscribe.',
+        },
+        link: '/my-memberships',
+        ctaLabel: 'See the plan',
+      }).catch(err => console.error('[membership request] invite notify failed', err))
+    }
+
+    return NextResponse.json({ ok: true, status: 'INVITED' })
   }
 
   // ── Accept ────────────────────────────────────────────────────────────────

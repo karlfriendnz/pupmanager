@@ -147,6 +147,64 @@ export async function fulfilMembershipInTx(
 }
 
 /**
+ * Re-grant the membership's `regrantOnRenewal` PRODUCT items for a new cycle.
+ *
+ * The flag has existed on MembershipItem since the model was written and has
+ * never been read by anything. It answers the obvious question about a bundle
+ * that includes a bag of treats: do they get one bag ever, or one every month?
+ *
+ * PRODUCTS ONLY, deliberately. Re-granting a package or a class place every
+ * cycle would quietly re-enrol somebody into a course they are already in and
+ * pile up assignments nobody asked for; a consumable is the only thing where
+ * "again this month" is what the words mean.
+ *
+ * Idempotent on the caller's side: it runs from invoice.paid, which is guarded
+ * by the event ledger and the MembershipInvoice natural key, so one cycle can
+ * only ever produce one set of grants.
+ */
+export async function regrantRenewalItems(
+  tx: Tx,
+  args: { membershipId: string; trainerId: string; clientId: string },
+): Promise<number> {
+  const membership = await tx.membership.findUnique({
+    where: { id: args.membershipId },
+    include: { items: { where: { regrantOnRenewal: true }, orderBy: { order: 'asc' } } },
+  })
+  // Defence in depth — the invoice is already scoped to this trainer's account.
+  if (!membership || membership.trainerId !== args.trainerId) return 0
+
+  const now = new Date()
+  let granted = 0
+
+  for (const item of membership.items) {
+    if (item.kind !== 'PRODUCT' || !item.productId) continue
+    const prod = await tx.product.findFirst({
+      where: { id: item.productId, trainerId: args.trainerId },
+      select: { id: true },
+    })
+    if (!prod) continue
+
+    for (let i = 0; i < Math.max(1, item.quantity); i++) {
+      // Same rule as first fulfilment: an empty shelf still owes them the item,
+      // but the count never goes negative.
+      await takeStock(tx, item.productId)
+      await tx.productRequest.create({
+        data: {
+          clientId: args.clientId,
+          productId: item.productId,
+          status: 'FULFILLED',
+          fulfilledAt: now,
+          note: `Package renewal: ${membership.name}`,
+        },
+      })
+      granted++
+    }
+  }
+
+  return granted
+}
+
+/**
  * Post-commit: enrol the buyer into each included class. Best-effort — a full /
  * closed class logs and moves on rather than failing the whole fulfilment.
  * (Phase 1 auto-enrols; approval-gated classes are a fast-follow.)

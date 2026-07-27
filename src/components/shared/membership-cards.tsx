@@ -184,7 +184,7 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
           busy={busy === consenting.id}
           error={error}
           onCancel={() => { setConsentFor(null); setError(null) }}
-          onConfirm={() => buy(consenting.id, { consent: true, planId: consenting.plans[0]?.id })}
+          onConfirm={(planId) => buy(consenting.id, { consent: true, planId: planId ?? consenting.plans[0]?.id })}
         />
       )}
     </>

@@ -26,13 +26,20 @@ export function MembershipConsentScreen({
 }: {
   membership: ClientMembership
   onCancel: () => void
-  onConfirm: () => void
+  /** Receives the chosen billing option, so the route prices what was shown. */
+  onConfirm: (planId: string | undefined) => void
   busy: boolean
   error: string | null
 }) {
   // Not pre-ticked. An agreement nobody actively made is not an agreement.
   const [agreed, setAgreed] = useState(false)
-  const consent = membership.consent
+  // A membership can offer several billing options ($10/wk OR $35/mo). The
+  // first is the default, and the same one the buy route falls back to.
+  const options = membership.plans
+  const [planId, setPlanId] = useState<string | undefined>(options[0]?.id)
+  const chosen = options.find(p => p.id === planId) ?? null
+  // Each option is its own agreement, so the words follow the choice.
+  const consent = chosen?.consent ?? membership.consent
 
   // Never two scrollbars on screen: lock the page behind this while it is open,
   // and let only the panel's own region scroll.
@@ -75,6 +82,41 @@ export function MembershipConsentScreen({
             {/* Who is charging them — the TRAINER, not PupManager. Their name is
                 what shows up on the client's bank statement. */}
             <p className="mt-2 text-2xl font-semibold text-slate-900">{consent.priceLabel}</p>
+
+            {/* More than one way to pay for the same thing. Only shown when
+                there is a genuine choice — a single option is not a choice, and
+                a picker with one row is just noise. */}
+            {options.length > 1 && (
+              <fieldset className="mt-4">
+                <legend className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-400">
+                  How often
+                </legend>
+                <div className="rounded-xl border border-slate-200 bg-white">
+                  {options.map(p => (
+                    <label
+                      key={p.id}
+                      className="flex cursor-pointer items-center gap-3 border-t border-slate-100 px-3 py-3 first:border-t-0"
+                    >
+                      <input
+                        type="radio"
+                        name="billing-option"
+                        value={p.id}
+                        checked={planId === p.id}
+                        onChange={() => {
+                          setPlanId(p.id)
+                          // Changing the option changes what they are agreeing
+                          // to, so a tick made against the old one no longer
+                          // means anything.
+                          setAgreed(false)
+                        }}
+                        className="h-4 w-4 shrink-0 accent-slate-900"
+                      />
+                      <span className="text-sm font-medium text-slate-900">{p.priceLabel}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
 
             <div className="mt-4 rounded-xl border border-slate-200 bg-white">
               <Row
@@ -144,7 +186,7 @@ export function MembershipConsentScreen({
           >
             <button
               type="button"
-              onClick={onConfirm}
+              onClick={() => onConfirm(planId)}
               disabled={!agreed || busy}
               className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 font-semibold text-white disabled:opacity-40"
             >

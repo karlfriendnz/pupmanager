@@ -27,6 +27,7 @@ test.use({ viewport: { width: 1280, height: 900 } })
 
 const RECURRING_ID = 'e2erecurringmembership00x'
 const PLAN_ID = 'e2erecurringplan0000000x'
+const WEEKLY_PLAN_ID = 'e2erecurringplanwk00000x'
 const PURCHASE_ID = 'e2erecurringpurchase000x'
 const RIVAL_PURCHASE_ID = 'e2erivalpurchase0000000x'
 
@@ -88,7 +89,13 @@ async function seedRecurring(prisma: Awaited<ReturnType<typeof makePrisma>>, opt
       cadence: 'RECURRING',
       interval: 'MONTH',
       published: true,
-      plans: { create: [{ id: PLAN_ID, interval: 'MONTH', priceCents: 40000, minTermCount: 3, earlyTermFeeCents: 5000, order: 0 }] },
+      plans: {
+        create: [
+          { id: PLAN_ID, interval: 'MONTH', priceCents: 40000, minTermCount: 3, earlyTermFeeCents: 5000, order: 0 },
+          // A second billing option, so the picker has something to pick.
+          { id: WEEKLY_PLAN_ID, interval: 'WEEK', priceCents: 12000, minTermCount: 0, earlyTermFeeCents: null, order: 1 },
+        ],
+      },
     },
   })
   return trainer.id
@@ -204,6 +211,14 @@ test.describe('recurring memberships — buying', () => {
       await expect(confirm).toBeDisabled()
       await dialog.getByRole('checkbox').check()
       await expect(confirm).toBeEnabled()
+
+      // Choosing a different billing option rewrites the agreement AND clears
+      // the tick — a tick made against the monthly plan cannot carry over to
+      // the weekly one.
+      await dialog.getByRole('radio', { name: /\$120\.00 \/ week/ }).check()
+      await expect(dialog).toContainText('$120.00 every week')
+      await expect(dialog).toContainText('Cancel any time.')
+      await expect(confirm).toBeDisabled()
     } finally {
       await cleanup(prisma)
       await prisma.$disconnect()

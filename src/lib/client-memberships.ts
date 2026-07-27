@@ -17,8 +17,19 @@ export interface ClientMembership {
   cadence: 'ONE_OFF' | 'RECURRING'
   /** Billing period of the headline price. Null for a one-off. */
   interval: ClientMembershipInterval | null
-  /** Extra billing options a RECURRING plan offers (e.g. $10/wk OR $35/mo). */
-  plans: { id: string; interval: ClientMembershipInterval; priceCents: number }[]
+  /**
+   * The billing options a RECURRING plan offers (e.g. $10/wk OR $35/mo). Each
+   * carries its own consent copy, because each is a different agreement — a
+   * different price, a different frequency, and possibly a different minimum
+   * term and early-finish fee.
+   */
+  plans: {
+    id: string
+    interval: ClientMembershipInterval
+    priceCents: number
+    priceLabel: string
+    consent: MembershipConsentCopy | null
+  }[]
   /**
    * Can a client actually check this out right now? A ONE_OFF needs a price; a
    * RECURRING one needs a priced plan AND the trainer switched on for recurring
@@ -45,14 +56,17 @@ export interface ClientMembership {
    * built server-side by the SAME function that writes the stored consent, so
    * the screen and the record can never disagree.
    */
-  consent: {
-    text: string
-    priceLabel: string
-    termLabel: string
-    earlyTermFeeLabel: string | null
-    cancelWhereLabel: string
-    nextChargeLabel: string
-  } | null
+  consent: MembershipConsentCopy | null
+}
+
+/** The sentences a consent screen must show for one billing option. */
+export interface MembershipConsentCopy {
+  text: string
+  priceLabel: string
+  termLabel: string
+  earlyTermFeeLabel: string | null
+  cancelWhereLabel: string
+  nextChargeLabel: string
 }
 
 /** A recurring membership this client is (or was recently) paying for. */
@@ -259,30 +273,32 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
       recurringOn,
       subscribed: subscribedIds.has(m.id),
     })
-    // Phase 1 sells the FIRST plan — the same one the buy route defaults to. The
-    // multi-plan picker ($10/wk vs $35/mo) is a later phase, and until it exists
-    // the screen and the route must agree on which plan is being bought.
+    // Every option gets its OWN consent copy. A weekly and a monthly plan are
+    // two different agreements — different price, different frequency, possibly
+    // a different minimum term — so a picker that showed one set of words for
+    // both would store a consent that did not match what was on screen.
+    const copyFor = (p: { priceCents: number; interval: string; minTermCount: number; earlyTermFeeCents: number | null }) => {
+      const c = describePlanCommitment({
+        businessName,
+        priceCents: p.priceCents,
+        currency,
+        interval: p.interval as PlanInterval,
+        minTermCount: p.minTermCount,
+        earlyTermFeeCents: p.earlyTermFeeCents,
+      })
+      return {
+        text: c.consentText,
+        priceLabel: c.priceLabel,
+        termLabel: c.termLabel,
+        earlyTermFeeLabel: c.earlyTermFeeLabel,
+        cancelWhereLabel: c.cancelWhereLabel,
+        nextChargeLabel: c.nextChargeAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long' }),
+      }
+    }
+    // The card's headline still describes the FIRST option, which is the one the
+    // buy route falls back to when no planId is sent.
     const plan = plans[0] ?? null
-    const consent = buyability.needsConsent && plan
-      ? (() => {
-          const c = describePlanCommitment({
-            businessName,
-            priceCents: plan.priceCents,
-            currency,
-            interval: plan.interval as PlanInterval,
-            minTermCount: plan.minTermCount,
-            earlyTermFeeCents: plan.earlyTermFeeCents,
-          })
-          return {
-            text: c.consentText,
-            priceLabel: c.priceLabel,
-            termLabel: c.termLabel,
-            earlyTermFeeLabel: c.earlyTermFeeLabel,
-            cancelWhereLabel: c.cancelWhereLabel,
-            nextChargeLabel: c.nextChargeAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long' }),
-          }
-        })()
-      : null
+    const consent = buyability.needsConsent && plan ? copyFor(plan) : null
 
     return {
     id: m.id, name: m.name, description: m.description, priceCents: m.priceCents,
@@ -291,7 +307,13 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
     cadence: m.cadence as 'ONE_OFF' | 'RECURRING',
     interval: m.cadence === 'RECURRING' ? ((m.interval ?? null) as ClientMembershipInterval | null) : null,
     plans: m.cadence === 'RECURRING'
-      ? plans.map(p => ({ id: p.id, interval: p.interval as ClientMembershipInterval, priceCents: p.priceCents }))
+      ? plans.map(p => ({
+          id: p.id,
+          interval: p.interval as ClientMembershipInterval,
+          priceCents: p.priceCents,
+          priceLabel: `${formatMoney(p.priceCents, currency)} / ${INTERVAL_WORD[p.interval as ClientMembershipInterval]}`,
+          consent: buyability.needsConsent ? copyFor(p) : null,
+        }))
       : [],
     ...buyability,
     requested: requestedIds.has(m.id),

@@ -1,7 +1,7 @@
 import type Stripe from 'stripe'
 import type { Prisma } from '@/generated/prisma'
 import { prisma } from './prisma'
-import { fulfilMembershipInTx, enrolMembershipClasses } from './memberships'
+import { fulfilMembershipInTx, enrolMembershipClasses, regrantRenewalItems } from './memberships'
 import {
   addCycles,
   mapSubscriptionStatus,
@@ -273,6 +273,12 @@ export async function recordInvoicePaid(
   // Was this the retry that rescued a paused membership? Decided before the
   // transaction, because the transaction is what clears the evidence.
   const wasPaused = purchase.status === 'PAST_DUE' || purchase.accessPausedAt != null
+  // A renewal, as opposed to the very first invoice of a new subscription.
+  // Verified against the pinned API version's BillingReason union.
+  const isRenewal = invoice.billing_reason === 'subscription_cycle'
+  // Set inside the transaction when this cycle produced a Payment row, so the
+  // post-commit Xero reconcile knows what to sync.
+  let createdPaymentId: string | null = null
 
   const piId = paymentIntentIdFromInvoice(invoice)
   const currency = (invoice.currency ?? 'nzd').toLowerCase()
@@ -323,6 +329,7 @@ export async function recordInvoicePaid(
         select: { id: true },
       })
       paymentId = payment.id
+      createdPaymentId = payment.id
     }
 
     await tx.membershipInvoice.create({
@@ -357,6 +364,18 @@ export async function recordInvoicePaid(
       },
     })
 
+    // A RENEWAL re-grants the bundle's consumables (a bag of treats every
+    // month). Deliberately not on subscription_create — the first cycle's items
+    // were already granted when the subscription was set up, and granting them
+    // again here would double every new subscriber's opening order.
+    if (isRenewal) {
+      await regrantRenewalItems(tx, {
+        membershipId: purchase.membershipId,
+        trainerId: purchase.trainerId,
+        clientId: purchase.clientId,
+      })
+    }
+
     // Hand everything back. Because access stops on the FIRST failed payment,
     // this restore path is the common one, not the exception — most failures
     // are an expired card replaced within days. Run unconditionally rather than
@@ -371,6 +390,25 @@ export async function recordInvoicePaid(
       clientId: purchase.clientId,
       membershipId: purchase.membershipId,
     })
+  }
+
+  // Reconcile the cycle into the trainer's Xero, exactly as a one-off purchase
+  // does. It works unchanged because each cycle produces a real Payment row —
+  // which is the main reason §6.5 says to create one.
+  //
+  // Usually a no-op on this pass: the Xero clearing model refuses to post until
+  // Stripe's processing fee is known, and the balance transaction is rarely
+  // settled this early. charge.updated backfills the fee and re-runs the sync,
+  // finding the Payment by the same stripePaymentIntentId recorded above.
+  // Best-effort either way — a Xero hiccup must never 500 this webhook and
+  // start a Stripe retry loop over a payment that already succeeded.
+  if (createdPaymentId) {
+    try {
+      const { syncPaymentToXero } = await import('./xero-sync')
+      await syncPaymentToXero(createdPaymentId)
+    } catch (err) {
+      console.error('[membership-billing] xero sync failed', createdPaymentId, err)
+    }
   }
 }
 

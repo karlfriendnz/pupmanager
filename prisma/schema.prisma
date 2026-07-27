@@ -3198,6 +3198,12 @@ enum MembershipRequestStatus {
   PENDING // client wants this, trainer hasn't actioned it
   FULFILLED // trainer accepted — the client is on the package (payment arranged separately)
   DECLINED // trainer said no / handled it another way. Keeps the list from growing forever.
+  // Trainer asked the client to subscribe and pay for it themselves, rather
+  // than granting it for free. A distinct state because "I gave it to them" and
+  // "I've asked them to pay and I'm waiting" are different things for a trainer
+  // to look at — collapsing them into FULFILLED would tell them a plan was
+  // running when nobody has paid for anything yet.
+  INVITED
 }
 
 // A client asking for a membership they can't check out themselves. Mirrors
