@@ -1103,8 +1103,12 @@ function WeekGrid({
           date nav (in the page header) still moves between weeks. Hidden
           when forceFullWeek is on (mobile "Week" view) since every day is
           already visible. */}
+      {/* hidden below sm: the toolbar above already shows a date range and
+          arrows, and two date headers stacked read as one thing said twice
+          (Karl, 2026-07-27). Stepping the 3-day window still works by swipe,
+          and the row returns at sm+ where there is room for both. */}
       {useThreeDayWindow && weekDays.length > 3 && (
-        <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 bg-slate-50">
+        <div className="hidden sm:flex items-center justify-between px-3 py-1.5 border-b border-slate-100 bg-slate-50">
           <button
             onClick={handleMobilePrev}
             disabled={!canMobilePrev}
@@ -3729,7 +3733,7 @@ export function ScheduleView({
         // at top:0 would sit underneath the shell's own sticky mobile header
         // (z-40) and simply disappear. It was never actually sticky on a phone
         // before — nothing scrolled past it — so this keeps the look identical.
-        className="relative sm:sticky z-30 flex items-center px-4 md:px-6 gap-3 flex-wrap border-b border-slate-100 bg-white"
+        className="sticky top-0 z-30 flex items-center px-4 md:px-6 gap-3 flex-wrap border-b border-slate-100 bg-white"
         style={{
           // Stick below the desktop top bar (which now shows the "Schedule"
           // title); 0 on mobile where there's no top bar.
