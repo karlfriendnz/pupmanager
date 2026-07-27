@@ -73,9 +73,21 @@ describe('generateSessionDates', () => {
   it('ongoing package (sessionCount 0) yields a single seed session', () => {
     expect(generateSessionDates(new Date('2026-06-02'), 0, 2)).toHaveLength(1)
   })
-  it('weeksBetween 0 stacks all on the start date', () => {
+  it('never stacks several sessions on one instant, even at weeksBetween 0', () => {
+    // This used to return three copies of the start date. The grid draws a
+    // block per session at its own time and labels it with the RUN's name, so
+    // three identical blocks landed on top of each other and read as one class
+    // rendered over and over. A multi-session run gets at least a week's gap.
     const d = generateSessionDates(new Date('2026-06-02T00:00:00Z'), 3, 0)
-    expect(new Set(d.map(x => x.toISOString())).size).toBe(1)
+    expect(d).toHaveLength(3)
+    expect(new Set(d.map(x => x.toISOString())).size).toBe(3)
+    expect(d[1].toISOString()).toBe('2026-06-09T00:00:00.000Z')
+    expect(d[2].toISOString()).toBe('2026-06-16T00:00:00.000Z')
+  })
+  it('leaves a one-off alone at weeksBetween 0', () => {
+    const d = generateSessionDates(new Date('2026-06-02T00:00:00Z'), 1, 0)
+    expect(d).toHaveLength(1)
+    expect(d[0].toISOString()).toBe('2026-06-02T00:00:00.000Z')
   })
   it('one-off (sessionCount 1) yields exactly one session regardless of cadence', () => {
     const start = new Date('2026-06-02T18:00:00Z')

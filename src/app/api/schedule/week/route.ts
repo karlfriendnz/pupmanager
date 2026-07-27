@@ -69,7 +69,23 @@ export async function GET(req: Request) {
     },
     include: {
       assignedTrainer: { select: { id: true, title: true, user: { select: { name: true } } } },
-      classRun: { select: { name: true } },
+      // The package shape must come down with the run: clicking a class block
+      // routes through runSessionHref(…, classRun.package), and this feed
+      // replaces the server-rendered one on every client-side week change.
+      // Selecting only `name` left `package` undefined, so the first click
+      // after navigating a week threw instead of opening the session. Keep this
+      // in step with the same select in (trainer)/schedule/page.tsx.
+      classRun: {
+        select: {
+          name: true,
+          package: {
+            select: {
+              isGroup: true, allowDropIn: true, sessionCount: true,
+              recurrenceRule: true, isPuppySchool: true,
+            },
+          },
+        },
+      },
       dog: {
         select: {
           name: true,

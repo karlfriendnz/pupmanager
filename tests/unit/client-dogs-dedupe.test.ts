@@ -39,7 +39,8 @@ describe('mergeClientDogs — the both-relations dog', () => {
   it('preserves the primary object, not the household copy', () => {
     // Both rows are the same Dog; whichever the caller selected on `dog` wins,
     // so a screen selecting extra columns on the primary keeps them.
-    const primary = { id: 'dog-bailey', name: 'Bailey', breed: 'Collie' }
+    const primary: { id: string; name: string; breed: string | null } =
+      { id: 'dog-bailey', name: 'Bailey', breed: 'Collie' }
     const additional = { id: 'dog-bailey', name: 'Bailey', breed: null }
     expect(mergeClientDogs(primary, [additional])[0].breed).toBe('Collie')
   })

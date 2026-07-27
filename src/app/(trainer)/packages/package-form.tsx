@@ -741,6 +741,9 @@ export function PackageForm({
             <Input
               label="Weeks between"
               type="number"
+              // 0 here meant every session on the same day and time — the
+              // generator now floors it at 1, so don't offer 0 either.
+              min={1}
               error={errors.weeksBetween?.message}
               {...register('weeksBetween', { valueAsNumber: true })}
             />

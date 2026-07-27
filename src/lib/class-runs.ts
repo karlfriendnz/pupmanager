@@ -22,6 +22,16 @@ export { PUBLIC_CLASS_ENROLLMENT_ENABLED } from './feature-flags'
  * The shared session schedule for a run: `sessionCount` dates starting at
  * `startDate`, `weeksBetween` apart. sessionCount === 0 (ongoing package)
  * yields a single seed session — ongoing group classes top up elsewhere.
+ *
+ * A cadence of 0 weeks used to be taken literally: six sessions all landed on
+ * `startDate`, and `createClassRunIn` wrote six TrainingSession rows at the
+ * same instant. The schedule grid positions every block off its own
+ * `scheduledAt` and labels it with the RUN's name, so those six stacked
+ * pixel-perfectly and read as one class drawn over and over — the "classes are
+ * duplicating" report. Nothing in the product means "several sessions at once",
+ * and the packages API still accepts weeksBetween 0 (it's meaningful for a
+ * one-off and for an ongoing package), so the floor belongs here, at the one
+ * place every caller goes through.
  */
 export function generateSessionDates(
   startDate: Date,
@@ -29,7 +39,8 @@ export function generateSessionDates(
   weeksBetween: number,
 ): Date[] {
   const n = sessionCount > 0 ? sessionCount : 1
-  const gap = Math.max(0, weeksBetween)
+  // Only a multi-session run needs a gap; a single session has nothing to space.
+  const gap = n > 1 ? Math.max(1, weeksBetween) : Math.max(0, weeksBetween)
   const out: Date[] = []
   for (let i = 0; i < n; i++) {
     const d = new Date(startDate)
