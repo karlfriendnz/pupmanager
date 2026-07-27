@@ -167,7 +167,17 @@ export default async function MessagesPage({
           the viewport. env(safe-area-inset-bottom) is deliberately
           absent: `html[data-native] body` already pads it once, globally.
           DESKTOP: no tab bar, so it keeps viewport-minus-header. */}
-      <div className="flex flex-col overflow-hidden px-4 -mb-20 h-[calc(100dvh-57px-58px-env(safe-area-inset-top,0px)-min(env(safe-area-inset-top,0px),1rem))] md:mb-0 md:px-8 md:h-[calc(100dvh-69px)]">
+      <div className={`flex flex-col overflow-hidden px-4 md:mb-0 md:px-8 md:h-[calc(100dvh-69px)] ${
+        selectedClient
+          // Thread open: the shell hides BOTH its top bar and the bottom tab
+          // bar (SetPageImmersive), so there is no chrome left to subtract —
+          // the pane is the whole viewport. Subtracting the old 57+58 here is
+          // what left ~115px of dead space under the composer. The negative
+          // margin cancels <main>'s bottom padding in full, inset included.
+          ? 'h-[100dvh] -mb-[calc(5rem+env(safe-area-inset-bottom,0px))]'
+          // List: both bars are present, so measure them off.
+          : 'h-[calc(100dvh-57px-58px-env(safe-area-inset-top,0px)-min(env(safe-area-inset-top,0px),1rem))] -mb-20'
+      }`}>
         <MessagesView
           activeClients={activeClients}
           inactiveClients={inactiveClients}
