@@ -40,6 +40,8 @@ interface GroupMeta {
   joined: boolean
   canPost: boolean
   memberCount: number
+  /** COMMUNITY only, trainer-side: invited and not yet accepted. */
+  invitedCount: number
 }
 
 interface Participant {
@@ -208,6 +210,23 @@ export function GroupThread({ groupId, backHref }: { groupId: string; backHref: 
               danger
               onClick={() => moderate('delete')}
             />
+          </div>
+        )}
+
+        {group.mode === 'COMMUNITY' && group.invitedCount > 0 && (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-sm font-medium text-slate-900">
+              {group.memberCount === 0
+                ? `${group.invitedCount} ${group.invitedCount === 1 ? 'person has' : 'people have'} been invited — nobody has joined yet`
+                : `${group.invitedCount} more ${group.invitedCount === 1 ? 'invitation is' : 'invitations are'} still open`}
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              A community group lets members see each other, so everyone has to accept before
+              they&rsquo;re in it. They&rsquo;ve had a notification.{' '}
+              {group.memberCount === 0
+                ? 'Until somebody accepts, anything you post here is only visible to your team.'
+                : 'People who haven&rsquo;t accepted can&rsquo;t see these posts.'}
+            </p>
           </div>
         )}
 

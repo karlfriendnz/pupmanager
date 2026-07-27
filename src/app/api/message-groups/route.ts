@@ -11,6 +11,8 @@ import {
   firstNameOf,
   MAX_REQUESTED_IDS,
 } from '@/lib/message-groups'
+import { notifyGroupInvite } from '@/lib/notify-group-invite'
+import { after } from 'next/server'
 
 // POST /api/message-groups — create a group.
 //
@@ -156,6 +158,15 @@ export async function POST(req: Request) {
       })),
       skipDuplicates: true,
     })
+  }
+
+  // COMMUNITY members are invited, not added, so somebody has to actually ASK
+  // them — otherwise the group is created, posted into, and every member is
+  // silently excluded by the consent check with no way to learn it exists.
+  // After the response: the participant rows are the source of truth and a dead
+  // device token must not fail the create.
+  if (group.mode === 'COMMUNITY') {
+    after(() => notifyGroupInvite({ groupId: group.id }))
   }
 
   return NextResponse.json(

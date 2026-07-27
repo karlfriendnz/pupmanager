@@ -94,6 +94,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ groupId:
       joined: true,
       canPost: canPost(access),
       memberCount: liveMembers.filter(p => p.role === 'CLIENT').length,
+      // People invited to a COMMUNITY group who haven't accepted yet. Without
+      // this the trainer sees "0 people", posts into a group nobody can read,
+      // and has no way to tell the difference between "nobody is in it" and
+      // "seven people have been asked and haven't answered". Trainer-side only:
+      // an unaccepted invitation is not a fact the other members get to have.
+      invitedCount: access.isTrainerSide
+        ? participants.filter(p => p.role === 'CLIENT' && !p.joinedAt && !p.leftAt).length
+        : 0,
     },
     messages: rows.map(m => ({
       id: m.id,
