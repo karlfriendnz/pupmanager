@@ -89,25 +89,29 @@ export function currencyForCountry(country?: string | null): string {
  * processing fee themselves. Our cut rides on top as an `application_fee_amount`,
  * which Stripe transfers to the platform automatically.
  *
- * We take a flat 1%. The trainer's all-in cost is therefore Stripe's rate in
- * their country plus one point, and it differs by country because Stripe's does:
+ * We take 1%, except in NZD. The trainer's all-in is Stripe's rate in their
+ * country plus our point, so it differs by country because Stripe's does — and
+ * every row below matches what pupmanager.com/pricing advertises:
  *
- *   currency  Stripe domestic      our margin   trainer pays
- *   nzd       2.65% + $0.30   ✓    1%           3.65% + $0.30
- *   aud       1.70% + A$0.30  ✓    1%           2.70% + A$0.30
- *   gbp       1.50% + 20p     ✓    1%           2.50% + 20p
- *   usd       2.90% + $0.30   ~    1%           3.90% + $0.30
- *   cad       2.90% + C$0.30  ~    1%           3.90% + C$0.30
- *   zar       2.90% + R0.50   ✗    1%           3.90% + R0.50
+ *   currency  Stripe domestic      our margin   trainer pays   advertised
+ *   nzd       2.65% + $0.30   ✓    0.85%        3.50% + $0.30  3.5% + $0.30
+ *   aud       1.70% + A$0.30  ✓    1%           2.70% + A$0.30 2.7% + $0.30
+ *   gbp       1.50% + 20p     ✓    1%           2.50% + 20p    2.5% + £0.20
+ *   usd       2.90% + $0.30   ~    1%           3.90% + $0.30  3.9% + $0.30
+ *   cad       2.90% + C$0.30  ~    1%           3.90% + C$0.30 3.9% + $0.30
+ *   zar       2.90% + R0.50   ✗    1%           3.90% + R0.50  3.9% + R0.50
  *
  * ✓ = checked against Stripe's live rate card (July 2026). ~ = the widely
  * published rate, not re-verified. ✗ = unverified; the 1% is still ours to
  * take, but confirm Stripe's ZA base before quoting that all-in figure.
  *
- * NOTE FOR THE MARKETING SITE (separate repo, pupmanager-marketing): its pricing
- * page advertises a single "3.5% + $0.30 /payment". That was only ever true of
- * NZD, and is now not true of any market. It needs updating to per-country
- * rates, or to "Stripe's rate + 1%".
+ * NZD is the one place we take less than 1%: Stripe NZ is 2.65%, so a flat
+ * point would put the all-in at 3.65% against an advertised 3.50%. Karl chose
+ * to hold the advertised number in the home market.
+ *
+ * The marketing site is a SEPARATE repo (pupmanager-marketing,
+ * src/components/PricingWeekly.tsx). These figures and that table have to be
+ * changed together — them disagreeing is exactly the bug this file just fixed.
  *
  * We take no fixed component: Stripe's fixed fee already equals the advertised
  * one, and a fixed markup would quietly overcharge on small payments.
@@ -138,10 +142,26 @@ export function currencyForCountry(country?: string | null): string {
  */
 const PLATFORM_MARKUP_BPS = 100
 
+/**
+ * Currencies where we take less than the standard 1%, and why.
+ *
+ * NZD only. Stripe NZ is 2.65%, so a flat 1% would make the all-in 3.65% while
+ * pupmanager.com/pricing advertises 3.50% — the one rate on that page that was
+ * never Stripe + 1%. Karl's call (2026-07-28): honour the advertised number in
+ * the home market and take 0.85% there rather than reprice it.
+ *
+ * Adding an entry here means charging less than we say we do everywhere else,
+ * so it needs a reason of this kind — an advertised rate we're choosing to keep
+ * — not a rounding preference.
+ */
+const PLATFORM_MARKUP_OVERRIDES: Record<string, number> = {
+  nzd: 85,
+}
+
 /** Our margin in basis points. PLATFORM_FEE_BPS overrides for a one-off test. */
-export function platformFeeBps(_currency: string): number {
+export function platformFeeBps(currency: string): number {
   if (env.PLATFORM_FEE_BPS > 0) return env.PLATFORM_FEE_BPS
-  return PLATFORM_MARKUP_BPS
+  return PLATFORM_MARKUP_OVERRIDES[currency.toLowerCase()] ?? PLATFORM_MARKUP_BPS
 }
 
 /**
