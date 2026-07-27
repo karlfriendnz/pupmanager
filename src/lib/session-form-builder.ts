@@ -12,10 +12,21 @@ export type BasicType = 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'
 export type ChoiceType = 'DROPDOWN' | 'RADIO' | 'CHECKBOX'
 export type QuestionType = BasicType | ChoiceType | 'CUSTOM_FIELD'
 
-export interface BasicQuestion { id: string; type: BasicType; label: string; required: boolean; isPrivate?: boolean }
+/**
+ * Conditional visibility: show this question only when the referenced
+ * question's answer equals `equals` (for a checkbox answer, when it *contains*
+ * `equals`). Only used by the unified Form renderers today — session forms are
+ * filled in by the trainer and show every question.
+ */
+export interface ShowIf { questionId: string; equals: string }
+
+/** One page of a multi-step form. An empty step list = a single-page form. */
+export interface FormStep { id: string; title: string }
+
+export interface BasicQuestion { id: string; type: BasicType; label: string; required: boolean; isPrivate?: boolean; showIf?: ShowIf; step?: string }
 /** Dropdown / radio / checkbox — the only questions that carry an option list. */
-export interface ChoiceQuestion { id: string; type: ChoiceType; label: string; required: boolean; isPrivate?: boolean; options: string[] }
-export interface LinkedQuestion { id: string; type: 'CUSTOM_FIELD'; customFieldId: string; required: boolean; isPrivate?: boolean }
+export interface ChoiceQuestion { id: string; type: ChoiceType; label: string; required: boolean; isPrivate?: boolean; options: string[]; showIf?: ShowIf; step?: string }
+export interface LinkedQuestion { id: string; type: 'CUSTOM_FIELD'; customFieldId: string; required: boolean; isPrivate?: boolean; showIf?: ShowIf; step?: string }
 
 export type Question = BasicQuestion | ChoiceQuestion | LinkedQuestion
 
@@ -109,6 +120,42 @@ export function duplicateQuestion(
 }
 
 /**
+ * Deep-copy every question with fresh ids, remapping `showIf` references so the
+ * copy's conditional logic points within itself rather than back at the
+ * original. Powers "Duplicate form".
+ */
+export function duplicateForm(questions: Question[]): Question[] {
+  const idMap = new Map<string, string>()
+  for (const q of questions) idMap.set(q.id, newQuestionId())
+  return questions.map(q => {
+    const copy = {
+      ...q,
+      id: idMap.get(q.id)!,
+      ...('options' in q ? { options: q.options.slice() } : {}),
+    } as Question
+    if (q.showIf) {
+      copy.showIf = { ...q.showIf, questionId: idMap.get(q.showIf.questionId) ?? q.showIf.questionId }
+    }
+    return copy
+  })
+}
+
+/**
+ * Whether a question should render, given the answers so far. A question with
+ * no `showIf` is always visible; otherwise it shows when the referenced answer
+ * matches (a checkbox answer matches when it contains the value).
+ */
+export function isQuestionVisible(
+  q: Question,
+  answers: Record<string, string | string[] | undefined>,
+): boolean {
+  if (!q.showIf) return true
+  const v = answers[q.showIf.questionId]
+  if (Array.isArray(v)) return v.includes(q.showIf.equals)
+  return v === q.showIf.equals
+}
+
+/**
  * Patch a question. Switching an authored question to a choice type seeds two
  * blank options; switching away drops them, so the saved shape stays valid.
  */
@@ -172,8 +219,14 @@ export function validateForm(name: string, questions: Question[]): string | null
 /** Trim labels/options for the POST/PATCH body. Shape matches the existing API. */
 export function serializeQuestions(questions: Question[]): Question[] {
   return questions.map(q => {
+    // Only emit showIf / step when set, so a session form's payload is byte-for
+    // byte what /api/session-forms has always received.
+    const extra = {
+      ...(q.showIf ? { showIf: q.showIf } : {}),
+      ...(q.step ? { step: q.step } : {}),
+    }
     if (q.type === 'CUSTOM_FIELD') {
-      return { id: q.id, type: q.type, customFieldId: q.customFieldId, required: q.required, isPrivate: !!q.isPrivate }
+      return { id: q.id, type: q.type, customFieldId: q.customFieldId, required: q.required, isPrivate: !!q.isPrivate, ...extra }
     }
     if (hasOptions(q)) {
       return {
@@ -183,8 +236,9 @@ export function serializeQuestions(questions: Question[]): Question[] {
         required: q.required,
         isPrivate: !!q.isPrivate,
         options: q.options.map(o => o.trim()).filter(Boolean),
+        ...extra,
       }
     }
-    return { id: q.id, type: q.type, label: q.label.trim(), required: q.required, isPrivate: !!q.isPrivate }
+    return { id: q.id, type: q.type, label: q.label.trim(), required: q.required, isPrivate: !!q.isPrivate, ...extra }
   })
 }

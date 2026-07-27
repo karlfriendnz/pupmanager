@@ -651,6 +651,7 @@ model TrainerProfile {
   customFields       CustomField[]
   libraryTypes       LibraryType[]
   embedForms         EmbedForm[]
+  forms              Form[]
   enquiries          Enquiry[]
   emailTemplates     EmailTemplate[]
   broadcasts         EmailBroadcast[]
@@ -1097,6 +1098,20 @@ model ClientProfile {
   // first client" onboarding step, kept distinct from "Create a client".
   invitedAt DateTime?
 
+  // The intake Form this client was assigned (chosen at invite time), when they
+  // completed it, and their answers. While intakeFormId is set and
+  // intakeCompletedAt is null the client is gated behind that form before
+  // reaching their home screen — it takes priority over the legacy
+  // required-custom-fields gate. Existing clients have a null intakeFormId, so
+  // nobody is gated retroactively.
+  //
+  // intakeAnswers is keyed by question id → string | string[]. CUSTOM_FIELD
+  // answers are ALSO mirrored to CustomFieldValue on submit, so the rest of the
+  // app (client profile, reports) reads them the usual way.
+  intakeFormId      String?
+  intakeCompletedAt DateTime?
+  intakeAnswers     Json?
+
   // Private, trainer-facing free-text notes about this client (not shown to the
   // client; distinct from per-session notes). Scoped to the (userId,trainerId)
   // relationship like everything else on this model.
@@ -1125,6 +1140,7 @@ model ClientProfile {
   trainer         TrainerProfile     @relation(fields: [trainerId], references: [id])
   assignedTrainer TrainerMembership? @relation("AssignedTrainer", fields: [assignedMembershipId], references: [id], onDelete: SetNull)
   dog             Dog?               @relation("PrimaryDog", fields: [dogId], references: [id])
+  intakeForm      Form?              @relation("ClientIntakeForm", fields: [intakeFormId], references: [id], onDelete: SetNull)
 
   diaryEntries      TrainingTask[]
   trainingSessions  TrainingSession[]
@@ -3385,6 +3401,81 @@ model EmbedForm {
   @@map("embed_forms")
 }
 
+// ─── Unified forms ────────────────────────────────────────────────────────────
+// One authored form, built from the shared session-form-builder Question[]
+// engine (7 field types + linked CustomFields + conditional `showIf` + optional
+// multi-step pages). Unlike the field-library intake — which asks every field a
+// trainer has ever defined, in one flat list — a Form is a real questionnaire:
+// the trainer chooses the questions, their order, which page they sit on, and
+// when they appear.
+//
+// A Form can be used two ways, and both at once:
+//   usableAsIntake  — assigned to a client at invite time
+//                     (ClientProfile.intakeFormId). The client is gated behind
+//                     it until they complete it.
+//   usableAsEnquiry — published publicly at /form/{id}. A submission creates an
+//                     Enquiry, exactly like the legacy EmbedForm does.
+//
+// The legacy EmbedForm still backs the 49 lead-capture forms already live in
+// production (and the public class-booking page, Instagram link-in-bio and the
+// onboarding checklist all read it). It is deprecated as an authoring target —
+// nothing creates a new one — and is scheduled to be folded into this model by
+// an id-preserving data migration so live embed URLs keep resolving.
+model Form {
+  id        String  @id @default(cuid())
+  trainerId String
+  isSample  Boolean @default(false)
+  name      String
+  // Optional rich-text intro shown above the questions on both the client
+  // intake gate and the public enquiry form. Tiptap HTML — render through
+  // <RichText>, never dangerouslySetInnerHTML (AGENTS.md).
+  description String? @db.Text
+
+  // What this form can be used for — a form can serve as both.
+  usableAsIntake  Boolean @default(false)
+  usableAsEnquiry Boolean @default(false)
+  // Public URL slug for the enquiry use. Unique per trainer, and null for
+  // intake-only forms. NOTE: the public URL keys on `id`, not `slug`, because
+  // slug is only unique per-trainer and two trainers' identical slugs would
+  // collide on a global public route. The slug is kept for a future
+  // /c/{trainer}/{slug} vanity URL.
+  slug String?
+
+  // Authored questions — the session-form-builder Question[] shape, each with
+  // an optional `showIf` (conditional visibility) and `step` (which page).
+  questions Json @default("[]")
+  // Multi-step pages: [{ id, title }]. Empty = a single-page form.
+  steps     Json @default("[]")
+
+  // Success-page copy (enquiry use) + brand styling, mirroring EmbedForm.
+  thankYouTitle   String? @db.Text
+  thankYouMessage String? @db.Text
+  showBorder      Boolean @default(true)
+  buttonColor     String?
+
+  // Per-form invite email copy, sent when a client is invited with this form as
+  // their intake. Null falls back to the platform copy. Subject + body support
+  // the same {business} / {name} placeholders as the welcome email.
+  inviteSubject         String?  @db.Text
+  inviteBody            String?  @db.Text
+  inviteShowDiaryButton Boolean  @default(true)
+  inviteButtonLabel     String?  @db.Text
+
+  // Draft flag — a draft is hidden from the invite picker and 404s publicly.
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer         TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  assignedClients ClientProfile[] @relation("ClientIntakeForm")
+  enquiries       Enquiry[]       @relation("EnquiryUnifiedForm")
+
+  @@unique([trainerId, slug])
+  @@index([trainerId])
+  @@map("forms")
+}
+
 // ─── Lead magnets (free download → mailing list) ──────────────────────────────
 // A trainer-owned freebie: a downloadable file behind a branded public form.
 // A prospect submits name + email (+ consent) and is emailed the download link
@@ -3478,7 +3569,16 @@ model Enquiry {
   id        String  @id @default(cuid())
   trainerId String
   isSample  Boolean @default(false)
-  formId    String? // null if the source form was deleted
+  formId    String? // null if the source form was deleted (legacy EmbedForm)
+  // Set instead of formId when the enquiry came from a unified Form published
+  // as an enquiry form. Both public form systems coexist while the legacy
+  // EmbedForms are still live, so the provenance is kept separately rather than
+  // overloading formId across two tables.
+  unifiedFormId String?
+  // Full question-id → answer snapshot for a unified-Form enquiry, for display
+  // on the enquiry detail. acceptEnquiry maps `customFieldValues`, not this.
+  // Null for EmbedForm enquiries.
+  formAnswers   Json?
 
   // Snapshot of form values at submit time
   name              String
@@ -3531,6 +3631,7 @@ model Enquiry {
 
   trainer       TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   form          EmbedForm?       @relation(fields: [formId], references: [id], onDelete: SetNull)
+  unifiedForm   Form?            @relation("EnquiryUnifiedForm", fields: [unifiedFormId], references: [id], onDelete: SetNull)
   clientProfile ClientProfile?   @relation(fields: [clientProfileId], references: [id], onDelete: SetNull)
   messages      EnquiryMessage[]
 
