@@ -26,7 +26,7 @@ import { ModalPortal } from '@/components/shared/modal-portal'
  * Nothing here is new behaviour. The routes are the ones already in use:
  *   clone    POST   /api/packages/:packageId/clone
  *   convert  POST   /api/class-runs/:runId/convert-to-package   (class → 1:1)
- *            PATCH  /api/packages/:packageId { isGroup: true }  (1:1 → class)
+ *                   — one direction only; see the comment on convertLabel
  *   delete   DELETE /api/class-runs/:runId  |  /api/packages/:packageId
  */
 export function OfferingActions({
@@ -63,10 +63,20 @@ export function OfferingActions({
   const [error, setError] = useState<string | null>(null)
 
   const isRun = !!runId
-  const convertLabel = isRun ? 'Convert to a 1:1 consult' : 'Convert to a group class'
-  const convertHint = isRun
-    ? 'Removes the scheduled sessions and keeps the offering'
-    : 'Run it as a class with a shared roster instead'
+  // Convert is offered on run-backed offerings ONLY — group classes, casual
+  // classes, daycare programmes and events — and only in the direction that is
+  // actually implemented, back to a 1:1 consult.
+  //
+  // The reverse used to be offered on 1:1 consults and stranded the offering.
+  // It PATCHed isGroup: true and stopped: /packages lists `isGroup: false` so
+  // the consult vanished from there, /classes lists ClassRun rows and the
+  // conversion creates none, and saving the edit form afterwards doesn't help
+  // because syncOfferingRun opens with `if (runs.length !== 1) return null` —
+  // it only ever edits an existing run, never creates one. The offering ended
+  // up on neither page. Reinstate it only alongside a route that creates the
+  // run, the way class → 1:1 has convert-to-package.
+  const convertLabel = 'Convert to a 1:1 consult'
+  const convertHint = 'Removes the scheduled sessions and keeps the offering'
 
   async function readError(res: Response, fallback: string) {
     const body = await res.json().catch(() => null) as { error?: unknown } | null
@@ -98,17 +108,12 @@ export function OfferingActions({
     setBusy(true)
     setError(null)
     try {
-      const res = runId
-        ? await fetch(`/api/class-runs/${runId}/convert-to-package`, { method: 'POST' })
-        : await fetch(`/api/packages/${packageId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ isGroup: true }),
-          })
+      // Only reachable from a run-backed offering — the action isn't offered
+      // otherwise — so there is one route, not a branch.
+      const res = await fetch(`/api/class-runs/${runId}/convert-to-package`, { method: 'POST' })
       if (res.ok) {
-        // Either direction lands on the offering's edit form: converting a
-        // class leaves a 1:1 consult with nothing scheduled, and converting a
-        // consult leaves a class with no day or time yet.
+        // Lands on the offering's edit form: it is now a 1:1 consult with
+        // nothing scheduled, and the price and duration want a look.
         router.push(`/packages/${packageId}/edit`)
         router.refresh()
         return
@@ -153,14 +158,19 @@ export function OfferingActions({
       onSelect: handleClone,
       disabled: busy,
     },
-    {
-      key: 'convert',
-      label: convertLabel,
-      hint: convertHint,
-      icon: <Shuffle className="h-5 w-5" strokeWidth={1.75} />,
-      onSelect: () => { setSheetOpen(false); setConfirm('convert') },
-      disabled: busy,
-    },
+    // Convert only goes ONE way: a run-backed offering (group class, casual
+    // class, daycare programme, event) back to a 1:1 consult. See isRun above
+    // for why the other direction isn't offered.
+    ...(isRun
+      ? [{
+          key: 'convert',
+          label: convertLabel,
+          hint: convertHint,
+          icon: <Shuffle className="h-5 w-5" strokeWidth={1.75} />,
+          onSelect: () => { setSheetOpen(false); setConfirm('convert') },
+          disabled: busy,
+        }]
+      : []),
     {
       key: 'delete',
       label: `Delete this ${noun}`,

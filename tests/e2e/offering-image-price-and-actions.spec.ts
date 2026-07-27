@@ -296,8 +296,13 @@ test.describe('offering details page — actions on the page', () => {
       await page.getByRole('button', { name: /More actions/ }).click()
       const sheet = page.getByRole('dialog')
       await expect(sheet.getByRole('button', { name: /Duplicate this/ })).toBeVisible()
-      await expect(sheet.getByRole('button', { name: /Convert to a group class/ })).toBeVisible()
       await expect(sheet.getByRole('button', { name: /Delete this/ })).toBeVisible()
+      // NOT Convert. A 1:1 consult has nowhere to convert TO: flipping isGroup
+      // stranded the offering on neither list, because /packages filters
+      // isGroup: false and /classes lists ClassRun rows that the conversion
+      // never created. Convert is offered on run-backed offerings only, in the
+      // direction that has a route behind it.
+      await expect(sheet.getByRole('button', { name: /Convert/ })).toHaveCount(0)
 
       // Escape closes it and the body scroll lock is released — never two
       // scrollbars, and never a page you can't scroll after closing a sheet.
