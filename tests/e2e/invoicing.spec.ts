@@ -135,9 +135,19 @@ test.describe('invoicing — partial payment display', () => {
     await page.goto(`/clients/${SEED.assignedClientId}`)
     await page.getByRole('button', { name: 'Invoices' }).click()
 
-    await expect(page.getByText('Half-Paid Course').first()).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText('Partially paid').first()).toBeVisible()
-    await expect(page.getByText('paid $150.00 of $380.00').first()).toBeVisible()
+    // filter({ visible: true }): the Invoices tab now renders a phone list AND
+    // a desktop table, one hidden by viewport. Both are in the DOM, and .first()
+    // was picking whichever came first in source order — the hidden one. This
+    // asserts against the layout actually on screen, whatever the viewport.
+    const shown = (t: string) => page.getByText(t).filter({ visible: true }).first()
+    await expect(shown('Half-Paid Course')).toBeVisible({ timeout: 15_000 })
+    await expect(shown('Partially paid')).toBeVisible()
+    // The two numbers, not the old sentence. The table shows the total in the
+    // amount column with "$150.00 paid" beneath it, rather than the previous
+    // "paid $X of $Y" phrasing — same information, and the "Partially paid"
+    // badge above still names the state outright.
+    await expect(shown('$150.00 paid')).toBeVisible()
+    await expect(shown('$380.00')).toBeVisible()
   })
 })
 

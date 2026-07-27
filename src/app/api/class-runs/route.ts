@@ -94,6 +94,11 @@ export async function POST(req: Request) {
         scheduleNote: d.scheduleNote ?? null, capacity: d.capacity ?? null,
         // undefined → inherit the group package's own gap.
         bufferMins: d.bufferMins ?? null,
+        // This cohort's own venue. Without it, a run created here silently lost
+        // an explicitly-typed address and always fell back to the package's
+        // default — inheritance is meant to be a default, not a rewrite.
+        // createClassRun already resolves `args.location || pkg.location`.
+        location: d.location ?? null,
       })
       await syncClassSessions(createdSessionIds)
       return NextResponse.json({ ok: true, ...run }, { status: 201 })
