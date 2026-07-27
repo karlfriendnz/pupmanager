@@ -50,22 +50,21 @@ describe('currencyForCountry — payout currency defaulting', () => {
 })
 
 describe('platformFeeAmount — our margin on a client payment', () => {
-  // We take 1% (Karl, 2026-07-28), except NZD at 0.85% to hold the 3.5% the
-  // pricing page advertises in the home market. It used to be a per-currency
-  // spread reverse-engineered to land the all-in on a flat 3.5% everywhere,
-  // which charged GBP trainers 2% against a promised 2.5%. See
-  // platform-fee.test.ts, which pins each all-in against the advertised table.
-  it('is 1% in every supported currency but NZD', () => {
+  // We take a flat 1% (Karl, 2026-07-28). It used to be a per-currency spread
+  // reverse-engineered to land the all-in on 3.5% everywhere, which charged GBP
+  // trainers 2% against a promised 2.5%. See platform-fee.test.ts, which pins
+  // each all-in figure against the rates the pricing page advertises.
+  it('is 1% in every supported currency', () => {
+    expect(platformFeeBps('nzd')).toBe(100)  // Stripe NZ 2.65% → 3.65%
     expect(platformFeeBps('aud')).toBe(100)  // Stripe AU 1.70% → 2.70%
     expect(platformFeeBps('gbp')).toBe(100)  // Stripe UK 1.50% → 2.50%
     expect(platformFeeBps('usd')).toBe(100)
     expect(platformFeeBps('cad')).toBe(100)
-    expect(platformFeeBps('nzd')).toBe(85)   // Stripe NZ 2.65% → 3.50%
   })
 
   it('is case-insensitive about the currency', () => {
-    expect(platformFeeBps('NZD')).toBe(85)
-    expect(platformFeeAmount(10_000, 'NZD')).toBe(85)
+    expect(platformFeeBps('NZD')).toBe(100)
+    expect(platformFeeAmount(10_000, 'NZD')).toBe(100)
   })
 
   it('still takes 1% in a currency whose Stripe rate we have not confirmed', () => {
@@ -78,13 +77,13 @@ describe('platformFeeAmount — our margin on a client payment', () => {
   })
 
   it('charges the margin on the gross, in minor units', () => {
-    expect(platformFeeAmount(10_000, 'nzd')).toBe(85)   // 0.85% of $100.00 = 85c
+    expect(platformFeeAmount(10_000, 'nzd')).toBe(100)  // 1% of $100.00 = $1.00
     expect(platformFeeAmount(5_000, 'aud')).toBe(50)    // 1% of $50.00 = 50c
     expect(platformFeeAmount(10_000, 'gbp')).toBe(100)  // 1% of £100.00 = £1
   })
 
   it('rounds to the nearest cent and never goes negative', () => {
-    expect(platformFeeAmount(10_394, 'nzd')).toBe(88)   // 0.85% of 10394 = 88.3 → 88
+    expect(platformFeeAmount(10_410, 'nzd')).toBe(104)  // 1% of 10410 = 104.1 → 104
     expect(platformFeeAmount(1, 'nzd')).toBe(0)         // rounds to nothing
     expect(platformFeeAmount(0, 'nzd')).toBe(0)
     expect(platformFeeAmount(-500, 'nzd')).toBe(0)
@@ -106,11 +105,11 @@ describe('estimateProcessingSurcharge — the client covers BOTH fees', () => {
   it('nets the trainer EXACTLY the item price, in every currency', () => {
     // [amount, currency, Stripe's domestic rate, Stripe's fixed fee, our margin]
     const cases: Array<[number, string, number, number, number]> = [
-      [10_000, 'nzd', 265, 30, 85],
-      [10_000, 'aud', 170, 30, 180],
-      [5_000, 'gbp', 150, 20, 200],
-      [10_000, 'usd', 290, 30, 60],
-      [25_000, 'cad', 290, 30, 60],
+      [10_000, 'nzd', 265, 30, 100],
+      [10_000, 'aud', 170, 30, 100],
+      [5_000, 'gbp', 150, 20, 100],
+      [10_000, 'usd', 290, 30, 100],
+      [25_000, 'cad', 290, 30, 100],
     ]
     for (const [amount, currency, stripeBps, fixed, ourBps] of cases) {
       const surcharge = estimateProcessingSurcharge(amount, currency)
@@ -125,8 +124,9 @@ describe('estimateProcessingSurcharge — the client covers BOTH fees', () => {
   })
 
   it('covers our margin too — a surcharge that only paid Stripe would short the trainer', () => {
-    // AUD is the case that was broken: it grossed up at 2.7% while the true cost
-    // is Stripe 1.7% + our 1.8% = 3.5%, so the trainer lost 0.8% of every payment.
+    // AUD is the case that was broken: it grossed up at Stripe's rate alone
+    // while the true cost is Stripe 1.7% + our 1% = 2.7%, so the trainer lost
+    // our margin out of their own pocket on every payment.
     const stripeOnly = Math.round((10_000 + 30) / (1 - 0.017)) - 10_000
     expect(estimateProcessingSurcharge(10_000, 'aud')).toBeGreaterThan(stripeOnly)
   })

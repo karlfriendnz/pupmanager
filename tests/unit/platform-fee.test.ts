@@ -19,17 +19,10 @@ import { CURRENCIES } from '@/lib/pricing'
 // written by hand, free to drift from the fee it describes.
 
 describe('our margin', () => {
-  it('is 1% everywhere except NZD', () => {
+  it('is 1%, in every currency we sell in, with no exceptions', () => {
     for (const c of CURRENCIES) {
-      if (c.code === 'NZD') continue
       expect(platformFeeBps(c.code), `${c.code} margin`).toBe(100)
     }
-  })
-
-  it('is 0.85% in NZD, to hold the 3.5% the pricing page advertises', () => {
-    // Stripe NZ is 2.65%, so a flat point would make the all-in 3.65% against
-    // an advertised 3.50%. Karl chose the advertised number in the home market.
-    expect(platformFeeBps('nzd')).toBe(85)
   })
 
   it('is 1% for a currency we have never heard of, not zero and not a guess', () => {
@@ -56,7 +49,7 @@ describe('what a trainer actually pays, all in', () => {
   const EXPECTED: Record<string, { label: string; bps: number; fixed: number }> = {
     gbp: { label: '2.5%', bps: 250, fixed: 20 },
     aud: { label: '2.7%', bps: 270, fixed: 30 },
-    nzd: { label: '3.5%', bps: 350, fixed: 30 },
+    nzd: { label: '3.65%', bps: 365, fixed: 30 },
     usd: { label: '3.9%', bps: 390, fixed: 30 },
     cad: { label: '3.9%', bps: 390, fixed: 30 },
     zar: { label: '3.9%', bps: 390, fixed: 50 },

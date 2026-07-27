@@ -50,17 +50,17 @@ describe('createPaymentRecord — server-computed totals + surcharge line', () =
     })
     expect(id).toBe('pay_new')
     const data = h.paymentCreate.mock.calls[0][0].data
-    // subtotal 10000 + nzd surcharge 394 = 10394. NZD all-in is 3.5% + 30c —
-    // Stripe's 2.65% plus our 0.85%, held at the advertised rate.
-    expect(data.amountTotal).toBe(10_394)
+    // subtotal 10000 + nzd surcharge 410 = 10410. NZD all-in is 3.65% + 30c —
+    // Stripe's 2.65% plus our flat 1%.
+    expect(data.amountTotal).toBe(10_410)
     const created = data.items.create
     expect(created).toHaveLength(2)
     expect(created[1].description).toBe('Card processing fee')
-    expect(created[1].unitAmount).toBe(394)
+    expect(created[1].unitAmount).toBe(410)
     expect(created[1].intent).toEqual({ surcharge: true })
-    // Our margin is stamped on the record at creation: 0.85% (NZD) of the
-    // grossed-up 10394 = 88c. It used to be 0 here — that WAS the bug.
-    expect(data.applicationFeeAmount).toBe(88)
+    // Our margin is stamped on the record at creation: 1% of the grossed-up
+    // 10410 = 104c. It used to be 0 here — that WAS the bug.
+    expect(data.applicationFeeAmount).toBe(104)
     // record stamps the connected account + currency + PENDING status
     expect(data.connectAccountId).toBe('acct_1')
     expect(data.currency).toBe('nzd')
