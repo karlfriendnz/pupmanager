@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ChevronRight, ClipboardList, FileText, Globe } from 'lucide-react'
+import { ChevronRight, ClipboardList, FileText } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FlatBlock } from '@/components/shared/flat-list'
 
@@ -9,31 +9,35 @@ import { FlatBlock } from '@/components/shared/flat-list'
 // and a function can't cross the server → client boundary ("Only plain objects
 // can be passed to Client Components").
 
+// Two doors, not four. The split that matters to a trainer is WHO FILLS IT IN:
+// a session form is theirs to fill in after a session; a client form is the
+// client's — whether they meet it as a website enquiry or as intake after
+// being invited, which is a switch inside the one editor rather than a
+// separate kind of form.
+//
+// "Lead-capture form" used to be a third choice, creating a legacy EmbedForm.
+// It is gone: a client form set to "Website enquiry" does the same job with
+// question types, conditional logic and pages. Existing lead-capture forms are
+// still listed and editable so live embeds can be maintained.
 const CHOICES: { icon: LucideIcon; label: string; sub: string; href: string }[] = [
+  {
+    icon: ClipboardList,
+    label: 'Client form',
+    sub: 'Questions your clients answer — as a website enquiry form, or as intake when you invite them. Choose either, or both.',
+    href: '/forms/client/new',
+  },
   {
     icon: FileText,
     label: 'Session form',
     sub: "Your own questions, filled in after a session. The answers become the client's report.",
     href: '/forms/session/new',
   },
-  {
-    icon: Globe,
-    label: 'Lead-capture form',
-    sub: 'A public form you embed on your own website — whoever fills it in lands in your enquiries.',
-    href: '/forms/embed/new',
-  },
-  {
-    icon: ClipboardList,
-    label: 'Intake form',
-    sub: 'You already have one, and there is only ever one. It asks every field in your library — add or remove those on the Fields tab.',
-    href: '/settings?tab=forms&view=fields',
-  },
 ]
 
 export function NewFormChoices() {
   return (
     <>
-      <p className="mb-3 px-1 text-sm text-slate-500">What do you need it to do?</p>
+      <p className="mb-3 px-1 text-sm text-slate-500">Who fills this one in?</p>
       <FlatBlock>
         {CHOICES.map(({ icon: Icon, label, sub, href }) => (
           <Link key={href} href={href} className="flex items-start gap-3 px-4 py-4 text-left active:bg-slate-50">

@@ -73,7 +73,7 @@ export default async function TrainerSettingsPage() {
   // Forms data is only needed for the Forms tab — skip the queries for members
   // who can't manage forms (the tab won't render for them). Lead-capture (embed)
   // forms now live here under Fields & forms too (moved off the Website tab).
-  const [customFields, sessionForms, embedForms] = canManageForms
+  const [customFields, sessionForms, embedForms, clientForms] = canManageForms
     ? await Promise.all([
         prisma.customField.findMany({
           where: { trainerId: trainerProfile.id },
@@ -88,8 +88,20 @@ export default async function TrainerSettingsPage() {
           where: { trainerId: trainerProfile.id },
           orderBy: { createdAt: 'desc' },
         }),
+        // Unified client forms — rendered from the server like everything else
+        // on this screen, rather than fetched on mount, so the list doesn't
+        // flash a spinner every time the tab opens.
+        prisma.form.findMany({
+          where: { trainerId: trainerProfile.id },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true, name: true, description: true, isActive: true,
+            usableAsIntake: true, usableAsEnquiry: true, questions: true,
+            _count: { select: { assignedClients: true, enquiries: true } },
+          },
+        }),
       ])
-    : [[], [], []] as const
+    : [[], [], [], []] as const
 
   const intakeFields = customFields.map(f => ({
     id: f.id,
@@ -160,6 +172,17 @@ export default async function TrainerSettingsPage() {
               description: f.description,
               isActive: f.isActive,
               fieldCount: (Array.isArray(f.fields) ? f.fields.length : 0) + (Array.isArray(f.customFieldIds) ? f.customFieldIds.length : 0),
+            }))}
+            clientForms={clientForms.map(f => ({
+              id: f.id,
+              name: f.name,
+              description: f.description,
+              isActive: f.isActive,
+              usableAsIntake: f.usableAsIntake,
+              usableAsEnquiry: f.usableAsEnquiry,
+              questionCount: Array.isArray(f.questions) ? f.questions.length : 0,
+              assignedCount: f._count.assignedClients,
+              enquiryCount: f._count.enquiries,
             }))}
             intakeCustomFields={intakeFields}
             intakeFormPublished={trainerProfile.intakeFormPublished}

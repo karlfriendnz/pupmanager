@@ -63,8 +63,11 @@ test.describe('forms screen — owner happy path', () => {
     // One door for every kind of form — a full screen, not a menu.
     await page.getByRole('button', { name: 'New form' }).click()
     await page.waitForURL('**/forms/new')
+    // Two doors, split by who fills the form in. "Lead-capture form" used to be
+    // a third; a client form set to "Website enquiry" replaced it.
     await expect(page.getByRole('link', { name: /Session form/ })).toBeVisible()
-    await expect(page.getByRole('link', { name: /Lead-capture form/ })).toBeVisible()
+    await expect(page.getByRole('link', { name: /Client form/ })).toBeVisible()
+    await expect(page.getByRole('link', { name: /Lead-capture form/ })).toHaveCount(0)
     await page.getByRole('link', { name: /Session form/ }).click()
     await page.waitForURL('**/forms/session/new')
 
@@ -108,6 +111,59 @@ test.describe('forms screen — owner happy path', () => {
     await page.request.delete(`/api/custom-fields/${fieldId}`)
   })
 
+  test('owner builds a client form on the same editor, with a conditional question', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto('/settings?tab=forms&view=forms')
+
+    await page.getByRole('button', { name: 'New form' }).click()
+    await page.waitForURL('**/forms/new')
+    await page.getByRole('link', { name: /Client form/ }).click()
+    await page.waitForURL('**/forms/client/new')
+
+    const formName = `Client form ${Date.now()}`
+    await page.getByLabel('Form name').fill(formName)
+
+    // Question 1 → a dropdown, so question 2 has something to branch on.
+    await page.getByLabel('Question 1', { exact: true }).fill('Has your dog been groomed before?')
+    await page.getByLabel('Answer type for question 1').selectOption('DROPDOWN')
+    await page.getByLabel('Option 1').fill('Yes')
+    await page.getByLabel('Option 2').fill('No')
+
+    await page.getByRole('button', { name: 'Add question' }).click()
+    await page.getByLabel('Question 2', { exact: true }).fill('When was the last groom?')
+    // The conditional row only offers EARLIER questions that have options.
+    await page.getByLabel('Only ask this question when').nth(1)
+      .selectOption({ label: 'Has your dog been groomed before?' })
+    await page.getByLabel('Answer that reveals this question').selectOption('Yes')
+
+    // It is an intake form by default; also publish it as a website enquiry so
+    // both halves of the model get exercised.
+    await page.getByRole('switch', { name: 'Website enquiry form' }).click()
+
+    const [res] = await Promise.all([
+      page.waitForResponse(r => r.url().endsWith('/api/forms') && r.request().method() === 'POST'),
+      page.getByRole('button', { name: 'Create form' }).click(),
+    ])
+    expect(res.ok()).toBeTruthy()
+    const formId = (await res.json()).id as string
+
+    // Listed under Client forms, saying what it does in words rather than chips.
+    await page.waitForURL('**/settings**')
+    const row = page.getByRole('link', { name: new RegExp(formName) })
+    await expect(row).toBeVisible({ timeout: 10_000 })
+    await expect(row).toContainText('Website enquiry + client intake')
+    await expect(row).toContainText('2 questions')
+
+    // Reopening it round-trips the conditional rule.
+    await row.click()
+    await page.waitForURL('**/forms/client/**')
+    await expect(page.getByLabel('Form name')).toHaveValue(formName)
+    await expect(page.getByLabel('Answer that reveals this question')).toHaveValue('Yes')
+
+    // Clean up — the suite shares one database and one trainer.
+    await page.request.delete(`/api/forms/${formId}`)
+  })
+
   test('the editor refuses to save an unnamed form', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/forms/session/new')
@@ -137,5 +193,35 @@ test.describe('forms screen — cross-tenant guard', () => {
     await login(page, SEED.owner.email, SEED.owner.password)
     const deleted = await page.request.delete(`/api/session-forms/${formId}`)
     expect(deleted.ok()).toBeTruthy()
+  })
+
+  test("another business can't open or edit the editor for your client form", async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    const name = `Guarded client form ${Date.now()}`
+    const created = await page.request.post('/api/forms', {
+      data: {
+        name,
+        usableAsIntake: true,
+        questions: [{ id: 'q1', type: 'SHORT_TEXT', label: 'Anything?', required: false }],
+      },
+    })
+    expect(created.ok()).toBeTruthy()
+    const formId = (await created.json()).id as string
+
+    await login(page, SEED.businessB.ownerEmail, SEED.businessB.ownerPassword)
+    await page.goto(`/forms/client/${formId}`)
+    await expect(page.getByLabel('Form name')).toHaveCount(0)
+    await expect(page.getByText(name)).toHaveCount(0)
+    // …and the API says the same, rather than the page merely hiding it.
+    expect((await page.request.get(`/api/forms/${formId}`)).status()).toBe(404)
+    expect((await page.request.patch(`/api/forms/${formId}`, { data: { name: 'hijacked' } })).status()).toBe(404)
+    expect((await page.request.delete(`/api/forms/${formId}`)).status()).toBe(404)
+
+    await login(page, SEED.owner.email, SEED.owner.password)
+    // Still ours, still called what we called it.
+    const mine = await page.request.get(`/api/forms/${formId}`)
+    expect(mine.ok()).toBeTruthy()
+    expect((await mine.json()).name).toBe(name)
+    expect((await page.request.delete(`/api/forms/${formId}`)).ok()).toBeTruthy()
   })
 })

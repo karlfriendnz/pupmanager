@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import {
   Plus, Copy, Check, ExternalLink, Sparkles,
   Globe, Code2, FileText, ChevronRight,
-  ClipboardList,
+  ClipboardList, ListChecks,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
@@ -562,9 +562,34 @@ export interface EmbedFormRow {
   fieldCount: number
 }
 
+/** A unified client form — intake, website enquiry, or both. */
+export interface ClientFormRow {
+  id: string
+  name: string
+  description: string | null
+  isActive: boolean
+  usableAsIntake: boolean
+  usableAsEnquiry: boolean
+  questionCount: number
+  assignedCount: number
+  enquiryCount: number
+}
+
+// Plain words for what a form is FOR, in the order a trainer meets them.
+// Deliberately a sentence fragment rather than tinted "Intake"/"Enquiry" chips
+// — a row already says what it is, and a chip strip is the tell of a
+// machine-made screen (AGENTS.md).
+function clientFormUse(f: ClientFormRow): string {
+  if (f.usableAsIntake && f.usableAsEnquiry) return 'Website enquiry + client intake'
+  if (f.usableAsEnquiry) return 'Website enquiry form'
+  if (f.usableAsIntake) return 'Client intake form'
+  return 'Not in use yet'
+}
+
 export function FormsManager({
   initialSessionForms,
   embedForms,
+  clientForms = [],
   intakeCustomFields,
   intakeFormPublished,
   intakeSectionOrder,
@@ -574,6 +599,8 @@ export function FormsManager({
   initialSessionForms: SessionFormRow[]
   /** Lead-capture (embed) forms — null when the member can't manage forms. */
   embedForms: EmbedFormRow[] | null
+  /** Unified client forms (the Form model). */
+  clientForms?: ClientFormRow[]
   intakeCustomFields: IntakeCustomField[]
   intakeFormPublished: boolean
   intakeSectionOrder: { name: string; description: string | null }[]
@@ -682,117 +709,150 @@ export function FormsManager({
       </section>
 
       {/* ── Forms ────────────────────────────────────────────────────────── */}
+      {/* Grouped by WHO FILLS IT IN, which is the only distinction a trainer
+          actually holds in their head — and the same split the "New form"
+          screen offers. */}
       <section className={`flex-col gap-5 ${view === 'forms' ? 'flex' : 'hidden'}`}>
-        <FlatBlock>
-          {/* Intake form — a view of the fields on the other tab, not a
-              separate question set, so its row opens them. */}
-          <div className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:gap-3">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <ClipboardList className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
-              <button
-                type="button"
-                onClick={() => selectView('fields')}
-                className="min-w-0 flex-1 text-left"
+        <div>
+          <SectionLabel>Client forms</SectionLabel>
+          <p className="mb-2 px-1 text-xs text-slate-400">
+            Questions your clients answer — on your website, or when you invite them.
+          </p>
+          <FlatBlock>
+            {clientForms.map(f => (
+              <Link
+                key={f.id}
+                href={`/forms/client/${f.id}`}
+                className="flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
               >
-                <span className="block truncate text-sm font-medium text-slate-900">Intake form</span>
-                <span className="mt-0.5 block truncate text-[13px] text-slate-500">
-                  Asked once, when you accept a client — it uses every field you set up.
-                </span>
-                <span className="mt-0.5 block truncate text-xs text-slate-400">
-                  {intakeFieldCount} field{intakeFieldCount === 1 ? '' : 's'} · {isPublished ? 'Published' : 'Draft'}
-                </span>
-              </button>
-            </div>
-            <div className="flex flex-shrink-0 items-center gap-1 pl-[30px] sm:pl-0">
-              <a
-                href="/forms/intake/preview"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={FORM_QUIET_ACTION}
-              >
-                <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
-                Preview
-              </a>
-              <button
-                type="button"
-                onClick={togglePublished}
-                disabled={togglingPublished}
-                className={FORM_QUIET_ACTION}
-              >
-                {isPublished ? 'Unpublish' : 'Publish'}
-              </button>
-            </div>
-          </div>
-
-          {/* Session forms — their own questions, unrelated to the field
-              library. The row IS the edit affordance; there's no second
-              pencil doing the same thing. */}
-          {sessionForms.map(f => (
-            <Link
-              key={f.id}
-              href={`/forms/session/${f.id}`}
-              className="flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
-            >
-              <FileText className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-slate-900">{f.name}</span>
-                {!isRichTextEmpty(f.description) && (
-                  <span className="mt-0.5 block truncate text-[13px] text-slate-500">
-                    {richTextToPlain(f.description)}
-                  </span>
-                )}
-                <span className="mt-0.5 block truncate text-xs text-slate-400">
-                  Session form · {f.questions.length} question{f.questions.length === 1 ? '' : 's'}
-                  {f.responses > 0 ? ` · ${f.responses} filled` : ''} · {f.isActive ? 'Published' : 'Draft'}
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
-            </Link>
-          ))}
-        </FlatBlock>
-
-        {/* Lead-capture (embed) forms — public forms a trainer embeds on their
-            own website; a submission lands in their enquiries. Editing opens
-            the dedicated /forms/embed/* route (embed URL + iframe snippet live
-            there). Relocated here from Settings → Website. */}
-        {embedForms != null && (
-          <div>
-            <SectionLabel>Lead-capture forms</SectionLabel>
-            <p className="mb-2 px-1 text-xs text-slate-400">
-              Embed a form on your website — submissions land in your enquiries.
-            </p>
-            {embedForms.length === 0 ? (
-              <p className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-400">
-                No lead-capture forms yet.
-              </p>
-            ) : (
-              <FlatBlock>
-                {embedForms.map(f => (
-                  <Link
-                    key={f.id}
-                    href={`/forms/embed/${f.id}`}
-                    className="flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
-                  >
-                    <Globe className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-slate-900">{f.title}</span>
-                      {!isRichTextEmpty(f.description) && (
-                        <span className="mt-0.5 block truncate text-[13px] text-slate-500">
-                          {richTextToPlain(f.description)}
-                        </span>
-                      )}
-                      <span className="mt-0.5 block truncate text-xs text-slate-400">
-                        Lead-capture form · {f.fieldCount} field{f.fieldCount === 1 ? '' : 's'} ·{' '}
-                        {f.isActive ? 'Published' : 'Draft'}
-                      </span>
+                <ClipboardList className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-slate-900">{f.name}</span>
+                  {!isRichTextEmpty(f.description) && (
+                    <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                      {richTextToPlain(f.description)}
                     </span>
-                    <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
-                  </Link>
-                ))}
-              </FlatBlock>
-            )}
-          </div>
-        )}
+                  )}
+                  <span className="mt-0.5 block truncate text-xs text-slate-400">
+                    {clientFormUse(f)} · {f.questionCount} question{f.questionCount === 1 ? '' : 's'}
+                    {f.assignedCount > 0 ? ` · ${f.assignedCount} sent` : ''}
+                    {f.enquiryCount > 0 ? ` · ${f.enquiryCount} received` : ''}
+                    {' · '}{f.isActive ? 'Published' : 'Draft'}
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
+              </Link>
+            ))}
+
+            {/* The field library, shown as the form it becomes. Not a separate
+                question set — its row opens the Fields tab, which is where it
+                is actually edited. It is what a client fills in when they have
+                no client form assigned. */}
+            <div className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <ListChecks className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                <button
+                  type="button"
+                  onClick={() => selectView('fields')}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className="block truncate text-sm font-medium text-slate-900">Your fields</span>
+                  <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                    Asked once, when a client joins — unless you send them one of the forms above.
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-slate-400">
+                    {intakeFieldCount} field{intakeFieldCount === 1 ? '' : 's'} · {isPublished ? 'Published' : 'Draft'}
+                  </span>
+                </button>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-1 pl-[30px] sm:pl-0">
+                <a
+                  href="/forms/intake/preview"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={FORM_QUIET_ACTION}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  Preview
+                </a>
+                <button
+                  type="button"
+                  onClick={togglePublished}
+                  disabled={togglingPublished}
+                  className={FORM_QUIET_ACTION}
+                >
+                  {isPublished ? 'Unpublish' : 'Publish'}
+                </button>
+              </div>
+            </div>
+
+            {/* Lead-capture (embed) forms, the older way of putting a form on
+                your own site. Nothing creates one any more — a client form set
+                to "Website enquiry" does the same job with question types,
+                conditional logic and pages — but the ones already embedded on
+                trainers' sites stay editable here until they are folded into
+                the client-form model. */}
+            {(embedForms ?? []).map(f => (
+              <Link
+                key={f.id}
+                href={`/forms/embed/${f.id}`}
+                className="flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+              >
+                <Globe className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-slate-900">{f.title}</span>
+                  {!isRichTextEmpty(f.description) && (
+                    <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                      {richTextToPlain(f.description)}
+                    </span>
+                  )}
+                  <span className="mt-0.5 block truncate text-xs text-slate-400">
+                    Lead-capture form · {f.fieldCount} field{f.fieldCount === 1 ? '' : 's'} ·{' '}
+                    {f.isActive ? 'Published' : 'Draft'}
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
+              </Link>
+            ))}
+          </FlatBlock>
+        </div>
+
+        <div>
+          <SectionLabel>Session forms</SectionLabel>
+          <p className="mb-2 px-1 text-xs text-slate-400">
+            Yours to fill in after a session — the answers become the client&apos;s report.
+          </p>
+          {sessionForms.length === 0 ? (
+            <p className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm text-slate-400">
+              No session forms yet.
+            </p>
+          ) : (
+            <FlatBlock>
+              {sessionForms.map(f => (
+                <Link
+                  key={f.id}
+                  href={`/forms/session/${f.id}`}
+                  className="flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+                >
+                  <FileText className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-900">{f.name}</span>
+                    {!isRichTextEmpty(f.description) && (
+                      <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                        {richTextToPlain(f.description)}
+                      </span>
+                    )}
+                    <span className="mt-0.5 block truncate text-xs text-slate-400">
+                      {f.questions.length} question{f.questions.length === 1 ? '' : 's'}
+                      {f.responses > 0 ? ` · ${f.responses} filled` : ''} · {f.isActive ? 'Published' : 'Draft'}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
+                </Link>
+              ))}
+            </FlatBlock>
+          )}
+        </div>
       </section>
     </div>
   )
