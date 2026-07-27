@@ -9,6 +9,7 @@ import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { countUnreadMessages } from '@/lib/unread-messages'
 import { getEnabledAddons } from '@/lib/billing'
 import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
+import { mergeClientDogs } from '@/lib/dogs'
 import { IntakeGate } from './intake-gate'
 import { PreviewBanner, PREVIEW_SHELL_CLASS } from './preview-banner'
 import { PreviewOnboardingGuide } from './preview-onboarding-guide'
@@ -40,10 +41,7 @@ export default async function ClientLayout({ children }: { children: React.React
   })
 
   // Check if any required fields are missing values
-  const allDogs = [
-    ...(clientProfile.dog ? [clientProfile.dog] : []),
-    ...clientProfile.dogs,
-  ]
+  const allDogs = mergeClientDogs(clientProfile.dog, clientProfile.dogs)
 
   const existingValues = Object.fromEntries(
     clientProfile.customFieldValues.map(v => [

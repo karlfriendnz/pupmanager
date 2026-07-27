@@ -8,6 +8,7 @@ import { slotAppliesOnDate, isBlackoutDate } from '@/lib/availability'
 import { getTrainerAvailabilityForClient } from '@/lib/client-availability'
 import { loadPublishedMemberships } from '@/lib/client-memberships'
 import { PACKAGES_HIDDEN_FROM_CLIENTS } from '@/lib/feature-flags'
+import { mergeClientDogs } from '@/lib/dogs'
 import { BookingWizard, type WizardPackage, type WizardClass, type WizardEvent, type PreviewDay } from './booking-wizard'
 import type { Metadata } from 'next'
 
@@ -235,10 +236,7 @@ export default async function MyAvailabilityPage() {
     ? []
     : await loadPublishedMemberships(profile.trainerId, active.clientId)
 
-  const allDogs = [
-    ...(profile.dog ? [profile.dog] : []),
-    ...profile.dogs,
-  ].filter((d, i, arr) => arr.findIndex(x => x.id === d.id) === i)
+  const allDogs = mergeClientDogs(profile.dog, profile.dogs)
 
   // Read-only preview of the trainer's open windows — shown only when there's
   // nothing to self-book, so the page still answers "when are they free?".

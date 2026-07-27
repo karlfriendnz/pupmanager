@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { extraClientDogs } from '@/lib/dogs'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -58,7 +59,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ clie
   })
   if (!profile) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const additionalDogIds = profile.dogs.map(d => d.id)
+  // The primary dog can also appear on the household list — the same Dog row
+  // down two relations — so dedupe before we act on the ids.
+  const additionalDogIds = extraClientDogs(profile.dogId, profile.dogs).map(d => d.id)
   const dogIdsToDelete = [
     ...(profile.dogId ? [profile.dogId] : []),
     ...additionalDogIds,

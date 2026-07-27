@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { mergeClientDogs } from '@/lib/dogs'
 import { PageHeader } from '@/components/shared/page-header'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
@@ -111,7 +112,7 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
           clients={clients.map(c => ({
             id: c.id,
             name: c.user.name ?? c.user.email,
-            dogs: [...(c.dog ? [c.dog] : []), ...c.dogs],
+            dogs: mergeClientDogs(c.dog, c.dogs),
           }))}
         />
         <ItemDangerZone

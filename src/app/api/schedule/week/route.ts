@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
 import { startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
+import { extraClientDogs } from '@/lib/dogs'
 
 // Returns the trainer's sessions and the client extras needed by the
 // schedule blocks for a single week. Used by the schedule page to
@@ -114,7 +115,8 @@ export async function GET(req: Request) {
             id: true,
             dogId: true,
             user: { select: { email: true } },
-            dogs: { select: { name: true } },
+            // `id` is needed to exclude the primary dog from the extras.
+            dogs: { select: { id: true, name: true } },
             ...(needsCompliance && {
               diaryEntries: {
                 where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
@@ -127,7 +129,7 @@ export async function GET(req: Request) {
           id: string
           dogId: string | null
           user: { email: string }
-          dogs: { name: string }[]
+          dogs: { id: string; name: string }[]
           diaryEntries?: { id: string; completion: { id: string } | null }[]
         }>),
     wantedCustomIds.length > 0
@@ -155,7 +157,7 @@ export async function GET(req: Request) {
     const diaryEntries = ((c as { diaryEntries?: { id: string; completion: { id: string } | null }[] }).diaryEntries) ?? []
     clientExtras[c.id] = {
       email: c.user.email,
-      extraDogNames: c.dogs.map(d => d.name),
+      extraDogNames: extraClientDogs(c.dogId, c.dogs).map(d => d.name),
       taskCount: diaryEntries.length,
       completedCount: diaryEntries.filter(t => t.completion).length,
       customValues: {},

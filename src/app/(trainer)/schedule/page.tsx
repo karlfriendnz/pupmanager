@@ -12,6 +12,7 @@ import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { todayInTz, startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
 import { dateParts, ymdInTz } from '@/lib/utils'
 import { buildPreviewBlocks } from '@/lib/booking-request-preview'
+import { mergeClientDogs, extraClientDogs } from '@/lib/dogs'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Schedule' }
@@ -319,7 +320,9 @@ export default async function SchedulePage({
             id: true,
             dogId: true,
             user: { select: { email: true } },
-            dogs: { select: { name: true } },
+            // `id` is not cosmetic: the primary dog can also sit on the
+            // household list, and "extra dogs" must exclude it by id.
+            dogs: { select: { id: true, name: true } },
             // Only join recent diary entries when compliance is actually shown.
             ...(needsCompliance && {
               diaryEntries: {
@@ -333,7 +336,7 @@ export default async function SchedulePage({
           id: string
           dogId: string | null
           user: { email: string }
-          dogs: { name: string }[]
+          dogs: { id: string; name: string }[]
           diaryEntries?: { id: string; completion: { id: string } | null }[]
         }>),
     selectedCustomIds.length > 0 && sessionClientList.length > 0
@@ -356,7 +359,7 @@ export default async function SchedulePage({
     const diaryEntries = ((c as { diaryEntries?: { id: string; completion: { id: string } | null }[] }).diaryEntries) ?? []
     clientExtras[c.id] = {
       email: c.user.email,
-      extraDogNames: c.dogs.map(d => d.name),
+      extraDogNames: extraClientDogs(c.dogId, c.dogs).map(d => d.name),
       taskCount: diaryEntries.length,
       completedCount: diaryEntries.filter(t => t.completion).length,
       customValues: {},
@@ -427,10 +430,7 @@ export default async function SchedulePage({
       clients={clients.map(c => ({
         id: c.id,
         name: c.user.name ?? c.user.email,
-        dogs: [
-          ...(c.dog ? [c.dog] : []),
-          ...c.dogs,
-        ],
+        dogs: mergeClientDogs(c.dog, c.dogs),
       }))}
       packages={packages.map(p => ({
         id: p.id,

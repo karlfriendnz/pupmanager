@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { mergeClientDogsFlagged } from '@/lib/dogs'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -24,7 +25,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ clientI
     prisma.dog.findMany({ where: { clientProfileId: clientId } }),
   ])
 
-  const dogs = [...(primary?.dog ? [{ ...primary.dog, isPrimary: true }] : []), ...additional.map(d => ({ ...d, isPrimary: false }))]
+  const dogs = mergeClientDogsFlagged(primary?.dog, additional)
   return NextResponse.json(dogs)
 }
 

@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { renderClientInviteEmail, DEFAULT_INVITE_BODY } from '@/lib/client-invite-email'
 import { ensureTrainerSlug, clientInviteUrl } from '@/lib/slug'
+import { mergeClientDogs } from '@/lib/dogs'
 
 // Re-send the invite/sign-in link email. Generates a fresh
 // verificationToken (invalidating any older tokens we'd issued for
@@ -40,8 +41,10 @@ export async function POST(
     where: { id: clientId, trainerId },
     include: {
       user: { select: { name: true, email: true, emailVerified: true } },
-      dog: { select: { name: true } },
-      dogs: { select: { name: true } },
+      // `id` so a dog that is both primary and on the household list is named
+      // once in the invite email.
+      dog: { select: { id: true, name: true } },
+      dogs: { select: { id: true, name: true } },
     },
   })
   if (!client) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -72,7 +75,9 @@ export async function POST(
   const slug = await ensureTrainerSlug(trainerId)
   const inviteUrl = clientInviteUrl(process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com', slug, inviteToken, client.user.email)
 
-  const dogNames = [client.dog?.name, ...client.dogs.map(d => d.name)].filter((n): n is string => !!n)
+  const dogNames = mergeClientDogs(client.dog, client.dogs)
+    .map(d => d.name)
+    .filter((n): n is string => !!n)
 
   const rendered = renderClientInviteEmail({
     clientName: client.user.name ?? client.user.email,

@@ -21,6 +21,7 @@ import { isNudgeDismissed } from '@/lib/nudge-dismissals'
 import { addonNudge, pickNudgeAddonId } from '@/components/shared/addon-nudge-registry'
 import { isCurrencyCode, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
 import { formatMoney } from '@/lib/money'
+import { clientDogCount } from '@/lib/dogs'
 import { OnboardingPanel } from './onboarding-panel'
 import { MobileHome } from './mobile-home'
 import { TeamInviteCard } from './team-invite-card'
@@ -284,10 +285,11 @@ export default async function DashboardPage({
 
   const totalClients = clients.length
   const activeClients = clients.filter(c => c.status === 'ACTIVE').length
-  // Dog counts: primary dog (c.dogId) + additional household dogs (c.dogs).
-  // "Active" follows the parent client's status, matching how dogs disappear
-  // from the trainer's day-to-day when the client goes inactive.
-  const dogCount = (c: typeof clients[number]) => (c.dogId ? 1 : 0) + c.dogs.length
+  // Dog counts: primary dog (c.dogId) + additional household dogs (c.dogs),
+  // counting a dog that is on BOTH relations once. "Active" follows the parent
+  // client's status, matching how dogs disappear from the trainer's
+  // day-to-day when the client goes inactive.
+  const dogCount = (c: typeof clients[number]) => clientDogCount(c.dogId, c.dogs)
   const totalDogs = clients.reduce((sum, c) => sum + dogCount(c), 0)
   const activeDogs = clients.filter(c => c.status === 'ACTIVE').reduce((sum, c) => sum + dogCount(c), 0)
 

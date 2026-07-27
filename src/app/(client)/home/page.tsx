@@ -5,6 +5,7 @@ import { ClientHomeView } from './home-view'
 import { AppInstallModal } from '../app-install-modal'
 import { computeAchievementProgress } from '@/lib/achievements'
 import { getEnabledAddons } from '@/lib/billing'
+import { mergeClientDogs } from '@/lib/dogs'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Home' }
@@ -41,10 +42,7 @@ export default async function ClientHomePage() {
   })
   if (!clientProfile) redirect('/login')
 
-  const allDogs = [
-    ...(clientProfile.dog ? [clientProfile.dog] : []),
-    ...clientProfile.dogs,
-  ]
+  const allDogs = mergeClientDogs(clientProfile.dog, clientProfile.dogs)
   const primaryDog = allDogs[0] ?? null
 
   // Trainer-curated gallery for the primary dog — drives the home hero.

@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import { trainerRegionCode } from '@/lib/country'
+import { mergeClientDogsFlagged } from '@/lib/dogs'
 import { EditClientForm } from './edit-client-form'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
@@ -64,10 +65,8 @@ export default async function EditClientPage({
     }
   }
 
-  const initialDogs = [
-    ...(client.dog ? [dogToForm(client.dog, true)] : []),
-    ...client.dogs.map(d => dogToForm(d, false)),
-  ]
+  const initialDogs = mergeClientDogsFlagged(client.dog, client.dogs)
+    .map(d => dogToForm(d, d.isPrimary))
 
   return (
     <>

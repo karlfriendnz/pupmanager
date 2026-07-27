@@ -9,6 +9,7 @@ import { getClientAccess } from '@/lib/trainer-access'
 import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
 import { routeDistance } from '@/lib/routing'
+import { mergeClientDogs } from '@/lib/dogs'
 import { formatDate } from '@/lib/utils'
 import { ClientProfileTabs } from './client-profile-tabs'
 import { ClientSummaryCard } from './client-summary-card'
@@ -216,7 +217,7 @@ export default async function ClientDetailPage({
     ? Math.round((completedTasks / client.diaryEntries.length) * 100)
     : null
 
-  const allDogs = [...(client.dog ? [client.dog] : []), ...client.dogs]
+  const allDogs = mergeClientDogs(client.dog, client.dogs)
   const dogNames = Object.fromEntries(allDogs.map(d => [d.id, d.name]))
 
   // Every per-client action — Edit, View as client, Re-invite, Assign consult,

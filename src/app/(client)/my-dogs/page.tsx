@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { Dog as DogIcon } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { mergeClientDogs } from '@/lib/dogs'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
 
@@ -20,7 +21,7 @@ export default async function MyDogsPage() {
   })
   if (!profile) redirect('/login')
 
-  const dogs = [...(profile.dog ? [profile.dog] : []), ...profile.dogs]
+  const dogs = mergeClientDogs(profile.dog, profile.dogs)
   const ageYears = (dob: Date | null) => dob ? Math.max(0, Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000))) : null
 
   return (

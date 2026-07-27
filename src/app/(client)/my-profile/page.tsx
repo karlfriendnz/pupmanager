@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { mergeClientDogsFlagged } from '@/lib/dogs'
 import { MyProfileTabs } from './my-profile-tabs'
 import type { Metadata } from 'next'
 
@@ -23,10 +24,7 @@ export default async function ClientProfilePage() {
 
   if (!user || !clientProfile) redirect('/login')
 
-  const allDogs = [
-    ...(clientProfile.dog ? [{ ...clientProfile.dog, isPrimary: true }] : []),
-    ...clientProfile.dogs.map(d => ({ ...d, isPrimary: false })),
-  ]
+  const allDogs = mergeClientDogsFlagged(clientProfile.dog, clientProfile.dogs)
 
   return (
     <div className="px-5 lg:px-8 py-6 max-w-3xl mx-auto w-full">

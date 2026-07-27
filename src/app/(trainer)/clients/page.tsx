@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { nextSessionByClient as nextSessionForClients } from '@/lib/client-sessions'
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
+import { extraClientDogs } from '@/lib/dogs'
 import Link from 'next/link'
 import { ClientsList } from './clients-list'
 import { QuickAddModal } from './quick-add-contact'
@@ -50,8 +51,11 @@ export default async function ClientsPage({
     where: { trainerId, status, ...memberScope },
     include: {
       user: { select: { name: true, email: true } },
-      dog: { select: { name: true, breed: true, photoUrl: true } },
-      dogs: { select: { name: true, breed: true, photoUrl: true } },
+      dog: { select: { id: true, name: true, breed: true, photoUrl: true } },
+      // `id` matters: the primary dog may ALSO be on the household list, and
+      // the "extra dogs" column/badge has to exclude it or a one-dog client
+      // reads "Bailey  +1 Bailey".
+      dogs: { select: { id: true, name: true, breed: true, photoUrl: true } },
       diaryEntries: {
         where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
         select: { id: true, completion: { select: { id: true } } },
@@ -65,8 +69,8 @@ export default async function ClientsPage({
       client: {
         include: {
           user: { select: { name: true, email: true } },
-          dog: { select: { name: true, breed: true, photoUrl: true } },
-          dogs: { select: { name: true, breed: true, photoUrl: true } },
+          dog: { select: { id: true, name: true, breed: true, photoUrl: true } },
+          dogs: { select: { id: true, name: true, breed: true, photoUrl: true } },
           diaryEntries: {
             where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
             select: { id: true, completion: { select: { id: true } } },
@@ -118,7 +122,7 @@ export default async function ClientsPage({
       dogName: c.dog?.name ?? c.dogs[0]?.name ?? null,
       dogBreed: c.dog?.breed ?? c.dogs[0]?.breed ?? null,
       dogPhotoUrl: c.dog?.photoUrl ?? c.dogs[0]?.photoUrl ?? null,
-      extraDogNames: c.dogs.map(d => d.name),
+      extraDogNames: extraClientDogs(c.dogId, c.dogs).map(d => d.name),
       taskCount: c.diaryEntries.length,
       completedCount: c.diaryEntries.filter(t => t.completion).length,
       nextSessionAt: nextSessionByClient.get(c.id)?.toISOString() ?? null,
@@ -131,7 +135,7 @@ export default async function ClientsPage({
       dogName: s.client.dog?.name ?? s.client.dogs[0]?.name ?? null,
       dogBreed: s.client.dog?.breed ?? s.client.dogs[0]?.breed ?? null,
       dogPhotoUrl: s.client.dog?.photoUrl ?? s.client.dogs[0]?.photoUrl ?? null,
-      extraDogNames: s.client.dogs.map(d => d.name),
+      extraDogNames: extraClientDogs(s.client.dogId, s.client.dogs).map(d => d.name),
       taskCount: s.client.diaryEntries.length,
       completedCount: s.client.diaryEntries.filter(t => t.completion).length,
       nextSessionAt: nextSessionByClient.get(s.client.id)?.toISOString() ?? null,
