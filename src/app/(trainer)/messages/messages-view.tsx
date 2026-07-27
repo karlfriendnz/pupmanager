@@ -1,17 +1,14 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { MessageCircle, ArrowLeft, Check, CheckCheck, ChevronRight, Megaphone, UsersRound } from 'lucide-react'
+import { MessageCircle, ArrowLeft, Check, CheckCheck } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { PhoneRowList } from '@/components/shared/flat-list'
 import { MessageThread } from './[clientId]/message-thread'
 import { SetPageImmersive } from '@/components/shared/page-title'
-import { GroupComposer, type AudienceOption, type PickableClient } from './group-composer'
-import { GroupThread } from './group-thread'
 
 export interface ClientRow {
   id: string
@@ -47,63 +44,15 @@ export interface SelectedClient {
   dogPhotoUrl: string | null
 }
 
-export interface GroupRow {
-  id: string
-  name: string
-  mode: 'BROADCAST' | 'COMMUNITY'
-  archived: boolean
-  memberCount: number
-  /** Invited to a COMMUNITY group but not yet accepted. */
-  invitedCount: number
-  unread: number
-  lastMessage: { body: string; createdAt: string; senderName: string } | null
-}
-
 interface Props {
   activeClients: ClientRow[]
   inactiveClients: ClientRow[]
   activeUnread: number
   inactiveUnread: number
-  groups: GroupRow[]
   tab: 'active' | 'inactive'
   selectedClient: SelectedClient | null
-  selectedGroupId: string | null
   threadMessages: ThreadMessage[]
   currentUserId: string
-  audiences: { classRuns: AudienceOption[]; packages: AudienceOption[]; memberships: AudienceOption[] }
-  pickableClients: PickableClient[]
-  activeClientCount: number
-}
-
-/**
- * Merge client threads and groups into ONE list ordered by activity.
- *
- * The screen used to enumerate clients, not conversations — a group has
- * nothing to hang off that. Keeping the existing rule (anything unread floats
- * to the top, then most recent first) means a group behaves exactly like a
- * thread, which is the whole point of making it one.
- */
-type ListEntry =
-  | { kind: 'client'; sort: number; client: ClientRow }
-  | { kind: 'group'; sort: number; group: GroupRow }
-
-export function mergeThreadsAndGroups(clients: ClientRow[], groups: GroupRow[]): ListEntry[] {
-  // The same huge bonus the client list already used, so the comparator stays
-  // deterministic without a second sort pass.
-  const UNREAD_BONUS = Number.MAX_SAFE_INTEGER / 2
-  const entries: ListEntry[] = [
-    ...clients.map(c => ({
-      kind: 'client' as const,
-      client: c,
-      sort: (c.lastMessage ? Date.parse(c.lastMessage.createdAt) : 0) + (c.unread > 0 ? UNREAD_BONUS : 0),
-    })),
-    ...groups.map(g => ({
-      kind: 'group' as const,
-      group: g,
-      sort: (g.lastMessage ? Date.parse(g.lastMessage.createdAt) : 0) + (g.unread > 0 ? UNREAD_BONUS : 0),
-    })),
-  ]
-  return entries.sort((a, b) => b.sort - a.sort)
 }
 
 // Delivery state for a message WE sent. `Message.readAt` is stamped when the
@@ -143,31 +92,19 @@ export function MessagesView({
   inactiveClients,
   activeUnread,
   inactiveUnread,
-  groups,
   tab,
   selectedClient,
-  selectedGroupId,
   threadMessages,
   currentUserId,
-  audiences,
-  pickableClients,
-  activeClientCount,
 }: Props) {
   const router = useRouter()
-  const [composing, setComposing] = useState(false)
-  // Groups belong to the business, not to a client's active/inactive status,
-  // so they live in the Active tab beside the live conversations.
-  const visible = tab === 'inactive'
-    ? mergeThreadsAndGroups(inactiveClients, [])
-    : mergeThreadsAndGroups(activeClients, groups)
-  const groupUnread = groups.reduce((n, g) => n + g.unread, 0)
+  const visible = tab === 'inactive' ? inactiveClients : activeClients
 
-  function hrefFor({ clientId, groupId, nextTab }: { clientId?: string; groupId?: string; nextTab?: 'active' | 'inactive' } = {}) {
+  function hrefFor({ clientId, nextTab }: { clientId?: string; nextTab?: 'active' | 'inactive' } = {}) {
     const params = new URLSearchParams()
     const t = nextTab ?? tab
     if (t === 'inactive') params.set('tab', 'inactive')
     if (clientId) params.set('client', clientId)
-    if (groupId) params.set('group', groupId)
     const qs = params.toString()
     return qs ? `/messages?${qs}` : '/messages'
   }
@@ -178,9 +115,8 @@ export function MessagesView({
   // at the bottom of the screen — five nav tabs beneath that read as clutter
   // and made it unclear what you were looking at. Desktop is unaffected: the
   // tab bar is md:hidden, and both panes stay side by side there.
-  const rightPaneOpen = !!selectedClient || !!selectedGroupId
-  const listVisibility = rightPaneOpen ? 'hidden md:flex' : 'flex'
-  const threadVisibility = rightPaneOpen ? 'flex' : 'hidden md:flex'
+  const listVisibility = selectedClient ? 'hidden md:flex' : 'flex'
+  const threadVisibility = selectedClient ? 'flex' : 'hidden md:flex'
 
   return (
     // -mx negates the page's horizontal padding so the panes go flush
@@ -188,7 +124,7 @@ export function MessagesView({
     // border, so the two-pane content sits cleanly below it.
     <div className="flex flex-1 min-h-0 -mx-4 md:-mx-8">
       {/* Hides the phone's bottom tab bar while a thread is open. */}
-      <SetPageImmersive value={rightPaneOpen} />
+      <SetPageImmersive value={!!selectedClient} />
       {/* ── Thread list (left pane) ─────────────────────────────────────── */}
       <aside
         className={cn(
@@ -204,10 +140,8 @@ export function MessagesView({
             Inactive controls stay visible while the list scrolls. */}
         <div className="sticky top-0 z-10 flex gap-1 border-b border-slate-100 bg-white p-2">
           {([
-            // Groups live in Active, so they count there too — otherwise the
-            // tab says 12 and the list shows 15.
-            { key: 'active',   label: 'Active',   count: activeClients.length + groups.length, unread: activeUnread + groupUnread },
-            { key: 'inactive', label: 'Inactive', count: inactiveClients.length,               unread: inactiveUnread },
+            { key: 'active',   label: 'Active',   count: activeClients.length,   unread: activeUnread },
+            { key: 'inactive', label: 'Inactive', count: inactiveClients.length, unread: inactiveUnread },
           ] as const).map(t => {
             const active = tab === t.key
             return (
@@ -257,79 +191,7 @@ export function MessagesView({
             </div>
           ) : (
             <PhoneRowList className="md:flex md:flex-col md:gap-1.5">
-              {visible.map(entry => {
-                if (entry.kind === 'group') {
-                  const g = entry.group
-                  const isSelected = selectedGroupId === g.id
-                  const Icon = g.mode === 'BROADCAST' ? Megaphone : UsersRound
-                  return (
-                    <Link key={g.id} href={hrefFor({ groupId: g.id })} scroll={false}>
-                      <Card
-                        data-testid="group-row"
-                        className={cn(
-                          'transition-colors cursor-pointer',
-                          'rounded-none border-0 shadow-none md:rounded-2xl md:border md:shadow-sm',
-                          isSelected ? 'border-blue-300 bg-blue-50/50'
-                            : g.unread > 0 ? 'border-blue-200 bg-blue-50/30'
-                            : 'hover:border-blue-200 hover:bg-slate-50',
-                        )}
-                      >
-                        <CardBody className="px-4 py-2.5 md:pt-3 md:pb-3">
-                          <div className="flex items-center gap-3">
-                            {/* A plain line icon, not a tinted tile — the
-                                clearest tell of a machine-made screen. */}
-                            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-slate-200">
-                              <Icon className="h-[18px] w-[18px] text-slate-700" strokeWidth={1.75} />
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className={cn(
-                                  'truncate text-sm',
-                                  g.unread > 0 ? 'font-bold text-slate-900' : 'font-semibold text-slate-900',
-                                )}>
-                                  {g.name}
-                                </p>
-                                {g.lastMessage && (
-                                  <span className={cn(
-                                    'flex-shrink-0 text-xs tabular-nums',
-                                    g.unread > 0 ? 'font-semibold text-rose-600' : 'text-slate-400',
-                                  )}>
-                                    {new Date(g.lastMessage.createdAt).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="mt-0.5 flex items-center gap-1.5">
-                                {g.lastMessage ? (
-                                  <p className={cn(
-                                    'min-w-0 flex-1 truncate text-xs',
-                                    g.unread > 0 ? 'font-medium text-slate-700' : 'text-slate-500',
-                                  )}>
-                                    {g.lastMessage.senderName}: {g.lastMessage.body}
-                                  </p>
-                                ) : (
-                                  <p className="min-w-0 flex-1 truncate text-xs italic text-slate-400">
-                                    {g.mode === 'BROADCAST' ? 'Broadcast' : 'Community'} · {g.memberCount} {g.memberCount === 1 ? 'person' : 'people'}
-                                    {g.invitedCount > 0 ? ` · ${g.invitedCount} not joined` : ''}
-                                  </p>
-                                )}
-                                {g.unread > 0 && (
-                                  <span
-                                    data-testid="group-unread"
-                                    aria-label={`${g.unread} unread`}
-                                    className="inline-flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold tabular-nums text-white"
-                                  >
-                                    {g.unread > 9 ? '9+' : g.unread}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </CardBody>
-                      </Card>
-                    </Link>
-                  )
-                }
-                const client = entry.client
+              {visible.map(client => {
                 const lastMsg = client.lastMessage
                 const isSelected = selectedClient?.id === client.id
                 return (
@@ -403,41 +265,11 @@ export function MessagesView({
             </PhoneRowList>
           )}
         </div>
-
-        {/* The way in. A row at the foot of the list, not a floating add
-            button — the shell already owns the global "+", and nothing should
-            say the same thing twice. */}
-        <button
-          type="button"
-          onClick={() => setComposing(true)}
-          data-testid="open-group-composer"
-          className="flex w-full flex-shrink-0 items-center gap-3 border-t border-slate-100 bg-white px-4 py-3 text-left hover:bg-slate-50"
-        >
-          <UsersRound className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium text-slate-900">New group</span>
-            <span className="mt-0.5 block text-[13px] text-slate-500">Message a class, a membership, or everyone</span>
-          </span>
-          <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
-        </button>
       </aside>
-
-      {composing && (
-        <GroupComposer
-          classRuns={audiences.classRuns}
-          packages={audiences.packages}
-          memberships={audiences.memberships}
-          clients={pickableClients}
-          activeClientCount={activeClientCount}
-          onClose={() => setComposing(false)}
-        />
-      )}
 
       {/* ── Thread (right pane) ────────────────────────────────────────── */}
       <section className={cn('flex-1 flex-col min-w-0 min-h-0 bg-slate-50', threadVisibility)}>
-        {selectedGroupId ? (
-          <GroupThread key={selectedGroupId} groupId={selectedGroupId} backHref={hrefFor()} />
-        ) : selectedClient ? (
+        {selectedClient ? (
           <>
             <div
               className="sticky top-0 z-10 flex items-center gap-3 px-4 border-b border-slate-100 bg-white"

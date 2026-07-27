@@ -2,12 +2,10 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { getActiveClient } from '@/lib/client-context'
 import { countUnreadMessages } from '@/lib/unread-messages'
-import { countClientUnreadTotalForProfile } from '@/lib/client-message-threads'
 
 // Lightweight unread-count endpoint for the live nav-badge poll. Scoped exactly
-// like the layouts: a client sees their active thread's unread plus their groups
-// with that SAME business; a trainer sees their company's; a trainer previewing
-// the client app gets 0.
+// like the layouts: a client sees their active thread's unread; a trainer sees
+// their company's; a trainer previewing the client app gets 0.
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
@@ -18,7 +16,7 @@ export async function GET() {
   const active = await getActiveClient()
   if (active) {
     if (active.isPreview) return NextResponse.json({ count: 0 })
-    const count = await countClientUnreadTotalForProfile({ clientId: active.clientId, userId: session.user.id })
+    const count = await countUnreadMessages({ kind: 'client', clientId: active.clientId, userId: session.user.id })
     return NextResponse.json({ count })
   }
 

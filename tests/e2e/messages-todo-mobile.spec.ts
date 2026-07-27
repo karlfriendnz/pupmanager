@@ -77,29 +77,18 @@ test.describe('the message composer sits on the tab bar, not above a gap', () =>
     await expect(page.getByPlaceholder('Type a message…')).toBeVisible({ timeout: 20_000 })
 
     const geometry = await page.evaluate(() => {
-      // An open thread is IMMERSIVE — the shell hides the bottom tab bar,
-      // because the composer already owns the bottom of the phone and five
-      // tabs beneath it just read as clutter. So the thing the composer has to
-      // meet is the viewport, not a tab bar. (This assertion used to measure
-      // against the tab bar; that predates the immersive thread, and measuring
-      // against a bar that is deliberately absent is what made it fail.)
-      const fixedNavs = [...document.querySelectorAll('nav')]
-        .filter(n => getComputedStyle(n).position === 'fixed')
+      const navs = [...document.querySelectorAll('nav')].filter(n => getComputedStyle(n).position === 'fixed')
+      const nav = navs[navs.length - 1]
       const composer = document.querySelector('input[placeholder="Type a message…"]')!.closest('div')!
       return {
-        tabBarCount: fixedNavs.filter(n => n.className.includes('bottom-0')).length,
+        navTop: Math.round(nav.getBoundingClientRect().top),
         composerBottom: Math.round(composer.getBoundingClientRect().bottom),
-        viewportBottom: Math.round(window.innerHeight),
         // The panes scroll internally — the PAGE must never scroll, or the
         // gap comes back as a scrollbar instead.
         pageOverflow: document.documentElement.scrollHeight - window.innerHeight,
       }
     })
-    expect(geometry.tabBarCount, 'an open thread hides the tab bar').toBe(0)
-    expect(
-      Math.abs(geometry.composerBottom - geometry.viewportBottom),
-      'the composer must reach the bottom of the screen — no dead band',
-    ).toBeLessThanOrEqual(1)
+    expect(geometry.composerBottom, 'the composer must meet the tab bar').toBe(geometry.navTop)
     expect(geometry.pageOverflow, 'the page itself must not scroll').toBeLessThanOrEqual(0)
   })
 
