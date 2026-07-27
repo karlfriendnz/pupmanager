@@ -95,10 +95,18 @@ button, a, [role="button"] {
   min-width: 44px;
 }
 
-/* …but a switch sizes itself (an on/off pill), so exempt it from the 44px min —
-   otherwise it gets forced into a 44×44 square and rounds into a circle. Use
-   the shared <Switch> (role="switch") for every toggle. */
-[role="switch"] {
+/* …but some controls define their own size, and forcing 44px deforms them
+   rather than making them easier to hit:
+     switch   — an on/off pill, squashed into a 44×44 square it rounds into a circle
+     checkbox — a small square by definition; at 44px it dwarfs its own label
+   min-height/min-width always beat height/width, so `h-5 w-5` on one of these
+   is silently ignored — which is exactly how the to-do checkboxes ended up
+   44×44 with a 14px tick rattling around inside.
+   Exempt is NOT the same as small-target: give these an invisible expanded hit
+   area instead (a ::before with negative inset), so the thumb still gets 44px
+   while the ink stays the size it was drawn. */
+[role="switch"],
+[role="checkbox"] {
   min-height: 0;
   min-width: 0;
 }

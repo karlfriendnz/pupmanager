@@ -248,9 +248,20 @@ function TodoRow({
       <button
         type="button"
         onClick={onToggle}
+        // role + aria-checked because it IS a checkbox, and because globals.css
+        // forces a 44×44 minimum on every <button> — which silently overrode
+        // h-5 w-5 and left a 44px box around a 14px tick. The exemption is keyed
+        // on the role, so the semantics and the sizing fix are the same change.
+        role="checkbox"
+        aria-checked={todo.done}
         aria-label={todo.done ? 'Mark as not done' : 'Mark as done'}
         className={cn(
-          'mt-0.5 grid h-5 w-5 flex-shrink-0 place-items-center rounded-md border transition-all duration-150 active:scale-90',
+          // before: IS the touch target — 20px of ink, a centred 44px of thumb.
+          // Exempting it from the global minimum must not make it harder to hit.
+          // Stated as an explicit h-11 w-11 box rather than a negative inset so
+          // the number that has to be 44 is the one written down.
+          'relative mt-0.5 grid h-5 w-5 flex-shrink-0 place-items-center rounded-md border transition-all duration-150 active:scale-90',
+          "before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-11 before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']",
           todo.done
             ? 'border-transparent bg-gradient-to-br from-[var(--pm-brand-500)] to-[var(--pm-brand-700)] text-white shadow-sm shadow-[var(--pm-brand-600)]/30'
             : 'border-slate-300 bg-white text-[var(--pm-brand-600)] hover:border-[var(--pm-brand-500)] hover:bg-[var(--pm-brand-50)]',
