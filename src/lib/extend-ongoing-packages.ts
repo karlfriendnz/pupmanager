@@ -1,4 +1,5 @@
 import { prisma } from './prisma'
+import { NOT_SUSPENDED } from './membership-access'
 
 // How far ahead the calendar should always have sessions for a forever-
 // ongoing package assignment. When the latest session falls before this
@@ -25,6 +26,11 @@ export async function extendOngoingPackages(trainerId: string): Promise<void> {
     where: {
       extendIndefinitely: true,
       package: { trainerId },
+      // Stop growing an assignment whose membership isn't being paid for.
+      // Without this the trainer's diary keeps filling with sessions for a
+      // client who has lost access — and every one of them would have to be
+      // deleted by hand. Resumes on its own when a retry succeeds.
+      ...NOT_SUSPENDED,
     },
     include: {
       package: { select: { weeksBetween: true, durationMins: true, sessionType: true, name: true } },

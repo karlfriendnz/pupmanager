@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, Loader2, RefreshCw, AlertCircle } from 'lucide-react'
+import { X, Loader2, RefreshCw, AlertCircle, CreditCard } from 'lucide-react'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import type { ClientSubscription } from '@/lib/client-memberships'
 
@@ -59,16 +59,36 @@ export function ClientSubscriptions({ subscriptions }: { subscriptions: ClientSu
                     ? `Cancelled — you keep this until ${endsOn}, then it won't renew.`
                     : "Cancelled — it won't renew."}
                 </p>
-              ) : s.status === 'PAST_DUE' ? (
-                // Never shaming, and never silent. The full "we'll try again on
-                // the 18th, update your card here" surface is a later phase.
-                <p className="mt-2 flex items-start gap-2 text-sm text-slate-700">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-700" strokeWidth={1.75} />
-                  We couldn&apos;t take your last payment. Your trainer knows, and we&apos;ll try again — nothing has been taken away.
-                </p>
+              ) : s.pausedReason ? (
+                // Access has actually stopped, so this is the most important
+                // sentence on the screen: what happened, and how to fix it.
+                // Never shaming — most of these are an expired card.
+                <div className="mt-2">
+                  <p className="flex items-start gap-2 text-sm text-slate-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-slate-700" strokeWidth={1.75} />
+                    <span>
+                      {s.pausedReason}
+                      {s.cardLast4 && s.status === 'PAST_DUE' ? ` (card ending ${s.cardLast4})` : ''}
+                    </span>
+                  </p>
+                  {s.status === 'PAST_DUE' && (
+                    <UpdateCardButton purchaseId={s.purchaseId} label="Update card" />
+                  )}
+                </div>
               ) : endsOn ? (
                 <p className="mt-2 text-sm text-slate-500">Next payment {endsOn}.</p>
               ) : null}
+
+              {/* The bank wants them to authenticate. Nothing here can do it
+                  for them — the money does not move until they tap through. */}
+              {s.actionRequiredUrl && (
+                <a
+                  href={s.actionRequiredUrl}
+                  className="mt-2 inline-flex h-10 w-full items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white"
+                >
+                  Your bank needs you to approve this payment
+                </a>
+              )}
             </div>
           )
         })}
@@ -82,6 +102,55 @@ export function ClientSubscriptions({ subscriptions }: { subscriptions: ClientSu
         />
       )}
     </section>
+  )
+}
+
+/**
+ * The path from "my plan is paused" back to "everything works".
+ *
+ * Access stops on the first failed payment and most failures are an expired
+ * card, so this is the single most valuable button in the whole failure
+ * surface. The webhook that completes it retries the outstanding invoice
+ * immediately rather than leaving them waiting for Stripe's next attempt.
+ */
+function UpdateCardButton({ purchaseId, label }: { purchaseId: string; label: string }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function go() {
+    setBusy(true); setError(null)
+    try {
+      const res = await fetch(`/api/my/memberships/purchases/${purchaseId}/update-card`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      })
+      const b = await res.json().catch(() => ({}))
+      if (!res.ok || !b.url) {
+        setError(typeof b.error === 'string' ? b.error : 'Couldn’t start that just now.')
+        return
+      }
+      window.location.href = b.url
+    } catch {
+      setError('Something went wrong — please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={go}
+        disabled={busy}
+        className="mt-2 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 text-sm font-semibold text-white disabled:opacity-40"
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" strokeWidth={1.75} />}
+        {label}
+      </button>
+      {error && <p className="mt-1 text-sm text-rose-700">{error}</p>}
+    </>
   )
 }
 
@@ -201,6 +270,10 @@ function CancelScreen({
             >
               Keep it
             </button>
+            {/* Most people who open a cancel screen are actually trying to fix
+                a failed payment. Offering the fix here turns a cancellation
+                into a card update. */}
+            <UpdateCardButton purchaseId={subscription.purchaseId} label="Update my card instead" />
           </div>
         </div>
       </div>

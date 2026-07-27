@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { NOT_SUSPENDED, SESSIONS_NOT_SUSPENDED } from '@/lib/membership-access'
 import { notifyClient } from '@/lib/client-notify'
 import { NOTIFICATION_TYPES } from '@/lib/notification-types'
 import type { NotificationChannel } from '@/generated/prisma'
@@ -41,6 +42,14 @@ export async function GET(req: Request) {
           { classRun: { status: 'CANCELLED' } },
         ],
       },
+      // Don't remind someone about a session their paused membership has taken
+      // away — being reminded to turn up to something you can no longer see in
+      // the app is the worst possible version of losing access.
+      //
+      // Nested under AND deliberately: this clause is its own OR, and spreading
+      // it at the top level would silently REPLACE the clientId/classRunId OR
+      // above, quietly widening the query to every session in the database.
+      AND: [SESSIONS_NOT_SUSPENDED],
     },
     select: {
       id: true, scheduledAt: true, title: true, trainerId: true, clientId: true,
@@ -53,7 +62,9 @@ export async function GET(req: Request) {
         select: {
           name: true,
           enrollments: {
-            where: { status: 'ENROLLED' },
+            // A paused seat is still held, but the client should not be
+            // reminded to attend while their plan is unpaid.
+            where: { status: 'ENROLLED', ...NOT_SUSPENDED },
             select: { client: { select: { userId: true } }, dog: { select: { name: true } } },
           },
         },

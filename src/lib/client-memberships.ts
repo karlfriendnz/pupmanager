@@ -1,6 +1,7 @@
 import { prisma } from './prisma'
 import { hasAddon } from './billing'
 import { describePlanCommitment } from './membership-consent-copy'
+import { accessPausedReason } from './membership-access'
 import { formatMoney } from './money'
 import type { PlanInterval } from './connect-subscriptions'
 
@@ -65,6 +66,15 @@ export interface ClientSubscription {
   cancelAtPeriodEnd: boolean
   /** End of a minimum term, when there is one and it hasn't passed. */
   committedUntil: string | null
+  /**
+   * Plain words for why this plan isn't giving them anything right now, from
+   * the single access-policy function. Null when it is working normally.
+   */
+  pausedReason: string | null
+  /** The card on file, so "the card ending 4242" means something to them. */
+  cardLast4: string | null
+  /** Stripe's hosted page for an invoice their BANK needs them to approve. */
+  actionRequiredUrl: string | null
 }
 
 /**
@@ -84,8 +94,17 @@ export async function loadClientSubscriptions(clientId: string, currency: string
     orderBy: { purchasedAt: 'desc' },
     select: {
       id: true, status: true, currentPeriodEnd: true, committedUntil: true, cancelAtPeriodEnd: true,
+      cardLast4: true,
       membership: { select: { name: true } },
       plan: { select: { priceCents: true, interval: true } },
+      // An invoice the client's bank wants them to authorise. Nothing in the
+      // app can act for them, so the hosted URL has to be reachable from here.
+      invoices: {
+        where: { actionRequiredAt: { not: null }, status: 'OPEN' },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { hostedInvoiceUrl: true },
+      },
     },
   })
 
@@ -100,6 +119,9 @@ export async function loadClientSubscriptions(clientId: string, currency: string
     currentPeriodEnd: r.currentPeriodEnd ? r.currentPeriodEnd.toISOString() : null,
     cancelAtPeriodEnd: r.cancelAtPeriodEnd,
     committedUntil: r.committedUntil && r.committedUntil.getTime() > now ? r.committedUntil.toISOString() : null,
+    pausedReason: accessPausedReason(r.status),
+    cardLast4: r.cardLast4,
+    actionRequiredUrl: r.invoices[0]?.hostedInvoiceUrl ?? null,
   }))
 }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getTrainerContext } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
+import { LIVE_SUBSCRIPTION_STATUSES } from '@/lib/membership-access'
 import {
   countryCodeFor,
   createExpressAccount,
@@ -107,6 +108,25 @@ export async function PATCH(req: Request) {
     })
     if (!t?.connectChargesEnabled) {
       return NextResponse.json({ error: 'Finish payment setup first' }, { status: 409 })
+    }
+  }
+
+  // Switching payments OFF while clients are on ongoing plans does NOT stop
+  // those plans — they live on the trainer's Stripe account and keep charging
+  // regardless. Silently leaving them running would mean clients being billed
+  // by a business whose app says it isn't taking payments, so the toggle is
+  // blocked with a count and a clear next step instead.
+  if (parsed.data.acceptPaymentsEnabled === false) {
+    const live = await prisma.membershipPurchase.count({
+      where: { trainerId, status: { in: LIVE_SUBSCRIPTION_STATUSES }, stripeSubscriptionId: { not: null } },
+    })
+    if (live > 0) {
+      return NextResponse.json(
+        {
+          error: `You have ${live} client${live === 1 ? '' : 's'} on an ongoing plan. Cancel ${live === 1 ? 'it' : 'them'} from Packages first — switching payments off here wouldn't stop ${live === 1 ? 'it' : 'them'} charging.`,
+        },
+        { status: 409 },
+      )
     }
   }
 

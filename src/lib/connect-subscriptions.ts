@@ -242,6 +242,41 @@ export async function createSubscriptionCheckout(args: {
 }
 
 /**
+ * A hosted Stripe Checkout Session in `mode: 'setup'` — it collects a new card
+ * and saves it against the customer WITHOUT charging anything.
+ *
+ * Deliberately not the Stripe billing portal: the portal needs a per-account
+ * configuration that an Express trainer has never set up, so it would fail for
+ * exactly the trainers this is meant to serve. A setup-mode Checkout works on
+ * any connected account with no prior configuration.
+ */
+export async function createCardUpdateSession(args: {
+  connectAccountId: string
+  sandbox: boolean
+  customerId: string
+  metadata: Record<string, string>
+  successUrl: string
+  cancelUrl: string
+}): Promise<{ id: string; url: string | null }> {
+  const stripe = stripeFor(args.sandbox)
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: 'setup',
+      customer: args.customerId,
+      currency: 'nzd',
+      // Mirrored onto both the Session and its SetupIntent so the webhook can
+      // resolve the purchase from whichever object it is holding.
+      metadata: args.metadata,
+      setup_intent_data: { metadata: args.metadata },
+      success_url: args.successUrl,
+      cancel_url: args.cancelUrl,
+    },
+    { stripeAccount: args.connectAccountId },
+  )
+  return { id: session.id, url: session.url }
+}
+
+/**
  * Ask Stripe to stop the subscription at the end of the paid-for period. They
  * keep everything they have already paid for — no pro-rata refund, which is what
  * almost every subscription does and is far easier to explain than a part-refund.
@@ -259,6 +294,27 @@ export async function cancelAtPeriodEnd(args: {
   return stripe.subscriptions.update(
     args.subscriptionId,
     { cancel_at_period_end: true },
+    { stripeAccount: args.connectAccountId },
+  )
+}
+
+/**
+ * Stop a subscription immediately, mid-period.
+ *
+ * Deliberately does NOT ask Stripe to prorate a refund: mid-cycle cancellation
+ * keeps the rest of the period rather than refunding it, and a trainer who wants
+ * to give money back does it through the existing refund route, where it is a
+ * visible, deliberate act with an audit trail.
+ */
+export async function cancelSubscriptionNow(args: {
+  connectAccountId: string
+  sandbox: boolean
+  subscriptionId: string
+}): Promise<Stripe.Subscription> {
+  const stripe = stripeFor(args.sandbox)
+  return stripe.subscriptions.cancel(
+    args.subscriptionId,
+    undefined,
     { stripeAccount: args.connectAccountId },
   )
 }

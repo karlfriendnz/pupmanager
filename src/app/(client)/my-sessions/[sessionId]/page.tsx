@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { NOT_SUSPENDED, SESSIONS_NOT_SUSPENDED } from '@/lib/membership-access'
 import { getActiveClient } from '@/lib/client-context'
 import {
   SessionReport,
@@ -50,7 +51,9 @@ export default async function ClientSessionPage({
 
   // 1:1 session (direct client link).
   const oneToOne = await prisma.trainingSession.findFirst({
-    where: { id: sessionId, clientId: profile.id },
+    // Also the AUTHORISATION check for this page, so the suspension filter
+    // belongs here too: a paused membership must not still open its write-ups.
+    where: { id: sessionId, clientId: profile.id, ...SESSIONS_NOT_SUSPENDED },
     include: {
       dog: { select: { name: true } },
       tasks: {
@@ -100,7 +103,10 @@ export default async function ClientSessionPage({
     // Group-class session the client is enrolled in — their own write-up lives
     // on their attendance row, against the session's effective form.
     const cls = await prisma.trainingSession.findFirst({
-      where: { id: sessionId, classRun: { enrollments: { some: { clientId: profile.id } } } },
+      // The enrolment IS the authorisation, so a suspended seat must not
+      // authorise anything — otherwise a paused client keeps full access to
+      // every class recap.
+      where: { id: sessionId, classRun: { enrollments: { some: { clientId: profile.id, ...NOT_SUSPENDED } } } },
       select: {
         title: true, scheduledAt: true, sessionFormId: true,
         classRun: { select: { name: true, package: { select: { defaultSessionFormId: true } } } },

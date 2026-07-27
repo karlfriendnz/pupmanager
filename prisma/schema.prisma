@@ -608,6 +608,12 @@ model TrainerProfile {
   // from cycle two. Supporting it properly needs a second recurring Price
   // (Phase 3). The plan editor says so rather than ignoring the flag quietly.
   recurringPaymentsEnabled  Boolean   @default(false)
+  // When the trainer disconnected their Stripe account from PupManager
+  // (account.application.deauthorized). We can no longer bill anyone on their
+  // behalf, so every live subscription is cancelled and its clients are told.
+  // Kept as a timestamp so the reason a business's plans all stopped on one day
+  // is answerable months later.
+  connectDeauthorizedAt     DateTime?
 
   // ─── Receivables (payment-method-agnostic invoicing) ────────────────────────
   // When true, a receivable Invoice raised on a priced package/product
@@ -1778,6 +1784,16 @@ model ClientPackage {
   // assignment outside PupManager (Xero/QBO/cash). Null = not invoiced yet.
   // Once we wire real billing this is what the financial layer keys off.
   invoicedAt         DateTime?
+  // Set when this assignment was GRANTED by a recurring membership, so the
+  // grant can be paused if that membership stops being paid for and restored
+  // when it resumes. Null for every normal assignment, which is most of them.
+  membershipPurchaseId String?
+  // Access paused for non-payment. Deliberately a reversible timestamp and NOT
+  // a delete: the whole point is that a successful retry restores everything
+  // exactly as it was, and most failures are an expired card that gets
+  // replaced within days. Sessions are left on the calendar so the trainer can
+  // still see them — only the CLIENT's use of them is paused.
+  suspendedAt          DateTime?
 
   package     Package           @relation(fields: [packageId], references: [id], onDelete: Cascade)
   client      ClientProfile     @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -1786,6 +1802,7 @@ model ClientPackage {
 
   @@index([clientId])
   @@index([packageId])
+  @@index([membershipPurchaseId])
   @@map("client_packages")
 }
 
@@ -1920,6 +1937,13 @@ model ClassEnrollment {
   invoicedAt       DateTime?
   enrolledAt       DateTime         @default(now())
   withdrawnAt      DateTime?
+  // Granted by a recurring membership — see ClientPackage.membershipPurchaseId.
+  membershipPurchaseId String?
+  // Access paused for non-payment. NOT withdrawnAt: withdrawing gives up the
+  // seat and frees it for someone else, which is irreversible in any way that
+  // matters. A pause keeps the seat — a client whose card is replaced two days
+  // later must get their place back, not find it sold to somebody else.
+  suspendedAt          DateTime?
 
   classRun      ClassRun            @relation(fields: [classRunId], references: [id], onDelete: Cascade)
   client        ClientProfile       @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -1942,6 +1966,7 @@ model ClassEnrollment {
   @@index([dropInSessionId])
   @@index([ticketTierId])
   @@index([ticketGroupId])
+  @@index([membershipPurchaseId])
   @@map("class_enrollments")
 }
 
@@ -3134,6 +3159,9 @@ enum MembershipPurchaseStatus {
   // A payment failed and Stripe is still retrying. Access CONTINUES through the
   // retry window — we do not cut a client off from their dog's classes because
   // a card bounced on a Tuesday. Only Stripe giving up moves them out of here.
+  // A payment failed. Access is PAUSED from that first failure (Karl,
+  // 2026-07-27) — not after Stripe exhausts its retries. Stripe keeps retrying
+  // underneath, and a retry that succeeds restores everything.
   PAST_DUE
   // They cancelled but have paid through to currentPeriodEnd. "I cancelled and
   // I still get my sessions until the 14th" and "I'm cut off" are different
@@ -3141,6 +3169,11 @@ enum MembershipPurchaseStatus {
   // the whole reason this is separate from CANCELLED.
   CANCELLING
   PAUSED
+  // The trainer disconnected their Stripe account or left PupManager, so there
+  // is no longer anyone to bill on behalf of. Distinct from CANCELLED because
+  // the CLIENT did not choose this and the wording they see must not imply they
+  // did — and because we need to be able to find these rows later.
+  ORPHANED
 }
 
 // A Stripe invoice's lifecycle, mirrored per billing cycle. Deliberately the
@@ -3343,6 +3376,20 @@ model MembershipPurchase {
   // subscriptions rather than invisible drift between the row and Stripe.
   applicationFeePercent Decimal? @db.Decimal(5, 2)
 
+  // A snapshot of the card on file, so the client can be told exactly WHICH
+  // card needs attention ("your card ending 4242 expires before your next
+  // payment"). Refreshed whenever we look at the subscription. Never the full
+  // number — Stripe holds that; these four are all Stripe itself exposes.
+  cardBrand    String?
+  cardLast4    String?
+  cardExpMonth Int?
+  cardExpYear  Int?
+  // When access was paused for non-payment, and when it came back. Kept as
+  // timestamps rather than a bare flag so "how long were they locked out" is
+  // answerable after the fact.
+  accessPausedAt   DateTime?
+  accessRestoredAt DateTime?
+
   membership     Membership          @relation(fields: [membershipId], references: [id], onDelete: Cascade)
   plan           MembershipPlan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
   commsFlowSends CommsFlowSend[]
@@ -3414,9 +3461,14 @@ model MembershipInvoice {
   currency    String
   status      MembershipInvoiceStatus @default(OPEN)
 
-  // Stripe's hosted page for this invoice. Phase 1 stores it; Phase 2 surfaces
-  // it as the "your bank needs you to approve this payment" action.
+  // Stripe's hosted page for this invoice — where a client goes to approve or
+  // retry a payment themselves.
   hostedInvoiceUrl String?
+  // Set when the client's BANK demanded authentication on a renewal (3DS/SCA on
+  // an off-session charge). Nothing in the app can act for them: the payment
+  // simply does not happen until they tap through to Stripe's hosted page. That
+  // is why this is a first-class field and not just another failure.
+  actionRequiredAt DateTime?
   attemptCount     Int     @default(0)
   // The Payment row this cycle produced, so the EXISTING refund route, dispute
   // handler and Xero sync keep working unchanged on a recurring charge.

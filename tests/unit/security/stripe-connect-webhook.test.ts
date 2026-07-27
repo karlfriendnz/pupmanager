@@ -16,6 +16,13 @@ const h = vi.hoisted(() => ({
   syncSubscription: vi.fn(),
   recordInvoicePaid: vi.fn(),
   recordInvoicePaymentFailed: vi.fn(),
+  recordInvoiceActionRequired: vi.fn(),
+  recordInvoiceUpcoming: vi.fn(),
+  handleAccountDeauthorized: vi.fn(),
+  completeCardUpdateForSubscription: vi.fn(),
+  purchaseFindUnique: vi.fn(),
+  trainerFindUnique: vi.fn(),
+  setupIntentRetrieve: vi.fn(),
   env: {
     STRIPE_CONNECT_WEBHOOK_SECRET: 'whsec_live',
     STRIPE_CONNECT_WEBHOOK_SECRET_TEST: 'whsec_test',
@@ -23,7 +30,10 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/stripe', () => ({
-  stripeFor: vi.fn(() => ({ webhooks: { constructEvent: h.constructEvent } })),
+  stripeFor: vi.fn(() => ({
+    webhooks: { constructEvent: h.constructEvent },
+    setupIntents: { retrieve: h.setupIntentRetrieve },
+  })),
   isStripeConfigured: vi.fn(() => true),
 }))
 vi.mock('@/lib/env', () => ({ env: h.env }))
@@ -31,7 +41,8 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     stripeWebhookEvent: { create: h.eventCreate, delete: h.eventDelete },
     payment: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
-    trainerProfile: { findUnique: vi.fn(), update: vi.fn() },
+    membershipPurchase: { findUnique: h.purchaseFindUnique },
+    trainerProfile: { findUnique: h.trainerFindUnique, update: vi.fn() },
     $transaction: vi.fn(),
   },
 }))
@@ -39,6 +50,10 @@ vi.mock('@/lib/membership-billing', () => ({
   syncSubscription: h.syncSubscription,
   recordInvoicePaid: h.recordInvoicePaid,
   recordInvoicePaymentFailed: h.recordInvoicePaymentFailed,
+  recordInvoiceActionRequired: h.recordInvoiceActionRequired,
+  recordInvoiceUpcoming: h.recordInvoiceUpcoming,
+  handleAccountDeauthorized: h.handleAccountDeauthorized,
+  completeCardUpdateForSubscription: h.completeCardUpdateForSubscription,
 }))
 // Fulfilment collaborators — stubbed so the module graph loads without a DB.
 vi.mock('@/lib/stock', () => ({ takeStock: vi.fn() }))
@@ -201,5 +216,88 @@ describe('recurring event routing', () => {
     })
     await POST(req())
     expect(h.recordInvoicePaymentFailed.mock.calls[0][2]).toBe('sub_3')
+  })
+})
+
+// ─── Phase 2 events ─────────────────────────────────────────────────────────
+describe('failure-surface event routing', () => {
+  function subInvoice(id: string, type: string, sub = 'sub_9') {
+    return {
+      id, type, account: 'acct_1',
+      data: { object: { id: 'in_x', parent: { type: 'subscription_details', subscription_details: { subscription: sub } } } },
+    }
+  }
+
+  it('routes invoice.payment_action_required — the bank needs the client', async () => {
+    h.constructEvent.mockReturnValue(subInvoice('evt_3ds', 'invoice.payment_action_required'))
+    await POST(req())
+    expect(h.recordInvoiceActionRequired.mock.calls[0][2]).toBe('sub_9')
+  })
+
+  it('routes invoice.upcoming for the pre-renewal card check', async () => {
+    h.constructEvent.mockReturnValue(subInvoice('evt_up', 'invoice.upcoming'))
+    await POST(req())
+    expect(h.recordInvoiceUpcoming.mock.calls[0][1]).toBe('sub_9')
+  })
+
+  it('routes account.application.deauthorized with the account that left', async () => {
+    h.constructEvent.mockReturnValue({
+      id: 'evt_deauth', type: 'account.application.deauthorized', account: 'acct_gone', data: { object: {} },
+    })
+    await POST(req())
+    expect(h.handleAccountDeauthorized).toHaveBeenCalledWith('acct_gone', false)
+  })
+
+  it('ignores a deauthorization with no account on it', async () => {
+    h.constructEvent.mockReturnValue({
+      id: 'evt_deauth2', type: 'account.application.deauthorized', account: null, data: { object: {} },
+    })
+    const res = await POST(req())
+    expect(res.status).toBe(200)
+    expect(h.handleAccountDeauthorized).not.toHaveBeenCalled()
+  })
+
+  it('treats a setup-mode checkout as the card update, not a purchase', async () => {
+    // Handled on checkout.session.completed deliberately, so the Dashboard
+    // needs no extra event subscription for the card-update path to work.
+    h.constructEvent.mockReturnValue({
+      id: 'evt_setup', type: 'checkout.session.completed', account: 'acct_1',
+      data: { object: { id: 'cs_1', mode: 'setup', setup_intent: 'seti_1', metadata: { membershipPurchaseId: 'p1' } } },
+    })
+    h.purchaseFindUnique.mockResolvedValue({ trainerId: 't1', sandbox: false })
+    h.trainerFindUnique.mockResolvedValue({ connectAccountId: 'acct_1' })
+    h.setupIntentRetrieve.mockResolvedValue({ payment_method: 'pm_new' })
+
+    await POST(req())
+
+    expect(h.completeCardUpdateForSubscription).toHaveBeenCalledWith({
+      purchaseId: 'p1', paymentMethodId: 'pm_new', connectAccountId: 'acct_1', sandbox: false,
+    })
+  })
+
+  it('refuses a card update whose Stripe MODE does not match ours', async () => {
+    // A test-mode session must never re-point a live subscription's card.
+    h.constructEvent.mockReturnValue({
+      id: 'evt_setup2', type: 'checkout.session.completed', account: 'acct_1',
+      data: { object: { id: 'cs_2', mode: 'setup', setup_intent: 'seti_2', metadata: { membershipPurchaseId: 'p1' } } },
+    })
+    h.purchaseFindUnique.mockResolvedValue({ trainerId: 't1', sandbox: true })
+
+    await POST(req())
+
+    expect(h.completeCardUpdateForSubscription).not.toHaveBeenCalled()
+  })
+
+  it('refuses a card update arriving on the wrong connected account', async () => {
+    h.constructEvent.mockReturnValue({
+      id: 'evt_setup3', type: 'checkout.session.completed', account: 'acct_someone_else',
+      data: { object: { id: 'cs_3', mode: 'setup', setup_intent: 'seti_3', metadata: { membershipPurchaseId: 'p1' } } },
+    })
+    h.purchaseFindUnique.mockResolvedValue({ trainerId: 't1', sandbox: false })
+    h.trainerFindUnique.mockResolvedValue({ connectAccountId: 'acct_1' })
+
+    await POST(req())
+
+    expect(h.completeCardUpdateForSubscription).not.toHaveBeenCalled()
   })
 })

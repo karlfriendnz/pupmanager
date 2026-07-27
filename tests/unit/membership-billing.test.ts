@@ -27,6 +27,12 @@ const h = vi.hoisted(() => ({
   membershipFindUnique: vi.fn(),
   fulfilMembershipInTx: vi.fn(),
   enrolMembershipClasses: vi.fn(),
+  suspendGrants: vi.fn(),
+  restoreGrants: vi.fn(),
+  purchaseFindMany: vi.fn(),
+  trainerUpdate: vi.fn(),
+  subCancel: vi.fn(),
+  sendEmail: vi.fn(),
   notifyClient: vi.fn(),
   notifyTrainer: vi.fn(),
 }))
@@ -50,9 +56,15 @@ vi.mock('@/lib/prisma', () => {
   }
   return {
     prisma: {
-      membershipPurchase: { findUnique: h.purchaseFindUnique, findFirst: h.purchaseFindFirst },
+      membershipPurchase: {
+        findUnique: h.purchaseFindUnique,
+        findFirst: h.purchaseFindFirst,
+        findMany: h.purchaseFindMany,
+        update: h.purchaseUpdate,
+      },
       membershipConsent: { findFirst: h.consentFindFirst, create: h.consentCreate },
-      trainerProfile: { findUnique: h.trainerFindUnique },
+      membershipInvoice: { upsert: h.invoiceUpsert, findFirst: h.invoiceFindUnique },
+      trainerProfile: { findUnique: h.trainerFindUnique, update: h.trainerUpdate },
       clientProfile: { findUnique: h.clientFindUnique },
       membership: { findUnique: h.membershipFindUnique },
       $transaction: (fn: (t: typeof tx) => unknown) => fn(tx),
@@ -63,6 +75,15 @@ vi.mock('@/lib/memberships', () => ({
   fulfilMembershipInTx: h.fulfilMembershipInTx,
   enrolMembershipClasses: h.enrolMembershipClasses,
 }))
+// Partial: the suspend/restore calls are spied on, but the RULE itself
+// (membershipGrantsAccess) stays real — these tests assert the real policy.
+vi.mock('@/lib/membership-access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/membership-access')>()),
+  suspendMembershipGrants: h.suspendGrants,
+  restoreMembershipGrants: h.restoreGrants,
+}))
+vi.mock('@/lib/stripe', () => ({ stripeFor: vi.fn(() => ({ subscriptions: { cancel: h.subCancel } })) }))
+vi.mock('@/lib/email', () => ({ sendEmail: h.sendEmail }))
 vi.mock('@/lib/client-notify', () => ({ notifyClient: h.notifyClient }))
 vi.mock('@/lib/trainer-notify', () => ({ notifyTrainer: h.notifyTrainer }))
 
@@ -71,6 +92,7 @@ import {
   syncSubscription,
   recordInvoicePaid,
   recordInvoicePaymentFailed,
+  handleAccountDeauthorized,
 } from '@/lib/membership-billing'
 
 const SUB_META = { membershipId: 'm1', trainerId: 't1', clientId: 'c1', planId: 'plan1', consentId: 'con1' }
@@ -105,13 +127,18 @@ function invoice(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   for (const fn of Object.values(h)) (fn as ReturnType<typeof vi.fn>).mockReset()
-  h.fulfilMembershipInTx.mockResolvedValue({ classGrants: [] })
+  h.fulfilMembershipInTx.mockResolvedValue({ classGrants: [], membershipPurchaseId: 'p1' })
+  h.suspendGrants.mockResolvedValue({ packages: 1, enrolments: 1 })
+  h.restoreGrants.mockResolvedValue({ packages: 1, enrolments: 1 })
   h.trainerFindUnique.mockResolvedValue({ connectAccountId: 'acct_1', businessName: 'E2E Dog School', user: { id: 'tu1' } })
   h.clientFindUnique.mockResolvedValue({ user: { id: 'cu1', name: 'Sarah' }, dog: { name: 'Bailey' } })
   h.membershipFindUnique.mockResolvedValue({ name: 'Starter Bundle' })
   h.planFindUnique.mockResolvedValue({ minTermCount: 0, interval: 'MONTH' })
   h.notifyClient.mockResolvedValue(undefined)
   h.notifyTrainer.mockResolvedValue(undefined)
+  h.subCancel.mockResolvedValue({})
+  h.sendEmail.mockResolvedValue(undefined)
+  h.purchaseFindMany.mockResolvedValue([])
 })
 
 describe('ensureConsent', () => {
@@ -214,9 +241,11 @@ describe('syncSubscription', () => {
 
   it('enrols class places only on the first sync', async () => {
     h.purchaseFindUnique.mockResolvedValue(null)
-    h.fulfilMembershipInTx.mockResolvedValue({ classGrants: [{ classRunId: 'run1' }] })
+    h.fulfilMembershipInTx.mockResolvedValue({ classGrants: [{ classRunId: 'run1' }], membershipPurchaseId: 'p1' })
     await syncSubscription(subscription(), false)
-    expect(h.enrolMembershipClasses).toHaveBeenCalledWith([{ classRunId: 'run1' }], 'c1')
+    // The purchase id travels with the seats so each can be PAUSED (never
+    // withdrawn) if the plan stops being paid for.
+    expect(h.enrolMembershipClasses).toHaveBeenCalledWith([{ classRunId: 'run1' }], 'c1', 'p1')
   })
 
   it('tells the client and the trainer when a plan starts', async () => {
@@ -294,20 +323,35 @@ describe('recordInvoicePaid', () => {
   })
 })
 
-describe('recordInvoicePaymentFailed', () => {
-  it('marks PAST_DUE and tells BOTH sides, without revoking anything', async () => {
+describe('recordInvoicePaymentFailed — access stops on the FIRST failure', () => {
+  it('marks PAST_DUE and PAUSES everything the plan granted', async () => {
+    // Karl, 2026-07-27: access stops on the first failed payment, not after
+    // Stripe exhausts its retries.
     h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' })
-    await recordInvoicePaymentFailed(invoice({ attempt_count: 2 }), false, 'sub_1')
+    await recordInvoicePaymentFailed(invoice({ attempt_count: 1 }), false, 'sub_1')
 
     const data = h.purchaseUpdateMany.mock.calls[0][0].data
     expect(data.status).toBe('PAST_DUE')
-    expect(data.failedPaymentCount).toBe(2)
-    // Access continues through the retry window — nothing here cancels or
-    // un-enrols. Cutting a client off because a card bounced on a Tuesday is
-    // the wrong call when they will usually pay within days.
-    expect(data.cancelAtPeriodEnd).toBeUndefined()
-    expect(h.notifyClient).toHaveBeenCalledTimes(1)
-    expect(h.notifyTrainer).toHaveBeenCalledTimes(1)
+    expect(data.accessPausedAt).toBeInstanceOf(Date)
+    expect(data.accessRestoredAt).toBeNull()
+    // The grants themselves are paused — the status alone changes nothing the
+    // client can see or use.
+    expect(h.suspendGrants).toHaveBeenCalledWith(expect.anything(), 'p1')
+    expect(h.restoreGrants).not.toHaveBeenCalled()
+  })
+
+  it('tells the client it is paused AND how to turn it back on', async () => {
+    // Losing access with no explanation is the worst version of this.
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' })
+    await recordInvoicePaymentFailed(invoice(), false, 'sub_1')
+
+    const notice = h.notifyClient.mock.calls[0][0]
+    expect(notice.vars.description).toContain('didn’t go through')
+    expect(notice.vars.description).toContain('paused')
+    expect(notice.vars.description).toContain('Update your card')
+    expect(notice.ctaLabel).toBe('Update your card')
+    // And the trainer hears about it too.
+    expect(h.notifyTrainer.mock.calls[0][2].detail).toContain('paused')
   })
 
   it('takes the attempt count from STRIPE so a replay cannot inflate it', async () => {
@@ -330,5 +374,181 @@ describe('recordInvoicePaymentFailed', () => {
     await recordInvoicePaymentFailed(invoice(), false, 'sub_1')
     expect(h.purchaseUpdateMany).not.toHaveBeenCalled()
     expect(h.notifyClient).not.toHaveBeenCalled()
+  })
+})
+
+// ─── The recovery round trip ────────────────────────────────────────────────
+// With access stopping on the FIRST failure, this path runs often: most
+// failures are an expired card that gets replaced within days. A half-restored
+// membership — status ACTIVE but grants still paused — is the bug that would
+// hurt most here, because the client would see a working plan and a broken app.
+describe('revoke → retry succeeds → restored', () => {
+  const PURCHASE = { id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' }
+
+  it('restores the grants and clears the pause when a retry pays', async () => {
+    h.purchaseFindUnique.mockResolvedValue({ ...PURCHASE, status: 'PAST_DUE', accessPausedAt: new Date() })
+    h.invoiceFindUnique.mockResolvedValue(null)
+    h.paymentCreate.mockResolvedValue({ id: 'pay1' })
+
+    await recordInvoicePaid(invoice(), false, 'sub_1')
+
+    expect(h.restoreGrants).toHaveBeenCalledWith(expect.anything(), 'p1')
+    const data = h.purchaseUpdateMany.mock.calls[0][0].data
+    expect(data.status).toBe('ACTIVE')
+    expect(data.accessPausedAt).toBeNull()
+    expect(data.accessRestoredAt).toBeInstanceOf(Date)
+    expect(data.failedPaymentCount).toBe(0)
+  })
+
+  it('tells the client everything is back on', async () => {
+    // They were told it was paused; they have to be told it isn't any more, or
+    // they assume it is still broken and email the trainer.
+    h.purchaseFindUnique.mockResolvedValue({ ...PURCHASE, status: 'PAST_DUE', accessPausedAt: new Date() })
+    h.invoiceFindUnique.mockResolvedValue(null)
+    h.paymentCreate.mockResolvedValue({ id: 'pay1' })
+
+    await recordInvoicePaid(invoice(), false, 'sub_1')
+
+    expect(h.notifyClient).toHaveBeenCalledTimes(1)
+    expect(h.notifyClient.mock.calls[0][0].vars.detail).toContain('back on')
+  })
+
+  it('stays quiet on an ordinary renewal that was never paused', async () => {
+    // A monthly "your payment worked" message nobody asked for is noise.
+    h.purchaseFindUnique.mockResolvedValue({ ...PURCHASE, status: 'ACTIVE', accessPausedAt: null })
+    h.invoiceFindUnique.mockResolvedValue(null)
+    h.paymentCreate.mockResolvedValue({ id: 'pay1' })
+
+    await recordInvoicePaid(invoice(), false, 'sub_1')
+
+    expect(h.notifyClient).not.toHaveBeenCalled()
+    // But the grants are still restored unconditionally — clearing an
+    // already-clear flag is free, and a half-restored plan is not.
+    expect(h.restoreGrants).toHaveBeenCalled()
+  })
+
+  it('survives the full cycle: fail, fail again, then pay', async () => {
+    h.purchaseFindUnique.mockResolvedValue({ ...PURCHASE, status: 'ACTIVE', accessPausedAt: null })
+    await recordInvoicePaymentFailed(invoice({ attempt_count: 1 }), false, 'sub_1')
+    h.purchaseFindUnique.mockResolvedValue({ ...PURCHASE, status: 'PAST_DUE', accessPausedAt: new Date() })
+    await recordInvoicePaymentFailed(invoice({ attempt_count: 2 }), false, 'sub_1')
+
+    expect(h.suspendGrants).toHaveBeenCalledTimes(2)
+    expect(h.restoreGrants).not.toHaveBeenCalled()
+
+    h.invoiceFindUnique.mockResolvedValue(null)
+    h.paymentCreate.mockResolvedValue({ id: 'pay1' })
+    await recordInvoicePaid(invoice({ id: 'in_2' }), false, 'sub_1')
+
+    expect(h.restoreGrants).toHaveBeenCalledWith(expect.anything(), 'p1')
+    expect(h.purchaseUpdateMany.mock.calls.at(-1)?.[0].data.status).toBe('ACTIVE')
+  })
+})
+
+describe('syncSubscription keeps grants in step with status', () => {
+  it('restores grants when Stripe moves a subscription back to active', async () => {
+    // Stripe can clear past_due on its own after a retry we never saw an
+    // invoice event for. If only the status moved, the client would have an
+    // active plan and everything still switched off.
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', status: 'PAST_DUE' })
+    await syncSubscription(subscription({ status: 'active' }), false)
+    expect(h.restoreGrants).toHaveBeenCalledWith(expect.anything(), 'p1')
+    expect(h.suspendGrants).not.toHaveBeenCalled()
+  })
+
+  it('suspends grants when Stripe reports past_due', async () => {
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', status: 'ACTIVE' })
+    await syncSubscription(subscription({ status: 'past_due' }), false)
+    expect(h.suspendGrants).toHaveBeenCalledWith(expect.anything(), 'p1')
+    expect(h.restoreGrants).not.toHaveBeenCalled()
+  })
+
+  it('keeps a CANCELLING plan working — they paid for this period', async () => {
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', status: 'ACTIVE' })
+    await syncSubscription(subscription({ status: 'active', cancel_at_period_end: true }), false)
+    expect(h.restoreGrants).toHaveBeenCalled()
+    expect(h.suspendGrants).not.toHaveBeenCalled()
+  })
+
+  it('suspends when a subscription is finally cancelled', async () => {
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', status: 'CANCELLING' })
+    await syncSubscription(subscription({ status: 'canceled' }), false)
+    expect(h.suspendGrants).toHaveBeenCalled()
+  })
+})
+
+// ─── The trainer left ───────────────────────────────────────────────────────
+// Karl's call (2026-07-27): cancel the subscriptions and tell the clients. The
+// alternative — letting them run — leaves people being charged by a business
+// PupManager no longer has any relationship with.
+describe('handleAccountDeauthorized', () => {
+  beforeEach(() => {
+    h.trainerFindUnique.mockResolvedValue({
+      id: 't1', businessName: 'E2E Dog School', user: { id: 'tu1', email: 't@example.com' },
+    })
+    h.purchaseFindMany.mockResolvedValue([
+      { id: 'p1', clientId: 'c1', membershipId: 'm1', stripeSubscriptionId: 'sub_1' },
+      { id: 'p2', clientId: 'c2', membershipId: 'm1', stripeSubscriptionId: 'sub_2' },
+    ])
+    h.trainerUpdate.mockResolvedValue({})
+    h.purchaseUpdate.mockResolvedValue({})
+  })
+
+  it('marks every live plan ORPHANED and pauses what they granted', async () => {
+    await handleAccountDeauthorized('acct_1', false)
+
+    expect(h.purchaseUpdate).toHaveBeenCalledTimes(2)
+    for (const call of h.purchaseUpdate.mock.calls) {
+      expect(call[0].data).toMatchObject({ status: 'ORPHANED', cancelReason: 'TRAINER_DISCONNECTED' })
+    }
+    expect(h.suspendGrants).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops the trainer being able to sell or charge anything else', async () => {
+    await handleAccountDeauthorized('acct_1', false)
+    expect(h.trainerUpdate.mock.calls[0][0].data).toMatchObject({
+      connectChargesEnabled: false,
+      acceptPaymentsEnabled: false,
+      recurringPaymentsEnabled: false,
+    })
+    expect(h.trainerUpdate.mock.calls[0][0].data.connectDeauthorizedAt).toBeInstanceOf(Date)
+  })
+
+  it('tells every affected client, and says they won’t be charged again', async () => {
+    await handleAccountDeauthorized('acct_1', false)
+    expect(h.notifyClient).toHaveBeenCalledTimes(2)
+    expect(h.notifyClient.mock.calls[0][0].vars.detail).toContain('won’t be charged again')
+  })
+
+  it('still marks our rows when Stripe refuses — the account is usually gone', async () => {
+    // The subscriptions went with the account. Failing to cancel something that
+    // no longer exists must not leave us showing clients a live plan.
+    h.subCancel.mockRejectedValue(new Error('No such account'))
+    await handleAccountDeauthorized('acct_1', false)
+    expect(h.purchaseUpdate).toHaveBeenCalledTimes(2)
+    expect(h.notifyClient).toHaveBeenCalledTimes(2)
+  })
+
+  it('emails the trainer — their income just stopped', async () => {
+    await handleAccountDeauthorized('acct_1', false)
+    expect(h.sendEmail).toHaveBeenCalledTimes(1)
+    // Reaches them whatever else they have muted.
+    expect(h.sendEmail.mock.calls[0][0].alwaysSend).toBe(true)
+  })
+
+  it('does nothing for an account we do not recognise', async () => {
+    h.trainerFindUnique.mockResolvedValue(null)
+    await handleAccountDeauthorized('acct_unknown', false)
+    expect(h.trainerUpdate).not.toHaveBeenCalled()
+    expect(h.purchaseUpdate).not.toHaveBeenCalled()
+  })
+
+  it('sends no trainer email when there was nothing running', async () => {
+    h.purchaseFindMany.mockResolvedValue([])
+    await handleAccountDeauthorized('acct_1', false)
+    expect(h.sendEmail).not.toHaveBeenCalled()
+    expect(h.notifyClient).not.toHaveBeenCalled()
+    // The account flags are still cleared — they have disconnected either way.
+    expect(h.trainerUpdate).toHaveBeenCalled()
   })
 })

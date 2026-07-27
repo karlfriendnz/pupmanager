@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { NOT_SUSPENDED, SESSIONS_NOT_SUSPENDED } from '@/lib/membership-access'
 import { getActiveClient } from '@/lib/client-context'
 import { ClientHomeView } from './home-view'
 import { AppInstallModal } from '../app-install-modal'
@@ -76,6 +77,8 @@ export default async function ClientHomePage() {
         clientId: clientProfile.id,
         scheduledAt: { gte: now },
         status: 'UPCOMING',
+        // Hidden while the membership that granted it is unpaid.
+        ...SESSIONS_NOT_SUSPENDED,
       },
       orderBy: { scheduledAt: 'asc' },
       select: {
@@ -92,6 +95,7 @@ export default async function ClientHomePage() {
       where: {
         clientId: clientProfile.id,
         status: { in: ['COMPLETED', 'COMMENTED', 'INVOICED'] },
+        ...SESSIONS_NOT_SUSPENDED,
       },
       orderBy: { scheduledAt: 'desc' },
       take: 5,
@@ -133,7 +137,9 @@ export default async function ClientHomePage() {
       },
     }),
     prisma.clientPackage.findFirst({
-      where: { clientId: clientProfile.id },
+      // The progress bar must not keep counting down a package they have lost
+      // access to — that would read as "still going" while nothing works.
+      where: { clientId: clientProfile.id, ...NOT_SUSPENDED },
       orderBy: { assignedAt: 'desc' },
       select: {
         id: true,

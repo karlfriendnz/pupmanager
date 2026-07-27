@@ -11,7 +11,15 @@ import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automa
 import { enrollInRun } from '@/lib/class-runs'
 import { fulfilMembershipInTx, enrolMembershipClasses } from '@/lib/memberships'
 import { subscriptionIdFromInvoice } from '@/lib/connect-subscriptions'
-import { syncSubscription, recordInvoicePaid, recordInvoicePaymentFailed } from '@/lib/membership-billing'
+import {
+  syncSubscription,
+  recordInvoicePaid,
+  recordInvoicePaymentFailed,
+  recordInvoiceActionRequired,
+  recordInvoiceUpcoming,
+  handleAccountDeauthorized,
+  completeCardUpdateForSubscription,
+} from '@/lib/membership-billing'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { notifyClient } from '@/lib/client-notify'
 import { sendEmail } from '@/lib/email'
@@ -127,6 +135,14 @@ export async function POST(req: Request) {
       }
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
+        // A `setup` session is the update-card flow, not a purchase — it has no
+        // payment_status to wait on. Deliberately handled on THIS event rather
+        // than setup_intent.succeeded, so the Dashboard needs no extra
+        // subscription for the card-update path to work.
+        if (session.mode === 'setup') {
+          await completeCardUpdate(session, sandbox, event.account ?? null)
+          break
+        }
         // Only fulfil once the session's payment is actually captured — async
         // payment methods can complete the session while still 'unpaid'.
         if (session.payment_status !== 'paid') break
@@ -182,6 +198,32 @@ export async function POST(req: Request) {
         const invoice = event.data.object as Stripe.Invoice
         const subId = subscriptionIdFromInvoice(invoice)
         if (subId) await recordInvoicePaymentFailed(invoice, sandbox, subId)
+        break
+      }
+      case 'invoice.payment_action_required': {
+        // The client's BANK wants them to authenticate a renewal. Nothing here
+        // can act for them — the money does not move until they tap through to
+        // Stripe's hosted page, so this has to reach their phone.
+        const invoice = event.data.object as Stripe.Invoice
+        const subId = subscriptionIdFromInvoice(invoice)
+        if (subId) await recordInvoiceActionRequired(invoice, sandbox, subId)
+        break
+      }
+      case 'invoice.upcoming': {
+        // ~3 days before a renewal: a heads-up, plus a check that the card on
+        // file will still be alive when the charge lands. With access stopping
+        // on the first failure, preventing one is worth a great deal.
+        const invoice = event.data.object as Stripe.Invoice
+        const subId = subscriptionIdFromInvoice(invoice)
+        if (subId) await recordInvoiceUpcoming(invoice, subId)
+        break
+      }
+      case 'account.application.deauthorized': {
+        // The trainer disconnected Stripe. We can no longer bill for them, so
+        // every live subscription is cancelled and every affected client told —
+        // rather than leaving people paying a business we have no relationship
+        // with. event.account is the connected account that left.
+        if (event.account) await handleAccountDeauthorized(event.account, sandbox)
         break
       }
       default:
@@ -674,6 +716,55 @@ async function reconcileRefund(charge: Stripe.Charge) {
   await prisma.payment.update({
     where: { id: payment.id },
     data: { amountRefunded, status, stripeChargeId: charge.id },
+  })
+}
+
+// A `setup` mode Checkout Session is the client finishing the update-card flow.
+// The session carries our purchase id in metadata; the new card is on its
+// SetupIntent, which has to be retrieved from the connected account (that is
+// where the whole flow lives).
+async function completeCardUpdate(
+  session: Stripe.Checkout.Session,
+  sandbox: boolean,
+  eventAccount: string | null,
+) {
+  const purchaseId = session.metadata?.membershipPurchaseId
+  if (!purchaseId || !eventAccount) return
+
+  const purchase = await prisma.membershipPurchase.findUnique({
+    where: { id: purchaseId },
+    select: { trainerId: true, sandbox: true },
+  })
+  if (!purchase) return
+  // Mode and account must match what we recorded, exactly as the payment path
+  // checks — a test-mode session must never re-point a live subscription's card.
+  if (purchase.sandbox !== sandbox) {
+    console.error('[stripe connect webhook] card update mode mismatch — refusing', purchaseId)
+    return
+  }
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: purchase.trainerId },
+    select: { connectAccountId: true },
+  })
+  if (!trainer?.connectAccountId || trainer.connectAccountId !== eventAccount) {
+    console.error('[stripe connect webhook] card update account mismatch — refusing', purchaseId)
+    return
+  }
+
+  const setupIntentId = typeof session.setup_intent === 'string'
+    ? session.setup_intent
+    : session.setup_intent?.id ?? null
+  if (!setupIntentId) return
+
+  const si = await stripeFor(sandbox).setupIntents.retrieve(setupIntentId, undefined, { stripeAccount: eventAccount })
+  const pm = typeof si.payment_method === 'string' ? si.payment_method : si.payment_method?.id ?? null
+  if (!pm) return
+
+  await completeCardUpdateForSubscription({
+    purchaseId,
+    paymentMethodId: pm,
+    connectAccountId: eventAccount,
+    sandbox,
   })
 }
 

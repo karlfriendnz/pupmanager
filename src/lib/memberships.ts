@@ -5,6 +5,7 @@
 // items are returned to enrol AFTER the tx commits — enrollInRun opens its own
 // transaction and can't be nested.
 import type { Prisma } from '@/generated/prisma'
+import { prisma } from './prisma'
 import { takeStock } from './stock'
 import { materializeBooking } from './booking-page'
 import { enrollInRun } from './class-runs'
@@ -50,61 +51,29 @@ export async function fulfilMembershipInTx(
      */
     recurring?: MembershipRecurringInput
   },
-): Promise<{ classGrants: MembershipClassGrant[] }> {
+): Promise<{ classGrants: MembershipClassGrant[]; membershipPurchaseId: string | null }> {
   const membership = await tx.membership.findUnique({
     where: { id: args.membershipId },
     include: { items: { orderBy: { order: 'asc' } } },
   })
   // Only fulfil the trainer's own membership (defence in depth — the payment is
   // already scoped to this trainer's connected account).
-  if (!membership || membership.trainerId !== args.trainerId) return { classGrants: [] }
+  if (!membership || membership.trainerId !== args.trainerId) return { classGrants: [], membershipPurchaseId: null }
 
   const classGrants: MembershipClassGrant[] = []
   const now = new Date()
 
-  for (const item of membership.items) {
-    const qty = Math.max(1, item.quantity)
-
-    if (item.kind === 'PACKAGE' && item.packageId) {
-      const pkg = await tx.package.findFirst({
-        where: { id: item.packageId, trainerId: args.trainerId },
-        select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true },
-      })
-      if (!pkg) continue
-      // One ClientPackage assignment per quantity — the same grant buying the
-      // package normally produces, scheduled from today (reschedulable).
-      for (let i = 0; i < qty; i++) {
-        await materializeBooking(tx, {
-          trainerId: args.trainerId, clientId: args.clientId, dogId: null, pkg, slotAt: now,
-          // Unused when pkg is set, but required by the shared shape.
-          singleDurationMins: pkg.durationMins, singleSessionType: pkg.sessionType, singleTitle: pkg.name, bookingPageId: null,
-        })
-      }
-    } else if (item.kind === 'PRODUCT' && item.productId) {
-      const prod = await tx.product.findFirst({ where: { id: item.productId, trainerId: args.trainerId }, select: { id: true } })
-      if (!prod) continue
-      for (let i = 0; i < qty; i++) {
-        // Take stock per unit. A membership that's already been paid for is
-        // still granted if the shelf is empty — the trainer owes them the item
-        // either way — but the count never goes negative.
-        await takeStock(tx, item.productId)
-        await tx.productRequest.create({
-          data: { clientId: args.clientId, productId: item.productId, status: 'FULFILLED', fulfilledAt: now, note: `Package: ${membership.name}` },
-        })
-      }
-    } else if (item.kind === 'CLASS' && item.classRunId) {
-      // One place per class item, enrolled post-commit.
-      classGrants.push({ classRunId: item.classRunId })
-    }
-  }
-
-  // Record the purchase. A ONE_OFF has no term or period and is ACTIVE from the
-  // moment it is paid. A RECURRING one carries the Stripe subscription and the
-  // period/term dates Stripe reported — all of them read back from Stripe, never
-  // computed here, so our row can never claim a billing date Stripe disagrees
-  // with.
+  // Record the purchase FIRST, so every grant below can be stamped with its id.
+  // That link is what makes a membership's benefits pausable: when a payment
+  // fails we have to be able to find exactly what this plan gave them, pause it,
+  // and hand it all back intact when a Stripe retry succeeds.
+  //
+  // A ONE_OFF has no term or period and is ACTIVE from the moment it is paid. A
+  // RECURRING one carries the Stripe subscription and the period/term dates
+  // Stripe reported — all read back from Stripe, never computed here, so our row
+  // can never claim a billing date Stripe disagrees with.
   const r = args.recurring
-  await tx.membershipPurchase.create({
+  const purchase = await tx.membershipPurchase.create({
     data: {
       membershipId: membership.id,
       trainerId: args.trainerId,
@@ -125,20 +94,82 @@ export async function fulfilMembershipInTx(
           }
         : {}),
     },
+    select: { id: true },
   })
+  // Only a RECURRING purchase can lapse for non-payment, so only its grants need
+  // to be findable. A one-off is paid for once and never taken away.
+  const grantOwnerId = r ? purchase.id : null
 
-  return { classGrants }
+  for (const item of membership.items) {
+    const qty = Math.max(1, item.quantity)
+
+    if (item.kind === 'PACKAGE' && item.packageId) {
+      const pkg = await tx.package.findFirst({
+        where: { id: item.packageId, trainerId: args.trainerId },
+        select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true },
+      })
+      if (!pkg) continue
+      // One ClientPackage assignment per quantity — the same grant buying the
+      // package normally produces, scheduled from today (reschedulable).
+      for (let i = 0; i < qty; i++) {
+        const { clientPackageId } = await materializeBooking(tx, {
+          trainerId: args.trainerId, clientId: args.clientId, dogId: null, pkg, slotAt: now,
+          // Unused when pkg is set, but required by the shared shape.
+          singleDurationMins: pkg.durationMins, singleSessionType: pkg.sessionType, singleTitle: pkg.name, bookingPageId: null,
+        })
+        // Tie the assignment back to the plan that paid for it.
+        if (grantOwnerId && clientPackageId) {
+          await tx.clientPackage.update({
+            where: { id: clientPackageId },
+            data: { membershipPurchaseId: grantOwnerId },
+          })
+        }
+      }
+    } else if (item.kind === 'PRODUCT' && item.productId) {
+      const prod = await tx.product.findFirst({ where: { id: item.productId, trainerId: args.trainerId }, select: { id: true } })
+      if (!prod) continue
+      for (let i = 0; i < qty; i++) {
+        // Take stock per unit. A membership that's already been paid for is
+        // still granted if the shelf is empty — the trainer owes them the item
+        // either way — but the count never goes negative.
+        await takeStock(tx, item.productId)
+        await tx.productRequest.create({
+          data: { clientId: args.clientId, productId: item.productId, status: 'FULFILLED', fulfilledAt: now, note: `Package: ${membership.name}` },
+        })
+      }
+    } else if (item.kind === 'CLASS' && item.classRunId) {
+      // One place per class item, enrolled post-commit.
+      classGrants.push({ classRunId: item.classRunId })
+    }
+  }
+
+  return { classGrants, membershipPurchaseId: purchase.id }
 }
 
 /**
  * Post-commit: enrol the buyer into each included class. Best-effort — a full /
  * closed class logs and moves on rather than failing the whole fulfilment.
  * (Phase 1 auto-enrols; approval-gated classes are a fast-follow.)
+ *
+ * `membershipPurchaseId` stamps each seat with the plan that paid for it, so a
+ * failed payment can pause the seat WITHOUT withdrawing it — withdrawing frees
+ * the place for someone else, and a client whose card is replaced two days later
+ * must get their own seat back.
  */
-export async function enrolMembershipClasses(grants: MembershipClassGrant[], clientId: string): Promise<void> {
+export async function enrolMembershipClasses(
+  grants: MembershipClassGrant[],
+  clientId: string,
+  membershipPurchaseId?: string | null,
+): Promise<void> {
   for (const g of grants) {
     try {
-      await enrollInRun({ classRunId: g.classRunId, clientId, dogId: null, type: 'FULL', source: 'SELF_SERVE' })
+      const r = await enrollInRun({ classRunId: g.classRunId, clientId, dogId: null, type: 'FULL', source: 'SELF_SERVE' })
+      if (membershipPurchaseId && r?.enrollmentId) {
+        await prisma.classEnrollment.update({
+          where: { id: r.enrollmentId },
+          data: { membershipPurchaseId },
+        })
+      }
     } catch (err) {
       console.error('[membership] class enrol failed', g.classRunId, err instanceof Error ? err.message : err)
     }
