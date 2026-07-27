@@ -48,11 +48,15 @@ async function loadPayingValueSummary(): Promise<CurrencyTotal[]> {
 // subscribed trainer inside their carried-over trial window is a PAYING
 // customer, not a trialist). undefined = no filter (All).
 const TABS: { key: string; label: string; bucket?: TrainerLifecycle; ours?: boolean; inactive?: boolean }[] = [
-  // "All" is not just a convenience: the lifecycle buckets don't cover every
+  // No "All" tab (Karl, 2026-07-27): In Trial is the screen that matters, and
+  // browsing every business isn't a job anyone does — looking one up is.
+  //
+  // All previously covered a real gap: the lifecycle buckets don't span every
   // account (a comped or manually-ACTIVE business has no stripeSubscriptionId,
-  // so it's neither trialing nor paying) and those were reachable from no tab at
-  // all — invisible despite being counted in "N businesses registered".
-  { key: 'all',      label: 'All' },
+  // so it is neither trialing nor paying) and those sat in no tab at all. That
+  // gap is now covered by SEARCH, which deliberately ignores the tab — see
+  // trainers-table.tsx. Measured when this changed: 0 such accounts existed,
+  // but the shape can recur the moment a business is comped.
   { key: 'trial',    label: 'In Trial',         bucket: 'trial' },
   { key: 'paying',   label: 'Paying customer',  bucket: 'paying' },
   { key: 'churned',  label: 'Churned',          bucket: 'churned' },

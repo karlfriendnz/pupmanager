@@ -23,9 +23,12 @@ async function loginAdmin(page: Page) {
 test.describe('admin /admin — companies, not individual trainers', () => {
   test('lists businesses and hides invited team members', async ({ page }) => {
     await loginAdmin(page)
-    // The "All" tab — the seeded businesses are ACTIVE without a Stripe
-    // subscription, so they sit in no lifecycle bucket (default tab is trial).
-    await page.goto('/admin?tab=all')
+    // Search rather than a tab: the seeded businesses are ACTIVE with no Stripe
+    // subscription, so they sit in no lifecycle bucket, and search is what
+    // reaches them now that "All" is gone. "Dog" matches both seeded business
+    // names ("E2E Dog School", "Rival Dog Co") and no team member's name — so
+    // the absence assertions below still mean something.
+    await page.goto('/admin?q=Dog')
 
     await expect(page.getByRole('heading', { name: 'Businesses' })).toBeVisible()
 
@@ -40,7 +43,7 @@ test.describe('admin /admin — companies, not individual trainers', () => {
 
   test('a row opens the trainer full view with detail + actions', async ({ page }) => {
     await loginAdmin(page)
-    await page.goto('/admin?tab=all')
+    await page.goto(`/admin?q=${encodeURIComponent(SEED.owner.businessName)}`)
 
     // Each row links into that trainer's full view. The desktop table links the
     // OWNER'S NAME while the mobile card links the business name, so match on the
@@ -68,9 +71,9 @@ test.describe('admin /admin — companies, not individual trainers', () => {
   // "Inactive" ones) moved onto /admin wholesale and must still filter + count.
   test('lifecycle tabs still filter and carry their counts', async ({ page }) => {
     await loginAdmin(page)
-    await page.goto('/admin?tab=all')
+    await page.goto(`/admin?q=${encodeURIComponent(SEED.owner.businessName)}`)
 
-    for (const label of ['All', 'In Trial', 'Paying customer', 'Churned', 'Ours', 'Inactive']) {
+    for (const label of ['In Trial', 'Paying customer', 'Churned', 'Ours', 'Inactive']) {
       await expect(page.getByRole('link', { name: new RegExp(`^${label} \\d+$`) })).toBeVisible()
     }
 
@@ -95,9 +98,12 @@ test.describe('admin /admin — companies, not individual trainers', () => {
     await expect(page).toHaveURL(/\/admin(\?|$)/)
     await expect(page.getByRole('heading', { name: 'Businesses' })).toBeVisible()
 
-    await page.goto('/admin/trainers?tab=all')
-    await expect(page).toHaveURL(/\/admin\?tab=all/)
-    await expect(page.getByText(SEED.owner.businessName).locator('visible=true').first()).toBeVisible()
+    await page.goto('/admin/trainers?tab=paying')
+    await expect(page).toHaveURL(/\/admin\?tab=paying/)
+    // Assert the TAB survived the redirect, not that a particular business is
+    // on it: the seeded owner is ACTIVE with no Stripe subscription, so it sits
+    // in no lifecycle bucket and is reachable by search rather than by tab.
+    await expect(page.getByRole('link', { name: /Paying customer/ })).toBeVisible()
   })
 
   // The admin guard lives in (admin)/layout.tsx and must still hold for the

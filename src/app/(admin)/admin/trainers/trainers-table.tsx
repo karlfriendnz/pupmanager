@@ -33,11 +33,22 @@ export async function TrainersTable({
   internal?: 'exclude' | 'only' | 'all'
 }) {
   const and: Array<Record<string, unknown>> = []
+  // Business name included deliberately: this screen is titled "Businesses" and
+  // was matching only the OWNER's name and email, so searching for the business
+  // you were looking at found nothing. That was survivable while an "All" tab
+  // let you browse; with search now the way to reach any account it is the
+  // difference between findable and not.
   if (q) and.push({ OR: [
     { name: { contains: q, mode: 'insensitive' } },
     { email: { contains: q, mode: 'insensitive' } },
+    { trainerProfile: { businessName: { contains: q, mode: 'insensitive' } } },
   ] })
-  if (bucket) and.push({ trainerProfile: lifecycleProfileFilter(bucket) })
+  // Searching deliberately ESCAPES the tab. "Find this business" is not a
+  // lifecycle question, and scoping it to the current tab meant looking someone
+  // up required guessing their state first. It is also what makes dropping the
+  // "All" tab safe: an account in no bucket (a comped business is neither
+  // trialing nor paying) is still reachable by name or email.
+  if (bucket && !q) and.push({ trainerProfile: lifecycleProfileFilter(bucket) })
   if (deactivated === 'exclude') and.push({ deactivatedAt: null })
   if (deactivated === 'only') and.push({ deactivatedAt: { not: null } })
   if (internal === 'exclude') and.push({ NOT: { trainerProfile: { isInternal: true } } })
@@ -51,7 +62,13 @@ export async function TrainersTable({
       trainerProfile: { isNot: null },
       ...(and.length ? { AND: and } : {}),
     },
-    orderBy: { createdAt: 'desc' },
+    // In Trial leads with whoever runs out first — that tab is the conversion
+    // call list, and newest-first buried someone with two days left under
+    // yesterday's signup. Nulls last so a trialist with no end date doesn't
+    // squat the top. Every other tab keeps newest-first.
+    orderBy: bucket === 'trial' && !q
+      ? [{ trainerProfile: { trialEndsAt: { sort: 'asc', nulls: 'last' } } }, { createdAt: 'desc' }]
+      : { createdAt: 'desc' },
     include: {
       trainerProfile: {
         select: {
