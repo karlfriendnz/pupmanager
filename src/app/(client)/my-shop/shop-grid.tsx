@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { inStock, stockLabel } from '@/lib/stock'
 import { RichText } from '@/components/shared/rich-text'
 import { useRouter } from 'next/navigation'
@@ -257,9 +257,20 @@ function ProductModal({
   // Apple Guideline 3.1.1: don't offer digital goods for purchase in the app.
   const digitalBlockedNative = isPaidDigital && !product.purchased && native
 
+  // Lock the page behind the sheet. Without this the page scrolls underneath
+  // it — two scrollbars on screen, which is a standing rule against.
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto">
+    // Phone: a full screen, not a sheet — the product IS the screen, so there
+    // is no value in a strip of blurred page above it. Desktop (sm+) keeps the
+    // centred modal, where a dialog over the shop still reads correctly.
+    <div className="fixed inset-0 z-50 bg-white sm:bg-slate-900/40 sm:backdrop-blur-sm flex sm:items-center justify-center p-0 sm:p-4">
+      <div className="flex h-full w-full flex-col overflow-y-auto no-scrollbar bg-white sm:h-auto sm:max-h-[92vh] sm:max-w-md sm:rounded-3xl">
         <div className="aspect-square bg-gradient-to-br from-amber-50 to-rose-50 relative">
           {product.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
