@@ -128,6 +128,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
   const { client } = access
 
   if (name !== undefined) {
+    // The name lives on the shared User row — the SAME row that person signs in
+    // with. When that person also runs a business on PupManager (they're a
+    // client of another trainer, or of their own company because a booking was
+    // taken against their own email), writing it here renames THEIR account:
+    // their Settings → "Your name", and the sender name on every email their
+    // business sends. One trainer's outbound mail went out signed with a
+    // client's name that way.
+    //
+    // So a client edit may only set the name of a person who has no trainer
+    // account of their own. Their own name is theirs to change, in their own
+    // Settings.
+    const ownsAnAccount = await prisma.trainerMembership.findFirst({
+      where: { userId: client.userId },
+      select: { id: true },
+    })
+    if (ownsAnAccount) {
+      return NextResponse.json(
+        { error: 'This person has their own PupManager account, so their name is theirs to change — everything else here is yours to edit.' },
+        { status: 409 },
+      )
+    }
     await prisma.user.update({ where: { id: client.userId }, data: { name } })
   }
 
