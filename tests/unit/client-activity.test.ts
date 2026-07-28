@@ -122,3 +122,32 @@ describe('what the tabs are called', () => {
     expect(VIEW_LABEL.never).toBe('Never booked')
   })
 })
+
+// The clients page is a SERVER component. OfferingTabs takes a Lucide icon per
+// tab, and an icon is a function — passing one across that boundary throws
+// "Only plain objects can be passed to Client Components", which is a blank
+// screen, not a warning. The icons are chosen inside the client wrapper instead.
+import { readFileSync } from 'node:fs'
+
+describe('the tab strip crosses the server/client boundary safely', () => {
+  const page = readFileSync('src/app/(trainer)/clients/page.tsx', 'utf8')
+  const wrapper = readFileSync('src/app/(trainer)/clients/client-view-tabs.tsx', 'utf8')
+
+  it('sends the tabs plain data, no icon functions', () => {
+    const i = page.indexOf('<ClientViewTabs')
+    expect(i).toBeGreaterThan(-1)
+    expect(page.slice(i, i + 500)).not.toContain('icon:')
+  })
+
+  it('keeps the icons on the client side of the line', () => {
+    expect(wrapper).toContain("'use client'")
+    expect(wrapper).toContain('lucide-react')
+    expect(wrapper).toContain('icon: ICON[t.id]')
+  })
+
+  // A server component can't hand over an onChange either — these tabs navigate.
+  it('navigates by href rather than a callback', () => {
+    expect(page).toContain('href: tabHref(v)')
+    expect(page).not.toContain('onChange')
+  })
+})

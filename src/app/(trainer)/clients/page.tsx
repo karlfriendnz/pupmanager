@@ -4,8 +4,7 @@ import { nextSessionByClient as nextSessionForClients } from '@/lib/client-sessi
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { extraClientDogs } from '@/lib/dogs'
-import { GraduationCap, History, UserPlus2, Archive } from 'lucide-react'
-import { OfferingTabs as ClientViewTabs } from '@/components/shared/offering-tabs'
+import { ClientViewTabs } from './client-view-tabs'
 import { ClientsList } from './clients-list'
 import { whereForView, viewFromTab, VIEW_LABEL, VIEW_BLURB, type ClientView } from '@/lib/client-activity'
 import { QuickAddModal } from './quick-add-contact'
@@ -202,9 +201,6 @@ export default async function ClientsPage({
   const TABS: ClientView[] = archivedCount > 0
     ? ['current', 'past', 'never', 'archived']
     : ['current', 'past', 'never']
-  const VIEW_ICON = {
-    current: GraduationCap, past: History, never: UserPlus2, archived: Archive,
-  } as const
   const COUNTS: Record<ClientView, number> = {
     current: currentCount, past: pastCount, never: neverCount, archived: archivedCount,
   }
@@ -233,10 +229,11 @@ export default async function ClientsPage({
           screens use: at 390px "In class now" beside a count wrapped onto two
           lines and the row read as rubble. */}
       <ClientViewTabs
+        // Plain data only — the icons are picked inside the client component,
+        // because a Lucide icon is a function and can't cross this boundary.
         tabs={TABS.map(v => ({
           id: v,
           label: VIEW_LABEL[v],
-          icon: VIEW_ICON[v],
           badge: COUNTS[v] > 0 ? COUNTS[v] : undefined,
           href: tabHref(v),
         }))}
