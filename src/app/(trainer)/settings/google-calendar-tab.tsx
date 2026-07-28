@@ -3,6 +3,7 @@ import { getTrainerContext } from '@/lib/membership'
 import { GoogleCalendarConnectCta } from '@/components/shared/google-calendar-connect-cta'
 import { Suspense } from 'react'
 import { GoogleCalendarStatus } from './google-calendar-status'
+import { GoogleCalendarSyncNow } from './google-calendar-sync-now'
 
 // Settings → Calendar tab. Only rendered when the Google Calendar add-on is
 // enabled (gated in page.tsx via hasAddon), mirroring the Xero tab.
@@ -53,6 +54,8 @@ export async function GoogleCalendarTab() {
             </p>
           )}
           <GoogleCalendarConnectCta />
+          {/* Only worth offering once there's a connection to sync into. */}
+          {conn && <GoogleCalendarSyncNow />}
           <p className="mt-3 text-sm text-slate-500">
             This is your own calendar. Everyone on your team connects theirs separately.
           </p>
