@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   connUpsert: vi.fn(),
   exchange: vi.fn(),
   refreshBusy: vi.fn(),
+  backfill: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -27,7 +28,18 @@ vi.mock('@/lib/prisma', () => ({
   },
 }))
 vi.mock('@/lib/google-calendar', () => ({ exchangeCodeForTokens: h.exchange }))
-vi.mock('@/lib/google-calendar-sync', () => ({ refreshBusyForMembership: h.refreshBusy }))
+vi.mock('@/lib/google-calendar-sync', () => ({
+  refreshBusyForMembership: h.refreshBusy,
+  backfillSessionsToGoogle: h.backfill,
+}))
+// Connecting now also pushes the diary the trainer already has, deferred with
+// after() so the redirect isn't held up. after() throws outside a request
+// scope, so run the work inline here — these tests are about what the callback
+// REDIRECTS to, and a connect must survive the backfill either way.
+vi.mock('next/server', async (orig) => ({
+  ...(await orig() as object),
+  after: (fn: () => unknown) => { void fn() },
+}))
 
 import { GET } from '@/app/api/google-calendar/callback/route'
 

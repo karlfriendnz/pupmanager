@@ -408,12 +408,21 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 export async function backfillSessionsToGoogle(opts: {
   execute?: boolean
   limit?: number
+  /**
+   * Restrict the sweep to ONE company. Used when a trainer connects their
+   * calendar: their existing diary is backfilled there and then, without
+   * touching anybody else's. Omitted by the cron, which sweeps everyone.
+   */
+  companyId?: string
 } = {}): Promise<{ activeCompanies: number; candidates: number; synced: number; remaining: number }> {
   const execute = opts.execute ?? false
   const limit = Math.max(1, opts.limit ?? 1500)
 
   // Only companies with a live connection AND the add-on still on can receive a push.
-  const connections = await prisma.googleCalendarConnection.findMany({ select: { companyId: true } })
+  const connections = await prisma.googleCalendarConnection.findMany({
+    where: opts.companyId ? { companyId: opts.companyId } : undefined,
+    select: { companyId: true },
+  })
   const connectedCompanyIds = [...new Set(connections.map((c) => c.companyId))]
   const activeCompanyIds: string[] = []
   for (const companyId of connectedCompanyIds) {

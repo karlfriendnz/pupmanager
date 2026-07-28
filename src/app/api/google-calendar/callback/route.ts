@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { exchangeCodeForTokens } from '@/lib/google-calendar'
-import { refreshBusyForMembership } from '@/lib/google-calendar-sync'
+import { refreshBusyForMembership, backfillSessionsToGoogle } from '@/lib/google-calendar-sync'
 
 // OAuth2 redirect target. Verifies the CSRF state, exchanges the code for
 // tokens, and upserts the member's GoogleCalendarConnection (keyed by membership).
@@ -98,6 +98,36 @@ export async function GET(req: Request) {
   } catch (err) {
     console.error('[google-calendar] initial busy refresh failed', err)
   }
+
+  // ...and push the diary they ALREADY have the other way.
+  //
+  // Outbound sync only ever fired as sessions were created or edited, so a
+  // trainer who connected on Tuesday saw an empty Google Calendar and a term's
+  // worth of classes that were never going to appear — the connection looked
+  // broken when it was working exactly as built. Busy import has always been
+  // seeded on connect (just above); this is the missing other half.
+  //
+  // Runs AFTER the redirect: the trainer lands back on Settings straight away
+  // rather than watching a spinner while a term of classes is written to
+  // Google. Scoped to this company, capped, and idempotent (only sessions with
+  // no mirrored event), so a reconnect is cheap and nobody else is touched.
+  after(async () => {
+    try {
+      const result = await backfillSessionsToGoogle({
+        execute: true,
+        companyId: membership.companyId,
+        limit: 750,
+      })
+      console.log('[google-calendar] connect backfill', membership.companyId, result)
+      if (result.remaining > 0) {
+        // Bigger than one pass. The nightly cron picks up the rest; log it so a
+        // "some classes are missing" report has something to stand on.
+        console.warn('[google-calendar] connect backfill left', result.remaining, 'sessions for the cron')
+      }
+    } catch (err) {
+      console.error('[google-calendar] connect backfill failed', err)
+    }
+  })
 
   return NextResponse.redirect(done)
 }
