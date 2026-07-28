@@ -121,3 +121,36 @@ describe('a per-session class ignores the stale course price', () => {
     expect(invoicing).toContain('sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)')
   })
 })
+
+// The trainer picks "Full run" on a casual class with no headline price shown
+// anywhere on the screen, so until now the total was a surprise that arrived
+// with the invoice. The button now carries the figure — and carries the one the
+// SERVER worked out, so what's on the button and what's on the invoice are the
+// same number by construction.
+const roster = readFileSync('src/components/trainer/run-roster.tsx', 'utf8')
+const runContent = readFileSync('src/app/(trainer)/classes/[runId]/run-detail-content.tsx', 'utf8')
+
+describe('the Enrol modal shows what a full run costs', () => {
+  it('takes the price from the server, not from a second sum in the browser', () => {
+    expect(runContent).toContain('fullRunPriceCents: await wholeRunPriceCents(runId, run.package)')
+    expect(roster).toContain('fullRunPriceCents?: number | null')
+  })
+
+  it('needs the per-session rate the whole-run price falls back to', () => {
+    expect(runContent).toContain('dropInPriceCents: true')
+  })
+
+  it('prints it on the Full run button in the trainer’s own currency', () => {
+    expect(roster).toContain('formatMoney(fullRunPriceCents, currency)')
+  })
+
+  it('says how many sessions that covers', () => {
+    expect(roster).toContain("All {sessions.length} session")
+  })
+
+  // A free class, and an event that sells tickets, must show no figure rather
+  // than a confident $0.
+  it('shows nothing when there is no price to show', () => {
+    expect(roster).toContain('fullRunPriceCents != null')
+  })
+})

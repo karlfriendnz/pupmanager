@@ -43,6 +43,8 @@ type Run = {
   allowDropIn: boolean
   allowWaitlist: boolean
   priceCents: number | null
+  /** What a FULL seat costs: every session in the run at its own price. */
+  fullRunPriceCents: number | null
   durationMins: number
   // "Gap before the next session" — turnaround time blocked after each class.
   bufferMins: number
@@ -429,6 +431,7 @@ export function RunDetail({
           runId={run.id}
           clients={clients}
           allowDropIn={run.allowDropIn}
+          fullRunPriceCents={run.fullRunPriceCents}
           sessions={sessions}
           // Which sessions each client already holds, so the picker can show
           // them as booked instead of letting you tick one and be refused.

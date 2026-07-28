@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { wholeRunPriceCents } from '@/lib/class-runs'
 import { RunDetail } from './run-detail'
 
 // The shared run-detail loader. A ClassRun powers three offering sections —
@@ -29,7 +30,7 @@ export async function ClassRunDetailContent({
     prisma.classRun.findFirst({
       where: { id: runId, trainerId },
       include: {
-        package: { select: { id: true, name: true, description: true, allowDropIn: true, allowWaitlist: true, priceCents: true, durationMins: true, bufferMins: true, sessionType: true, capacity: true, weeksBetween: true, sessionCount: true, defaultSessionFormId: true } },
+        package: { select: { id: true, name: true, description: true, allowDropIn: true, allowWaitlist: true, priceCents: true, dropInPriceCents: true, durationMins: true, bufferMins: true, sessionType: true, capacity: true, weeksBetween: true, sessionCount: true, defaultSessionFormId: true } },
         sessions: {
           orderBy: { sessionIndex: 'asc' },
           select: { id: true, title: true, scheduledAt: true, sessionIndex: true, status: true },
@@ -93,6 +94,12 @@ export async function ClassRunDetailContent({
         allowDropIn: run.package.allowDropIn,
         allowWaitlist: run.package.allowWaitlist,
         priceCents: run.package.priceCents,
+        // What a FULL seat actually costs, worked out the same way the invoice
+        // works it out — every session in the run at its own price. On a casual
+        // class there is no headline price to show instead, and the trainer was
+        // enrolling someone onto a full run with no idea of the total until the
+        // invoice landed.
+        fullRunPriceCents: await wholeRunPriceCents(runId, run.package),
         durationMins: run.package.durationMins,
         // Run-level override wins; null = inherit the class's package.
         bufferMins: run.bufferMins ?? run.package.bufferMins,

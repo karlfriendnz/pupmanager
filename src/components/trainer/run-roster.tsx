@@ -378,6 +378,7 @@ export function EnrolModal({
   runId,
   clients,
   allowDropIn,
+  fullRunPriceCents = null,
   sessions,
   bookedByClient,
   existing,
@@ -388,6 +389,13 @@ export function EnrolModal({
   runId: string
   clients: ClientOpt[]
   allowDropIn: boolean
+  /**
+   * What a FULL seat costs — every session in the run at its own price, worked
+   * out server-side by the same helper the invoice uses, so the figure on this
+   * button and the figure on the invoice cannot drift apart. Null when the run
+   * is free or the caller doesn't price this way (an event sells tickets).
+   */
+  fullRunPriceCents?: number | null
   sessions: SessionRow[]
   bookedByClient: Map<string, Set<string>>
   existing: Set<string>
@@ -694,16 +702,33 @@ export function EnrolModal({
                         key={t}
                         type="button"
                         onClick={() => setType(t)}
-                        className={`flex-1 text-center py-2 rounded-xl border text-sm transition-colors ${
+                        className={`flex-1 py-2 rounded-xl border text-sm transition-colors ${
                           type === t
                             ? 'border-blue-500 bg-blue-50 text-blue-700'
                             : 'border-slate-200 text-slate-600'
                         }`}
                       >
-                        {t === 'FULL' ? 'Full run' : 'Drop-in'}
+                        <span className="block text-center">{t === 'FULL' ? 'Full run' : 'Drop-in'}</span>
+                        {/* What it costs, on the button that decides it. A casual
+                            class has no headline price anywhere on this screen, so
+                            a trainer picked "Full run" and found out the total only
+                            when the invoice arrived. */}
+                        {t === 'FULL' && fullRunPriceCents != null && (
+                          <span className="block text-center text-xs tabular-nums opacity-80">
+                            {formatMoney(fullRunPriceCents, currency)}
+                          </span>
+                        )}
+                        {t === 'DROP_IN' && (
+                          <span className="block text-center text-xs opacity-80">per session</span>
+                        )}
                       </button>
                     ))}
                   </div>
+                  {type === 'FULL' && fullRunPriceCents != null && (
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      All {sessions.length} session{sessions.length === 1 ? '' : 's'} — this is what they'll be invoiced.
+                    </p>
+                  )}
                 </div>
               )}
 
