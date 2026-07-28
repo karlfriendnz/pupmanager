@@ -166,6 +166,15 @@ export async function PATCH(req: Request) {
     data.intakeSystemFieldSections = { ...existing, ...data.intakeSystemFieldSections }
   }
 
+  // What their trade WAS, read before the update lands — the difference is what
+  // decides whether there are starter fields to seed at all. See below.
+  const rolesBefore = parsed.data.businessRoles
+    ? ((await prisma.trainerProfile.findUnique({
+        where: { id: guard.companyId },
+        select: { businessRoles: true },
+      }))?.businessRoles ?? [])
+    : []
+
   const profile = await prisma.trainerProfile.update({
     where: { id: guard.companyId },
     data,
@@ -173,15 +182,23 @@ export async function PATCH(req: Request) {
 
   // When they tell us their trade, pre-create the matching starter fields so
   // their intake form isn't blank (a groomer gets coat type / last groomed,
-  // etc.). Idempotent — won't duplicate fields they already have. Best-effort:
-  // never fail the profile save over it.
-  if (parsed.data.businessRoles?.length) {
+  // etc.). Best-effort: never fail the profile save over it.
+  //
+  // Only for roles they've just ADDED. applyFieldPacksForRoles dedups on the
+  // labels that currently exist, which is not the same as remembering what it
+  // once created: delete a starter field you don't want, save anything on this
+  // screen afterwards (this form posts businessRoles every time, unchanged),
+  // and the field was created again because its label was no longer taken.
+  // Deleted fields kept coming back, and the trainer had no way to make them
+  // stay gone. Nothing new is seeded when the trade hasn't changed.
+  const addedRoles = (parsed.data.businessRoles ?? []).filter(r => !rolesBefore.includes(r))
+  if (addedRoles.length) {
     await Promise.all([
-      applyFieldPacksForRoles(prisma, guard.companyId, parsed.data.businessRoles),
+      applyFieldPacksForRoles(prisma, guard.companyId, addedRoles),
       // Sensible starting hours for their trade (a groomer breaks for lunch).
       // Only seeds when they have no availability yet, so it never overwrites
       // hours they've set.
-      seedScheduleDefaultsForRoles(prisma, guard.companyId, parsed.data.businessRoles),
+      seedScheduleDefaultsForRoles(prisma, guard.companyId, addedRoles),
     ]).catch(() => {})
   }
 
