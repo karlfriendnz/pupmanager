@@ -122,6 +122,21 @@ describe('the offering edit form — a refused save has to say so', () => {
     expect(form).toContain('if (startMoved && hasAttendance)')
     expect(form).toContain('its dates are fixed')
   })
+
+  // Better still: say it before they type, at the top of the card the dates
+  // live on. Finding out only when Save is refused is how "the Save button
+  // doesn't work" starts.
+  it('warns in the Sessions & schedule card, not only on save', () => {
+    expect(form).toContain('{scheduled && hasAttendance && (')
+    expect(form).toContain('Attendance has already been recorded on this class, so its dates are fixed.')
+  })
+
+  // Said once. The old grey one-liner under the date picker said a shorter
+  // version of the same thing right beside the new notice.
+  it('does not repeat itself under the date picker', () => {
+    expect(form).toContain('{scheduled && !hasAttendance && (')
+    expect(form).not.toContain("Attendance has been recorded, so the dates are fixed.")
+  })
 })
 
 // Capacity was set on the edit page and then shown back nowhere — the class's

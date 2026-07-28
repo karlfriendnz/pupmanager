@@ -720,6 +720,16 @@ export function PackageForm({
         }
       >
 
+      {/* Say it BEFORE they start typing, not after they press Save. The dates
+          are the first thing on this card, and finding out they're locked only
+          once the save is refused is how "the Save button doesn't work" starts. */}
+      {scheduled && hasAttendance && (
+        <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-900">
+          Attendance has already been recorded on this class, so its dates are fixed.
+          Change anything else here, or cancel this class and create a new one to move it.
+        </div>
+      )}
+
       {/* One schedule model everywhere: a run of N sessions every W weeks.
           1:1, group and drop-in all use it; only a one-off event has no cadence. */}
       {kind === 'oneoff' ? (
@@ -798,11 +808,9 @@ export function PackageForm({
             <label className="text-sm font-medium text-slate-700 block mb-1.5">First session (date &amp; time)</label>
           )}
           <DateTimePicker value={startAt} onChange={setStartAt} stacked={kind === 'oneoff'} />
-          {scheduled && (
+          {scheduled && !hasAttendance && (
             <p className="mt-1.5 text-xs text-slate-400">
-              {hasAttendance
-                ? 'Attendance has been recorded, so the dates are fixed. Cancel this class and create a new one to move it.'
-                : 'Changing the date, how many sessions or how far apart rebuilds this class’s sessions.'}
+              Changing the date, how many sessions or how far apart rebuilds this class’s sessions.
             </p>
           )}
         </div>
