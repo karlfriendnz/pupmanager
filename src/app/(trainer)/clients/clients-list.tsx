@@ -1,5 +1,7 @@
 'use client'
 
+import type { ClientView } from '@/lib/client-activity'
+
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -115,7 +117,7 @@ interface ClientRow {
 
 interface Props {
   clients: ClientRow[]
-  tab: 'new' | 'active' | 'inactive'
+  view: ClientView
   columns: string[]
   customFields: CustomFieldMeta[]
   customValues: Record<string, string>  // key: `${clientId}:${fieldId}`
@@ -127,7 +129,7 @@ interface Props {
   searchScope?: 'all' | 'client' | 'breed' | 'dog'
 }
 
-export function ClientsList({ clients, tab, columns, customFields, customValues, groupBy, tz, initialQuery, searchScope = 'all' }: Props) {
+export function ClientsList({ clients, view, columns, customFields, customValues, groupBy, tz, initialQuery, searchScope = 'all' }: Props) {
   const validCustomIds = new Set(customFields.map(f => f.id))
   const initial = columns.filter(c => isBuiltinId(c) || (c.startsWith('custom:') && validCustomIds.has(c.slice(7))))
   const [visible, setVisible] = useState<Set<string>>(new Set(initial))
@@ -476,7 +478,7 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
       )}
 
       {clients.length === 0 ? (
-        <EmptyState tab={tab} />
+        <EmptyState view={view} />
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-slate-400">
           <p className="text-sm">No matches for &ldquo;{query}&rdquo;.</p>
@@ -484,7 +486,7 @@ export function ClientsList({ clients, tab, columns, customFields, customValues,
       ) : (
         <ClientTable
           clients={filtered}
-          tab={tab}
+          view={view}
           visible={visible}
           customFields={customFields}
           customValues={customValues}
@@ -695,9 +697,9 @@ function groupKeyFor(client: ClientRow, groupBy: string | null, customValues: Re
   return { key: '', label: '', sort: 0 }
 }
 
-function ClientTable({ clients, tab, visible, customFields, customValues, groupBy, tz, selectMode, selected, onToggleSelect }: {
+function ClientTable({ clients, view, visible, customFields, customValues, groupBy, tz, selectMode, selected, onToggleSelect }: {
   clients: ClientRow[]
-  tab: Props['tab']
+  view: Props['view']
   visible: Set<string>
   customFields: CustomFieldMeta[]
   customValues: Record<string, string>
@@ -758,7 +760,7 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
               <ClientRowCard
                 key={c.id}
                 client={c}
-                tab={tab}
+                view={view}
                 visible={visible}
                 dataColumns={dataColumns}
                 gridTemplate={gridTemplate}
@@ -776,10 +778,10 @@ function ClientTable({ clients, tab, visible, customFields, customValues, groupB
   )
 }
 
-function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, selectMode, isSelected, onToggleSelect }: {
+function ClientRowCard({ client, view, visible, dataColumns, gridTemplate, tz, selectMode, isSelected, onToggleSelect }: {
   client: ClientRow
   tz: string
-  tab: Props['tab']
+  view: Props['view']
   visible: Set<string>
   dataColumns: DataColumn[]
   gridTemplate: string
@@ -839,7 +841,7 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
       selectMode
         ? `cursor-pointer ${isSelected ? 'border-[var(--pm-brand-500)] bg-[var(--pm-brand-50)]/40 ring-1 ring-[var(--pm-brand-500)]' : 'hover:border-slate-300'}`
         : 'hover:border-blue-200 hover:shadow-md cursor-pointer'
-    } ${tab === 'inactive' ? 'opacity-70' : ''} ${tab === 'new' && !isSelected ? 'border-amber-200 bg-amber-50/30' : ''}`}>
+    } ${view === 'archived' ? 'opacity-70' : ''} ${view === 'never' && !isSelected ? 'border-amber-200 bg-amber-50/30' : ''}`}>
       {/* md+: single-row grid that lines up with the header. */}
       <div
         className="hidden md:grid items-center gap-4"
@@ -914,30 +916,38 @@ function ClientRowCard({ client, tab, visible, dataColumns, gridTemplate, tz, se
   )
 }
 
-function EmptyState({ tab }: { tab: Props['tab'] }) {
+function EmptyState({ view }: { view: Props['view'] }) {
   return (
     <div className="text-center py-16 text-slate-400">
       <Dog className="h-12 w-12 mx-auto mb-3 opacity-30" />
-      {tab === 'new' ? (
+      {view === 'current' ? (
         <>
-          <p className="font-medium">No new registrations</p>
-          <p className="text-sm mt-1">Clients who register via your embed forms will appear here</p>
-          <Link href="/settings?tab=forms" className="mt-4 inline-block text-sm font-medium text-blue-600 hover:text-blue-700">
-            Manage embed forms →
-          </Link>
-        </>
-      ) : tab === 'active' ? (
-        <>
-          <p className="font-medium">No active clients</p>
-          <p className="text-sm mt-1">Invite your first client to get started</p>
+          <p className="font-medium">Nobody is in class right now</p>
+          <p className="text-sm mt-1">
+            This fills up on its own once a class with a session still to come has people on it.
+          </p>
           <Link href="/clients/invite" className="mt-4 inline-block">
             <Button size="sm"><UserPlus className="h-4 w-4" />Create new client</Button>
           </Link>
         </>
+      ) : view === 'past' ? (
+        <>
+          <p className="font-medium">No past clients yet</p>
+          <p className="text-sm mt-1">
+            Once a course finishes, everyone on it moves here — your repeat and referral list.
+          </p>
+        </>
+      ) : view === 'never' ? (
+        <>
+          <p className="font-medium">Everyone on your list has booked something</p>
+          <p className="text-sm mt-1">
+            People who join but never book — through a form, or added by hand — show up here.
+          </p>
+        </>
       ) : (
         <>
-          <p className="font-medium">No inactive clients</p>
-          <p className="text-sm mt-1">Clients you mark as inactive will appear here</p>
+          <p className="font-medium">Nobody is archived</p>
+          <p className="text-sm mt-1">Anyone you hide from your list will be waiting here.</p>
         </>
       )}
     </div>

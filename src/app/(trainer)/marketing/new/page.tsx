@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { prisma } from '@/lib/prisma'
+import { notArchived } from '@/lib/client-activity'
 import { getTrainerContext, scopeForMember, hasPermission } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
@@ -29,7 +30,17 @@ export default async function NewEmailPage() {
       select: { businessName: true, logoUrl: true, emailAccentColor: true },
     }),
     prisma.clientProfile.findMany({
-      where: { trainerId, status: 'ACTIVE', isSample: false, marketingEmailOptOut: false, ...memberScope },
+      // Everyone except the people you've archived.
+      //
+      // This used to read `status: 'ACTIVE'`, back when status carried activity.
+      // Now that activity is derived (lib/client-activity), the only thing status
+      // still says is "hidden by hand" — so leaving the old filter here would have
+      // quietly kept out every client sitting at status NEW, which is precisely
+      // the never-booked group, and the one a trainer most wants to email.
+      //
+      // Nobody is emailed by this query: it fills the audience PICKER, and the
+      // trainer chooses and reviews the recipients before anything sends.
+      where: { trainerId, ...notArchived, isSample: false, marketingEmailOptOut: false, ...memberScope },
       select: {
         id: true,
         dogId: true,

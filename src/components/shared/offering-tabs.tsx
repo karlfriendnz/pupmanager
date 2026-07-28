@@ -1,6 +1,7 @@
 'use client'
 
 import type { LucideIcon } from 'lucide-react'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 /**
@@ -25,6 +26,12 @@ export type OfferingTab<T extends string> = {
   icon: LucideIcon
   /** Count shown on the tab, e.g. how many clients are enrolled. */
   badge?: number
+  /**
+   * Navigate instead of switching in place. The offering screens swap tabs
+   * client-side; the clients list is a server render per view, so its tabs are
+   * real links — same strip, same behaviour at 390px, one copy of the markup.
+   */
+  href?: string
 }
 
 export function OfferingTabs<T extends string>({
@@ -35,9 +42,26 @@ export function OfferingTabs<T extends string>({
 }: {
   tabs: OfferingTab<T>[]
   value: T
-  onChange: (id: T) => void
+  /** Omitted when every tab carries an href — there is nothing to switch. */
+  onChange?: (id: T) => void
   className?: string
 }) {
+  // One element type for both modes, so the two strips can't drift apart.
+  const Tab = ({ t, children, className: cls }: { t: OfferingTab<T>; children: React.ReactNode; className: string }) =>
+    t.href ? (
+      <Link href={t.href} aria-current={value === t.id ? 'page' : undefined} className={cls}>
+        {children}
+      </Link>
+    ) : (
+      <button
+        type="button"
+        onClick={() => onChange?.(t.id)}
+        aria-current={value === t.id ? 'page' : undefined}
+        className={cls}
+      >
+        {children}
+      </button>
+    )
   return (
     <div className={cn('mb-6', className)}>
       {/* Phone — icon over label, evenly split, nothing off-screen. */}
@@ -46,11 +70,9 @@ export function OfferingTabs<T extends string>({
           const Icon = t.icon
           const active = value === t.id
           return (
-            <button
+            <Tab
               key={t.id}
-              type="button"
-              onClick={() => onChange(t.id)}
-              aria-current={active ? 'page' : undefined}
+              t={t}
               className={cn(
                 'relative flex-1 min-w-0 flex flex-col items-center justify-start gap-1 px-1 py-2 rounded-xl transition-all duration-150',
                 active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
@@ -72,7 +94,7 @@ export function OfferingTabs<T extends string>({
                   {t.badge}
                 </span>
               )}
-            </button>
+            </Tab>
           )
         })}
       </div>
@@ -84,13 +106,11 @@ export function OfferingTabs<T extends string>({
             const Icon = t.icon
             const active = value === t.id
             return (
-              <button
+              <Tab
                 key={t.id}
-                type="button"
-                onClick={() => onChange(t.id)}
-                aria-current={active ? 'page' : undefined}
+                t={t}
                 className={cn(
-                  'relative shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
+                  'relative shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-150',
                   active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
                 )}
               >
@@ -106,7 +126,7 @@ export function OfferingTabs<T extends string>({
                     {t.badge}
                   </span>
                 )}
-              </button>
+              </Tab>
             )
           })}
         </div>

@@ -4,8 +4,10 @@ import { nextSessionByClient as nextSessionForClients } from '@/lib/client-sessi
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { extraClientDogs } from '@/lib/dogs'
-import Link from 'next/link'
+import { GraduationCap, History, UserPlus2, Archive } from 'lucide-react'
+import { OfferingTabs as ClientViewTabs } from '@/components/shared/offering-tabs'
 import { ClientsList } from './clients-list'
+import { whereForView, viewFromTab, VIEW_LABEL, VIEW_BLURB, type ClientView } from '@/lib/client-activity'
 import { QuickAddModal } from './quick-add-contact'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddonNudge } from '@/components/shared/addon-nudge'
@@ -39,16 +41,19 @@ export default async function ClientsPage({
   const tz = trainerProfile?.user?.timezone ?? 'Pacific/Auckland'
 
   const sp = await searchParams
-  const tab =
-    sp.tab === 'inactive' ? 'inactive'
-    : sp.tab === 'new' ? 'new'
-    : 'active'
-  const status = tab === 'inactive' ? 'INACTIVE' : tab === 'new' ? 'NEW' : 'ACTIVE'
+  // Which of the four lists we're on. Activity is derived from what the client
+  // has booked (see lib/client-activity) — it is NOT read off a status column
+  // somebody has to keep up to date. The old ?tab=new / ?tab=inactive links
+  // still resolve, to the view holding the same people they always did.
+  const view = viewFromTab(sp.tab)
+  // One `now` for the whole render, so the counts and the list can't disagree
+  // because a session started between two queries.
+  const now = new Date()
 
   // Start the independent list queries together so they run in parallel against
   // the remote DB (awaited below where first used).
   const ownedClientsP = prisma.clientProfile.findMany({
-    where: { trainerId, status, ...memberScope },
+    where: { trainerId, ...whereForView(view, now), ...memberScope },
     include: {
       user: { select: { name: true, email: true } },
       dog: { select: { id: true, name: true, breed: true, photoUrl: true } },
@@ -63,7 +68,7 @@ export default async function ClientsPage({
     },
     orderBy: { user: { name: 'asc' } },
   })
-  const sharedClientsP = (tab === 'active') ? prisma.clientShare.findMany({
+  const sharedClientsP = (view === 'current') ? prisma.clientShare.findMany({
     where: { sharedWithId: trainerId, shareType: 'CO_MANAGE' },
     include: {
       client: {
@@ -85,10 +90,11 @@ export default async function ClientsPage({
     orderBy: [{ category: 'asc' }, { order: 'asc' }, { label: 'asc' }],
   })
 
-  const [newCount, activeCount, inactiveCount] = await Promise.all([
-    prisma.clientProfile.count({ where: { trainerId, status: 'NEW', ...memberScope } }),
-    prisma.clientProfile.count({ where: { trainerId, status: 'ACTIVE', ...memberScope } }),
-    prisma.clientProfile.count({ where: { trainerId, status: 'INACTIVE', ...memberScope } }),
+  const [currentCount, pastCount, neverCount, archivedCount] = await Promise.all([
+    prisma.clientProfile.count({ where: { trainerId, ...whereForView('current', now), ...memberScope } }),
+    prisma.clientProfile.count({ where: { trainerId, ...whereForView('past', now), ...memberScope } }),
+    prisma.clientProfile.count({ where: { trainerId, ...whereForView('never', now), ...memberScope } }),
+    prisma.clientProfile.count({ where: { trainerId, ...whereForView('archived', now), ...memberScope } }),
   ])
 
   // Fetch the full tab unfiltered — search now happens client-side as the user
@@ -188,8 +194,19 @@ export default async function ClientsPage({
     customValueMap[key] = v.value
   }
 
-  function tabHref(t: string) {
-    return t === 'active' ? '/clients' : `/clients?tab=${t}`
+  function tabHref(v: ClientView) {
+    return v === 'current' ? '/clients' : `/clients?tab=${v}`
+  }
+  // Archived only earns a tab once somebody has archived someone — an empty
+  // fourth tab is a permanent reminder of a feature most trainers never use.
+  const TABS: ClientView[] = archivedCount > 0
+    ? ['current', 'past', 'never', 'archived']
+    : ['current', 'past', 'never']
+  const VIEW_ICON = {
+    current: GraduationCap, past: History, never: UserPlus2, archived: Archive,
+  } as const
+  const COUNTS: Record<ClientView, number> = {
+    current: currentCount, past: pastCount, never: neverCount, archived: archivedCount,
   }
 
   // Nudge: promote bulk client email (Marketing) when it isn't switched on.
@@ -211,46 +228,29 @@ export default async function ClientsPage({
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
 
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-6">
-        {newCount > 0 && (
-          <Link
-            href={tabHref('new')}
-            className={`flex-1 py-2.5 rounded-xl text-sm font-medium text-center transition-all duration-150 ${
-              tab === 'new'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            New<span className="ml-1.5 text-xs opacity-60">{newCount}</span>
-          </Link>
-        )}
-        <Link
-          href={tabHref('active')}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-medium text-center transition-all duration-150 ${
-            tab === 'active'
-              ? 'bg-white text-slate-900 shadow-sm'
-              : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          Active{activeCount > 0 && <span className="ml-1.5 text-xs opacity-60">{activeCount}</span>}
-        </Link>
-        <Link
-          href={tabHref('inactive')}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-medium text-center transition-all duration-150 ${
-            tab === 'inactive'
-              ? 'bg-white text-slate-900 shadow-sm'
-              : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          Inactive{inactiveCount > 0 && <span className="ml-1.5 text-xs opacity-60">{inactiveCount}</span>}
-        </Link>
-      </div>
+      {/* Three views of the same list, worked out from what people have booked
+          — plus Archived, once there's anything in it. Same strip the offering
+          screens use: at 390px "In class now" beside a count wrapped onto two
+          lines and the row read as rubble. */}
+      <ClientViewTabs
+        tabs={TABS.map(v => ({
+          id: v,
+          label: VIEW_LABEL[v],
+          icon: VIEW_ICON[v],
+          badge: COUNTS[v] > 0 ? COUNTS[v] : undefined,
+          href: tabHref(v),
+        }))}
+        value={view}
+        className="mb-3"
+      />
+      {/* One line saying what you're looking at. "Past client" reads as a
+          judgement without it; with it, it reads as a fact about bookings. */}
+      <p className="mb-5 px-1 text-sm text-slate-500">{VIEW_BLURB[view]}</p>
 
       <ClientsList
         key={`${sp.q ?? ''}|${sp.scope ?? ''}`}
         clients={flatClients}
-        tab={tab as 'new' | 'active' | 'inactive'}
+        view={view}
         columns={clientListColumns}
         customFields={customFields}
         customValues={customValueMap}
