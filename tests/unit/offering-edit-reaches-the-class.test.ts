@@ -123,3 +123,33 @@ describe('the offering edit form — a refused save has to say so', () => {
     expect(form).toContain('its dates are fixed')
   })
 })
+
+// Capacity was set on the edit page and then shown back nowhere — the class's
+// own Details card listed status, schedule, start, length, format, waitlist,
+// drop-ins, price and venue, but not how many fit. So there was nothing to
+// check a capacity change against, which is half of why a change that silently
+// didn't apply went unnoticed for so long.
+const detail = readFileSync('src/app/(trainer)/classes/[runId]/run-detail.tsx', 'utf8')
+
+describe('the class Details card shows how full it is', () => {
+  it('shows capacity, paired with waitlist on one row', () => {
+    const i = detail.indexOf('label="Capacity"')
+    expect(i).toBeGreaterThan(-1)
+    const block = detail.slice(i, i + 700)
+    expect(block).toContain('label2="Waitlist"')
+  })
+
+  it('says No limit rather than a blank when there is no cap', () => {
+    expect(detail).toContain("'No limit'")
+  })
+
+  // A drop-in class caps each SESSION, not the run. Quoting "3 of 8" against a
+  // whole term there repeats the "27 / 8" mistake the roster count already fixed.
+  it('reads a drop-in class cap as per session', () => {
+    expect(detail).toContain('per session')
+  })
+
+  it('counts the rows the roster shows, not raw bookings', () => {
+    expect(detail).toContain('${enrolledRows} of ${run.capacity}')
+  })
+})

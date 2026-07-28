@@ -220,9 +220,23 @@ export function RunDetail({
                 <Detail label="Starts" value={new Date(run.startDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} />
                 <Detail label="Length" value={`${run.durationMins} min`} />
                 <Detail label="Format" value={run.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'} />
-                <Detail
-                  label="Waitlist"
-                  value={run.allowWaitlist
+                {/* How full it is, and where the overflow goes — the two
+                    halves of the same question, so they share a row. Capacity
+                    was missing from this card altogether: the number was set on
+                    the edit page and then never shown back anywhere, so there
+                    was nothing to check a change against. */}
+                <DetailPair
+                  label="Capacity"
+                  value={run.capacity == null
+                    ? 'No limit'
+                    // A drop-in class caps each SESSION, not the run — quoting
+                    // "3 of 8" against the whole term there would be the same
+                    // mistake as the old "27 / 8" the roster count already fixed.
+                    : run.allowDropIn
+                      ? `${run.capacity} per session`
+                      : `${enrolledRows} of ${run.capacity}`}
+                  label2="Waitlist"
+                  value2={run.allowWaitlist
                     ? (waitlisted.length > 0 ? `Enabled, ${waitlisted.length}` : 'Enabled')
                     : 'Off'}
                 />
