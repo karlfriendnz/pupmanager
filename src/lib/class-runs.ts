@@ -152,6 +152,39 @@ export function sessionDropInPriceCents(
 }
 
 /**
+ * What the WHOLE run costs when the offering is only priced per session.
+ *
+ * A casual class has no course price — the trainer sets a price on each session
+ * row — so a full-run seat is the sum of those, slot by slot, because each
+ * session is free to cost something different. Falls back to the package-level
+ * per-session price for a slot that doesn't carry its own.
+ *
+ * Returns null when nothing anywhere has a price, so a genuinely free class
+ * still charges nothing rather than raising a £0 invoice.
+ *
+ * Lives here, beside sessionDropInPriceCents, because BOTH ways of paying for a
+ * full run have to agree on the figure: the receivable the trainer raises
+ * (invoicing.ts) and the card checkout a client goes through when they enrol
+ * themselves. It used to exist only on the invoicing side, so the same six-week
+ * casual class was billed £180 on an invoice and charged £30 at the checkout.
+ */
+export function wholeRunFromSessions(pkg: {
+  dropInPriceCents: number | null
+  sessionSlots: { priceCents: number | null; specialPriceCents: number | null }[]
+}): number | null {
+  if (pkg.sessionSlots.length === 0) return pkg.dropInPriceCents
+  let total = 0
+  let priced = false
+  for (const slot of pkg.sessionSlots) {
+    const each = sessionDropInPriceCents(slot, pkg)
+    if (each == null) continue
+    total += each
+    priced = true
+  }
+  return priced ? total : null
+}
+
+/**
  * How many people fit in ONE session: its slot's capacity when the slot sets
  * one, else the run/package capacity. Lets a class cap Saturdays at 6 and
  * Tuesdays at 12.

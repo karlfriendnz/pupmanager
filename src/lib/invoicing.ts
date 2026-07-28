@@ -6,7 +6,7 @@ import { estimateProcessingSurcharge } from './connect'
 import { ensureClientXeroContact } from './xero-sync'
 import { postPaymentThroughClearing, isSurchargeItem } from './xero-clearing'
 import { createXeroInvoice, fetchXeroInvoiceState } from './xero'
-import { sessionDropInPriceCents } from './class-runs'
+import { sessionDropInPriceCents, wholeRunFromSessions } from './class-runs'
 import { effectivePriceCents, isOnSale } from './product-price'
 import { env } from './env'
 import { currencySymbol } from './money'
@@ -26,33 +26,6 @@ const ACCENT = '#0d9488'
 
 function money(minor: number, currency: string): string {
   return `${currencySymbol(currency)}${(minor / 100).toFixed(2)}`
-}
-
-/**
- * What the WHOLE run costs when the offering is only priced per session.
- *
- * A casual class has no course price — the trainer sets a price on each session
- * row — so a full-run seat is the sum of those, slot by slot, because each
- * session is free to cost something different. Falls back to the package-level
- * per-session price for a slot that doesn't carry its own.
- *
- * Returns null when nothing anywhere has a price, so a genuinely free class
- * still raises no invoice rather than a £0 one.
- */
-function wholeRunFromSessions(pkg: {
-  dropInPriceCents: number | null
-  sessionSlots: { priceCents: number | null; specialPriceCents: number | null }[]
-}): number | null {
-  if (pkg.sessionSlots.length === 0) return pkg.dropInPriceCents
-  let total = 0
-  let priced = false
-  for (const slot of pkg.sessionSlots) {
-    const each = sessionDropInPriceCents(slot, pkg)
-    if (each == null) continue
-    total += each
-    priced = true
-  }
-  return priced ? total : null
 }
 
 export interface AssignmentInvoiceInput {

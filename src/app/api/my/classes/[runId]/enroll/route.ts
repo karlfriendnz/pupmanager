@@ -5,7 +5,7 @@ import { getActiveClient } from '@/lib/client-context'
 import {
   enrollInRun, ClassError, effectiveCapacity, enrolledCount,
   sessionAttendeeCount, sessionDropInPriceCents, sessionCapacity,
-  normalizeTicketQuantity, MAX_TICKET_QUANTITY,
+  normalizeTicketQuantity, MAX_TICKET_QUANTITY, wholeRunFromSessions,
 } from '@/lib/class-runs'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
@@ -78,8 +78,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   const run = await prisma.classRun.findFirst({
     where: { id: runId, trainerId: profile.trainerId },
     // The offering's ticket tiers come along because they, not the package's
-    // price, are what a ticketed event costs.
-    include: { package: { include: { ticketTiers: { orderBy: { order: 'asc' } } } } },
+    // price, are what a ticketed event costs. The session slots come along for
+    // the same reason on a CASUAL class: a full run there is the sum of its
+    // sessions, and the package carries no whole-course price to read instead.
+    include: {
+      package: {
+        include: {
+          ticketTiers: { orderBy: { order: 'asc' } },
+          sessionSlots: { select: { priceCents: true, specialPriceCents: true } },
+        },
+      },
+    },
   })
   if (!run || !run.package.isGroup) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (run.status === 'CANCELLED' || run.status === 'COMPLETED') {
@@ -205,7 +214,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       // A ticketed event is priced by the ticket, full stop. The package's own
       // priceCents is meaningless there (it's whatever was typed before tiers
       // existed) and reading it is exactly how a $200 ticket got sold for $45.
-      ? (ticketed && tier ? tier.priceCents : (run.package.specialPriceCents ?? run.package.priceCents))
+      // A CASUAL class has no whole-course price — the trainer prices each
+      // session row — so both of these read null and a full run went through
+      // the checkout for nothing, or for whatever single figure happened to be
+      // sitting in priceCents. The whole run is the sum of its sessions, the
+      // same figure the trainer's own invoice raises (wholeRunFromSessions is
+      // shared with invoicing.ts precisely so the two can't disagree).
+      ? (ticketed && tier ? tier.priceCents : (run.package.specialPriceCents ?? run.package.priceCents ?? wholeRunFromSessions(run.package)))
       : perSession.reduce<number | null>((sum, s) => s.price == null ? sum : (sum ?? 0) + s.price, null)
 
   // Capacity is per-session and must seat EVERY dog being booked. seatsFor gives
