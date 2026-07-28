@@ -860,7 +860,19 @@ export async function reconcileAllXeroPayments(): Promise<{ checked: number; upd
  * Idempotent: a re-delivery (invoice already PAID by this payment) is a no-op.
  * Never throws — a failure here must not fail the webhook (→ Stripe retry loop).
  */
-export async function settleInvoiceFromPayment(invoiceId: string, paymentId: string): Promise<void> {
+export async function settleInvoiceFromPayment(
+  invoiceId: string,
+  paymentId: string,
+  /**
+   * How much of this payment belongs to THIS invoice, in minor units. Omit for
+   * the pay-page case, where the whole payment settles the one invoice it was
+   * raised for. Class enrolments need it: a single card payment can cover
+   * several enrolments (two dogs, four drop-in dates), each with its own
+   * receivable, and crediting every one of them with the full payment would
+   * report the same money several times over.
+   */
+  amountCents?: number,
+): Promise<void> {
   try {
     const [invoice, payment] = await Promise.all([
       prisma.invoice.findUnique({
@@ -884,7 +896,7 @@ export async function settleInvoiceFromPayment(invoiceId: string, paymentId: str
 
     // The client paid the invoice balance PLUS an optional card surcharge line;
     // only the base (non-surcharge) lines count toward the invoice.
-    const basePaid = payment.items
+    const basePaid = amountCents ?? payment.items
       .filter((i) => !isSurchargeItem(i))
       .reduce((sum, i) => sum + i.unitAmount * i.quantity, 0)
     if (basePaid <= 0) return

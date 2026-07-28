@@ -14,7 +14,7 @@ import { notifyTrainer } from '@/lib/trainer-notify'
 import { notifyClient } from '@/lib/client-notify'
 import { sendEmail } from '@/lib/email'
 import { syncPaymentToXero } from '@/lib/xero-sync'
-import { settleInvoiceFromPayment, syncReceivablePaymentToXero } from '@/lib/invoicing'
+import { settleInvoiceFromPayment, syncReceivablePaymentToXero, createInvoiceForAssignment } from '@/lib/invoicing'
 
 // Shape of PaymentItem.intent for a scheduled booking (PACKAGE / SESSION),
 // captured at checkout time and replayed here to create the calendar rows.
@@ -300,7 +300,7 @@ async function markPaidAndFulfil(
     }
   }
   if (didFulfil && classItems.length && payment.clientId) {
-    await fulfilClassEnrolments(payment.trainerId, payment.clientId, classItems)
+    await fulfilClassEnrolments(payment.trainerId, payment.clientId, classItems, payment.id)
   }
   if (didFulfil && membershipClassGrants.length && payment.clientId) {
     await enrolMembershipClasses(membershipClassGrants, payment.clientId)
@@ -323,10 +323,45 @@ async function markPaidAndFulfil(
 // Enrol the client into paid classes after the payment commits. enrollInRun owns
 // its own transaction + capacity logic; if the class filled between checkout and
 // payment it waitlists/rejects, and we email the trainer to seat or refund.
+/**
+ * Give a PAID class enrolment the same paper trail a pay-later one gets: a
+ * receivable, then that receivable settled against the payment that already
+ * cleared. Best-effort throughout — the client has paid and is enrolled, and no
+ * bookkeeping hiccup may undo either by failing the webhook into a retry.
+ */
+async function settleEnrolmentInvoice(args: {
+  trainerId: string
+  clientId: string
+  enrollmentId: string
+  paymentItemId: string
+  paymentId: string
+}) {
+  try {
+    const invoiceId = await createInvoiceForAssignment({
+      trainerId: args.trainerId,
+      clientId: args.clientId,
+      sourceType: 'CLASS_ENROLLMENT',
+      classEnrollmentId: args.enrollmentId,
+      // They paid at the checkout — a "you owe this" email now would be wrong.
+      notifyClient: false,
+    })
+    if (!invoiceId) return
+    const item = await prisma.paymentItem.findUnique({
+      where: { id: args.paymentItemId },
+      select: { unitAmount: true, quantity: true },
+    })
+    const paidForThisLine = item ? item.unitAmount * item.quantity : undefined
+    await settleInvoiceFromPayment(invoiceId, args.paymentId, paidForThisLine)
+  } catch (err) {
+    console.error('[stripe connect webhook] paid class invoice failed', args.enrollmentId, err)
+  }
+}
+
 async function fulfilClassEnrolments(
   trainerId: string,
   clientId: string,
   items: { itemId: string; intent: ClassIntent }[],
+  paymentId: string,
 ) {
   const failures: string[] = []
   const enrolledRunIds: string[] = []
@@ -338,6 +373,14 @@ async function fulfilClassEnrolments(
       if (r.status === 'ENROLLED') {
         await prisma.paymentItem.update({ where: { id: it.itemId }, data: { classEnrollmentId: r.enrollmentId } })
         await prisma.classEnrollment.update({ where: { id: r.enrollmentId }, data: { invoicedAt: new Date() } })
+        // Raise the receivable and settle it against this payment. The money is
+        // already in the trainer's Stripe account by the time we get here, but
+        // nothing recorded it as a receivable, so the roster showed the seat as
+        // "No invoice" with a Create invoice button and the trainer had to go
+        // to Stripe, confirm the payment by hand and allocate it themselves.
+        // Only the amount on THIS line settles this invoice — one card payment
+        // can cover several enrolments.
+        await settleEnrolmentInvoice({ trainerId, clientId, enrollmentId: r.enrollmentId, paymentItemId: it.itemId, paymentId })
         enrolledRunIds.push(classRunId)
       } else {
         // Paid but only got a waitlist seat — trainer needs to decide.
