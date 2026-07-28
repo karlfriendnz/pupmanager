@@ -6,7 +6,7 @@ import { estimateProcessingSurcharge } from './connect'
 import { ensureClientXeroContact } from './xero-sync'
 import { postPaymentThroughClearing, isSurchargeItem } from './xero-clearing'
 import { createXeroInvoice, fetchXeroInvoiceState } from './xero'
-import { sessionDropInPriceCents, wholeRunFromSessions } from './class-runs'
+import { sessionDropInPriceCents, wholeRunPriceCents } from './class-runs'
 import { effectivePriceCents, isOnSale } from './product-price'
 import { env } from './env'
 import { currencySymbol } from './money'
@@ -118,13 +118,14 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
           dropInSession: { select: { packageSessionSlot: { select: { priceCents: true, specialPriceCents: true } } } },
           classRun: {
             select: {
+              id: true,
               name: true,
               package: {
                 select: {
                   priceCents: true, specialPriceCents: true, dropInPriceCents: true,
-                  // Needed to bill a FULL seat on a casual class, which has no
-                  // whole-course price — only a price per session. See below.
-                  sessionSlots: { select: { priceCents: true, specialPriceCents: true } },
+                  // allowDropIn marks a class priced PER SESSION. A FULL seat on
+                  // one is billed from the run's sessions, not from priceCents.
+                  allowDropIn: true,
                 },
               },
             },
@@ -188,11 +189,20 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
         // sessions, taken slot by slot because a casual class is free to price
         // each session differently.
         quantity = Math.max(1, enr.quantity ?? 1)
+        // A class priced PER SESSION (allowDropIn) has no whole-course price to
+        // read: the pricing card is hidden on its edit form, so any figure left
+        // in priceCents is stale — typed before the class became a casual one,
+        // and invisible to the trainer ever since. Reading it billed a full run
+        // as a single session. Same reasoning as ticket tiers, which have
+        // overridden priceCents outright since d736544 and for the same reason.
+        const fullSeatCents = pkg.allowDropIn
+          ? (await wholeRunPriceCents(enr.classRun.id, pkg)) ?? pkg.specialPriceCents ?? pkg.priceCents
+          : (pkg.specialPriceCents ?? pkg.priceCents ?? await wholeRunPriceCents(enr.classRun.id, pkg))
         unitAmountCents = enr.ticketTier
           ? enr.ticketTier.priceCents
           : enr.type === 'DROP_IN'
             ? sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)
-            : (pkg.specialPriceCents ?? pkg.priceCents ?? wholeRunFromSessions(pkg))
+            : fullSeatCents
         amountCents = unitAmountCents == null ? null : unitAmountCents * quantity
         const ticketNote = enr.ticketTier
           ? ` (${enr.ticketTier.name}${quantity > 1 ? ` × ${quantity}` : ''})`

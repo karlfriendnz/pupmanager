@@ -185,6 +185,49 @@ export function wholeRunFromSessions(pkg: {
 }
 
 /**
+ * What a FULL seat on a per-session-priced class actually costs: every session
+ * the run holds, each at its own price.
+ *
+ * This has to read the RUN's sessions, not the package's slots, because those
+ * are two different things and only one of them is the answer:
+ *
+ *   • A slot is a RECURRING TEMPLATE ("Saturdays 10am"), not a session. Two
+ *     slots running for six weeks are twelve sessions. Summing the slots gives
+ *     the price of one week of the timetable.
+ *   • A classic casual class — "allow drop-ins" ticked, no slot schedule at
+ *     all — has zero slots, so summing them gives one session's drop-in rate.
+ *
+ * wholeRunFromSessions does exactly those two wrong things (it was written
+ * against the package alone, which cannot see how many sessions a run has), and
+ * that is why a six-week class carried on invoicing at £30 after the fix that
+ * was supposed to make it £180. Sessions are the unit a trainer means by "the
+ * whole run", so sessions are what we count.
+ *
+ * Null when nothing anywhere carries a price — a free class raises no invoice
+ * rather than a £0 one.
+ */
+export async function wholeRunPriceCents(
+  classRunId: string,
+  pkg: { dropInPriceCents: number | null },
+  tx: Tx = prisma,
+): Promise<number | null> {
+  const sessions = await tx.trainingSession.findMany({
+    where: { classRunId },
+    select: { packageSessionSlot: { select: { priceCents: true, specialPriceCents: true } } },
+  })
+  if (sessions.length === 0) return pkg.dropInPriceCents
+  let total = 0
+  let priced = false
+  for (const s of sessions) {
+    const each = sessionDropInPriceCents(s.packageSessionSlot, pkg)
+    if (each == null) continue
+    total += each
+    priced = true
+  }
+  return priced ? total : null
+}
+
+/**
  * How many people fit in ONE session: its slot's capacity when the slot sets
  * one, else the run/package capacity. Lets a class cap Saturdays at 6 and
  * Tuesdays at 12.
