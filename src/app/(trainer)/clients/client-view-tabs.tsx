@@ -36,6 +36,8 @@ export function ClientViewTabs({
     <OfferingTabs
       tabs={tabs.map(t => ({ ...t, icon: ICON[t.id] }))}
       value={value}
+      fullWidth
+      stackedAlways
       className={className}
     />
   )

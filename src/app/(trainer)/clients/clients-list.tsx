@@ -1,6 +1,7 @@
 'use client'
 
 import type { ClientView } from '@/lib/client-activity'
+import { ClientViewTabs } from './client-view-tabs'
 
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
@@ -118,6 +119,8 @@ interface ClientRow {
 interface Props {
   clients: ClientRow[]
   view: ClientView
+  tabs: { id: ClientView; label: string; badge?: number; href: string }[]
+  blurb: string
   columns: string[]
   customFields: CustomFieldMeta[]
   customValues: Record<string, string>  // key: `${clientId}:${fieldId}`
@@ -129,7 +132,7 @@ interface Props {
   searchScope?: 'all' | 'client' | 'breed' | 'dog'
 }
 
-export function ClientsList({ clients, view, columns, customFields, customValues, groupBy, tz, initialQuery, searchScope = 'all' }: Props) {
+export function ClientsList({ clients, view, tabs, blurb, columns, customFields, customValues, groupBy, tz, initialQuery, searchScope = 'all' }: Props) {
   const validCustomIds = new Set(customFields.map(f => f.id))
   const initial = columns.filter(c => isBuiltinId(c) || (c.startsWith('custom:') && validCustomIds.has(c.slice(7))))
   const [visible, setVisible] = useState<Set<string>>(new Set(initial))
@@ -266,11 +269,22 @@ export function ClientsList({ clients, view, columns, customFields, customValues
         </div>
       )}
 
-      {/* Live search + group + column picker — desktop only. On a phone the
-          top bar's search covers finding a client, and grouping and the column
-          picker are both desktop table features, so the whole row was three
-          unlabelled icons and a field that cut off mid-word. */}
-      <div className="hidden md:flex items-center gap-2 mb-6">
+      {/* Tabs first — which of the four lists you're on — then search WITHIN it. */}
+      <ClientViewTabs tabs={tabs} value={view} className="mb-2" />
+      <p className="mb-4 px-1 text-sm text-slate-500">{blurb}</p>
+
+      {/* Live search + group + Select, on every size.
+          
+          This row used to be desktop-only. The reasoning was that the top bar
+          already searches and the icons read as unlabelled clutter on a phone —
+          but a trainer scrolling 400 clients on a phone needs to filter them
+          where they're standing, not up in the chrome, and Select is how bulk
+          email starts. So it stays.
+          
+          What DOESN'T come with it is the column picker: the phone renders
+          cards, not a table, so choosing table columns there controls nothing
+          you can see. That one is still md+. */}
+      <div className="flex items-center gap-2 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
@@ -369,9 +383,12 @@ export function ClientsList({ clients, view, columns, customFields, customValues
           }`}
         >
           <CheckSquare className="h-4 w-4" />
-          <span className="hidden sm:inline">{selectMode ? 'Done' : 'Select'}</span>
+          {/* Labelled at every size. An unlabelled tick box beside an
+              unlabelled stack icon is the clutter this row was hidden for. */}
+          <span>{selectMode ? 'Done' : 'Select'}</span>
         </button>
-        <div className="relative">
+        {/* Columns choose what the TABLE shows, and there is no table below md. */}
+        <div className="relative hidden md:block">
           <button
             type="button"
             onClick={() => setPickerOpen(o => !o)}
@@ -436,21 +453,9 @@ export function ClientsList({ clients, view, columns, customFields, customValues
         </div>
       </div>
 
-      {/* Way IN to selection on a phone. The desktop toolbar above carries its
-          own Select button, but that whole row is md-only, so on a phone there
-          was no checkbox anywhere. Flat text control, no chip. */}
-      {!selectMode && clients.length > 0 && (
-        <div className="md:hidden mb-3 flex justify-end px-1">
-          <button
-            type="button"
-            onClick={() => setSelectModeOn(true)}
-            className="inline-flex items-center gap-1.5 py-1 text-sm font-medium text-slate-700"
-          >
-            <CheckSquare className="h-4 w-4" strokeWidth={1.75} />
-            Select
-          </button>
-        </div>
-      )}
+      {/* (The phone used to get its own Select here, because the toolbar above
+          was md-only. The toolbar shows at every size now, so this was the same
+          button twice, one under the other.) */}
 
       {selectMode && (
         <div className="flex items-center justify-between mb-3 px-1">

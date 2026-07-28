@@ -134,9 +134,11 @@ describe('the tab strip crosses the server/client boundary safely', () => {
   const wrapper = readFileSync('src/app/(trainer)/clients/client-view-tabs.tsx', 'utf8')
 
   it('sends the tabs plain data, no icon functions', () => {
-    const i = page.indexOf('<ClientViewTabs')
+    // The strip now renders inside ClientsList (below the search box), so the
+    // server page's job is to hand over the DATA for it.
+    const i = page.indexOf('tabs={TABS.map(')
     expect(i).toBeGreaterThan(-1)
-    expect(page.slice(i, i + 500)).not.toContain('icon:')
+    expect(page.slice(i, i + 400)).not.toContain('icon:')
   })
 
   it('keeps the icons on the client side of the line', () => {
@@ -149,5 +151,52 @@ describe('the tab strip crosses the server/client boundary safely', () => {
   it('navigates by href rather than a callback', () => {
     expect(page).toContain('href: tabHref(v)')
     expect(page).not.toContain('onChange')
+  })
+})
+
+describe('the order of the header controls', () => {
+  const list = readFileSync('src/app/(trainer)/clients/clients-list.tsx', 'utf8')
+
+  // Tabs first — which list you're on — then search within it.
+  it('puts the tabs above the search row', () => {
+    const tabs = list.indexOf('<ClientViewTabs')
+    const search = list.indexOf('Search name, email or dog')
+    expect(tabs).toBeGreaterThan(-1)
+    expect(search).toBeGreaterThan(tabs)
+  })
+
+  // The phone had its own Select because the toolbar was md-only. It isn't any
+  // more, so that was the same button twice, one under the other.
+  it('has exactly one Select control', () => {
+    expect(list.match(/setSelectModeOn\(true\)/g) ?? []).toHaveLength(1)
+  })
+})
+
+// The search row was desktop-only. A trainer scrolling hundreds of clients on a
+// phone needs to filter where they're standing, and Select is how bulk email
+// starts — so it now shows at every size. The COLUMN picker doesn't come with
+// it: the phone renders cards, not a table, so it would control nothing.
+describe('the clients search row on a phone', () => {
+  const list = readFileSync('src/app/(trainer)/clients/clients-list.tsx', 'utf8')
+
+  it('is no longer hidden below md', () => {
+    expect(list).not.toContain('hidden md:flex items-center gap-2 mb-6')
+    expect(list).toContain('<div className="flex items-center gap-2 mb-6">')
+  })
+
+  it('keeps the column picker to sizes that have a table', () => {
+    expect(list).toContain('<div className="relative hidden md:block">')
+  })
+
+  it('labels Select at every size rather than leaving a bare icon', () => {
+    expect(list).not.toContain('<span className="hidden sm:inline">{selectMode')
+  })
+
+  // Icon on top, label under, count in the corner — the shape the client
+  // profile uses. A row of prose labels beside their counts is what wrapped.
+  it('wears the profile’s stacked tab shape at every size', () => {
+    const wrapper = readFileSync('src/app/(trainer)/clients/client-view-tabs.tsx', 'utf8')
+    expect(wrapper).toContain('stackedAlways')
+    expect(wrapper).toContain('fullWidth')
   })
 })

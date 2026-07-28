@@ -4,7 +4,6 @@ import { nextSessionByClient as nextSessionForClients } from '@/lib/client-sessi
 import { getTrainerContext, scopeForMember } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { extraClientDogs } from '@/lib/dogs'
-import { ClientViewTabs } from './client-view-tabs'
 import { ClientsList } from './clients-list'
 import { whereForView, viewFromTab, VIEW_LABEL, VIEW_BLURB, type ClientView } from '@/lib/client-activity'
 import { QuickAddModal } from './quick-add-contact'
@@ -224,11 +223,10 @@ export default async function ClientsPage({
       <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
 
 
-      {/* Three views of the same list, worked out from what people have booked
-          — plus Archived, once there's anything in it. Same strip the offering
-          screens use: at 390px "In class now" beside a count wrapped onto two
-          lines and the row read as rubble. */}
-      <ClientViewTabs
+      <ClientsList
+        key={`${sp.q ?? ''}|${sp.scope ?? ''}`}
+        clients={flatClients}
+        view={view}
         // Plain data only — the icons are picked inside the client component,
         // because a Lucide icon is a function and can't cross this boundary.
         tabs={TABS.map(v => ({
@@ -237,17 +235,7 @@ export default async function ClientsPage({
           badge: COUNTS[v] > 0 ? COUNTS[v] : undefined,
           href: tabHref(v),
         }))}
-        value={view}
-        className="mb-3"
-      />
-      {/* One line saying what you're looking at. "Past client" reads as a
-          judgement without it; with it, it reads as a fact about bookings. */}
-      <p className="mb-5 px-1 text-sm text-slate-500">{VIEW_BLURB[view]}</p>
-
-      <ClientsList
-        key={`${sp.q ?? ''}|${sp.scope ?? ''}`}
-        clients={flatClients}
-        view={view}
+        blurb={VIEW_BLURB[view]}
         columns={clientListColumns}
         customFields={customFields}
         customValues={customValueMap}

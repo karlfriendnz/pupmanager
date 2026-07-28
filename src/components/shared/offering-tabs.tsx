@@ -38,12 +38,31 @@ export function OfferingTabs<T extends string>({
   tabs,
   value,
   onChange,
+  fullWidth = false,
+  stackedAlways = false,
   className,
 }: {
   tabs: OfferingTab<T>[]
   value: T
   /** Omitted when every tab carries an href — there is nothing to switch. */
   onChange?: (id: T) => void
+  /**
+   * Stretch the strip to fill its container, splitting the width evenly.
+   * The offering screens keep the default — their strips sit above a card and
+   * a full-width row of four would leave the labels swimming in space. A list
+   * page's tabs ARE the page header, so they span it.
+   */
+  fullWidth?: boolean
+  /**
+   * Keep the phone layout — icon on top, label under it, count in the corner —
+   * at every size, instead of switching to the horizontal strip at sm.
+   *
+   * This is the shape the client profile uses, and with only three or four tabs
+   * it reads better than a row of prose: the labels stop competing with their
+   * counts for the same line, which is what made the clients strip wrap into
+   * rubble at 390px.
+   */
+  stackedAlways?: boolean
   className?: string
 }) {
   // One element type for both modes, so the two strips can't drift apart.
@@ -64,8 +83,9 @@ export function OfferingTabs<T extends string>({
     )
   return (
     <div className={cn('mb-6', className)}>
-      {/* Phone — icon over label, evenly split, nothing off-screen. */}
-      <div className="sm:hidden flex gap-1 p-1 bg-slate-100 rounded-2xl">
+      {/* Icon over label, evenly split, nothing off-screen. Always on a phone;
+          at every size when the caller asks for it. */}
+      <div className={cn('flex gap-1 p-1 bg-slate-100 rounded-2xl', !stackedAlways && 'sm:hidden')}>
         {tabs.map(t => {
           const Icon = t.icon
           const active = value === t.id
@@ -99,9 +119,17 @@ export function OfferingTabs<T extends string>({
         })}
       </div>
 
-      {/* sm and up — the horizontal strip. */}
-      <div className="hidden sm:block overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="inline-flex gap-1 p-1 bg-slate-100 rounded-2xl">
+      {/* sm and up — the horizontal strip. Skipped entirely when the stacked
+          shape is being kept at every size, or the two would both render. */}
+      {!stackedAlways && (
+      <div className={cn(
+        'hidden sm:block [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        // Only a hugging strip can overflow; a full-width one divides the space
+        // it already has, so the scroll container would do nothing but hide a
+        // rail. (Never two scrollbars on screen.)
+        fullWidth ? '' : 'overflow-x-auto',
+      )}>
+        <div className={cn('gap-1 p-1 bg-slate-100 rounded-2xl', fullWidth ? 'flex' : 'inline-flex')}>
           {tabs.map(t => {
             const Icon = t.icon
             const active = value === t.id
@@ -110,7 +138,8 @@ export function OfferingTabs<T extends string>({
                 key={t.id}
                 t={t}
                 className={cn(
-                  'relative shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-150',
+                  'relative flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-150',
+                  fullWidth ? 'flex-1 min-w-0' : 'shrink-0',
                   active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700',
                 )}
               >
@@ -131,6 +160,7 @@ export function OfferingTabs<T extends string>({
           })}
         </div>
       </div>
+      )}
     </div>
   )
 }
