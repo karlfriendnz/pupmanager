@@ -28,6 +28,23 @@ function money(minor: number, currency: string): string {
   return `${currencySymbol(currency)}${(minor / 100).toFixed(2)}`
 }
 
+/**
+ * Run the after-the-response side effects (client email, Xero push).
+ *
+ * `after()` only exists inside a request scope, and throws outside one. That's
+ * fine in the app — every caller is a route — but it means none of this file
+ * can be driven from a script or a test without blowing up AFTER the invoice
+ * row has already been written, which reads as "the invoice wasn't created"
+ * when it was. Outside a request we just run them inline instead.
+ */
+function deferSideEffects(fn: () => void): void {
+  try {
+    after(fn)
+  } catch {
+    fn()
+  }
+}
+
 export interface AssignmentInvoiceInput {
   trainerId: string
   clientId: string
@@ -298,7 +315,7 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
     // round-trips (which made self-book feel slow). The invoice row itself is
     // already committed above; these are best-effort and never affect it.
     const xeroEnabled = !!trainer.xeroConnection && (!trainer.sandboxBilling || process.env.NODE_ENV === 'development')
-    after(() => {
+    deferSideEffects(() => {
       const tasks: Promise<unknown>[] = []
       if (emailClient) {
         tasks.push(notifyClientOfInvoice({
@@ -442,7 +459,7 @@ export async function createManualSaleInvoice(
   // Same post-commit pattern as the assignment flow: never make the trainer
   // stand there while Resend/Xero round-trip.
   const xeroEnabled = !!trainer.xeroConnection && (!trainer.sandboxBilling || process.env.NODE_ENV === 'development')
-  after(() => {
+  deferSideEffects(() => {
     const tasks: Promise<unknown>[] = []
     if (autoSend) {
       tasks.push(notifyClientOfInvoice({
@@ -529,7 +546,7 @@ export async function createCancellationFeeInvoice(input: {
     })
 
     const xeroEnabled = !!trainer.xeroConnection && (!trainer.sandboxBilling || process.env.NODE_ENV === 'development')
-    after(() => {
+    deferSideEffects(() => {
       const tasks: Promise<unknown>[] = []
       if (autoSend) {
         tasks.push(notifyClientOfInvoice({
@@ -938,6 +955,54 @@ export async function settleInvoiceFromPayment(
       .catch((e) => console.error('[invoicing] xero payment push failed', invoice.id, e))
   } catch (err) {
     console.error('[invoicing] settleInvoiceFromPayment failed', invoiceId, paymentId, err)
+  }
+}
+
+/**
+ * Give a PAID class enrolment the same paper trail a pay-later one gets: a
+ * receivable, then that receivable settled against the payment that already
+ * cleared. Without it the roster reads "No invoice" on a seat the client has
+ * paid for, and the trainer reconciles it against Stripe by hand.
+ *
+ * Lives here rather than inside the connect webhook so the fulfilment can be
+ * exercised without a real Stripe round-trip (scripts/simulate-class-payment.ts
+ * calls exactly this) — a test that reimplements the logic it's testing proves
+ * nothing.
+ *
+ * Best-effort throughout: the client has paid and is enrolled, and no
+ * bookkeeping hiccup may undo either by failing the webhook into a retry.
+ */
+export async function settleClassEnrolmentPayment(args: {
+  trainerId: string
+  clientId: string
+  enrollmentId: string
+  paymentItemId: string
+  paymentId: string
+}): Promise<string | null> {
+  try {
+    const invoiceId = await createInvoiceForAssignment({
+      trainerId: args.trainerId,
+      clientId: args.clientId,
+      sourceType: 'CLASS_ENROLLMENT',
+      classEnrollmentId: args.enrollmentId,
+      // They paid at the checkout — a "you owe this" email now would be wrong.
+      notifyClient: false,
+    })
+    if (!invoiceId) return null
+    // Only the amount on THIS line settles this invoice: one card payment can
+    // cover several enrolments (two dogs, four drop-in dates), each with its
+    // own receivable, and crediting every one of them with the payment total
+    // would report the same money several times over.
+    const item = await prisma.paymentItem.findUnique({
+      where: { id: args.paymentItemId },
+      select: { unitAmount: true, quantity: true },
+    })
+    const paidForThisLine = item ? item.unitAmount * item.quantity : undefined
+    await settleInvoiceFromPayment(invoiceId, args.paymentId, paidForThisLine)
+    return invoiceId
+  } catch (err) {
+    console.error('[invoicing] paid class enrolment invoice failed', args.enrollmentId, err)
+    return null
   }
 }
 

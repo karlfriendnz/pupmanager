@@ -9,37 +9,48 @@ import { readFileSync } from 'node:fs'
 // allocate it against the invoice they'd just made. The pay-LATER path has
 // always raised one; this brings the paid path to parity and settles it.
 const webhook = readFileSync('src/app/api/webhooks/stripe/connect/route.ts', 'utf8')
+const invoicing = readFileSync('src/lib/invoicing.ts', 'utf8')
 
-describe('connect webhook — a paid class enrolment leaves a receivable behind', () => {
+/** The body of settleClassEnrolmentPayment, wherever it sits in the file. */
+function settleFn(): string {
+  const i = invoicing.indexOf('export async function settleClassEnrolmentPayment')
+  expect(i).toBeGreaterThan(-1)
+  return invoicing.slice(i, i + 2200)
+}
+
+describe('a paid class enrolment leaves a receivable behind', () => {
+  it('is invoked by the webhook once the enrolment is made', () => {
+    expect(webhook).toContain('await settleClassEnrolmentPayment(')
+  })
+
   it('raises the invoice for the enrolment it just created', () => {
-    expect(webhook).toContain('sourceType: \'CLASS_ENROLLMENT\'')
-    expect(webhook).toContain('classEnrollmentId: args.enrollmentId')
+    const fn = settleFn()
+    expect(fn).toContain("sourceType: 'CLASS_ENROLLMENT'")
+    expect(fn).toContain('classEnrollmentId: args.enrollmentId')
   })
 
   it('settles that invoice against the payment that already cleared', () => {
-    expect(webhook).toContain('await settleInvoiceFromPayment(invoiceId, args.paymentId, paidForThisLine)')
+    expect(settleFn()).toContain('await settleInvoiceFromPayment(invoiceId, args.paymentId, paidForThisLine)')
   })
 
   // They paid at the checkout — a "here's your invoice" email would be wrong.
   it('does not email the client an invoice they have already paid', () => {
-    expect(webhook).toContain('notifyClient: false')
+    expect(settleFn()).toContain('notifyClient: false')
   })
 
   // One card payment can cover several enrolments (two dogs, four drop-in
   // dates), each with its own receivable. Crediting each with the payment total
   // would report the same money several times over.
   it('credits each invoice with its own line, not the whole payment', () => {
-    expect(webhook).toContain('item.unitAmount * item.quantity')
+    expect(settleFn()).toContain('item.unitAmount * item.quantity')
   })
 
   // The client has paid and is enrolled. Neither may be undone by a bookkeeping
   // failure throwing the webhook into a retry.
   it('never lets the bookkeeping fail the fulfilment', () => {
-    const idx = webhook.indexOf('async function settleEnrolmentInvoice')
-    expect(idx).toBeGreaterThan(-1)
-    const block = webhook.slice(idx, webhook.indexOf('async function fulfilClassEnrolments'))
-    expect(block).toContain('try {')
-    expect(block).toContain('catch (err)')
+    const fn = settleFn()
+    expect(fn).toContain('try {')
+    expect(fn).toContain('catch (err)')
   })
 })
 
@@ -123,5 +134,35 @@ describe('settleInvoiceFromPayment — splitting one payment across enrolments',
     await settleInvoiceFromPayment('inv_1', 'pay_1', 3000)
 
     expect(h.invoiceUpdate).not.toHaveBeenCalled()
+  })
+})
+
+// The fulfilment moved out of the webhook route and into invoicing so it can be
+// driven without a Stripe round-trip — scripts/simulate-class-payment.ts calls
+// the very same function the webhook does. A simulation that reimplements the
+// code it's simulating proves nothing.
+const sim = readFileSync('scripts/simulate-class-payment.ts', 'utf8')
+
+describe('a paid enrolment can be exercised without Stripe', () => {
+  it('the webhook and the simulator call one shared function', () => {
+    expect(invoicing).toContain('export async function settleClassEnrolmentPayment')
+    expect(webhook).toContain('await settleClassEnrolmentPayment(')
+    expect(sim).toContain('await settleClassEnrolmentPayment(')
+    expect(sim).toContain("from '../src/lib/class-runs'")
+  })
+
+  // next/server's after() throws outside a request scope, and it's called AFTER
+  // the invoice row is written — so a script saw the row created and then an
+  // exception, which reads as "no invoice was raised" when one was.
+  it('runs its side effects inline when there is no request to defer to', () => {
+    expect(invoicing).toContain('function deferSideEffects')
+    expect(invoicing).not.toContain('    after(() => {')
+  })
+
+  // It fabricates PAID rows. Pointed at production that would be a fiction
+  // nobody could untangle afterwards.
+  it('refuses to run against anything but a local database', () => {
+    expect(sim).toContain('REFUSING TO RUN')
+    expect(sim).toContain("url.includes('localhost')")
   })
 })
