@@ -218,6 +218,9 @@ export async function PATCH(
       const synced = await syncOfferingRun(tx, packageId, trainerId, {
         name: columns.name,
         scheduleNote, location, imageUrl, assignedMembershipIds, status,
+        // The cap belongs to the run as much as to the offering — the run's
+        // value wins when seats are counted, so it has to move with the edit.
+        capacity: columns.capacity,
         // The schedule too: this form edits the whole class, so changing the
         // date or the number of sessions has to move the sessions themselves.
         ...(startAt && { startDate: new Date(startAt) }),

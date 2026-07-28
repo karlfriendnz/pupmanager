@@ -427,13 +427,23 @@ export function PackageForm({
   // A one-off package — a single session, no cadence. "Weeks between" is moot.
   const oneOff = Number(watch('sessionCount')) === 1
 
-  // A blocked save has to say why. Field-level errors are enough when the field
-  // is on screen (the whole form, when editing), but the wizard shows one card
-  // at a time — a bad special price caught on the Settings step would otherwise
-  // read as "Save does nothing". Repeat it at the top of the form.
+  // A blocked save has to say why — ALWAYS. Field-level errors are only enough
+  // when the field is on screen, and it often isn't: the wizard shows one card
+  // at a time, and even the one-page edit collapses cards. This used to name
+  // just two fields (special price, name), so a validation failure anywhere
+  // else — a duration under the 15-minute minimum on a class created elsewhere
+  // with a shorter one, a session count out of range — blocked the save with
+  // nothing on screen at all. That is the trainer's "the Save button doesn't
+  // work": it worked, it was refusing, and it refused in silence.
+  //
+  // Take whatever the resolver actually complained about, in field order, and
+  // say it at the top of the form.
   function onInvalid(errs: typeof errors) {
-    const first = errs.specialPrice?.message ?? errs.name?.message
-    if (first) setError(first)
+    const ORDER = ['name', 'specialPrice', 'price', 'sessionCount', 'weeksBetween', 'durationMins', 'sessionType', 'description', 'color'] as const
+    const named = ORDER.map(k => errs[k]?.message).find((m): m is string => !!m)
+    // Nothing recognised still has to surface — never fall through to silence.
+    const any = Object.values(errs).map(e => (e as { message?: string })?.message).find((m): m is string => !!m)
+    setError(named ?? any ?? 'Some of the details on this form need fixing before it can be saved.')
   }
 
   // Convert 1:1 ↔ group. Its own request because the server refuses the change
@@ -460,6 +470,18 @@ export function PackageForm({
     // letting the server reject the shape.
     if (kind === 'dropin' && slots.some(s => !s.start || !s.end)) {
       setError('Give every session a start and finish time.')
+      return
+    }
+    // Moving a class that has attendance recorded is refused (the rebuild would
+    // delete the sessions the register hangs off). The payload has always just
+    // DROPPED the new date in that case, so the save came back fine and the
+    // date sprang back to what it was — "I changed it, hit Save, nothing
+    // happened". Say so instead of quietly ignoring them.
+    const startMoved =
+      !!existing && isGroup && !!startAt &&
+      startAt.toISOString() !== (existing.startAtIso ?? null)
+    if (startMoved && hasAttendance) {
+      setError("Attendance has already been recorded on this class, so its dates are fixed. Change anything else here, or cancel this class and create a new one to move it.")
       return
     }
     const url = existing ? `/api/packages/${existing.id}` : '/api/packages'

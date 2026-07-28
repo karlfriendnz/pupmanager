@@ -695,6 +695,14 @@ export async function syncOfferingRun(
     assignedMembershipIds?: string[]
     /** Where the class is up to — SCHEDULED / RUNNING / COMPLETED / CANCELLED. */
     status?: 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
+    /**
+     * How many fit. The run's own capacity OVERRIDES the package's everywhere
+     * seats are counted (see effectiveCapacity), so writing the new number to
+     * the package alone left the class still enforcing the old one — the
+     * trainer changed the cap, saved, and nothing moved. Undefined leaves the
+     * run's value alone.
+     */
+    capacity?: number | null
     /** Schedule. Provide all three to move the series; omit to leave it be. */
     startDate?: Date
     sessionCount?: number
@@ -747,6 +755,7 @@ export async function syncOfferingRun(
       ...(fields.location !== undefined && { location: fields.location?.trim() || null }),
       ...(fields.imageUrl !== undefined && { imageUrl: fields.imageUrl }),
       ...(fields.status !== undefined && { status: fields.status }),
+      ...(fields.capacity !== undefined && { capacity: fields.capacity }),
       ...(scheduleChanged && fields.startDate && { startDate: fields.startDate }),
     },
   })
