@@ -28,7 +28,12 @@
  *   - an invoice funded by more than one distinct payment
  *   - a paid enrolment with no invoice at all (a different bug, not this one)
  *   - an invoice whose funding lines don't cover its total (part-payments)
- *   - CANCELLED invoices
+ *   - CANCELLED invoices that were not merged into another
+ *
+ * An invoice folded into a combined one (mergedIntoId) is reported as already
+ * settled, not as outstanding — that is how a trainer has been clearing these
+ * by hand, and chasing settled money is how a reconciliation tool stops being
+ * trusted.
  * A money script that guesses is worse than one that leaves work for a human.
  *
  * USAGE
@@ -130,6 +135,10 @@ async function main() {
     select: {
       id: true, sourceId: true, status: true, amountCents: true, amountPaidCents: true,
       currency: true, description: true, paymentId: true, paidAt: true,
+      // Set when this invoice was folded into a combined one. That IS how a
+      // trainer has been clearing these by hand, so it means "already dealt
+      // with", not "needs attention" — see the CANCELLED branch below.
+      mergedIntoId: true,
       client: { select: { user: { select: { name: true, email: true } } } },
     },
   })
@@ -173,6 +182,9 @@ async function main() {
   }
 
   const candidates: Candidate[] = []
+  // Already handled by a human — reported so a run is accountable for every
+  // invoice it saw, but never counted as outstanding.
+  const resolved: Skipped[] = []
 
   for (const inv of invoices) {
     const f = funding.get(inv.id)
@@ -180,8 +192,16 @@ async function main() {
     const who = inv.client?.user?.name?.trim() || inv.client?.user?.email || 'unknown client'
 
     if (inv.status === 'PAID') continue // already right
+    // Folded into a combined invoice — the money is recorded over there, and
+    // this row is CANCELLED precisely because it was dealt with. Reporting it
+    // as needing attention sends someone chasing settled money, which is how a
+    // reconciliation tool stops being trusted.
+    if (inv.mergedIntoId) {
+      resolved.push({ invoiceId: inv.id, client: who, why: 'merged', detail: `folded into ${inv.mergedIntoId}` })
+      continue
+    }
     if (inv.status === 'CANCELLED') {
-      skipped.push({ invoiceId: inv.id, client: who, why: 'cancelled', detail: 'invoice is CANCELLED — a human should decide' })
+      skipped.push({ invoiceId: inv.id, client: who, why: 'cancelled', detail: 'invoice is CANCELLED but was not merged into another — a human should decide' })
       continue
     }
     if (f.paymentIds.size > 1) {
@@ -219,7 +239,7 @@ async function main() {
   }
 
   if (JSON_OUT) {
-    console.log(JSON.stringify({ candidates, skipped, applied: APPLY }, null, 2))
+    console.log(JSON.stringify({ candidates, skipped, resolved, applied: APPLY }, null, 2))
   } else {
     console.log(`Scanned ${items.length} paid enrolment lines across ${invoices.length} invoices.\n`)
     if (candidates.length === 0) {
@@ -236,6 +256,10 @@ async function main() {
       const cur = candidates[0].currency
       const mixed = candidates.some(c => c.currency !== cur)
       console.log(`\n  Total to record: ${mixed ? `${(total / 100).toFixed(2)} (mixed currencies — check individually)` : money(total, cur)}`)
+    }
+    if (resolved.length) {
+      console.log(`\n${resolved.length} already settled by hand (merged into a combined invoice) — nothing to do:\n`)
+      for (const r of resolved) console.log(`  ${r.invoiceId}  ${r.client} — ${r.detail}`)
     }
     if (skipped.length) {
       console.log(`\n${skipped.length} left for a human:\n`)
