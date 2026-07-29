@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { prisma } from '@/lib/prisma'
-import { notArchived } from '@/lib/client-activity'
+import { notArchived, whereForView, VIEW_LABEL } from '@/lib/client-activity'
 import { getTrainerContext, scopeForMember, hasPermission } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
@@ -61,6 +61,25 @@ export default async function NewEmailPage() {
     }),
   ])
 
+  // Where each of them is up to, from the same filters the clients list uses —
+  // so "Past" here means exactly what the Past tab means over there, rather
+  // than a second definition that drifts.
+  const now = new Date()
+  const [currentIds, neverIds] = await Promise.all([
+    prisma.clientProfile.findMany({
+      where: { trainerId, ...whereForView('current', now), ...memberScope },
+      select: { id: true },
+    }),
+    prisma.clientProfile.findMany({
+      where: { trainerId, ...whereForView('never', now), ...memberScope },
+      select: { id: true },
+    }),
+  ])
+  const currentSet = new Set(currentIds.map(c => c.id))
+  const neverSet = new Set(neverIds.map(c => c.id))
+  const stageOf = (id: string): 'current' | 'past' | 'never' =>
+    currentSet.has(id) ? 'current' : neverSet.has(id) ? 'never' : 'past'
+
   // Only clients with a real (non-synthetic) email address are mailable.
   const eligibleCandidates = candidates
     .filter(c => c.user.email && !c.user.email.endsWith(NO_EMAIL_DOMAIN))
@@ -80,6 +99,7 @@ export default async function NewEmailPage() {
         breed: c.dog?.breed ?? null,
         classIds: c.classEnrollments.map(e => e.classRunId),
         custom,
+        stage: stageOf(c.id),
       }
     })
 
@@ -99,7 +119,11 @@ export default async function NewEmailPage() {
       values: Array.from(new Set(eligibleCandidates.map(c => c.custom[f.id]).filter((v): v is string => !!v))).sort(),
     }))
     .filter(f => f.values.length > 0)
-  const facets = { breeds, classes, customFields: facetCustomFields }
+  // Only offer a stage that somebody mailable is actually in.
+  const stages = (['current', 'past', 'never'] as const)
+    .map(v => ({ value: v, label: VIEW_LABEL[v], count: eligibleCandidates.filter(c => c.stage === v).length }))
+    .filter(st => st.count > 0)
+  const facets = { stages, breeds, classes, customFields: facetCustomFields }
 
   return (
     <>

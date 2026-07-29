@@ -24,12 +24,21 @@ export type EmailCandidate = {
   breed?: string | null
   classIds?: string[]
   custom?: Record<string, string> // customFieldId -> value
+  /**
+   * Where this client is up to — the derived view they'd sit under on the
+   * clients list (lib/client-activity). The most useful cut a trainer can make
+   * of their own list: "everyone who finished a course" is the repeat-and-
+   * referral pool, and "never booked" is the follow-up pile.
+   */
+  stage?: 'current' | 'past' | 'never'
 }
 
 // Filter options the recipients step offers, derived from the candidate set by
 // the server so the dropdowns only show breeds/classes/fields that actually
 // apply. Optional — when absent only free-text search shows.
 export type RecipientFacets = {
+  /** Only the stages actually present in the candidate set. */
+  stages?: { value: 'current' | 'past' | 'never'; label: string; count: number }[]
   breeds: string[]
   classes: { id: string; name: string }[]
   customFields: { id: string; label: string; values: string[] }[]
@@ -208,6 +217,7 @@ export function EmailComposer({
     () => new Set(initialSelectedIds ?? candidates.map(c => c.id)),
   )
   const [recipientQuery, setRecipientQuery] = useState('')
+  const [fStage, setFStage] = useState<'' | 'current' | 'past' | 'never'>('')
   const [fBreed, setFBreed] = useState('')
   const [fClass, setFClass] = useState('')
   const [fCustom, setFCustom] = useState<Record<string, string>>({})
@@ -281,6 +291,7 @@ export function EmailComposer({
     const q = recipientQuery.trim().toLocaleLowerCase('en-NZ')
     return candidates.filter(c => {
       if (q && !`${c.name ?? ''} ${c.email} ${c.dogName ?? ''}`.toLocaleLowerCase('en-NZ').includes(q)) return false
+      if (fStage && c.stage !== fStage) return false
       if (fBreed && c.breed !== fBreed) return false
       if (fClass && !(c.classIds ?? []).includes(fClass)) return false
       for (const [fieldId, value] of customFilters) {
@@ -288,7 +299,7 @@ export function EmailComposer({
       }
       return true
     })
-  }, [candidates, recipientQuery, fBreed, fClass, customFilters])
+  }, [candidates, recipientQuery, fStage, fBreed, fClass, customFilters])
 
   const selectedCount = selectedIds.size
   const allFilteredSelected = filteredCandidates.length > 0 && filteredCandidates.every(c => selectedIds.has(c.id))
@@ -491,8 +502,15 @@ export function EmailComposer({
             </div>
 
             {/* Structured filters (breed / class / custom fields) */}
-            {facets && (facets.breeds.length > 0 || facets.classes.length > 0 || facets.customFields.length > 0) && (
+            {facets && ((facets.stages?.length ?? 0) > 0 || facets.breeds.length > 0 || facets.classes.length > 0 || facets.customFields.length > 0) && (
               <div className="flex flex-wrap gap-2">
+                {/* First, because it's the cut most worth making: past clients
+                    are the repeat-and-referral pool, and contacts are the
+                    follow-up pile. */}
+                {(facets.stages?.length ?? 0) > 0 && (
+                  <FilterSelect label="Stage" value={fStage} onChange={v => setFStage(v as typeof fStage)}
+                    options={facets.stages!.map(st => ({ value: st.value, label: `${st.label} (${st.count})` }))} />
+                )}
                 {facets.classes.length > 0 && (
                   <FilterSelect label="Class" value={fClass} onChange={setFClass}
                     options={facets.classes.map(c => ({ value: c.id, label: c.name }))} />
@@ -507,8 +525,8 @@ export function EmailComposer({
                     onChange={v => setFCustom(prev => ({ ...prev, [f.id]: v }))}
                     options={f.values.map(v => ({ value: v, label: v }))} />
                 ))}
-                {(fBreed || fClass || customFilters.length > 0) && (
-                  <button type="button" onClick={() => { setFBreed(''); setFClass(''); setFCustom({}) }}
+                {(fStage || fBreed || fClass || customFilters.length > 0) && (
+                  <button type="button" onClick={() => { setFStage(''); setFBreed(''); setFClass(''); setFCustom({}) }}
                     className="text-xs font-medium text-slate-500 underline hover:no-underline self-center">
                     Clear filters
                   </button>
