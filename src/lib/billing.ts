@@ -14,6 +14,33 @@ import { DEFAULT_CURRENCY, ADDONS, type CurrencyCode } from './pricing'
 // turned them off with an active:false row).
 const DEFAULT_ON_ADDON_IDS = ADDONS.filter(a => a.defaultOn).map(a => a.id)
 
+/**
+ * Add-ons that come WITH another one, and so have no switch of their own.
+ *
+ * Instant sale (`pos`) is part of selling: if you've turned the shop on, taking a
+ * payment on the spot is the same job from the other side of the counter, and a
+ * second switch for it was a question nobody needed to be asked.
+ *
+ * Applied here, in the one place add-ons resolve, so every gate agrees — the nav's
+ * Sell action, the session screen, the receivables API and the guest-sale API each
+ * ask separately, and a rule written per-caller would have four chances to drift.
+ *
+ * ADDITIVE ONLY: an explicit row still counts, so a trainer who turned Instant
+ * sale on while it had its own switch keeps it whether or not they have the shop.
+ * Nobody loses a feature to a tidy-up.
+ */
+const IMPLIED_BY: Record<string, string> = {
+  pos: 'shop',
+}
+
+/** Add the add-ons that ride along with what's already enabled. */
+function withImplied(enabled: Set<string>): Set<string> {
+  for (const [rider, owner] of Object.entries(IMPLIED_BY)) {
+    if (enabled.has(owner)) enabled.add(rider)
+  }
+  return enabled
+}
+
 export interface PricedItem {
   stripePriceId: string | null
   stripePriceIdsByCurrency: unknown
@@ -146,7 +173,7 @@ export async function getEnabledAddons(trainerId: string): Promise<Set<string>> 
   for (const [id, active] of explicit) if (active) enabled.add(id)
   // Default-on add-ons count as enabled unless explicitly disabled.
   for (const id of DEFAULT_ON_ADDON_IDS) if (explicit.get(id) !== false) enabled.add(id)
-  return enabled
+  return withImplied(enabled)
 }
 
 /**
@@ -180,7 +207,7 @@ export async function getEnabledAddonsBatch(trainerIds: string[]): Promise<Map<s
     const enabled = new Set<string>()
     for (const [itemId, active] of explicit) if (active) enabled.add(itemId)
     for (const defId of DEFAULT_ON_ADDON_IDS) if (explicit.get(defId) !== false) enabled.add(defId)
-    result.set(id, enabled)
+    result.set(id, withImplied(enabled))
   }
   return result
 }
@@ -200,7 +227,11 @@ export async function hasAddon(trainerId: string, addonId: string): Promise<bool
     select: { active: true, expiresAt: true },
   })
   if (row) return row.active && !isExpired(row.expiresAt)
-  return DEFAULT_ON_ADDON_IDS.includes(addonId as never)
+  if (DEFAULT_ON_ADDON_IDS.includes(addonId as never)) return true
+  // No row of its own — but it may ride along with another add-on (Instant sale
+  // comes with the shop). Asked second so an explicit row always wins.
+  const owner = IMPLIED_BY[addonId]
+  return owner ? hasAddon(trainerId, owner) : false
 }
 
 export type PriceClassification =

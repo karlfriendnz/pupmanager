@@ -111,3 +111,23 @@ describe('featureIsOn', () => {
     expect(featureIsOn('timesheets', new Map())).toBe(false)
   })
 })
+
+describe('Instant sale comes with the shop', () => {
+  // Selling to someone on the spot is the same job as selling to them online, so
+  // it stopped being a separate decision. No switch of its own.
+  it('is not a switch on Configure', () => {
+    expect(configurableFeatures().map(f => f.id)).not.toContain('pos')
+    expect(notASwitch()).toContain('pos')
+  })
+
+  // It's free, so it must not appear on the shop page either — the shop card says
+  // it's included instead.
+  it('is not sold on the Add-ons page', () => {
+    expect(purchasableAddons().map(a => a.id)).not.toContain('pos')
+  })
+
+  it('is named on the shop’s own description, so nobody hunts for a switch', () => {
+    const shop = purchasableAddons().find(a => a.id === 'shop')
+    expect(shop?.description).toMatch(/instant sale/i)
+  })
+})

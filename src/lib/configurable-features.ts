@@ -42,7 +42,6 @@ const GROUP_BY_ID: Partial<Record<AddonId, FeatureGroup>> = {
   puppyschool: 'offerings',
   memberships: 'offerings',
   payments: 'money',
-  pos: 'money',
   notes: 'tools',
   todos: 'tools',
   timesheets: 'tools',
@@ -80,12 +79,15 @@ function toFeature(a: AddonDef): ConfigurableFeature {
 /**
  * Free add-ons that are NOT a switch, and must stay off the Configure page.
  *
- * `payments` is the one: its on/off state mirrors whether Stripe Connect charges
- * are enabled, not a TrainerAddon row (see addons-tab). A switch for it would show
- * the wrong state and flipping it wouldn't connect anything — it has its own
- * Payments tab, which is where the real work happens.
+ * `payments` — its on/off state mirrors whether Stripe Connect charges are enabled,
+ * not a TrainerAddon row (see addons-tab). A switch would show the wrong state and
+ * flipping it wouldn't connect anything; it has its own Payments tab.
+ *
+ * `pos` (Instant sale) — comes WITH the shop (see IMPLIED_BY in lib/billing).
+ * Selling to a client on the spot is the same job as selling to them online, from
+ * the other side of the counter, so it isn't a separate decision to make.
  */
-const NOT_A_SWITCH: ReadonlySet<AddonId> = new Set<AddonId>(['payments'])
+const NOT_A_SWITCH: ReadonlySet<AddonId> = new Set<AddonId>(['payments', 'pos'])
 
 /**
  * Everything the Configure page can switch.

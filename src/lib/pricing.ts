@@ -104,7 +104,7 @@ export const ADDONS: AddonDef[] = [
   {
     id: 'shop',
     name: 'Client shop',
-    description: 'In-app checkout for extras like leads, toys and gift cards. Branded with your name and colours.',
+    description: 'In-app checkout for extras like leads, toys and gift cards. Branded with your name and colours. Instant sale comes with it — take a payment from a client standing in front of you, on the same catalogue.',
     price: { AUD: 27, NZD: 29, GBP: 15, CAD: 23, USD: 21, ZAR: 389 },
   },
   {
