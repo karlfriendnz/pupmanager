@@ -116,13 +116,19 @@ export function PendingRequestsPanel({
                 </div>
 
                 {/* Actions sit on the row, not behind a "…" — and wrap to their
-                    own line at 390px rather than crushing the name. */}
+                    own line at 390px rather than crushing the name.
+                    
+                    Coloured because these two do OPPOSITE things and both read
+                    as plain text otherwise — a yes and a no, side by side, in
+                    the same slate. This is semantic colour (yes / no), not
+                    decoration and not the trainer's accent, which is why it's
+                    allowed to sit next to their brand without competing. */}
                 <div className="ml-[30px] flex flex-shrink-0 items-center gap-1 sm:ml-0">
                   <button
                     type="button"
                     onClick={() => row.kind === 'membership' ? setConfirming(row) : action(row, true)}
                     disabled={busy}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
                   >
                     {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />}
                     {row.kind === 'product' ? 'Mark done' : 'Accept'}
@@ -131,7 +137,7 @@ export function PendingRequestsPanel({
                     type="button"
                     onClick={() => action(row, false)}
                     disabled={busy}
-                    className="inline-flex h-8 items-center rounded-lg px-2.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+                    className="inline-flex h-8 items-center rounded-lg px-2.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                   >
                     Decline
                   </button>
@@ -211,7 +217,9 @@ function AcceptMembershipDialog({ request, currency, onCancel, onConfirm }: {
             <button type="button" onClick={onCancel} className="inline-flex h-9 items-center rounded-lg px-3 text-sm text-slate-600 hover:bg-slate-100">
               Cancel
             </button>
-            <button type="button" onClick={onConfirm} className="inline-flex h-9 items-center rounded-lg bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800">
+            {/* Green, because a green Accept is what opened this — a black
+                confirm at the end of that reads as a different decision. */}
+            <button type="button" onClick={onConfirm} className="inline-flex h-9 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700">
               Accept &amp; grant
             </button>
           </div>

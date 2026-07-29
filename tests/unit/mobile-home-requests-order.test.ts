@@ -49,3 +49,27 @@ describe('the desktop dashboard', () => {
     expect(page.slice(i, i + 200)).toContain('<PendingRequestsPanel')
   })
 })
+
+// Accept and Decline do opposite things and both read as plain slate text —
+// a yes and a no, side by side, in the same colour. This is semantic colour
+// (yes / no), not decoration and not the trainer's accent, so it can sit beside
+// their brand without competing with it.
+describe('accept and decline', () => {
+  const panel = readFileSync('src/app/(trainer)/dashboard/pending-requests-panel.tsx', 'utf8')
+
+  it('tells the two apart by colour, not just by word order', () => {
+    expect(panel).toContain('text-emerald-700')
+    expect(panel).toContain('text-red-600')
+  })
+
+  it('carries the colour into the hover as well', () => {
+    expect(panel).toContain('hover:bg-emerald-50')
+    expect(panel).toContain('hover:bg-red-50')
+  })
+
+  // A green Accept opening a black confirm reads as a different decision.
+  it('keeps the confirm dialog’s button the same green', () => {
+    expect(panel).toContain('bg-emerald-600')
+    expect(panel).not.toContain('bg-slate-900 px-4 text-sm font-medium text-white')
+  })
+})
