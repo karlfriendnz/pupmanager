@@ -1,8 +1,9 @@
 import crypto from 'crypto'
 import { prisma } from './prisma'
 import { env } from './env'
-import { sendEmail } from './email'
+import { sendEmail, fromTrainer } from './email'
 import { emailBodyToHtml } from './email-html'
+import { renderTrainerEmail } from './trainer-email-shell'
 import { materializeBooking } from './booking-page'
 import { findOrJoinClient } from './client-upsert'
 // escapeHtml lives in a client-safe module now; imported for internal use and
@@ -32,7 +33,9 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
   const enquiry = await prisma.enquiry.findUnique({
     where: { id: enquiryId },
     include: {
-      trainer: { select: { id: true, businessName: true } },
+      // logoUrl + emailAccentColor are for the welcome email below, which
+      // goes out as the TRAINER — see renderTrainerEmail.
+      trainer: { select: { id: true, businessName: true, logoUrl: true, emailAccentColor: true } },
       // Welcome-email copy is configured per originating form. May be null
       // if the form was deleted (formId SetNull) — we fall back to defaults.
       form: {
@@ -193,21 +196,26 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
   if (!magicLinkToken && enquiry.source === 'SELF_SIGNUP') {
     const businessName = enquiry.trainer.businessName
     try {
+      const firstName = escapeHtml(enquiry.name.split(' ')[0] || enquiry.name)
+      // Wears the trainer's brand, not ours: the client asked to join THEM.
+      // Subject and button say the business too — "Open PupManager" meant
+      // nothing to someone who signed up with Mersea Mutts.
       await sendEmail({
         to: enquiry.email,
-        subject: `${businessName} added you on PupManager`,
-        html: `
-          <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;">
-            <h2 style="color:#0f172a;margin-bottom:8px;">You're in, ${escapeHtml(enquiry.name.split(' ')[0] || enquiry.name)}!</h2>
-            <p style="color:#475569;margin-bottom:24px;">
-              ${escapeHtml(businessName)} has added you to their client list. Sign in with the
-              email and password you chose to see your sessions, notes and messages.
-            </p>
-            <a href="${options.appUrl}/login" style="display:inline-block;background:#0d9488;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;">
-              Open PupManager
-            </a>
-          </div>
-        `,
+        from: fromTrainer(businessName),
+        subject: `You're in — ${businessName} added you`,
+        html: renderTrainerEmail({
+          trainer: {
+            businessName,
+            logoUrl: enquiry.trainer.logoUrl,
+            emailAccentColor: enquiry.trainer.emailAccentColor,
+          },
+          title: `You're in, ${firstName}!`,
+          bodyHtml: `<p style="margin:0;">${escapeHtml(businessName)} has added you to their client list. Sign in with the email and password you chose to see your sessions, notes and messages.</p>`,
+          ctaLabel: `Open ${businessName}`,
+          ctaUrl: `${options.appUrl}/login`,
+          preheader: `${businessName} has added you to their client list.`,
+        }),
       })
     } catch {
       // Courtesy email — never fails the accept. They can still sign in.
