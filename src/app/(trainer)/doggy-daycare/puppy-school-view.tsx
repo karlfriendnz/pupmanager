@@ -2,13 +2,10 @@
 
 import { useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Dog, Plus, X, CalendarDays, SlidersHorizontal, User, MessageSquare, Phone, Loader2 } from 'lucide-react'
+import { Dog, X, CalendarDays, User, MessageSquare, Phone } from 'lucide-react'
 import { PuppySchoolSetup } from '@/components/trainer/puppy-school-setup'
 import type { PuppySchoolSummary, WeekBoard, WeekBoardCell, BoardAttendee } from '@/lib/puppy-school'
-
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] // index i → ISO weekday i+1
 
 export function PuppySchoolView({ schools, board, scheduleDays }: { schools: PuppySchoolSummary[]; board: WeekBoard; scheduleDays: number[] }) {
   const [creating, setCreating] = useState(schools.length === 0)
@@ -33,20 +30,18 @@ export function PuppySchoolView({ schools, board, scheduleDays }: { schools: Pup
 
   return (
     <>
-      <PageHeader
-        title="Doggy Daycare"
-        actions={
-          schools.length > 0 && !creating ? (
-            <button onClick={() => setCreating(true)} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg bg-teal-600 text-white hover:bg-teal-700">
-              <Plus className="h-4 w-4" /> <span className="hidden sm:inline">New school</span>
-            </button>
-          ) : undefined
-        }
-      />
+      {/* No "New school" action. A daycare has ONE day-parted offering; the
+          setup form still appears automatically when there isn't one yet, and a
+          second can be added from the offerings list if it's ever needed. The
+          button also read as "school", which this isn't. */}
+      <PageHeader title="Doggy Daycare" />
 
-      <div className="p-4 md:p-8 w-full flex-1 min-h-0 flex flex-col">
+      {/* No page padding: the board runs edge to edge so a full day's dogs get
+          every pixel of width. The setup form keeps its own padding — it's a
+          form, not a grid, and full-bleed would leave it floating. */}
+      <div className="w-full flex-1 min-h-0 flex flex-col">
         {creating ? (
-          <div>
+          <div className="p-4 md:p-8">
             {schools.length > 0 && (
               <button onClick={() => setCreating(false)} className="mb-4 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800">
                 <X className="h-4 w-4" /> Back to the board
@@ -60,72 +55,16 @@ export function PuppySchoolView({ schools, board, scheduleDays }: { schools: Pup
           </div>
         ) : (
           <div className="flex-1 min-h-0 flex flex-col">
-            {/* Schools + this-week stat + day config */}
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-              <div className="flex flex-wrap items-center gap-2">
-                {schools.map(s => (
-                  <span key={s.id} className="inline-flex items-center gap-2 rounded-full bg-teal-50 border border-teal-200 text-teal-800 text-sm px-3 py-1">
-                    <Dog className="h-3.5 w-3.5" /> {s.name}
-                    <span className="text-teal-500 text-xs">{s.dayParts} part{s.dayParts === 1 ? '' : 's'} · {s.days} day{s.days === 1 ? '' : 's'}</span>
-                    {s.runId && <Link href={`/doggy-daycare/${s.runId}`} className="text-teal-600 underline text-xs">manage</Link>}
-                  </span>
-                ))}
-              </div>
-              <div className="flex items-center gap-2">
-                {/* Distinct dogs across the week — board.totalBooked sums every
-                    day-part booking, so a full-week dog counted once per part. */}
-                <span className="inline-flex items-center gap-1.5 text-sm text-slate-500"><CalendarDays className="h-4 w-4" /> {daysByDog.size} dog{daysByDog.size === 1 ? '' : 's'} this week</span>
-                <DaysConfig scheduleDays={scheduleDays} />
-              </div>
-            </div>
-
+            {/* No header row: the board is the page. What used to sit here — a
+                programme chip, a week total and a day picker — either repeated
+                the page title or duplicated a control that lives elsewhere
+                (TrainerProfile.scheduleDays is owned by the schedule's own
+                settings panel). The run detail is still at /doggy-daycare/:runId. */}
             <WeekBoardGrid board={board} columns={columns} daysByDog={daysByDog} colLabel={colLabel} />
           </div>
         )}
       </div>
     </>
-  )
-}
-
-// Which weekdays the board (and scheduler — same setting) shows.
-function DaysConfig({ scheduleDays }: { scheduleDays: number[] }) {
-  const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState<Set<number>>(new Set(scheduleDays))
-  const [saving, setSaving] = useState(false)
-
-  const toggle = (d: number) => setDraft(prev => {
-    const n = new Set(prev)
-    if (n.has(d)) { if (n.size > 1) n.delete(d) } else n.add(d)
-    return n
-  })
-  async function save() {
-    setSaving(true)
-    await fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scheduleDays: [...draft].sort((a, b) => a - b) }) }).catch(() => {})
-    setSaving(false); setOpen(false); router.refresh()
-  }
-
-  return (
-    <div className="relative">
-      <button onClick={() => setOpen(o => !o)} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
-        <SlidersHorizontal className="h-4 w-4 text-slate-400" /> Days
-      </button>
-      {open && (
-        <div className="absolute right-0 z-30 mt-1 w-60 rounded-xl border border-slate-200 bg-white shadow-lg p-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Days shown (also sets your schedule)</div>
-          <div className="flex flex-wrap gap-1.5">
-            {DAY_LABELS.map((label, i) => {
-              const d = i + 1, on = draft.has(d)
-              return <button key={d} onClick={() => toggle(d)} className={`h-8 px-2.5 rounded-lg text-xs font-medium border ${on ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>{label}</button>
-            })}
-          </div>
-          <div className="flex items-center justify-end gap-3 mt-3">
-            <button onClick={() => { setDraft(new Set(scheduleDays)); setOpen(false) }} className="text-sm text-slate-500 hover:text-slate-700">Cancel</button>
-            <button onClick={save} disabled={saving} className="inline-flex items-center gap-1.5 text-sm font-medium text-teal-700 disabled:opacity-60">{saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Save</button>
-          </div>
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -171,14 +110,31 @@ function WeekBoardGrid({ board, columns, daysByDog, colLabel }: { board: WeekBoa
 
   return (
     <>
-      <div className="flex flex-1 min-h-0 flex-col overflow-x-auto rounded-2xl border border-slate-200 bg-white p-3">
-        <div className="grid flex-1 gap-1.5 min-w-[640px]" style={{ gridTemplateColumns: `100px repeat(${columns.length}, minmax(96px, 1fr))`, gridTemplateRows: `auto repeat(${board.parts.length}, minmax(4rem, 1fr))` }}>
-          {/* Header row */}
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 px-1 flex items-end pb-1">Part</div>
-          {columns.map(c => {
+      {/* Full-bleed: no rounding, no side border, minimal inner padding. The
+          card chrome cost ~40px of width that a 40-dog day would rather spend on
+          dogs. A top border keeps it visually separate from the page header.
+          The padding lives on the GRID, not here: sticky offsets are measured
+          from the scrollport's padding box, so padding out here would leave an
+          8px strip above the pinned dates for the board to show through. */}
+      <div className="flex flex-1 min-h-0 flex-col overflow-auto border-t border-slate-200 bg-white">
+        <div className="grid flex-1 gap-1.5 min-w-[640px] p-2" style={{ gridTemplateColumns: `100px repeat(${columns.length}, minmax(96px, 1fr))`, gridTemplateRows: `auto repeat(${board.parts.length}, minmax(4rem, 1fr))` }}>
+          {/* Header row. Pinned to the top so the dates stay readable however
+              far down the board you are, and the day-part column is pinned to
+              the left so a sideways swipe on a phone never loses which row is
+              which. Every header item is placed EXPLICITLY in row 1 — the
+              backdrop fills the whole row, so auto-placement would otherwise
+              shunt the dates down to row 2.
+
+              The backdrop exists because the header cells are separate grid
+              items: without it, the 1.5 gaps between them let the board show
+              through in slivers as it scrolls under. Negative margins stretch
+              it over the grid's own padding and the row gap below. */}
+          <div aria-hidden className="sticky top-0 z-20 bg-white" style={{ gridRow: 1, gridColumn: '1 / -1', marginLeft: -8, marginRight: -8, marginBottom: -6 }} />
+          <div className="sticky top-0 left-0 z-40 bg-white -ml-2 -mr-1.5 pl-3 pb-1 flex items-end text-[11px] font-semibold uppercase tracking-wide text-slate-400" style={{ gridRow: 1, gridColumn: 1 }}>Part</div>
+          {columns.map((c, i) => {
             const today = c.key === board.todayKey
             return (
-              <div key={c.key} className={`text-center pb-1 ${today ? 'text-teal-700' : 'text-slate-400'}`}>
+              <div key={c.key} className={`sticky top-0 z-30 text-center pb-1 ${today ? 'text-teal-700' : 'text-slate-400'}`} style={{ gridRow: 1, gridColumn: i + 2 }}>
                 <div className="text-[11px] font-mono font-semibold uppercase tracking-wide">{c.label}{today && ' ·'}</div>
                 <div className="text-[10px] font-mono tabular-nums">{dayTotal(c.key)} booked</div>
               </div>
@@ -251,7 +207,9 @@ function PartRow({ label, cells, todayKey, onDogEnter, onDogLeave }: {
 }) {
   return (
     <>
-      <div className="flex items-center text-sm font-semibold text-slate-700 pr-1">{label}</div>
+      {/* Pinned left, and stretched over the gaps around it (-mb/-mr-1.5) so the
+          board doesn't flash through the joins on a sideways swipe. */}
+      <div className="sticky left-0 z-10 flex items-center bg-white -ml-2 -mb-1.5 -mr-1.5 pl-2 pr-2.5 text-sm font-semibold text-slate-700">{label}</div>
       {cells.map(({ colKey, cell }, i) => {
         const today = colKey === todayKey
         if (!cell) return <div key={i} className={`rounded-lg border min-h-[64px] ${today ? 'bg-teal-50/40 border-teal-100' : 'bg-slate-50 border-slate-100'}`} />
@@ -266,16 +224,19 @@ function PartRow({ label, cells, todayKey, onDogEnter, onDogLeave }: {
             <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
               <div className={`h-full rounded-full ${full ? 'bg-amber-500' : 'bg-teal-500'}`} style={{ width: `${pct}%` }} />
             </div>
+            {/* Two dogs per row: a full daycare day runs to 40 dogs, and one per
+                row turned a single cell into a very long scroll. The avatar
+                shrinks to match so the name still has room to read. */}
             {cell.attendees.length > 0 && (
-              <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5 pr-0.5">
+              <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-2 gap-0.5 pr-0.5 content-start">
                 {cell.attendees.map((a, j) => (
                   <div
                     key={j}
                     onMouseEnter={e => onDogEnter(a, e.currentTarget)}
                     onMouseLeave={onDogLeave}
-                    className="flex items-center gap-2 truncate rounded-lg bg-white border border-slate-200 px-1.5 py-1 text-[13px] text-slate-700 cursor-default hover:border-teal-300 hover:bg-teal-50/40"
+                    className="flex min-w-0 items-center gap-1.5 rounded-lg bg-white border border-slate-200 px-1 py-1 text-[13px] text-slate-700 cursor-default hover:border-teal-300 hover:bg-teal-50/40"
                   >
-                    <DogAvatar att={a} sizeClass="h-8 w-8" />
+                    <DogAvatar att={a} sizeClass="h-6 w-6 shrink-0" />
                     <span className="truncate">{a.dog}</span>
                   </div>
                 ))}
