@@ -64,6 +64,29 @@ export const getTrainerContext = cache(async (): Promise<TrainerContext | null> 
   }
 })
 
+/**
+ * Does this person run a business on PupManager — i.e. is their User row a real
+ * account and not just a name on someone's client list?
+ *
+ * Two ways to hold one, and BOTH have to be asked about. A membership row is the
+ * modern answer, but every account created before the team feature is a "legacy
+ * owner" with no membership at all (see getTrainerContext above) — they own a
+ * TrainerProfile directly. Asking only about memberships therefore misses the
+ * oldest accounts on the platform, which is the exact set with the most history
+ * to lose.
+ *
+ * Callers use this before writing anything to a shared User row from a client
+ * screen: name and email both live there, and both are that person's login
+ * identity, not the trainer's record of them.
+ */
+export async function ownsATrainerAccount(userId: string): Promise<boolean> {
+  const [membership, profile] = await Promise.all([
+    prisma.trainerMembership.findFirst({ where: { userId }, select: { id: true } }),
+    prisma.trainerProfile.findFirst({ where: { userId }, select: { id: true } }),
+  ])
+  return !!membership || !!profile
+}
+
 /** Does the current trainer hold `permission`? False when not signed in. */
 export async function hasPermission(permission: PermissionKey): Promise<boolean> {
   const ctx = await getTrainerContext()
