@@ -430,6 +430,20 @@ export default async function DashboardPage({
             pendingBookingRequests[0] ? schedulePreviewHref(pendingBookingRequests[0].id) : null
           }
           tileIds={homeTileIds}
+          // Same split as the booking-request panel above: the desktop copy
+          // stays where it is, the phone gets it inside the launcher home.
+          requests={
+            <PendingRequestsPanel
+              requests={pendingProductRequests.map(r => ({
+                id: r.id,
+                createdAt: r.createdAt.toISOString(),
+                note: r.note,
+                client: { id: r.client.id, name: r.client.user.name ?? r.client.user.email },
+                product: { id: r.product.id, name: r.product.name },
+              }))}
+              membershipRequests={pendingMembershipRequests}
+            />
+          }
           accentColor={branding.emailAccentColor}
         />
         <WaitlistNudge trainerId={trainerId} />
@@ -671,8 +685,9 @@ export default async function DashboardPage({
 
       {/* Everything a client has asked for and not been answered on — shop
           products and packages checkout can't take, in one block. */}
-      <PendingRequestsPanel
-        requests={pendingProductRequests.map(r => ({
+      <div className="hidden md:block">
+        <PendingRequestsPanel
+          requests={pendingProductRequests.map(r => ({
           id: r.id,
           createdAt: r.createdAt.toISOString(),
           note: r.note,
@@ -682,8 +697,9 @@ export default async function DashboardPage({
           },
           product: { id: r.product.id, name: r.product.name },
         }))}
-        membershipRequests={pendingMembershipRequests}
-      />
+          membershipRequests={pendingMembershipRequests}
+        />
+      </div>
           </div>
 
           {/* Right rail — To-do / Brain dump scratchpad (a free add-on). On lg+

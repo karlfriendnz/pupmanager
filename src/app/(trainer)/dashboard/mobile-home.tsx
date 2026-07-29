@@ -50,6 +50,7 @@ export function MobileHome({
   bookingRequestCount,
   bookingRequestHref,
   tileIds,
+  requests,
   accentColor,
 }: {
   greeting: string
@@ -68,6 +69,13 @@ export function MobileHome({
   bookingRequestHref: string | null
   /** Which buttons to show, in order — resolved from the trainer's trade. */
   tileIds: TileId[]
+  /**
+   * What clients have asked for and not been answered on. Rendered ABOVE the
+   * tile grid: it's the only thing on this screen that's waiting on a REPLY,
+   * and under six evergreen tiles it sat below the fold — a request nobody
+   * scrolled to is a request nobody answered.
+   */
+  requests?: React.ReactNode
   /** The trainer's own brand colour (Settings → Design). */
   accentColor: string | null
 }) {
@@ -286,6 +294,9 @@ export function MobileHome({
         </span>
         <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
       </Link>
+
+      {/* Anything a client is waiting on an answer to, before the tiles. */}
+      {requests && <div className="mb-3">{requests}</div>}
 
       {/* One block, divided by hairlines — not six floating cards. The nth-child
           rules drop the outer edges so only the internal lines show. */}
