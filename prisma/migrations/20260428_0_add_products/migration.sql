@@ -1,7 +1,12 @@
 -- Trainer-owned shop products (physical or digital)
-CREATE TYPE "ProductKind" AS ENUM ('PHYSICAL', 'DIGITAL');
+-- Idempotent: safe to re-run against a database where these objects already exist.
+-- Renamed from 20260428_add_products so it sorts BEFORE
+-- 20260428_add_product_requests, which declares an FK to "products".
+DO $$ BEGIN
+  CREATE TYPE "ProductKind" AS ENUM ('PHYSICAL', 'DIGITAL');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
 
-CREATE TABLE "products" (
+CREATE TABLE IF NOT EXISTS "products" (
   "id"          TEXT PRIMARY KEY,
   "trainerId"   TEXT NOT NULL,
   "name"        TEXT NOT NULL,
@@ -22,5 +27,5 @@ CREATE TABLE "products" (
     ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE INDEX "products_trainerId_idx" ON "products"("trainerId");
-CREATE INDEX "products_category_idx" ON "products"("category");
+CREATE INDEX IF NOT EXISTS "products_trainerId_idx" ON "products"("trainerId");
+CREATE INDEX IF NOT EXISTS "products_category_idx" ON "products"("category");

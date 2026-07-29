@@ -1,8 +1,11 @@
 -- Client requests for products. Each pending request rolls forward across
 -- upcoming sessions until the trainer marks it fulfilled or cancelled.
-CREATE TYPE "ProductRequestStatus" AS ENUM ('PENDING', 'FULFILLED', 'CANCELLED');
+-- Idempotent: safe to re-run against a database where these objects already exist.
+DO $$ BEGIN
+  CREATE TYPE "ProductRequestStatus" AS ENUM ('PENDING', 'FULFILLED', 'CANCELLED');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
 
-CREATE TABLE "product_requests" (
+CREATE TABLE IF NOT EXISTS "product_requests" (
   "id"                 TEXT PRIMARY KEY,
   "clientId"           TEXT NOT NULL,
   "productId"          TEXT NOT NULL,
@@ -24,15 +27,15 @@ CREATE TABLE "product_requests" (
     ON DELETE SET NULL ON UPDATE CASCADE
 );
 
-CREATE INDEX "product_requests_clientId_status_idx"
+CREATE INDEX IF NOT EXISTS "product_requests_clientId_status_idx"
   ON "product_requests"("clientId", "status");
 
-CREATE INDEX "product_requests_productId_idx"
+CREATE INDEX IF NOT EXISTS "product_requests_productId_idx"
   ON "product_requests"("productId");
 
 -- A client can only have one PENDING request per product. Other statuses
 -- (FULFILLED / CANCELLED) can repeat freely so the same product can be
 -- requested again later.
-CREATE UNIQUE INDEX "product_requests_pending_unique"
+CREATE UNIQUE INDEX IF NOT EXISTS "product_requests_pending_unique"
   ON "product_requests"("clientId", "productId")
   WHERE status = 'PENDING';
