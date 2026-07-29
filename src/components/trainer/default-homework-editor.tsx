@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Check, ListChecks, Loader2, Plus, Search, Trash2, X } from 'lucide-react'
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { ModalPortal } from '@/components/shared/modal-portal'
@@ -34,10 +34,52 @@ export function DefaultHomeworkEditor({
   sessionCount,
   /** What one occasion is called here — "session" everywhere but events. */
   noun = 'Session',
+  intro,
+  stepHeader,
+  everySessionLast = false,
+  onlySessionIndex,
 }: {
   packageId: string
   sessionCount: number
   noun?: string
+  /**
+   * Put the "every session" bucket at the BOTTOM. A curriculum is read as an
+   * ordered list — step 1, step 2, step 3 — and an unnumbered bucket sitting
+   * above step 1 breaks the count before it starts.
+   */
+  everySessionLast?: boolean
+  /** Replaces the standard blurb, for a surface where it reads differently. */
+  intro?: ReactNode
+  /**
+   * Extra content above each NUMBERED bucket's homework, given that bucket's
+   * session number.
+   *
+   * This is how a SERIES curriculum is edited: the plan for a step ("session 2
+   * is loose-lead walking") and the homework that follows it are the same
+   * thought, and a trainer wants them on one line — but they must not become
+   * two homework editors that drift apart, so the series slots its plan fields
+   * into THIS one rather than growing a second copy of the library picker, the
+   * fetching and the per-bucket bookkeeping.
+   *
+   * Never called for the "every session" bucket, which has no step behind it.
+   */
+  stepHeader?: (sessionIndex: number) => ReactNode
+  /**
+   * Render ONE bucket instead of all of them — a session number, or `null` for
+   * the "every session" bucket. Omit (undefined) for the whole list.
+   *
+   * This is what lets a curriculum be read as a LIST OF SESSIONS you click
+   * into: the list screen shows one row per session, and opening one mounts
+   * this same editor scoped to that session's homework. Still one editor of
+   * these rows, not a second copy — see `stepHeader`.
+   *
+   * A scoped render drops the offering-wide intro (the screen that sent you
+   * here already said it) and labels the block "Homework", because the caller
+   * has already established which session you are looking at. It also ignores
+   * `sessionCount`, so a step written past the end of a shortened offering can
+   * still be opened and cleared rather than being stranded out of reach.
+   */
+  onlySessionIndex?: Bucket
 }) {
   const [rows, setRows] = useState<Row[] | null>(null)
   const [library, setLibrary] = useState<LibType[] | null>(null)
@@ -65,10 +107,13 @@ export function DefaultHomeworkEditor({
 
   // An ongoing offering (sessionCount 0) has no session numbers to hang things
   // off, so it only gets the "every session" bucket.
-  const buckets: Bucket[] = useMemo(
-    () => [null, ...Array.from({ length: Math.max(0, sessionCount) }, (_, i) => i + 1)],
-    [sessionCount],
-  )
+  const buckets: Bucket[] = useMemo(() => {
+    if (onlySessionIndex !== undefined) return [onlySessionIndex]
+    const numbered = Array.from({ length: Math.max(0, sessionCount) }, (_, i) => i + 1)
+    return everySessionLast ? [...numbered, null] : [null, ...numbered]
+  }, [sessionCount, everySessionLast, onlySessionIndex])
+
+  const scoped = onlySessionIndex !== undefined
 
   async function add(bucket: Bucket, task: LibTask) {
     setBusy(true)
@@ -103,11 +148,13 @@ export function DefaultHomeworkEditor({
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm leading-relaxed text-slate-500">
-        The homework you normally hand out on this offering. Nothing is sent on its
-        own — when you write up a session, these are waiting for you to confirm in
-        one tap, and you can edit or drop any of them per client afterwards.
-      </p>
+      {!scoped && (intro ?? (
+        <p className="text-sm leading-relaxed text-slate-500">
+          The homework you normally hand out on this offering. Nothing is sent on its
+          own — when you write up a session, these are waiting for you to confirm in
+          one tap, and you can edit or drop any of them per client afterwards.
+        </p>
+      ))}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -117,7 +164,21 @@ export function DefaultHomeworkEditor({
           .sort((a, b) => a.order - b.order)
         return (
           <div key={bucket ?? 'every'}>
-            <SectionLabel>{bucket === null ? 'Every session' : `${noun} ${bucket}`}</SectionLabel>
+            {/* Scoped, the caller has already named the session it opened, so
+                the plan fields come first and the label names what follows
+                them. Unscoped, the number is the only thing separating one
+                bucket from the next, so it leads. */}
+            {scoped ? (
+              <>
+                {bucket !== null && stepHeader?.(bucket)}
+                <SectionLabel>Homework</SectionLabel>
+              </>
+            ) : (
+              <>
+                <SectionLabel>{bucket === null ? 'Every session' : `${noun} ${bucket}`}</SectionLabel>
+                {bucket !== null && stepHeader?.(bucket)}
+              </>
+            )}
             <FlatBlock>
               {mine.map(r => (
                 <div key={r.id} className="flex items-start gap-3 px-4 py-3">

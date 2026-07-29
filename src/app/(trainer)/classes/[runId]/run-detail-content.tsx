@@ -26,7 +26,14 @@ export async function ClassRunDetailContent({
 
   // attendanceCount filters by classRunId === runId (the param), so it doesn't
   // depend on the run lookup — fan all of these out in parallel.
-  const [run, attendanceCount, enrolmentInvoices, clients] = await Promise.all([
+  // The curriculum, if this class runs one, and the homework each step hands
+  // out. Both are keyed off the same 1-based session number — a step and its
+  // homework join on that number, they are not two lists to keep aligned — so
+  // they're read together and folded into one row per step below.
+  //
+  // Fetched by RUN id rather than package id so it can go in the same parallel
+  // wave as everything else instead of waiting on the run lookup.
+  const [run, attendanceCount, enrolmentInvoices, clients, plans, homework] = await Promise.all([
     prisma.classRun.findFirst({
       where: { id: runId, trainerId },
       include: {
@@ -66,12 +73,41 @@ export async function ClassRunDetailContent({
       select: {
         id: true,
         user: { select: { name: true } },
-        dog: { select: { id: true, name: true } },
+        dog: { select: { id: true, name: true, deceasedAt: true } },
       },
       orderBy: { user: { name: 'asc' } },
     }),
+    prisma.packageSessionPlan.findMany({
+      where: { package: { classRuns: { some: { id: runId, trainerId } } } },
+      orderBy: { sessionIndex: 'asc' },
+      select: { id: true, sessionIndex: true, title: true, description: true },
+    }),
+    // Only the numbered rows: an "every session" default (sessionIndex null)
+    // isn't part of any one step, and listing it under all of them would read
+    // as the same homework being set six times.
+    prisma.packageDefaultTask.findMany({
+      where: {
+        package: { classRuns: { some: { id: runId, trainerId } } },
+        sessionIndex: { not: null },
+      },
+      orderBy: [{ sessionIndex: 'asc' }, { order: 'asc' }],
+      select: { id: true, sessionIndex: true, title: true, libraryTask: { select: { title: true } } },
+    }),
   ])
   if (!run) notFound()
+
+  // A library-backed default reads its title through to the item, the same way
+  // the session screen resolves it — so renaming a library task renames it here.
+  const steps = plans.map(p => ({
+    id: p.id,
+    sessionIndex: p.sessionIndex,
+    title: p.title,
+    description: p.description,
+    homework: homework
+      .filter(h => h.sessionIndex === p.sessionIndex)
+      .map(h => h.libraryTask?.title ?? h.title ?? '')
+      .filter(t => t.length > 0),
+  }))
 
   // sourceId → invoice, for the roster's billed/sent indicator.
   const invoiceByEnrolment = new Map(enrolmentInvoices.map(i => [i.sourceId, i]))
@@ -80,6 +116,7 @@ export async function ClassRunDetailContent({
     <RunDetail
       basePath={basePath}
       backLabel={backLabel}
+      steps={steps}
       run={{
         id: run.id,
         packageId: run.package.id,
@@ -153,11 +190,14 @@ export async function ClassRunDetailContent({
             : inv.sentAt ? 'SENT' : 'UNSENT',
         }
       })}
+      // A deceased dog can't be enrolled, so the client comes through the
+      // picker with no dog attached rather than dropping out of it entirely —
+      // they may still be joining with another dog, or with none.
       clients={clients.map(c => ({
         id: c.id,
         name: c.user.name ?? 'Unnamed client',
-        dogId: c.dog?.id ?? null,
-        dogName: c.dog?.name ?? null,
+        dogId: c.dog?.deceasedAt ? null : (c.dog?.id ?? null),
+        dogName: c.dog?.deceasedAt ? null : (c.dog?.name ?? null),
       }))}
     />
   )

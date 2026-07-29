@@ -20,6 +20,9 @@ import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { User, Users, CalendarDays, X, ChevronDown, Check, Plus, MapPin, type LucideIcon } from 'lucide-react'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
+import { canPricePerSession, totalFromPerSession } from '@/lib/session-pricing'
+import { useCurrency } from '@/components/currency-context'
+import { formatMoney } from '@/lib/money'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 
 export type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan'
@@ -31,7 +34,7 @@ type OfferingKind = 'onetoone' | 'group' | 'dropin' | 'oneoff'
 // What each kind IS, in the trainer's words. A casual class is a group class
 // that takes single-session bookings, so it presets isGroup + allowDropIn.
 const OFFERING_KINDS = [
-  { key: 'onetoone', icon: User, label: '1:1 consult', desc: 'One-on-one sessions you book with a single client — grooming, a training session, a behaviour consult.' },
+  { key: 'onetoone', icon: User, label: '1:1 session', desc: 'One-on-one sessions you book with a single client — grooming, a training session, a behaviour 1:1 session.' },
   { key: 'group', icon: Users, label: 'Group class', desc: 'A cohort shares one schedule and roster and signs up for the whole course.' },
   { key: 'dropin', icon: Users, label: 'Casual class', desc: 'People join one session at a time and pay per session — great for casual regulars.' },
   { key: 'oneoff', icon: CalendarDays, label: 'One-off event', desc: 'A single event on one date — a workshop, seminar or meet-up people sign up to.' },
@@ -70,6 +73,11 @@ export interface PkgRow {
   sessionType: 'IN_PERSON' | 'VIRTUAL'
   priceCents: number | null
   specialPriceCents: number | null
+  /** Set when this offering was priced BY THE SESSION. The total above is
+   *  derived from it; this only says which way the trainer entered it, so the
+   *  form can reopen on the field they actually typed into. Optional so older
+   *  loaders that don't select it still satisfy the type. */
+  pricePerSessionCents?: number | null
   color: PackageColor | null
   defaultSessionFormId: string | null
   requireSessionNotes: boolean
@@ -80,6 +88,15 @@ export interface PkgRow {
    *  Never re-derived from the shape — that's what made a one-session class
    *  turn into an event the moment it was saved. */
   isEvent?: boolean
+  /**
+   * How many curriculum steps this offering has, when it runs one — a SERIES.
+   *
+   * Deliberately a COUNT, not a flag, and deliberately not editable here: a
+   * series is a curriculum on an ordinary offering, so it is created by naming
+   * steps on the offering's Curriculum tab, never by picking a kind on this
+   * form. It rides along only so the lists can say "6 steps".
+   */
+  seriesSteps?: number
   capacity?: number | null
   allowDropIn?: boolean
   dropInPriceCents?: number | null
@@ -157,6 +174,11 @@ const formSchema = z.object({
   durationMins: z.number().int().min(15).max(480),
   sessionType: z.enum(['IN_PERSON', 'VIRTUAL']),
   price: z.string().optional(),
+  // What one session costs, when the offering is priced that way. `price` above
+  // stays the total and is kept in step with this as it's typed, so every rule
+  // that reads the total — the special-price check below included — carries on
+  // reading one field and needs to know nothing about the mode.
+  pricePerSession: z.string().optional(),
   specialPrice: z.string().optional(),
   color: z.enum(['blue', 'emerald', 'amber', 'rose', 'purple', 'orange', 'teal', 'indigo', 'pink', 'cyan']).nullable().optional(),
 }).superRefine((v, ctx) => {
@@ -441,13 +463,56 @@ export function PackageForm({
           durationMins: existing.durationMins,
           sessionType: existing.sessionType,
           price: centsToDollars(existing.priceCents),
+          pricePerSession: centsToDollars(existing.pricePerSessionCents ?? null),
           specialPrice: centsToDollars(existing.specialPriceCents),
         }
-      : { sessionCount: 1, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', price: '', specialPrice: '' },
+      : { sessionCount: 1, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', price: '', pricePerSession: '', specialPrice: '' },
   })
 
   // A one-off package — a single session, no cadence. "Weeks between" is moot.
   const oneOff = Number(watch('sessionCount')) === 1
+
+  const currency = useCurrency()
+
+  // ── How the price is being entered ────────────────────────────────────────
+  //
+  // Two ways to say the same thing: a lump sum, or a figure per session that
+  // multiplies out. The TOTAL is the only thing stored as the price, so
+  // 'perSession' keeps `price` in step as you type (below) — that way the
+  // special-price rule, the payload and the summary all keep reading one field.
+  const watchedSessionCount = Number(watch('sessionCount'))
+  const perSessionAvailable = kind !== 'oneoff' && canPricePerSession(watchedSessionCount)
+  const [priceMode, setPriceMode] = useState<'total' | 'perSession'>(
+    existing?.pricePerSessionCents != null ? 'perSession' : 'total',
+  )
+  // The mode is only ever 'perSession' while that's actually on offer — drop a
+  // 6-session course to 1 and the choice disappears with it, so the form must
+  // not be left in a mode whose control isn't on screen.
+  const pricingBySession = perSessionAvailable && priceMode === 'perSession'
+
+  const perSessionCents = pricingBySession ? dollarsToCents(watch('pricePerSession')) : null
+  const derivedTotalCents = totalFromPerSession(perSessionCents, watchedSessionCount)
+
+  // Keep the stored total honest while they type, and when the session count
+  // moves underneath it. This is the sessionCount-changed case: nothing else
+  // has to notice, because `price` simply becomes the new total.
+  useEffect(() => {
+    if (!pricingBySession) return
+    const next = derivedTotalCents === null ? '' : centsToDollars(derivedTotalCents)
+    if (watch('price') !== next) setValue('price', next, { shouldValidate: true })
+  }, [pricingBySession, derivedTotalCents, setValue, watch])
+
+  // Switching to per-session with a total already typed: seed the per-session
+  // figure from it rather than blanking the price the trainer just entered.
+  function choosePriceMode(next: 'total' | 'perSession') {
+    if (next === 'perSession' && !dollarsToCents(watch('pricePerSession'))) {
+      const total = dollarsToCents(watch('price'))
+      if (total !== null && watchedSessionCount >= 1) {
+        setValue('pricePerSession', centsToDollars(Math.round(total / watchedSessionCount)))
+      }
+    }
+    setPriceMode(next)
+  }
 
   // A blocked save has to say why — ALWAYS. Field-level errors are only enough
   // when the field is on screen, and it often isn't: the wizard shows one card
@@ -484,7 +549,7 @@ export function PackageForm({
     // When Xero is connected with a curated shortlist, the income account is
     // required so every package/class posts to a real Xero account.
     if (xeroActive && !xeroAccountCode) {
-      setError('Choose a Xero income account for this consult.')
+      setError('Choose a Xero income account for this 1:1 session.')
       return
     }
     // Slot times start blank so nobody publishes a guessed hour by accident —
@@ -510,7 +575,7 @@ export function PackageForm({
     const method = existing ? 'PATCH' : 'POST'
     // Convert the dollar-string price fields into cents before sending; the
     // server stores cents to dodge floating-point math.
-    const { price, specialPrice, ...rest } = values
+    const { price, pricePerSession, specialPrice, ...rest } = values
     // One cadence model for all kinds: N sessions every W weeks (a one-off
     // event is just 1 session, no cadence).
     const sessionCount = kind === 'oneoff' ? 1 : values.sessionCount
@@ -525,6 +590,12 @@ export function PackageForm({
         weeksBetween: Number(sessionCount) === 1 ? 0 : values.weeksBetween,
         description: values.description || null,
         priceCents: dollarsToCents(price),
+        // Sent whenever the trainer priced by the session — the server derives
+        // the total from it again rather than trusting the one above, so the
+        // two can't be saved disagreeing. Explicitly null when pricing as a
+        // lump sum, so switching back CLEARS the stored intent instead of
+        // leaving a per-session figure that would silently re-total later.
+        pricePerSessionCents: pricingBySession ? dollarsToCents(pricePerSession) : null,
         specialPriceCents: dollarsToCents(specialPrice),
         bufferMins,
         color,
@@ -571,7 +642,7 @@ export function PackageForm({
         // been marked present.
         ...(isGroup && startAt && !hasAttendance && { startAt: startAt.toISOString() }),
         // The cover image belongs to the OFFERING, not to the class it happens
-        // to be scheduled as — a 1:1 consult has a picture too, and it has no
+        // to be scheduled as — a 1:1 session has a picture too, and it has no
         // run. Sending it only for group offerings is why an image added to a
         // package vanished on save: the key never left the browser, and the
         // server treated the missing key as "clear it".
@@ -613,6 +684,7 @@ export function PackageForm({
         bufferMins: saved.bufferMins ?? 0,
         sessionType: saved.sessionType,
         priceCents: saved.priceCents ?? null,
+        pricePerSessionCents: saved.pricePerSessionCents ?? null,
         specialPriceCents: saved.specialPriceCents ?? null,
         color: saved.color ?? null,
         imageUrl: saved.imageUrl ?? null,
@@ -734,7 +806,7 @@ export function PackageForm({
             ? 'Add each session people can drop into. Give every one its own day, time, capacity, price and location — duplicate or reorder them as needed.'
             : kind === 'group'
             ? 'Set when the class runs — the first session’s date and time, how many sessions, and how many weeks apart — plus capacity and location.'
-            : 'Set how long each session lasts and how many are in the consult.'
+            : 'Set how long each session lasts and how many are in the 1:1 session.'
         }
       >
 
@@ -1028,22 +1100,79 @@ export function PackageForm({
         </>
       ) : (
         <>
+          {/* Total, or per session — the same price said two ways. Only offered
+              on a multi-session offering: one session has nothing to divide,
+              and an ongoing one has no session count to multiply by. */}
+          {perSessionAvailable && (
+            <div className="md:col-span-2">
+              <span className="text-sm font-medium text-slate-700 block mb-1.5">How do you want to price this?</span>
+              <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                {([
+                  { id: 'total', label: 'Total price' },
+                  { id: 'perSession', label: 'Price per session' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => choosePriceMode(opt.id)}
+                    aria-pressed={priceMode === opt.id}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      priceMode === opt.id
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Leave price blank for "no price set". The special price is
               independent and only shown when populated. */}
-          <Input
-            label="Price"
-            type="text"
-            inputMode="decimal"
-            placeholder="120"
-            {...register('price')}
-          />
+          {pricingBySession ? (
+            <div>
+              <Input
+                label="Price per session"
+                type="text"
+                inputMode="decimal"
+                placeholder="30"
+                {...register('pricePerSession')}
+              />
+              {/* The other figure, live. The trainer typed one number; this is
+                  the one that actually gets charged, so it is shown rather than
+                  left to be discovered on the offering page. */}
+              <p className="mt-1.5 text-sm text-slate-500">
+                {derivedTotalCents === null
+                  ? `× ${watchedSessionCount} sessions`
+                  : <>
+                      {formatMoney(perSessionCents ?? 0, currency)} per session × {watchedSessionCount} sessions ={' '}
+                      <span className="font-semibold text-slate-900">{formatMoney(derivedTotalCents, currency)}</span> total
+                    </>}
+              </p>
+              {/* Said out loud rather than done quietly: the total FOLLOWS the
+                  session count, so changing the count re-prices the offering. */}
+              <p className="mt-1 text-xs text-slate-400">
+                Change the number of sessions and the total changes with it.
+              </p>
+            </div>
+          ) : (
+            <Input
+              label="Price"
+              type="text"
+              inputMode="decimal"
+              placeholder="120"
+              {...register('price')}
+            />
+          )}
           <Input
             label="Special price (optional)"
             type="text"
             inputMode="decimal"
             placeholder="—"
             error={errors.specialPrice?.message}
-            hint="A discount off the price above."
+            hint={pricingBySession ? 'A discount off the total above.' : 'A discount off the price above.'}
             {...register('specialPrice')}
           />
         </>
@@ -1119,7 +1248,7 @@ export function PackageForm({
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Default session form</label>
         <p className="text-[11px] text-slate-400 mb-1.5">
-          Auto-attached to each new session in this consult. Trainer can still swap it on the session.
+          Auto-attached to each new session in this 1:1 session. Trainer can still swap it on the session.
         </p>
         <select
           value={defaultSessionFormId ?? ''}
@@ -1132,7 +1261,7 @@ export function PackageForm({
       </div>
 
       {/* Session notes are a package / 1:1 idea — "near the end of each session
-          in this consult" means nothing for a one-off event, which is a single
+          in this 1:1 session" means nothing for a one-off event, which is a single
           occasion you either ran or didn't. Don't ask the question, and don't
           send the nudge either (see the submit payload). */}
       {kind !== 'oneoff' && (
@@ -1146,7 +1275,7 @@ export function PackageForm({
           <span className="flex-1 min-w-0">
             <span className="block text-sm font-medium text-slate-700">Send a follow-up reminder for session notes</span>
             <span className="block text-[11px] text-slate-400 mt-0.5">
-              Sends a push near the end of each session in this consult nudging you to write notes. Turn off for drop-in classes or anything that doesn&apos;t need a follow-up.
+              Sends a push near the end of each session in this 1:1 session nudging you to write notes. Turn off for drop-in classes or anything that doesn&apos;t need a follow-up.
             </span>
           </span>
         </label>
@@ -1180,7 +1309,7 @@ export function PackageForm({
         <span className="flex-1 min-w-0">
           <span className="block text-sm font-medium text-slate-700">Let clients self-book this from their availability tab</span>
           <span className="block text-[11px] text-slate-400 mt-0.5">
-            Clients pick a start time from your real openings; the rest auto-place on the consult cadence.
+            Clients pick a start time from your real openings; the rest auto-place on the 1:1 session cadence.
           </span>
         </span>
       </label>
@@ -1204,7 +1333,7 @@ export function PackageForm({
 
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Schedule colour</label>
-        <p className="text-[11px] text-slate-400 mb-1.5">Sessions assigned to this consult will use this colour on the calendar. Leave blank to keep the default status colour.</p>
+        <p className="text-[11px] text-slate-400 mb-1.5">Sessions assigned to this 1:1 session will use this colour on the calendar. Leave blank to keep the default status colour.</p>
         <div className="flex flex-wrap gap-1.5">
           <button
             type="button"

@@ -11,7 +11,7 @@ import { suggestedHomeworkForSession, assignDefaults } from '@/lib/default-homew
 // POST — hand the chosen defaults to the chosen people, as ordinary
 //        TrainingTasks the trainer can edit or delete afterwards.
 //
-// Works for a 1:1 consult (one recipient — the session's client) and for a
+// Works for a 1:1 session (one recipient — the session's client) and for a
 // group class (every live enrolment on this session), which is the only path
 // by which class homework can be set at all.
 
@@ -108,6 +108,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ session
     packageId: defaults.packageId,
     packageName: defaults.packageName,
     sessionIndex: defaults.sessionIndex,
+    // The curriculum step this homework belongs to, when there is one, so the
+    // block can name it instead of a bare session number.
+    stepTitle: defaults.stepTitle,
     isGroup: defaults.isGroup,
     recipients,
     tasks: defaults.tasks.map(t => ({

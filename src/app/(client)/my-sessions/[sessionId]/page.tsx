@@ -10,6 +10,9 @@ import {
   type ReportQuestion,
   type ReportAttachment,
 } from '@/components/shared/session-report'
+import { RichText } from '@/components/shared/rich-text'
+import { isRichTextEmpty } from '@/lib/rich-text'
+import { resolveSeriesSteps, stepForIndex, type CurriculumStep } from '@/lib/series'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Session' }
@@ -18,6 +21,12 @@ type ReportTask = {
   id: string; title: string; description: string | null; repetitions: number | null
   videoUrl: string | null; imageUrls: string[]; trainerNote: string | null; completed: boolean
 }
+
+/** The curriculum, smallest shape that answers "what are we covering". */
+const PLAN_SELECT = {
+  orderBy: { sessionIndex: 'asc' },
+  select: { id: true, sessionIndex: true, title: true, description: true },
+} as const
 
 export default async function ClientSessionPage({
   params,
@@ -47,11 +56,18 @@ export default async function ClientSessionPage({
   let attachments: ReportAttachment[] = []
   let customFieldLabels = new Map<string, string>()
   let pendingMessage: string | null = null
+  // What this session covers, when the offering runs a curriculum. Written by
+  // the trainer on the offering's Sessions tab, and client-facing by design —
+  // it is the plan for THEIR session, which is most useful BEFORE it happens.
+  let step: CurriculumStep | null = null
 
   // 1:1 session (direct client link).
   const oneToOne = await prisma.trainingSession.findFirst({
     where: { id: sessionId, clientId: profile.id },
     include: {
+      clientPackage: {
+        select: { package: { select: { isSeries: true, sessionPlans: PLAN_SELECT } } },
+      },
       dog: { select: { name: true } },
       tasks: {
         orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
@@ -96,14 +112,34 @@ export default async function ClientSessionPage({
     attachments = oneToOne.attachments.map((a): ReportAttachment => ({
       id: a.id, kind: a.kind as 'IMAGE' | 'VIDEO', url: a.url, thumbnailUrl: a.thumbnailUrl, caption: a.caption, durationMs: a.durationMs,
     }))
+    // On a 1:1 series the step is STORED, not counted: the trainer may have
+    // skipped one for this dog, so the client's 2nd session can be step 3.
+    // Resolved through the same lib the trainer's screen uses, against the
+    // client's own sessions in calendar order (see lib/series.ts).
+    const plans = oneToOne.clientPackage?.package
+    if (plans?.isSeries && oneToOne.clientPackageId) {
+      const siblings = await prisma.trainingSession.findMany({
+        where: { clientPackageId: oneToOne.clientPackageId },
+        orderBy: [{ scheduledAt: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, sessionPlanId: true },
+      })
+      step = resolveSeriesSteps(plans.sessionPlans, siblings).find(r => r.sessionId === sessionId)?.step ?? null
+    }
   } else {
     // Group-class session the client is enrolled in — their own write-up lives
     // on their attendance row, against the session's effective form.
     const cls = await prisma.trainingSession.findFirst({
       where: { id: sessionId, classRun: { enrollments: { some: { clientId: profile.id } } } },
       select: {
-        title: true, scheduledAt: true, sessionFormId: true,
-        classRun: { select: { name: true, package: { select: { defaultSessionFormId: true } } } },
+        title: true, scheduledAt: true, sessionFormId: true, sessionIndex: true,
+        classRun: {
+          select: {
+            name: true,
+            package: {
+              select: { defaultSessionFormId: true, isSeries: true, sessionPlans: PLAN_SELECT },
+            },
+          },
+        },
         attendance: { where: { enrollment: { clientId: profile.id } }, take: 1, select: { report: true, reportSentAt: true } },
       },
     })
@@ -111,6 +147,11 @@ export default async function ClientSessionPage({
 
     sessionTitle = cls.classRun?.name ?? cls.title
     scheduledAt = cls.scheduledAt
+    // A cohort moves through the curriculum together, so step N is simply
+    // week N — nothing per-client is stored (see lib/series.ts).
+    if (cls.classRun?.package?.isSeries) {
+      step = stepForIndex(cls.classRun.package.sessionPlans, cls.sessionIndex)
+    }
     // Only a SENT report is visible — a saved draft (reportSentAt null) stays
     // private until the trainer sends it.
     const report = (cls.attendance[0]?.reportSentAt
@@ -154,6 +195,24 @@ export default async function ClientSessionPage({
         <Link href="/home" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-6">
           <ArrowLeft className="h-4 w-4" /> Back to home
         </Link>
+
+        {/* What this session covers. Shown ABOVE the write-up and in both
+            states, because it is most useful BEFORE the session — a client
+            opening an upcoming class wants to know what's coming, and until now
+            that page said only "check back after the class". Rendered through
+            RichText, which sanitises: the copy is trainer-authored HTML, so it
+            must never be dangerouslySetInnerHTML'd by hand. */}
+        {step && (
+          <div className="mb-4 rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-6">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Session {step.sessionIndex}
+            </p>
+            <h2 className="mt-0.5 font-display text-lg font-bold text-slate-900">{step.title}</h2>
+            {!isRichTextEmpty(step.description) && (
+              <RichText html={step.description} className="mt-2 text-sm leading-relaxed text-slate-600" />
+            )}
+          </div>
+        )}
 
         {pendingMessage ? (
           <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-8 text-center">

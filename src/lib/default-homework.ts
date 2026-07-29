@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { resolveSeriesSteps, stepForIndex } from '@/lib/series'
 
 // Default homework — the tasks a trainer sets up ONCE on an offering, so the
 // same five library items don't have to be hunted out after every session.
@@ -28,6 +29,13 @@ export interface SessionDefaults {
   packageName: string
   /** 1-based session number this session sits at, when it is knowable. */
   sessionIndex: number | null
+  /**
+   * The curriculum step this number belongs to, when the offering is a series.
+   * Named so the session screen can say "step 3 · Loose-lead walking" over the
+   * homework it is offering, rather than a bare number the trainer has to go
+   * and look up — and so the two can never name different steps.
+   */
+  stepTitle: string | null
   /** True when this session belongs to a group class run. */
   isGroup: boolean
   classRunId: string | null
@@ -43,6 +51,18 @@ export interface SessionDefaults {
  * its number from its position within its ClientPackage, ordered the way the
  * series was laid out — a session with no package has no number, and only
  * picks up the "every session" defaults.
+ *
+ * On a 1:1 SERIES the number is not the position. The trainer may have skipped
+ * a step, so the session's number is the number of the CURRICULUM STEP it
+ * covers — which is what makes the homework follow the step rather than the
+ * slot. That is resolved through lib/series.ts, the same code the session
+ * screen renders from, so the homework offered can never disagree with the
+ * step shown.
+ *
+ * On a CLASS series there is nothing to reconcile — a cohort's step is its week
+ * — so the number the row already carries IS the step number, and the only
+ * thing looked up is the step's NAME. Both shapes go through lib/series.ts so
+ * "which step is this" is answered in one place either way.
  */
 async function locateSession(sessionId: string, trainerId: string) {
   const session = await prisma.trainingSession.findFirst({
@@ -54,17 +74,48 @@ async function locateSession(sessionId: string, trainerId: string) {
       scheduledAt: true,
       clientPackageId: true,
       classRunId: true,
-      classRun: { select: { id: true, packageId: true, package: { select: { id: true, name: true } } } },
-      clientPackage: { select: { id: true, package: { select: { id: true, name: true } } } },
+      classRun: {
+        select: {
+          id: true,
+          packageId: true,
+          package: {
+            select: {
+              id: true,
+              name: true,
+              isSeries: true,
+              sessionPlans: { select: { id: true, sessionIndex: true, title: true } },
+            },
+          },
+        },
+      },
+      clientPackage: {
+        select: {
+          id: true,
+          package: {
+            select: {
+              id: true,
+              name: true,
+              isSeries: true,
+              sessionPlans: { select: { id: true, sessionIndex: true, title: true } },
+            },
+          },
+        },
+      },
     },
   })
   if (!session) return null
 
   if (session.classRun) {
+    const pkg = session.classRun.package
     return {
-      packageId: session.classRun.package.id,
-      packageName: session.classRun.package.name,
+      packageId: pkg.id,
+      packageName: pkg.name,
       sessionIndex: session.sessionIndex,
+      // Week N is step N for a cohort — the number is already right, so only
+      // the step's name has to be looked up.
+      stepTitle: pkg.isSeries
+        ? (stepForIndex(pkg.sessionPlans, session.sessionIndex)?.title ?? null)
+        : null,
       isGroup: true,
       classRunId: session.classRun.id,
       clientId: null as string | null,
@@ -79,14 +130,25 @@ async function locateSession(sessionId: string, trainerId: string) {
   const siblings = await prisma.trainingSession.findMany({
     where: { clientPackageId: session.clientPackageId! },
     orderBy: [{ scheduledAt: 'asc' }, { createdAt: 'asc' }],
-    select: { id: true },
+    select: { id: true, sessionPlanId: true },
   })
   const pos = siblings.findIndex(s => s.id === session.id)
 
+  const pkg = session.clientPackage.package
+  // A series answers with the step it COVERS. A skipped step means this
+  // session's homework is the next step's homework, not this slot's.
+  const step = pkg.isSeries
+    ? (resolveSeriesSteps(pkg.sessionPlans, siblings).find(r => r.sessionId === session.id)?.step ?? null)
+    : null
+  const sessionIndex = pkg.isSeries
+    ? (step?.sessionIndex ?? null)
+    : pos === -1 ? null : pos + 1
+
   return {
-    packageId: session.clientPackage.package.id,
-    packageName: session.clientPackage.package.name,
-    sessionIndex: pos === -1 ? null : pos + 1,
+    packageId: pkg.id,
+    packageName: pkg.name,
+    sessionIndex,
+    stepTitle: step?.title ?? null,
     isGroup: false,
     classRunId: null as string | null,
     clientId: session.clientId,

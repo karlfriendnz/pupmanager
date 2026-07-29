@@ -14,7 +14,7 @@ import { OfferingActions } from '@/components/trainer/offering-actions'
 import { Info, Users, Package as PackageIcon, Bell, MessageSquare, ListChecks } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
-import { DefaultHomeworkEditor } from '@/components/trainer/default-homework-editor'
+import { SeriesCurriculumEditor } from '@/components/trainer/series-curriculum-editor'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
 
 // 'discounts' is deliberately absent: the discount engine is built but not
@@ -42,6 +42,10 @@ export type PackageInfo = {
   capacity: number | null
   publicEnrollment: boolean
   clientSelfBook: boolean
+  /** True while this offering has a curriculum — see lib/series.ts. */
+  isSeries: boolean
+  /** The curriculum itself, in step order. Empty unless isSeries. */
+  steps: { id: string; sessionIndex: number; title: string }[]
 }
 
 export type PackageClientRow = {
@@ -55,6 +59,16 @@ export type PackageClientRow = {
   sessionsUsed: number
   sessionsTotal: number // 0 = ongoing/unlimited
   ongoing: boolean
+  // Where this client has got to in the curriculum, on a series. Null on an
+  // ordinary consult. Deliberately NOT derived from sessionsUsed: a client who
+  // skipped step 2 is on step 4 after three sessions, and counting sessions
+  // would confidently say step 3.
+  stepIndex: number | null
+  stepTitle: string | null
+  stepsDone: number | null
+  stepsTotal: number | null
+  /** When the step they're up to happens. Null once nothing is left booked. */
+  nextSessionAt: string | null
 }
 
 // Derive a client's standing on this package. "Completed" = a fixed-length
@@ -102,9 +116,20 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
   const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: rows.length > 0 ? rows.length : undefined },
-    // The homework this offering normally hands out — set once here, confirmed
-    // in one tap on the session screen.
-    { id: 'homework', label: 'Homework', icon: ListChecks },
+    // What each session covers and the homework that follows it — set once
+    // here, confirmed in one tap on the session screen.
+    //
+    // Named for what the tab CONTAINS, not for what has been filled in yet: a
+    // multi-session offering opens on a list of its sessions, so calling that
+    // "Homework" hid it (found the hard way — the list was there and unfindable).
+    // Only a single-session offering has nothing to list, and there it really is
+    // just homework.
+    {
+      id: 'homework',
+      label: pkg.sessionCount > 1 ? 'Sessions' : 'Homework',
+      icon: ListChecks,
+      badge: pkg.steps.length > 0 ? pkg.steps.length : undefined,
+    },
     // 1:1 packages can send automated session reminders; group packages run
     // through their class page instead.
     ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Reminders & messages', icon: Bell }] : []),
@@ -118,7 +143,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           live on the page with it, at the end of the Details card. */}
       <PageHeader
         title={pkg.name}
-        back={{ href: '/packages', label: '1:1 Consults' }}
+        back={{ href: '/packages', label: '1:1 Sessions' }}
       />
 
       {/* Full width — two columns of detail need the room, and capping it
@@ -316,11 +341,11 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
 
                     {clientTab === 'current' ? (
                       present.length > 0
-                        ? <ClientTable rows={present} />
+                        ? <ClientTable rows={present} series={pkg.isSeries} />
                         : <p className="text-sm text-slate-500 py-4 text-center">No one on this package right now.</p>
                     ) : (
                       past.length > 0
-                        ? <ClientTable rows={past} />
+                        ? <ClientTable rows={past} series={pkg.isSeries} />
                         : <p className="text-sm text-slate-500 py-4 text-center">No past clients.</p>
                     )}
                   </>
@@ -329,9 +354,12 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             </Card>
           </div>
 
-        {/* Homework tab — the default tasks this offering suggests, per session. */}
+        {/* Curriculum tab — what each session covers and the homework that
+            follows it. One editor, not two: `SeriesCurriculumEditor` renders
+            the homework editor with a plan field over each session's bucket, so
+            a 1:1 session with no steps named looks exactly as it did before. */}
         <div className={tab === 'homework' ? 'max-w-2xl' : 'hidden'}>
-          <DefaultHomeworkEditor packageId={pkg.id} sessionCount={pkg.sessionCount} />
+          <SeriesCurriculumEditor packageId={pkg.id} sessionCount={pkg.sessionCount} isGroup={pkg.isGroup} />
         </div>
 
         {/* Reminders & messages tab — automated session reminders (1:1 only). */}
@@ -355,8 +383,15 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
 
 function ClientTable({
   rows,
+  // On a SERIES the roster answers a different question — not "how many
+  // sessions has this one had" but "where is each of them up to", which on a
+  // consult series is the only place it can be answered at all: there is no
+  // cohort, so each client is at their own step. Two extra columns on the same
+  // table, rather than a second roster to keep in step with this one.
+  series = false,
 }: {
   rows: (PackageClientRow & { derived: ReturnType<typeof deriveStatus> })[]
+  series?: boolean
 }) {
   // Clicking anywhere on a row opens that client — the message cell stops the
   // event so it doesn't do both.
@@ -372,8 +407,9 @@ function ClientTable({
             <th className="w-full px-3 py-2 font-semibold">Client</th>
             <th className="whitespace-nowrap px-3 py-2 font-semibold">Dog</th>
             <th className="whitespace-nowrap px-3 py-2 font-semibold">Status</th>
+            {series && <th className="whitespace-nowrap px-3 py-2 font-semibold">Up to</th>}
             <th className="whitespace-nowrap px-3 py-2 font-semibold">Sessions</th>
-            <th className="whitespace-nowrap px-3 py-2 font-semibold">Started</th>
+            <th className="whitespace-nowrap px-3 py-2 font-semibold">{series ? 'Next' : 'Started'}</th>
             <th className="w-9 px-3 py-2"><span className="sr-only">Message</span></th>
           </tr>
         </thead>
@@ -396,11 +432,32 @@ function ClientTable({
                   {r.derived.label}
                 </span>
               </td>
+              {series && (
+                <td className="whitespace-nowrap px-3 py-2.5">
+                  {r.stepIndex != null ? (
+                    <>
+                      <span className="font-medium text-slate-800">Step {r.stepIndex}</span>
+                      {r.stepsTotal ? <span className="text-slate-400"> of {r.stepsTotal}</span> : null}
+                      {r.stepTitle && <span className="block text-xs text-slate-500">{r.stepTitle}</span>}
+                    </>
+                  ) : (
+                    // No step left to cover: either every session has happened,
+                    // or they've run past the end of the curriculum. Both mean
+                    // "nothing further planned", which is worth saying plainly
+                    // rather than showing an empty cell.
+                    <span className="text-slate-400">
+                      {r.stepsDone != null && r.stepsTotal ? `Finished · ${r.stepsDone} of ${r.stepsTotal}` : '—'}
+                    </span>
+                  )}
+                </td>
+              )}
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 tabular-nums">
                 {r.sessionsUsed}{r.sessionsTotal > 0 ? ` / ${r.sessionsTotal}` : ''}
               </td>
               <td className="whitespace-nowrap px-3 py-2.5 text-slate-500" suppressHydrationWarning>
-                {new Date(r.startDate).toLocaleDateString()}
+                {series
+                  ? (r.nextSessionAt ? new Date(r.nextSessionAt).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }) : '—')
+                  : new Date(r.startDate).toLocaleDateString()}
               </td>
               <td className="px-3 py-2.5">
                 <Link

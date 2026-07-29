@@ -59,7 +59,7 @@ describe('suggestedHomeworkForSession', () => {
     h.sessionFindFirst.mockResolvedValue({
       id: 's2', clientId: 'c1', sessionIndex: null, clientPackageId: 'cp1', classRunId: null,
       classRun: null,
-      clientPackage: { id: 'cp1', package: { id: 'p1', name: 'Puppy Consult' } },
+      clientPackage: { id: 'cp1', package: { id: 'p1', name: 'Puppy 1:1 Session' } },
     })
     h.sessionFindMany.mockResolvedValue([{ id: 's9' }, { id: 's2' }, { id: 's7' }])
     h.defaultFindMany.mockResolvedValue([])
@@ -173,5 +173,109 @@ describe('assignDefaults', () => {
     expect(await assignDefaults({ tasks: [], clientIds: ['c1'], sessionId: 's1', date: new Date() })).toEqual([])
     expect(await assignDefaults({ tasks, clientIds: [], sessionId: 's1', date: new Date() })).toEqual([])
     expect(h.taskFindMany).not.toHaveBeenCalled()
+  })
+})
+
+// A SERIES — the homework has to follow the STEP the session covers, not the
+// slot it sits in. The moment a step is skipped those are different numbers,
+// and the wrong one is wrong silently: the trainer is handed week 3's homework
+// for a session that actually covered step 4.
+describe('suggestedHomeworkForSession on a series', () => {
+  const PLANS = [
+    { id: 'p1', sessionIndex: 1, title: 'Recall' },
+    { id: 'p2', sessionIndex: 2, title: 'Loose lead' },
+    { id: 'p3', sessionIndex: 3, title: 'Stay' },
+  ]
+
+  it('follows the CHOSEN step on a 1:1 session, not the session\'s position', async () => {
+    // Session 2 of the client's diary, pinned by the trainer to step 3.
+    h.sessionFindFirst.mockResolvedValue({
+      id: 's2', clientId: 'c1', sessionIndex: null, clientPackageId: 'cp1', classRunId: null,
+      classRun: null,
+      clientPackage: { id: 'cp1', package: { id: 'p1', name: 'Puppy Series', isSeries: true, sessionPlans: PLANS } },
+    })
+    h.sessionFindMany.mockResolvedValue([
+      { id: 's1', sessionPlanId: null },
+      { id: 's2', sessionPlanId: 'p3' },
+    ])
+    h.defaultFindMany.mockResolvedValue([])
+
+    const out = await suggestedHomeworkForSession('s2', 'co1')
+
+    // Its position is 2. Its STEP is 3, and that is what everything keys off.
+    expect(out?.sessionIndex).toBe(3)
+    expect(out?.stepTitle).toBe('Stay')
+    // The homework asked for is step 3's, never position 2's.
+    expect(h.defaultFindMany.mock.calls[0][0].where.OR).toEqual([{ sessionIndex: null }, { sessionIndex: 3 }])
+  })
+
+  it('drops to the "every session" rows once a 1:1 session runs past the curriculum', async () => {
+    h.sessionFindFirst.mockResolvedValue({
+      id: 's4', clientId: 'c1', sessionIndex: null, clientPackageId: 'cp1', classRunId: null,
+      classRun: null,
+      clientPackage: { id: 'cp1', package: { id: 'p1', name: 'Puppy Series', isSeries: true, sessionPlans: PLANS } },
+    })
+    h.sessionFindMany.mockResolvedValue([
+      { id: 's1', sessionPlanId: null }, { id: 's2', sessionPlanId: null },
+      { id: 's3', sessionPlanId: null }, { id: 's4', sessionPlanId: null },
+    ])
+    h.defaultFindMany.mockResolvedValue([])
+
+    const out = await suggestedHomeworkForSession('s4', 'co1')
+
+    // No step left, so no numbered homework — not the last step's again.
+    expect(out?.sessionIndex).toBeNull()
+    expect(out?.stepTitle).toBeNull()
+    expect(h.defaultFindMany.mock.calls[0][0].where.OR).toEqual([{ sessionIndex: null }])
+  })
+
+  it('numbers a CLASS series by its week and names that step', async () => {
+    // A cohort has nothing pinned — week 2 is step 2, for everyone in the room.
+    h.sessionFindFirst.mockResolvedValue({
+      id: 'cs2', clientId: null, sessionIndex: 2, clientPackageId: null, classRunId: 'r1',
+      classRun: { id: 'r1', packageId: 'p1', package: { id: 'p1', name: 'Puppy Class', isSeries: true, sessionPlans: PLANS } },
+      clientPackage: null,
+    })
+    h.defaultFindMany.mockResolvedValue([])
+
+    const out = await suggestedHomeworkForSession('cs2', 'co1')
+
+    expect(out?.sessionIndex).toBe(2)
+    expect(out?.stepTitle).toBe('Loose lead')
+    expect(out?.isGroup).toBe(true)
+    expect(h.defaultFindMany.mock.calls[0][0].where.OR).toEqual([{ sessionIndex: null }, { sessionIndex: 2 }])
+    // A class needs no per-client lookup at all — its step is on the row.
+    expect(h.sessionFindMany).not.toHaveBeenCalled()
+  })
+
+  it('names no step on a class running past the end of its curriculum', async () => {
+    h.sessionFindFirst.mockResolvedValue({
+      id: 'cs5', clientId: null, sessionIndex: 5, clientPackageId: null, classRunId: 'r1',
+      classRun: { id: 'r1', packageId: 'p1', package: { id: 'p1', name: 'Puppy Class', isSeries: true, sessionPlans: PLANS } },
+      clientPackage: null,
+    })
+    h.defaultFindMany.mockResolvedValue([])
+
+    const out = await suggestedHomeworkForSession('cs5', 'co1')
+
+    // Week 5 still asks for week 5's homework — that part is unchanged — but
+    // there is no step to name, so nothing is invented.
+    expect(out?.sessionIndex).toBe(5)
+    expect(out?.stepTitle).toBeNull()
+  })
+
+  it('leaves a non-series offering exactly as it was', async () => {
+    h.sessionFindFirst.mockResolvedValue({
+      id: 's2', clientId: 'c1', sessionIndex: null, clientPackageId: 'cp1', classRunId: null,
+      classRun: null,
+      clientPackage: { id: 'cp1', package: { id: 'p1', name: 'Plain 1:1 Session', isSeries: false, sessionPlans: [] } },
+    })
+    h.sessionFindMany.mockResolvedValue([{ id: 's1' }, { id: 's2' }])
+    h.defaultFindMany.mockResolvedValue([])
+
+    const out = await suggestedHomeworkForSession('s2', 'co1')
+
+    expect(out?.sessionIndex).toBe(2)
+    expect(out?.stepTitle).toBeNull()
   })
 })

@@ -4,18 +4,17 @@ import { useState } from 'react'
 import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { CardHeading } from '@/components/shared/card-heading'
 import { OfferingActions } from '@/components/trainer/offering-actions'
-import { Users, UserPlus, CalendarDays, ClipboardCheck, Info, Bell, Tag, ListChecks } from 'lucide-react'
+import { Users, UserPlus, Info, Bell, Tag, ListChecks } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
-import { DefaultHomeworkEditor } from '@/components/trainer/default-homework-editor'
+import { SeriesCurriculumEditor, type ScheduledSession } from '@/components/trainer/series-curriculum-editor'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { DiscountManager } from '@/components/trainer/discount-manager'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
@@ -27,6 +26,23 @@ import {
 } from '@/components/trainer/run-roster'
 
 type Tab = 'details' | 'clients' | 'homework' | 'messages' | 'discounts'
+
+/**
+ * One step of this class's curriculum, with the homework that follows it.
+ *
+ * A class works through its curriculum as a COHORT — step 1 is week 1 — so a
+ * session's step is simply its own session number and nothing is stored per
+ * client. That is `stepForIndex` in lib/series.ts, and it is why this screen
+ * needs only the step list, not a per-session lookup.
+ */
+export type CurriculumStepRow = {
+  id: string
+  sessionIndex: number
+  title: string
+  description: string | null
+  /** Titles of the default homework this step hands out. */
+  homework: string[]
+}
 type RunStatus = 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
 type AssignedTrainer = { membershipId: string; name: string; title: string | null }
 type Run = {
@@ -71,6 +87,11 @@ export function RunDetail({
   // instead of always dumping them on Group Classes (and its add-on gate).
   basePath = '/classes',
   backLabel = 'Classes',
+  // The curriculum, when this class runs one. Empty = it doesn't, and every
+  // step-aware thing below simply doesn't render — a series is a curriculum on
+  // an ordinary class, not a different kind of class, so there is no second
+  // screen and no flag to route on.
+  steps = [],
 }: {
   run: Run
   sessions: SessionRow[]
@@ -78,6 +99,7 @@ export function RunDetail({
   clients: ClientOpt[]
   basePath?: string
   backLabel?: string
+  steps?: CurriculumStepRow[]
 }) {
   const router = useRouter()
   const currency = useCurrency()
@@ -120,6 +142,17 @@ export function RunDetail({
       ? `${enrolledRows} enrolled`
       : `${enrolledRows} / ${run.capacity}`
 
+  // The run's sessions, in the shape the Sessions tab's list wants them. `href`
+  // rather than an id, because the same run is reachable under /classes,
+  // /casual-classes and /doggy-daycare and the link has to follow whichever the
+  // trainer came in through.
+  const scheduledSessions: ScheduledSession[] = sessions.map(s => ({
+    id: s.id,
+    sessionIndex: s.sessionIndex,
+    scheduledAt: s.scheduledAt,
+    href: `${basePath}/${run.id}/sessions/${s.id}`,
+  }))
+
   // Revenue estimate: full price per non-withdrawn enrolment (drop-ins excluded
   // from the headline — their per-session pricing is computed elsewhere).
   const billable = enrollments.filter(e => e.status !== 'WITHDRAWN' && e.type === 'FULL').length
@@ -149,7 +182,12 @@ export function RunDetail({
   const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: rosterCount > 0 ? rosterCount : undefined },
-    { id: 'homework', label: 'Homework', icon: ListChecks },
+    // Named for what it CONTAINS: a multi-session run opens on a list of its
+    // sessions, each carrying a description and its homework, so calling that
+    // "Homework" hid half of it — and hid the list entirely (found the hard
+    // way). Only a one-session run has nothing to list, and there it really is
+    // just homework. Shared by /classes, /casual-classes and /doggy-daycare.
+    { id: 'homework', label: run.sessionCount > 1 ? 'Sessions' : 'Homework', icon: ListChecks, badge: steps.length > 0 ? steps.length : undefined },
     { id: 'messages', label: 'Reminders & messages', icon: Bell },
     { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
@@ -278,43 +316,12 @@ export function RunDetail({
             </CardBody>
           </Card>
 
-          {/* Sessions */}
-          <Card>
-            <CardBody className="py-5">
-              <CardHeading icon={<CalendarDays className="h-4 w-4 text-slate-400" />} count={sessions.length}>
-                Sessions
-              </CardHeading>
-              {sessions.length === 0 ? (
-                <p className="text-sm text-slate-500 py-2">No sessions scheduled.</p>
-              ) : (
-                <ul className="divide-y divide-slate-100">
-                  {sessions.map(s => (
-                    <li key={s.id}>
-                      {/* The whole row is the link — the "Open" button was a
-                          small target for something the entire row means. */}
-                      <Link
-                        href={`${basePath}/${run.id}/sessions/${s.id}`}
-                        className="flex items-center gap-4 rounded-lg py-2.5 px-2 -mx-2 hover:bg-slate-50"
-                      >
-                        <p className="w-24 shrink-0 text-sm font-medium text-slate-900">Session {s.sessionIndex ?? '—'}</p>
-                        <p className="min-w-0 flex-1 text-sm text-slate-600" suppressHydrationWarning>
-                          {new Date(s.scheduledAt).toLocaleDateString([], { dateStyle: 'medium' })}
-                        </p>
-                        {/* Explicit hour12 — the browser locale renders 19:00
-                            here, and trainers read their day in am/pm. */}
-                        <p className="w-24 shrink-0 text-sm tabular-nums text-slate-600" suppressHydrationWarning>
-                          {new Date(s.scheduledAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
-                        </p>
-                        <span className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 h-9 text-sm font-medium text-slate-600">
-                          <ClipboardCheck className="h-4 w-4" /> Open
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardBody>
-          </Card>
+          {/* The Sessions card that used to sit here has MOVED to the Sessions
+              tab, merged into the curriculum list — one list of the run's
+              sessions carrying the date, the step and the homework together,
+              rather than the dates here and what they cover one tab away. No
+              stub is left behind: a card pointing at another tab is just the
+              same split with an extra click. */}
       </div>
 
         {/* Compact clients snapshot — the "small version" on the Details tab. */}
@@ -421,11 +428,28 @@ export function RunDetail({
           </Card>
       </div>
 
-      {/* Homework tab — the defaults this class hands out, per session. They
-          live on the offering (the package), so every run of the class shares
-          one list rather than each cohort being set up again. */}
-      <div className={tab === 'homework' ? 'max-w-2xl' : 'hidden'}>
-        <DefaultHomeworkEditor packageId={run.packageId} sessionCount={run.sessionCount} />
+      {/* Curriculum tab — what each session covers and the homework that
+          follows it. They live on the offering (the package), so every run of
+          the class shares one list rather than each cohort being set up again.
+          `SeriesCurriculumEditor` IS the homework editor with a plan field over
+          each session's bucket, so this stayed one tab: two editors of the same
+          rows would drift, and a class with no steps named renders exactly the
+          homework editor that was here before. */}
+      {/* Full width, not max-w-2xl: this is a LIST of the run's sessions now,
+          not a narrow form, and each row carries a title, a description hint and
+          a homework count. */}
+      {/* The booked DATES are merged in here too. They used to be a second list
+          on the Details tab — the same six sessions, on another tab, so telling
+          which week covered loose-lead meant reading both and matching them up
+          by number. One row per session now carries its date, its step and its
+          homework: the row opens the plan, the link opens the session. */}
+      <div className={tab === 'homework' ? '' : 'hidden'}>
+        <SeriesCurriculumEditor
+          packageId={run.packageId}
+          sessionCount={run.sessionCount}
+          isGroup
+          scheduledSessions={scheduledSessions}
+        />
       </div>
 
       {/* Reminders & messages tab — automated comms for this class. */}
