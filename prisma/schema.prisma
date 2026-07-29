@@ -3884,6 +3884,11 @@ model EmailTemplate {
   trainerId String
   name      String
   category  String?
+  // Set when this row OVERRIDES one of the platform's own emails (see
+  // lib/system-emails.ts). Null = a reusable template the trainer wrote to
+  // pick from when emailing a client by hand — the original use of this table.
+  // One override per email per trainer; absent means "use the default".
+  systemKey String?
   subject   String  @db.Text
   body      String  @db.Text
   sortOrder Int     @default(0)
@@ -3895,6 +3900,7 @@ model EmailTemplate {
   // Forms configured to auto-reply with this template on submit.
   embedForms EmbedForm[]
 
+  @@unique([trainerId, systemKey])
   @@index([trainerId, sortOrder])
   @@map("email_templates")
 }

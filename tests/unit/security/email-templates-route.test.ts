@@ -70,7 +70,20 @@ describe('email-templates — authentication & role gating', () => {
   it('GET scopes the list to the signed-in trainer only', async () => {
     h.auth.mockResolvedValue(TRAINER)
     await GET()
-    expect(h.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { trainerId: 'co1' } }))
+    expect(h.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ trainerId: 'co1' }) }),
+    )
+  })
+
+  // System-email overrides share this table (systemKey set). They are edited on
+  // their own rows in Settings, so they must not turn up in the list the
+  // composer offers as reusable templates.
+  it('GET leaves system-email overrides out of the reusable list', async () => {
+    h.auth.mockResolvedValue(TRAINER)
+    await GET()
+    expect(h.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ systemKey: null }) }),
+    )
   })
 })
 

@@ -24,7 +24,10 @@ export async function GET() {
   const tid = await trainerId()
   if (!tid) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const templates = await prisma.emailTemplate.findMany({
-    where: { trainerId: tid },
+    // System-email overrides live in this table too (systemKey set). They are
+    // edited on their own rows in Settings and must not appear in the list of
+    // reusable templates the composer picks from.
+    where: { trainerId: tid, systemKey: null },
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     select: { id: true, name: true, category: true, subject: true, body: true, sortOrder: true },
   })

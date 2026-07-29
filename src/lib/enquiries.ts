@@ -4,6 +4,8 @@ import { env } from './env'
 import { sendEmail, fromTrainer } from './email'
 import { emailBodyToHtml } from './email-html'
 import { renderTrainerEmail } from './trainer-email-shell'
+import { fillSystemEmail } from './system-emails'
+import { resolveSystemEmail } from './system-email-copy'
 import { materializeBooking } from './booking-page'
 import { findOrJoinClient } from './client-upsert'
 // escapeHtml lives in a client-safe module now; imported for internal use and
@@ -196,22 +198,28 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
   if (!magicLinkToken && enquiry.source === 'SELF_SIGNUP') {
     const businessName = enquiry.trainer.businessName
     try {
-      const firstName = escapeHtml(enquiry.name.split(' ')[0] || enquiry.name)
+      // Whatever the trainer wrote at Settings → Email templates, else ours.
+      const welcome = await resolveSystemEmail(enquiry.trainer.id, 'client_welcome')
+      const tokens = {
+        clientName: enquiry.name.split(' ')[0] || enquiry.name,
+        businessName,
+        trainerName: businessName,
+      }
       // Wears the trainer's brand, not ours: the client asked to join THEM.
       // Subject and button say the business too — "Open PupManager" meant
       // nothing to someone who signed up with Mersea Mutts.
       await sendEmail({
         to: enquiry.email,
         from: fromTrainer(businessName),
-        subject: `You're in — ${businessName} added you`,
+        subject: fillSystemEmail(welcome.subject, tokens),
         html: renderTrainerEmail({
           trainer: {
             businessName,
             logoUrl: enquiry.trainer.logoUrl,
             emailAccentColor: enquiry.trainer.emailAccentColor,
           },
-          title: `You're in, ${firstName}!`,
-          bodyHtml: `<p style="margin:0;">${escapeHtml(businessName)} has added you to their client list. Sign in with the email and password you chose to see your sessions, notes and messages.</p>`,
+          title: fillSystemEmail(welcome.subject, tokens),
+          bodyHtml: `<p style="margin:0;">${escapeHtml(fillSystemEmail(welcome.body, tokens))}</p>`,
           ctaLabel: `Open ${businessName}`,
           // Their trainer's own sign-in page, not ours. /c/<slug> wears the
           // trainer's logo and name; a white-labelled email that lands on a
