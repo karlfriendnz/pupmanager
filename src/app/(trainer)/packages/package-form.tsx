@@ -18,7 +18,7 @@ import { SessionSlotsEditor, newSlot, type SessionSlot } from '@/components/shar
 import { TicketTiersEditor, newTier, type TicketTier } from '@/components/shared/ticket-tiers'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
-import { User, Users, CalendarDays, X, ChevronDown, Check, Plus, MapPin } from 'lucide-react'
+import { User, Users, CalendarDays, X, ChevronDown, Check, Plus, MapPin, type LucideIcon } from 'lucide-react'
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 
@@ -27,6 +27,15 @@ export type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'o
 // The four things a trainer can create. A UI-level discriminator over the
 // persisted Package flags (isGroup / allowDropIn / sessionCount / recurrence).
 type OfferingKind = 'onetoone' | 'group' | 'dropin' | 'oneoff'
+
+// What each kind IS, in the trainer's words. A casual class is a group class
+// that takes single-session bookings, so it presets isGroup + allowDropIn.
+const OFFERING_KINDS = [
+  { key: 'onetoone', icon: User, label: '1:1 consult', desc: 'One-on-one sessions you book with a single client — grooming, a training session, a behaviour consult.' },
+  { key: 'group', icon: Users, label: 'Group class', desc: 'A cohort shares one schedule and roster and signs up for the whole course.' },
+  { key: 'dropin', icon: Users, label: 'Casual class', desc: 'People join one session at a time and pay per session — great for casual regulars.' },
+  { key: 'oneoff', icon: CalendarDays, label: 'One-off event', desc: 'A single event on one date — a workshop, seminar or meet-up people sign up to.' },
+] as const satisfies readonly { key: OfferingKind; icon: LucideIcon; label: string; desc: string }[]
 
 // One text field, one dropdown, so they line up down the form.
 const FIELD_CLASS = 'h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
@@ -379,15 +388,28 @@ export function PackageForm({
     if (existing.isEvent) return 'oneoff'
     return 'group'
   })
+  // Asking "what are you setting up?" only makes sense when the answer isn't
+  // already known. Arriving from Consults, Classes, Casual classes or Events
+  // the kind came with the link, so the question is noise — and worse, it
+  // invites a trainer to change what they already said they were making. It is
+  // only asked from the generic "New offering", where it is the FIRST step.
+  const needsKindStep = stepped && initialKind == null
+
   function selectKind(k: OfferingKind) {
     setKind(k)
     setIsGroup(k !== 'onetoone')
     setAllowDropIn(k === 'dropin')
     if (k === 'oneoff') setRecurrenceRule('')
+    // On its own step, choosing IS the step — move straight on to the details
+    // rather than making them reach for Next.
+    if (needsKindStep && currentKey === 'kind') setWstep(s => s + 1)
   }
   // Add-mode wizard: one section per step (a drop-in has no pricing step).
   // Editing shows every section on one page (stepped === false).
-  const stepKeys: string[] = ['start', 'schedule', ...(kind === 'dropin' ? [] : ['pricing']), 'settings']
+  const stepKeys: string[] = [
+    ...(needsKindStep ? ['kind'] : []),
+    'start', 'schedule', ...(kind === 'dropin' ? [] : ['pricing']), 'settings',
+  ]
   const [wstep, setWstep] = useState(0)
   const clampedStep = Math.min(wstep, stepKeys.length - 1)
   const currentKey = stepKeys[clampedStep]
@@ -644,44 +666,17 @@ export function PackageForm({
         </div>
       )}
 
-      {/* ── Start: name + what ───────────────────────────────────── */}
-      {onSection('start') && (
+      {/* ── Kind: what are you setting up? ───────────────────────────
+          Its own step, and only when the link didn't already say. Choosing
+          moves straight on, so it costs one tap. */}
+      {needsKindStep && onSection('kind') && (
       <SectionCard
-        step={stepNo('start')}
-        title="Details"
-        intro="Give your offering a clear name your clients will recognise, then pick what kind it is. Your choice sets up the right options in the next steps."
+        step={stepNo('kind')}
+        title="What are you setting up?"
+        intro="Pick what this offering is. Your choice sets up the right options in the next steps."
       >
-
-      <div className="md:col-span-2">
-        <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" autoFocus={stepped} error={errors.name?.message} {...register('name')} />
-      </div>
-
-      <div className="md:col-span-2">
-        <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
-        <RichTextEditor
-          value={watch('description') ?? ''}
-          onChange={html => setValue('description', isRichTextEmpty(html) ? '' : html, { shouldDirty: true })}
-          minHeight={120}
-          theme="light"
-        />
-      </div>
-
-      {/* Kind chooser — shown when adding; hidden when editing (locked in). */}
-      {stepped && (
-      <>
-      <div className="md:col-span-2">
-        <p className="text-sm font-medium text-slate-700 mb-2 mt-1">What are you setting up?</p>
-      </div>
-
-      {/* Choose what this IS. Drop-in is a group class that takes single-session
-          bookings, so it presets isGroup + allowDropIn. */}
-      <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-          {([
-            { key: 'onetoone', icon: User, label: '1:1 consult', desc: 'One-on-one sessions you book with a single client — grooming, a training session, a behaviour consult.' },
-            { key: 'group', icon: Users, label: 'Group class', desc: 'A cohort shares one schedule and roster and signs up for the whole course.' },
-            { key: 'dropin', icon: Users, label: 'Casual class', desc: 'People join one session at a time and pay per session — great for casual regulars.' },
-            { key: 'oneoff', icon: CalendarDays, label: 'One-off event', desc: 'A single event on one date — a workshop, seminar or meet-up people sign up to.' },
-          ] as const).map(o => {
+        <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          {OFFERING_KINDS.map(o => {
             const active = kind === o.key
             const Icon = o.icon
             return (
@@ -698,9 +693,32 @@ export function PackageForm({
               </button>
             )
           })}
-      </div>
-      </>
+        </div>
+      </SectionCard>
       )}
+
+      {/* ── Start: name ──────────────────────────────────────────── */}
+      {onSection('start') && (
+      <SectionCard
+        step={stepNo('start')}
+        title="Details"
+        intro="Give your offering a clear name your clients will recognise, and say what it involves."
+      >
+
+      <div className="md:col-span-2">
+        <Input label="Name" placeholder="e.g. Puppy Foundations · 6 sessions" autoFocus={stepped} error={errors.name?.message} {...register('name')} />
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="text-sm font-medium text-slate-700 block mb-1.5">Description (optional)</label>
+        <RichTextEditor
+          value={watch('description') ?? ''}
+          onChange={html => setValue('description', isRichTextEmpty(html) ? '' : html, { shouldDirty: true })}
+          minHeight={120}
+          theme="light"
+        />
+      </div>
+
       </SectionCard>
       )}
 

@@ -98,7 +98,7 @@ export function PackagesView({
             icon={<PackageIcon className="h-6 w-6" />}
             title="No consults yet"
             body="A consult is a bundle of 1:1 sessions you assign to a client in one go — set the count, spacing and price once, then reuse it."
-            action={{ href: '/offerings/new', label: 'New consult' }}
+            action={{ href: '/offerings/new?kind=onetoone', label: 'New consult' }}
           />
         ) : (
           <>
@@ -153,7 +153,7 @@ export function PackagesView({
               </SortableOfferingList>
             )}
 
-            <AddOfferingLink href="/offerings/new" label="New consult" />
+            <AddOfferingLink href="/offerings/new?kind=onetoone" label="New consult" />
           </>
         )}
       </OfferingPage>

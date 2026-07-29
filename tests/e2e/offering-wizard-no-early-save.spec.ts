@@ -63,7 +63,10 @@ test.describe('offering wizard — no save until asked', () => {
 
         await login(page, SEED.owner.email, SEED.owner.password)
         await page.goto('/offerings/new?kind=onetoone')
-        await expect(page.getByText('What are you setting up?')).toBeVisible()
+        // Arriving with the kind already chosen, the wizard opens ON the
+        // details — it doesn't ask what they're setting up a second time.
+        await expect(page.getByLabel('Name')).toBeVisible()
+        await expect(page.getByText('What are you setting up?')).toHaveCount(0)
 
         await page.getByLabel('Name').fill(name)
 
@@ -117,7 +120,10 @@ test.describe('offering wizard — no save until asked', () => {
       const writes = recordPackageWrites(page)
       await login(page, SEED.owner.email, SEED.owner.password)
       await page.goto('/offerings/new?kind=dropin')
-      await expect(page.getByText('What are you setting up?')).toBeVisible()
+      // Arriving with the kind already chosen, the wizard opens ON the
+      // details — it doesn't ask what they're setting up a second time.
+      await expect(page.getByLabel('Name')).toBeVisible()
+      await expect(page.getByText('What are you setting up?')).toHaveCount(0)
       await page.getByLabel('Name').fill(name)
 
       // A casual class is saved from writing junk only by its own slot-times

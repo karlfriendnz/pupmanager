@@ -540,6 +540,7 @@ export function TopBarControls({
                 const href = pathname.startsWith('/classes') ? '/offerings/new?kind=group'
                   : pathname.startsWith('/casual-classes') ? '/offerings/new?kind=dropin'
                   : pathname.startsWith('/events') ? '/offerings/new?kind=oneoff'
+                  : pathname.startsWith('/packages') ? '/offerings/new?kind=onetoone'
                   : '/offerings/new'
                 router.push(href)
               }}

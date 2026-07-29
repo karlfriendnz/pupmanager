@@ -12,6 +12,14 @@ export const metadata: Metadata = { title: 'New offering' }
 const KINDS = ['onetoone', 'group', 'dropin', 'oneoff'] as const
 type OfferingKind = (typeof KINDS)[number]
 
+// What to call the page, and where Back goes, once the kind is known.
+const KIND_PAGE: Record<OfferingKind, { title: string; list: string; listLabel: string }> = {
+  onetoone: { title: 'New consult', list: '/packages', listLabel: '1:1 consults' },
+  group: { title: 'New class', list: '/classes', listLabel: 'classes' },
+  dropin: { title: 'New casual class', list: '/casual-classes', listLabel: 'casual classes' },
+  oneoff: { title: 'New event', list: '/events', listLabel: 'events' },
+}
+
 export default async function NewPackagePage({ searchParams }: { searchParams: Promise<{ kind?: string }> }) {
   const sp = await searchParams
   const initialKind = KINDS.includes(sp.kind as OfferingKind) ? (sp.kind as OfferingKind) : undefined
@@ -45,9 +53,14 @@ export default async function NewPackagePage({ searchParams }: { searchParams: P
 
   return (
     <>
+      {/* When the link already said what they're making, the page says it too —
+          arriving at "New offering" after tapping "New consult" reads as having
+          landed somewhere else. */}
       <PageHeader
-        title="New offering"
-        back={{ href: '/packages', label: 'Back to offerings' }}
+        title={initialKind ? KIND_PAGE[initialKind].title : 'New offering'}
+        back={initialKind
+          ? { href: KIND_PAGE[initialKind].list, label: `Back to ${KIND_PAGE[initialKind].listLabel}` }
+          : { href: '/packages', label: 'Back to offerings' }}
       />
       <div className="p-4 md:p-8 w-full max-w-[872px] mx-auto pm-centered">
         <NewPackageForm sessionForms={sessionForms} promptConnect={promptConnect} region={region} initialKind={initialKind} />

@@ -57,6 +57,7 @@ export function FloatingCreateButton({
   const newOfferingHref = pathname.startsWith('/classes') ? '/offerings/new?kind=group'
     : pathname.startsWith('/casual-classes') ? '/offerings/new?kind=dropin'
     : pathname.startsWith('/events') ? '/offerings/new?kind=oneoff'
+    : pathname.startsWith('/packages') ? '/offerings/new?kind=onetoone'
     : '/offerings/new'
 
   type Choice = { icon: LucideIcon; label: string; hint: string; run: () => void }
