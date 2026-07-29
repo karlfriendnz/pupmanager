@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Trash2, Loader2, Check, Eye, Mail } from 'lucide-react'
+import { Trash2, Loader2, Check, Eye, Mail, RotateCcw } from 'lucide-react'
 import type { Editor } from '@tiptap/react'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { emailBodyToHtml, htmlHasText } from '@/lib/email-html'
-import { CLIENT_EMAIL_PLACEHOLDER_OPTIONS, CLIENT_INVITE_PLACEHOLDER_OPTIONS } from '@/lib/placeholder-labels'
+import { CLIENT_EMAIL_PLACEHOLDER_OPTIONS } from '@/lib/placeholder-labels'
 import { PlaceholderButtons, insertTokenAtCursor } from '@/components/shared/placeholder-buttons'
 
 type Template = {
@@ -31,46 +31,64 @@ const SAMPLE: Record<string, string> = {
 const fillTokens = (s: string, options: readonly { token: string }[]) =>
   options.reduce((out, { token }) => out.split(token).join(SAMPLE[token] ?? token), s)
 
-// Sentinel id for the pinned, non-deletable "Client invitation" entry. It is
-// backed by TrainerProfile.inviteTemplate (saved via PATCH /api/trainer/profile),
-// not the /api/email-templates CRUD, and has a body only (no subject).
-const INVITE_ID = '__invite__'
 
-const DEFAULT_INVITE_TEMPLATE = `Hi {{clientName}},
-
-I'd like to invite you to PupManager to help us track {{dogName}}'s training progress.
-
-Click below to get started!
-
-Your Trainer`
-
-type Draft = { id: string | null; name: string; category: string; subject: string; body: string; sortOrder: number }
+type Draft = {
+  id: string | null; name: string; category: string; subject: string; body: string; sortOrder: number
+  /** Set when this draft is one of OUR emails rather than a reusable template. */
+  systemKey?: string | null
+  /** Some system emails compose their own subject (the invite) — body only. */
+  subjectEditable?: boolean
+  /** That email's own tokens; a reusable template gets the generic set. */
+  tokens?: readonly { token: string; label: string }[]
+  /** Whether the trainer has already changed this one. */
+  customised?: boolean
+}
 const blankDraft = (): Draft => ({ id: null, name: '', category: '', subject: '', body: '', sortOrder: 0 })
 
-export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string | null }) {
+/** One of the platform's own emails, as the API describes it. */
+type SystemEmail = {
+  key: string; label: string; description: string
+  trigger: 'manual' | 'action' | 'scheduled'
+  placeholders: { token: string; label: string }[]
+  subjectEditable: boolean
+  subject: string; body: string
+  defaultSubject: string; defaultBody: string
+  customised: boolean
+}
+
+const TRIGGER_LABEL: Record<SystemEmail['trigger'], string> = {
+  manual: 'you send it',
+  action: 'sends itself',
+  scheduled: 'scheduled',
+}
+
+export function EmailTemplatesPanel() {
   const [templates, setTemplates] = useState<Template[] | null>(null)
-  const [invite, setInvite] = useState<string>(inviteTemplate ?? DEFAULT_INVITE_TEMPLATE)
+  const [systemEmails, setSystemEmails] = useState<SystemEmail[]>([])
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editorKey, setEditorKey] = useState(0)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const isInvite = draft?.id === INVITE_ID
+  // A system email is one of ours; everything else is a template the trainer
+  // wrote. The difference drives what the editor shows and where Save goes.
+  const isSystem = !!draft?.systemKey
+  const sysDef = systemEmails.find(e => e.key === draft?.systemKey) ?? null
   // Placeholder insertion targets: the subject box and the body editor.
   const subjectRef = useRef<HTMLInputElement | null>(null)
   const bodyEditorRef = useRef<Editor | null>(null)
   const lastFocused = useRef<'subject' | 'body'>('body')
 
-  // The invite is rendered by renderClientInviteEmail, which only knows two
-  // tokens — offering the rest would print them verbatim in a real invite.
-  const placeholderOptions = isInvite ? CLIENT_INVITE_PLACEHOLDER_OPTIONS : CLIENT_EMAIL_PLACEHOLDER_OPTIONS
+  // Each system email declares the tokens its renderer actually substitutes;
+  // offering the others would print them verbatim in a real send.
+  const placeholderOptions = (draft?.tokens ?? CLIENT_EMAIL_PLACEHOLDER_OPTIONS) as readonly { token: string; label: string }[]
 
   // Inserts the raw token, unchanged — the button text is the only thing
   // that's been translated into plain language.
   function insertPlaceholder(token: string) {
     if (!draft) return
-    if (lastFocused.current === 'subject' && !isInvite) {
+    if (lastFocused.current === 'subject' && draft.subjectEditable !== false) {
       patch({ subject: insertTokenAtCursor(subjectRef.current, draft.subject, token) })
       return
     }
@@ -82,6 +100,10 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
       .then(r => r.json())
       .then(d => setTemplates(d.templates ?? []))
       .catch(() => setError('Failed to load templates.'))
+    fetch('/api/system-emails')
+      .then(r => r.json())
+      .then(d => setSystemEmails(d.emails ?? []))
+      .catch(() => { /* the trainer's own templates still work without these */ })
   }, [])
 
   function open(t: Template | null) {
@@ -93,11 +115,30 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
     setEditorKey(k => k + 1)
   }
 
-  function openInvite() {
+  function openSystem(e: SystemEmail) {
     setError(null)
     setSavedAt(null)
-    setDraft({ id: INVITE_ID, name: 'Client invitation', category: '', subject: '', body: invite, sortOrder: -1 })
+    setDraft({
+      id: null, systemKey: e.key, name: e.label, category: '',
+      subject: e.subject, body: e.body, sortOrder: -1,
+      subjectEditable: e.subjectEditable, tokens: e.placeholders, customised: e.customised,
+    })
     setEditorKey(k => k + 1)
+  }
+
+  // Put our wording back. Deleting the override IS the reset, so the sender
+  // falls through to the default with nothing left behind.
+  async function resetSystem() {
+    if (!draft?.systemKey || !sysDef) return
+    setSaving(true)
+    try {
+      await fetch(`/api/system-emails?key=${encodeURIComponent(draft.systemKey)}`, { method: 'DELETE' })
+      const reverted = { ...sysDef, subject: sysDef.defaultSubject, body: sysDef.defaultBody, customised: false }
+      setSystemEmails(list => list.map(e => (e.key === reverted.key ? reverted : e)))
+      openSystem(reverted)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const patch = (p: Partial<Draft>) => setDraft(d => (d ? { ...d, ...p } : d))
@@ -105,22 +146,24 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
   async function save() {
     if (!draft) return
 
-    // Pinned invite entry: body only, min-20 chars, saved to TrainerProfile.
-    if (draft.id === INVITE_ID) {
+    // One of ours: saved as an override against its key, not as a new template.
+    if (draft.systemKey) {
       if ((draft.body ?? '').trim().length < 20) {
-        setError('The invite message must be at least 20 characters.')
+        setError('The message must be at least 20 characters.')
         return
       }
       setSaving(true)
       setError(null)
       try {
-        const res = await fetch('/api/trainer/profile', {
-          method: 'PATCH',
+        const res = await fetch('/api/system-emails', {
+          method: 'PUT',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ inviteTemplate: draft.body }),
+          body: JSON.stringify({ key: draft.systemKey, subject: draft.subject, body: draft.body }),
         })
         if (!res.ok) throw new Error('Save failed')
-        setInvite(draft.body)
+        setSystemEmails(list => list.map(e =>
+          e.key === draft.systemKey ? { ...e, subject: draft.subject, body: draft.body, customised: true } : e))
+        patch({ customised: true })
         setSavedAt(Date.now())
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Save failed')
@@ -196,23 +239,37 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
           <label htmlFor="pm-template-picker" className="sr-only">Choose an email template</label>
           <select
             id="pm-template-picker"
-            value={isInvite ? 'invite' : draft?.id ?? (draft ? '__new' : 'invite')}
+            value={draft?.systemKey ? `sys:${draft.systemKey}` : draft?.id ?? (draft ? '__new' : '')}
             disabled={templates === null}
             onChange={e => {
               const v = e.target.value
               if (v === '__new') { open(null); return }
-              if (v === 'invite') { openInvite(); return }
+              if (v.startsWith('sys:')) {
+                const sys = systemEmails.find(x => x.key === v.slice(4))
+                if (sys) openSystem(sys)
+                return
+              }
               const t = templates?.find(x => x.id === v)
               if (t) open(t)
             }}
             className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 disabled:opacity-60 sm:max-w-sm"
           >
-            <option value="invite">Client invitation · Default</option>
-            {templates?.map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-            {draft && !draft.id && !isInvite && <option value="__new">New template (unsaved)</option>}
-            <option value="__new">+ New template…</option>
+            {!draft && <option value="">Choose an email…</option>}
+            {/* Ours first — they are the ones that go out on their own. */}
+            <optgroup label="Emails we send for you">
+              {systemEmails.map(e => (
+                <option key={e.key} value={`sys:${e.key}`}>
+                  {e.label} · {e.customised ? 'your wording' : 'default'}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Your templates">
+              {templates?.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+              {draft && !draft.id && !draft.systemKey && <option value="__new">New template (unsaved)</option>}
+              <option value="__new">+ New template…</option>
+            </optgroup>
           </select>
           {templates === null && (
             <span className="inline-flex items-center gap-2 text-sm text-slate-400">
@@ -224,10 +281,22 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
         {/* Editor — full width below the picker. */}
         {draft ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-4">
-            {isInvite ? (
+            {isSystem ? (
               <div>
-                <h3 className="text-sm font-semibold text-slate-900">Client invitation</h3>
-                <p className="mt-0.5 text-xs text-slate-500">The default copy sent when you invite a client.</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-slate-900">{draft.name}</h3>
+                  {sysDef && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                      {TRIGGER_LABEL[sysDef.trigger]}
+                    </span>
+                  )}
+                  {draft.customised && (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      Your wording
+                    </span>
+                  )}
+                </div>
+                {sysDef && <p className="mt-0.5 text-xs text-slate-500">{sysDef.description}</p>}
               </div>
             ) : (
               <>
@@ -244,6 +313,13 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
                 </Field>
               </>
             )}
+            {/* A system email keeps its subject editable unless the sender
+                composes one (the invite builds its own from the business name). */}
+            {isSystem && draft.subjectEditable !== false && (
+              <Field label="Subject">
+                <input ref={subjectRef} value={draft.subject} onFocus={() => { lastFocused.current = 'subject' }} onChange={e => patch({ subject: e.target.value })} className={inputCls} />
+              </Field>
+            )}
             <div onFocusCapture={() => { lastFocused.current = 'body' }}>
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Message</label>
               <RichTextEditor key={editorKey} theme="light" value={draft.body} onEditorReady={editor => { bodyEditorRef.current = editor }} onChange={html => patch({ body: html })} minHeight={200} />
@@ -254,7 +330,7 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
             <div>
               <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5"><Eye className="h-3.5 w-3.5" /> Preview (sample data)</p>
               <div className="rounded-xl border border-slate-200 overflow-hidden">
-                {!isInvite && (
+                {(!isSystem || draft.subjectEditable !== false) && (
                   <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
                     <p className="text-sm font-semibold text-slate-900 truncate">{fillTokens(draft.subject, placeholderOptions) || '(no subject)'}</p>
                   </div>
@@ -270,9 +346,18 @@ export function EmailTemplatesPanel({ inviteTemplate }: { inviteTemplate: string
             <div className="flex items-center gap-3 pt-1">
               <Button type="button" onClick={save} loading={saving}>
                 {!saving && <Check className="h-4 w-4" />}
-                {isInvite ? 'Save template' : draft.id ? 'Save changes' : 'Create template'}
+                {isSystem ? 'Save changes' : draft.id ? 'Save changes' : 'Create template'}
               </Button>
-              {!isInvite && (
+              {/* Ours can't be deleted — there is no such thing as a platform
+                  without a "confirm your email". Putting our wording back is
+                  the equivalent, and only means anything once it's changed. */}
+              {isSystem ? (
+                draft.customised && (
+                  <button type="button" onClick={resetSystem} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100">
+                    <RotateCcw className="h-4 w-4" /> Back to the default
+                  </button>
+                )
+              ) : (
                 <button type="button" onClick={remove} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50">
                   <Trash2 className="h-4 w-4" /> {draft.id ? 'Delete' : 'Discard'}
                 </button>

@@ -6,7 +6,6 @@ import { TrainerSettingsForm } from './trainer-settings-form'
 import { SettingsTabs } from './settings-tabs'
 import { NotificationsPanel } from './notifications-panel'
 import { EmailTemplatesPanel } from './email-templates-panel'
-import { SystemEmailsSection } from './system-emails-section'
 import { TeamPanel } from './team-panel'
 import { BillingPanel } from './billing-panel'
 import { DeleteAccountSection } from './delete-account-section'
@@ -156,12 +155,7 @@ export default async function TrainerSettingsPage() {
         integration={can('settings.edit', ctx.role, ctx.permissions) ? <IntegrationTab companyId={ctx.companyId} /> : undefined}
         addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
         daycare={daycareEnabled ? <DaycareTab companyId={ctx.companyId} /> : undefined}
-        emails={
-          <div className="space-y-6">
-            <SystemEmailsSection />
-            <EmailTemplatesPanel inviteTemplate={trainerProfile?.inviteTemplate ?? null} />
-          </div>
-        }
+        emails={<EmailTemplatesPanel />}
         team={<TeamPanel />}
         payments={ctx.role === 'OWNER' ? <PaymentsPanel companyId={ctx.companyId} /> : undefined}
         xero={xeroEnabled ? <XeroTab companyId={ctx.companyId} /> : undefined}
