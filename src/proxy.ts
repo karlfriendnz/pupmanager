@@ -34,6 +34,20 @@ const PUBLIC_PATHS = [
   '/.well-known/assetlinks.json',
 ]
 
+/**
+ * The review widget's API, which an AGENT writes to by curl with no session — that
+ * is the whole point of it, and the middleware was bouncing those PATCHes to
+ * /login. Added SEPARATELY from PUBLIC_PATHS, and only when review tools are on,
+ * so this can never widen the surface of a deployed instance: in production the
+ * list is empty and /api/review 404s inside the routes anyway.
+ *
+ * Kept as its own list rather than a conditional entry in PUBLIC_PATHS so it reads
+ * as what it is — a dev-only hole, not a public endpoint.
+ */
+const DEV_REVIEW_PATHS = process.env.NODE_ENV !== 'production' || process.env.REVIEW_TOOLS === '1'
+  ? ['/api/review']
+  : []
+
 // Trainer-only route prefixes
 const TRAINER_PATHS = [
   '/dashboard', '/clients', '/schedule', '/templates', '/library',
@@ -65,7 +79,7 @@ export default auth((req) => {
     return NextResponse.redirect(`https://${CANONICAL_HOST}${target}${search}`)
   }
 
-  const isPublic = PUBLIC_PATHS.some(p => pathname.startsWith(p))
+  const isPublic = [...PUBLIC_PATHS, ...DEV_REVIEW_PATHS].some(p => pathname.startsWith(p))
 
   if (!req.auth && !isPublic) {
     // Landing on the root signed out means "show me the app", not "I have an

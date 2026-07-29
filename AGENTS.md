@@ -4,6 +4,63 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
+# AT THE START OF EVERY SESSION — arm the review watch
+
+Karl directs work through the in-app review widget: he pins comments on the real
+screens, ticks the ones he wants built, and clicks **"Send ticked notes to
+Claude"**, which writes `docs/review-tasks.md`. **Nothing in the browser can wake a
+CLI**, so watch that file yourself, at the start of every session, with a
+background Bash command:
+
+```
+f=docs/review-tasks.md; prev=""; [ -f "$f" ] && prev=$(md5 -q "$f"); while true; do sleep 3; cur=""; [ -f "$f" ] && cur=$(md5 -q "$f"); if [ -n "$cur" ] && [ "$cur" != "$prev" ]; then n=$(grep -c '^### ' "$f"); echo "NEW REVIEW TASKS: docs/review-tasks.md updated — $n task(s) sent."; prev="$cur"; fi; done
+```
+
+Run it with `run_in_background: true` and a description of "new review tasks". When
+it reports, **read the brief** and follow the instructions inside it — which are:
+
+1. **Triage first.** Tell Karl in one short list which items you understand and
+   which you don't. He would much rather answer three questions up front than
+   review three wrong changes. Don't start until he replies.
+2. **Then one at a time**, in the order he agrees. Mark each item off before
+   starting the next — the point of marking is that he checks it while you build
+   the following one. Never batch a dozen changes and report at the end.
+3. **Mark it back** with a PATCH to the URL the brief names (it stamps the port
+   the app is actually on — don't assume 7777):
+   `{"claudeStatus":"done","claudeNote":"what changed, one line"}`. This does NOT
+   resolve the comment; a chip appears against it and Karl signs it off himself.
+4. **Anything you can't place — ASK**, don't guess:
+   `{"claudeStatus":"needs_info","claudeNote":"the question, one line"}`. A change
+   to the wrong element is worse than an unactioned note, and this puts the
+   question on the comment where he'll see it.
+
+**Read the screenshots.** A note with an image is a note whose detail is IN the
+image. The brief cites them as repo-relative paths (`public/review-uploads/…`)
+precisely so you can open them with Read.
+
+## Helping the widget point at the right thing
+
+A comment is only as useful as the ability to find what it points at. Two cheap
+habits make every future pin land:
+
+**1. Say which view you're on** — put `data-review-scope` on any container that
+swaps content, so a pin records which tab or step it was made on. Without it every
+view of a tabbed screen piles onto one indistinguishable page key.
+
+```tsx
+<div data-review-scope={`Tab: ${activeTab}`}>
+<div data-review-scope={`Step ${i + 1} of ${steps.length} · ${step.label}`}>
+```
+
+**2. Name your sections and fields** — a real `<h2>`/`<h3>` on a card and a
+`<label>` on a field are what the capture reads. They are also just correct HTML,
+so this costs nothing.
+
+The capture, the page key and the brief generator are shared with fm-events —
+`review-core` (https://github.com/karlfriendnz/review-core). Fix a capture rule
+THERE, not here, or the two apps drift.
+
+
 # PupManager repo layout
 
 This repo holds the main app (`app.pupmanager.com`). The marketing site

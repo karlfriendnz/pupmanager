@@ -6,8 +6,8 @@
  *
  * Ported from fm-events, where it is how Karl directs work: he walks the app,
  * pins notes on the controls he means, ticks the ones he wants built, and clicks
- * Send. The capture in lib/review-target is what makes a two-word note
- * actionable later; this component is the surface over it.
+ * Send. The capture (lib/review-core, shared with fm-events) is what makes a
+ * two-word note actionable later; this component is the surface over it.
  *
  * Dev-only — mounted behind reviewToolsEnabled().
  */
@@ -22,7 +22,9 @@ import {
 import {
   describeElement, describePoint, describeTargetLine, pageKeyFor,
   resolveTargetElement, type ReviewTarget,
-} from '@/lib/review-target'
+} from '@/lib/review-core'
+// Side-effect import: registers this app's markup conventions with the capture.
+import '@/lib/review-config'
 
 interface Attachment { path: string; name?: string | null }
 
@@ -57,6 +59,12 @@ export function ReviewWidget({ authorName }: { authorName: string | null }) {
     [pathname, searchParams],
   )
   const pageKey = useMemo(() => pageKeyFor(href), [href])
+
+  // Portals need a real document. A 'use client' component is still rendered on
+  // the SERVER first, where document doesn't exist — so nothing portals until
+  // after mount.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   const [open, setOpen] = useState(false)
   const [pinning, setPinning] = useState(false)
@@ -282,6 +290,8 @@ export function ReviewWidget({ authorName }: { authorName: string | null }) {
   const draftPos = draft
     ? { left: draft.x - window.scrollX, top: draft.y - window.scrollY }
     : null
+
+  if (!mounted) return null
 
   return (
     <>

@@ -1,3 +1,11 @@
+// GENERATED — do not edit here.
+//
+// Copied from the shared review-core package (target.ts, v0.1.1) by
+// scripts/sync-review-core.mjs. fm-events reads the same source, so a fix made
+// HERE is a fix that only PupManager gets. Change it in review-core:
+//   https://github.com/karlfriendnz/review-core
+// then re-run `node scripts/sync-review-core.mjs` and commit the result.
+
 /**
  * What did the reviewer actually CLICK?
  *
@@ -6,60 +14,16 @@
  * nothing. This module turns the clicked element into a sentence a human (or an
  * agent) can act on: which field, in which section, rendered by which component.
  *
- * DELIBERATELY STANDALONE — no imports, no framework types, nothing app-specific
- * except the class names it *looks* for. It touches only `document` and the
- * element handed to it. Ported from fm-events, where the same file backs the same
- * widget; keeping it dependency-free is what let it move at all.
+ * DELIBERATELY DEPENDENCY-FREE — it touches only `document` and the element handed
+ * to it. That is what lets it serve a Vue app, a React app and (one day) a browser
+ * extension from one copy. Everything app-specific is passed in via
+ * `configureReviewTarget`; nothing app-specific is hardcoded here.
  *
- * The React lookup is a bonus, not a dependency: component names come off the
- * fiber React attaches to DOM nodes, which is a dev-build detail. Absence is
- * expected in production and is never an error — a capture failure must never
- * stop someone leaving a comment.
+ * Every lookup is best-effort. A capture failure must never stop someone leaving
+ * a comment.
  */
-
-export interface ReviewTarget {
-  /** Tag name, lowercased — 'button', 'input', … */
-  tag: string
-  /** Short, readable CSS-ish path (last 4 levels) for eyeballing + re-finding. */
-  selector: string
-  /** The element's own visible text, trimmed and capped. */
-  text: string | null
-  /** The FIELD this element belongs to ("How many dogs fit"). */
-  label: string | null
-  /** The SECTION/card it sits in ("Parts of the day"). */
-  section: string | null
-  /** Title of the dialog it is inside, when it is inside one. */
-  dialog: string | null
-  /**
-   * WHICH VIEW of the page this was — "Tab: Offerings", "Step 2 of 4". A tabbed
-   * screen is several views sharing one route, so without this every tab's
-   * comments pile onto one indistinguishable page. Declared by the page via
-   * `data-review-scope`, with a generic active-tab sniff as the fallback so this
-   * also works on screens that declare nothing.
-   */
-  scope: string | null
-  placeholder: string | null
-  /** Nearest owning component ('DaycareDaySheet'). Dev builds only. */
-  component: string | null
-  /** Component ancestry, nearest first — the render path to this element. */
-  componentChain: string[]
-  /** Full URL at capture time (the page key drops the query + ids). */
-  url: string
-  /**
-   * Structural nth-child path from the document root. This is what lets a pin
-   * RE-FIND its element later: unlike `selector` it is unambiguous, and unlike
-   * (x, y) it is unaffected by the window resizing, a section collapsing, or
-   * content above reflowing.
-   */
-  domPath: string
-  /**
-   * Where in the element the click landed, as a 0..1 fraction of its box. The pin
-   * is redrawn at rect + (offset × size), so it keeps its spot on the thing it
-   * points at as that thing changes size.
-   */
-  offsetX: number
-  offsetY: number
-}
+import { reviewTargetConfig } from './config'
+import type { ReviewTarget } from './types'
 
 const MAX_TEXT = 120
 const MAX_CLIMB = 8
@@ -76,8 +40,8 @@ function clean(s: string | null | undefined): string | null {
 function ownText(el: Element): string | null {
   const parts: string[] = []
   el.childNodes.forEach(n => {
-    if (n.nodeType === Node.TEXT_NODE) parts.push(n.textContent || '')
-    else if (n.nodeType === Node.ELEMENT_NODE) {
+    if (n.nodeType === 3 /* TEXT_NODE */) parts.push(n.textContent || '')
+    else if (n.nodeType === 1 /* ELEMENT_NODE */) {
       const e = n as Element
       if (!/^(button|input|select|textarea|svg)$/i.test(e.tagName)) parts.push(e.textContent || '')
     }
@@ -85,19 +49,29 @@ function ownText(el: Element): string | null {
   return clean(parts.join(' '))
 }
 
+/** First match among a list of selectors, relative to `host`, that isn't an
+ *  ancestor of `el` (a heading that CONTAINS the element isn't its heading). */
+function firstMatch(host: Element, selectors: string[], el: Element): Element | null {
+  for (const sel of selectors) {
+    let found: Element | null = null
+    try { found = host.querySelector(sel) } catch { continue }
+    if (found && !found.contains(el)) return found
+  }
+  return null
+}
+
 /**
  * A short CSS path. Not guaranteed unique — it exists to be READ, and to give a
- * rough re-find hint. Ids and the first meaningful class only; Tailwind utility
- * soup is filtered out because 'flex items-center gap-2' identifies nothing.
+ * rough re-find hint. Ids and the first meaningful class only; utility-CSS soup is
+ * filtered out because 'flex items-center gap-2' identifies nothing.
  */
 function shortSelector(el: Element): string {
+  const { utilityClassPattern } = reviewTargetConfig()
   const seg = (e: Element): string => {
     if (e.id) return `#${e.id}`
     const tag = e.tagName.toLowerCase()
     const klass = Array.from(e.classList).find(c =>
-      !/^(p|m|px|py|mx|my|mt|mb|ml|mr|w|h|gap|flex|grid|text|bg|border|rounded|shadow|absolute|relative|fixed|sticky|top|left|right|bottom|z|min|max|overflow|items|justify|content|space|divide|hidden|block|inline|truncate|tabular|font|leading|tracking|ring|outline|cursor|transition|hover|focus|group|sm:|md:|lg:|xl:)[-:]?/.test(c)
-      && c.length > 2 && !/^(ng|v)-/.test(c),
-    )
+      !utilityClassPattern.test(c) && c.length > 2 && !/^(ng|v)-/.test(c))
     return klass ? `${tag}.${klass}` : tag
   }
   const path: string[] = []
@@ -110,7 +84,7 @@ function shortSelector(el: Element): string {
 }
 
 /**
- * Unambiguous structural path: 'html:0>body:1>div:2>main>button:3'. Uses ids as
+ * Unambiguous structural path: 'html:0>body:1>div:2>button:3'. Uses ids as
  * shortcuts where present (an id makes everything above it moot).
  */
 function domPathOf(el: Element): string {
@@ -162,21 +136,21 @@ export function elementFromDomPath(path: string | null | undefined): Element | n
  * Does this element still look like the thing that was pinned?
  *
  * Load-bearing, because comments are keyed by ROUTE PATTERN — a pin left on one
- * client's screen shows on every client's. A different record renders a different
- * DOM, so the stored structural path can land on a real element that is simply
- * the wrong one. Matching the identity we captured catches that; without this the
- * pin would sit confidently on the wrong control.
+ * record's screen shows on every record's. A different record renders a different
+ * DOM, so the stored structural path can land on a real element that is simply the
+ * wrong one. Matching the identity we captured catches that; without this the pin
+ * would sit confidently on the wrong control.
  */
 function looksLikeTarget(el: Element, t: ReviewTarget): boolean {
   if (el.tagName.toLowerCase() !== t.tag) return false
-  // LABEL is identity; TEXT is often just the current VALUE. A limit field reads
-  // "8" — change it to "6" and a text comparison decides this is a different
-  // element, so the pin abandons the control it was placed on. When we know the
-  // field's name, that alone decides.
+  // LABEL is identity; TEXT is often just the current VALUE. A time field reads
+  // "9:00 am" — change it to "10:00 am" and a text comparison decides this is a
+  // different element, so the pin abandons the control it was placed on. When we
+  // know the field's name, that alone decides.
   if (t.label) return findLabel(el) === t.label
   if (t.text) return clean(el.textContent) === t.text
-  // Nothing distinctive at all — the structural path is all there is, and
-  // trusting it beats losing the pin.
+  // Nothing distinctive at all — the structural path is all there is, and trusting
+  // it beats losing the pin.
   return true
 }
 
@@ -194,7 +168,7 @@ export function resolveTargetElement(t: ReviewTarget | null | undefined): Elemen
     if (!t.text && !t.label) return null
     const candidates = Array.from(document.querySelectorAll(t.tag))
     // Prefer a candidate that agrees on label AND section — on a screen with
-    // repeated rows ("Limit" ×7) the section is what tells them apart.
+    // repeated rows ("Amount" ×10) the section is what tells them apart.
     const strong = candidates.find(el =>
       (!t.label || findLabel(el) === t.label)
       && (!t.text || clean(el.textContent) === t.text)
@@ -207,20 +181,20 @@ export function resolveTargetElement(t: ReviewTarget | null | undefined): Elemen
 }
 
 /** The field name for this element, by decreasing reliability. */
-function findLabel(el: Element): string | null {
+export function findLabel(el: Element): string | null {
   const aria = clean(el.getAttribute('aria-label'))
   if (aria) return aria
 
-  // A BUTTON IS NAMED BY ITS OWN TEXT. Everything below looks for a label
-  // pointing AT the element — form-field conventions a button matches none of.
-  // Without this a pin on a button came back with no name, and "Offerings ›
-  // button" is unactionable on a screen holding five of them.
+  // A BUTTON IS NAMED BY ITS OWN TEXT. Everything below looks for a label pointing
+  // AT the element — form-field conventions a button matches none of. Without this
+  // a pin on a button came back with no name, and "Settings › button" is
+  // unactionable on a screen holding five of them.
   const tag = el.tagName.toLowerCase()
   if (tag === 'button' || tag === 'a' || tag === 'summary' || el.getAttribute('role') === 'button') {
     const own = clean(el.textContent)
     if (own) return own
     // An icon-only button has no text — fall back to what the tooltip says.
-    const tip = clean(el.getAttribute('title') || el.getAttribute('aria-labelledby'))
+    const tip = clean(el.getAttribute('title'))
     if (tip) return tip
   }
 
@@ -231,7 +205,8 @@ function findLabel(el: Element): string | null {
   }
 
   if (el.id) {
-    const forLabel = document.querySelector(`label[for="${CSS.escape(el.id)}"]`)
+    const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(el.id) : el.id
+    const forLabel = document.querySelector(`label[for="${escaped}"]`)
     if (forLabel) { const t = clean(forLabel.textContent); if (t) return t }
   }
 
@@ -239,21 +214,36 @@ function findLabel(el: Element): string | null {
   if (wrapping) { const t = clean(wrapping.textContent); if (t) return t }
 
   // Climb, looking for a label that belongs to this row rather than the page.
+  const { labelSelectors } = reviewTargetConfig()
   let cur: Element | null = el.parentElement
   for (let i = 0; cur && i < MAX_CLIMB; i++) {
-    const found = cur.querySelector(':scope > label, :scope > .field-label, :scope > .text-sm.font-medium, :scope > .text-xs.font-semibold')
-    if (found && !found.contains(el)) { const t = clean(found.textContent); if (t) return t }
+    const found = firstMatch(cur, labelSelectors, el)
+    if (found) { const t = clean(found.textContent); if (t) return t }
     cur = cur.parentElement
   }
   return null
 }
 
+/**
+ * A section NAME is short. Anything longer is not a heading — it's a container
+ * whose text got scraped, and the whole page's nav reading as the section is worse
+ * than no section at all. (Found on a screen whose layout wraps its nav in a
+ * `<header>`: the capture came back with every menu item glued together.)
+ */
+const MAX_SECTION = 60
+
 /** The section/card heading this element sits under. */
-function findSection(el: Element): string | null {
+export function findSection(el: Element): string | null {
+  const { sectionSelectors } = reviewTargetConfig()
   let cur: Element | null = el.parentElement
   for (let i = 0; cur && i < MAX_CLIMB + 4; i++) {
-    const head = cur.querySelector(':scope > [data-review-section], :scope > .section-title, :scope > h1, :scope > h2, :scope > h3, :scope > header, :scope > div > .section-title, :scope > div > h2, :scope > div > h3')
-    if (head && !head.contains(el)) { const t = ownText(head); if (t) return t }
+    const head = firstMatch(cur, sectionSelectors, el)
+    if (head) {
+      const t = ownText(head)
+      // Keep climbing rather than returning junk: a nearer container that scraped
+      // badly shouldn't stop us finding the real heading further up.
+      if (t && t.length <= MAX_SECTION) return t
+    }
     cur = cur.parentElement
   }
   return null
@@ -263,12 +253,12 @@ function findSection(el: Element): string | null {
  * Which VIEW of the page we are looking at — the open tab, the wizard step.
  *
  * Two sources, in order of trust:
- *  1. `data-review-scope` declared by the page. One attribute on a tab shell
+ *  1. `data-review-scope` declared by the page. One attribute on a wizard shell
  *     covers every screen built on it; nothing else has to know.
  *  2. A generic sniff for the active item of a tab/step strip. Weaker, but it
- *     needs no cooperation — which is what makes this work on any screen.
+ *     needs no cooperation — which is what makes this work on a foreign site.
  */
-function findScope(el: Element): string | null {
+export function findScope(el: Element): string | null {
   const declared: string[] = []
   let cur: Element | null = el
   for (let i = 0; cur && i < 20; i++) {
@@ -282,66 +272,26 @@ function findScope(el: Element): string | null {
   // document still tells us which view we are on.
   const holders = Array.from(document.querySelectorAll('[data-review-scope]'))
   if (holders.length === 1) {
-    const t = clean(holders[0].getAttribute('data-review-scope'))
+    const t = clean(holders[0]!.getAttribute('data-review-scope'))
     if (t) return t
   }
 
-  const active = document.querySelector('[aria-current="step"], [aria-current="page"], [aria-selected="true"]')
+  const active = document.querySelector(reviewTargetConfig().activeStepSelectors.join(', '))
   const t = clean(active?.textContent)
   return t && t.length <= 60 ? t : null
 }
 
-/** Title of the enclosing modal — a full-screen sheet or a role=dialog. */
-function findDialog(el: Element): string | null {
-  const host = el.closest('[role="dialog"], [aria-modal="true"], [data-review-dialog]')
+/** Title of the enclosing modal, when there is one. */
+export function findDialog(el: Element): string | null {
+  const { dialogSelectors, dialogTitleSelectors } = reviewTargetConfig()
+  const host = el.closest(dialogSelectors.join(', '))
   if (!host) return null
-  const title = host.querySelector('[data-review-dialog-title], h1, h2')
-  return clean(title?.textContent) || 'dialog'
-}
-
-/**
- * Walk React's component ancestry off the DOM node.
- *
- * React tags host nodes with a `__reactFiber$<hash>` key; the fiber's `return`
- * chain is the render path. Named function and class components are the useful
- * ones — host elements ('div') and the anonymous wrappers React inserts are not
- * somewhere anyone can go and edit.
- *
- * There is no file path here: React 19 dropped `_debugSource`, so unlike the Vue
- * original this reports names only. The selector, label and section are what
- * actually address the element; the chain is for orientation.
- */
-function findComponents(el: Element): { name: string | null; chain: string[] } {
-  const empty = { name: null, chain: [] as string[] }
-  try {
-    let fiber: unknown = null
-    let cur: Element | null = el
-    for (let i = 0; cur && i < MAX_CLIMB + 6; i++) {
-      const key = Object.keys(cur).find(k => k.startsWith('__reactFiber$'))
-      if (key) { fiber = (cur as unknown as Record<string, unknown>)[key]; break }
-      cur = cur.parentElement
-    }
-    if (!fiber) return empty
-
-    const chain: string[] = []
-    let node = fiber as { type?: unknown; return?: unknown } | null
-    for (let i = 0; node && i < 30; i++) {
-      const type = node.type as { name?: string; displayName?: string } | string | null | undefined
-      const label = typeof type === 'function' || (type && typeof type === 'object')
-        ? ((type as { displayName?: string; name?: string }).displayName
-          || (type as { name?: string }).name
-          || null)
-        : null
-      // Skip host elements and React's internal wrappers.
-      if (label && !/^(_|Fragment|Suspense|Provider|Consumer)/.test(label) && chain[chain.length - 1] !== label) {
-        chain.push(label)
-      }
-      node = node.return as { type?: unknown; return?: unknown } | null
-    }
-    return { name: chain[0] ?? null, chain: chain.slice(0, 6) }
-  } catch {
-    return empty
+  for (const sel of dialogTitleSelectors) {
+    const title = host.querySelector(sel)
+    const t = clean(title?.textContent)
+    if (t) return t
   }
+  return 'dialog'
 }
 
 /**
@@ -353,9 +303,13 @@ export function describeElement(
   el: Element | null,
   point?: { clientX: number; clientY: number } | null,
 ): ReviewTarget | null {
-  if (!el || !(el instanceof Element)) return null
+  if (!el || typeof Element === 'undefined' || !(el instanceof Element)) return null
   try {
-    const comp = findComponents(el)
+    const resolver = reviewTargetConfig().resolveComponents
+    let comp = { name: null as string | null, file: null as string | null, chain: [] as string[] }
+    if (resolver) {
+      try { comp = resolver(el) } catch { /* a framework probe must never cost a comment */ }
+    }
     let offsetX = 0.5
     let offsetY = 0.5
     if (point) {
@@ -376,6 +330,7 @@ export function describeElement(
       scope: findScope(el),
       placeholder: clean(el.getAttribute('placeholder')),
       component: comp.name,
+      componentFile: comp.file,
       componentChain: comp.chain,
       url: typeof location !== 'undefined' ? location.href : '',
     }
@@ -394,38 +349,16 @@ export function describePoint(clientX: number, clientY: number): ReviewTarget | 
 }
 
 /**
- * One human-readable line: "Offerings › Parts of the day › button 'Add a part'".
+ * One human-readable line: "Event info › Who can see it › button 'Public'".
  * Used in the panel and in the exported brief.
  */
 export function describeTargetLine(t: ReviewTarget | null | undefined): string {
   if (!t) return ''
-  // A step is usually named after the section it holds, so scope and section
-  // repeat ("Tab: Daycare › Daycare"). Drop the echo.
+  // A wizard step is usually named after the section it holds, so scope and
+  // section repeat ("Step 1 · Event info › Event info"). Drop the echo.
   const section = t.section && !(t.scope || '').includes(t.section) ? t.section : null
   const parts = [t.scope, t.dialog && `dialog "${t.dialog}"`, section, t.label].filter(Boolean)
   const what = t.text && t.text.length <= 40 ? `${t.tag} "${t.text}"` : t.tag
   parts.push(what)
   return parts.join(' › ')
-}
-
-/**
- * The key a comment is stored against: the route with record ids replaced by a
- * placeholder, so a pin left on one client's screen is a note about THAT SCREEN
- * rather than about that client. Query strings go — except `tab`, which selects
- * which view you are looking at and is therefore part of the screen's identity.
- */
-export function pageKeyFor(href: string): string {
-  try {
-    const u = new URL(href, 'http://x')
-    const path = u.pathname
-      // cuid/cuid2 and uuid ids become :id.
-      .replace(/\/c[a-z0-9]{20,}/gi, '/:id')
-      .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '/:id')
-      .replace(/\/\d+(?=\/|$)/g, '/:id')
-      .replace(/\/+$/, '') || '/'
-    const tab = u.searchParams.get('tab')
-    return tab ? `${path}?tab=${tab}` : path
-  } catch {
-    return href
-  }
 }

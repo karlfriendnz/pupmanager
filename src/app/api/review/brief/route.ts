@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { prisma } from '@/lib/prisma'
 import { reviewToolsEnabled } from '@/lib/review-enabled'
-import { buildBriefMarkdown, selectForBrief, type BriefComment } from '@/lib/review-brief'
+import { buildBriefMarkdown, selectForBrief, type BriefComment } from '@/lib/review-core'
 
 // POST /api/review/brief — write the approved review comments out as a task brief
 // at docs/review-tasks.md, and return the markdown.
@@ -75,7 +75,12 @@ export async function POST(req: Request) {
   // Stamp the origin this was served from into the brief, so the hand-back
   // PATCHes name the port the app is ACTUALLY on.
   const baseUrl = new URL(req.url).origin
-  const { markdown, taskCount, pageCount } = buildBriefMarkdown(comments, { pageKey, baseUrl })
+  const { markdown, taskCount, pageCount } = buildBriefMarkdown(comments, {
+    pageKey,
+    baseUrl,
+    // Where the agent's hand-back lands in THIS app.
+    patchPath: '/api/review/comments/<id>',
+  })
 
   const file = join(process.cwd(), BRIEF_PATH)
   await mkdir(dirname(file), { recursive: true })

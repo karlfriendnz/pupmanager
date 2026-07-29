@@ -1,3 +1,11 @@
+// GENERATED — do not edit here.
+//
+// Copied from the shared review-core package (brief.ts, v0.1.1) by
+// scripts/sync-review-core.mjs. fm-events reads the same source, so a fix made
+// HERE is a fix that only PupManager gets. Change it in review-core:
+//   https://github.com/karlfriendnz/review-core
+// then re-run `node scripts/sync-review-core.mjs` and commit the result.
+
 /**
  * Turn open review comments into a task brief an agent can work from.
  *
@@ -8,25 +16,15 @@
  * together so each item reads as an instruction with an address.
  *
  * Output is markdown on purpose: it is the format a human can skim in the repo
- * and an agent can consume without a parser. Ported from fm-events.
+ * and an agent can consume without a parser.
+ *
+ * The hand-back instructions name an ENDPOINT the host app has to provide, so its
+ * shape is passed in rather than assumed — fm-events answers on
+ * /api/v1/reviews/comments/:id, PupManager on /api/review/comments/:id.
  */
 
-/** The shape this needs off a ReviewComment row — a subset, so it stays testable. */
-export interface BriefComment {
-  id: string
-  seq: number | null
-  pageKey: string
-  body: string
-  x: number | null
-  y: number | null
-  parentId: string | null
-  authorName: string | null
-  context: Record<string, unknown> | null
-  attachments: { path: string; name?: string | null }[] | null
-  claudeStatus: string | null
-  claudeNote: string | null
-  createdAt: Date | string | null
-}
+import type { BriefComment } from './types'
+export type { BriefComment }
 
 /** One line: "Tab: Daycare › Parts of the day › button 'Add a part'". */
 function whereLine(ctx: Record<string, unknown> | null): string | null {
@@ -71,6 +69,12 @@ export interface BriefOptions {
    * thing that knows its own address, so it says.
    */
   baseUrl?: string | null
+  /**
+   * Path template for marking one comment, with `<id>` where the id goes. The two
+   * apps mount their review API in different places; the brief has to name the
+   * real one or every hand-back 404s.
+   */
+  patchPath?: string
 }
 
 export function buildBriefMarkdown(comments: BriefComment[], opts: BriefOptions = {}): {
@@ -112,7 +116,8 @@ export function buildBriefMarkdown(comments: BriefComment[], opts: BriefOptions 
     })
   }
 
-  const base = opts.baseUrl || 'http://localhost:7777'
+  const base = opts.baseUrl || 'http://localhost:3000'
+  const patchPath = opts.patchPath ?? '/api/review/comments/<id>'
 
   const L: string[] = []
   L.push(`# Review tasks — ${roots.length} open across ${byPage.size} page${byPage.size === 1 ? '' : 's'}`)
@@ -138,7 +143,7 @@ export function buildBriefMarkdown(comments: BriefComment[], opts: BriefOptions 
   L.push('against the comment in the panel and Karl signs it off himself:')
   L.push('')
   L.push('```')
-  L.push(`curl -X PATCH ${base}/api/review/comments/<id> \\`)
+  L.push(`curl -X PATCH ${base}${patchPath} \\`)
   L.push(`  -H 'content-type: application/json' \\`)
   L.push(`  -d '{"claudeStatus":"done","claudeNote":"what changed, one line"}'`)
   L.push('```')
@@ -148,7 +153,7 @@ export function buildBriefMarkdown(comments: BriefComment[], opts: BriefOptions 
   L.push('the comment itself where Karl will see it:')
   L.push('')
   L.push('```')
-  L.push(`curl -X PATCH ${base}/api/review/comments/<id> \\`)
+  L.push(`curl -X PATCH ${base}${patchPath} \\`)
   L.push(`  -H 'content-type: application/json' \\`)
   L.push(`  -d '{"claudeStatus":"needs_info","claudeNote":"the question, one line"}'`)
   L.push('```')
