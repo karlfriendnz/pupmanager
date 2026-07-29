@@ -11,6 +11,7 @@ import {
   ticketTierSchema, replaceTicketTiers,
 } from '@/lib/package-slots'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
+import { resolvePackagePricing } from '@/lib/session-pricing'
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -24,6 +25,9 @@ const updateSchema = z.object({
   sessionType: z.enum(['IN_PERSON', 'VIRTUAL']).optional(),
   priceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   specialPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  // Priced by the session. The total is re-derived from it below — including
+  // when only the session count moves — so it can never go stale against it.
+  pricePerSessionCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   color: z.enum(['blue', 'emerald', 'amber', 'rose', 'purple', 'orange', 'teal', 'indigo', 'pink', 'cyan']).nullable().optional(),
   defaultSessionFormId: z.string().nullable().optional(),
   requireSessionNotes: z.boolean().optional(),
@@ -90,7 +94,21 @@ export async function PATCH(
   // changes only one of the two is checked against the value already stored —
   // otherwise you could raise the special price today and lower the price
   // tomorrow and end up in exactly the state the rule forbids.
-  const nextPrice = parsed.data.priceCents !== undefined ? parsed.data.priceCents : current.priceCents
+  //
+  // Settle the price first, on the same partial-update terms: each of the three
+  // inputs falls back to what is stored. That fallback is what re-totals a
+  // per-session offering when only its SESSION COUNT is patched — the case the
+  // whole column exists for. A four-session course at $30 a session that becomes
+  // six sessions is re-priced to $180 here, rather than keeping a $120 total
+  // that no longer matches the figure the trainer typed.
+  const pricing = resolvePackagePricing({
+    pricePerSessionCents: parsed.data.pricePerSessionCents !== undefined
+      ? parsed.data.pricePerSessionCents
+      : current.pricePerSessionCents,
+    priceCents: parsed.data.priceCents !== undefined ? parsed.data.priceCents : current.priceCents,
+    sessionCount: parsed.data.sessionCount !== undefined ? parsed.data.sessionCount : current.sessionCount,
+  })
+  const nextPrice = pricing.priceCents
   const nextSpecial = parsed.data.specialPriceCents !== undefined ? parsed.data.specialPriceCents : current.specialPriceCents
   if (!isValidSpecialPrice(nextPrice, nextSpecial)) {
     return NextResponse.json({ error: SPECIAL_PRICE_TOO_HIGH }, { status: 400 })
@@ -117,7 +135,7 @@ export async function PATCH(
         const runs = await prisma.classRun.count({ where: { packageId } })
         if (runs > 0) {
           return NextResponse.json(
-            { error: `This is running as ${runs} class${runs === 1 ? '' : 'es'}. Delete or finish ${runs === 1 ? 'it' : 'them'} before turning it back into a 1:1 consult.` },
+            { error: `This is running as ${runs} class${runs === 1 ? '' : 'es'}. Delete or finish ${runs === 1 ? 'it' : 'them'} before turning it back into a 1:1 session.` },
             { status: 409 },
           )
         }
@@ -128,7 +146,7 @@ export async function PATCH(
         extra = {
           capacity: null,
           allowDropIn: false,
-          // A 1:1 consult is never an event.
+          // A 1:1 session is never an event.
           isEvent: false,
           dropInPriceCents: null,
           recurrenceRule: null,
@@ -140,7 +158,7 @@ export async function PATCH(
         const assigned = await prisma.clientPackage.count({ where: { packageId } })
         if (assigned > 0) {
           return NextResponse.json(
-            { error: `${assigned} client${assigned === 1 ? ' is' : 's are'} assigned to this consult. Convert a copy instead, or unassign first.` },
+            { error: `${assigned} client${assigned === 1 ? ' is' : 's are'} assigned to this 1:1 session. Convert a copy instead, or unassign first.` },
             { status: 409 },
           )
         }
@@ -157,6 +175,18 @@ export async function PATCH(
     ...columns
   } = parsed.data
   const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
+
+  // Write the settled price only when the patch actually said something about
+  // pricing (or about the session count the total is derived from). Every other
+  // key here means "leave it alone", and the price is no different.
+  if (
+    parsed.data.priceCents !== undefined ||
+    parsed.data.pricePerSessionCents !== undefined ||
+    parsed.data.sessionCount !== undefined
+  ) {
+    columns.priceCents = pricing.priceCents
+    columns.pricePerSessionCents = pricing.pricePerSessionCents
+  }
 
   // What this offering IS may only change when the caller says so — and only to
   // something coherent. An event is a group offering that is neither a drop-in

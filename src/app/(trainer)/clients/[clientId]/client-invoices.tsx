@@ -86,7 +86,7 @@ export function ClientInvoicesTab({ clientId }: { clientId: string }) {
         {loading && !items ? (
           <div className="flex items-center gap-2 px-5 py-8 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
         ) : (items?.length ?? 0) === 0 ? (
-          <p className="px-5 py-8 text-sm text-slate-400">No invoices yet. They’re created automatically when you assign a priced consult or product.</p>
+          <p className="px-5 py-8 text-sm text-slate-400">No invoices yet. They’re created automatically when you assign a priced 1:1 session or product.</p>
         ) : filtered.length === 0 ? (
           <p className="px-5 py-8 text-sm text-slate-400">No {filter} invoices.</p>
         ) : (

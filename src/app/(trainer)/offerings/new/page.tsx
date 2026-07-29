@@ -14,7 +14,7 @@ type OfferingKind = (typeof KINDS)[number]
 
 // What to call the page, and where Back goes, once the kind is known.
 const KIND_PAGE: Record<OfferingKind, { title: string; list: string; listLabel: string }> = {
-  onetoone: { title: 'New consult', list: '/packages', listLabel: '1:1 consults' },
+  onetoone: { title: 'New 1:1 session', list: '/packages', listLabel: '1:1 sessions' },
   group: { title: 'New class', list: '/classes', listLabel: 'classes' },
   dropin: { title: 'New casual class', list: '/casual-classes', listLabel: 'casual classes' },
   oneoff: { title: 'New event', list: '/events', listLabel: 'events' },
@@ -54,7 +54,7 @@ export default async function NewPackagePage({ searchParams }: { searchParams: P
   return (
     <>
       {/* When the link already said what they're making, the page says it too —
-          arriving at "New offering" after tapping "New consult" reads as having
+          arriving at "New offering" after tapping "New 1:1 session" reads as having
           landed somewhere else. */}
       <PageHeader
         title={initialKind ? KIND_PAGE[initialKind].title : 'New offering'}

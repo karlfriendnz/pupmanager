@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { GraduationCap, Users, MapPin, CalendarDays, Repeat, Pencil, Copy, UserCog } from 'lucide-react'
+import { GraduationCap, Users, MapPin, CalendarDays, Repeat, Pencil, Copy, UserCog, Route } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 import {
@@ -22,6 +22,8 @@ type RunRow = {
   location: string | null
   status: 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
   sessionCount: number
+  /** Curriculum steps, when this class runs one. 0 = it doesn't. */
+  seriesSteps: number
   durationMins: number
   priceCents: number | null
   enrolledCount: number
@@ -166,6 +168,11 @@ function classFacts(r: RunRow): OfferingFact[] {
       label: r.scheduleNote || `${r.sessionCount} session${r.sessionCount === 1 ? '' : 's'} · ${r.durationMins} min`,
     },
   ]
+  // A curriculum is what makes this a series rather than N weeks of the same
+  // thing, so it reads on the card.
+  if (r.seriesSteps > 0) {
+    facts.push({ icon: <Route className="h-3.5 w-3.5" />, label: `${r.seriesSteps} step${r.seriesSteps === 1 ? '' : 's'}` })
+  }
   if (r.location) facts.push({ icon: <MapPin className="h-3.5 w-3.5" />, label: r.location })
 
   const left = r.capacity == null ? null : Math.max(0, r.capacity - r.enrolledCount)

@@ -29,7 +29,7 @@ export type TriggerType =
 export interface TriggerMeta {
   type: TriggerType
   label: string
-  group: 'Sessions' | '1:1 Consults' | 'Homework' | 'Other' | 'Manual'
+  group: 'Sessions' | '1:1 Sessions' | 'Homework' | 'Other' | 'Manual'
   needsValue: boolean
   valueLabel?: string
   preview: (n: number) => string
@@ -45,8 +45,8 @@ export const TRIGGERS: TriggerMeta[] = [
   // "Package" is the bundled offering now, so these two — which fire off a 1:1
   // assignment — read as consults. The trigger TYPES stay as they are: they're
   // stored on every existing achievement row.
-  { type: 'FIRST_PACKAGE_ASSIGNED', label: 'First consult signed up', group: '1:1 Consults', needsValue: false, preview: () => 'Awarded when the first consult is assigned' },
-  { type: 'PACKAGES_COMPLETED', label: 'Consults completed', group: '1:1 Consults', needsValue: true, valueLabel: 'Consults', preview: n => `Awarded after ${n} completed consult${n === 1 ? '' : 's'}` },
+  { type: 'FIRST_PACKAGE_ASSIGNED', label: 'First 1:1 session signed up', group: '1:1 Sessions', needsValue: false, preview: () => 'Awarded when the first 1:1 session is assigned' },
+  { type: 'PACKAGES_COMPLETED', label: '1:1 Sessions completed', group: '1:1 Sessions', needsValue: true, valueLabel: '1:1 Sessions', preview: n => `Awarded after ${n} completed 1:1 session${n === 1 ? '' : 's'}` },
   { type: 'FIRST_HOMEWORK_DONE', label: 'First homework done', group: 'Homework', needsValue: false, preview: () => 'Awarded the first time a homework task is completed' },
   { type: 'HOMEWORK_TASKS_DONE', label: 'Homework tasks done', group: 'Homework', needsValue: true, valueLabel: 'Tasks', preview: n => `Awarded after ${n} completed task${n === 1 ? '' : 's'}` },
   { type: 'HOMEWORK_STREAK_DAYS', label: 'Homework streak (days)', group: 'Homework', needsValue: true, valueLabel: 'Days in a row', preview: n => `Awarded for ${n} day${n === 1 ? '' : 's'} of perfect homework in a row` },
@@ -61,7 +61,7 @@ export const TRIGGER_META = Object.fromEntries(
   TRIGGERS.map(t => [t.type, t])
 ) as Record<TriggerType, TriggerMeta>
 
-export const TRIGGER_GROUPS = ['Sessions', '1:1 Consults', 'Homework', 'Other'] as const
+export const TRIGGER_GROUPS = ['Sessions', '1:1 Sessions', 'Homework', 'Other'] as const
 
 /** The colour keys a badge can be tinted with. */
 export type Color = 'blue' | 'emerald' | 'amber' | 'rose' | 'violet' | 'sky' | 'orange' | 'teal' | 'pink' | 'slate'

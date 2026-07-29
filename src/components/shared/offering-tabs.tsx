@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 
 /**
  * The tab strip on an offering detail screen — a class run, a one-off event, a
- * 1:1 consult package. All three pages carried a byte-identical copy of this
+ * 1:1 session package. All three pages carried a byte-identical copy of this
  * markup, so a fix to one silently left the other two behind; this is that
  * markup, once.
  *

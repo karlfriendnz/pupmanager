@@ -254,7 +254,7 @@ export function ClientActionsPanel({
       <FlatRow
         key="assign"
         icon={PackageIcon}
-        label={wrap('Assign consult')}
+        label={wrap('Assign 1:1 session')}
         trailing={<span aria-hidden />}
         onClick={() => setActiveModal('assign')}
       />,

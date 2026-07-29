@@ -58,7 +58,7 @@ export const PERMISSION_CATALOGUE: PermissionDef[] = [
   { key: 'schedule.manage', label: 'Manage the schedule', description: 'Create, edit, reschedule and delete sessions.', group: 'Scheduling' },
   { key: 'classes.manage', label: 'Manage group classes', description: 'Create class runs and manage enrolments.', group: 'Scheduling' },
 
-  { key: 'packages.manage', label: 'Manage offerings', description: 'Create and edit 1:1 consults, classes, events and packages.', group: 'Catalogue' },
+  { key: 'packages.manage', label: 'Manage offerings', description: 'Create and edit 1:1 sessions, classes, events and packages.', group: 'Catalogue' },
   { key: 'products.manage', label: 'Manage products', description: 'Create and edit shop products.', group: 'Catalogue' },
   { key: 'forms.manage', label: 'Manage forms & library', description: 'Edit session forms, templates and the training library.', group: 'Catalogue' },
   { key: 'ai.use', label: 'Use AI tools', description: 'Generate training plans and progress summaries with AI.', group: 'Catalogue' },

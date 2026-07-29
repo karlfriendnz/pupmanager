@@ -175,7 +175,7 @@ describe('GET /api/clients — search + shape', () => {
 
   it('returns the picker row shape, falling back to the first extra dog', async () => {
     h.findMany.mockResolvedValue([
-      row({ dog: null, dogs: [{ name: 'Rex', photoUrl: 'https://img/rex.jpg' }] }),
+      row({ dog: null, dogs: [{ id: 'dog_1', name: 'Rex', photoUrl: 'https://img/rex.jpg' }] }),
     ])
 
     const body = await (await GET(req())).json()
@@ -187,7 +187,23 @@ describe('GET /api/clients — search + shape', () => {
       // Breed only comes off the primary dog, so a fallback dog has none.
       dogBreed: null,
       dogPhotoUrl: 'https://img/rex.jpg',
+      // Every bookable dog, with ids: a picker that BOOKS something has to name
+      // WHICH dog, and two dogs per client is normal. dogName above stays the
+      // one-line summary the sale composer and search autocomplete read.
+      dogs: [{ id: 'dog_1', name: 'Rex', photoUrl: 'https://img/rex.jpg' }],
     })
+  })
+
+  // Deceased dogs are filtered out in the query, so a client whose only dog has
+  // died still returns a row — with nothing bookable on it. Offering a dead dog
+  // in a booking picker is a dead end, and the row itself still has to appear or
+  // the client vanishes from search.
+  it('returns a row with no bookable dogs when every dog has died', async () => {
+    h.findMany.mockResolvedValue([row({ dog: null, dogs: [] })])
+
+    const body = await (await GET(req())).json()
+
+    expect(body.items[0]).toMatchObject({ id: 'cl_1', dogs: [], dogName: null })
   })
 
   it('returns the primary dog’s breed, so a breed match explains itself', async () => {

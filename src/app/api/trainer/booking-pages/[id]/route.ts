@@ -44,7 +44,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   if (d.packageId) {
     const pkg = await prisma.package.findFirst({ where: { id: d.packageId, trainerId: ctx.companyId }, select: { id: true } })
-    if (!pkg) return NextResponse.json({ error: '1:1 consult not found' }, { status: 400 })
+    if (!pkg) return NextResponse.json({ error: '1:1 session not found' }, { status: 400 })
   }
 
   // Resolve a unique slug when one was supplied (deduped within the trainer).

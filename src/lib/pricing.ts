@@ -220,6 +220,11 @@ export const ADDONS: AddonDef[] = [
     // day-parted, ongoing daycare offering with its own week board).
     description: 'Run a doggy daycare — split each day into bookable parts, take rolling day-part bookings, and manage the day from a live week board.',
     free: true,
+    // Not advertised yet (Karl, 2026-07-29). The feature is still being finished
+    // — a real daycare's data has only just gone through it — so a trainer must
+    // not be able to switch it on for themselves. An admin can still grant it,
+    // and anyone already granted (the daycare pilot) is unaffected.
+    hidden: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
   {
@@ -228,7 +233,7 @@ export const ADDONS: AddonDef[] = [
     // Free while it beds in — same treatment as classes/events/daycare. Off
     // until the trainer switches it on; enabling it unlocks the package
     // builder and puts packages in front of clients as an offering type.
-    description: 'Bundle 1:1 consults, classes and products into a package clients buy in one go — with its own storefront card and welcome reminders.',
+    description: 'Bundle 1:1 sessions, classes and products into a package clients buy in one go — with its own storefront card and welcome reminders.',
     free: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },

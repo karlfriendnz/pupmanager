@@ -90,7 +90,7 @@ export const SEED = {
   // still render in the transaction detail.
   payments: {
     plainId: 'e2epayment0000000000000x',
-    plainDescription: 'E2E Puppy Consult',
+    plainDescription: 'E2E Puppy 1:1 Session',
     plainAmount: 9000,
     plainFee: 291,
     refundedId: 'e2epaymentref00000000000',

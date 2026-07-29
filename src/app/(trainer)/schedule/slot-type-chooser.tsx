@@ -5,7 +5,7 @@ import { X, User, Users, PawPrint, DoorOpen, type LucideIcon } from 'lucide-reac
 export type SlotAddType = 'session' | 'class' | 'buddies' | 'dropin'
 
 const OPTIONS: { type: SlotAddType; label: string; hint: string; Icon: LucideIcon }[] = [
-  { type: 'session', label: 'Session',       hint: '1:1 from a consult',        Icon: User },
+  { type: 'session', label: 'Session',       hint: '1:1 from a 1:1 session',        Icon: User },
   { type: 'class',    label: 'Class',         hint: 'Group class series',        Icon: Users },
   { type: 'buddies',  label: 'Group walk',  hint: 'Several dogs together',  Icon: PawPrint },
   { type: 'dropin',   label: 'Casual class', hint: 'One-off single class',      Icon: DoorOpen },

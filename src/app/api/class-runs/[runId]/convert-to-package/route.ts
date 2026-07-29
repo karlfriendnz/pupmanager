@@ -63,7 +63,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ runId:
         where: { id: run.packageId },
         data: {
           isGroup: false,
-          // A 1:1 consult is never an event, so don't leave the flag behind for
+          // A 1:1 session is never an event, so don't leave the flag behind for
           // a later screen to trip over.
           isEvent: false,
           capacity: null,

@@ -115,7 +115,7 @@ test.describe('trainer home on a phone', () => {
 
     await page.goto('/offerings')
     // Every row is a real destination with a count or a description.
-    await expect(page.locator('main').getByRole('link', { name: /1:1 Consults/ })).toBeVisible()
+    await expect(page.locator('main').getByRole('link', { name: /1:1 Sessions/ })).toBeVisible()
     await expect(page.locator('main').getByRole('link', { name: /Library/ })).toBeVisible()
     // Pluralisation is done properly — no "2 classs".
     await expect(page.getByText(/\bclasss\b/)).toHaveCount(0)

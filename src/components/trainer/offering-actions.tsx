@@ -17,7 +17,7 @@ import { ModalPortal } from '@/components/shared/modal-portal'
  * edge on a phone, a small panel on desktop) rather than a menu hanging off the
  * corner.
  *
- * Every offering detail screen uses this one component: 1:1 consults, group
+ * Every offering detail screen uses this one component: 1:1 sessions, group
  * classes, casual classes, daycare programmes and events. They used to
  * disagree — consults put Edit and Delete at the foot of the Details card while
  * classes and events put them in the page header — which is how Edit ended up
@@ -45,7 +45,7 @@ export function OfferingActions({
   packageId: string
   /**
    * Present when this offering RUNS as a ClassRun (a class, casual class,
-   * daycare programme or event). Its absence is what makes it a 1:1 consult,
+   * daycare programme or event). Its absence is what makes it a 1:1 session,
    * and it decides which way Convert goes and which route Delete calls.
    */
   runId?: string
@@ -65,9 +65,9 @@ export function OfferingActions({
   const isRun = !!runId
   // Convert is offered on run-backed offerings ONLY — group classes, casual
   // classes, daycare programmes and events — and only in the direction that is
-  // actually implemented, back to a 1:1 consult.
+  // actually implemented, back to a 1:1 session.
   //
-  // The reverse used to be offered on 1:1 consults and stranded the offering.
+  // The reverse used to be offered on 1:1 sessions and stranded the offering.
   // It PATCHed isGroup: true and stopped: /packages lists `isGroup: false` so
   // the consult vanished from there, /classes lists ClassRun rows and the
   // conversion creates none, and saving the edit form afterwards doesn't help
@@ -75,7 +75,7 @@ export function OfferingActions({
   // it only ever edits an existing run, never creates one. The offering ended
   // up on neither page. Reinstate it only alongside a route that creates the
   // run, the way class → 1:1 has convert-to-package.
-  const convertLabel = 'Convert to a 1:1 consult'
+  const convertLabel = 'Convert to a 1:1 session'
   const convertHint = 'Removes the scheduled sessions and keeps the offering'
 
   async function readError(res: Response, fallback: string) {
@@ -112,7 +112,7 @@ export function OfferingActions({
       // otherwise — so there is one route, not a branch.
       const res = await fetch(`/api/class-runs/${runId}/convert-to-package`, { method: 'POST' })
       if (res.ok) {
-        // Lands on the offering's edit form: it is now a 1:1 consult with
+        // Lands on the offering's edit form: it is now a 1:1 session with
         // nothing scheduled, and the price and duration want a look.
         router.push(`/packages/${packageId}/edit`)
         router.refresh()
@@ -159,7 +159,7 @@ export function OfferingActions({
       disabled: busy,
     },
     // Convert only goes ONE way: a run-backed offering (group class, casual
-    // class, daycare programme, event) back to a 1:1 consult. See isRun above
+    // class, daycare programme, event) back to a 1:1 session. See isRun above
     // for why the other direction isn't offered.
     ...(isRun
       ? [{
@@ -214,7 +214,7 @@ export function OfferingActions({
           body={confirm === 'delete'
             ? `This ${noun} and everything on it goes. This can’t be undone.`
             : isRun
-              ? `“${name}” becomes a 1:1 consult and its scheduled sessions are removed. This can’t be undone.`
+              ? `“${name}” becomes a 1:1 session and its scheduled sessions are removed. This can’t be undone.`
               : `“${name}” becomes a group class with a shared roster. You’ll set the day and time next.`}
           confirmLabel={confirm === 'delete' ? 'Delete' : 'Convert'}
           danger={confirm === 'delete'}

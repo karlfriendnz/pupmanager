@@ -311,7 +311,7 @@ export default async function globalSetup() {
         // the right /pay/<token> (the same page the emailed link goes to).
         payToken: INV.editableInvoicePayToken,
         description: 'Editable Invoice', sourceType: 'MANUAL',
-        lines: { create: [{ description: 'Consult', quantity: 1, unitAmountCents: 20000, amountCents: 20000, sortOrder: 0 }] },
+        lines: { create: [{ description: '1:1 Session', quantity: 1, unitAmountCents: 20000, amountCents: 20000, sortOrder: 0 }] },
       },
     })
     // A settled invoice on the assigned client — the client app's "Paid"

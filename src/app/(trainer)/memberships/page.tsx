@@ -9,7 +9,7 @@ import { MembershipsView } from './memberships-view'
 export const metadata: Metadata = { title: 'Packages' }
 
 // Combo packages: bundle offerings into one purchasable plan. Loads the
-// trainer's packages plus the offerings they can include (1:1 consults,
+// trainer's packages plus the offerings they can include (1:1 sessions,
 // class runs, products).
 export default async function MembershipsPage() {
   const session = await auth()

@@ -61,7 +61,7 @@ async function seedOne(prisma: PrismaClient) {
     priceCents: 5000,
   }
   const consult = await prisma.package.create({
-    data: { ...base, name: `E2E Readable consult ${stamp}`, isGroup: false },
+    data: { ...base, name: `E2E Readable 1:1 session ${stamp}`, isGroup: false },
   })
   const group = await prisma.package.create({
     data: { ...base, name: `E2E Readable class ${stamp}`, isGroup: true, capacity: 6 },

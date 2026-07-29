@@ -99,11 +99,11 @@ export function AssignPackageButton({
       <Button
         variant="secondary"
         size="sm"
-        onClick={() => alert('Create a 1:1 consult first at /packages')}
-        title="No 1:1 consults defined yet"
+        onClick={() => alert('Create a 1:1 session first at /packages')}
+        title="No 1:1 sessions defined yet"
       >
         <PackageIcon className="h-4 w-4" />
-        Assign consult
+        Assign 1:1 session
       </Button>
     )
   }
@@ -113,7 +113,7 @@ export function AssignPackageButton({
       {!isControlled && (
         <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
           <PackageIcon className="h-4 w-4" />
-          Assign consult
+          Assign 1:1 session
         </Button>
       )}
       {open && (
@@ -268,7 +268,7 @@ function AssignModal({
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      setError(body?.error?.toString() ?? 'Failed to assign consult')
+      setError(body?.error?.toString() ?? 'Failed to assign 1:1 session')
       setSubmitting(false)
       return
     }
@@ -283,7 +283,7 @@ function AssignModal({
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
       <div className="relative z-50 bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-slate-100">
-          <h2 className="font-semibold text-slate-900">{mode === 'class' ? 'Enrol in a class' : 'Assign consult'}</h2>
+          <h2 className="font-semibold text-slate-900">{mode === 'class' ? 'Enrol in a class' : 'Assign 1:1 session'}</h2>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
@@ -296,7 +296,7 @@ function AssignModal({
           {packages.length > 0 && classes.length > 0 && (
             <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
               {([
-                { id: 'package' as const, label: '1:1 consult' },
+                { id: 'package' as const, label: '1:1 session' },
                 { id: 'class' as const, label: 'Group class' },
               ]).map(m => (
                 <button
@@ -400,7 +400,7 @@ function AssignModal({
             </div>
           ) : (
           <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1.5">Consult</label>
+            <label className="text-sm font-medium text-slate-700 block mb-1.5">1:1 Session</label>
             <select
               value={packageId}
               onChange={e => setPackageId(e.target.value)}
@@ -433,7 +433,7 @@ function AssignModal({
                 ))}
               </select>
               <p className="text-[11px] text-slate-400 mt-1">
-                Every session in this consult is booked onto this trainer&apos;s calendar.
+                Every session in this 1:1 session is booked onto this trainer&apos;s calendar.
               </p>
             </div>
           )}
@@ -500,7 +500,7 @@ function AssignModal({
                 className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="text-[11px] text-slate-400 mt-1">
-                Ongoing consult — sessions repeat every {Math.max(1, pkg.weeksBetween)} week{Math.max(1, pkg.weeksBetween) > 1 ? 's' : ''} until this date.
+                Ongoing 1:1 session — sessions repeat every {Math.max(1, pkg.weeksBetween)} week{Math.max(1, pkg.weeksBetween) > 1 ? 's' : ''} until this date.
               </p>
             </div>
           )}

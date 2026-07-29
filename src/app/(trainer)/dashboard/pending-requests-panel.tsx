@@ -203,7 +203,7 @@ function AcceptMembershipDialog({ request, currency, onCancel, onConfirm }: {
 
           <div className="flex flex-col gap-3 px-4 py-4 text-sm text-slate-600">
             <p>
-              Everything in the package is granted straight away — consult
+              Everything in the package is granted straight away — 1:1 session
               sessions are scheduled, products are marked owed, and class places
               are booked.
             </p>

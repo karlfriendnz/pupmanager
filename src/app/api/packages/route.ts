@@ -11,6 +11,7 @@ import {
 import { createClassRunIn } from '@/lib/class-runs'
 import { syncClassSessions } from '@/lib/class-session-sync'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
+import { resolvePackagePricing } from '@/lib/session-pricing'
 
 const schema = z.object({
   name: z.string().min(1),
@@ -26,6 +27,10 @@ const schema = z.object({
   // Prices stored in cents. Accept 0 (free) up to a sane upper bound.
   priceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   specialPriceCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  // How the price was expressed, when the trainer priced by the session. The
+  // TOTAL is derived from it below — never taken from the payload — so the two
+  // columns cannot be saved disagreeing with each other.
+  pricePerSessionCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   // Tailwind palette key. Keep this list in sync with PACKAGE_COLORS in
   // schedule-view.tsx — both must include any new option.
   color: z.enum(['blue', 'emerald', 'amber', 'rose', 'purple', 'orange', 'teal', 'indigo', 'pink', 'cyan']).nullable().optional(),
@@ -102,10 +107,20 @@ export async function POST(req: Request) {
   const parsed = schema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
+  // Settle the price BEFORE anything reads it. When the trainer priced by the
+  // session the total is derived here, so every rule below — and the row that
+  // gets written — sees the real figure rather than whatever total the client
+  // happened to send alongside it.
+  const pricing = resolvePackagePricing({
+    pricePerSessionCents: parsed.data.pricePerSessionCents,
+    priceCents: parsed.data.priceCents,
+    sessionCount: parsed.data.sessionCount,
+  })
+
   // A special price above the normal price would be shown to clients as the
   // discounted amount and charged as such — an overcharge dressed as a saving.
   // The form says so too, but the form isn't the guarantee.
-  if (!isValidSpecialPrice(parsed.data.priceCents, parsed.data.specialPriceCents)) {
+  if (!isValidSpecialPrice(pricing.priceCents, parsed.data.specialPriceCents)) {
     return NextResponse.json({ error: SPECIAL_PRICE_TOO_HIGH }, { status: 400 })
   }
   // Same rule per drop-in slot — a drop-in has no headline price, each slot
@@ -163,7 +178,8 @@ export async function POST(req: Request) {
         durationMins: parsed.data.durationMins,
         bufferMins: parsed.data.bufferMins ?? 0,
         sessionType: parsed.data.sessionType ?? 'IN_PERSON',
-        priceCents: parsed.data.priceCents ?? null,
+        priceCents: pricing.priceCents,
+        pricePerSessionCents: pricing.pricePerSessionCents,
         specialPriceCents: parsed.data.specialPriceCents ?? null,
         color: parsed.data.color ?? null,
         defaultSessionFormId: parsed.data.defaultSessionFormId ?? null,

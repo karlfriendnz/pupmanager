@@ -96,7 +96,7 @@ test.describe('client invoices — the client can find and pay their invoice', (
 
     // The detail shows the line items + the fee, and charges exactly what the
     // list quoted.
-    await expect(page.getByText('Consult')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('1:1 Session')).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText('Card processing fee')).toBeVisible()
     await expect(page.getByRole('button', { name: `Pay ${listed}` })).toBeVisible()
 

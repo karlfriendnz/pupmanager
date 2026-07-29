@@ -31,6 +31,8 @@ interface Payload {
   packageId: string | null
   packageName?: string
   sessionIndex: number | null
+  /** Named when the offering runs a curriculum — see lib/default-homework. */
+  stepTitle?: string | null
   isGroup?: boolean
   tasks: SuggestedTask[]
   recipients: Recipient[]
@@ -121,8 +123,13 @@ export function SuggestedHomework({
       <div className="flex items-start gap-3 px-4 py-3">
         <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-accent" strokeWidth={1.75} />
         <div className="min-w-0 flex-1">
+          {/* On a series this names the STEP, not the slot — the two differ the
+              moment a step is skipped, and the number alone would look like the
+              wrong week's homework rather than the right step's. */}
           <p className="text-sm font-medium text-slate-900">
-            Usual homework{data.sessionIndex ? ` for session ${data.sessionIndex}` : ''}
+            {data.stepTitle && data.sessionIndex
+              ? `Usual homework for step ${data.sessionIndex} · ${data.stepTitle}`
+              : `Usual homework${data.sessionIndex ? ` for session ${data.sessionIndex}` : ''}`}
           </p>
           <p className="text-xs text-slate-500">{data.packageName}</p>
         </div>

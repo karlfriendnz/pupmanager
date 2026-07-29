@@ -48,7 +48,7 @@ test.describe('client actions live on the page, not in a dropdown', () => {
     await expect(panel.getByRole('link', { name: 'Edit details' })).toBeVisible()
     await expect(panel.getByRole('link', { name: 'View as client' })).toBeVisible()
     await expect(panel.getByRole('button', { name: /Re-invite client|Re-send sign-in link/ })).toBeVisible()
-    await expect(panel.getByRole('button', { name: 'Assign consult' })).toBeVisible()
+    await expect(panel.getByRole('button', { name: 'Assign 1:1 session' })).toBeVisible()
     await expect(panel.getByRole('button', { name: 'Share with another trainer' })).toBeVisible()
 
     // Delete sits in its own block below the rest — last thing on the tab.
@@ -134,8 +134,8 @@ test.describe('client actions live on the page, not in a dropdown', () => {
     // touch its dismiss behaviour.
     await openSeededClient(page)
 
-    await page.getByRole('button', { name: 'Assign consult' }).click()
-    await expect(page.getByRole('heading', { name: 'Assign consult' })).toBeVisible()
+    await page.getByRole('button', { name: 'Assign 1:1 session' }).click()
+    await expect(page.getByRole('heading', { name: 'Assign 1:1 session' })).toBeVisible()
   })
 })
 
@@ -179,7 +179,7 @@ test.describe('read-only co-manager', () => {
       await expect(page.getByRole('button', { name: 'Share with another trainer' })).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'Delete client' })).toHaveCount(0)
       await expect(page.getByRole('button', { name: /Re-invite client|Re-send sign-in link/ })).toHaveCount(0)
-      await expect(page.getByRole('button', { name: 'Assign consult' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Assign 1:1 session' })).toHaveCount(0)
     } finally {
       // The seeded client is shared with every other spec — leave no trace.
       if (shareId) await prisma.clientShare.delete({ where: { id: shareId } }).catch(() => {})

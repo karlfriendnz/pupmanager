@@ -51,6 +51,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ packag
       sessionType: src.sessionType,
       priceCents: src.priceCents,
       specialPriceCents: src.specialPriceCents,
+      // Carry HOW it was priced, not just what it came to — a copy of a
+      // per-session offering that forgot the per-session figure would stop
+      // re-totalling the moment its session count was changed.
+      pricePerSessionCents: src.pricePerSessionCents,
       color: src.color,
       defaultSessionFormId: src.defaultSessionFormId,
       requireSessionNotes: src.requireSessionNotes,

@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { SuggestedHomework } from '@/components/trainer/suggested-homework'
+import { SessionSeriesStep } from '@/components/trainer/session-series-step'
 import { formatDate, formatTime } from '@/lib/utils'
 import {
   ClipboardCheck, ChevronLeft, ChevronRight, Check, X, StickyNote,
@@ -537,9 +538,17 @@ export function SessionView({
 
                       Who is pre-ticked comes from SAVED attendance, so mark and
                       save the register first if someone didn't turn up. */}
+                  {/* What this week covers, when the class runs a curriculum,
+                      read-only: a cohort works through it together, so there is
+                      no step to move for one dog. Sits directly over the
+                      homework because they are the same thought — step 2 is
+                      loose-lead, and this is what they practise afterwards. */}
                   <div>
                     <SectionLabel>Homework</SectionLabel>
-                    <SuggestedHomework sessionId={sessionId} />
+                    <div className="flex flex-col gap-3">
+                      <SessionSeriesStep sessionId={sessionId} />
+                      <SuggestedHomework sessionId={sessionId} />
+                    </div>
                   </div>
                 </>
               )}

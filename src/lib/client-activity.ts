@@ -39,7 +39,7 @@ export const notArchived: Prisma.ClientProfileWhereInput = {
  * Two arms, because a session reaches a client two different ways:
  *   • a place on a ClassRun — which is group classes, casual classes, one-off
  *     events and daycare programmes, all of which are runs;
- *   • a session booked against them directly — a 1:1 consult, or one generated
+ *   • a session booked against them directly — a 1:1 session, or one generated
  *     by a package assigned to them.
  *
  * The second arm matters more than it looks: without it a trainer who does only

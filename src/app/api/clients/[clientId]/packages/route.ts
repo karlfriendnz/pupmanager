@@ -82,13 +82,13 @@ export async function POST(
   const pkg = await prisma.package.findFirst({
     where: { id: parsed.data.packageId, trainerId },
   })
-  if (!pkg) return NextResponse.json({ error: '1:1 consult not found' }, { status: 404 })
+  if (!pkg) return NextResponse.json({ error: '1:1 session not found' }, { status: 404 })
 
   // sessionCount === 0 means the package is ongoing — any number of sessions is
   // valid (still capped at 52 by the request schema).
   if (pkg.sessionCount > 0 && parsed.data.sessionDates.length > pkg.sessionCount) {
     return NextResponse.json(
-      { error: `Too many sessions: this consult allows ${pkg.sessionCount}` },
+      { error: `Too many sessions: this 1:1 session allows ${pkg.sessionCount}` },
       { status: 400 }
     )
   }
@@ -163,7 +163,7 @@ export async function POST(
     const collides = sessionDates.some(d => existingSlots.has(slotOf(d)))
     if (collides) {
       return NextResponse.json(
-        { error: 'This dog already has an ongoing assignment of this consult on that day and time. Pick a different day or time, or edit the existing one.' },
+        { error: 'This dog already has an ongoing assignment of this 1:1 session on that day and time. Pick a different day or time, or edit the existing one.' },
         { status: 409 },
       )
     }
@@ -251,6 +251,35 @@ export async function POST(
     })
     return assignment
   })
+
+  // A SERIES starts on its curriculum in the natural order — session 1 covers
+  // step 1 — and the trainer moves individual sessions from there. Stamped now
+  // rather than counted later so the step is a fact on the row: editing the
+  // curriculum afterwards can never silently re-point a session that has
+  // already happened. createMany returns no ids, so the rows are re-read in
+  // calendar order (which is what "the next step" means).
+  if (pkg.isSeries) {
+    const [plans, rows] = await Promise.all([
+      prisma.packageSessionPlan.findMany({
+        where: { packageId: pkg.id },
+        select: { id: true, sessionIndex: true, title: true },
+      }),
+      prisma.trainingSession.findMany({
+        where: { clientPackageId: created.id },
+        orderBy: [{ scheduledAt: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, sessionPlanId: true },
+      }),
+    ])
+    const { resolveSeriesSteps } = await import('@/lib/series')
+    const stamps = resolveSeriesSteps(plans, rows).filter(r => r.step)
+    if (stamps.length) {
+      await prisma.$transaction(
+        stamps.map(s =>
+          prisma.trainingSession.update({ where: { id: s.sessionId }, data: { sessionPlanId: s.step!.id } }),
+        ),
+      )
+    }
+  }
 
   // Best-effort: mirror the newly generated series onto the trainer's Google
   // Calendar. createMany returns no ids, so re-query the rows by the assignment

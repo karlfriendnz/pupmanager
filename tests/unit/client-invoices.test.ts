@@ -25,7 +25,7 @@ function invoice(over: Partial<ClientInvoiceRecord> = {}): ClientInvoiceRecord {
     paidAt: null,
     createdAt: D('2026-06-01'),
     payToken: 'tok1',
-    lines: [{ id: 'l1', description: 'Consult', quantity: 1, amountCents: 20_000 }],
+    lines: [{ id: 'l1', description: '1:1 Session', quantity: 1, amountCents: 20_000 }],
     ...over,
   }
 }

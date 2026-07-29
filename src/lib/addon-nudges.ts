@@ -71,7 +71,7 @@ export const NUDGE_COPY: Record<string, { title: string; body: string; ctaLabel:
   },
   memberships: {
     title: 'Sell a package',
-    body: 'Bundle 1:1 consults, classes and products into one thing clients buy in a single go — with its own storefront card.',
+    body: 'Bundle 1:1 sessions, classes and products into one thing clients buy in a single go — with its own storefront card.',
     ctaLabel: 'Set up Packages',
   },
   googlecalendar: {
@@ -99,8 +99,16 @@ export function nudgeCtaHref(addonId: string): string {
   return CTA_HREF[addonId] ?? '/add-ons'
 }
 
-/** Every add-on we have nudge copy for — the dashboard rotation pool. */
-export const PROMOTABLE_ADDON_IDS = Object.keys(NUDGE_COPY)
+/**
+ * Every add-on we have nudge copy for — the dashboard rotation pool.
+ *
+ * `hidden` add-ons are dropped: they are deliberately not surfaced anywhere yet,
+ * and nudging a trainer towards one would advertise the very thing the flag
+ * exists to keep quiet. The copy stays written, ready for when it is unhidden.
+ */
+export const PROMOTABLE_ADDON_IDS = Object.keys(NUDGE_COPY).filter(
+  (id) => !addonById(id)?.hidden,
+)
 
 /**
  * The promotable add-ons a trainer is eligible to be nudged about: those we
@@ -116,6 +124,7 @@ export function eligibleNudgeAddonIds(activeAddonIds: Iterable<string>): string[
     const def = addonById(id)
     if (!def) return false
     if (def.comingSoon) return false
+    if (def.hidden) return false
     return true
   })
 }

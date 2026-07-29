@@ -242,7 +242,7 @@ const TRAINER_PACKAGES: PackageDef[] = [
 ]
 
 const BEHAVIOURIST_PACKAGES: PackageDef[] = [
-  { name: 'Behaviour Assessment',   description: 'Initial 90-minute consult to assess the dog and set a plan.',     sessionCount: 1, weeksBetween: 1, durationMins: 90, sessionType: 'IN_PERSON', priceCents: 18000, color: 'purple' },
+  { name: 'Behaviour Assessment',   description: 'Initial 90-minute 1:1 session to assess the dog and set a plan.',     sessionCount: 1, weeksBetween: 1, durationMins: 90, sessionType: 'IN_PERSON', priceCents: 18000, color: 'purple' },
   { name: 'Reactivity Programme',   description: '6-session plan for leash-reactive or fearful dogs.',              sessionCount: 6, weeksBetween: 2, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 84000, color: 'amber' },
   { name: 'Separation Anxiety Plan', description: 'Graduated absence programme with weekly check-ins.',              sessionCount: 8, weeksBetween: 1, durationMins: 45, sessionType: 'VIRTUAL',   priceCents: 96000, color: 'teal' },
   { name: 'Follow-up Session',      description: 'Single review session to adjust the behaviour plan.',             sessionCount: 1, weeksBetween: 1, durationMins: 60, sessionType: 'IN_PERSON', priceCents: 12000, color: 'cyan' },

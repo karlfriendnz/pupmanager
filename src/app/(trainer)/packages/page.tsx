@@ -5,7 +5,7 @@ import { PackagesView } from './packages-view'
 import { isPackagePast, type PackageAssignment } from './past-packages'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: '1:1 Consults' }
+export const metadata: Metadata = { title: '1:1 Sessions' }
 
 export default async function PackagesPage({
   searchParams,
@@ -27,7 +27,7 @@ export default async function PackagesPage({
       // two places, and "assign this to a client" makes no sense for a cohort.
       where: { trainerId, isGroup: false },
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-      include: { _count: { select: { assignments: true } } },
+      include: { _count: { select: { assignments: true, sessionPlans: true } } },
     }),
     // What each assignment is doing, for the Current/Past split. Only the LAST
     // session of each is needed ("has this finished?"), so this stays one row
@@ -83,6 +83,10 @@ export default async function PackagesPage({
         selfBookRequiresApproval: p.selfBookRequiresApproval,
         requirePayment: p.requirePayment,
         assignments: p._count.assignments,
+        // A consult that runs a curriculum says so on the list — otherwise the
+        // only way to tell a series from a plain six-session consult is to open
+        // it and find the Curriculum tab.
+        seriesSteps: p._count.sessionPlans,
         isPast: isPackagePast(byPackage.get(p.id) ?? [], now),
       }))}
       connectName={connect ?? null}

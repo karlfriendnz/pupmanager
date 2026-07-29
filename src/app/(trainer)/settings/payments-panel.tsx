@@ -117,7 +117,7 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
                 <p className="text-sm font-medium text-slate-800">Require payment to book by default</p>
                 <p className="text-xs text-slate-500">
                   {profile?.defaultRequirePayment
-                    ? 'Clients pay up front to confirm a priced consult, class or shop item.'
+                    ? 'Clients pay up front to confirm a priced 1:1 session, class or shop item.'
                     : 'Clients can book now and pay later — an invoice is raised instead of an upfront charge.'}{' '}
                   Each package, class and product can override this from its own form.
                 </p>

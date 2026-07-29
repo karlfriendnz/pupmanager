@@ -4,7 +4,7 @@ import { runKindLabel, runHref } from '@/lib/run-kind'
 
 // Everything a trainer drives to in a day.
 //
-// EVERY kind of booking is a TrainingSession row — 1:1 consults carry a
+// EVERY kind of booking is a TrainingSession row — 1:1 sessions carry a
 // clientId, and group classes, casual/drop-in classes, one-off events and
 // doggy daycare all carry a classRunId with clientId null (attendance is
 // per-enrollee). This used to select `clientId: { not: null }`, so the route

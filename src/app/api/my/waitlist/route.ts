@@ -32,11 +32,11 @@ export async function POST(req: Request) {
       where: { id: parsed.data.packageId, trainerId: profile.trainerId },
       select: { id: true, allowWaitlist: true },
     })
-    if (!pkg) return NextResponse.json({ error: '1:1 consult not found' }, { status: 404 })
+    if (!pkg) return NextResponse.json({ error: '1:1 session not found' }, { status: 404 })
     // The client UI hides the button, but a trainer who turned the waitlist
     // off shouldn't collect entries against that package regardless.
     if (!pkg.allowWaitlist) {
-      return NextResponse.json({ error: 'This consult has no waitlist' }, { status: 403 })
+      return NextResponse.json({ error: 'This 1:1 session has no waitlist' }, { status: 403 })
     }
   }
 

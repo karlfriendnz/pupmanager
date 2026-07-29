@@ -43,20 +43,20 @@ describe('the trigger catalog agrees with the API routes', () => {
 // thing these two triggers count became a "consult". The trigger TYPES are
 // stored on every existing achievement row and must never move — only the
 // words the trainer reads.
-describe('the 1:1 triggers say consult, not package', () => {
+describe('the 1:1 triggers say 1:1 session, not package', () => {
   const renamed = TRIGGERS.filter(t => t.type === 'FIRST_PACKAGE_ASSIGNED' || t.type === 'PACKAGES_COMPLETED')
 
   it('still stores the original trigger types', () => {
     expect(renamed.map(t => t.type)).toEqual(['FIRST_PACKAGE_ASSIGNED', 'PACKAGES_COMPLETED'])
   })
 
-  it('reads as consults everywhere the trainer sees it', () => {
+  it('reads as 1:1 sessions everywhere the trainer sees it', () => {
     for (const t of renamed) {
       expect(t.label.toLowerCase(), t.type).not.toContain('package')
-      expect(t.label.toLowerCase(), t.type).toContain('consult')
-      expect(t.group).toBe('1:1 Consults')
+      expect(t.label.toLowerCase(), t.type).toContain('1:1 session')
+      expect(t.group).toBe('1:1 Sessions')
       expect(t.preview(2).toLowerCase(), t.type).not.toContain('package')
-      expect(t.preview(2).toLowerCase(), t.type).toContain('consult')
+      expect(t.preview(2).toLowerCase(), t.type).toContain('1:1 session')
       if (t.valueLabel) expect(t.valueLabel.toLowerCase(), t.type).not.toContain('package')
     }
   })

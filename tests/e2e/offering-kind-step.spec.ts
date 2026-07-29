@@ -33,16 +33,16 @@ test('the generic New offering asks what it is first, then moves on to the detai
   await expect(page.getByRole('button', { name: /Group class/ })).toHaveAttribute('aria-pressed', 'true')
 })
 
-test('New consult goes straight to the details and says so', async ({ page }) => {
+test('New 1:1 session goes straight to the details and says so', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   await page.goto('/packages')
 
-  await page.getByRole('link', { name: 'New consult' }).first().click()
+  await page.getByRole('link', { name: 'New 1:1 session' }).first().click()
   await page.waitForURL('**/offerings/new**')
 
   // The kind came with the link, so it is never asked — and the page calls
   // itself what they tapped, not "New offering".
   await expect(page.getByText('What are you setting up?')).toHaveCount(0)
   await expect(page.getByLabel('Name')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'New consult' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'New 1:1 session' })).toBeVisible()
 })

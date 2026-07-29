@@ -346,7 +346,7 @@ function ReceivablesTab() {
         {loading && !data ? (
           <div className="flex items-center gap-2 text-sm text-slate-400 px-5 py-8"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
         ) : !data || data.items.length === 0 ? (
-          <p className="text-sm text-slate-400 px-5 py-8">{q ? 'No invoices match your search.' : 'No invoices yet. They’re created automatically when you assign a priced consult or product.'}</p>
+          <p className="text-sm text-slate-400 px-5 py-8">{q ? 'No invoices match your search.' : 'No invoices yet. They’re created automatically when you assign a priced 1:1 session or product.'}</p>
         ) : (
           <>
             {/* Mobile: stacked cards */}

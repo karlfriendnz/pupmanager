@@ -340,7 +340,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
   CLIENT_ADDED_TO_PLAN: {
     type: 'CLIENT_ADDED_TO_PLAN',
     label: 'Added to a plan',
-    description: "When you're booked into a consult, class or session.",
+    description: "When you're booked into a 1:1 session, class or session.",
     trigger: 'event',
     audience: 'client',
     channels: ['PUSH', 'EMAIL', 'IN_APP'],

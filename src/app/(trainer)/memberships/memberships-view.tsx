@@ -181,7 +181,7 @@ const BUILDER_TABS: { id: BuilderTab; label: string; Icon: React.ComponentType<{
 
 let seq = 0
 const KINDS: { k: Kind; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-  { k: 'PACKAGE', label: '1:1 consult', Icon: GraduationCap },
+  { k: 'PACKAGE', label: '1:1 session', Icon: GraduationCap },
   { k: 'CLASS', label: 'Class place', Icon: Users },
   { k: 'PRODUCT', label: 'Product', Icon: ShoppingBag },
 ]
@@ -590,7 +590,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
           <OfferingEmpty
             icon={<Ticket className="h-6 w-6" />}
             title="No packages yet"
-            body="Bundle your 1:1 consults, classes and products into a package clients buy in one go."
+            body="Bundle your 1:1 sessions, classes and products into a package clients buy in one go."
             action={{ onClick: startNew, label: 'New package' }}
           />
         ) : (

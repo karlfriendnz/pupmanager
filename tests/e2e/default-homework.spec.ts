@@ -84,7 +84,7 @@ test('confirming the defaults on a session hands the client real homework, once'
     where: { id: SEED.assignedClientId }, select: { trainerId: true },
   })
   const pkg = await prisma.package.create({
-    data: { trainerId: client.trainerId, name: 'E2E Default Homework Consult', sessionCount: 2, weeksBetween: 1 },
+    data: { trainerId: client.trainerId, name: 'E2E Default Homework 1:1 Session', sessionCount: 2, weeksBetween: 1 },
   })
   const booking = await prisma.clientPackage.create({
     data: { packageId: pkg.id, clientId: SEED.assignedClientId, startDate: new Date('2026-08-01T00:00:00.000Z') },

@@ -85,7 +85,7 @@ export function FloatingCreateButton({
         {
           icon: Package,
           label: 'New offering',
-          hint: '1:1 consult, group class, casual class or event',
+          hint: '1:1 session, group class, casual class or event',
           run: () => router.push(newOfferingHref),
         },
       ],
@@ -96,7 +96,7 @@ export function FloatingCreateButton({
         {
           icon: Receipt,
           label: 'New sale',
-          hint: 'Charge a client for a product or consult',
+          hint: 'Charge a client for a product or 1:1 session',
           run: () => { setOpen(false); setSaleOpen(true) },
         },
       ],

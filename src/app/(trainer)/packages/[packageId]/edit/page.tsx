@@ -7,7 +7,7 @@ import { EditPackageForm } from './edit-package-form'
 import type { PackageColor } from '../../package-form'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Edit consult' }
+export const metadata: Metadata = { title: 'Edit 1:1 session' }
 
 export default async function EditPackagePage({
   params,
@@ -94,6 +94,10 @@ export default async function EditPackagePage({
             bufferMins: pkg.bufferMins,
             sessionType: pkg.sessionType,
             priceCents: pkg.priceCents,
+            // Without this the edit form reopens on "Total price" even for an
+            // offering that was priced by the session — and the first save
+            // would quietly convert it back to a lump sum.
+            pricePerSessionCents: pkg.pricePerSessionCents,
             specialPriceCents: pkg.specialPriceCents,
             color: (pkg.color ?? null) as PackageColor | null,
             defaultSessionFormId: pkg.defaultSessionFormId ?? null,

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { guardPermission } from '@/lib/membership'
+import { guardPermission, ownsATrainerAccount } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import { extraClientDogs } from '@/lib/dogs'
@@ -139,11 +139,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
     // So a client edit may only set the name of a person who has no trainer
     // account of their own. Their own name is theirs to change, in their own
     // Settings.
-    const ownsAnAccount = await prisma.trainerMembership.findFirst({
-      where: { userId: client.userId },
-      select: { id: true },
-    })
-    if (ownsAnAccount) {
+    //
+    // This asked only about TrainerMembership, which every account created
+    // BEFORE the team feature lacks — getTrainerContext calls them "legacy
+    // owners" and infers the role from the TrainerProfile instead. So the guard
+    // held for new accounts and missed the oldest ones, and a real business had
+    // its name replaced with a client's: every email it sent afterwards went out
+    // signed with that client's name, and its own staff row read as them.
+    // ownsATrainerAccount asks both questions.
+    if (await ownsATrainerAccount(client.userId)) {
       return NextResponse.json(
         { error: 'This person has their own PupManager account, so their name is theirs to change — everything else here is yours to edit.' },
         { status: 409 },
@@ -174,6 +178,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
       return NextResponse.json(
         { error: "Only the client's primary trainer can change their email." },
         { status: 403 },
+      )
+    }
+    // Same shared-row problem as the name above, and worse: email IS the login.
+    // Rewriting it on someone who runs their own business would move their sign-in
+    // to an address they don't control and clear their verification stamp with it.
+    if (await ownsATrainerAccount(client.userId)) {
+      return NextResponse.json(
+        { error: 'This person signs in to their own PupManager account with that email, so it’s theirs to change — everything else here is yours to edit.' },
+        { status: 409 },
       )
     }
     // No-op when the email matches what's already on file (case-fold

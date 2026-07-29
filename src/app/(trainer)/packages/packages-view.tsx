@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Package as PackageIcon, Pencil, Trash2, Copy,
-  Repeat, Clock, Video, MapPin, Users,
+  Repeat, Clock, Video, MapPin, Users, Route,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
@@ -64,7 +64,7 @@ export function PackagesView({
   const shown = tab === 'past' ? past : current
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this consult? Existing client assignments stay (but their sessions remain on the schedule).')) return
+    if (!confirm('Delete this 1:1 session? Existing client assignments stay (but their sessions remain on the schedule).')) return
     const res = await fetch(`/api/packages/${id}`, { method: 'DELETE' })
     if (res.ok) setPackages(prev => prev.filter(p => p.id !== id))
   }
@@ -89,16 +89,16 @@ export function PackagesView({
   return (
     <>
       <PageHeader
-        title="1:1 Consults"
+        title="1:1 Sessions"
         subtitle="Bundles of 1:1 sessions you assign to a client in one go — set the count, spacing and price once."
       />
       <OfferingPage>
         {packages.length === 0 ? (
           <OfferingEmpty
             icon={<PackageIcon className="h-6 w-6" />}
-            title="No consults yet"
-            body="A consult is a bundle of 1:1 sessions you assign to a client in one go — set the count, spacing and price once, then reuse it."
-            action={{ href: '/offerings/new?kind=onetoone', label: 'New consult' }}
+            title="No 1:1 sessions yet"
+            body="A 1:1 session is a bundle of 1:1 sessions you assign to a client in one go — set the count, spacing and price once, then reuse it."
+            action={{ href: '/offerings/new?kind=onetoone', label: 'New 1:1 session' }}
           />
         ) : (
           <>
@@ -119,10 +119,10 @@ export function PackagesView({
             {shown.length === 0 ? (
               <OfferingTabEmpty
                 icon={<PackageIcon className="mx-auto h-10 w-10" />}
-                title={tab === 'past' ? 'No past consults' : 'No current consults'}
+                title={tab === 'past' ? 'No past 1:1 sessions' : 'No current 1:1 sessions'}
                 body={tab === 'past'
-                  ? 'A consult moves here once everyone you assigned it to has had their last session. It stays put while anyone still has one to come.'
-                  : 'Every consult you have has run its course. Make a new one, or duplicate one from Past to start it again.'}
+                  ? 'A 1:1 session moves here once everyone you assigned it to has had their last session. It stays put while anyone still has one to come.'
+                  : 'Every 1:1 session you have has run its course. Make a new one, or duplicate one from Past to start it again.'}
               />
             ) : (
               <SortableOfferingList ids={shown.map(p => p.id)} onReorder={reorder}>
@@ -153,7 +153,7 @@ export function PackagesView({
               </SortableOfferingList>
             )}
 
-            <AddOfferingLink href="/offerings/new?kind=onetoone" label="New consult" />
+            <AddOfferingLink href="/offerings/new?kind=onetoone" label="New 1:1 session" />
           </>
         )}
       </OfferingPage>
@@ -192,6 +192,14 @@ function packageFacts(p: PkgRow): OfferingFact[] {
       ? { icon: <Video className="h-3.5 w-3.5" />, label: 'Virtual' }
       : { icon: <MapPin className="h-3.5 w-3.5" />, label: 'In person' },
   ]
+  // A curriculum is the thing that makes this a SERIES rather than a bundle of
+  // sessions, so it reads on the card beside the session count.
+  if (p.seriesSteps && p.seriesSteps > 0) {
+    facts.push({
+      icon: <Route className="h-3.5 w-3.5" />,
+      label: `${p.seriesSteps} step${p.seriesSteps === 1 ? '' : 's'}`,
+    })
+  }
   if (p.assignments > 0) {
     facts.push({
       icon: <Users className="h-3.5 w-3.5" />,

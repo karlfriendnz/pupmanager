@@ -41,7 +41,14 @@ export default async function ClassesPage({
       // order until anything has been dragged).
       orderBy: [{ order: 'asc' }, { startDate: 'asc' }],
       include: {
-        package: { select: { id: true, name: true, description: true, capacity: true, durationMins: true, priceCents: true, specialPriceCents: true } },
+        package: {
+          select: {
+            id: true, name: true, description: true, capacity: true, durationMins: true, priceCents: true, specialPriceCents: true,
+            // How many curriculum steps this class runs, if any — a SERIES.
+            // A count, not the steps themselves: the list only says "6 steps".
+            _count: { select: { sessionPlans: true } },
+          },
+        },
         _count: { select: { sessions: true } },
         // Last session drives the current/past split — a run isn't "past" just
         // because it started a while ago, only once its final session has been.
@@ -88,6 +95,7 @@ export default async function ClassesPage({
         startLabel: formatDate(r.startDate),
         status: r.status,
         sessionCount: r._count.sessions,
+        seriesSteps: r.package._count.sessionPlans,
         enrolledCount: r.enrollments.length,
         capacity: r.capacity ?? r.package.capacity ?? null,
         imageUrl: r.imageUrl,

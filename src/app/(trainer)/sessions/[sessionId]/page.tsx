@@ -8,6 +8,7 @@ import { runSessionHref } from '@/lib/run-kind'
 import { SessionFormReport } from '@/components/session-form-report'
 import { hasAddon } from '@/lib/billing'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
+import { SessionSeriesStep } from '@/components/trainer/session-series-step'
 import { PaySessionButton } from './pay-session-button'
 import { SessionAttachments } from '@/components/session-attachments'
 import { SessionTimeTracking } from '@/components/session-time-tracking'
@@ -415,6 +416,12 @@ export default async function SessionPage({
         </aside>
 
         <div className="flex min-w-0 flex-col gap-4">
+          {/* What this session covers, when the offering runs a curriculum —
+              above the write-up, because it is the thing the trainer checks
+              BEFORE the session, and the place a step gets skipped for a dog
+              that already has it. Renders nothing on an ordinary session. */}
+          <SessionSeriesStep sessionId={trainingSession.id} />
+
           {/* The write-up itself — the one thing on this page that earns a
               block of its own. */}
           {notesOn && (
