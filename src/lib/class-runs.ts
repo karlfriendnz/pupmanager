@@ -750,6 +750,16 @@ export async function syncOfferingRun(
     startDate?: Date
     sessionCount?: number
     weeksBetween?: number
+    /**
+     * What the package held BEFORE this save. Required to tell a real change
+     * from a no-op, because the only caller updates the package row inside the
+     * same transaction and THEN calls this — so re-reading the package here
+     * returns the new value and every comparison is the new value against
+     * itself. That is exactly what happened: a trainer changed the number of
+     * sessions, saved, and the class kept the sessions it already had, with no
+     * error. Omit only when the package has not been written yet.
+     */
+    prev?: { sessionCount?: number | null; weeksBetween?: number | null }
     durationMins?: number
     bufferMins?: number
     sessionType?: 'IN_PERSON' | 'VIRTUAL'
@@ -772,11 +782,16 @@ export async function syncOfferingRun(
   // A drop-in class's series comes from its slots, not from this cadence — its
   // rebuild belongs to the slot editor, so leave those runs' sessions alone.
   const isSlotScheduled = run.sessions.some(s => s.packageSessionSlotId)
+  // Compare against what the package held BEFORE the save when the caller
+  // tells us (see `prev`), falling back to the stored row otherwise. The run's
+  // own startDate is safe to read either way — nothing writes it before us.
+  const prevSessionCount = fields.prev ? fields.prev.sessionCount : run.package.sessionCount
+  const prevWeeksBetween = fields.prev ? fields.prev.weeksBetween : run.package.weeksBetween
   const scheduleChanged =
     !isSlotScheduled &&
     ((fields.startDate !== undefined && fields.startDate.getTime() !== run.startDate.getTime()) ||
-      (fields.sessionCount !== undefined && fields.sessionCount !== run.package.sessionCount) ||
-      (fields.weeksBetween !== undefined && fields.weeksBetween !== run.package.weeksBetween))
+      (fields.sessionCount !== undefined && fields.sessionCount !== prevSessionCount) ||
+      (fields.weeksBetween !== undefined && fields.weeksBetween !== prevWeeksBetween))
 
   if (scheduleChanged) {
     // Never move sessions people have already been marked present at — the

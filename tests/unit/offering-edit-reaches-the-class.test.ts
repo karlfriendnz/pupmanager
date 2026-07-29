@@ -98,6 +98,48 @@ describe('syncOfferingRun — an offering edit has to reach the class it runs as
     expect(h.sessionDeleteMany).not.toHaveBeenCalled()
     expect(h.sessionCreateMany).not.toHaveBeenCalled()
   })
+
+  // The bug this file is named for, in its nastiest form. The route updates the
+  // package row and THEN calls this, inside one transaction — so by the time we
+  // re-read the package it already holds the new session count, and comparing
+  // against it compares the new value with itself. The trainer changed 6 to 9,
+  // saved, got no error, and the class kept its old sessions.
+  //
+  // The mock above is why it survived: it hardcodes sessionCount 6 forever, so
+  // in the test's world the package still held the OLD value and the comparison
+  // worked. Here the stored row is deliberately set to the NEW count, which is
+  // what production actually looks like at this moment.
+  it('rebuilds the series when the session count changed, even though the package row already holds the new number', async () => {
+    h.runFindMany.mockResolvedValue([{
+      id: RUN,
+      name: 'Puppy Foundations',
+      location: 'The Hall',
+      startDate: START,
+      bufferMins: null,
+      // Already written by the caller — this is the post-update value.
+      package: { sessionCount: 9, weeksBetween: 1, durationMins: 60, bufferMins: 0, sessionType: 'IN_PERSON' },
+      sessions: [{ id: 's1', sessionIndex: 1, googleCalendarEventId: null, packageSessionSlotId: null }],
+    }])
+
+    await syncOfferingRun(tx(), PACKAGE, TRAINER, {
+      sessionCount: 9,
+      prev: { sessionCount: 6, weeksBetween: 1 },
+    })
+
+    expect(h.sessionCreateMany).toHaveBeenCalled()
+  })
+
+  // The other half: without a real change nothing may be rebuilt, or every
+  // unrelated save (a rename, a new photo) would silently wipe the register.
+  it('leaves the series alone when the session count did not actually move', async () => {
+    await syncOfferingRun(tx(), PACKAGE, TRAINER, {
+      sessionCount: 6,
+      prev: { sessionCount: 6, weeksBetween: 1 },
+    })
+
+    expect(h.sessionDeleteMany).not.toHaveBeenCalled()
+    expect(h.sessionCreateMany).not.toHaveBeenCalled()
+  })
 })
 
 const form = readFileSync('src/app/(trainer)/packages/package-form.tsx', 'utf8')

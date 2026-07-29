@@ -226,6 +226,11 @@ export async function PATCH(
         ...(startAt && { startDate: new Date(startAt) }),
         sessionCount: columns.sessionCount,
         weeksBetween: columns.weeksBetween,
+        // `current` was read before the update above, so this is what the
+        // package actually held when the trainer hit Save. Without it
+        // syncOfferingRun re-reads the row it has just written and compares the
+        // new value with itself, concluding nothing changed.
+        prev: { sessionCount: current.sessionCount, weeksBetween: current.weeksBetween },
         durationMins: columns.durationMins,
         bufferMins: columns.bufferMins,
         sessionType: columns.sessionType,
