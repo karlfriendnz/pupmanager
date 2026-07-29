@@ -18,6 +18,7 @@
 
 import { escapeHtml } from './enquiries'
 import { DEFAULT_BRAND_COLOR } from './brand'
+import { clientFacingTrainerName } from './trainer-name'
 
 export interface LoginLinkTrainer {
   businessName: string
@@ -47,7 +48,8 @@ const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 export function renderLoginLinkEmail({ url, recipientName, trainer }: LoginLinkEmailArgs): RenderedLoginLink {
   const businessName = trainer?.businessName ?? 'PupManager'
-  const trainerDisplay = trainer?.user.name?.trim() || trainer?.businessName || null
+  // The business fronts client mail, not the owner's own name — see lib/trainer-name.
+  const trainerDisplay = trainer ? clientFacingTrainerName(trainer, '') || null : null
   const logoUrl = trainer?.logoUrl ?? `${APP_URL}/logo.png`
   const accentColor = trainer?.emailAccentColor && HEX.test(trainer.emailAccentColor)
     ? trainer.emailAccentColor

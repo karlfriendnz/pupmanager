@@ -35,6 +35,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'No DNS records to share yet', code: 'NO_RECORDS' }, { status: 422 })
   }
 
+  // Personal name on purpose: this goes to the trainer's own developer about
+  // DNS, not to a client. clientFacingTrainerName is for client mail.
   const displayName = trainer.user.name?.trim() || trainer.businessName
   const safeDomain = escapeHtml(trainer.sendingDomain)
   const safeBusiness = escapeHtml(trainer.businessName)

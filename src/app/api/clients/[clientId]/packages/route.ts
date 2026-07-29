@@ -7,6 +7,7 @@ import { notifyClient } from '@/lib/client-notify'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { resolveRequirePayment } from '@/lib/require-payment'
 import { z } from 'zod'
+import { clientFacingTrainerName } from '@/lib/trainer-name'
 
 // Returns the client's active package assignments. Used by the session
 // popup so the trainer can reassign a session to a different package.
@@ -342,7 +343,7 @@ export async function POST(
         trainerId,
         type: 'CLIENT_ADDED_TO_PLAN',
         vars: {
-          trainerName: trainer?.user?.name ?? trainer?.businessName ?? 'Your trainer',
+          trainerName: clientFacingTrainerName(trainer),
           dogName: dog?.name ?? 'your dog',
           planName: pkg.name,
           detail: `${sessionDates.length} session${sessionDates.length === 1 ? '' : 's'}`,

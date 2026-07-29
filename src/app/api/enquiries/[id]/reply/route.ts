@@ -7,6 +7,7 @@ import { sendEmail, fromTrainer } from '@/lib/email'
 import { escapeHtml } from '@/lib/enquiries'
 import { emailBodyToHtml, emailHtmlToText } from '@/lib/email-html'
 import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
+import { clientFacingTrainerName } from '@/lib/trainer-name'
 
 const schema = z.object({
   subject: z.string().min(1).max(200),
@@ -47,7 +48,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   })
   if (!enquiry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const displayName = enquiry.trainer.user.name?.trim() || enquiry.trainer.businessName
+  const displayName = clientFacingTrainerName(enquiry.trainer)
   const trainerEmail = enquiry.trainer.user.email
   const businessName = enquiry.trainer.businessName
   const logoUrl = enquiry.trainer.logoUrl

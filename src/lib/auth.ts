@@ -12,6 +12,7 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { SignJWT, importPKCS8 } from 'jose'
 import { authConfig } from './auth.config'
+import { clientFacingTrainerName } from '@/lib/trainer-name'
 
 // Apple's "client_secret" is actually a short-lived JWT signed with the .p8
 // key — they don't issue a static secret. NextAuth's Apple provider takes the
@@ -289,7 +290,7 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
           // From-spoof so the email appears to be from the trainer
           // when we have one. Falls back to the platform sender for
           // trainer accounts (no parent trainer to spoof from).
-          from: trainer ? fromTrainer(trainer.user.name?.trim() || trainer.businessName) : undefined,
+          from: trainer ? fromTrainer(clientFacingTrainerName(trainer)) : undefined,
           replyTo: trainer?.user.email ?? undefined,
           text: rendered.text,
           html: rendered.html,

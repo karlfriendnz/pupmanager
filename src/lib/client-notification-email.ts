@@ -5,6 +5,7 @@
 import { escapeHtml } from './enquiries'
 import { DEFAULT_BRAND_COLOR } from './brand'
 import { sanitizeRichHtml, isRichTextEmpty, richTextToPlain } from './rich-text'
+import { clientFacingTrainerName } from './trainer-name'
 
 const DEFAULT_ACCENT = DEFAULT_BRAND_COLOR // PupManager teal
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -47,7 +48,8 @@ export interface RenderedClientNotification {
 export function renderClientNotificationEmail(args: ClientNotificationEmailArgs): RenderedClientNotification {
   const { trainer, title, body, bodyHtml, detail, description, sessions, ctaLabel, ctaHref } = args
 
-  const displayName = trainer.user.name?.trim() || trainer.businessName
+  // The business fronts client mail, not the owner's own name — see lib/trainer-name.
+  const displayName = clientFacingTrainerName(trainer)
   const businessName = trainer.businessName
   const accent = trainer.emailAccentColor && HEX.test(trainer.emailAccentColor) ? trainer.emailAccentColor : DEFAULT_ACCENT
 

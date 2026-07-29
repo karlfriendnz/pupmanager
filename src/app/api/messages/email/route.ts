@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail, fromTrainer } from '@/lib/email'
 import { htmlHasText } from '@/lib/email-html'
 import { buildClientEmail } from '@/lib/client-email'
+import { clientFacingTrainerName } from '@/lib/trainer-name'
 
 const schema = z.object({
   clientId: z.string().min(1),
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
   if (!client) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!client.user.email) return NextResponse.json({ error: 'This client has no email address on file' }, { status: 422 })
 
-  const displayName = client.trainer.user.name?.trim() || client.trainer.businessName
+  const displayName = clientFacingTrainerName(client.trainer)
   const trainerEmail = client.trainer.user.email
   const businessName = client.trainer.businessName
 
