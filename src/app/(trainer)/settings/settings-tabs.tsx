@@ -280,7 +280,7 @@ export function SettingsTabs({
         {calendar != null && <div className={tab === 'calendar' ? 'max-w-2xl' : 'hidden'}>{calendar}</div>}
         {addons != null && <div className={tab === 'addons' ? '' : 'hidden'}>{addons}</div>}
         {daycare != null && <div className={tab === 'daycare' ? '' : 'hidden'}>{daycare}</div>}
-        {emails != null && <div className={tab === 'emails' ? 'max-w-3xl' : 'hidden'}>{emails}</div>}
+        {emails != null && <div className={tab === 'emails' ? '' : 'hidden'}>{emails}</div>}
         {team != null && <div className={tab === 'team' ? 'max-w-2xl' : 'hidden'}>{team}</div>}
         {payments != null && <div className={tab === 'payments' ? 'max-w-2xl' : 'hidden'}>{payments}</div>}
         {xero != null && <div className={tab === 'xero' ? 'max-w-2xl' : 'hidden'}>{xero}</div>}

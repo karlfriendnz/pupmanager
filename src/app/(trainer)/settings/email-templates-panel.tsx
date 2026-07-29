@@ -76,6 +76,7 @@ export function EmailTemplatesPanel() {
   // marketing composer uses. The blocks are the edit format; the HTML they
   // serialise to is what sends, and is what every sender already reads.
   const [blocks, setBlocks] = useState<EmailBlock[]>([])
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editorKey, setEditorKey] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -140,14 +141,20 @@ export function EmailTemplatesPanel() {
     if (!systemKey) { setPreview(null); return }
     const key = systemKey
     const t = setTimeout(() => {
+      setPreviewError(null)
       fetch('/api/system-emails/preview', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ key, subject, body }),
       })
-        .then(r => r.json())
-        .then(d => { if (d?.html) setPreview(d) })
-        .catch(() => { /* the editor still works without a preview */ })
+        .then(async r => {
+          if (!r.ok) throw new Error(`Preview failed (${r.status})`)
+          return r.json()
+        })
+        .then(d => { if (d?.html) setPreview(d); else throw new Error('Preview came back empty') })
+        // Swallowing this left a spinner turning forever with nothing to go on.
+        // The editor really does work without a preview — but say so.
+        .catch(e => setPreviewError(e instanceof Error ? e.message : 'Preview unavailable'))
     }, 400)
     return () => clearTimeout(t)
   }, [systemKey, subject, body])
@@ -331,9 +338,13 @@ export function EmailTemplatesPanel() {
           )}
         </div>
 
-        {/* Editor — full width below the picker. */}
+        {/* Two columns from lg up: what you're writing on the left, what it
+            looks like on the right — the same shape as the marketing
+            composer's page mode, so the two screens read the same way.
+            Stacks on narrow screens, editor first. */}
         {draft ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-4">
+        <div className="grid gap-6 lg:grid-cols-2 items-start">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-4 min-w-0">
             {isSystem ? (
               <div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -394,52 +405,6 @@ export function EmailTemplatesPanel() {
 
             <PlaceholderButtons options={placeholderOptions} onInsert={insertPlaceholder} />
 
-            {/* One of ours renders through the real shell — their logo, their
-                colour, the actual layout — in an iframe, so what's on screen is
-                the email rather than a second version of it that can drift.
-                A reusable template has no fixed shell (the composer supplies
-                one), so it keeps the simple body preview. */}
-            {isSystem ? (
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                  <Eye className="h-3.5 w-3.5" /> Preview — as it arrives
-                </p>
-                {preview ? (
-                  <div className="rounded-xl border border-slate-200 overflow-hidden">
-                    <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-                      {draft.subjectEditable !== false && (
-                        <p className="text-sm font-semibold text-slate-900 truncate">{preview.subject || '(no subject)'}</p>
-                      )}
-                      <p className="text-xs text-slate-500 truncate">{preview.from}</p>
-                    </div>
-                    <iframe
-                      title="Email preview"
-                      srcDoc={preview.html}
-                      sandbox=""
-                      className="w-full block bg-white"
-                      style={{ height: 620, border: 0 }}
-                    />
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-slate-200 grid place-items-center h-40 text-sm text-slate-400">
-                    <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Rendering…</span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5"><Eye className="h-3.5 w-3.5" /> Preview (sample data)</p>
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-                    <p className="text-sm font-semibold text-slate-900 truncate">{fillTokens(draft.subject, placeholderOptions) || '(no subject)'}</p>
-                  </div>
-                  <div className="bg-white p-5">
-                    <div className="tiptap-body tiptap-light text-sm text-slate-800" dangerouslySetInnerHTML={{ __html: emailBodyToHtml(fillTokens(draft.body || '<p>(empty)</p>', placeholderOptions)) }} />
-                  </div>
-                </div>
-              </div>
-            )}
-
             {error && <p className="text-sm text-rose-600">{error}</p>}
 
             <div className="flex items-center gap-3 pt-1">
@@ -464,6 +429,61 @@ export function EmailTemplatesPanel() {
               {savedAt && <span className="text-xs text-emerald-600">Saved</span>}
             </div>
           </div>
+
+          {/* Sticky so it stays beside a long message rather than scrolling
+              away from the thing being edited. */}
+          <div className="lg:sticky lg:top-4 min-w-0">
+        {/* One of ours renders through the real shell — their logo, their
+            colour, the actual layout — in an iframe, so what's on screen is
+            the email rather than a second version of it that can drift.
+            A reusable template has no fixed shell (the composer supplies
+            one), so it keeps the simple body preview. */}
+        {isSystem ? (
+          <div>
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+              <Eye className="h-3.5 w-3.5" /> Preview — as it arrives
+            </p>
+            {preview ? (
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+                  {draft.subjectEditable !== false && (
+                    <p className="text-sm font-semibold text-slate-900 truncate">{preview.subject || '(no subject)'}</p>
+                  )}
+                  <p className="text-xs text-slate-500 truncate">{preview.from}</p>
+                </div>
+                <iframe
+                  title="Email preview"
+                  srcDoc={preview.html}
+                  sandbox=""
+                  className="w-full block bg-white"
+                  style={{ height: 620, border: 0 }}
+                />
+              </div>
+            ) : previewError ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                {previewError}. Your changes still save — this is only the preview.
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 grid place-items-center h-40 text-sm text-slate-400">
+                <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Rendering…</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5"><Eye className="h-3.5 w-3.5" /> Preview (sample data)</p>
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+                <p className="text-sm font-semibold text-slate-900 truncate">{fillTokens(draft.subject, placeholderOptions) || '(no subject)'}</p>
+              </div>
+              <div className="bg-white p-5">
+                <div className="tiptap-body tiptap-light text-sm text-slate-800" dangerouslySetInnerHTML={{ __html: emailBodyToHtml(fillTokens(draft.body || '<p>(empty)</p>', placeholderOptions)) }} />
+              </div>
+            </div>
+          </div>
+        )}
+          </div>
+        </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-200 grid place-items-center min-h-[260px] text-center text-sm text-slate-400 p-6">
             <div>
