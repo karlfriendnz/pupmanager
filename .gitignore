@@ -90,3 +90,7 @@ graphify-out/
 
 # python bytecode
 __pycache__/
+
+# Screenshots dropped on in-app review comments — notes about a moment, not repo content.
+public/review-uploads/
+docs/review-tasks.md

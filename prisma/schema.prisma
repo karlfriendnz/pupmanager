@@ -4115,3 +4115,77 @@ model TrainerTodo {
   @@index([companyId])
   @@map("trainer_todos")
 }
+
+/// A note Karl left on a real screen, pinned to the element it points at.
+///
+/// Backs the in-app review widget (ported from fm-events). Deliberately NOT tied
+/// to a trainer or a company: this is a build tool, one reviewer, and scoping it
+/// to a tenant would mean a note left while impersonating a customer belonged to
+/// that customer.
+model ReviewComment {
+  id String @id @default(cuid())
+
+  /// The route with record ids replaced ("/clients/:id"), plus ?tab= when a tab
+  /// selects the view. A pin left on one client's screen is a note about THAT
+  /// SCREEN, not about that client — see pageKeyFor in lib/review-target.
+  pageKey String
+
+  /// The comment's PERMANENT number on its page. Assigned once and never reused,
+  /// so resolving one comment can't renumber the rest — "pin 7" means the same
+  /// thing tomorrow.
+  seq Int?
+
+  body       String  @db.Text
+  authorName String?
+
+  /// Pin position in the scrolling content, null for a page-level note. Kept as
+  /// the fallback for when the captured element can no longer be found.
+  x Float?
+  y Float?
+
+  /// The captured ReviewTarget (lib/review-target). Held as Json rather than
+  /// mirrored columns ON PURPOSE: the capture module is deliberately standalone
+  /// so it can be lifted elsewhere, and re-declaring its fields here would make
+  /// it two things to keep in step. A comment must survive a capture from a
+  /// newer or older client either way.
+  context Json?
+
+  /// Images dropped on the comment — screenshots, mock-ups, references. Each is
+  /// `{ path, name }` where path is repo-relative, so an agent can Read the file
+  /// rather than only look at a link.
+  attachments Json?
+
+  /// Approved by Karl as real work. Only ready comments reach an agent — a
+  /// comment nobody has approved is a suggestion, and the gate is enforced
+  /// server-side, not by the client's selection.
+  ready   Boolean   @default(false)
+  readyAt DateTime?
+
+  /// Handed to an agent in a brief. Lets the panel show "sent, not started"
+  /// instead of it looking identical to untouched work.
+  queuedAt DateTime?
+
+  /// The agent's own state on this item: 'done' (built, awaiting sign-off) or
+  /// 'needs_info' (a question is on the comment). Never resolves it — Karl signs
+  /// off himself.
+  claudeStatus String?
+  claudeNote   String?   @db.Text
+  claudeAt     DateTime?
+
+  /// Karl's sign-off. A resolved comment leaves the board.
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime?
+
+  /// A reply hangs off its parent rather than becoming a task of its own.
+  parentId String?
+  parent   ReviewComment?  @relation("ReviewReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  ReviewComment[] @relation("ReviewReplies")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pageKey])
+  @@index([resolved])
+  @@index([parentId])
+  @@map("review_comments")
+}
