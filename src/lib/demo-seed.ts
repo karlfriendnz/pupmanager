@@ -294,15 +294,17 @@ export function packageDefsFor(roles: string[]): PackageDef[] {
 }
 
 const LIBRARY_CONTENT: Array<{ type: string; themes: Array<{ name: string; tasks: Array<{ title: string; description?: string; repetitions?: number }> }> }> = [
+  // ONE theme on purpose (Karl, 2026-07-30): the first category a trainer opens
+  // should be the SHALLOW shape, so the library doesn't introduce itself as three
+  // levels of tapping. A LibraryTask requires a themeId, so one theme is as flat
+  // as the model goes — the categories below then show the nested shape.
   {
     type: 'Foundations',
     themes: [
-      { name: 'Engagement', tasks: [
+      { name: 'The basics', tasks: [
         { title: 'Name game', description: 'Mark and reward every time your dog turns their head toward their name.', repetitions: 10 },
         { title: 'Check-in walks', description: 'Reward every voluntary check-in on a short walk.', repetitions: 15 },
         { title: 'Hand target', description: 'Touch nose to flat palm. Build duration.', repetitions: 10 },
-      ]},
-      { name: 'Calm', tasks: [
         { title: 'Settle on mat', description: 'Reward calm behaviour on a defined mat. Start with 30 seconds.', repetitions: 5 },
         { title: 'Doorway pause', description: 'Pause at thresholds. Release on a cue.', repetitions: 5 },
         { title: 'Capture relaxation', description: 'Catch your dog choosing to lie down and pay them.', repetitions: 8 },
