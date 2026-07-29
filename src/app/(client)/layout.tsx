@@ -15,6 +15,7 @@ import { FormIntakeGate } from './form-intake-gate'
 import { renderUnifiedForm } from '@/lib/unified-form-render'
 import { PreviewBanner, PREVIEW_SHELL_CLASS } from './preview-banner'
 import { PreviewOnboardingGuide } from './preview-onboarding-guide'
+import { ReviewMount } from '@/components/review/review-mount'
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const active = await getActiveClient()
@@ -286,6 +287,8 @@ export default async function ClientLayout({ children }: { children: React.React
           {children}
         </CurrencyProvider>
       </AppShell>
+      {/* Dev only — renders nothing in production. */}
+      <ReviewMount />
     </div>
   )
 }

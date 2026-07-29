@@ -3,6 +3,7 @@ import { auth, signOut } from '@/lib/auth'
 import { AdminTabNav } from './admin-tab-nav'
 import { AdminBottomNav } from './admin-bottom-nav'
 import type { ReactNode } from 'react'
+import { ReviewMount } from '@/components/review/review-mount'
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const session = await auth()
@@ -36,6 +37,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           the bottom nav is still on screen (it shows up to md). */}
       <main className="flex-1 px-4 sm:px-6 pt-4 sm:pt-6 pb-24 md:pb-6 w-full">{children}</main>
       <AdminBottomNav />
+      {/* Dev only — renders nothing in production. */}
+      <ReviewMount />
     </div>
   )
 }

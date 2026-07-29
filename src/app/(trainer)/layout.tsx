@@ -21,6 +21,7 @@ import { getStreak } from '@/lib/trainer-streak'
 import { isPrivateRelayEmail } from '@/lib/auth-emails'
 import { countUnreadMessages } from '@/lib/unread-messages'
 import { getAccountAccess } from '@/lib/account-access'
+import { ReviewMount } from '@/components/review/review-mount'
 
 export default async function TrainerLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -308,6 +309,8 @@ export default async function TrainerLayout({ children }: { children: React.Reac
         <BookingConflictProvider>{children}</BookingConflictProvider>
       </CurrencyProvider>
     </AppShell>
+    {/* Dev only — renders nothing in production. */}
+    <ReviewMount />
     </PageHelpProvider>
   )
 }

@@ -65,6 +65,10 @@ const TRIGGER_LABEL: Record<SystemEmail['trigger'], string> = {
 export function EmailTemplatesPanel() {
   const [templates, setTemplates] = useState<Template[] | null>(null)
   const [systemEmails, setSystemEmails] = useState<SystemEmail[]>([])
+  // The rendered email, straight from the same shell the senders use. Kept as
+  // HTML for an iframe rather than rebuilt in React, so it cannot drift from
+  // what actually lands in the inbox.
+  const [preview, setPreview] = useState<{ html: string; from: string; subject: string } | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editorKey, setEditorKey] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -105,6 +109,28 @@ export function EmailTemplatesPanel() {
       .then(d => setSystemEmails(d.emails ?? []))
       .catch(() => { /* the trainer's own templates still work without these */ })
   }, [])
+
+  const systemKey = draft?.systemKey ?? null
+  const subject = draft?.subject ?? ''
+  const body = draft?.body ?? ''
+  // Re-render on a pause in typing. A system email only; a reusable template
+  // has no fixed shell to show it in — it goes out inside whatever the
+  // composer wraps it in.
+  useEffect(() => {
+    if (!systemKey) { setPreview(null); return }
+    const key = systemKey
+    const t = setTimeout(() => {
+      fetch('/api/system-emails/preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key, subject, body }),
+      })
+        .then(r => r.json())
+        .then(d => { if (d?.html) setPreview(d) })
+        .catch(() => { /* the editor still works without a preview */ })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [systemKey, subject, body])
 
   function open(t: Template | null) {
     setError(null)
@@ -327,19 +353,51 @@ export function EmailTemplatesPanel() {
 
             <PlaceholderButtons options={placeholderOptions} onInsert={insertPlaceholder} />
 
-            <div>
-              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5"><Eye className="h-3.5 w-3.5" /> Preview (sample data)</p>
-              <div className="rounded-xl border border-slate-200 overflow-hidden">
-                {(!isSystem || draft.subjectEditable !== false) && (
+            {/* One of ours renders through the real shell — their logo, their
+                colour, the actual layout — in an iframe, so what's on screen is
+                the email rather than a second version of it that can drift.
+                A reusable template has no fixed shell (the composer supplies
+                one), so it keeps the simple body preview. */}
+            {isSystem ? (
+              <div>
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+                  <Eye className="h-3.5 w-3.5" /> Preview — as it arrives
+                </p>
+                {preview ? (
+                  <div className="rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+                      {draft.subjectEditable !== false && (
+                        <p className="text-sm font-semibold text-slate-900 truncate">{preview.subject || '(no subject)'}</p>
+                      )}
+                      <p className="text-xs text-slate-500 truncate">{preview.from}</p>
+                    </div>
+                    <iframe
+                      title="Email preview"
+                      srcDoc={preview.html}
+                      sandbox=""
+                      className="w-full block bg-white"
+                      style={{ height: 620, border: 0 }}
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-200 grid place-items-center h-40 text-sm text-slate-400">
+                    <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Rendering…</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5"><Eye className="h-3.5 w-3.5" /> Preview (sample data)</p>
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
                   <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
                     <p className="text-sm font-semibold text-slate-900 truncate">{fillTokens(draft.subject, placeholderOptions) || '(no subject)'}</p>
                   </div>
-                )}
-                <div className="bg-white p-5">
-                  <div className="tiptap-body tiptap-light text-sm text-slate-800" dangerouslySetInnerHTML={{ __html: emailBodyToHtml(fillTokens(draft.body || '<p>(empty)</p>', placeholderOptions)) }} />
+                  <div className="bg-white p-5">
+                    <div className="tiptap-body tiptap-light text-sm text-slate-800" dangerouslySetInnerHTML={{ __html: emailBodyToHtml(fillTokens(draft.body || '<p>(empty)</p>', placeholderOptions)) }} />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {error && <p className="text-sm text-rose-600">{error}</p>}
 
