@@ -3889,6 +3889,15 @@ model EmailTemplate {
   // pick from when emailing a client by hand — the original use of this table.
   // One override per email per trainer; absent means "use the default".
   systemKey String?
+  // The body as EDITED — an ordered list of text and image blocks, the shape
+  // components/shared/email-body-builder speaks. `body` above stays the HTML
+  // that actually sends (serializeBlocks of this), because every sender reads
+  // HTML and none of them should have to learn about blocks.
+  //
+  // Kept rather than parsed back out of the HTML: nothing can turn arbitrary
+  // markup into blocks without losing something, and an editor that quietly
+  // mangles what you saved is worse than no editor.
+  bodyBlocks Json?
   subject   String  @db.Text
   body      String  @db.Text
   sortOrder Int     @default(0)

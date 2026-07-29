@@ -8,6 +8,7 @@ import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { emailBodyToHtml, htmlHasText } from '@/lib/email-html'
 import { CLIENT_EMAIL_PLACEHOLDER_OPTIONS } from '@/lib/placeholder-labels'
 import { PlaceholderButtons, insertTokenAtCursor } from '@/components/shared/placeholder-buttons'
+import { EmailBodyBuilder, serializeBlocks, type EmailBlock } from '@/components/shared/email-body-builder'
 
 type Template = {
   id: string
@@ -53,6 +54,8 @@ type SystemEmail = {
   subjectEditable: boolean
   subject: string; body: string
   defaultSubject: string; defaultBody: string
+  /** What the editor loads. Null for one never edited — opens as one text block. */
+  bodyBlocks: EmailBlock[] | null
   customised: boolean
 }
 
@@ -69,6 +72,10 @@ export function EmailTemplatesPanel() {
   // HTML for an iframe rather than rebuilt in React, so it cannot drift from
   // what actually lands in the inbox.
   const [preview, setPreview] = useState<{ html: string; from: string; subject: string } | null>(null)
+  // Our emails are edited as blocks (text + images), the same builder the
+  // marketing composer uses. The blocks are the edit format; the HTML they
+  // serialise to is what sends, and is what every sender already reads.
+  const [blocks, setBlocks] = useState<EmailBlock[]>([])
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editorKey, setEditorKey] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -82,6 +89,9 @@ export function EmailTemplatesPanel() {
   // Placeholder insertion targets: the subject box and the body editor.
   const subjectRef = useRef<HTMLInputElement | null>(null)
   const bodyEditorRef = useRef<Editor | null>(null)
+  // One editor per text block; the focused one is where a token lands.
+  const blockEditorsRef = useRef<Map<string, Editor>>(new Map())
+  const focusedBlockRef = useRef<string | null>(null)
   const lastFocused = useRef<'subject' | 'body'>('body')
 
   // Each system email declares the tokens its renderer actually substitutes;
@@ -94,6 +104,14 @@ export function EmailTemplatesPanel() {
     if (!draft) return
     if (lastFocused.current === 'subject' && draft.subjectEditable !== false) {
       patch({ subject: insertTokenAtCursor(subjectRef.current, draft.subject, token) })
+      return
+    }
+    if (isSystem) {
+      const ed = focusedBlockRef.current ? blockEditorsRef.current.get(focusedBlockRef.current) : null
+      // Fall back to the first text block, so the button still does something
+      // when nothing has been clicked into yet.
+      const target = ed ?? [...blockEditorsRef.current.values()][0]
+      target?.chain().focus().insertContent(token).run()
       return
     }
     bodyEditorRef.current?.chain().focus().insertContent(token).run()
@@ -112,7 +130,9 @@ export function EmailTemplatesPanel() {
 
   const systemKey = draft?.systemKey ?? null
   const subject = draft?.subject ?? ''
-  const body = draft?.body ?? ''
+  // For one of ours the body follows the blocks, so the preview and the save
+  // can never disagree with what is on screen.
+  const body = systemKey ? serializeBlocks(blocks) : (draft?.body ?? '')
   // Re-render on a pause in typing. A system email only; a reusable template
   // has no fixed shell to show it in — it goes out inside whatever the
   // composer wraps it in.
@@ -144,6 +164,13 @@ export function EmailTemplatesPanel() {
   function openSystem(e: SystemEmail) {
     setError(null)
     setSavedAt(null)
+    // Saved blocks when there are some; otherwise the current wording as a
+    // single text block, so an email nobody has touched still opens editable.
+    setBlocks(
+      e.bodyBlocks?.length
+        ? e.bodyBlocks
+        : [{ id: 'b0', type: 'text', html: e.body || '<p></p>' }],
+    )
     setDraft({
       id: null, systemKey: e.key, name: e.label, category: '',
       subject: e.subject, body: e.body, sortOrder: -1,
@@ -174,8 +201,8 @@ export function EmailTemplatesPanel() {
 
     // One of ours: saved as an override against its key, not as a new template.
     if (draft.systemKey) {
-      if ((draft.body ?? '').trim().length < 20) {
-        setError('The message must be at least 20 characters.')
+      if (body.replace(/<[^>]*>/g, '').trim().length < 20 && !blocks.some(b => b.type === 'image')) {
+        setError('The message must be at least 20 characters, or include an image.')
         return
       }
       setSaving(true)
@@ -184,11 +211,11 @@ export function EmailTemplatesPanel() {
         const res = await fetch('/api/system-emails', {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ key: draft.systemKey, subject: draft.subject, body: draft.body }),
+          body: JSON.stringify({ key: draft.systemKey, subject: draft.subject, body, blocks }),
         })
         if (!res.ok) throw new Error('Save failed')
         setSystemEmails(list => list.map(e =>
-          e.key === draft.systemKey ? { ...e, subject: draft.subject, body: draft.body, customised: true } : e))
+          e.key === draft.systemKey ? { ...e, subject: draft.subject, body, bodyBlocks: blocks, customised: true } : e))
         patch({ customised: true })
         setSavedAt(Date.now())
       } catch (e) {
@@ -348,7 +375,21 @@ export function EmailTemplatesPanel() {
             )}
             <div onFocusCapture={() => { lastFocused.current = 'body' }}>
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Message</label>
-              <RichTextEditor key={editorKey} theme="light" value={draft.body} onEditorReady={editor => { bodyEditorRef.current = editor }} onChange={html => patch({ body: html })} minHeight={200} />
+              {isSystem ? (
+                /* Same builder the marketing composer uses — text and image
+                   blocks in order, so these emails can look like the rest of
+                   what the trainer sends rather than being the plain ones. */
+                <EmailBodyBuilder
+                  key={editorKey}
+                  blocks={blocks}
+                  onBlocksChange={setBlocks}
+                  disabled={saving}
+                  onEditorReady={(id, editor) => { blockEditorsRef.current.set(id, editor) }}
+                  onBlockFocus={id => { lastFocused.current = 'body'; focusedBlockRef.current = id }}
+                />
+              ) : (
+                <RichTextEditor key={editorKey} theme="light" value={draft.body} onEditorReady={editor => { bodyEditorRef.current = editor }} onChange={html => patch({ body: html })} minHeight={200} />
+              )}
             </div>
 
             <PlaceholderButtons options={placeholderOptions} onInsert={insertPlaceholder} />

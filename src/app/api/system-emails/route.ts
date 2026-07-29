@@ -29,7 +29,7 @@ export async function GET() {
 
   const rows = await prisma.emailTemplate.findMany({
     where: { trainerId: tid, systemKey: { in: SYSTEM_EMAIL_KEYS } },
-    select: { systemKey: true, subject: true, body: true },
+    select: { systemKey: true, subject: true, body: true, bodyBlocks: true },
   })
   const bySystemKey = new Map(rows.map(r => [r.systemKey!, r]))
 
@@ -47,6 +47,10 @@ export async function GET() {
       subjectEditable: def.subjectEditable !== false,
       subject: saved?.subject ?? def.defaultSubject,
       body: saved?.body ?? def.defaultBody,
+      // What the editor loads. Absent for an email never edited (and for the
+      // invite, which lives on the profile as plain text) — the client then
+      // opens the default wording as a single text block.
+      bodyBlocks: (saved && 'bodyBlocks' in saved ? saved.bodyBlocks : null) ?? null,
       defaultSubject: def.defaultSubject,
       defaultBody: def.defaultBody,
       customised: !!saved,
@@ -55,10 +59,18 @@ export async function GET() {
   return NextResponse.json({ emails })
 }
 
+const blockSchema = z.discriminatedUnion('type', [
+  z.object({ id: z.string(), type: z.literal('text'), html: z.string().max(20000) }),
+  z.object({ id: z.string(), type: z.literal('image'), url: z.string().max(2000), link: z.string().max(2000).optional() }),
+])
+
 const saveSchema = z.object({
   key: z.string().min(1),
   subject: z.string().max(300),
-  body: z.string().max(20000),
+  // The HTML that sends — serialised by the client from the blocks below, so
+  // the two always describe the same email.
+  body: z.string().max(40000),
+  blocks: z.array(blockSchema).max(50).optional(),
 })
 
 export async function PUT(req: Request) {
@@ -90,8 +102,13 @@ export async function PUT(req: Request) {
       category: 'system',
       subject: parsed.data.subject,
       body: parsed.data.body,
+      bodyBlocks: parsed.data.blocks ?? undefined,
     },
-    update: { subject: parsed.data.subject, body: parsed.data.body },
+    update: {
+      subject: parsed.data.subject,
+      body: parsed.data.body,
+      bodyBlocks: parsed.data.blocks ?? undefined,
+    },
   })
   return NextResponse.json({ ok: true })
 }
