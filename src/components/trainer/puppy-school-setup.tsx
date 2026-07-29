@@ -22,6 +22,30 @@ let seq = 0
 const newPart = (name = '', start = '09:00', end = '12:00', days: number[] = WEEKDAYS_ONLY): Part =>
   ({ key: `p${seq++}`, name, start, end, price: '', capacity: '8', days: [...days] })
 
+// How a daycare is actually shaped, as one tap each. A FULL DAY is the default
+// and the most common: most daycares sell the whole day and nothing else, and
+// starting them on Morning + Afternoon made them delete their way to it.
+const SHAPES: { key: string; label: string; hint: string; make: () => Part[] }[] = [
+  {
+    key: 'full',
+    label: 'Full day',
+    hint: 'One drop-off, one pick-up',
+    make: () => [newPart('Full day', '07:30', '17:30')],
+  },
+  {
+    key: 'halves',
+    label: 'Half days',
+    hint: 'Morning or afternoon',
+    make: () => [newPart('Morning', '07:30', '12:30'), newPart('Afternoon', '12:30', '17:30')],
+  },
+  {
+    key: 'both',
+    label: 'Full day + half days',
+    hint: 'Parents pick how long',
+    make: () => [newPart('Full day', '07:30', '17:30'), newPart('Morning', '07:30', '12:30'), newPart('Afternoon', '12:30', '17:30')],
+  },
+]
+
 function todayISO(): string {
   const n = new Date()
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
@@ -33,10 +57,21 @@ export function PuppySchoolSetup() {
   const sym = currencySymbol(currency)
 
   const [name, setName] = useState('')
-  const [parts, setParts] = useState<Part[]>([newPart('Morning', '09:00', '12:00'), newPart('Afternoon', '13:00', '17:00')])
+  const [shape, setShape] = useState('full')
+  const [parts, setParts] = useState<Part[]>(() => SHAPES[0].make())
   const [startFrom, setStartFrom] = useState(todayISO())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Picking a shape REPLACES the parts — it's a starting point chosen before any
+  // hand-editing, and merging into whatever was there would have produced
+  // something the trainer didn't ask for. Everything below stays editable.
+  const pickShape = (key: string) => {
+    const s = SHAPES.find(x => x.key === key)
+    if (!s) return
+    setShape(key)
+    setParts(s.make())
+  }
 
   const patchPart = (key: string, p: Partial<Part>) => setParts(prev => prev.map(x => (x.key === key ? { ...x, ...p } : x)))
   const removePart = (key: string) => setParts(prev => prev.filter(x => x.key !== key))
@@ -77,6 +112,9 @@ export function PuppySchoolSetup() {
           durationMins: 60,
           isGroup: true,
           isPuppySchool: true,
+          // A daycare is booked a day at a time — that's a drop-in in the class
+          // model, and it's the only kind of booking this offering takes.
+          allowDropIn: true,
           allowWaitlist: true,
           clientSelfBook: true,
           selfBookRequiresApproval: false,
@@ -104,10 +142,32 @@ export function PuppySchoolSetup() {
           <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Waggy Tails Doggy Daycare" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
         </div>
 
+        {/* How the day is sold — full day, half days, or both. */}
+        <div className="p-5">
+          <div className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-1.5"><Sun className="h-4 w-4 text-amber-500" /> How do you sell the day?</div>
+          <p className="text-xs text-slate-500 mb-3">Pick the closest shape — you can change the times, prices and limits underneath.</p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {SHAPES.map(s => {
+              const on = shape === s.key
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => pickShape(s.key)}
+                  className={`rounded-xl border px-3 py-2.5 text-left ${on ? 'border-teal-600 bg-teal-50/50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                >
+                  <span className={`block text-sm font-semibold ${on ? 'text-teal-800' : 'text-slate-800'}`}>{s.label}</span>
+                  <span className="block text-xs text-slate-500 mt-0.5">{s.hint}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         {/* Parts of the day — each with its own days */}
         <div className="p-5">
-          <div className="text-sm font-medium text-slate-700 mb-1 flex items-center gap-1.5"><Sun className="h-4 w-4 text-amber-500" /> Parts of the day</div>
-          <p className="text-xs text-slate-500 mb-3">Split the day however you like — parents book the parts they want. Pick which days <em>each</em> part runs, so parts can differ day to day.</p>
+          <div className="text-sm font-medium text-slate-700 mb-1">Parts of the day</div>
+          <p className="text-xs text-slate-500 mb-3">Each part has its own hours, price and limit — and its own days, so parts can differ day to day.</p>
           <div className="flex flex-col gap-2.5">
             {parts.map(part => (
               <div key={part.key} className="rounded-xl border border-slate-200 p-2.5">
@@ -120,7 +180,7 @@ export function PuppySchoolSetup() {
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-sm">{sym}</span>
                     <input value={part.price} onChange={e => patchPart(part.key, { price: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="Price" className="h-9 w-20 rounded-lg border border-slate-200 pl-6 pr-2 text-sm" />
                   </div>
-                  <input value={part.capacity} onChange={e => patchPart(part.key, { capacity: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" placeholder="Cap" title="Max dogs" className="h-9 w-16 rounded-lg border border-slate-200 px-2 text-sm" />
+                  <input value={part.capacity} onChange={e => patchPart(part.key, { capacity: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" placeholder="Limit" title="How many dogs fit in this part" className="h-9 w-16 rounded-lg border border-slate-200 px-2 text-sm" />
                   <button onClick={() => removePart(part.key)} disabled={parts.length === 1} title="Remove" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {/* Per-part weekdays */}

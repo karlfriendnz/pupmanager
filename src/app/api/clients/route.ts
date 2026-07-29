@@ -102,7 +102,15 @@ export async function GET(req: Request) {
       isSample: true,
       user: { select: { name: true } },
       dog: { select: { name: true, breed: true, photoUrl: true } },
-      dogs: { select: { name: true, photoUrl: true } },
+      // Ids too, and every dog — a picker that BOOKS something (the daycare
+      // board's "register a dog") has to name which dog, and a client with two
+      // dogs is the normal case there. A dog that has died is left out: it can't
+      // be enrolled, so offering it is only a dead end.
+      dogs: {
+        where: { deceasedAt: null },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, name: true, photoUrl: true },
+      },
     },
   })
 
@@ -118,6 +126,9 @@ export async function GET(req: Request) {
         // search autocomplete shows it so a breed match explains itself.
         dogBreed: c.dog?.breed ?? null,
         dogPhotoUrl: c.dog?.photoUrl ?? c.dogs[0]?.photoUrl ?? null,
+        // The bookable dogs, in full. dogName above stays the one-line summary
+        // the sale composer and search autocomplete already read.
+        dogs: c.dogs.map(d => ({ id: d.id, name: d.name, photoUrl: d.photoUrl })),
       })),
   })
 }

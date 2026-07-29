@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette, CalendarDays } from 'lucide-react'
+import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette, CalendarDays, Dog } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 import { cn } from '@/lib/utils'
 import { TabIntro } from './tab-intro'
@@ -39,6 +39,9 @@ const ALL_TABS = [
   { id: 'design', label: 'Design', icon: Palette, section: 'account' },
   { id: 'notifications', label: 'Notifications', icon: Bell, section: 'account' },
   { id: 'addons', label: 'Add-ons', icon: Puzzle, section: 'business' },
+  // Only rendered when the puppyschool add-on is on — the daycare's one home
+  // for setting itself up (the board has no controls of its own).
+  { id: 'daycare', label: 'Daycare', icon: Dog, section: 'business' },
   { id: 'forms', label: 'Fields & forms', icon: Pencil, section: 'business' },
   { id: 'locations', label: 'Locations', icon: MapPin, section: 'business' },
   { id: 'integration', label: 'Connect Website', icon: Globe, section: 'business' },
@@ -61,6 +64,7 @@ export function SettingsTabs({
   integration,
   calendar,
   addons,
+  daycare,
   team,
   payments,
   xero,
@@ -78,6 +82,7 @@ export function SettingsTabs({
   integration?: React.ReactNode
   calendar?: React.ReactNode
   addons?: React.ReactNode
+  daycare?: React.ReactNode
   team?: React.ReactNode
   payments?: React.ReactNode
   xero?: React.ReactNode
@@ -85,7 +90,7 @@ export function SettingsTabs({
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, calendar, addons, team, payments, xero, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, calendar, addons, daycare, team, payments, xero, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
@@ -271,6 +276,7 @@ export function SettingsTabs({
         {integration != null && <div className={tab === 'integration' ? '' : 'hidden'}>{integration}</div>}
         {calendar != null && <div className={tab === 'calendar' ? 'max-w-2xl' : 'hidden'}>{calendar}</div>}
         {addons != null && <div className={tab === 'addons' ? '' : 'hidden'}>{addons}</div>}
+        {daycare != null && <div className={tab === 'daycare' ? '' : 'hidden'}>{daycare}</div>}
         {team != null && <div className={tab === 'team' ? 'max-w-2xl' : 'hidden'}>{team}</div>}
         {payments != null && <div className={tab === 'payments' ? 'max-w-2xl' : 'hidden'}>{payments}</div>}
         {xero != null && <div className={tab === 'xero' ? 'max-w-2xl' : 'hidden'}>{xero}</div>}

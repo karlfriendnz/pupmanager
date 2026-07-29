@@ -3,15 +3,28 @@
 import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { PageHeader } from '@/components/shared/page-header'
-import { Dog, X, CalendarDays, User, MessageSquare, Phone } from 'lucide-react'
+import { Dog, X, CalendarDays, User, MessageSquare, Phone, Settings2 } from 'lucide-react'
 import { PuppySchoolSetup } from '@/components/trainer/puppy-school-setup'
+import { DaycareDaySheet } from '@/components/trainer/daycare-day-sheet'
 import type { PuppySchoolSummary, WeekBoard, WeekBoardCell, BoardAttendee } from '@/lib/puppy-school'
 
-export function PuppySchoolView({ schools, board, scheduleDays }: { schools: PuppySchoolSummary[]; board: WeekBoard; scheduleDays: number[] }) {
+// A column key is a plain calendar date, so it's read back as UTC — treating it
+// as local would slide the weekday over the date line for half the world.
+const WEEKDAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+function dateFromKey(key: string): Date { return new Date(`${key}T00:00:00Z`) }
+function weekdayFromKey(key: string): string { return WEEKDAY_FULL[dateFromKey(key).getUTCDay()] ?? 'week' }
+function longDateFromKey(key: string): string {
+  return dateFromKey(key).toLocaleDateString('en-NZ', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+export function PuppySchoolView({ schools, board }: { schools: PuppySchoolSummary[]; board: WeekBoard }) {
   const [creating, setCreating] = useState(schools.length === 0)
 
-  // Columns filtered to the trainer's chosen weekdays (col index i → ISO i+1).
-  const columns = board.columns.filter((_, i) => scheduleDays.includes(i + 1))
+  // Columns = the days the daycare's own day-parts run on (col index i → ISO
+  // i+1). NOT TrainerProfile.scheduleDays, which is the scheduler's "which days
+  // do I want to see in my calendar" — a different question, and narrowing it
+  // used to hide a day the daycare was open. Changed in Settings → Daycare.
+  const columns = board.columns.filter((_, i) => board.openDays.includes(i + 1))
 
   // Which days each dog appears in this week (dogId → column keys), for the
   // "also here this week" quick action.
@@ -33,8 +46,20 @@ export function PuppySchoolView({ schools, board, scheduleDays }: { schools: Pup
       {/* No "New school" action. A daycare has ONE day-parted offering; the
           setup form still appears automatically when there isn't one yet, and a
           second can be added from the offerings list if it's ever needed. The
-          button also read as "school", which this isn't. */}
-      <PageHeader title="Doggy Daycare" />
+          button also read as "school", which this isn't. The board carries no
+          controls of its own — everything it shows is configured in one place,
+          which this points at rather than reimplementing here. */}
+      <PageHeader
+        title="Doggy Daycare"
+        actions={
+          <Link
+            href="/settings?tab=daycare"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-teal-400 hover:text-teal-700"
+          >
+            <Settings2 className="h-4 w-4" /> Daycare settings
+          </Link>
+        }
+      />
 
       {/* No page padding: the board runs edge to edge so a full day's dogs get
           every pixel of width. The setup form keeps its own padding — it's a
@@ -57,9 +82,9 @@ export function PuppySchoolView({ schools, board, scheduleDays }: { schools: Pup
           <div className="flex-1 min-h-0 flex flex-col">
             {/* No header row: the board is the page. What used to sit here — a
                 programme chip, a week total and a day picker — either repeated
-                the page title or duplicated a control that lives elsewhere
-                (TrainerProfile.scheduleDays is owned by the schedule's own
-                settings panel). The run detail is still at /doggy-daycare/:runId. */}
+                the page title or asked a question the day-parts already answer.
+                Which days show is now derived from them (Settings → Daycare).
+                The run detail is still at /doggy-daycare/:runId. */}
             <WeekBoardGrid board={board} columns={columns} daysByDog={daysByDog} colLabel={colLabel} />
           </div>
         )}
@@ -72,6 +97,10 @@ interface PopState { att: BoardAttendee; days: string[]; top: number; left: numb
 
 function WeekBoardGrid({ board, columns, daysByDog, colLabel }: { board: WeekBoard; columns: { key: string; label: string }[]; daysByDog: Map<string, Set<string>>; colLabel: Map<string, string> }) {
   const [pop, setPop] = useState<PopState | null>(null)
+  // The cell a trainer opened: one day-part on one day. Held as keys rather than
+  // the cell object so a router.refresh() behind the sheet flows back into it.
+  const [open, setOpen] = useState<{ partKey: string; colKey: string } | null>(null)
+  const openCell = open ? board.cells[open.partKey]?.[open.colKey] : undefined
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const cancelHide = () => { if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null } }
@@ -167,10 +196,24 @@ function WeekBoardGrid({ board, columns, daysByDog, colLabel }: { board: WeekBoa
               cells={columns.map(c => ({ colKey: c.key, cell: board.cells[part.key]?.[c.key] }))}
               onDogEnter={showPop}
               onDogLeave={scheduleHide}
+              onOpen={colKey => { setPop(null); setOpen({ partKey: part.key, colKey }) }}
             />
           ))}
         </div>
       </div>
+
+      {/* The tapped day-part: who's in, who to add, and the limit. Read back out
+          of the board each render, so a refresh after registering a dog shows
+          them without closing. */}
+      {open && openCell && (
+        <DaycareDaySheet
+          partLabel={board.parts.find(p => p.key === open.partKey)?.label ?? ''}
+          dateLabel={longDateFromKey(open.colKey)}
+          weekdayLabel={weekdayFromKey(open.colKey)}
+          cell={openCell}
+          onClose={() => setOpen(null)}
+        />
+      )}
 
       {/* Hover quick-actions popover (fixed, so it escapes the cell's scroll). */}
       {pop && (
@@ -215,12 +258,13 @@ function DogAvatar({ att, sizeClass = 'h-4 w-4' }: { att: BoardAttendee; sizeCla
   return <span className={`grid place-items-center bg-teal-100 text-teal-700 text-[10px] font-semibold rounded-full shrink-0 ${sizeClass}`}>{att.dog.slice(0, 1).toUpperCase()}</span>
 }
 
-function PartRow({ label, cells, todayKey, onDogEnter, onDogLeave }: {
+function PartRow({ label, cells, todayKey, onDogEnter, onDogLeave, onOpen }: {
   label: string
   cells: { colKey: string; cell: WeekBoardCell | undefined }[]
   todayKey: string
   onDogEnter: (att: BoardAttendee, el: HTMLElement) => void
   onDogLeave: () => void
+  onOpen: (colKey: string) => void
 }) {
   return (
     <>
@@ -264,14 +308,27 @@ function PartRow({ label, cells, todayKey, onDogEnter, onDogLeave }: {
               </div>
             ) : (
               /* An open day-part showing 0/8 and a flat bar reads as broken. Say
-                 out loud that it's empty — the cell is still a live tap through
-                 to the session, which is where a dog gets added. */
+                 out loud that it's empty — the cell still opens, and registering
+                 the first dog is the thing to do from there. */
               <div className="flex-1 min-h-0 flex items-center text-[11px] text-slate-400">No dogs yet</div>
             )}
           </>
         )
+        // A div, not a button: the cell holds the dog chips, and a button's
+        // content model is phrasing content only. role + key handling give it
+        // the keyboard behaviour a button would have brought.
         return cell.runId ? (
-          <Link key={i} href={`/doggy-daycare/${cell.runId}/sessions/${cell.sessionId}`} className={shell}>{body}</Link>
+          <div
+            key={i}
+            role="button"
+            tabIndex={0}
+            aria-label={`Open ${label}`}
+            onClick={() => onOpen(colKey)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(colKey) } }}
+            className={`${shell} cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500`}
+          >
+            {body}
+          </div>
         ) : (
           <div key={i} className={shell}>{body}</div>
         )

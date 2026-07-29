@@ -1071,7 +1071,11 @@ export async function enrollInRun(args: {
     // that session on its own (Saturdays 6, Tuesdays 12).
     let slotCapacity: { capacity: number | null } | null = null
     if (type === 'DROP_IN') {
-      if (!run.package.allowDropIn) {
+      // A daycare's product IS the single day: booking one Wednesday is the
+      // normal thing, not an exception a trainer has to opt into. The setup form
+      // sets allowDropIn on new ones, but every daycare created before that
+      // would otherwise refuse the only kind of booking it takes.
+      if (!run.package.allowDropIn && !run.package.isPuppySchool) {
         throw new ClassError('NO_DROP_IN', 'This class does not allow drop-ins')
       }
       if (!args.sessionId) {

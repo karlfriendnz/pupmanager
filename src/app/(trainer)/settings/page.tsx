@@ -11,6 +11,7 @@ import { DeleteAccountSection } from './delete-account-section'
 import { PaymentsPanel } from './payments-panel'
 import { ActivityPanel } from './activity-panel'
 import { AddonsTab } from './addons-tab'
+import { DaycareTab } from './daycare-tab'
 import { IntegrationTab } from './integration-tab'
 import { XeroTab } from './xero-tab'
 import { GoogleCalendarTab } from './google-calendar-tab'
@@ -52,6 +53,10 @@ export default async function TrainerSettingsPage() {
   // the connection is the MEMBER's own calendar, so anyone on the team must be
   // able to connect theirs without permission to change company settings.
   const gcalEnabled = await hasAddon(ctx.companyId, 'googlecalendar')
+  // Daycare only has settings when the trainer runs one — same add-on gate the
+  // /doggy-daycare board redirects on. Editing the day-parts edits the offering,
+  // so it takes the same permission the offering form does.
+  const daycareEnabled = can('packages.manage', ctx.role, ctx.permissions) && (await hasAddon(ctx.companyId, 'puppyschool'))
 
   const trainerProfile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
@@ -148,6 +153,7 @@ export default async function TrainerSettingsPage() {
         locations={canEditSettings ? <LocationsPanel locations={locations} region={trainerProfile ? trainerRegionCode(trainerProfile) : undefined} /> : undefined}
         integration={can('settings.edit', ctx.role, ctx.permissions) ? <IntegrationTab companyId={ctx.companyId} /> : undefined}
         addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
+        daycare={daycareEnabled ? <DaycareTab companyId={ctx.companyId} /> : undefined}
         team={<TeamPanel />}
         payments={ctx.role === 'OWNER' ? <PaymentsPanel companyId={ctx.companyId} /> : undefined}
         xero={xeroEnabled ? <XeroTab companyId={ctx.companyId} /> : undefined}

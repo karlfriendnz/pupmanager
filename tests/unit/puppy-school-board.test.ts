@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   profileFindUnique: vi.fn(),
   sessionFindMany: vi.fn(),
   enrollmentFindMany: vi.fn(),
+  slotFindMany: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -15,6 +16,8 @@ vi.mock('@/lib/prisma', () => ({
     trainerProfile: { findUnique: h.profileFindUnique },
     trainingSession: { findMany: h.sessionFindMany },
     classEnrollment: { findMany: h.enrollmentFindMany },
+    // The day-parts, which say which weekdays the board is open (openDays).
+    packageSessionSlot: { findMany: h.slotFindMany },
   },
 }))
 
@@ -26,6 +29,7 @@ const SESSION_AT = new Date('2026-08-05T09:00:00.000Z')
 beforeEach(() => {
   vi.clearAllMocks()
   h.profileFindUnique.mockResolvedValue({ user: { timezone: 'UTC' } })
+  h.slotFindMany.mockResolvedValue([{ day: 3 }]) // Wednesday
   h.sessionFindMany.mockResolvedValue([
     { id: 's1', scheduledAt: SESSION_AT, classRunId: 'r1', packageSessionSlot: { capacity: 8 }, classRun: { capacity: null, package: { capacity: null } } },
   ])
@@ -53,9 +57,53 @@ describe('getPuppySchoolWeek', () => {
   // Every cell is a tap through to that day-part's own session screen, so the
   // ids have to survive the bucketing — including when two sessions share one
   // cell, where the FIRST one's ids are the ones the tap should use.
+  // The board's columns come from the daycare's OWN day-parts, not from
+  // TrainerProfile.scheduleDays (which is the scheduler's setting, and used to
+  // be able to hide a day the daycare was actually open). The full Mon–Sun
+  // week still ships so the view can lay the columns out; openDays says which
+  // of them to draw.
+  it('reports the open days from the day-parts, keeping the full week of columns', async () => {
+    h.slotFindMany.mockResolvedValue([{ day: 2 }, { day: 5 }, { day: 2 }, { day: 0 }])
+    const board = await getPuppySchoolWeek('t1', NOW)
+    expect(board.columns).toHaveLength(7)
+    expect(board.openDays).toEqual([2, 5, 7]) // Tue, Fri, Sun — sorted, deduped
+  })
+
+  it('falls back to the whole week when there are no day-parts', async () => {
+    h.slotFindMany.mockResolvedValue([])
+    const board = await getPuppySchoolWeek('t1', NOW)
+    expect(board.openDays).toEqual([1, 2, 3, 4, 5, 6, 7])
+  })
+
+  // The early return for an empty week is a second exit from the function, and
+  // it used to be the only one that could forget a new field.
+  it('still reports the open days when no sessions are scheduled', async () => {
+    h.sessionFindMany.mockResolvedValue([])
+    h.slotFindMany.mockResolvedValue([{ day: 1 }, { day: 4 }])
+    const board = await getPuppySchoolWeek('t1', NOW)
+    expect(board.parts).toEqual([])
+    expect(board.openDays).toEqual([1, 4])
+  })
+
   it('carries the session the cell taps through to', async () => {
     const board = await getPuppySchoolWeek('t1', NOW)
     expect(board.cells['09:00']['2026-08-05']).toMatchObject({ runId: 'r1', sessionId: 's1' })
+  })
+
+  // The limit is edited from the board, and it lives on the SLOT — so the cell
+  // has to carry the slot it's an occurrence of, not just its session.
+  it('carries the day-part slot the limit is set on', async () => {
+    h.sessionFindMany.mockResolvedValue([
+      { id: 's1', scheduledAt: SESSION_AT, classRunId: 'r1', packageSessionSlot: { id: 'slot1', capacity: 8, startTime: '09:00', endTime: '12:00' }, classRun: { capacity: null, package: { capacity: null } } },
+    ])
+    const board = await getPuppySchoolWeek('t1', NOW)
+    expect(board.cells['09:00-12:00']['2026-08-05']).toMatchObject({ slotId: 'slot1' })
+  })
+
+  // A session with no slot behind it still renders; it just has no limit to set.
+  it('leaves slotId null for a session with no day-part behind it', async () => {
+    const board = await getPuppySchoolWeek('t1', NOW)
+    expect(board.cells['09:00']['2026-08-05'].slotId).toBeNull()
   })
 
   it('keeps the first session ids when two sessions share a cell', async () => {

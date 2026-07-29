@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { listPuppySchools, getPuppySchoolWeek } from '@/lib/puppy-school'
 import { PuppySchoolView } from './puppy-school-view'
@@ -18,12 +17,12 @@ export default async function PuppySchoolPage() {
   if (!trainerId) redirect('/login')
   if (!(await hasAddon(trainerId, 'puppyschool'))) redirect('/settings?tab=addons')
 
-  const [schools, board, profile] = await Promise.all([
+  // Which weekdays the board shows comes from the daycare's own day-parts
+  // (board.openDays) — not TrainerProfile.scheduleDays, which belongs to the
+  // scheduler. Configured in Settings → Daycare.
+  const [schools, board] = await Promise.all([
     listPuppySchools(trainerId),
     getPuppySchoolWeek(trainerId),
-    prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { scheduleDays: true } }),
   ])
-  // Shared with the scheduler: which weekdays (1=Mon..7=Sun) to show.
-  const scheduleDays = Array.isArray(profile?.scheduleDays) ? (profile.scheduleDays as number[]) : [1, 2, 3, 4, 5, 6, 7]
-  return <PuppySchoolView schools={schools} board={board} scheduleDays={scheduleDays} />
+  return <PuppySchoolView schools={schools} board={board} />
 }

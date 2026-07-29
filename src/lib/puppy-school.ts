@@ -4,6 +4,7 @@
 // come from the day-part slots. The board groups this week's sessions by
 // weekday × start-time and shows occupancy + waitlist per cell.
 import { prisma } from './prisma'
+import { openDaysFromSlots } from './daycare-days'
 
 const DAY_MS = 86_400_000
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -71,10 +72,25 @@ export interface WeekBoardCell {
   /** Where tapping the cell goes: the day-part's own session screen. */
   runId: string | null
   sessionId: string
+  /**
+   * The day-part this cell is an occurrence of. The limit lives here, not on the
+   * session — one slot is one weekday's part, so changing it changes that day
+   * every week. Null for a session generated without a slot behind it.
+   */
+  slotId: string | null
+  /**
+   * This part has been and gone, so nothing new can be booked into it. Mirrors
+   * the rule enrollInRun enforces (not UPCOMING, or already started) so the
+   * board doesn't offer a tap that the server is certain to refuse.
+   */
+  closed: boolean
 }
 export interface WeekBoard {
   tz: string
+  /** Every day of the Mon–Sun week. The board shows the ones in `openDays`. */
   columns: { key: string; label: string }[]
+  /** ISO weekdays (1=Mon…7=Sun) the daycare's own day-parts run on. */
+  openDays: number[]
   parts: { key: string; label: string }[]
   cells: Record<string, Record<string, WeekBoardCell>>
   totalBooked: number
@@ -88,11 +104,19 @@ export interface WeekBoard {
  * instant math); sessions are bucketed by their zoned date + start time.
  */
 export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date()): Promise<WeekBoard> {
-  const profile = await prisma.trainerProfile.findUnique({
-    where: { id: trainerId },
-    select: { user: { select: { timezone: true } } },
-  })
+  const [profile, openSlots] = await Promise.all([
+    prisma.trainerProfile.findUnique({
+      where: { id: trainerId },
+      select: { user: { select: { timezone: true } } },
+    }),
+    // The daycare's own day-parts say which days it runs — see openDaysFromSlots.
+    prisma.packageSessionSlot.findMany({
+      where: { package: { trainerId, isPuppySchool: true } },
+      select: { day: true },
+    }),
+  ])
   const tz = profile?.user.timezone ?? 'Pacific/Auckland'
+  const openDays = openDaysFromSlots(openSlots)
 
   // Monday of the current week, as a pure calendar date in tz.
   const np = parts(tz, { weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now)
@@ -114,12 +138,12 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
       classRun: { trainerId, package: { isPuppySchool: true } },
     },
     select: {
-      id: true, scheduledAt: true, classRunId: true,
-      packageSessionSlot: { select: { capacity: true, startTime: true, endTime: true } },
+      id: true, scheduledAt: true, status: true, classRunId: true,
+      packageSessionSlot: { select: { id: true, capacity: true, startTime: true, endTime: true } },
       classRun: { select: { capacity: true, package: { select: { capacity: true } } } },
     },
   })
-  if (sessions.length === 0) return { tz, columns, parts: [], cells: {}, totalBooked: 0, todayKey }
+  if (sessions.length === 0) return { tz, columns, openDays, parts: [], cells: {}, totalBooked: 0, todayKey }
 
   const runIds = [...new Set(sessions.map(s => s.classRunId).filter((x): x is string => !!x))]
   const enrollments = await prisma.classEnrollment.findMany({
@@ -192,14 +216,18 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
       cell.attendees.push(...attendees)
       // A null capacity means "unlimited" — it must stay null, not become a sum.
       cell.capacity = cell.capacity === null || capacity === null ? null : cell.capacity + capacity
-      // runId/sessionId stay the FIRST session's: when two sessions share a cell
-      // the tap has to land somewhere, and the earlier one is the one a trainer
-      // means by "the 9am".
+      // runId/sessionId/slotId stay the FIRST session's: when two sessions share
+      // a cell the tap has to land somewhere, and the earlier one is the one a
+      // trainer means by "the 9am".
     } else {
-      cells[partKey][colKey] = { booked, capacity, waitlist, attendees, runId: s.classRunId, sessionId: s.id }
+      cells[partKey][colKey] = {
+        booked, capacity, waitlist, attendees,
+        runId: s.classRunId, sessionId: s.id, slotId: s.packageSessionSlot?.id ?? null,
+        closed: s.status !== 'UPCOMING' || s.scheduledAt.getTime() <= now.getTime(),
+      }
     }
   }
 
   const partsArr = [...partLabels.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, label]) => ({ key, label }))
-  return { tz, columns, parts: partsArr, cells, totalBooked, todayKey }
+  return { tz, columns, openDays, parts: partsArr, cells, totalBooked, todayKey }
 }
