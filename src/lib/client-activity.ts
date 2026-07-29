@@ -121,16 +121,20 @@ export function viewFromTab(tab: string | undefined): ClientView {
 }
 
 /** What the tab is called, and what it means, in the trainer's own terms. */
+// One word each. Four tabs sharing a row have a quarter of a 390px screen
+// apiece; "Never booked" and "Past client" both wrapped onto two lines there.
+// "Contacts" also avoids "Leads", which is colder than this app talks, and
+// doesn't collide with Enquiries, which is a different thing already.
 export const VIEW_LABEL: Record<ClientView, string> = {
   current: 'Current',
-  past: 'Past client',
-  never: 'Never booked',
+  past: 'Past',
+  never: 'Contacts',
   archived: 'Archived',
 }
 
 export const VIEW_BLURB: Record<ClientView, string> = {
   current: 'Booked onto something with a session still to come — a class, an event or a 1:1.',
   past: 'They have trained with you before. Nothing booked at the moment.',
-  never: 'On your list, but they have never booked anything.',
+  never: 'On your list, but they have never booked anything yet.',
   archived: 'Hidden by hand. They stay off the other three lists until you bring them back.',
 }

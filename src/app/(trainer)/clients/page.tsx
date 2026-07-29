@@ -229,12 +229,7 @@ export default async function ClientsPage({
         view={view}
         // Plain data only — the icons are picked inside the client component,
         // because a Lucide icon is a function and can't cross this boundary.
-        tabs={TABS.map(v => ({
-          id: v,
-          label: VIEW_LABEL[v],
-          badge: COUNTS[v] > 0 ? COUNTS[v] : undefined,
-          href: tabHref(v),
-        }))}
+        tabs={TABS.map(v => ({ id: v, label: VIEW_LABEL[v], href: tabHref(v) }))}
         blurb={VIEW_BLURB[view]}
         columns={clientListColumns}
         customFields={customFields}

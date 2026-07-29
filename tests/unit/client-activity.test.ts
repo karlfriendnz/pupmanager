@@ -133,8 +133,16 @@ describe('what the tabs are called', () => {
 
   it('names them in the trainer’s own terms', () => {
     expect(VIEW_LABEL.current).toBe('Current')
-    expect(VIEW_LABEL.past).toBe('Past client')
-    expect(VIEW_LABEL.never).toBe('Never booked')
+    expect(VIEW_LABEL.past).toBe('Past')
+    expect(VIEW_LABEL.never).toBe('Contacts')
+  })
+
+  // Four tabs share a row: on a 390px screen that's a quarter each, and
+  // "Never booked" wrapped onto two lines there.
+  it('keeps every label to one word', () => {
+    for (const label of Object.values(VIEW_LABEL)) {
+      expect(label.split(' ')).toHaveLength(1)
+    }
   })
 })
 
@@ -148,18 +156,17 @@ describe('the tab strip crosses the server/client boundary safely', () => {
   const page = readFileSync('src/app/(trainer)/clients/page.tsx', 'utf8')
   const wrapper = readFileSync('src/app/(trainer)/clients/client-view-tabs.tsx', 'utf8')
 
-  it('sends the tabs plain data, no icon functions', () => {
-    // The strip now renders inside ClientsList (below the search box), so the
-    // server page's job is to hand over the DATA for it.
+  it('sends the tabs plain data — no functions of any kind', () => {
     const i = page.indexOf('tabs={TABS.map(')
     expect(i).toBeGreaterThan(-1)
-    expect(page.slice(i, i + 400)).not.toContain('icon:')
+    const payload = page.slice(i, i + 400)
+    // An icon is a function, and a function cannot cross this boundary: React
+    // rejects the whole payload and the page renders nothing at all.
+    expect(payload).not.toContain('icon:')
   })
 
-  it('keeps the icons on the client side of the line', () => {
+  it('renders on the client side of the line', () => {
     expect(wrapper).toContain("'use client'")
-    expect(wrapper).toContain('lucide-react')
-    expect(wrapper).toContain('icon: ICON[t.id]')
   })
 
   // A server component can't hand over an onChange either — these tabs navigate.
@@ -207,11 +214,23 @@ describe('the clients search row on a phone', () => {
     expect(list).not.toContain('<span className="hidden sm:inline">{selectMode')
   })
 
-  // Icon on top, label under, count in the corner — the shape the client
-  // profile uses. A row of prose labels beside their counts is what wrapped.
-  it('wears the profile’s stacked tab shape at every size', () => {
+  // One flat block split by hairlines — the house pattern, same as the
+  // reschedule banner. Not a floating pill strip, and not a row of chips.
+  it('wears the house flat-block shape', () => {
     const wrapper = readFileSync('src/app/(trainer)/clients/client-view-tabs.tsx', 'utf8')
-    expect(wrapper).toContain('stackedAlways')
-    expect(wrapper).toContain('fullWidth')
+    // No count beside a tab: it's a fact about a list you aren't looking at.
+    expect(wrapper).not.toContain('t.badge')
+    expect(wrapper).toContain('rounded-xl border border-slate-200 bg-white')
+    expect(wrapper).toContain('[&>*+*]:border-l')
+    // Even split, so the longest label can't set everyone else's width.
+    expect(wrapper).toContain('flex-1 min-w-0')
+  })
+
+  // It borrows the shape, not the component: bending OfferingTabs into it took
+  // three flags only this caller would ever set.
+  it('leaves the shared offering strip alone', () => {
+    const shared = readFileSync('src/components/shared/offering-tabs.tsx', 'utf8')
+    expect(shared).not.toContain('stackedAlways')
+    expect(shared).not.toContain('fullWidth')
   })
 })
