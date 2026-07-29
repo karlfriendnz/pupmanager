@@ -355,6 +355,9 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
         where: {
           classRunId: step.classRunId,
           status: { in: statuses as ('ENROLLED' | 'WAITLISTED')[] },
+          // Nothing automated goes out about a dog that has died. An enrolment
+          // carrying no dog at all is still a real person, so it stays.
+          OR: [{ dogId: null }, { dog: { deceasedAt: null } }],
           ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
         },
         select: { dropInSessionId: true, dog: { select: { name: true } }, client: { select: { user: { select: RECIPIENT_USER_SELECT } } } },
@@ -392,6 +395,8 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
         where: {
           clientPackage: { packageId: step.packageId! },
           scheduledAt: scheduledWhere,
+          // As above: no automated message about a dog that has died.
+          OR: [{ dogId: null }, { dog: { deceasedAt: null } }],
           ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
         },
         select: {
@@ -503,8 +508,8 @@ async function processMembershipStep(
     where: { id: { in: purchases.map(p => p.clientId) } },
     select: {
       id: true,
-      dog: { select: { name: true } },
-      dogs: { select: { name: true } },
+      dog: { select: { name: true, deceasedAt: true } },
+      dogs: { where: { deceasedAt: null }, select: { name: true, deceasedAt: true } },
       user: { select: RECIPIENT_USER_SELECT },
       assignedTrainer: { select: ASSIGNED_MEMBER_SELECT },
     },
@@ -528,7 +533,9 @@ async function processMembershipStep(
   for (const purchase of purchases) {
     const client = clientById.get(purchase.clientId)
     if (!client?.user?.id) continue
-    const dogs = [client.dog?.name, ...client.dogs.map(d => d.name)]
+    // A membership message still goes out (it's about billing, not a dog), but
+    // it must never name a dog that has died.
+    const dogs = [client.dog?.deceasedAt ? null : client.dog?.name, ...client.dogs.map(d => d.name)]
       .filter((n): n is string => !!n)
       .filter((n, i, arr) => arr.indexOf(n) === i)
     const anchorDate = step.direction === 'AFTER_PURCHASE' ? purchase.purchasedAt : purchase.currentPeriodEnd

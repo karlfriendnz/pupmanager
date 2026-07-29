@@ -76,6 +76,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     return NextResponse.json({ error: 'That dog does not belong to this client.' }, { status: 400 })
   }
 
+  // A dog that has died can't be enrolled. The pickers already leave them out,
+  // so this only catches a stale page — but it's the last point before a
+  // deceased dog would be written onto a live roster.
+  if (parsed.data.dogId) {
+    const dog = await prisma.dog.findUnique({
+      where: { id: parsed.data.dogId },
+      select: { deceasedAt: true },
+    })
+    if (dog?.deceasedAt) {
+      return NextResponse.json({ error: 'That dog is marked as deceased and can’t be enrolled.' }, { status: 400 })
+    }
+  }
+
   const type = parsed.data.type ?? 'FULL'
   // One enrolment per chosen session for a drop-in; a single one otherwise.
   const sessionIds = type === 'DROP_IN'

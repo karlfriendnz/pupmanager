@@ -39,6 +39,10 @@ export async function GET(req: Request) {
           { client: { isSample: true } },
           { classRun: { isSample: true } },
           { classRun: { status: 'CANCELLED' } },
+          // Never remind anyone about a dog that has died. Group sessions
+          // carry no dog of their own, so this only sifts the 1:1 rows — the
+          // class side is filtered per-enrolment below.
+          { dog: { deceasedAt: { not: null } } },
         ],
       },
     },
@@ -53,7 +57,9 @@ export async function GET(req: Request) {
         select: {
           name: true,
           enrollments: {
-            where: { status: 'ENROLLED' },
+            // A deceased dog's enrolment is skipped; an enrolment with no dog
+            // on it at all is still a real person to remind, so it stays.
+            where: { status: 'ENROLLED', OR: [{ dogId: null }, { dog: { deceasedAt: null } }] },
             select: { client: { select: { userId: true } }, dog: { select: { name: true } } },
           },
         },

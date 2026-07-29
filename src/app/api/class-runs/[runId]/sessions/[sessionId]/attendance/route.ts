@@ -52,7 +52,7 @@ export async function GET(
       orderBy: { enrolledAt: 'asc' },
       include: {
         client: { select: { user: { select: { name: true } } } },
-        dog: { select: { name: true, photoUrl: true, breed: true } },
+        dog: { select: { name: true, photoUrl: true, breed: true, deceasedAt: true } },
         attendance: { where: { sessionId }, take: 1 },
       },
     }),
@@ -62,7 +62,10 @@ export async function GET(
     sessionFormId: sess.sessionFormId,
     effectiveForm,
     availableForms,
-    roster: enrollments.map(e => ({
+    // A dog that has died drops off the register — but only where there is
+    // nothing to preserve. If they were already marked for THIS session that
+    // row is a record of a session they really attended, so it stays.
+    roster: enrollments.filter(e => !e.dog?.deceasedAt || e.attendance.length > 0).map(e => ({
       enrollmentId: e.id,
       clientName: e.client.user.name,
       dogName: e.dog?.name ?? null,

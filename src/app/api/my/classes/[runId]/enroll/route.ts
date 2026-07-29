@@ -60,9 +60,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
     select: {
-      id: true, trainerId: true, dogId: true, dogs: { select: { id: true } },
+      id: true, trainerId: true, dogId: true, dogs: { select: { id: true, deceasedAt: true } },
       user: { select: { name: true } },
-      dog: { select: { name: true } },
+      dog: { select: { name: true, deceasedAt: true } },
       trainer: { select: { businessName: true, user: { select: { id: true } } } },
       assignedTrainer: { select: { user: { select: { id: true } } } },
     },
@@ -164,6 +164,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     : [parsed.data.dogId ?? profile.dogId ?? null]
   for (const d of dogs) {
     if (d && !ownDogIds.has(d)) return NextResponse.json({ error: 'That dog isn’t on your account.' }, { status: 400 })
+  }
+  // A dog that has died can't be enrolled. The wizard already leaves them out
+  // of the picker, so this only catches a stale page.
+  const deceasedDogIds = new Set(profile.dogs.filter(d => d.deceasedAt).map(d => d.id))
+  if (profile.dogId && profile.dog?.deceasedAt) deceasedDogIds.add(profile.dogId)
+  if (dogs.some(d => d && deceasedDogIds.has(d))) {
+    return NextResponse.json({ error: 'That dog is marked as deceased and can’t be enrolled.' }, { status: 400 })
   }
   const dogCount = dogs.length
   // For the "already booked?" queries: match the real dog ids, or the null-dog

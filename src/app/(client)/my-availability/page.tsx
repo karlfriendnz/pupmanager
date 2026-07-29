@@ -103,8 +103,8 @@ export default async function MyAvailabilityPage() {
     select: {
       trainerId: true,
       dogId: true,
-      dog: { select: { id: true, name: true } },
-      dogs: { select: { id: true, name: true } },
+      dog: { select: { id: true, name: true, deceasedAt: true } },
+      dogs: { select: { id: true, name: true, deceasedAt: true } },
       trainer: { select: { acceptPaymentsEnabled: true, connectChargesEnabled: true, payoutCurrency: true } },
     },
   })
@@ -236,7 +236,9 @@ export default async function MyAvailabilityPage() {
     ? []
     : await loadPublishedMemberships(profile.trainerId, active.clientId)
 
-  const allDogs = mergeClientDogs(profile.dog, profile.dogs)
+  // This list only feeds the booking wizard's dog picker, so a dog that has
+  // died is left out — there is nothing here to book them onto.
+  const allDogs = mergeClientDogs(profile.dog, profile.dogs).filter(d => !d.deceasedAt)
 
   // Read-only preview of the trainer's open windows — shown only when there's
   // nothing to self-book, so the page still answers "when are they free?".

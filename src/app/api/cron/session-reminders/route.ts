@@ -47,6 +47,8 @@ export async function GET(req: Request) {
           { client: { isSample: true } },
           { classRun: { isSample: true } },
           { classRun: { status: 'CANCELLED' } },
+          // Never nudge a trainer about a session for a dog that has died.
+          { dog: { deceasedAt: { not: null } } },
         ],
       },
     },

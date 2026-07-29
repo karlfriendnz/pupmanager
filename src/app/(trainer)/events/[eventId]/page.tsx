@@ -70,7 +70,7 @@ export default async function EventPage({
     }),
     prisma.clientProfile.findMany({
       where: { trainerId, status: 'ACTIVE' },
-      select: { id: true, user: { select: { name: true } }, dog: { select: { id: true, name: true } } },
+      select: { id: true, user: { select: { name: true } }, dog: { select: { id: true, name: true, deceasedAt: true } } },
       orderBy: { user: { name: 'asc' } },
     }),
   ])
@@ -163,11 +163,13 @@ export default async function EventPage({
             : inv.sentAt ? 'SENT' : 'UNSENT',
         }
       })}
+      // A deceased dog can't be enrolled, so the client comes through the
+      // picker with no dog attached rather than dropping out of it entirely.
       clients={clients.map(c => ({
         id: c.id,
         name: c.user.name ?? 'Unnamed client',
-        dogId: c.dog?.id ?? null,
-        dogName: c.dog?.name ?? null,
+        dogId: c.dog?.deceasedAt ? null : (c.dog?.id ?? null),
+        dogName: c.dog?.deceasedAt ? null : (c.dog?.name ?? null),
       }))}
     />
   )

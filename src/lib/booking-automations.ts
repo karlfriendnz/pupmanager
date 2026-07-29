@@ -92,7 +92,7 @@ const SESSION_SELECT = {
   id: true,
   scheduledAt: true,
   dog: { select: { name: true } },
-  client: { select: { dog: { select: { name: true } }, user: { select: { name: true, email: true } } } },
+  client: { select: { dog: { select: { name: true, deceasedAt: true } }, user: { select: { name: true, email: true } } } },
 } as const
 
 /**
@@ -126,6 +126,10 @@ export async function processScheduledAutomations(now: Date = new Date()): Promi
         clientId: { not: null },
         scheduledAt: scheduledWhere,
         automationSends: { none: { automationId: a.id } },
+        // No automated email about a dog that has died — neither the reminder
+        // before nor the follow-up after. A session with no dog on it still
+        // sends, so the null case is kept explicitly.
+        OR: [{ dogId: null }, { dog: { deceasedAt: null } }],
       },
       select: SESSION_SELECT,
     })
@@ -135,7 +139,9 @@ export async function processScheduledAutomations(now: Date = new Date()): Promi
       if (!email) continue
       const vars: Vars = {
         name: s.client?.user?.name ?? 'there',
-        dog: s.dog?.name ?? s.client?.dog?.name ?? '',
+        // The fallback to the client's primary dog must not resurrect a dog the
+        // session itself didn't name — an empty {{dog}} beats a dead one.
+        dog: s.dog?.name ?? (s.client?.dog?.deceasedAt ? '' : s.client?.dog?.name) ?? '',
         time: formatBookingTime(s.scheduledAt, tz),
         business: businessName,
       }

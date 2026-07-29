@@ -247,6 +247,11 @@ export default async function ClientDetailPage({
   // Share, Delete — now lives ON the page, at the foot of the Overview tab,
   // instead of behind an "Actions" dropdown in the header. Built here because
   // the props come from this page's queries; rendered by ClientProfileTabs.
+  //
+  // Enrolling and assigning are forward-looking, so a deceased dog is dropped
+  // from those pickers — unlike the Dogs tab below, which keeps showing them
+  // (badged) so the owner's history survives.
+  const livingDogs = allDogs.filter(d => !d.deceasedAt)
   const actionsPanel = (
     <ClientActionsPanel
       clientId={client.id}
@@ -262,7 +267,7 @@ export default async function ClientDetailPage({
         role: m.role,
       }))}
       currentMembershipId={trainerCtx?.membershipId ?? null}
-      dogs={allDogs.map(d => ({ id: d.id, name: d.name }))}
+      dogs={livingDogs.map(d => ({ id: d.id, name: d.name }))}
       packages={packages.map(p => ({
         id: p.id,
         name: p.name,
@@ -388,6 +393,9 @@ export default async function ClientDetailPage({
           weight: d.weight,
           dob: d.dob ? d.dob.toISOString() : null,
           notes: d.notes,
+          // Deliberately NOT filtered here — the Dogs tab keeps a deceased dog
+          // visible (badged) so the owner's history survives.
+          deceasedAt: d.deceasedAt ? d.deceasedAt.toISOString() : null,
         }))}
         products={products.map(p => ({
           id: p.id,

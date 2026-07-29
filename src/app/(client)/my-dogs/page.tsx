@@ -15,8 +15,8 @@ export default async function MyDogsPage() {
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
     include: {
-      dog: { select: { id: true, name: true, breed: true, photoUrl: true, weight: true, dob: true } },
-      dogs: { select: { id: true, name: true, breed: true, photoUrl: true, weight: true, dob: true } },
+      dog: { select: { id: true, name: true, breed: true, photoUrl: true, weight: true, dob: true, deceasedAt: true } },
+      dogs: { select: { id: true, name: true, breed: true, photoUrl: true, weight: true, dob: true, deceasedAt: true } },
     },
   })
   if (!profile) redirect('/login')
@@ -49,6 +49,9 @@ export default async function MyDogsPage() {
                 <p className="font-display text-lg font-bold text-slate-900 leading-tight">{d.name}</p>
                 {d.breed && <p className="text-xs text-slate-500">{d.breed}</p>}
                 <div className="mt-2 flex flex-wrap gap-1.5">
+                  {/* A dog that has died stays on this list — the history is theirs — but
+                      is badged, which is also why they no longer appear in classes. */}
+                  {d.deceasedAt && <span className="rounded-full bg-slate-200 text-slate-600 text-[11px] font-semibold px-2 py-0.5">Deceased</span>}
                   {age != null && <span className="rounded-full bg-accent-soft text-accent text-[11px] font-semibold px-2 py-0.5">{age} yr{age === 1 ? '' : 's'}</span>}
                   {d.weight != null && <span className="rounded-full bg-accent-soft text-accent text-[11px] font-semibold px-2 py-0.5">{d.weight} kg</span>}
                 </div>
