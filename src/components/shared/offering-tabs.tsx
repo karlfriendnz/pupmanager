@@ -103,12 +103,15 @@ export function OfferingTabs<T extends string>({
                 {t.label}
               </span>
               {/* The count keeps its own corner rather than sitting after a
-                  label that may wrap — it has to stay readable either way. */}
+                  label that may wrap — it has to stay readable either way.
+                  A plain number, not a tinted pill: a coloured chip per tab is
+                  four pieces of decoration competing with the labels, and the
+                  house style spends colour on the one thing that needs it. */}
               {t.badge != null && (
                 <span
                   className={cn(
-                    'absolute top-1 right-1 min-w-4 h-4 px-1 text-[10px] font-semibold tabular-nums rounded-full flex items-center justify-center',
-                    active ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600',
+                    'absolute top-1.5 right-2 text-[11px] font-semibold tabular-nums leading-none',
+                    active ? 'text-slate-900' : 'text-slate-400',
                   )}
                 >
                   {t.badge}

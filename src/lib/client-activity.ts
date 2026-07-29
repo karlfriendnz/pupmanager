@@ -33,17 +33,36 @@ export const notArchived: Prisma.ClientProfileWhereInput = {
   status: { not: ARCHIVED_STATUS },
 }
 
-/** Enrolled in a class run that still has a session to come. */
-export function inClassNowWhere(now = new Date()): Prisma.ClientProfileWhereInput {
+/**
+ * Has something still to come — across EVERY kind of offering.
+ *
+ * Two arms, because a session reaches a client two different ways:
+ *   • a place on a ClassRun — which is group classes, casual classes, one-off
+ *     events and daycare programmes, all of which are runs;
+ *   • a session booked against them directly — a 1:1 consult, or one generated
+ *     by a package assigned to them.
+ *
+ * The second arm matters more than it looks: without it a trainer who does only
+ * 1:1 work would sit at "Current: 0" for ever, which is the same class of wrong
+ * as the start-date trap above — a filter that answers a question nobody asked.
+ */
+export function currentWhere(now = new Date()): Prisma.ClientProfileWhereInput {
   return {
-    classEnrollments: {
-      some: {
-        status: 'ENROLLED',
-        // The run, not the enrolment: what matters is whether the COURSE has
-        // anything left to run, and a mid-course client is still in class.
-        classRun: { sessions: { some: { scheduledAt: { gte: now } } } },
+    OR: [
+      {
+        classEnrollments: {
+          some: {
+            status: 'ENROLLED',
+            // The run, not the enrolment: what matters is whether the COURSE
+            // has anything left, and a mid-course client is still in class.
+            classRun: { sessions: { some: { scheduledAt: { gte: now } } } },
+          },
+        },
       },
-    },
+      // 1:1 and package sessions hang off the client directly (a class
+      // session's clientId is null — its roster is the enrolments).
+      { trainingSessions: { some: { scheduledAt: { gte: now } } } },
+    ],
   }
 }
 
@@ -64,7 +83,7 @@ export function whereForView(view: ClientView, now = new Date()): Prisma.ClientP
     case 'archived':
       return { status: ARCHIVED_STATUS }
     case 'current':
-      return { ...notArchived, ...inClassNowWhere(now) }
+      return { ...notArchived, ...currentWhere(now) }
     case 'never':
       return {
         ...notArchived,
@@ -74,10 +93,13 @@ export function whereForView(view: ClientView, now = new Date()): Prisma.ClientP
     case 'past':
       // Booked before, nothing still to come. NOT() around the current test
       // rather than a stored flag, so it can never drift out of step with it.
+      //
+      // AND-nested rather than spread: both halves are an OR, and two `OR` keys
+      // in one object silently overwrite each other — which would have made
+      // "past" mean whichever one landed last.
       return {
         ...notArchived,
-        ...hasEverBookedWhere,
-        NOT: inClassNowWhere(now),
+        AND: [hasEverBookedWhere, { NOT: currentWhere(now) }],
       }
   }
 }
@@ -107,7 +129,7 @@ export const VIEW_LABEL: Record<ClientView, string> = {
 }
 
 export const VIEW_BLURB: Record<ClientView, string> = {
-  current: 'Booked onto a class that still has a session to come.',
+  current: 'Booked onto something with a session still to come — a class, an event or a 1:1.',
   past: 'They have trained with you before. Nothing booked at the moment.',
   never: 'On your list, but they have never booked anything.',
   archived: 'Hidden by hand. They stay off the other three lists until you bring them back.',

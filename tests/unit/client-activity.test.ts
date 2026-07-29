@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   whereForView,
   viewFromTab,
-  inClassNowWhere,
+  currentWhere,
   ARCHIVED_STATUS,
   VIEW_LABEL,
 } from '@/lib/client-activity'
@@ -23,15 +23,23 @@ describe('in class now', () => {
   // clients out of 684; asking whether it still has a session to come returns
   // 60, which matches the trainer's own spreadsheet.
   it('asks whether a session is still to come, never when the course started', () => {
-    const w = JSON.stringify(inClassNowWhere(NOW))
+    const w = JSON.stringify(currentWhere(NOW))
     expect(w).toContain('sessions')
     expect(w).toContain('scheduledAt')
     expect(w).not.toContain('startDate')
   })
 
-  it('only counts a seat they actually hold', () => {
-    const w = inClassNowWhere(NOW) as Record<string, { some?: { status?: string } }>
-    expect(w.classEnrollments?.some?.status).toBe('ENROLLED')
+  it('only counts a class seat they actually hold', () => {
+    expect(JSON.stringify(currentWhere(NOW))).toContain('"status":"ENROLLED"')
+  })
+
+  // Every kind of offering, not just group classes. Events, casual classes and
+  // daycare are all ClassRuns; a 1:1 or package session hangs off the client
+  // directly. Without that second arm a 1:1-only trainer sits at 0 for ever.
+  it('counts 1:1 and package sessions, not only class places', () => {
+    const w = JSON.stringify(currentWhere(NOW))
+    expect(w).toContain('trainingSessions')
+    expect(w).toContain('classEnrollments')
   })
 
   it('leaves out anyone archived', () => {
@@ -43,9 +51,16 @@ describe('past client', () => {
   // "Booked before, nothing to come" is the NEGATION of in-class-now, taken
   // from the same function — so the two can never drift apart.
   it('is defined as having booked, and not being current', () => {
+    const w = whereForView('past', NOW) as { AND?: unknown[] }
+    expect(w.AND).toHaveLength(2)
+    expect(JSON.stringify(w.AND![1])).toBe(JSON.stringify({ NOT: currentWhere(NOW) }))
+  })
+
+  // Both halves are an OR. Spread into one object they'd overwrite each other
+  // and "past" would quietly mean whichever landed last — hence the AND.
+  it('nests the two ORs instead of letting one clobber the other', () => {
     const w = whereForView('past', NOW) as Record<string, unknown>
-    expect(w.OR).toBeDefined()
-    expect(JSON.stringify(w.NOT)).toBe(JSON.stringify(inClassNowWhere(NOW)))
+    expect(w.OR).toBeUndefined()
   })
 
   it('counts a package as having booked, not just a class', () => {
