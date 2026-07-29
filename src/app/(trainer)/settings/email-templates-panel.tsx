@@ -77,6 +77,19 @@ export function EmailTemplatesPanel() {
   // serialise to is what sends, and is what every sender already reads.
   const [blocks, setBlocks] = useState<EmailBlock[]>([])
   const [previewError, setPreviewError] = useState<string | null>(null)
+  // The iframe grows to whatever the email actually is, so there is no inner
+  // scrollbar and no dead space under a short one. Measured from the rendered
+  // document rather than guessed at — the height depends on the trainer's own
+  // images, which we cannot know in advance.
+  const [previewHeight, setPreviewHeight] = useState(700)
+  const previewFrameRef = useRef<HTMLIFrameElement | null>(null)
+
+  function fitPreview() {
+    const doc = previewFrameRef.current?.contentDocument
+    if (!doc?.body) return
+    const h = Math.max(doc.body.scrollHeight, doc.documentElement?.scrollHeight ?? 0)
+    if (h > 0) setPreviewHeight(h)
+  }
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editorKey, setEditorKey] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -452,11 +465,25 @@ export function EmailTemplatesPanel() {
                   <p className="text-xs text-slate-500 truncate">{preview.from}</p>
                 </div>
                 <iframe
+                  ref={previewFrameRef}
                   title="Email preview"
                   srcDoc={preview.html}
-                  sandbox=""
+                  /* allow-same-origin so the height can be read from the
+                     parent. Scripts stay blocked — no allow-scripts — so the
+                     rendered email still cannot run anything. */
+                  sandbox="allow-same-origin"
+                  onLoad={() => {
+                    fitPreview()
+                    // Images land after load and change the height.
+                    previewFrameRef.current?.contentDocument
+                      ?.querySelectorAll('img')
+                      .forEach(img => {
+                        if (!img.complete) img.addEventListener('load', fitPreview, { once: true })
+                      })
+                  }}
+                  scrolling="no"
                   className="w-full block bg-white"
-                  style={{ height: 620, border: 0 }}
+                  style={{ height: previewHeight, border: 0 }}
                 />
               </div>
             ) : previewError ? (
