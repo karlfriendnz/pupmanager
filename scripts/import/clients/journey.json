@@ -1,0 +1,105 @@
+{
+  "slug": "journey",
+  "name": "Journey Dog Training",
+  "root": "~/Downloads",
+
+  "_comment_files": "Processing order. The FIRST file is the spine: it creates the people everything else matches into. Which file is which SHAPE is the main thing a new client has to work out.",
+  "files": [
+    {
+      "shape": "booking_spreadsheet",
+      "path": "_PRIME PUPS.xlsx",
+      "label": "spreadsheet",
+      "options": {
+        "classSheets": ["Early Learning", "School Pups", "Top Teens"],
+        "waitlistSheet": "Waitlist",
+        "waitlistLabel": "waitlist",
+        "sheetPrefix": { "Early Learning": "Ea", "School Pups": "Sc", "Top Teens": "Tt" },
+        "locationSheets": ["Early Learning"],
+        "locationColumn": "G",
+        "venueHints": ["bethlehem", "matua", "bch", "hall"]
+      }
+    },
+    { "shape": "outlook_contacts", "path": "contacts.csv", "label": "contacts" },
+    { "shape": "simple_contacts", "path": "professionals.csv", "label": "professionals" },
+    { "shape": "squarespace_profiles", "path": "profiles.csv", "label": "subscribers" }
+  ],
+
+  "_comment_priorities": "Who wins a FIELD-LEVEL disagreement. Not the same as processing order: contacts is read third but must never overwrite the spreadsheet.",
+  "priorities": {
+    "spreadsheet": 40,
+    "waitlist": 35,
+    "contacts": 30,
+    "professionals": 20,
+    "subscribers": 10
+  },
+
+  "_comment_courseCodes": "The shorthand she types for a class level, and what it means. Also used to name classes invented from a reference.",
+  "courseCodes": {
+    "SP": "School Pups",
+    "ELP": "Early Learning",
+    "TT": "Top Teens"
+  },
+  "defaultCourseCode": "SP",
+
+  "_comment_serviceNames": "1:1 / in-home work. These become consults, never class enrolments.",
+  "serviceNames": {
+    "DTS": "Dog Training Session (1:1)",
+    "DTP": "Dog Training Package (1:1)",
+    "PFP": "Puppy Foundation Package (1:1)",
+    "PFS": "Puppy Foundation Session (1:1)",
+    "TW": "Training Walk",
+    "ADT": "Adolescent Dog Training (1:1)",
+    "OC": "One-off Consult"
+  },
+  "servicePhrases": ["in-home", "in home", "1:1", "one to one", "training walk", "package"],
+
+  "roleWords": ["intern", "volunteer", "placement"],
+  "priorProviders": ["allsorts", "ADT", "journey", "cliff road", "neewood"],
+  "nicknameJunkExtra": ["and sps allsort"],
+  "referenceTag": "AF",
+
+  "customFields": {
+    "volunteer": "Volunteer",
+    "professional": "Professional",
+    "previousTrainer": "Previous trainer",
+    "business": "Business",
+    "credit": "Credit"
+  },
+
+  "placeholderNamespace": "prime",
+
+  "phone": {
+    "countryCode": "64",
+    "trunkPrefix": "0",
+    "mobilePrefixes": ["2"],
+    "landlinePrefixes": ["3", "4", "6", "7", "9"],
+    "mobileLength": [9, 11],
+    "landlineLength": [9, 10]
+  },
+
+  "_comment_breedWords": "Seed vocabulary for classifying a spreadsheet cell as a breed. The client's own breed columns extend this automatically.",
+  "breedWords": [
+    "labrador", "retriever", "poodle", "spaniel", "collie", "terrier",
+    "doodle", "cavoodle", "schnauzer", "schnoodle", "beagle", "vizsla",
+    "mastiff", "chihuahua", "rottweiler", "dachshund", "bulldog", "shepherd",
+    "gsd", "gsp", "wss", "groodle", "labradoodle", "goldendoodle", "husky",
+    "dalmation", "dalmatian", "boxer", "whippet", "staffy", "staffordshire",
+    "heading dog", "huntaway", "foxy", "fox terrier", "papillon", "papillion",
+    "sprocker", "spoodle", "cocker", "pointer", "ridgeback", "bichon",
+    "cattle", "shih tzu", "pinscher", "jrt", "jack russell", "corgi",
+    "leonberger", "cavalier", "sharpei", "shar pei", "spitz", "pug",
+    "maltese", "kelpie", "border collie", "golden", "groenendael",
+    "double doodle", "airedale", "harrier", "field retriever", "mixed breed",
+    "cross", "rescue", "spca"
+  ],
+
+  "_comment_suburbs": "Local place names, so a bare 'Pyes Pa' cell reads as an address rather than a dog.",
+  "suburbs": [
+    "papamoa", "tauranga", "matua", "otumoetai", "pyes pa", "bethlehem",
+    "mount maunganui", "mount", "mt maunganui", "katikati", "welcome bay",
+    "ohauiti", "brookfield", "bellevue", "greerton", "judea", "whakamarama",
+    "te puna", "omokoroa", "maungatapu", "paengaroa", "tauriko", "hairini",
+    "poike", "gate pa", "cherrywood", "athenree", "tahawai", "matamata",
+    "putararu", "lower kaimai", "rd1", "rd 1", "rd3", "rd4", "rd7", "rd8"
+  ]
+}

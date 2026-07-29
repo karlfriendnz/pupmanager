@@ -1,0 +1,135 @@
+{
+  "slug": "dukes",
+  "name": "Dukes",
+  "root": "~/PupManager Imports/dukes",
+
+  "_comment_files": "Processing order. The CSV is the spine — it is the only file with an email address in it, so it creates the people every report then matches into. The reports follow in order of how much they are trusted to ADD: pets (the only source of breeds and vaccinations), then owners (the only source of the vet clinic), then the two weekly outlooks.",
+  "files": [
+    {
+      "shape": "doggie_dashboard",
+      "path": "DoggieDashboard_Owner_File_Jul_28_2026.csv",
+      "label": "owners",
+      "options": {
+        "petNamesFrom": "1DoggieDashboard_DailySnapshot.pdf",
+        "customFieldLabels": {
+          "custom1": "Authorised pick-up",
+          "custom2": "Care instructions",
+          "custom3": "Other notes"
+        }
+      }
+    },
+    {
+      "shape": "doggie_dashboard_reports",
+      "path": "1DoggieDashboard_DailySnapshot.pdf",
+      "label": "pets_report",
+      "options": { "report": "pets" }
+    },
+    {
+      "shape": "doggie_dashboard_reports",
+      "path": "ownersDoggieDashboard_DailySnapshot.pdf",
+      "label": "owners_report",
+      "options": { "report": "owners" }
+    },
+    {
+      "shape": "doggie_dashboard_reports",
+      "path": "DoggieDashboard_Report.pdf",
+      "label": "outlook 20 Jul",
+      "options": { "report": "appointments", "window": "20-26 July 2026" }
+    },
+    {
+      "shape": "doggie_dashboard_reports",
+      "path": "DoggieDashboard_Report1.pdf",
+      "label": "outlook 27 Jul",
+      "options": { "report": "appointments", "window": "27 July - 2 August 2026" }
+    }
+  ],
+
+  "_comment_priorities": "Who wins a FIELD-LEVEL disagreement. The CSV and the owners report are the same data printed two ways, but the CSV keeps address, suburb and postcode in separate columns while the report runs them into one string — so the CSV wins and the report backfills. The appointment reports know a name and a phone number and nothing else, so they win nothing. The two outlooks carry separate labels because merge.build keys a file's options by its label, so sharing one would give both files the same reporting window.",
+  "priorities": {
+    "owners": 40,
+    "pets_report": 30,
+    "owners_report": 20,
+    "outlook 20 Jul": 10,
+    "outlook 27 Jul": 10
+  },
+
+  "_comment_classes": "Dukes is a daycare. It runs no classes and sells no 1:1 training, so there are no course codes and no service names — every dog here is a day booking, and the weekly outlooks are read for each client's usual days rather than imported as enrolments.",
+  "courseCodes": {},
+  "serviceNames": {},
+  "servicePhrases": [],
+
+  "_comment_customFields": "Dukes has none of the generic concepts this toolkit knows about (no volunteers, no referral professionals, no previous trainer, no account credit), so they are switched off with \"\". The fields Dukes DOES need are set by the source modules and listed in customFieldsToCreate below.",
+  "customFields": {
+    "volunteer": "",
+    "professional": "",
+    "previousTrainer": "",
+    "business": "",
+    "credit": ""
+  },
+
+  "_comment_customFieldsToCreate": "The OWNER custom fields this plan writes to. The loader silently drops a value whose field does not exist on the trainer, so these are created first by scripts/import/ensure-custom-fields.ts, which reads this key.",
+  "customFieldsToCreate": [
+    "Family vet clinic",
+    "Emergency contact / second owner",
+    "Authorised pick-up",
+    "Care instructions",
+    "Other notes",
+    "Referral source",
+    "Additional phone",
+    "Client since",
+    "Usual daycare days",
+    "Daycare group",
+    "Daycare booking type"
+  ],
+
+  "_comment_dogNameBlocklistExtra": "DoggieDashboard lets a non-dog be created as a pet. This client has one: a retail sale recorded against Jade Mansell as though it were a dog, breed 'NA', no birthday, no vaccinations. It is named here so it is refused as a dog name and recorded in the junk list rather than imported as a puppy.",
+  "dogNameBlocklistExtra": [
+    "retail product sale",
+    "na"
+  ],
+
+  "placeholderNamespace": "dukes",
+
+  "phone": {
+    "countryCode": "64",
+    "trunkPrefix": "0",
+    "mobilePrefixes": ["2"],
+    "landlinePrefixes": ["3", "4", "6", "7", "9"],
+    "mobileLength": [9, 11],
+    "landlineLength": [9, 10]
+  },
+
+  "_comment_breedWords": "Seeds for deciding whether a cell is a breed. Dukes's own Active Pets report supplies 123 real breeds on top of this automatically, which is where the vocabulary actually comes from — this list only has to be good enough to recognise a breed before that report has been read.",
+  "breedWords": [
+    "labrador", "lab", "retriever", "poodle", "cavoodle", "spoodle", "schnoodle",
+    "spaniel", "cocker", "collie", "border collie", "heading", "huntaway",
+    "terrier", "fox terrier", "jack russell", "cairn", "staffy", "staffordshire",
+    "english staffy", "schnauzer", "schnauser", "miniature schnauzer", "bichon",
+    "bichon frise", "shih tzu", "shitzu", "maltese", "pug", "tibetan spaniel",
+    "sharpei", "shar pei", "share pei", "golden retriever", "yellow lab",
+    "black lab", "mixed", "cross", "husky", "beagle", "boxer", "whippet",
+    "greyhound", "dachshund", "chihuahua", "corgi", "kelpie", "cattle dog",
+    "german shepherd", "rottweiler", "dalmatian", "pointer", "vizsla",
+    "ridgeback", "spitz", "papillon", "rescue", "spca"
+  ],
+
+  "_comment_suburbs": "Whanganui suburbs. They matter twice: so a bare 'Tawhero' reads as an address rather than a dog, and because DoggieDashboard's American form put the suburb in a column called State — see the doggie_dashboard module.",
+  "suburbs": [
+    "whanganui", "wanganui", "whanagnui", "whangnaui", "aramoho", "bastia hill",
+    "castlecliff", "gonville", "springvale", "tawhero", "durie hill", "westmere",
+    "brunswick", "kai iwi", "otamatea", "marton", "bulls", "wellington",
+    "st johns hill", "putiki", "laird park", "college estate", "whanganui east"
+  ],
+
+  "_comment_csv": "Dukes has no Business field, so the wizard-ready CSV has nowhere to put a company — nobody here has one. The long free-text fields are written on a person's FIRST dog row only, so a two-dog household does not repeat its pick-up instructions twice.",
+  "csv": {
+    "companyTo": "",
+    "oncePerPerson": [
+      "Authorised pick-up",
+      "Care instructions",
+      "Other notes",
+      "Emergency contact / second owner",
+      "Family vet clinic"
+    ]
+  }
+}
