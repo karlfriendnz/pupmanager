@@ -35,7 +35,7 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
     include: {
       // logoUrl + emailAccentColor are for the welcome email below, which
       // goes out as the TRAINER — see renderTrainerEmail.
-      trainer: { select: { id: true, businessName: true, logoUrl: true, emailAccentColor: true } },
+      trainer: { select: { id: true, businessName: true, logoUrl: true, emailAccentColor: true, slug: true } },
       // Welcome-email copy is configured per originating form. May be null
       // if the form was deleted (formId SetNull) — we fall back to defaults.
       form: {
@@ -213,7 +213,13 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
           title: `You're in, ${firstName}!`,
           bodyHtml: `<p style="margin:0;">${escapeHtml(businessName)} has added you to their client list. Sign in with the email and password you chose to see your sessions, notes and messages.</p>`,
           ctaLabel: `Open ${businessName}`,
-          ctaUrl: `${options.appUrl}/login`,
+          // Their trainer's own sign-in page, not ours. /c/<slug> wears the
+          // trainer's logo and name; a white-labelled email that lands on a
+          // PupManager login undoes itself at the last step. Falls back to the
+          // generic login for a trainer with no slug yet.
+          ctaUrl: enquiry.trainer.slug
+            ? `${options.appUrl}/c/${enquiry.trainer.slug}`
+            : `${options.appUrl}/login`,
           preheader: `${businessName} has added you to their client list.`,
         }),
       })
