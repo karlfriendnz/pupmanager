@@ -30,9 +30,12 @@ describe('add-on promo registry', () => {
   it('every add-on either opens a promo or is deliberately link-only', () => {
     // The invariant: no add-on may fall through to a promo that isn't there.
     const missing = ADDONS
+      // Only what the GRID actually renders can render a dead card. Hidden add-ons
+      // never appear — and since the split (Settings → Configure took every free
+      // feature, as switch rows with no promo modal behind them), neither do free
+      // ones. A free add-on with no PROMOS entry is now correct, not a latent bug.
+      .filter((a) => !a.hidden && !a.free)
       .map((a) => a.id)
-      // Hidden add-ons render no card at all, so they can't render a dead one.
-      .filter((id) => !ADDONS.find((a) => a.id === id)?.hidden)
       .filter((id) => !ADDON_PROMO_IDS.includes(id) && !LINK_ONLY_IDS.includes(id))
 
     expect(
@@ -42,7 +45,9 @@ describe('add-on promo registry', () => {
   })
 
   it('every add-on has a hero image for its card and nudge', () => {
-    const missing = ADDONS.filter((a) => !a.hidden).map((a) => a.id).filter((id) => !ADDON_PROMO_IMAGES[id])
+    // Same reasoning: the hero is the grid card's image, and the grid is the paid
+    // page. Configure's rows carry a name and a line of description, no image.
+    const missing = ADDONS.filter((a) => !a.hidden && !a.free).map((a) => a.id).filter((id) => !ADDON_PROMO_IMAGES[id])
 
     expect(missing, `add-ons with no promo image: ${missing.join(', ')}`).toEqual([])
   })
