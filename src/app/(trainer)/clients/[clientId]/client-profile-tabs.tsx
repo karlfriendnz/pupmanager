@@ -39,10 +39,6 @@ interface Dog {
   weight: number | null
   dob: string | null   // pre-serialised ISO string
   notes: string | null
-  // Set when the dog has died. The dog STAYS on this tab — their history is the
-  // client's history — but it's badged so the trainer isn't left wondering why
-  // the dog no longer appears in invites, rosters or reminders.
-  deceasedAt: string | null   // pre-serialised ISO string
 }
 
 interface Task {
@@ -693,17 +689,7 @@ export function ClientProfileTabs({
               <Card key={dog.id} className="overflow-hidden">
                 {/* Dog header */}
                 <div className="bg-gradient-to-br from-slate-50 to-slate-100 px-5 py-4 border-b border-slate-100">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="font-bold text-slate-900 text-lg">🐕 {dog.name}</h2>
-                    {dog.deceasedAt && (
-                      <span
-                        className="rounded-full bg-slate-200 text-slate-600 text-xs font-semibold px-2 py-0.5"
-                        title={`Deceased ${formatDate(dog.deceasedAt)}`}
-                      >
-                        Deceased
-                      </span>
-                    )}
-                  </div>
+                  <h2 className="font-bold text-slate-900 text-lg">🐕 {dog.name}</h2>
                   {dog.breed && <p className="text-sm text-slate-500 mt-0.5">{dog.breed}</p>}
                 </div>
 

@@ -262,7 +262,7 @@ export default async function ClientDetailPage({
         role: m.role,
       }))}
       currentMembershipId={trainerCtx?.membershipId ?? null}
-      dogs={allDogs.filter(d => !d.deceasedAt).map(d => ({ id: d.id, name: d.name }))}
+      dogs={allDogs.map(d => ({ id: d.id, name: d.name }))}
       packages={packages.map(p => ({
         id: p.id,
         name: p.name,
@@ -388,7 +388,6 @@ export default async function ClientDetailPage({
           weight: d.weight,
           dob: d.dob ? d.dob.toISOString() : null,
           notes: d.notes,
-          deceasedAt: d.deceasedAt ? d.deceasedAt.toISOString() : null,
         }))}
         products={products.map(p => ({
           id: p.id,
