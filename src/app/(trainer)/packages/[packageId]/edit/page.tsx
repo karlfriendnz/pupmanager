@@ -42,6 +42,18 @@ export default async function EditPackagePage({
             // Once anyone has been marked present the dates are fixed, so the
             // form shows them read-only rather than offering a move it'd refuse.
             _count: { select: { sessions: true } },
+            // The actual sessions, so shrinking the class can ask WHICH ones to
+            // drop instead of silently taking the last few. Each carries what
+            // would be lost with it: a register, or someone's booked place.
+            sessions: {
+              orderBy: { scheduledAt: 'asc' },
+              select: {
+                id: true,
+                sessionIndex: true,
+                scheduledAt: true,
+                _count: { select: { attendance: true, dropInEnrollments: true } },
+              },
+            },
           },
         },
       },
@@ -121,6 +133,15 @@ export default async function EditPackagePage({
             ticketTiers: pkg.ticketTiers,
             classRunId: run?.id ?? null,
             runCount: pkg.classRuns.length,
+            runSessions: (run?.sessions ?? []).map((s, i) => ({
+              id: s.id,
+              // sessionIndex is nullable; the list is ordered by date, so its
+              // position is the honest fallback for "session 3".
+              index: s.sessionIndex ?? i + 1,
+              atIso: s.scheduledAt.toISOString(),
+              attendance: s._count.attendance,
+              dropIns: s._count.dropInEnrollments,
+            })),
             startAtIso: run?.startDate.toISOString() ?? null,
             hasAttendance,
             runStatus: run?.status,

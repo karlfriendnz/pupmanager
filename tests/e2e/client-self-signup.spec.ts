@@ -80,19 +80,26 @@ test.describe('signing up as a dog owner', () => {
     await expect(page.getByRole('link', { name: /I'm a dog owner/i })).toBeVisible()
     await page.getByRole('link', { name: /I'm a dog owner/i }).click()
     await page.waitForURL('**/signup/client')
-    await expect(page.getByText(/Who's your trainer/i)).toBeVisible()
     // Whatever else it collects, it must never ask a dog owner for a business.
     await expect(page.getByPlaceholder('Pawsome Dog Training')).toHaveCount(0)
+    // …and it must not offer a trainer directory to browse: that search let an
+    // unauthenticated stranger enumerate the customer list. A client joins
+    // through their own trainer's link.
+    await expect(page.getByLabel(/Search for your trainer/i)).toHaveCount(0)
+    await expect(page.getByText(/Who's your trainer/i)).toHaveCount(0)
   })
 
   test('a dog owner signs up, waits for their trainer, and is approved in one tap', async ({ page }) => {
     const prisma = await makePrisma()
     try {
-      await page.goto('/signup/client')
-
-      // Find the trainer by business name — the same search /find-trainer uses.
-      await page.getByLabel(/Search for your trainer/i).fill(B.businessName.slice(0, 6))
-      await page.getByRole('button', { name: B.businessName }).click({ timeout: 15_000 })
+      // The trainer's own join link is the way in — there is no directory to
+      // search, so the trainer is fixed by the URL rather than chosen.
+      const run = await prisma.trainerProfile.findFirst({
+        where: { businessName: B.businessName },
+        select: { slug: true },
+      })
+      expect(run?.slug, 'Business B needs a public slug for its join link').toBeTruthy()
+      await page.goto(`/c/${run!.slug}/join`)
 
       await page.getByLabel('Your name').fill(NEW_CLIENT.name)
       await page.getByLabel('Your email').fill(NEW_CLIENT.email)

@@ -7,6 +7,7 @@ import { formatDate, formatDateTime } from '@/lib/utils'
 import { ArrowLeft, LogIn, Check } from 'lucide-react'
 import { TrainerDetailActions } from './trainer-detail-actions'
 import { AdminTrainerNotes } from './admin-trainer-notes'
+import { TrainerDangerZone } from './trainer-danger-zone'
 import type { ReactNode } from 'react'
 import type { Metadata } from 'next'
 import { telHref } from '@/lib/tel'
@@ -152,23 +153,34 @@ export default async function AdminTrainerDetailPage({
         ))}
       </div>
 
-      {/* Interactive controls */}
-      <TrainerDetailActions
-        id={user.id}
-        name={user.name}
-        email={user.email}
-        businessName={p.businessName}
-        subscriptionStatus={p.subscriptionStatus}
-        trialEndsAt={trialEnds ? trialEnds.toISOString() : null}
-        gracePeriodUntil={graceUntil ? graceUntil.toISOString() : null}
-        seatCount={p.seatCount}
-        isInternal={p.isInternal}
-        deactivatedAt={user.deactivatedAt ? user.deactivatedAt.toISOString() : null}
-        addonGrants={addonGrants.map(g => ({ itemId: g.itemId, expiresAt: g.expiresAt ? g.expiresAt.toISOString() : null }))}
-      />
+      {/* Two columns from lg up: the diary on the left, where it's read
+          alongside the controls rather than buried under them; the account
+          controls on the right. Stacks on narrow screens, notes first. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] gap-4 items-start">
+        {/* Internal progress diary + to-dos (admin-only, trainer never sees this). */}
+        <AdminTrainerNotes
+          trainerId={p.id}
+          initialNotes={notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString() }))}
+          initialTasks={tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, createdAt: t.createdAt.toISOString() }))}
+        />
+
+        <div className="flex flex-col gap-4 min-w-0">
+          {/* Interactive controls */}
+          <TrainerDetailActions
+            id={user.id}
+            name={user.name}
+            email={user.email}
+            businessName={p.businessName}
+            subscriptionStatus={p.subscriptionStatus}
+            trialEndsAt={trialEnds ? trialEnds.toISOString() : null}
+            gracePeriodUntil={graceUntil ? graceUntil.toISOString() : null}
+            seatCount={p.seatCount}
+            isInternal={p.isInternal}
+            addonGrants={addonGrants.map(g => ({ itemId: g.itemId, expiresAt: g.expiresAt ? g.expiresAt.toISOString() : null }))}
+          />
 
       {/* Onboarding & trial email history */}
-      <div className="rounded-2xl border border-slate-700 bg-slate-800 p-5 mt-4">
+      <div className="rounded-2xl border border-slate-700 bg-slate-800 p-5">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Onboarding &amp; trial emails</h2>
         {!report.enrolled && report.enrollmentNote && (
           <p className="text-xs px-3 py-2 mb-3 rounded-lg bg-amber-950/60 text-amber-300 border border-amber-500/30">{report.enrollmentNote}</p>
@@ -244,12 +256,19 @@ export default async function AdminTrainerDetailPage({
         )}
       </div>
 
-      {/* Internal progress diary + to-dos (admin-only, trainer never sees this). */}
-      <AdminTrainerNotes
-        trainerId={p.id}
-        initialNotes={notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString() }))}
-        initialTasks={tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, createdAt: t.createdAt.toISOString() }))}
-      />
+        </div>
+      </div>
+
+      {/* Deactivate / delete — last on the page, on purpose. Irreversible
+          actions shouldn't sit between the things an admin reads every day. */}
+      <div className="mt-4">
+        <TrainerDangerZone
+          id={user.id}
+          name={user.name}
+          email={user.email}
+          deactivatedAt={user.deactivatedAt ? user.deactivatedAt.toISOString() : null}
+        />
+      </div>
     </div>
   )
 }

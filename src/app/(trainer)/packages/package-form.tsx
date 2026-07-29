@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { XeroAccountField } from '@/components/shared/xero-account-field'
+import { RemoveSessionsDialog } from './remove-sessions-dialog'
 import { RequirePaymentField } from '@/components/shared/require-payment-field'
 import { BufferField } from '@/components/shared/buffer-field'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
@@ -59,6 +60,17 @@ const COLOR_OPTIONS: { id: PackageColor; label: string; swatch: string }[] = [
   { id: 'pink',    label: 'Pink',    swatch: 'bg-pink-500' },
   { id: 'cyan',    label: 'Cyan',    swatch: 'bg-cyan-500' },
 ]
+
+/** One session of the scheduled class, and what would go with it if removed. */
+export type RunSession = {
+  id: string
+  index: number
+  atIso: string
+  /** People marked present. Removing such a session is refused — see the picker. */
+  attendance: number
+  /** Drop-in bookings on this specific date. */
+  dropIns: number
+}
 
 export interface PkgRow {
   id: string
@@ -116,6 +128,8 @@ export interface PkgRow {
   // to the class page (which knows not to move sessions people have attended).
   classRunId?: string | null
   runCount?: number
+  /** The class's sessions, so shrinking it can ask which ones to drop. */
+  runSessions?: RunSession[]
   /** When the class starts. Editing this moves the whole series. */
   startAtIso?: string | null
   /** Someone has been marked present, so the dates can no longer move. */
@@ -331,6 +345,14 @@ export function PackageForm({
   // True when this offering is already in the diary as exactly one class.
   const scheduled = !!existing?.classRunId
   const hasAttendance = !!existing?.hasAttendance
+  const runSessions = existing?.runSessions ?? []
+
+  // Shrinking a class: which sessions the trainer chose to drop, and the values
+  // to resume the save with once they've chosen. A ref, not state, because
+  // onSubmit reads it in the same tick it is re-entered.
+  const pendingRemoval = useRef<string[] | null>(null)
+  const [removeOpen, setRemoveOpen] = useState(false)
+  const [resumeValues, setResumeValues] = useState<FormValues | null>(null)
   const [runStatus, setRunStatus] = useState<'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'>(
     existing?.runStatus ?? 'SCHEDULED',
   )
@@ -571,6 +593,22 @@ export function PackageForm({
       setError("Attendance has already been recorded on this class, so its dates are fixed. Change anything else here, or cancel this class and create a new one to move it.")
       return
     }
+    // Taking sessions OFF a scheduled class asks which ones. Left to the server
+    // this rebuilds the series from its cadence, which always drops the last
+    // few and hands every surviving session a new id — so a booking on week 2
+    // could vanish because the trainer shortened the course at the end. Pause
+    // here, let them choose with the dates in front of them, then come back
+    // through with the ids. `pendingRemoval` carries the answer across.
+    const wantedCount = kind === 'oneoff' ? 1 : Number(values.sessionCount)
+    const shrinking =
+      !!existing && isGroup && kind !== 'dropin' &&
+      runSessions.length > 0 && Number.isFinite(wantedCount) &&
+      wantedCount < runSessions.length
+    if (shrinking && !pendingRemoval.current) {
+      setResumeValues(values)
+      setRemoveOpen(true)
+      return
+    }
     const url = existing ? `/api/packages/${existing.id}` : '/api/packages'
     const method = existing ? 'PATCH' : 'POST'
     // Convert the dollar-string price fields into cents before sending; the
@@ -641,6 +679,9 @@ export function PackageForm({
         // it — the server rebuilds the sessions, and refuses once anyone has
         // been marked present.
         ...(isGroup && startAt && !hasAttendance && { startAt: startAt.toISOString() }),
+        // The sessions the trainer picked to drop. Their presence tells the
+        // server to remove exactly these instead of rebuilding the series.
+        ...(pendingRemoval.current && { removeSessionIds: pendingRemoval.current }),
         // The cover image belongs to the OFFERING, not to the class it happens
         // to be scheduled as — a 1:1 session has a picture too, and it has no
         // run. Sending it only for group offerings is why an image added to a
@@ -665,6 +706,9 @@ export function PackageForm({
         requirePayment,
       }),
     })
+    // Whatever happened, the choice has been spent — a second save must ask
+    // again rather than silently re-removing sessions that are already gone.
+    pendingRemoval.current = null
     if (!res.ok) {
       // The convert-while-in-use refusal (409) explains itself — show that
       // rather than a generic failure the trainer can't act on.
@@ -1447,6 +1491,25 @@ export function PackageForm({
           </div>
         </div>
         </>
+      )}
+
+      {removeOpen && (
+      <RemoveSessionsDialog
+        sessions={runSessions}
+        removeCount={runSessions.length - Number(resumeValues?.sessionCount ?? runSessions.length)}
+        className={existing?.name ?? 'This class'}
+        onCancel={() => { setRemoveOpen(false); setResumeValues(null) }}
+        onConfirm={ids => {
+          pendingRemoval.current = ids
+          setRemoveOpen(false)
+          const values = resumeValues
+          setResumeValues(null)
+          // Re-enter the save the picker interrupted. saveIntent is set because
+          // the wizard guard at the top of onSubmit only lets a deliberate save
+          // through, and this one is as deliberate as they come.
+          if (values) { saveIntent.current = true; void onSubmit(values) }
+        }}
+      />
       )}
     </form>
   )

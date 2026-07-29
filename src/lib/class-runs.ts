@@ -750,6 +750,27 @@ export async function syncOfferingRun(
     startDate?: Date
     sessionCount?: number
     weeksBetween?: number
+    /**
+     * What the package held BEFORE this save. Required to tell a real change
+     * from a no-op, because the only caller updates the package row inside the
+     * same transaction and THEN calls this — so re-reading the package here
+     * returns the new value and every comparison is the new value against
+     * itself. That is exactly what happened: a trainer changed the number of
+     * sessions, saved, and the class kept the sessions it already had, with no
+     * error. Omit only when the package has not been written yet.
+     */
+    prev?: { sessionCount?: number | null; weeksBetween?: number | null }
+    /**
+     * Drop exactly these sessions and leave every other one alone.
+     *
+     * Shrinking a class used to go through the cadence rebuild below, which
+     * deletes the whole series and regenerates it — so the trainer got no say
+     * in WHICH sessions went (always the last ones), every surviving session
+     * got a new id, and anything hanging off those rows went with them. When
+     * the caller names the sessions, remove just those: the rest keep their
+     * ids, their bookings and their attendance.
+     */
+    removeSessionIds?: string[]
     durationMins?: number
     bufferMins?: number
     sessionType?: 'IN_PERSON' | 'VIRTUAL'
@@ -772,11 +793,27 @@ export async function syncOfferingRun(
   // A drop-in class's series comes from its slots, not from this cadence — its
   // rebuild belongs to the slot editor, so leave those runs' sessions alone.
   const isSlotScheduled = run.sessions.some(s => s.packageSessionSlotId)
+  // Compare against what the package held BEFORE the save when the caller
+  // tells us (see `prev`), falling back to the stored row otherwise. The run's
+  // own startDate is safe to read either way — nothing writes it before us.
+  const prevSessionCount = fields.prev ? fields.prev.sessionCount : run.package.sessionCount
+  const prevWeeksBetween = fields.prev ? fields.prev.weeksBetween : run.package.weeksBetween
+  // NB deliberately NOT "does the count disagree with the actual sessions?".
+  // Classes exist whose package says 11 while the run holds 6 (saves made while
+  // the read-after-write bug was live), and healing those on any save is
+  // tempting — but a session can be deleted on purpose from the schedule
+  // (api/schedule/[sessionId]), so a disagreement is legitimate state, and
+  // rebuilding on it would resurrect a session the trainer had removed the next
+  // time they renamed the class. Repairing the drifted ones is a one-off job,
+  // not a rule.
+  // Naming the sessions to drop replaces the rebuild — the two cannot both run,
+  // or the rebuild would regenerate a tidy series and undo the choice.
+  const removing = (fields.removeSessionIds?.length ?? 0) > 0
   const scheduleChanged =
-    !isSlotScheduled &&
+    !isSlotScheduled && !removing &&
     ((fields.startDate !== undefined && fields.startDate.getTime() !== run.startDate.getTime()) ||
-      (fields.sessionCount !== undefined && fields.sessionCount !== run.package.sessionCount) ||
-      (fields.weeksBetween !== undefined && fields.weeksBetween !== run.package.weeksBetween))
+      (fields.sessionCount !== undefined && fields.sessionCount !== prevSessionCount) ||
+      (fields.weeksBetween !== undefined && fields.weeksBetween !== prevWeeksBetween))
 
   if (scheduleChanged) {
     // Never move sessions people have already been marked present at — the
@@ -805,6 +842,50 @@ export async function syncOfferingRun(
 
   let createdSessionIds: string[] = []
   let deletedEventIds: string[] = []
+
+  // Drop the named sessions, keep the rest exactly as they are. Scoped to this
+  // run so a stale or hostile id from another class can never delete anything
+  // here, and to sessions that actually exist so the renumber below is honest.
+  if (removing) {
+    const doomed = run.sessions.filter(s => fields.removeSessionIds!.includes(s.id))
+    if (doomed.length > 0) {
+      // Same rule the rebuild follows, applied per session rather than per run:
+      // deleting a session takes its register with it. Removing OTHER sessions
+      // from a class that has attendance somewhere is fine — that's the point of
+      // naming them — but never the ones people were marked present at.
+      const attended = await tx.sessionAttendance.count({
+        where: { sessionId: { in: doomed.map(s => s.id) } },
+      })
+      if (attended > 0) {
+        throw new ClassError(
+          'HAS_ATTENDANCE',
+          "One of the sessions you're removing has attendance recorded against it. Removing it would delete that register — pick a different session, or cancel this class and start a new one.",
+        )
+      }
+
+      deletedEventIds = doomed.map(s => s.googleCalendarEventId).filter((id): id is string => !!id)
+      await tx.trainingSession.deleteMany({
+        where: { id: { in: doomed.map(s => s.id) }, classRunId: run.id },
+      })
+
+      // Renumber what's left. sessionIndex drives "session 3 of 6" on the
+      // roster and in every session title, so leaving gaps would show a class
+      // running sessions 1, 2, 5 of 6.
+      const kept = run.sessions
+        .filter(s => !fields.removeSessionIds!.includes(s.id))
+        .sort((a, b) => (a.sessionIndex ?? 0) - (b.sessionIndex ?? 0))
+      const name = fields.name ?? run.name
+      for (let i = 0; i < kept.length; i++) {
+        await tx.trainingSession.update({
+          where: { id: kept[i].id },
+          data: {
+            sessionIndex: i + 1,
+            title: kept.length > 1 ? `${name} — session ${i + 1}/${kept.length}` : name,
+          },
+        })
+      }
+    }
+  }
 
   if (scheduleChanged) {
     // Capture the mirrored Google events before the rows go, so the caller can

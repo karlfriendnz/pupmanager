@@ -75,6 +75,12 @@ export default async function MySessionsPage() {
     prisma.classEnrollment.findMany({
       where: { clientId: active.clientId, status: { not: 'WITHDRAWN' } },
       select: {
+        // What the enrolment actually buys. A FULL enrolment attends every
+        // session in the run; a DROP_IN is a booking for the ONE session in
+        // dropInSessionId. Without these two fields every drop-in was shown
+        // the whole run — six weeks of classes they never booked.
+        type: true,
+        dropInSessionId: true,
         classRun: {
           select: {
             id: true,
@@ -86,9 +92,33 @@ export default async function MySessionsPage() {
     }),
   ])
 
+  // Expand each enrolment to only the sessions it actually covers, then key by
+  // session id so one session is one row. A client can hold several enrolments
+  // on the same run — one per dog, or (as with a daycare) one per day booked —
+  // and each of those used to re-emit the run's whole timetable, so the list
+  // showed enrolments × sessions instead of the sessions they attend.
+  //
+  // FULL vs DROP_IN is resolved the same way the roster does it (see
+  // lib/class-runs.ts and the session attendance route:
+  // `OR: [{ type: 'FULL' }, { type: 'DROP_IN', dropInSessionId: sessionId }]`).
+  // A DROP_IN with no dropInSessionId matches nothing by design — it is
+  // malformed (the column is the source of truth), and showing the entire run
+  // is the very bug this fixes. There are none in production data.
+  const classSessions = new Map<string, Row>()
+  for (const e of enrollments) {
+    const mine = e.type === 'DROP_IN'
+      ? e.classRun.sessions.filter(s => s.id === e.dropInSessionId)
+      : e.classRun.sessions
+    for (const s of mine) {
+      if (!classSessions.has(s.id)) {
+        classSessions.set(s.id, { ...s, isClass: true, className: e.classRun.name, classRunId: e.classRun.id })
+      }
+    }
+  }
+
   const rows: Row[] = [
     ...oneToOne.map(s => ({ ...s, isClass: false, className: null, classRunId: null })),
-    ...enrollments.flatMap(e => e.classRun.sessions.map(s => ({ ...s, isClass: true, className: e.classRun.name, classRunId: e.classRun.id }))),
+    ...classSessions.values(),
   ]
 
   const upcoming = rows

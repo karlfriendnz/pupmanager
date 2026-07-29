@@ -81,7 +81,7 @@ beforeEach(() => {
   h.randomInt.mockReturnValue(123456)
   h.userFindUnique.mockResolvedValue(null) // email free
   h.trainerFindFirst.mockResolvedValue({ id: 'trainer-1', businessName: 'Pawsome' })
-  h.trainerFindUnique.mockResolvedValue({ businessName: 'Pawsome' })
+  h.trainerFindUnique.mockResolvedValue({ businessName: 'Pawsome', logoUrl: null, emailAccentColor: '#7c3aed' })
   h.verificationTokenCreate.mockResolvedValue({})
   h.userCreate.mockResolvedValue({ id: 'client-user' })
   h.accountCreate.mockResolvedValue({})
@@ -188,7 +188,34 @@ describe('POST /api/auth/signup-client — guards', () => {
   it('sends the dog-owner verification email, not the trainer one', async () => {
     await POST(req(body({ trainerId: 'trainer-1' })))
     expect(h.sendClientVerificationEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'olivia@example.test', businessName: 'Pawsome', code: '123456' }),
+      expect.objectContaining({
+        to: 'olivia@example.test',
+        code: '123456',
+        trainer: expect.objectContaining({ businessName: 'Pawsome' }),
+      }),
+    )
+  })
+
+  // The email a dog owner gets must look like the business they signed up to —
+  // they have never heard of PupManager. That means the send needs the
+  // trainer's brand, not just their name.
+  it('hands the trainer’s branding to the verification email', async () => {
+    await POST(req(body({ trainerId: 'trainer-1' })))
+    expect(h.sendClientVerificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trainer: { businessName: 'Pawsome', logoUrl: null, emailAccentColor: '#7c3aed' },
+      }),
+    )
+    const select = h.trainerFindUnique.mock.calls[0][0].select
+    expect(select).toMatchObject({ businessName: true, logoUrl: true, emailAccentColor: true })
+  })
+
+  // No trainer = a generic signup, which is the one case PupManager branding is
+  // honest — the renderer keys off exactly this being null.
+  it('passes trainer: null when they signed up without a trainer', async () => {
+    await POST(req(body()))
+    expect(h.sendClientVerificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ trainer: null }),
     )
   })
 })

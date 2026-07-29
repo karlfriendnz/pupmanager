@@ -156,9 +156,13 @@ function toUtcIso(dateStr: string, hhmm: string, tz: string): string {
 // The wizard already knows the trainer's zone (props.tz) — use it. Without it
 // this formatted in the SERVER's zone during SSR and the VIEWER's after
 // hydration, so a class starting 6pm showed as 6am on the booking summary.
+// The year is here because a course can run past one. A 12-session class every
+// ten weeks lists "Sat, 12 Dec" and "Sat, 20 Jan" — which is over a year apart,
+// and reads as the wrong way round without it. Two digits: enough to tell the
+// dates apart, short enough not to crowd the row.
 function fmtNextSession(iso: string | null, timeZone: string): string | null {
   if (!iso) return null
-  return new Date(iso).toLocaleString('en-NZ', { timeZone, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+  return new Date(iso).toLocaleString('en-NZ', { timeZone, weekday: 'short', day: 'numeric', month: 'short', year: '2-digit', hour: 'numeric', minute: '2-digit' })
 }
 
 type Selection =

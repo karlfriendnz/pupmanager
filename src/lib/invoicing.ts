@@ -954,7 +954,15 @@ export async function settleInvoiceFromPayment(
     await syncReceivablePaymentToXero(invoice.id, paymentId)
       .catch((e) => console.error('[invoicing] xero payment push failed', invoice.id, e))
   } catch (err) {
-    console.error('[invoicing] settleInvoiceFromPayment failed', invoiceId, paymentId, err)
+    // Deliberately loud. This catch exists so one bad settlement can't fail the
+    // whole webhook and cost the client their other seats — but a receivable
+    // the money arrived for and never got recorded against is a hole in the
+    // ledger that nobody is told about. It hid the paymentId unique-constraint
+    // bug for months: the trainer just saw "Sent" and marked it paid by hand.
+    console.error(
+      `[invoicing] UNSETTLED RECEIVABLE — payment ${paymentId} cleared but invoice ${invoiceId} was not marked paid. Reconcile by hand.`,
+      err,
+    )
   }
 }
 

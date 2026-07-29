@@ -27,7 +27,7 @@ const schema = z.object({
   dogName: z.string().trim().max(120).optional(),
   message: z.string().trim().max(2000).optional(),
   // The trainer they're asking to join. Absent when they signed up from the
-  // app with no trainer's link — they pick one on /find-trainer afterwards.
+  // app with no trainer's link — /find-trainer then tells them to get it.
   trainerId: z.string().trim().max(60).optional(),
 })
 
@@ -76,12 +76,16 @@ export async function POST(req: Request) {
     throw err
   }
 
-  const businessName = trainerId
+  // The trainer's brand, not just their name: the confirmation email is the
+  // first thing a dog owner sees, and they signed up to Mersea Mutts — they
+  // have never heard of PupManager. See sendClientVerificationEmail.
+  const trainer = trainerId
     ? (await prisma.trainerProfile.findUnique({
         where: { id: trainerId },
-        select: { businessName: true },
-      }))?.businessName ?? null
+        select: { businessName: true, logoUrl: true, emailAccentColor: true },
+      })) ?? null
     : null
+  const businessName = trainer?.businessName ?? null
 
   // Confirm-your-email code. Same token shape as the trainer flow so
   // /verify-account and /api/auth/verify-email work unchanged; unlike the
@@ -94,7 +98,7 @@ export async function POST(req: Request) {
       expires: new Date(Date.now() + 10 * 60 * 1000),
     },
   })
-  sendClientVerificationEmail({ to: email.trim().toLowerCase(), name, businessName, code }).catch(err => {
+  sendClientVerificationEmail({ to: email.trim().toLowerCase(), name, trainer, code }).catch(err => {
     console.error('[signup-client] verification email failed:', err)
   })
 
