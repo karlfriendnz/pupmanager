@@ -275,6 +275,20 @@ export const COUNTRIES: Country[] = CODES.map(code => ({ code, name: NAMES[code]
   (a, b) => a.name.localeCompare(b.name, 'en'),
 )
 
+/**
+ * ISO 3166-1 alpha-2 → flag emoji (a regional-indicator pair). Null for anything
+ * that isn't a clean 2-letter code, so a caller can fall back rather than render
+ * two mystery boxes.
+ *
+ * Lives here beside the names because the admin screens had three private copies
+ * of it — one per file that shows a country.
+ */
+export function flagEmoji(iso: string | null | undefined): string | null {
+  if (!iso || iso.length !== 2 || !/^[A-Za-z]{2}$/.test(iso)) return null
+  const cc = iso.toUpperCase()
+  return String.fromCodePoint(...[...cc].map(c => 0x1f1e6 + c.charCodeAt(0) - 65))
+}
+
 /** A valid 2-letter code we know about (upper-cased), or null. */
 export function normalizeCountry(code: string | null | undefined): string | null {
   if (!code) return null

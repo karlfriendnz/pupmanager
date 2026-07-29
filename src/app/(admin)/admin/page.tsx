@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
+import { Prisma } from '@/generated/prisma'
 import { lifecycleProfileFilter, type TrainerLifecycle } from '@/lib/trainer-lifecycle'
+import { CountrySummary, type CountryCount } from './country-summary'
 import { getEnabledAddonsBatch } from '@/lib/billing'
 import { planValueFor, summarisePlanValues, type CurrencyTotal } from '@/lib/plan-value'
 import { sumToNzd, toNzd, NZD_RATES_UPDATED } from '@/lib/fx'
@@ -26,6 +28,30 @@ export const metadata: Metadata = { title: 'Businesses' }
 // Excludes our own internal accounts and deactivated ones. Values are priced
 // from the catalog (Core + seats + active add-ons) in each customer's own
 // currency, then grouped so we never sum unlike currencies together.
+// Which businesses a tab is showing, expressed on TrainerProfile so it can be
+// grouped. The tab COUNTS are asked from the User side (one owner per account);
+// this is the same set said the other way round, which is why the two must be
+// kept in step — a mismatch would put a country total next to a row count it
+// doesn't explain.
+function profileFilterForTab(tab: string): Prisma.TrainerProfileWhereInput {
+  if (tab === 'ours') return { isInternal: true, user: { deactivatedAt: null } }
+  if (tab === 'inactive') return { user: { deactivatedAt: { not: null } } }
+  const bucket: TrainerLifecycle = tab === 'paying' ? 'paying' : tab === 'churned' ? 'churned' : 'trial'
+  return { ...lifecycleProfileFilter(bucket), isInternal: false, user: { deactivatedAt: null } }
+}
+
+// Where the businesses in this tab signed up, biggest group first. Grouped in the
+// database rather than counted in JS: the list screen already pages, so counting
+// the rows on screen would have answered a smaller question than the one asked.
+async function loadCountrySummary(tab: string): Promise<CountryCount[]> {
+  const groups = await prisma.trainerProfile.groupBy({
+    by: ['signupCountry'],
+    where: profileFilterForTab(tab),
+    _count: { _all: true },
+  })
+  return groups.map(g => ({ code: g.signupCountry, count: g._count._all }))
+}
+
 async function loadPayingValueSummary(): Promise<CurrencyTotal[]> {
   const profiles = await prisma.trainerProfile.findMany({
     where: {
@@ -115,7 +141,10 @@ export default async function AdminDashboardPage({
   ])
   const counts: Record<string, number> = { all, trial, paying, churned, ours, inactive }
 
-  const valueSummary = await loadPayingValueSummary()
+  const [valueSummary, countrySummary] = await Promise.all([
+    loadPayingValueSummary(),
+    loadCountrySummary(current.key),
+  ])
 
   return (
     <div>
@@ -125,6 +154,11 @@ export default async function AdminDashboardPage({
           {all} registered · {live} active
         </p>
       </div>
+
+      {/* Where this tab's businesses are. Above the revenue panel because it
+          describes the table you're about to read; revenue is platform-wide and
+          doesn't change when you switch tabs. */}
+      <CountrySummary rows={countrySummary} tabLabel={current.label} />
 
       {/* Recurring-revenue summary across all paying customers. Grouped by
           currency — customers bill in six different currencies, so a single
