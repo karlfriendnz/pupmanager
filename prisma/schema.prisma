@@ -1662,6 +1662,7 @@ model Package {
   ticketTiers        PackageTicketTier[]
   waitlistEntries    WaitlistEntry[]
   discounts          Discount[]
+  defaultTasks       PackageDefaultTask[]
   commsFlowSteps     CommsFlowStep[]
   bookingRequests    BookingRequest[]
   bookingPages       BookingPage[]
@@ -2732,9 +2733,53 @@ model LibraryTask {
   // list on the item page. Snapshots keep their own copy of the text, so the
   // link is nullable and deleting the library item leaves the homework intact.
   assignments TrainingTask[]
+  // Offerings that suggest this item by default. Unlike `assignments` these are
+  // NOT snapshots — they read through to this row — so deleting the item takes
+  // the default with it.
+  packageDefaults PackageDefaultTask[]
 
   @@index([themeId])
   @@map("library_tasks")
+}
+
+// Default homework a trainer configures ONCE on an offering — "everyone who
+// books the puppy consult gets these three things after session 1".
+//
+// Nothing is ever assigned automatically. The rows are SUGGESTED on the session
+// screen and the trainer confirms the lot in one tap, instead of hunting the
+// same five library items out every time. On confirm they become ordinary
+// TrainingTasks — snapshots, editable and deletable per client, with no link
+// back to here.
+//
+// Lives on Package because Package is the template for BOTH a 1:1 consult
+// (isGroup=false) and a group class (isGroup=true), so one editor covers both.
+model PackageDefaultTask {
+  id        String @id @default(cuid())
+  packageId String
+  // 1-based session number within the offering ("session 3 of 6").
+  // null = suggest after EVERY session.
+  sessionIndex Int?
+  // When set, the text is read LIVE from the library item at suggest time, so
+  // editing the library keeps every offering's defaults current. The snapshot
+  // is taken at confirm, exactly like any other library assignment.
+  libraryTaskId String?
+  // Inline one-off default, for something that isn't worth a library item.
+  // Ignored when libraryTaskId is set.
+  title       String?
+  description String? @db.Text
+  repetitions Int?
+  videoUrl    String?
+  order       Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  package     Package      @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  libraryTask LibraryTask? @relation(fields: [libraryTaskId], references: [id], onDelete: Cascade)
+
+  @@index([packageId])
+  @@index([libraryTaskId])
+  @@map("package_default_tasks")
 }
 
 // ─── Client Notifications ─────────────────────────────────────────────────────

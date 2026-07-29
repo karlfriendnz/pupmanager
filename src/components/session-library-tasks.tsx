@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Loader2, Plus, Trash2, Search, Layers, GripVertical, Repeat } from 'lucide-react'
 import { VoiceInput } from '@/components/voice-input'
 import { ImageUploadButton, ImageGallery } from '@/components/image-uploader'
@@ -13,6 +13,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { DndArea } from '@/components/shared/dnd-area'
+import { SuggestedHomework } from '@/components/trainer/suggested-homework'
 import {
   arrayMove,
   SortableContext,
@@ -81,11 +82,10 @@ export function SessionLibraryTasks({
   const [error, setError] = useState<string | null>(null)
   const [showLibrary, setShowLibrary] = useState(defaultLibraryOpen)
 
-  useEffect(() => {
-    fetch('/api/library/types')
-      .then(r => r.ok ? r.json() : [])
-      .then((data: unknown) => setLibrary(Array.isArray(data) ? (data as LibraryType[]) : []))
-      .catch(() => setLibrary([]))
+  // Re-read the session's tasks from the server. Used on mount, after the
+  // suggested-homework block hands a batch out, and to recover from a failed
+  // reorder.
+  const reloadAttached = useCallback(() => {
     fetch(`/api/schedule/${sessionId}`)
       .then(r => r.ok ? r.json() : null)
       .then((data: unknown) => {
@@ -94,6 +94,14 @@ export function SessionLibraryTasks({
       })
       .catch(() => setAttached([]))
   }, [sessionId])
+
+  useEffect(() => {
+    fetch('/api/library/types')
+      .then(r => r.ok ? r.json() : [])
+      .then((data: unknown) => setLibrary(Array.isArray(data) ? (data as LibraryType[]) : []))
+      .catch(() => setLibrary([]))
+    reloadAttached()
+  }, [reloadAttached])
 
   const allLibraryTasks = useMemo(() => {
     if (!library) return [] as (LibraryTask & { typeName: string; themeName: string })[]
@@ -171,15 +179,7 @@ export function SessionLibraryTasks({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionId, ids }),
     }).then(res => {
-      if (!res.ok) {
-        fetch(`/api/schedule/${sessionId}`)
-          .then(r => r.ok ? r.json() : null)
-          .then((data: unknown) => {
-            const raw = (data as { tasks?: unknown[] } | null)?.tasks ?? []
-            setAttached(raw.map(coerceAttachedTask))
-          })
-          .catch(() => {})
-      }
+      if (!res.ok) reloadAttached()
     })
   }
 
@@ -255,6 +255,10 @@ export function SessionLibraryTasks({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* The offering's usual homework for this session, ready to confirm in
+          one tap. Renders nothing when the offering has no defaults set. */}
+      <SuggestedHomework sessionId={sessionId} onAssigned={reloadAttached} />
+
       {/* Add affordances — full-width stacked actions; the list of attached
           tasks sits below them. */}
       <div className="flex flex-col gap-2">

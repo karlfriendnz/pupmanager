@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { VoiceInput } from '@/components/voice-input'
 import { ImageUploadButton, ImageGallery } from '@/components/image-uploader'
+import { SuggestedHomework } from '@/components/trainer/suggested-homework'
 
 // Post-save homework flow, shown after the trainer saves the session notes.
 // Fully fullscreen, screen-by-screen:
@@ -220,6 +221,21 @@ export function HomeworkFlow({
     >
       <h2 className="text-xl font-bold text-slate-900">Set homework for this lesson</h2>
       <p className="text-sm text-slate-500 mt-1">Tap a task to add it. Fine-tune the details next.</p>
+
+      {/* What this offering usually hands out — the whole list in one tap,
+          before the trainer starts picking through the library by hand. Silent
+          when the offering has no defaults set. */}
+      <div className="mt-5">
+        <SuggestedHomework
+          sessionId={sessionId}
+          onAssigned={created => {
+            // The new rows join the review queue, so confirming the defaults
+            // and adding one by hand both end up in the same place.
+            const rows = created.map(coerce).filter(t => t.id)
+            setAdded(prev => [...prev, ...rows])
+          }}
+        />
+      </div>
 
       <button
         type="button"

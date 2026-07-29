@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { ModalPortal } from '@/components/shared/modal-portal'
-import { FlatBlock } from '@/components/shared/flat-list'
+import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
+import { SuggestedHomework } from '@/components/trainer/suggested-homework'
 import { formatDate, formatTime } from '@/lib/utils'
 import {
   ClipboardCheck, ChevronLeft, ChevronRight, Check, X, StickyNote,
@@ -528,6 +529,18 @@ export function SessionView({
                       )
                     })}
                   </FlatBlock>
+
+                  {/* Homework for the whole class, in one tap. The offering's
+                      defaults for this session number, handed to every dog on
+                      the register at once — the only way class homework can be
+                      set. Silent when the offering has no defaults.
+
+                      Who is pre-ticked comes from SAVED attendance, so mark and
+                      save the register first if someone didn't turn up. */}
+                  <div>
+                    <SectionLabel>Homework</SectionLabel>
+                    <SuggestedHomework sessionId={sessionId} />
+                  </div>
                 </>
               )}
             </>

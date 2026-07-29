@@ -11,10 +11,11 @@ import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { CardHeading } from '@/components/shared/card-heading'
 import { OfferingActions } from '@/components/trainer/offering-actions'
-import { Users, UserPlus, CalendarDays, ClipboardCheck, Info, Bell, Tag } from 'lucide-react'
+import { Users, UserPlus, CalendarDays, ClipboardCheck, Info, Bell, Tag, ListChecks } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
+import { DefaultHomeworkEditor } from '@/components/trainer/default-homework-editor'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { DiscountManager } from '@/components/trainer/discount-manager'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
@@ -25,7 +26,7 @@ import {
   type Enrollment, type ClientOpt, type SessionRow,
 } from '@/components/trainer/run-roster'
 
-type Tab = 'details' | 'clients' | 'messages' | 'discounts'
+type Tab = 'details' | 'clients' | 'homework' | 'messages' | 'discounts'
 type RunStatus = 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED'
 type AssignedTrainer = { membershipId: string; name: string; title: string | null }
 type Run = {
@@ -148,6 +149,7 @@ export function RunDetail({
   const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: rosterCount > 0 ? rosterCount : undefined },
+    { id: 'homework', label: 'Homework', icon: ListChecks },
     { id: 'messages', label: 'Reminders & messages', icon: Bell },
     { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
@@ -417,6 +419,13 @@ export function RunDetail({
               )}
             </CardBody>
           </Card>
+      </div>
+
+      {/* Homework tab — the defaults this class hands out, per session. They
+          live on the offering (the package), so every run of the class shares
+          one list rather than each cohort being set up again. */}
+      <div className={tab === 'homework' ? 'max-w-2xl' : 'hidden'}>
+        <DefaultHomeworkEditor packageId={run.packageId} sessionCount={run.sessionCount} />
       </div>
 
       {/* Reminders & messages tab — automated comms for this class. */}

@@ -11,15 +11,16 @@ import { ClientAvatar } from '@/components/shared/client-avatar'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { CardHeading } from '@/components/shared/card-heading'
 import { OfferingActions } from '@/components/trainer/offering-actions'
-import { Info, Users, Package as PackageIcon, Bell, MessageSquare } from 'lucide-react'
+import { Info, Users, Package as PackageIcon, Bell, MessageSquare, ListChecks } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
+import { DefaultHomeworkEditor } from '@/components/trainer/default-homework-editor'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
 
 // 'discounts' is deliberately absent: the discount engine is built but not
 // something we're showing trainers yet, so the tab and its panel are off. Put
 // it back here and in `tabs` below when it ships — nothing else has to change.
-type Tab = 'details' | 'clients' | 'messages'
+type Tab = 'details' | 'clients' | 'messages' | 'homework'
 
 export type PackageInfo = {
   id: string
@@ -101,6 +102,9 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
   const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: rows.length > 0 ? rows.length : undefined },
+    // The homework this offering normally hands out — set once here, confirmed
+    // in one tap on the session screen.
+    { id: 'homework', label: 'Homework', icon: ListChecks },
     // 1:1 packages can send automated session reminders; group packages run
     // through their class page instead.
     ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Reminders & messages', icon: Bell }] : []),
@@ -324,6 +328,11 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
               </CardBody>
             </Card>
           </div>
+
+        {/* Homework tab — the default tasks this offering suggests, per session. */}
+        <div className={tab === 'homework' ? 'max-w-2xl' : 'hidden'}>
+          <DefaultHomeworkEditor packageId={pkg.id} sessionCount={pkg.sessionCount} />
+        </div>
 
         {/* Reminders & messages tab — automated session reminders (1:1 only). */}
         {!pkg.isGroup && (
