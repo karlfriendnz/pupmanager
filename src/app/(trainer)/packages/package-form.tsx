@@ -23,6 +23,7 @@ import { User, Users, CalendarDays, X, ChevronDown, Check, Plus, MapPin, type Lu
 import { PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/feature-flags'
 import { canPricePerSession, totalFromPerSession } from '@/lib/session-pricing'
 import { useCurrency } from '@/components/currency-context'
+import { sessionCountChange, sessionCountChangeMessage } from '@/lib/session-count-change'
 import { formatMoney } from '@/lib/money'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 
@@ -503,6 +504,15 @@ export function PackageForm({
   // 'perSession' keeps `price` in step as you type (below) — that way the
   // special-price rule, the payload and the summary all keep reading one field.
   const watchedSessionCount = Number(watch('sessionCount'))
+
+  // What moving this number is about to DO. The shrink flow already asks which
+  // sessions to drop — but only once they hit Save, so the consequence arrived
+  // after the decision. Same answer, under the box, as the number moves.
+  const sessionDelta = sessionCountChange({
+    existingSessions: runSessions.length,
+    wanted: kind === 'oneoff' ? 1 : watchedSessionCount,
+  })
+  const sessionDeltaMessage = sessionCountChangeMessage(sessionDelta, { hasAttendance })
   const perSessionAvailable = kind !== 'oneoff' && canPricePerSession(watchedSessionCount)
   const [priceMode, setPriceMode] = useState<'total' | 'perSession'>(
     existing?.pricePerSessionCents != null ? 'perSession' : 'total',
@@ -910,6 +920,18 @@ export function PackageForm({
               ))}
               <option value={0}>Ongoing (no fixed end)</option>
             </select>
+            {/* What this change does to the sessions that already exist. Amber for
+                a shrink because sessions get deleted; quiet for everything else. */}
+            {sessionDeltaMessage && (
+              <p
+                className={`mt-1.5 text-xs ${
+                  sessionDelta.kind === 'remove' ? 'font-medium text-amber-700' : 'text-slate-500'
+                }`}
+                role={sessionDelta.kind === 'remove' ? 'alert' : undefined}
+              >
+                {sessionDeltaMessage}
+              </p>
+            )}
           </div>
           {/* Weeks-between only matters once there's more than one session, so it
               appears the moment they pick anything other than One-off. `invisible`
