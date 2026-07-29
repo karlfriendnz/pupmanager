@@ -5,6 +5,7 @@ import { can } from '@/lib/permissions'
 import { TrainerSettingsForm } from './trainer-settings-form'
 import { SettingsTabs } from './settings-tabs'
 import { NotificationsPanel } from './notifications-panel'
+import { EmailTemplatesPanel } from './email-templates-panel'
 import { TeamPanel } from './team-panel'
 import { BillingPanel } from './billing-panel'
 import { DeleteAccountSection } from './delete-account-section'
@@ -148,6 +149,7 @@ export default async function TrainerSettingsPage() {
         locations={canEditSettings ? <LocationsPanel locations={locations} region={trainerProfile ? trainerRegionCode(trainerProfile) : undefined} /> : undefined}
         integration={can('settings.edit', ctx.role, ctx.permissions) ? <IntegrationTab companyId={ctx.companyId} /> : undefined}
         addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
+        emails={<EmailTemplatesPanel inviteTemplate={trainerProfile?.inviteTemplate ?? null} />}
         team={<TeamPanel />}
         payments={ctx.role === 'OWNER' ? <PaymentsPanel companyId={ctx.companyId} /> : undefined}
         xero={xeroEnabled ? <XeroTab companyId={ctx.companyId} /> : undefined}

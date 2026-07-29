@@ -84,7 +84,6 @@ const TRAINER_NAV: NavItem[] = [
   // To restore: uncomment, and re-add `Download` to the lucide import above.
   // { href: '/lead-magnets', label: 'Lead magnets', icon: Download,     section: 'business' },
   { href: '/instagram',    label: 'Instagram link', icon: InstagramIcon as unknown as LucideIcon, section: 'business' },
-  { href: '/email-templates', label: 'Emails',      icon: Mail,           section: 'business' },
 
   { href: '/finances',     label: 'Finances',     icon: Wallet,          section: 'business' },
   { href: '/finances/stripe', label: 'Stripe',      icon: CircleDollarSign, section: 'business' },
