@@ -51,11 +51,6 @@ const schema = z.object({
 export async function POST(req: Request) {
   const ctx = await getTrainerContext()
   if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  // Enabling an add-on commits to a recurring charge — gate on the spend perm.
-  if (!can('billing.seats', ctx.role, ctx.permissions)) {
-    return NextResponse.json({ error: 'You don\'t have permission to change add-ons.' }, { status: 403 })
-  }
-
   const parsed = schema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   const { itemId, active } = parsed.data
@@ -64,6 +59,16 @@ export async function POST(req: Request) {
   const def = addonById(itemId)
   if (!def || def.comingSoon) {
     return NextResponse.json({ error: 'This add-on isn\'t available yet.' }, { status: 404 })
+  }
+
+  // The permission depends on what's being toggled, so it's checked AFTER we know
+  // which add-on this is. A paid one commits to a recurring charge — that needs the
+  // spend permission. A FREE one costs nothing and is just a feature switch on the
+  // Configure page, so requiring "add paid team seats" to flip it locked managers
+  // out of turning on things the business already owns.
+  const permission = def.free ? 'settings.edit' : 'billing.seats'
+  if (!can(permission, ctx.role, ctx.permissions)) {
+    return NextResponse.json({ error: 'You don\'t have permission to change this.' }, { status: 403 })
   }
 
   // Guarantee the BillingItem the TrainerAddon FK points at exists in this env.

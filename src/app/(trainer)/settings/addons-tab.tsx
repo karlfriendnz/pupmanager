@@ -77,7 +77,11 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
   // Real add-ons from pricing.ts (source of truth for name/blurb/price), each
   // carrying its current on/off state and longer modal copy. Free add-ons (e.g.
   // Timesheets) are always toggleable, shown as "Free", and ON by default.
-  const cards: AddonCard[] = ADDONS.filter((a) => !a.comingSoon && !a.hidden).map((a) => ({
+  // PAID ONLY. Everything free moved to Settings → Configure, which is a list of
+  // switches rather than a wall of sales copy — turning on something you already
+  // own shouldn't mean reading an advert to find it. Filtering here (not just
+  // hiding) is what stops the two pages offering the same switch twice.
+  const cards: AddonCard[] = ADDONS.filter((a) => !a.comingSoon && !a.hidden && !a.free).map((a) => ({
     id: a.id,
     name: a.name,
     blurb: a.description,

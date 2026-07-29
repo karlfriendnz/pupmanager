@@ -44,10 +44,20 @@ export const TAB_INTRO: Record<string, TabIntroCopy> = {
       'Turn off anything that becomes noise — you can change it any time.',
     ],
   },
+  configure: {
+    title: 'Configure',
+    blurb:
+      'Everything that comes with your plan, on or off in one tap. Nothing here costs extra — switch on the parts that match how you work and the rest stay out of your way.',
+    steps: [
+      'Switch on what you use — each one adds its screen straight away.',
+      'Switch off what you don’t — a quieter app is easier to work in.',
+      'Some need a moment to set up; the link appears once it’s on.',
+    ],
+  },
   addons: {
     title: 'Add-ons',
     blurb:
-      'The parts of PupManager you switch on as you need them. Some are free, some are a few dollars a month — turn on only what suits how you work.',
+      'The paid extras. A few dollars a month each, added to your subscription and cancellable any time. Everything included with your plan lives on Configure instead.',
     steps: [
       'Open an add-on to read what it does.',
       'Turn it on — free ones start straight away, paid ones go on your next invoice.',

@@ -12,6 +12,7 @@ import { DeleteAccountSection } from './delete-account-section'
 import { PaymentsPanel } from './payments-panel'
 import { ActivityPanel } from './activity-panel'
 import { AddonsTab } from './addons-tab'
+import { ConfigureTab } from './configure-tab'
 import { DaycareTab } from './daycare-tab'
 import { IntegrationTab } from './integration-tab'
 import { XeroTab } from './xero-tab'
@@ -153,6 +154,7 @@ export default async function TrainerSettingsPage() {
         notifications={<NotificationsPanel manageableMembers={manageableMembers} />}
         locations={canEditSettings ? <LocationsPanel locations={locations} region={trainerProfile ? trainerRegionCode(trainerProfile) : undefined} /> : undefined}
         integration={can('settings.edit', ctx.role, ctx.permissions) ? <IntegrationTab companyId={ctx.companyId} /> : undefined}
+        configure={<ConfigureTab companyId={ctx.companyId} role={ctx.role} permissions={ctx.permissions} />}
         addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
         daycare={daycareEnabled ? <DaycareTab companyId={ctx.companyId} /> : undefined}
         emails={<EmailTemplatesPanel />}
