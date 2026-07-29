@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { notifyClient } from '@/lib/client-notify'
 import { z } from 'zod'
+import { clientFacingTrainerName } from '@/lib/trainer-name'
 
 const schema = z.object({
   // 1:1 session notes (SessionFormResponse ids).
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
     where: { id: trainerId },
     select: { businessName: true, user: { select: { name: true } } },
   })
-  const trainerName = trainer?.user?.name ?? trainer?.businessName ?? 'Your trainer'
+  const trainerName = clientFacingTrainerName(trainer)
 
   const now = new Date()
   let sent = 0

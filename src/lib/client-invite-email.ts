@@ -6,6 +6,7 @@
 import { escapeHtml } from './enquiries'
 import { emailBodyToHtml, emailHtmlToText } from './email-html'
 import { DEFAULT_BRAND_COLOR } from './brand'
+import { clientFacingTrainerName } from './trainer-name'
 
 export interface ClientInviteEmailArgs {
   clientName: string
@@ -47,7 +48,8 @@ export function renderClientInviteEmail(args: ClientInviteEmailArgs): RenderedCl
     .replace(/\{\{clientName\}\}/g, clientName)
     .replace(/\{\{dogName\}\}/g, dogNamesFormatted)
 
-  const displayName = trainer.user.name?.trim() || trainer.businessName
+  // The business fronts client mail, not the owner's own name — see lib/trainer-name.
+  const displayName = clientFacingTrainerName(trainer)
   const trainerEmail = trainer.user.email
   const businessName = trainer.businessName
   const logoUrl = trainer.logoUrl

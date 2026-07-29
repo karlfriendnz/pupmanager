@@ -143,8 +143,10 @@ describe('sending-domain gate', () => {
     const res = await POST(req({ clientIds: ['a'], subject: 's', body: 'b' }))
     expect(res.status).toBe(201)
     expect((await res.json()).sent).toBe(1)
-    // Sent via the shared "via PupManager" sender, not an own-domain From.
-    expect(h.sendEmailBatch.mock.calls[0][0][0].from).toBe('Owner via PupManager')
+    // Sent via the shared "via PupManager" sender, not an own-domain From — and
+    // signed with the BUSINESS ('A'), not the owner's own name ('Owner'), which
+    // is what a client recognises. See lib/trainer-name.
+    expect(h.sendEmailBatch.mock.calls[0][0][0].from).toBe('A via PupManager')
   })
 })
 

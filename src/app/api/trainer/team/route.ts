@@ -185,6 +185,7 @@ export async function POST(req: Request) {
   })
 
   const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite?token=${inviteToken}&email=${encodeURIComponent(email)}`
+  // Personal name on purpose: one person inviting another onto the team.
   const inviterName = company.user.name?.trim() || company.businessName
   const rendered = renderTeamInviteEmail({
     inviteeName: name,

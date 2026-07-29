@@ -10,6 +10,7 @@ import { sendEmailBatch, fromTrainerDomain, fromTrainer } from '@/lib/email'
 import { htmlHasText } from '@/lib/email-html'
 import { unsubscribeUrl } from '@/lib/unsubscribe-token'
 import { hasAddon } from '@/lib/billing'
+import { clientFacingTrainerName } from '@/lib/trainer-name'
 
 // Per-day send caps, counted by *recipient* over a rolling 24h window. Trial
 // trainers are tightly capped to protect deliverability while they evaluate;
@@ -149,7 +150,7 @@ export async function POST(req: Request) {
     )
   }
 
-  const displayName = trainer.user.name?.trim() || trainer.businessName
+  const displayName = clientFacingTrainerName(trainer)
   // Prefer the trainer's own verified domain; fall back to the shared
   // "<Name> via PupManager" sender when they're only on the trial domain.
   const from = ownDomainReady

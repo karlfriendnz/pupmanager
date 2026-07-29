@@ -8,6 +8,7 @@ import { notifyClient } from '@/lib/client-notify'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
 import { resolveRequirePayment } from '@/lib/require-payment'
 import { dogBelongsToClient } from '@/lib/dog-access'
+import { clientFacingTrainerName } from '@/lib/trainer-name'
 
 // POST /api/class-runs/[runId]/enrollments
 // Trainer-assigned enrolment. Capacity / waitlist / drop-in are decided
@@ -213,7 +214,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
           trainerId,
           type: 'CLIENT_ADDED_TO_PLAN',
           vars: {
-            trainerName: trainer?.user?.name ?? trainer?.businessName ?? 'Your trainer',
+            trainerName: clientFacingTrainerName(trainer),
             dogName: dog?.name ?? 'your dog',
             planName: runDetail.name,
             detail: `${listed.length} session${listed.length === 1 ? '' : 's'}`,
