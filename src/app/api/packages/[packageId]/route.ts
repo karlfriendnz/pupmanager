@@ -52,6 +52,10 @@ const updateSchema = z.object({
   // exactly one (see syncOfferingRun). This form edits the WHOLE class, dates
   // included; moving them is refused once attendance has been recorded.
   startAt: z.string().datetime().optional(),
+  // Sessions the trainer chose to drop when shrinking a class. Naming them
+  // replaces the wholesale rebuild, so the sessions that stay keep their ids
+  // and everything hanging off them.
+  removeSessionIds: z.array(z.string()).max(200).optional(),
   status: z.enum(['SCHEDULED', 'RUNNING', 'COMPLETED', 'CANCELLED']).optional(),
   scheduleNote: z.string().max(120).nullable().optional(),
   location: z.string().max(200).nullable().optional(),
@@ -153,7 +157,7 @@ export async function PATCH(
   // define the drop-in headline price, so it can't drift from the schedule.
   const {
     sessionSlots, ticketTiers,
-    scheduleNote, location, imageUrl, assignedMembershipIds, startAt, status,
+    scheduleNote, location, imageUrl, assignedMembershipIds, startAt, status, removeSessionIds,
     ...columns
   } = parsed.data
   const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
@@ -231,6 +235,9 @@ export async function PATCH(
         // syncOfferingRun re-reads the row it has just written and compares the
         // new value with itself, concluding nothing changed.
         prev: { sessionCount: current.sessionCount, weeksBetween: current.weeksBetween },
+        // Explicit removals when the trainer shrank the class and chose which
+        // sessions go. Replaces the rebuild inside syncOfferingRun.
+        removeSessionIds,
         durationMins: columns.durationMins,
         bufferMins: columns.bufferMins,
         sessionType: columns.sessionType,

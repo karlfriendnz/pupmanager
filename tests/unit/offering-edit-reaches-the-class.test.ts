@@ -211,3 +211,96 @@ describe('the class Details card shows how full it is', () => {
   })
 })
 
+
+// Shrinking a class used to go through the cadence rebuild, which deletes the
+// whole series and regenerates it: the trainer got no say in WHICH sessions
+// went, and every surviving session came back with a new id. Naming them
+// removes exactly those and leaves the rest — ids, bookings and all — alone.
+describe('syncOfferingRun — removing named sessions instead of rebuilding', () => {
+  const six = Array.from({ length: 6 }, (_, i) => ({
+    id: `s${i + 1}`, sessionIndex: i + 1, googleCalendarEventId: null, packageSessionSlotId: null,
+  }))
+
+  beforeEach(() => {
+    for (const fn of Object.values(h)) (fn as ReturnType<typeof vi.fn>).mockReset()
+    h.runFindMany.mockResolvedValue([{
+      id: RUN, name: 'Gun Dog Level 3', location: null, startDate: START, bufferMins: null,
+      package: { sessionCount: 4, weeksBetween: 1, durationMins: 60, bufferMins: 0, sessionType: 'IN_PERSON' },
+      sessions: six,
+    }])
+    h.attendanceCount.mockResolvedValue(0)
+    h.runUpdate.mockResolvedValue({})
+    h.sessionFindMany.mockResolvedValue([])
+  })
+
+  it('deletes only the sessions it was given', async () => {
+    await syncOfferingRun(tx(), PACKAGE, TRAINER, {
+      sessionCount: 4,
+      prev: { sessionCount: 6, weeksBetween: 1 },
+      removeSessionIds: ['s2', 's5'],
+    })
+
+    expect(h.sessionDeleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { in: ['s2', 's5'] } }) }),
+    )
+  })
+
+  // The whole point: the survivors keep their rows. A rebuild would have
+  // deleted every session on the run and made six new ones.
+  it('does not rebuild the series', async () => {
+    await syncOfferingRun(tx(), PACKAGE, TRAINER, {
+      sessionCount: 4,
+      prev: { sessionCount: 6, weeksBetween: 1 },
+      removeSessionIds: ['s5', 's6'],
+    })
+
+    expect(h.sessionCreateMany).not.toHaveBeenCalled()
+    expect(h.sessionDeleteMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { classRunId: RUN } }),
+    )
+  })
+
+  // sessionIndex drives "session 3 of 6" on the roster and in every title, so
+  // dropping the middle one must not leave a class running 1, 2, 4, 5, 6 of 4.
+  it('renumbers what is left, in date order', async () => {
+    await syncOfferingRun(tx(), PACKAGE, TRAINER, {
+      sessionCount: 4,
+      prev: { sessionCount: 6, weeksBetween: 1 },
+      removeSessionIds: ['s2', 's3'],
+    })
+
+    const renumbered = h.sessionUpdate.mock.calls.map(c => [c[0].where.id, c[0].data.sessionIndex])
+    expect(renumbered).toEqual([['s1', 1], ['s4', 2], ['s5', 3], ['s6', 4]])
+    expect(h.sessionUpdate.mock.calls[1][0].data.title).toContain('session 2/4')
+  })
+
+  // Deleting a session takes its register with it — the one thing this system
+  // never does quietly. Removing OTHER sessions from a class that has
+  // attendance somewhere is still fine; that is what naming them is for.
+  it('refuses to remove a session people were marked present at', async () => {
+    h.attendanceCount.mockResolvedValue(2)
+
+    await expect(
+      syncOfferingRun(tx(), PACKAGE, TRAINER, {
+        sessionCount: 5,
+        prev: { sessionCount: 6, weeksBetween: 1 },
+        removeSessionIds: ['s3'],
+      }),
+    ).rejects.toThrow(/attendance recorded/i)
+
+    expect(h.sessionDeleteMany).not.toHaveBeenCalled()
+  })
+
+  // An id from another class, or one already gone, must not silently renumber
+  // a series that nothing was actually removed from.
+  it('ignores ids that are not on this run', async () => {
+    await syncOfferingRun(tx(), PACKAGE, TRAINER, {
+      sessionCount: 6,
+      prev: { sessionCount: 6, weeksBetween: 1 },
+      removeSessionIds: ['someone-elses-session'],
+    })
+
+    expect(h.sessionDeleteMany).not.toHaveBeenCalled()
+    expect(h.sessionUpdate).not.toHaveBeenCalled()
+  })
+})
