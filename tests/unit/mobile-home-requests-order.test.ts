@@ -57,13 +57,16 @@ describe('the desktop dashboard', () => {
 describe('accept and decline', () => {
   const panel = readFileSync('src/app/(trainer)/dashboard/pending-requests-panel.tsx', 'utf8')
 
-  it('tells the two apart by colour, not just by word order', () => {
-    expect(panel).toContain('text-emerald-700')
+  // Two text links of equal weight make you read both before choosing. A
+  // button says which one the screen expects, and leaves the other available
+  // rather than hidden behind a menu.
+  it('makes Accept a filled button and Decline quiet text', () => {
+    expect(panel).toContain('bg-emerald-600 px-3 text-sm font-semibold text-white')
     expect(panel).toContain('text-red-600')
   })
 
   it('carries the colour into the hover as well', () => {
-    expect(panel).toContain('hover:bg-emerald-50')
+    expect(panel).toContain('hover:bg-emerald-700')
     expect(panel).toContain('hover:bg-red-50')
   })
 

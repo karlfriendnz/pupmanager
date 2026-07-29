@@ -101,7 +101,7 @@ export function PendingRequestsPanel({
               : requestReasonLine(row.membership, formatMoney(row.membership.priceCents, currency))
 
             return (
-              <div key={row.id} className="flex flex-wrap items-start gap-x-3 gap-y-2 px-3 py-3 sm:flex-nowrap sm:items-center">
+              <div key={row.id} className="flex flex-wrap items-start gap-x-3 gap-y-1.5 px-3 py-2.5 sm:flex-nowrap sm:items-center">
                 <Icon className="mt-0.5 h-[18px] w-[18px] flex-shrink-0 text-slate-700 sm:mt-0" strokeWidth={1.75} />
 
                 {/* basis forces the actions onto their own line at 390px —
@@ -118,17 +118,19 @@ export function PendingRequestsPanel({
                 {/* Actions sit on the row, not behind a "…" — and wrap to their
                     own line at 390px rather than crushing the name.
                     
-                    Coloured because these two do OPPOSITE things and both read
-                    as plain text otherwise — a yes and a no, side by side, in
-                    the same slate. This is semantic colour (yes / no), not
-                    decoration and not the trainer's accent, which is why it's
-                    allowed to sit next to their brand without competing. */}
-                <div className="ml-[30px] flex flex-shrink-0 items-center gap-1 sm:ml-0">
+                    Accept is a filled button and Decline is quiet text. Two
+                    text links do opposite things with equal weight, which makes
+                    you read both before choosing; a button says which one the
+                    screen expects, and leaves the other one available rather
+                    than hidden. The colour is semantic (yes / no), not
+                    decoration and not the trainer's accent, which is why it can
+                    sit beside their brand without competing with it. */}
+                <div className="ml-[30px] flex flex-shrink-0 items-center gap-1.5 sm:ml-0">
                   <button
                     type="button"
                     onClick={() => row.kind === 'membership' ? setConfirming(row) : action(row, true)}
                     disabled={busy}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
                   >
                     {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />}
                     {row.kind === 'product' ? 'Mark done' : 'Accept'}
