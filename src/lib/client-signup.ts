@@ -50,7 +50,8 @@ export interface ClientSignupInput {
   /**
    * The trainer they're asking to join. Optional: someone who signed up from
    * the app without a trainer's link gets an account with no request yet and
-   * is sent to /find-trainer to pick one.
+   * is sent to /find-trainer, which tells them to get that link. There is no
+   * trainer directory to pick from — see the note on that screen.
    */
   trainerId?: string | null
 }
@@ -165,10 +166,15 @@ async function createJoinRequestIn(tx: TxClient, input: JoinRequestInput): Promi
 }
 
 /**
- * Raise a join request for a dog owner who ALREADY has a login (the
- * /find-trainer screen). Idempotent per (user, trainer): a second tap returns
- * the pending request rather than spamming the trainer's list, and a trainer
- * who has already added them is a no-op with `alreadyClient`.
+ * Raise a join request for a dog owner who ALREADY has a login. Idempotent per
+ * (user, trainer): a second tap returns the pending request rather than
+ * spamming the trainer's list, and a trainer who has already added them is a
+ * no-op with `alreadyClient`.
+ *
+ * NB no screen currently calls this: /find-trainer used to let them search for
+ * a business and ask, which is the trainer-directory enumeration hole that was
+ * removed. It stays because it is the correct, authenticated way to raise a
+ * request for a NAMED trainer, and is still reached via /api/my/join-requests.
  */
 export async function requestToJoinTrainer(args: {
   userId: string

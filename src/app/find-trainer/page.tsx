@@ -22,6 +22,11 @@ export const metadata: Metadata = { title: 'Find your trainer' }
 //
 // Anyone who DOES have a profile is sent to the real app — this is a waiting
 // room, not a destination.
+//
+// It used to carry a business-name search so they could find and ask a trainer.
+// That search was public and enumerable — anyone could walk the whole customer
+// list — so it is gone: a client joins through their trainer's own link, and
+// this screen's job is to say so and show any request already outstanding.
 export default async function FindTrainerPage() {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')

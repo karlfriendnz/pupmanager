@@ -5,19 +5,30 @@ import { signIn } from 'next-auth/react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { TrainerPicker, type TrainerOption } from '@/components/shared/trainer-picker'
+
+export interface TrainerOption {
+  id: string
+  businessName: string
+  logoUrl: string | null
+  slug: string | null
+}
 
 // The dog owner's signup form. Posts to /api/auth/signup-client, which is the
 // ONLY endpoint that creates a User with role CLIENT from the outside.
 //
 // Two entry points share it:
-//   • /signup/client       — no trainer known, so they search for one first
 //   • /c/<slug>/join       — arrived from a trainer's own page; `lockedTrainer`
-//                            is set and there is nothing to choose
+//                            is set and there is nothing to choose. This is the
+//                            way in.
+//   • /signup/client       — no trainer known. There is NO trainer directory to
+//                            browse (a public business-name search let anyone
+//                            enumerate the customer list), so this path just
+//                            creates the account and lands them on
+//                            /find-trainer, which tells them to get their
+//                            trainer's link.
 //
-// A trainer is not mandatory. Someone who genuinely cannot find their trainer
-// still gets an account and lands on /find-trainer, which explains what to do —
-// see the comment there for why that beats blocking them at this step.
+// A trainer is therefore not mandatory here — see /find-trainer for why an
+// account with no trainer beats blocking someone at this step.
 
 const schema = z.object({
   name: z.string().trim().min(2, 'Your name is required'),
@@ -37,7 +48,9 @@ export function ClientSignupForm({
   lockedTrainer?: TrainerOption | null
   accentColor?: string | null
 }) {
-  const [trainer, setTrainer] = useState<TrainerOption | null>(lockedTrainer)
+  // Only ever the trainer whose join link they arrived on — there is nothing
+  // to pick, so this never changes after mount.
+  const trainer = lockedTrainer
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
 
@@ -80,18 +93,6 @@ export function ClientSignupForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-      {!lockedTrainer && (
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-slate-700">Who&apos;s your trainer?</span>
-          <TrainerPicker value={trainer} onChange={setTrainer} />
-          {!trainer && (
-            <p className="text-xs text-slate-400">
-              Optional — you can add them after you sign up.
-            </p>
-          )}
-        </div>
-      )}
-
       <Field htmlFor="cs-name" label="Your name" error={errors.name?.message}>
         <input
           {...register('name')}
@@ -155,7 +156,7 @@ export function ClientSignupForm({
       <p className="text-center text-[11px] leading-snug text-slate-500">
         {trainer
           ? `${trainer.businessName} has to add you to their client list before your sessions show up. We'll ask them as soon as you're signed up.`
-          : 'You can find your trainer straight after signing up.'}
+          : "Next you'll need your trainer's sign-up link so we can connect you to them."}
       </p>
 
       {serverError && <p className="text-center text-xs text-red-600">{serverError}</p>}
