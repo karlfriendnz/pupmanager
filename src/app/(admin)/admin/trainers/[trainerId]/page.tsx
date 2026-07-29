@@ -9,6 +9,7 @@ import { TrainerDetailActions } from './trainer-detail-actions'
 import { AdminTrainerNotes } from './admin-trainer-notes'
 import type { ReactNode } from 'react'
 import type { Metadata } from 'next'
+import { telHref } from '@/lib/tel'
 
 export const metadata: Metadata = { title: 'Trainer' }
 
@@ -46,6 +47,7 @@ export default async function AdminTrainerDetailPage({
           signupCountry: true,
           gracePeriodUntil: true,
           seatCount: true,
+          phone: true,
           subscriptionPlan: { select: { name: true } },
           _count: { select: { clients: true, members: true } },
           onboardingProgress: { select: { _count: { select: { emails: true } } } },
@@ -96,6 +98,13 @@ export default async function AdminTrainerDetailPage({
     },
     { label: 'Emails sent', value: p.onboardingProgress?._count.emails ?? 0 },
     { label: 'Country', value: p.signupCountry ? `${flag ?? ''} ${p.signupCountry}`.trim() : '—' },
+    {
+      label: 'Phone',
+      // A tel: link, so this is one tap from a call rather than a number to copy.
+      value: telHref(p.phone)
+        ? <a href={telHref(p.phone)!} className="hover:text-blue-300 hover:underline">{p.phone!.trim()}</a>
+        : '—',
+    },
     { label: 'Joined', value: formatDate(user.createdAt) },
     { label: 'Last seen', value: user.lastLoginAt ? formatDate(user.lastLoginAt) : 'Never' },
     { label: 'Trial ends', value: trialEnds ? formatDate(trialEnds) : '—' },

@@ -100,6 +100,10 @@ export async function TrainersTable({
           trialEndsAt: true,
           isInternal: true,
           signupCountry: true,
+          // Their own number, for ringing a trialist. This is the trainer's
+          // business phone (showPhoneToClients only governs whether CLIENTS see
+          // it — admin always does).
+          phone: true,
           gracePeriodUntil: true,
           seatCount: true,
           payoutCurrency: true,
@@ -186,6 +190,7 @@ export async function TrainersTable({
       trialEndsAt: p.trialEndsAt ?? null,
       isInternal: p.isInternal ?? false,
       signupCountry: p.signupCountry ?? null,
+      phone: p.phone ?? null,
       clientCount: p._count?.clients ?? 0,
       sampleClientCount: sampleByTrainer.get(p.id) ?? 0,
       onboardingCompleted: onboarding[i].completed,
@@ -296,6 +301,13 @@ export async function TrainersTable({
                 <p className="text-xs text-slate-400 truncate">
                   {t.name?.trim() || t.email} · <span className="tabular-nums">{clients}</span> client{clients === 1 ? '' : 's'} · <span className="tabular-nums">{joinedLabel(t.createdAt)}</span>
                 </p>
+                {/* Phone on the card too — the call list is the thing you read on
+                    a phone. Not a tel: link here: the whole card is already a
+                    link to the business, and a link inside a link is invalid and
+                    swallows the tap. Ring them from their own screen. */}
+                {t.phone?.trim() && (
+                  <p className="text-xs text-slate-500 truncate tabular-nums">{t.phone.trim()}</p>
+                )}
                 {/* Same per-tab rule as the desktop Value column — a tab where
                     the value is always empty doesn't get a value line. */}
                 {showValue && value && (

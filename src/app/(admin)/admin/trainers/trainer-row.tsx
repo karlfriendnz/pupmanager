@@ -3,12 +3,13 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Pencil, Trash2, X, Check, LogIn, Ban, RotateCcw, AlertTriangle, Mail, Loader2 } from 'lucide-react'
+import { Pencil, Trash2, Check, LogIn, Ban, RotateCcw, AlertTriangle, Mail, Loader2 } from 'lucide-react'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { LIKELIHOODS, LIKELIHOOD_META, type ConversionLikelihood } from '@/lib/conversion-likelihood'
 import { formatMoney } from '@/lib/money'
 import type { PlanValue } from '@/lib/plan-value'
 import { SORT_COLUMNS, type SortKey } from './trainer-sort'
+import { telHref } from '@/lib/tel'
 
 // Shape returned by GET /api/admin/trainers/[trainerId]/onboarding-emails
 type EmailReport = {
@@ -40,6 +41,9 @@ type Trainer = {
   // ISO 3166-1 alpha-2 country of signup (from IP geo), or null. Rendered as a
   // flag + code chip.
   signupCountry: string | null
+  // Their business phone. Shown to admin unconditionally — showPhoneToClients
+  // governs whether their CLIENTS see it, which is a different question.
+  phone: string | null
   clientCount: number
   // >0 when the trainer still has first-run "Sample" preview clients they
   // haven't cleared — surfaced as a badge so admins can spot accounts that
@@ -114,8 +118,6 @@ export function TrainerRow({ trainer, hiddenColumns = [] }: { trainer: Trainer; 
   const show = (key: SortKey) => !hiddenColumns.includes(key)
   const COLS = colSpanFor(hiddenColumns)
   const router = useRouter()
-  const [editing, setEditing] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
   const [togglingActive, setTogglingActive] = useState(false)
   const [showHardDelete, setShowHardDelete] = useState(false)
@@ -148,28 +150,6 @@ export function TrainerRow({ trainer, hiddenColumns = [] }: { trainer: Trainer; 
   }
 
   const isActive = !trainer.deactivatedAt
-
-  const [name, setName] = useState(trainer.name ?? '')
-  const [email, setEmail] = useState(trainer.email)
-  const [businessName, setBusinessName] = useState(trainer.businessName ?? '')
-
-  async function handleSave() {
-    setSaving(true)
-    setError(null)
-    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, businessName }),
-    })
-    if (res.ok) {
-      setEditing(false)
-      router.refresh()
-    } else {
-      const data = await res.json()
-      setError(typeof data.error === 'string' ? data.error : 'Failed to save')
-    }
-    setSaving(false)
-  }
 
   // Soft delete: deactivate (active=false) or reinstate (active=true). Never
   // removes data — just toggles the sign-in block.
@@ -208,23 +188,6 @@ export function TrainerRow({ trainer, hiddenColumns = [] }: { trainer: Trainer; 
     setDeleting(false)
   }
 
-  // Grant (days > 0) or clear (days === null) an access grace period.
-  const [savingGrace, setSavingGrace] = useState(false)
-  async function setGrace(days: number | null) {
-    setSavingGrace(true)
-    setError(null)
-    const gracePeriodUntil =
-      days === null ? null : new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
-    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gracePeriodUntil }),
-    })
-    if (res.ok) router.refresh()
-    else setError('Failed to update grace period')
-    setSavingGrace(false)
-  }
-
   // "Likely" — how likely we reckon they are to convert. Optimistic: the
   // select shows the new value immediately, then reconciles on refresh.
   const [likely, setLikely] = useState(trainer.conversionLikelihood ?? '')
@@ -244,199 +207,13 @@ export function TrainerRow({ trainer, hiddenColumns = [] }: { trainer: Trainer; 
     setSavingLikely(false)
   }
 
-  // Apply a fresh N-day trial from today (sets trialEndsAt + flips to TRIALING).
-  const [savingTrial, setSavingTrial] = useState(false)
-  async function applyTrial(days: number) {
-    setSavingTrial(true)
-    setError(null)
-    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ applyTrialDays: days }),
-    })
-    if (res.ok) router.refresh()
-    else setError('Failed to apply trial')
-    setSavingTrial(false)
-  }
-
-  // Set the trainer's seat allowance directly (independent of Stripe).
-  const [savingSeats, setSavingSeats] = useState(false)
-  async function setSeats(seatCount: number) {
-    setSavingSeats(true)
-    setError(null)
-    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ seatCount }),
-    })
-    if (res.ok) router.refresh()
-    else setError('Failed to update seats')
-    setSavingSeats(false)
-  }
-
-  // Mark/unmark this as a PupManager-owned (internal/test) account.
-  const [savingInternal, setSavingInternal] = useState(false)
-  async function toggleInternal() {
-    setSavingInternal(true)
-    setError(null)
-    const res = await fetch(`/api/admin/trainers/${trainer.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isInternal: !trainer.isInternal }),
-    })
-    if (res.ok) router.refresh()
-    else setError('Failed to update account flag')
-    setSavingInternal(false)
-  }
-
   const graceUntil = trainer.gracePeriodUntil ? new Date(trainer.gracePeriodUntil) : null
   const graceActive = !!graceUntil && graceUntil.getTime() > Date.now()
   const trialEnds = trainer.trialEndsAt ? new Date(trainer.trialEndsAt) : null
 
-  if (editing) {
-    return (
-      <tr className="border-b border-slate-700/50 bg-slate-700/40">
-        <td colSpan={COLS} className="px-4 py-4">
-          {error && <p className="text-red-400 text-xs mb-3">{error}</p>}
-          <div className="flex gap-3 flex-wrap items-end">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-400">Name</label>
-              <input
-                value={name}
-                onChange={e => setName(e.target.value)}
-                className="h-9 rounded-lg bg-slate-800 border border-slate-600 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-400">Email</label>
-              <input
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="h-9 rounded-lg bg-slate-800 border border-slate-600 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-400">Business name</label>
-              <input
-                value={businessName}
-                onChange={e => setBusinessName(e.target.value)}
-                className="h-9 rounded-lg bg-slate-800 border border-slate-600 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 h-9 rounded-lg disabled:opacity-50"
-              >
-                <Check className="h-3 w-3" /> {saving ? 'Saving…' : 'Save'}
-              </button>
-              <button
-                onClick={() => { setEditing(false); setError(null) }}
-                className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white px-3 h-9 rounded-lg border border-slate-600"
-              >
-                <X className="h-3 w-3" /> Cancel
-              </button>
-            </div>
-          </div>
-
-          {/* Trial period — apply a fresh trial from today */}
-          <div className="mt-4 pt-3 border-t border-slate-600/50">
-            <p className="text-xs text-slate-400 mb-2">
-              Trial
-              {trialEnds
-                ? <span className="text-slate-300"> · ends {formatDate(trialEnds)}</span>
-                : <span className="text-slate-500"> · none</span>}
-            </p>
-            <div className="flex gap-2 flex-wrap items-center">
-              {[30, 60, 100].map(d => (
-                <button
-                  key={d}
-                  onClick={() => applyTrial(d)}
-                  disabled={savingTrial}
-                  className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 h-8 rounded-lg disabled:opacity-50"
-                >
-                  {d}-day trial
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Trainer seats — owner + invited members must fit within this */}
-          <div className="mt-4 pt-3 border-t border-slate-600/50">
-            <p className="text-xs text-slate-400 mb-2">
-              Trainer seats
-              <span className="text-slate-300"> · currently {trainer.seatCount} seat{trainer.seatCount === 1 ? '' : 's'}</span>
-            </p>
-            <div className="flex gap-2 flex-wrap items-center">
-              {[1, 2, 3, 5, 10].map(n => (
-                <button
-                  key={n}
-                  onClick={() => setSeats(n)}
-                  disabled={savingSeats || trainer.seatCount === n}
-                  className={`text-xs px-3 h-8 rounded-lg disabled:opacity-50 ${
-                    trainer.seatCount === n
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                  }`}
-                >
-                  {n} seat{n === 1 ? '' : 's'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Access grace period — overrides the paywall regardless of plan/trial */}
-          <div className="mt-4 pt-3 border-t border-slate-600/50">
-            <p className="text-xs text-slate-400 mb-2">
-              Access grace period
-              {graceActive
-                ? <span className="text-green-300"> · active until {formatDate(graceUntil!)}</span>
-                : <span className="text-slate-500"> · none</span>}
-            </p>
-            <div className="flex gap-2 flex-wrap items-center">
-              {[7, 14, 30].map(d => (
-                <button
-                  key={d}
-                  onClick={() => setGrace(d)}
-                  disabled={savingGrace}
-                  className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 h-8 rounded-lg disabled:opacity-50"
-                >
-                  +{d} days
-                </button>
-              ))}
-              {graceActive && (
-                <button
-                  onClick={() => setGrace(null)}
-                  disabled={savingGrace}
-                  className="text-xs text-rose-300 hover:text-rose-200 px-3 h-8 rounded-lg border border-rose-500/40 disabled:opacity-50"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Internal / PupManager-owned account flag */}
-          <div className="mt-4 pt-3 border-t border-slate-600/50">
-            <p className="text-xs text-slate-400 mb-2">
-              Account type
-              {trainer.isInternal
-                ? <span className="text-purple-300"> · PupManager (internal/test)</span>
-                : <span className="text-slate-500"> · real customer</span>}
-            </p>
-            <button
-              onClick={toggleInternal}
-              disabled={savingInternal}
-              className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 h-8 rounded-lg disabled:opacity-50"
-            >
-              {trainer.isInternal ? 'Unmark as ours' : 'Mark as ours (internal)'}
-            </button>
-          </div>
-        </td>
-      </tr>
-    )
-  }
+  // No inline edit panel here any more: the pencil in the actions column opens
+  // the business's own screen, which could already do everything this panel
+  // could plus add-on comps, notes, email history and hard delete.
 
   return (
     <>
@@ -468,6 +245,22 @@ export function TrainerRow({ trainer, hiddenColumns = [] }: { trainer: Trainer; 
             {trainer.email}
           </span>
         </span>
+        {/* Phone on the row rather than behind a hover: In Trial is the
+            conversion call list, and a number you have to go and find is a
+            number you don't ring. tel: so it dials from a phone or a Mac. */}
+        {(() => {
+          const dial = telHref(trainer.phone)
+          if (!dial) return <span className="block text-xs text-slate-600 mt-0.5">No phone</span>
+          return (
+            <a
+              href={dial}
+              className="block text-xs text-slate-500 hover:text-blue-300 mt-0.5 tabular-nums"
+              title={`Call ${trainer.name ?? trainer.email}`}
+            >
+              {trainer.phone?.trim()}
+            </a>
+          )
+        })()}
       </td>
       )}
       {show('business') && (
@@ -650,13 +443,18 @@ export function TrainerRow({ trainer, hiddenColumns = [] }: { trainer: Trainer; 
           >
             <LogIn className="h-3.5 w-3.5" />
           </a>
-          <button
-            onClick={() => setEditing(true)}
+          {/* Edit opens the business's own screen rather than an inline panel
+              in the table. That panel could set name, email, business name,
+              trial and seats; the full view does all of that plus add-on
+              grants, notes, email history and hard delete — so the row was the
+              smaller of two editors and the one you'd reach for first. */}
+          <a
+            href={`/admin/trainers/${trainer.id}`}
             className="p-1.5 text-slate-400 hover:text-blue-400 rounded-lg hover:bg-slate-700 transition-colors"
             title="Edit"
           >
             <Pencil className="h-3.5 w-3.5" />
-          </button>
+          </a>
 
           {isActive ? (
             // Active account → soft-delete (deactivate), with inline confirm.
