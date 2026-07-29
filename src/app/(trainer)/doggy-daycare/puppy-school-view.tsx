@@ -95,6 +95,23 @@ function WeekBoardGrid({ board, columns, daysByDog, colLabel }: { board: WeekBoa
     )
   }
 
+  // Rows are sized to the dogs in them, NOT stretched to fill. As 1fr rows, a
+  // two-day-part daycare gave every cell ~440px of empty grey — the board read
+  // as broken rather than quiet. Each row now takes the height its fullest cell
+  // needs; past MAX_CHIP_ROWS the cell scrolls instead of the row growing, so a
+  // 40-dog Wednesday can't push Thursday off the screen.
+  const CELL_CHROME = 50 // cell padding + the count row + the capacity bar + gaps
+  const CHIP_ROW = 36 // one row of two dog chips, plus the gap under it
+  const MAX_CHIP_ROWS = 4
+  const rowPx = (partKey: string) => {
+    let most = 0
+    for (const c of columns) most = Math.max(most, board.cells[partKey]?.[c.key]?.attendees.length ?? 0)
+    const chipRows = Math.min(MAX_CHIP_ROWS, Math.ceil(most / 2))
+    // The floor is generous enough that an empty week still reads as a board
+    // rather than a stack of stripes.
+    return Math.max(96, CELL_CHROME + chipRows * CHIP_ROW)
+  }
+
   // Per-day total = distinct DOGS in that column, not the sum of per-part
   // occupancy. A dog booked into both morning and afternoon is one dog here —
   // summing cell.booked across parts double-counts full-day and multi-part dogs.
@@ -117,7 +134,7 @@ function WeekBoardGrid({ board, columns, daysByDog, colLabel }: { board: WeekBoa
           from the scrollport's padding box, so padding out here would leave an
           8px strip above the pinned dates for the board to show through. */}
       <div className="flex flex-1 min-h-0 flex-col overflow-auto border-t border-slate-200 bg-white">
-        <div className="grid flex-1 gap-1.5 min-w-[640px] p-2" style={{ gridTemplateColumns: `100px repeat(${columns.length}, minmax(96px, 1fr))`, gridTemplateRows: `auto repeat(${board.parts.length}, minmax(4rem, 1fr))` }}>
+        <div className="grid shrink-0 gap-1.5 min-w-[640px] p-2" style={{ gridTemplateColumns: `100px repeat(${columns.length}, minmax(96px, 1fr))`, gridTemplateRows: `auto ${board.parts.map(p => `${rowPx(p.key)}px`).join(' ')}` }}>
           {/* Header row. Pinned to the top so the dates stay readable however
               far down the board you are, and the day-part column is pinned to
               the left so a sideways swipe on a phone never loses which row is
@@ -212,11 +229,13 @@ function PartRow({ label, cells, todayKey, onDogEnter, onDogLeave }: {
       <div className="sticky left-0 z-10 flex items-center bg-white -ml-2 -mb-1.5 -mr-1.5 pl-2 pr-2.5 text-sm font-semibold text-slate-700">{label}</div>
       {cells.map(({ colKey, cell }, i) => {
         const today = colKey === todayKey
-        if (!cell) return <div key={i} className={`rounded-lg border min-h-[64px] ${today ? 'bg-teal-50/40 border-teal-100' : 'bg-slate-50 border-slate-100'}`} />
+        // No session that day: a genuine hole in the week, with nothing to open.
+        if (!cell) return <div key={i} className={`rounded-lg border ${today ? 'bg-teal-50/40 border-teal-100' : 'bg-slate-50 border-slate-100'}`} />
         const full = cell.capacity != null && cell.booked >= cell.capacity
         const pct = cell.capacity ? Math.min(100, Math.round((cell.booked / cell.capacity) * 100)) : cell.booked > 0 ? 100 : 0
-        return (
-          <div key={i} className={`rounded-lg border p-2 flex flex-col gap-1.5 min-h-[64px] ${today ? 'bg-teal-50/40 border-teal-200' : 'bg-slate-50 border-slate-200'}`}>
+        const shell = `rounded-lg border p-2 flex flex-col gap-1.5 overflow-hidden transition-colors ${today ? 'bg-teal-50/40 border-teal-200' : 'bg-slate-50 border-slate-200'} ${cell.runId ? 'hover:border-teal-300 hover:bg-white' : ''}`
+        const body = (
+          <>
             <div className="flex items-center justify-between">
               <span className={`font-mono text-xs font-semibold ${full ? 'text-amber-600' : 'text-teal-700'}`}>{cell.booked}{cell.capacity != null ? `/${cell.capacity}` : ''}</span>
               {cell.waitlist > 0 && <span className="font-mono text-[9.5px] text-amber-600">+{cell.waitlist} wait</span>}
@@ -224,25 +243,37 @@ function PartRow({ label, cells, todayKey, onDogEnter, onDogLeave }: {
             <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
               <div className={`h-full rounded-full ${full ? 'bg-amber-500' : 'bg-teal-500'}`} style={{ width: `${pct}%` }} />
             </div>
-            {/* Two dogs per row: a full daycare day runs to 40 dogs, and one per
-                row turned a single cell into a very long scroll. The avatar
-                shrinks to match so the name still has room to read. */}
-            {cell.attendees.length > 0 && (
-              <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-2 gap-0.5 pr-0.5 content-start">
+            {cell.attendees.length > 0 ? (
+              /* Two dogs per row: a full daycare day runs to 40 dogs, and one per
+                 row turned a single cell into a very long scroll. The avatar
+                 shrinks to match so the name still has room to read. Its own
+                 scrollbar stays hidden — the board already has one, and two on
+                 screen at once is the rule this would break. */
+              <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar grid grid-cols-2 gap-0.5 pr-0.5 content-start">
                 {cell.attendees.map((a, j) => (
                   <div
                     key={j}
                     onMouseEnter={e => onDogEnter(a, e.currentTarget)}
                     onMouseLeave={onDogLeave}
-                    className="flex min-w-0 items-center gap-1.5 rounded-lg bg-white border border-slate-200 px-1 py-1 text-[13px] text-slate-700 cursor-default hover:border-teal-300 hover:bg-teal-50/40"
+                    className="flex min-w-0 items-center gap-1.5 rounded-lg bg-white border border-slate-200 px-1 py-1 text-[13px] text-slate-700 hover:border-teal-300 hover:bg-teal-50/40"
                   >
                     <DogAvatar att={a} sizeClass="h-6 w-6 shrink-0" />
                     <span className="truncate">{a.dog}</span>
                   </div>
                 ))}
               </div>
+            ) : (
+              /* An open day-part showing 0/8 and a flat bar reads as broken. Say
+                 out loud that it's empty — the cell is still a live tap through
+                 to the session, which is where a dog gets added. */
+              <div className="flex-1 min-h-0 flex items-center text-[11px] text-slate-400">No dogs yet</div>
             )}
-          </div>
+          </>
+        )
+        return cell.runId ? (
+          <Link key={i} href={`/doggy-daycare/${cell.runId}/sessions/${cell.sessionId}`} className={shell}>{body}</Link>
+        ) : (
+          <div key={i} className={shell}>{body}</div>
         )
       })}
     </>

@@ -50,11 +50,64 @@ describe('getPuppySchoolWeek', () => {
     expect(board.totalBooked).toBe(2)
   })
 
+  // Every cell is a tap through to that day-part's own session screen, so the
+  // ids have to survive the bucketing — including when two sessions share one
+  // cell, where the FIRST one's ids are the ones the tap should use.
+  it('carries the session the cell taps through to', async () => {
+    const board = await getPuppySchoolWeek('t1', NOW)
+    expect(board.cells['09:00']['2026-08-05']).toMatchObject({ runId: 'r1', sessionId: 's1' })
+  })
+
+  it('keeps the first session ids when two sessions share a cell', async () => {
+    h.sessionFindMany.mockResolvedValue([
+      { id: 'early', scheduledAt: SESSION_AT, classRunId: 'r1', packageSessionSlot: { capacity: 8, startTime: '09:00', endTime: '12:00' }, classRun: { capacity: null, package: { capacity: null } } },
+      { id: 'later', scheduledAt: SESSION_AT, classRunId: 'r2', packageSessionSlot: { capacity: 8, startTime: '09:00', endTime: '12:00' }, classRun: { capacity: null, package: { capacity: null } } },
+    ])
+    h.enrollmentFindMany.mockResolvedValue([])
+
+    const board = await getPuppySchoolWeek('t1', NOW)
+    expect(board.cells['09:00-12:00']['2026-08-05']).toMatchObject({ runId: 'r1', sessionId: 'early', capacity: 16 })
+  })
+
   it('ignores a drop-in whose session is not on the board', async () => {
     h.enrollmentFindMany.mockResolvedValue([
       { classRunId: 'r1', status: 'ENROLLED', type: 'DROP_IN', dropInSessionId: 'some-other-session' },
     ])
     const board = await getPuppySchoolWeek('t1', NOW)
     expect(board.cells['09:00']['2026-08-05'].booked).toBe(0)
+  })
+
+  // A daycare routinely runs a full day and a half day that OPEN AT THE SAME
+  // MINUTE. Keying a row on the start time alone collapsed them into one row,
+  // and the second session then overwrote the first — taking its bookings with
+  // it. Found against a real daycare's data (7am–6pm and 7am–12pm).
+  it('keeps two day-parts that start at the same time apart', async () => {
+    h.sessionFindMany.mockResolvedValue([
+      {
+        id: 'full', scheduledAt: SESSION_AT, classRunId: 'r1',
+        packageSessionSlot: { capacity: 20, startTime: '09:00', endTime: '18:00' },
+        classRun: { capacity: null, package: { capacity: null } },
+      },
+      {
+        id: 'half', scheduledAt: SESSION_AT, classRunId: 'r1',
+        packageSessionSlot: { capacity: 10, startTime: '09:00', endTime: '12:00' },
+        classRun: { capacity: null, package: { capacity: null } },
+      },
+    ])
+    h.enrollmentFindMany.mockResolvedValue([
+      { classRunId: 'r1', status: 'ENROLLED', type: 'DROP_IN', dropInSessionId: 'full' },
+      { classRunId: 'r1', status: 'ENROLLED', type: 'DROP_IN', dropInSessionId: 'half' },
+    ])
+
+    const board = await getPuppySchoolWeek('t1', NOW)
+
+    // Two rows, not one — and the shorter day sorts first.
+    expect(board.parts.map(p => p.key)).toEqual(['09:00-12:00', '09:00-18:00'])
+    expect(board.parts.map(p => p.label)).toEqual(['9:00 AM – 12:00 PM', '9:00 AM – 6:00 PM'])
+
+    // Each keeps its own booking and its own capacity; neither erased the other.
+    expect(board.cells['09:00-18:00']['2026-08-05']).toMatchObject({ booked: 1, capacity: 20 })
+    expect(board.cells['09:00-12:00']['2026-08-05']).toMatchObject({ booked: 1, capacity: 10 })
+    expect(board.totalBooked).toBe(2)
   })
 })

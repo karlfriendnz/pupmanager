@@ -25,11 +25,17 @@ function tzTimeKey(d: Date, tz: string): string {
 function tzTimeLabel(d: Date, tz: string): string {
   return parts(tz, { hour: 'numeric', minute: '2-digit', hour12: true }).format(d)
 }
+/** "07:00" → "7:00 AM". A slot's times are wall-clock, so no timezone involved. */
+function clockLabel(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm
+  return `${h % 12 === 0 ? 12 : h % 12}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}`
+}
 
 export interface PuppySchoolSummary {
   id: string
   name: string
-  dayParts: number // distinct start-times across the week's slots
+  dayParts: number // distinct start–end pairs across the week's slots
   days: number // distinct weekdays it runs
   runId: string | null
 }
@@ -41,21 +47,31 @@ export async function listPuppySchools(trainerId: string): Promise<PuppySchoolSu
     select: {
       id: true,
       name: true,
-      sessionSlots: { select: { day: true, startTime: true } },
+      sessionSlots: { select: { day: true, startTime: true, endTime: true } },
       classRuns: { select: { id: true }, orderBy: { startDate: 'asc' }, take: 1 },
     },
   })
   return pkgs.map(p => ({
     id: p.id,
     name: p.name,
-    dayParts: new Set(p.sessionSlots.map(s => s.startTime)).size,
+    // Start AND end — a full day and a half day opening at the same minute are
+    // two day-parts, not one. Must match the week board's row key.
+    dayParts: new Set(p.sessionSlots.map(s => `${s.startTime}-${s.endTime}`)).size,
     days: new Set(p.sessionSlots.map(s => s.day)).size,
     runId: p.classRuns[0]?.id ?? null,
   }))
 }
 
 export interface BoardAttendee { dogId: string; dog: string; owner: string; clientId: string; photoUrl: string | null; phone: string | null }
-export interface WeekBoardCell { booked: number; capacity: number | null; waitlist: number; attendees: BoardAttendee[] }
+export interface WeekBoardCell {
+  booked: number
+  capacity: number | null
+  waitlist: number
+  attendees: BoardAttendee[]
+  /** Where tapping the cell goes: the day-part's own session screen. */
+  runId: string | null
+  sessionId: string
+}
 export interface WeekBoard {
   tz: string
   columns: { key: string; label: string }[]
@@ -99,7 +115,7 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
     },
     select: {
       id: true, scheduledAt: true, classRunId: true,
-      packageSessionSlot: { select: { capacity: true } },
+      packageSessionSlot: { select: { capacity: true, startTime: true, endTime: true } },
       classRun: { select: { capacity: true, package: { select: { capacity: true } } } },
     },
   })
@@ -140,8 +156,24 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
   for (const s of sessions) {
     const colKey = colByKey.get(tzDateKey(s.scheduledAt, tz))
     if (!colKey) continue
-    const partKey = tzTimeKey(s.scheduledAt, tz)
-    if (!partLabels.has(partKey)) partLabels.set(partKey, tzTimeLabel(s.scheduledAt, tz))
+    // A row is a DAY-PART, which is a start AND an end — not a start alone. A
+    // daycare routinely runs a full day and a half day that open at the same
+    // minute (7am–6pm and 7am–12pm); keying on the start collapsed them into one
+    // row, and the second session then overwrote the first along with its
+    // bookings. Falls back to the start time for a session with no slot.
+    const slot = s.packageSessionSlot
+    // Both times are needed to name a day-part; without them fall back to the
+    // session's own start rather than inventing an "undefined" row.
+    const ranged = slot?.startTime && slot?.endTime ? slot : null
+    const partKey = ranged ? `${ranged.startTime}-${ranged.endTime}` : tzTimeKey(s.scheduledAt, tz)
+    if (!partLabels.has(partKey)) {
+      partLabels.set(
+        partKey,
+        ranged
+          ? `${clockLabel(ranged.startTime)} – ${clockLabel(ranged.endTime)}`
+          : tzTimeLabel(s.scheduledAt, tz),
+      )
+    }
     const capacity = s.packageSessionSlot?.capacity ?? s.classRun?.capacity ?? s.classRun?.package.capacity ?? null
     const booked = (s.classRunId ? fullEnrolled.get(s.classRunId) ?? 0 : 0) + (dropEnrolled.get(s.id) ?? 0)
     const waitlist = (s.classRunId ? fullWait.get(s.classRunId) ?? 0 : 0) + (dropWait.get(s.id) ?? 0)
@@ -150,7 +182,22 @@ export async function getPuppySchoolWeek(trainerId: string, now: Date = new Date
       ...(dropAttendees.get(s.id) ?? []),
     ]
     totalBooked += booked
-    ;(cells[partKey] ??= {})[colKey] = { booked, capacity, waitlist, attendees }
+    // Accumulate rather than assign: two sessions can still share a cell (the
+    // same day-part running twice in a day), and the later one must not erase
+    // the earlier one's bookings.
+    const cell = (cells[partKey] ??= {})[colKey]
+    if (cell) {
+      cell.booked += booked
+      cell.waitlist += waitlist
+      cell.attendees.push(...attendees)
+      // A null capacity means "unlimited" — it must stay null, not become a sum.
+      cell.capacity = cell.capacity === null || capacity === null ? null : cell.capacity + capacity
+      // runId/sessionId stay the FIRST session's: when two sessions share a cell
+      // the tap has to land somewhere, and the earlier one is the one a trainer
+      // means by "the 9am".
+    } else {
+      cells[partKey][colKey] = { booked, capacity, waitlist, attendees, runId: s.classRunId, sessionId: s.id }
+    }
   }
 
   const partsArr = [...partLabels.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, label]) => ({ key, label }))
