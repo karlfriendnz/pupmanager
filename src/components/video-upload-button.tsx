@@ -9,7 +9,11 @@ import { Video as VideoIcon, Loader2, X } from 'lucide-react'
 // bypasses the serverless body limit, handles 100 MB phone clips). `capture`
 // lets the native picker record straight from the camera. Playback is just
 // <video src={url}> (see VideoPlayer) — no signing layer, the URL is unguessable
-// (Blob's random suffix). `handleUploadUrl` authorises the upload per task.
+// (Blob's random suffix).
+//
+// The authorising route is a PROP: a client uploading to their homework log and a
+// trainer uploading to a library item are different people with different
+// ownership checks, and the button shouldn't know which it's serving.
 const MAX_BYTES = 100 * 1024 * 1024
 
 function safeName(name: string) {
@@ -18,12 +22,21 @@ function safeName(name: string) {
 }
 
 export function VideoUploadButton({
-  taskId,
+  uploadUrl,
   onUploaded,
+  label = 'Add a video',
   className = '',
 }: {
-  taskId: string
+  /**
+   * The route that authorises this upload. Passed in rather than derived, because
+   * "who may upload here" differs per surface: a CLIENT uploading to their own
+   * homework task, a TRAINER uploading to their own library item. Each has its own
+   * ownership check and its own role, and neither can be inferred from an id.
+   */
+  uploadUrl: string
   onUploaded: (url: string) => void
+  /** Button text — "Add a video" reads oddly next to a field already called Video. */
+  label?: string
   className?: string
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -42,7 +55,7 @@ export function VideoUploadButton({
     try {
       const blob = await upload(safeName(file.name), file, {
         access: 'public',
-        handleUploadUrl: `/api/tasks/${taskId}/video-upload`,
+        handleUploadUrl: uploadUrl,
         clientPayload: JSON.stringify({ sizeBytes: file.size }),
         onUploadProgress: (p) => setProgress(Math.round(p.percentage)),
       })
@@ -65,7 +78,7 @@ export function VideoUploadButton({
         className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 disabled:opacity-60"
       >
         {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <VideoIcon className="h-4 w-4" />}
-        {uploading ? `Uploading… ${progress}%` : 'Add a video'}
+        {uploading ? `Uploading… ${progress}%` : label}
       </button>
       {uploading && (
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">

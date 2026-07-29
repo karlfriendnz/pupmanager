@@ -160,7 +160,7 @@ export function TrainingLogPanel({
         <div className="mt-4">
           <div className="flex items-center justify-between">
             <label className="block text-xs font-semibold text-slate-500">Video</label>
-            {!video && <VideoUploadButton taskId={taskId} onUploaded={setVideo} />}
+            {!video && <VideoUploadButton uploadUrl={`/api/tasks/${taskId}/video-upload`} onUploaded={setVideo} />}
           </div>
           {video && (
             <div className="mt-2 relative">

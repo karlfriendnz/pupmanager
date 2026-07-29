@@ -11,6 +11,7 @@ import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { compressImageFile, isDisplayableImage } from '@/lib/compress-image'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { ErrorNote } from '../../library-forms'
+import { VideoUploadButton } from '@/components/video-upload-button'
 
 export interface EditableItem {
   id: string
@@ -177,14 +178,24 @@ export function ItemEditor({ item }: { item: EditableItem }) {
                 />
               </div>
               <div className="min-w-0 flex-1">
-                <label htmlFor="item-video" className="block text-[13px] font-medium text-slate-700">Video link</label>
+                <label htmlFor="item-video" className="block text-[13px] font-medium text-slate-700">Video</label>
                 <input
                   id="item-video"
                   type="url"
-                  placeholder="https://…"
+                  placeholder="Paste a link, or upload below"
                   value={videoUrl}
                   onChange={e => { setVideoUrl(e.target.value); touched() }}
                   className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                />
+                {/* Two ways to get a video on an item, because trainers have both:
+                    a YouTube link they already share, or a clip they filmed and
+                    have nowhere to host. The upload writes into the same field, so
+                    everything downstream (the client app, the plan) is unchanged. */}
+                <VideoUploadButton
+                  uploadUrl={`/api/library/items/${item.id}/video-upload`}
+                  onUploaded={url => { setVideoUrl(url); touched() }}
+                  label={videoUrl ? 'Replace with an upload' : 'Upload a clip'}
+                  className="mt-2"
                 />
               </div>
             </div>
