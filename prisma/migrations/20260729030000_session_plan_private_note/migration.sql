@@ -1,0 +1,16 @@
+-- A private note per curriculum step, beside the public one.
+--
+-- `package_session_plans.description` is what the CLIENT reads — it renders on
+-- their session in the client app, and is written as client-facing copy. That
+-- left the trainer with nowhere to put the other half of a session plan: the
+-- reminder to themselves ("bring the long line", "owner is nervous around big
+-- dogs"). Writing that into the description would publish it.
+--
+-- So the two are separate fields rather than one field with a convention:
+-- private-by-default is not something a placeholder can enforce.
+--
+-- NEVER select this in anything that feeds the (client) route group or a
+-- client-facing API. It is deliberately kept out of the shared CurriculumStep
+-- type in src/lib/series.ts so it cannot arrive by accident — reading it takes
+-- naming it.
+ALTER TABLE "package_session_plans" ADD COLUMN IF NOT EXISTS "privateNote" TEXT;

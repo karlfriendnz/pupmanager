@@ -1,0 +1,16 @@
+-- Price per session — how the price was EXPRESSED, not a second price.
+--
+-- `packages.priceCents` remains the authoritative total: checkout, invoicing,
+-- Stripe, membership items and every report read it and know nothing about this
+-- column. What they could not tell us before is that a trainer often prices by
+-- the session ("thirty dollars a session"), and a four-session course priced
+-- that way kept a $120 total after it became a six-session course — a number
+-- that had silently stopped being true.
+--
+-- So this records the INTENT only. When it is set, the total is re-derived from
+-- it on every save (resolvePackagePricing, src/lib/session-pricing.ts); when it
+-- is null the offering is priced as a lump sum exactly as it always was.
+--
+-- Nullable with no default and no backfill, deliberately: every existing
+-- offering was priced as a total, and null is precisely that statement.
+ALTER TABLE "packages" ADD COLUMN IF NOT EXISTS "pricePerSessionCents" INTEGER;

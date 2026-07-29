@@ -1181,6 +1181,11 @@ model Dog {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  // Set when the dog has died. A real column rather than a custom field because
+  // it must change behaviour: deceased dogs are excluded from class invites,
+  // rosters/enrolment pickers, attendance lists and reminders, while staying
+  // visible on the owner's profile so their history is preserved.
+  deceasedAt      DateTime?
 
   primaryFor       ClientProfile[]   @relation("PrimaryDog")
   owner            ClientProfile?    @relation("AdditionalDogs", fields: [clientProfileId], references: [id])
@@ -1333,6 +1338,14 @@ model TrainingSession {
   // join point used for drop-in pricing.
   classRunId           String?
   sessionIndex         Int?
+  // SERIES: which curriculum step this session actually covers.
+  //
+  // NOT the same as its position in the series. The trainer may SKIP a step for
+  // a client whose dog already has it, so a client's 2nd session can be step 3 —
+  // which is why this is STORED rather than counted off the calendar. Null =
+  // nobody has said yet, and the natural order stands in (see lib/series.ts).
+  // Only the trainer changes it; a client never skips a step.
+  sessionPlanId        String?
   // Links the sessions of a recurring "buddies walk" (a group dog walk created
   // from the schedule). Lets a dog added later be applied to just this walk,
   // this + following walks, or the whole series. Null for non-walk sessions.
@@ -1392,6 +1405,7 @@ model TrainingSession {
   client                   ClientProfile?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
   dog                      Dog?                    @relation(fields: [dogId], references: [id])
   clientPackage            ClientPackage?          @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
+  sessionPlan              PackageSessionPlan?     @relation(fields: [sessionPlanId], references: [id], onDelete: SetNull)
   tasks                    TrainingTask[]
   formResponses            SessionFormResponse[]
   fulfilledProductRequests ProductRequest[]
@@ -1418,6 +1432,7 @@ model TrainingSession {
   @@index([trainerId, scheduledAt])
   @@index([clientPackageId])
   @@index([classRunId])
+  @@index([sessionPlanId])
   @@index([walkSeriesId])
   @@index([packageSessionSlotId])
   @@map("training_sessions")
@@ -1590,6 +1605,17 @@ model Package {
   // optional discounted price the trainer can offer for promotions, etc.
   priceCents               Int? // null = unpriced
   specialPriceCents        Int? // null = no special price
+  // What the trainer actually said, when they priced this by the session rather
+  // than as a lump sum: "thirty dollars a session". null = priced as a total,
+  // which is the original behaviour and still the common one.
+  //
+  // NOT a second price. `priceCents` above stays the authoritative total that
+  // checkout, invoicing and every report read; this only records the intent, and
+  // `resolvePackagePricing` (src/lib/session-pricing.ts) re-derives the total
+  // from it on every save. That is what makes a four-session course re-price
+  // itself when it becomes a six-session course, instead of keeping a total that
+  // quietly stopped matching the figure that was typed.
+  pricePerSessionCents     Int?
   // Optional schedule colour (Tailwind palette key, eg "blue"). When set,
   // sessions assigned to this package render in that colour on the calendar.
   color                    String?
@@ -1624,6 +1650,18 @@ model Package {
   // (the /offerings/new?kind=oneoff route) and never re-derived, so editing an
   // offering can no longer change what it is. See lib/run-kind.ts.
   isEvent                  Boolean     @default(false)
+  // A SERIES — a run of 1:1 consults with a pre-defined curriculum. The client
+  // signs up to the whole thing; each step ("session 2 is loose-lead walking")
+  // is defined up front on PackageSessionPlan, with its homework already on
+  // PackageDefaultTask, and the sessions are scheduled individually.
+  //
+  // Labelling + routing ONLY, exactly like isPuppySchool and isEvent: a series
+  // is an ordinary isGroup=false package and every 1:1 mechanism (ClientPackage,
+  // assignment, invoicing) works on it untouched. The flag exists so the
+  // offerings hub and the list pages can tell a series from a plain consult
+  // without re-deriving it from shape — which is the mistake isEvent was created
+  // to undo. Never infer it; it is declared at creation and read back verbatim.
+  isSeries                 Boolean     @default(false)
   // Max enrolments per run (null = unlimited). A run may override this.
   capacity                 Int?
   // Allow clients to book a single session on its own (drop-in), at
@@ -1663,6 +1701,7 @@ model Package {
   waitlistEntries    WaitlistEntry[]
   discounts          Discount[]
   defaultTasks       PackageDefaultTask[]
+  sessionPlans       PackageSessionPlan[]
   commsFlowSteps     CommsFlowStep[]
   bookingRequests    BookingRequest[]
   bookingPages       BookingPage[]
@@ -2780,6 +2819,51 @@ model PackageDefaultTask {
   @@index([packageId])
   @@index([libraryTaskId])
   @@map("package_default_tasks")
+}
+
+// One step of a SERIES curriculum — "session 2 is loose-lead walking".
+//
+// Lives on the Package because the curriculum is the TEMPLATE: every client who
+// buys the series gets the same plan. What varies per client is which session
+// covered which step, and that is stamped on the session
+// (TrainingSession.sessionPlanId) rather than counted, because the trainer may
+// skip a step for a dog that already has it.
+//
+// Homework is deliberately NOT duplicated here. PackageDefaultTask already keys
+// per-session homework off the same 1-based sessionIndex, so a step and its
+// homework are joined on that number — one editor, one place to change it, and
+// no way for the two to disagree about what "session 3" means.
+model PackageSessionPlan {
+  id        String @id @default(cuid())
+  packageId String
+  /// 1-based step number within the series ("session 3 of 6"). The same
+  /// numbering PackageDefaultTask.sessionIndex uses, deliberately.
+  sessionIndex Int
+  title        String
+  /// PUBLIC. What this session covers, written for the CLIENT to read — it
+  /// shows on their session in the client app. Rich text (the same constrained
+  /// HTML every other description in the app stores), so it must be rendered
+  /// through RichText, never printed raw.
+  description  String? @db.Text
+  /// PRIVATE. The trainer's own jottings about this step. NEVER leaves the
+  /// trainer side: it must not be selected by anything feeding the (client)
+  /// route group or a client-facing API. Deliberately absent from the shared
+  /// `CurriculumStep` type in lib/series.ts, so it can only be read by asking
+  /// for it by name — a `select: *` is how a note like this leaks.
+  privateNote  String? @db.Text
+  order        Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  package  Package           @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  // Sessions that cover this step. SetNull on the session side, so retiring a
+  // step never deletes bookings already in the diary.
+  sessions TrainingSession[]
+
+  @@unique([packageId, sessionIndex])
+  @@index([packageId])
+  @@map("package_session_plans")
 }
 
 // ─── Client Notifications ─────────────────────────────────────────────────────
