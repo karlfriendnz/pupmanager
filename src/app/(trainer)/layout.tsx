@@ -123,7 +123,9 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     '/products': 'shop',
     '/achievements': 'achievements',
     '/events': 'events',
-    '/doggy-daycare': 'puppyschool',
+    // Packages stays LOCKED (not hidden) when off: unlike Doggy Daycare its
+    // add-on is deliberately visible on the Add-ons tab, so the locked row has
+    // somewhere real to point. Asserted in tests/unit/memberships-addon-gate.
     '/memberships': 'memberships',
   }
   const enabledAddons = ctx ? await getEnabledAddons(ctx.companyId) : new Set<string>()
@@ -140,6 +142,10 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // without turning group classes on).
   if (!enabledAddons.has('dropins')) hiddenNavHrefs.push('/casual-classes')
   if (!enabledAddons.has('library')) hiddenNavHrefs.push('/library')
+  // Doggy Daycare is HIDDEN rather than locked when the add-on is off. The
+  // add-on itself is `hidden` while the feature is finished, so showing a locked
+  // "turn it on in Add-ons" row would advertise a feature nobody can enable.
+  if (!enabledAddons.has('puppyschool')) hiddenNavHrefs.push('/doggy-daycare')
   // No client app → no client↔trainer messaging.
   if (!enabledAddons.has('clientapp')) hiddenNavHrefs.push('/messages')
   // "Link in bio" is a free, off-by-default add-on — its nav entry only appears

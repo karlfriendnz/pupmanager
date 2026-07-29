@@ -61,11 +61,26 @@ function nextWorkingDay(dateStr: string, scheduleDays: number[]): string {
 export default async function SchedulePage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; previewRequest?: string; member?: string }>
+  searchParams: Promise<{ date?: string; previewRequest?: string; member?: string; full?: string }>
 }) {
   // Resolve via membership so invited trainers reach their company's schedule.
   const ctx = await getTrainerContext()
   if (!ctx) redirect('/login')
+
+  // Daycare is hidden for now (Karl, 2026-07-29), so Schedule must NOT redirect
+  // to it — that would send a trainer to a page the nav deliberately doesn't
+  // offer, with no way back.
+  //
+  // When daycare comes back: a daycare's schedule IS the week board (the day is
+  // sold in day-parts, not as individual appointments, so the session calendar
+  // shows them almost nothing). Restoring the redirect here rather than
+  // rewriting nav hrefs is what makes every route in — sidebar, mobile tab,
+  // dashboard tiles, a bookmark — land in the same place, and `?full=1` still
+  // reaches the real calendar for a business running daycare AND 1:1 work.
+  //
+  // if (!(await searchParams).full && (await hasAddon(ctx.companyId, 'puppyschool'))) {
+  //   redirect('/doggy-daycare')
+  // }
   // Staff without schedule.viewAll only see their own assigned sessions.
   const memberScope = scopeForMember(ctx, 'schedule.viewAll')
   // An empty scope fragment means this user sees the whole company's schedule

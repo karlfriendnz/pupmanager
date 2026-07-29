@@ -54,18 +54,22 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/sessions/draft-notes', label: 'Notes', icon: FileText,       section: 'clients', child: true },
   { href: '/clients/waitlist', label: 'Waitlist', icon: ClipboardList,   section: 'clients', child: true },
 
-  { href: '/packages',     label: '1:1 Consults', icon: Package,         section: 'programs' },
+  { href: '/packages',     label: '1:1 Sessions', icon: Package,         section: 'programs' },
   { href: '/classes',      label: 'Group Classes', icon: GraduationCap,  section: 'programs' },
   { href: '/casual-classes',     label: 'Casual Classes',     icon: Ticket,           section: 'programs' },
   { href: '/events',       label: 'Events',       icon: CalendarPlus,    section: 'programs' },
-  // Doggy Daycare is hidden for now (Karl, 2026-07-26) — the pages still exist
-  // and the route still works, it just isn't offered in the nav yet. Restore
-  // this line to bring it back.
-  // { href: '/doggy-daycare', label: 'Doggy Daycare', icon: Dog,         section: 'programs' },
-  // Packages (memberships) hidden for now (Karl, 2026-07-27), same treatment as
-  // Doggy Daycare and Lead magnets — the pages and routes still work, they just
-  // aren't offered in the nav. Restore this line to bring it back.
-  // { href: '/memberships',  label: 'Packages',   icon: Ticket,          section: 'programs' },
+  // Hidden again (Karl, 2026-07-29). The pages and routes still work and the
+  // add-on still grants access — this only takes it out of the nav while the
+  // feature is unfinished. Restore this line to bring it back; it is HIDDEN
+  // rather than locked for anyone without the add-on (see hiddenNavHrefs in
+  // (trainer)/layout.tsx), because a locked "turn it on" row would advertise
+  // the very thing we are keeping quiet.
+  // { href: '/doggy-daycare', label: 'Doggy Daycare', icon: Dog,      section: 'programs' },
+  // Back in the nav (Karl, 2026-07-29), same treatment as Doggy Daycare: HIDDEN
+  // rather than locked for anyone without the add-on (see hiddenNavHrefs in
+  // (trainer)/layout.tsx), and the add-on itself is `hidden` so it is not
+  // advertised while the feature is unfinished.
+  { href: '/memberships',  label: 'Packages',   icon: Ticket,          section: 'programs' },
 
   // Not offerings themselves — the things that support them.
   { href: '/schedule/route', label: 'Route',      icon: Navigation,      section: 'tools' },

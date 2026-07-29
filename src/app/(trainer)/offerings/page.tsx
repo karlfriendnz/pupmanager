@@ -42,17 +42,17 @@ export default async function OfferingsPage() {
   // Same gating as the nav: a type whose add-on is off simply isn't offered.
   // `icon` is a plain key, not a component — see offerings-list.tsx for why.
   const rows = [
-    { href: '/packages', label: '1:1 Consults', icon: 'packages', count: packages, one: 'consult', many: 'consults', on: true },
+    { href: '/packages', label: '1:1 Sessions', icon: 'packages', count: packages, one: '1:1 session', many: '1:1 sessions', on: true },
     { href: '/classes', label: 'Group Classes', icon: 'classes', count: classes, one: 'class', many: 'classes', on: addons.has('classes') },
     { href: '/casual-classes', label: 'Casual Classes', icon: 'casual', count: casual, one: 'class', many: 'classes', on: addons.has('dropins') },
     { href: '/events', label: 'Events', icon: 'events', count: events, one: 'event', many: 'events', on: addons.has('events') },
-    // Doggy Daycare is hidden for now (Karl, 2026-07-26), matching the nav —
-    // the page still works, it just isn't offered. Restore `on` to
+    // Hidden again (Karl, 2026-07-29), matching the nav — the page still works,
+    // it just isn't offered while the feature is unfinished. Restore `on` to
     // `addons.has('puppyschool')` to bring it back.
     { href: '/doggy-daycare', label: 'Doggy Daycare', icon: 'daycare', count: daycare, one: 'programme', many: 'programmes', on: false },
-    // Hidden for now (Karl, 2026-07-27), matching the nav. Restore `on` to
-    // `addons.has('memberships')` to bring it back.
-    { href: '/memberships', label: 'Packages', icon: 'memberships', count: memberships, one: 'package', many: 'packages', on: false },
+    // Back on (Karl, 2026-07-29), matching the nav — gated on the add-on, which
+    // is itself `hidden` so it is not advertised in prod.
+    { href: '/memberships', label: 'Packages', icon: 'memberships', count: memberships, one: 'package', many: 'packages', on: addons.has('memberships') },
     { href: '/products', label: 'Products', icon: 'products', count: products, one: 'product', many: 'products', on: addons.has('shop') },
     { href: '/library', label: 'Library', icon: 'library', count: null, one: '', many: '', on: true },
   ] as const
