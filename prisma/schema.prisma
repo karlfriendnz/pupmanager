@@ -2623,9 +2623,16 @@ model Invoice {
   xeroSyncError  String?
 
   // Soft link to the Stripe `Payment` that settled this by card (Phase 2). A
-  // plain unique column — deliberately NOT a Prisma relation — so the existing
-  // Stripe `Payment` model stays exactly as-is.
-  paymentId String? @unique
+  // plain column — deliberately NOT a Prisma relation — so the existing Stripe
+  // `Payment` model stays exactly as-is.
+  //
+  // MANY invoices to ONE payment, on purpose. A single card payment routinely
+  // covers several receivables: two dogs on one class, or four drop-in dates
+  // booked together. This was `@unique` until 2026-07-30, which meant the first
+  // invoice claimed the payment and every other update failed the constraint —
+  // swallowed by the catch in settleInvoiceFromPayment, so invoices 2..N sat on
+  // "Sent" forever and the trainer marked them paid by hand.
+  paymentId String?
   // How a manually-recorded payment arrived: BANK_TRANSFER | CASH | OTHER.
   // Null for card payments (they have a Payment row) and for unpaid invoices.
   // The reference is free text — a bank statement line, a receipt number —
@@ -2651,6 +2658,9 @@ model Invoice {
   @@index([trainerId, status])
   @@index([clientId])
   @@index([sourceType, sourceId])
+  // Replaces the old unique index: still needs to be fast to find every
+  // invoice a given payment settled, it just isn't limited to one any more.
+  @@index([paymentId])
   @@map("invoices")
 }
 
