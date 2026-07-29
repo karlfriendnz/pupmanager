@@ -1,9 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { Check, X, AlertTriangle, Trash2, Ban, RotateCcw, Loader2, Gift } from 'lucide-react'
+import { Check, X, Loader2, Gift } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { ADDONS } from '@/lib/pricing'
 
@@ -22,7 +21,6 @@ type Props = {
   gracePeriodUntil: string | null
   seatCount: number
   isInternal: boolean
-  deactivatedAt: string | null
   // Active admin comp grants: free add-on previews with an optional expiry.
   addonGrants: { itemId: string; expiresAt: string | null }[]
 }
@@ -46,7 +44,6 @@ const cardTitle = 'text-xs font-semibold uppercase tracking-wide text-slate-500 
 
 export function TrainerDetailActions(props: Props) {
   const router = useRouter()
-  const isActive = !props.deactivatedAt
 
   const [name, setName] = useState(props.name ?? '')
   const [email, setEmail] = useState(props.email)
@@ -56,14 +53,12 @@ export function TrainerDetailActions(props: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const [savingTrial, setSavingTrial] = useState(false)
+  // Free-text trial length. Kept as a string so the field can be empty while
+  // typing; `customTrialDays` is the validated number, null when unusable.
+  const [customTrial, setCustomTrial] = useState('')
   const [savingGrace, setSavingGrace] = useState(false)
   const [savingSeats, setSavingSeats] = useState(false)
   const [savingInternal, setSavingInternal] = useState(false)
-  const [togglingActive, setTogglingActive] = useState(false)
-
-  const [showHardDelete, setShowHardDelete] = useState(false)
-  const [confirmText, setConfirmText] = useState('')
-  const [deleting, setDeleting] = useState(false)
 
   // Add-on comps.
   const grantedIds = new Set(props.addonGrants.map(g => g.itemId))
@@ -129,19 +124,19 @@ export function TrainerDetailActions(props: Props) {
     if (ok) setProfileSaved(true)
   }
 
-  async function handleHardDelete() {
-    setDeleting(true)
-    setError(null)
-    const res = await fetch(`/api/admin/trainers/${props.id}`, { method: 'DELETE' })
-    if (res.ok) {
-      router.push('/admin/trainers')
-      router.refresh()
-    } else {
-      const data = await res.json().catch(() => ({}))
-      setError(typeof data.error === 'string' ? data.error : 'Failed to delete trainer')
-      setShowHardDelete(false)
-      setDeleting(false)
-    }
+
+  // Mirrors the route's own bounds (1–3650), so an out-of-range number simply
+  // leaves Apply disabled rather than making a request that 400s.
+  const parsedTrial = Number(customTrial)
+  const customTrialDays =
+    customTrial.trim() !== '' && Number.isInteger(parsedTrial) && parsedTrial >= 1 && parsedTrial <= 3650
+      ? parsedTrial
+      : null
+
+  async function applyCustomTrial() {
+    if (customTrialDays === null) return
+    const ok = await patch({ applyTrialDays: customTrialDays }, setSavingTrial, 'Failed to apply trial')
+    if (ok) setCustomTrial('')
   }
 
   const graceUntil = props.gracePeriodUntil ? new Date(props.gracePeriodUntil) : null
@@ -200,6 +195,19 @@ export function TrainerDetailActions(props: Props) {
               {d}-day trial
             </button>
           ))}
+          {/* Any length, not just the three common ones. The route already
+              accepts 1–3650 days, so this needed no API change. */}
+          <span className="text-slate-600 px-1">or</span>
+          <input
+            type="number" min={1} max={3650} value={customTrial} placeholder="days"
+            onChange={e => setCustomTrial(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') applyCustomTrial() }}
+            className="h-8 w-20 rounded-lg bg-slate-900 border border-slate-600 px-2 text-xs text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button onClick={applyCustomTrial} disabled={savingTrial || !customTrialDays}
+            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 h-8 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
+            {savingTrial ? 'Applying…' : 'Apply'}
+          </button>
         </div>
 
         <p className="text-sm text-slate-400 mb-2">
@@ -331,68 +339,6 @@ export function TrainerDetailActions(props: Props) {
         </button>
       </div>
 
-      {/* Danger zone */}
-      <div className="rounded-2xl border border-rose-900/50 bg-rose-950/20 p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-rose-400/80 mb-3">Danger zone</h2>
-        {isActive ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <button onClick={() => patch({ active: false }, setTogglingActive, 'Failed to update account')} disabled={togglingActive}
-              className="inline-flex items-center gap-1.5 text-sm text-amber-300 hover:text-amber-200 px-4 h-10 rounded-lg border border-amber-500/40 disabled:opacity-50">
-              <Ban className="h-4 w-4" /> {togglingActive ? 'Deactivating…' : 'Deactivate (block sign-in, keep data)'}
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-3">
-            <button onClick={() => patch({ active: true }, setTogglingActive, 'Failed to update account')} disabled={togglingActive}
-              className="inline-flex items-center gap-1.5 text-sm text-green-300 hover:text-green-200 px-4 h-10 rounded-lg border border-green-500/40 disabled:opacity-50">
-              <RotateCcw className="h-4 w-4" /> {togglingActive ? 'Reactivating…' : 'Reactivate account'}
-            </button>
-            <button onClick={() => { setConfirmText(''); setShowHardDelete(true) }}
-              className="inline-flex items-center gap-1.5 text-sm bg-red-600 hover:bg-red-700 text-white px-4 h-10 rounded-lg">
-              <Trash2 className="h-4 w-4" /> Delete permanently
-            </button>
-          </div>
-        )}
-        <p className="text-xs text-slate-500 mt-3">
-          An account must be deactivated before it can be permanently deleted.
-        </p>
-      </div>
-
-      {/* Permanent-delete confirmation modal — requires typing the email. */}
-      {showHardDelete && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
-          onClick={() => !deleting && setShowHardDelete(false)}>
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start gap-3">
-              <div className="rounded-full bg-red-950 p-2 text-red-400"><AlertTriangle className="h-5 w-5" /></div>
-              <div>
-                <h2 className="text-base font-semibold text-white">Permanently delete this account?</h2>
-                <p className="text-sm text-slate-400 mt-1">
-                  This erases <span className="text-slate-200">{props.name ?? props.email}</span> and all of their data —
-                  clients, dogs, sessions, packages, and history.
-                  <span className="text-red-300"> This cannot be undone.</span>
-                </p>
-              </div>
-            </div>
-            <label className="block text-xs text-slate-400 mt-5 mb-1.5">
-              Type <span className="text-slate-200 font-medium select-all">{props.email}</span> to confirm
-            </label>
-            <input autoFocus value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder={props.email}
-              className="w-full h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500" />
-            {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
-            <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => setShowHardDelete(false)} disabled={deleting}
-                className="text-sm text-slate-300 hover:text-white px-4 h-9 rounded-lg border border-slate-600 disabled:opacity-50">Cancel</button>
-              <button onClick={handleHardDelete} disabled={deleting || confirmText.trim() !== props.email}
-                className="inline-flex items-center gap-1.5 text-sm bg-red-600 hover:bg-red-700 text-white px-4 h-9 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
-                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                {deleting ? 'Deleting…' : 'Delete permanently'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
     </div>
   )
 }
