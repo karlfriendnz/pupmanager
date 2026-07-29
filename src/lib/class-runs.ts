@@ -787,6 +787,14 @@ export async function syncOfferingRun(
   // own startDate is safe to read either way — nothing writes it before us.
   const prevSessionCount = fields.prev ? fields.prev.sessionCount : run.package.sessionCount
   const prevWeeksBetween = fields.prev ? fields.prev.weeksBetween : run.package.weeksBetween
+  // NB deliberately NOT "does the count disagree with the actual sessions?".
+  // Classes exist whose package says 11 while the run holds 6 (saves made while
+  // the read-after-write bug was live), and healing those on any save is
+  // tempting — but a session can be deleted on purpose from the schedule
+  // (api/schedule/[sessionId]), so a disagreement is legitimate state, and
+  // rebuilding on it would resurrect a session the trainer had removed the next
+  // time they renamed the class. Repairing the drifted ones is a one-off job,
+  // not a rule.
   const scheduleChanged =
     !isSlotScheduled &&
     ((fields.startDate !== undefined && fields.startDate.getTime() !== run.startDate.getTime()) ||

@@ -210,3 +210,4 @@ describe('the class Details card shows how full it is', () => {
     expect(detail).toContain('${enrolledRows} of ${run.capacity}')
   })
 })
+
