@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Users, Package, Database, ClipboardList, Mail, Ticket, Megaphone, type LucideIcon } from 'lucide-react'
+import { Users, Package, Database, ClipboardList, Mail, Ticket, Megaphone, HeartPulse, type LucideIcon } from 'lucide-react'
 
 // Shared admin tab list — rendered as a horizontal top bar on desktop
 // (AdminTabNav) and as a fixed bottom bar on mobile (AdminBottomNav).
@@ -26,6 +26,9 @@ export const ADMIN_TABS: AdminTab[] = [
   { href: '/admin/announcements', label: 'Announcements', short: 'News', icon: Megaphone },
   { href: '/admin/onboarding-steps', label: 'Onboarding', short: 'Onboard', icon: Mail, match: '/admin/onboarding' },
   { href: '/admin/plans', label: 'Plans', icon: Package },
+  // Beside Plans because it answers the question Plans raises: the prices are
+  // set, so is Stripe actually charging them — once each, to the right people?
+  { href: '/admin/billing-health', label: 'Billing health', short: 'Billing', icon: HeartPulse },
   { href: '/admin/promo-codes', label: 'Promo codes', short: 'Promos', icon: Ticket },
   { href: '/admin/demo', label: 'Demo data', short: 'Demo', icon: Database },
   { href: '/admin/status', label: 'Status', icon: ClipboardList },
