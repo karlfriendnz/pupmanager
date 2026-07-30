@@ -65,7 +65,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins' | 'events' | 'puppyschool' | 'memberships'
+export type AddonId = 'onetoone' | 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins' | 'events' | 'puppyschool' | 'memberships'
 
 export interface AddonDef {
   id: AddonId
@@ -95,6 +95,17 @@ export interface AddonDef {
 
 // Toggleable add-ons. Prices mirror the website (all six currencies).
 export const ADDONS: AddonDef[] = [
+  {
+    id: 'onetoone',
+    name: '1:1 sessions',
+    description: 'One-to-one training: a package of sessions booked for one dog, scheduled against your own availability. Turn it off if you only run classes or daycare — the screen and its menu item go with it.',
+    // On by default: this is the oldest thing in PupManager and most trainers'
+    // bread and butter. It became switchable (Karl, 2026-07-30) because a
+    // classes-or-daycare-only business had a menu item they could never use.
+    free: true,
+    defaultOn: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
   {
     id: 'achievements',
     name: 'Client achievements',

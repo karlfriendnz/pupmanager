@@ -42,7 +42,7 @@ export default async function OfferingsPage() {
   // Same gating as the nav: a type whose add-on is off simply isn't offered.
   // `icon` is a plain key, not a component — see offerings-list.tsx for why.
   const rows = [
-    { href: '/packages', label: '1:1 Sessions', icon: 'packages', count: packages, one: '1:1 session', many: '1:1 sessions', on: true },
+    { href: '/packages', label: '1:1 Sessions', icon: 'packages', count: packages, one: '1:1 session', many: '1:1 sessions', on: addons.has('onetoone') },
     { href: '/classes', label: 'Group Classes', icon: 'classes', count: classes, one: 'class', many: 'classes', on: addons.has('classes') },
     { href: '/casual-classes', label: 'Casual Classes', icon: 'casual', count: casual, one: 'class', many: 'classes', on: addons.has('dropins') },
     { href: '/events', label: 'Events', icon: 'events', count: events, one: 'event', many: 'events', on: addons.has('events') },

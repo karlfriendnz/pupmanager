@@ -131,3 +131,26 @@ describe('Instant sale comes with the shop', () => {
     expect(shop?.description).toMatch(/instant sale/i)
   })
 })
+
+describe('1:1 sessions is configurable too', () => {
+  // It was the one offering with no switch at all, so a classes-or-daycare-only
+  // business had a menu item they could never use.
+  it('appears on Configure, under what you offer', () => {
+    const f = configurableFeatures().find(x => x.id === 'onetoone')
+    expect(f).toBeDefined()
+    expect(f!.group).toBe('offerings')
+  })
+
+  // On unless turned off — every existing trainer keeps it without touching anything.
+  it('is on by default', () => {
+    expect(featureIsOn('onetoone', new Map())).toBe(true)
+  })
+
+  it('can be turned off', () => {
+    expect(featureIsOn('onetoone', new Map([['onetoone', false]]))).toBe(false)
+  })
+
+  it('is not something you buy', () => {
+    expect(purchasableAddons().map(a => a.id)).not.toContain('onetoone')
+  })
+})

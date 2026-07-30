@@ -137,6 +137,9 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // Core feature add-ons (Client app / Notes / Classes) are default-on; when a
   // trainer turns one off we HIDE its nav entirely (unlike paid add-ons, which
   // show a locked upsell via addonLockedHrefs).
+  // 1:1 is the oldest offering and used to be unconditional — a business that
+  // only runs classes or daycare had a menu item they could never use.
+  if (!enabledAddons.has('onetoone')) hiddenNavHrefs.push('/packages')
   if (!enabledAddons.has('classes')) hiddenNavHrefs.push('/classes')
   // Casual classes are their own offering type now — gated only by the dropins
   // add-on, independent of Group Classes (a trainer can run casual classes

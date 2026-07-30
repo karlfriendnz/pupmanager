@@ -36,6 +36,7 @@ export const FEATURE_GROUP_HINT: Record<FeatureGroup, string> = {
 /** Which group each switchable feature belongs in. A free add-on missing from
  *  here still appears — under tools — so a new one can never be invisible. */
 const GROUP_BY_ID: Partial<Record<AddonId, FeatureGroup>> = {
+  onetoone: 'offerings',
   classes: 'offerings',
   dropins: 'offerings',
   events: 'offerings',

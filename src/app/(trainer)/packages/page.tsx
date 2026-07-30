@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { hasAddon } from '@/lib/billing'
 import { PackagesView } from './packages-view'
 import { isPackagePast, type PackageAssignment } from './past-packages'
 import type { Metadata } from 'next'
@@ -17,6 +18,10 @@ export default async function PackagesPage({
 
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
+
+  // Turned off on Configure? The nav item is hidden, but a bookmark or a stale
+  // tab would still land here — a hidden door is not a closed one.
+  if (!(await hasAddon(trainerId, 'onetoone'))) redirect('/settings?tab=configure')
 
   const { connect } = await searchParams
 
