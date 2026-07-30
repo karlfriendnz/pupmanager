@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { prisma } from '@/lib/prisma'
 import { notifyConversion } from '@/lib/conversion-alert'
+import { sendEmail } from '@/lib/email'
+import { escapeHtml } from '@/lib/html-escape'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
 import { loadPriceIndex } from '@/lib/billing'
@@ -63,6 +65,12 @@ export async function POST(req: Request) {
       case 'customer.subscription.created':
       case 'customer.subscription.deleted': {
         const sub = event.data.object as Stripe.Subscription
+        // A brand-new subscription is the only moment a duplicate can be
+        // caught before it charges twice — see rejectDuplicateSubscription.
+        if (event.type === 'customer.subscription.created') {
+          const rejected = await rejectDuplicateSubscription(sub, sandbox)
+          if (rejected) break
+        }
         await handleSubscriptionChange(sub, event.type === 'customer.subscription.deleted', sandbox)
         break
       }
@@ -128,6 +136,87 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session, sandbox
   }
 
   await syncTrainerAddons(trainerId, recon.activeAddons)
+}
+
+/**
+ * A second live subscription on one customer is cancelled the moment it appears.
+ *
+ * The checkout route refuses to start one, but it can only look at the moment
+ * the SESSION is created — and the subscription does not exist until payment.
+ * Two tabs paid a minute apart both pass that check. A subscription made in the
+ * Stripe Dashboard, or by a migration script, never sees it at all.
+ *
+ * This is the moment the subscription genuinely exists, so there is no race left
+ * to lose. If another is already live for the customer, the NEW one is the
+ * duplicate by definition — a plan change modifies a subscription rather than
+ * creating one, so a second appearing beside a live one is not something we ever
+ * want to keep.
+ *
+ * It cancels and refunds, rather than only shouting, because shouting is what we
+ * had: Mersea Mutts paid twice for ten days and the only trace was a second PDF
+ * in an inbox. The refund is scoped as tightly as it can be — only invoices
+ * belonging to the subscription we have just cancelled, seconds after it was
+ * created — so it cannot reach a legitimate charge.
+ *
+ * Returns true when it handled (and rejected) the subscription, so the caller
+ * knows not to point the trainer at it.
+ */
+async function rejectDuplicateSubscription(sub: Stripe.Subscription, sandbox: boolean): Promise<boolean> {
+  const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id
+  const stripe = stripeFor(sandbox)
+
+  const all = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 20 })
+  const otherLive = all.data.filter(
+    s => s.id !== sub.id && ['active', 'trialing', 'past_due', 'unpaid'].includes(s.status),
+  )
+  if (otherLive.length === 0) return false
+
+  console.error(
+    `[stripe webhook] DUPLICATE SUBSCRIPTION ${sub.id} created for customer ${customerId} ` +
+    `while ${otherLive.map(s => s.id).join(', ')} already live — cancelling and refunding it.`,
+  )
+
+  let refunded = 0
+  let currency = ''
+  try {
+    await stripe.subscriptions.cancel(sub.id)
+
+    // Only this subscription's own invoices. A duplicate caught at creation has
+    // at most one, and it is unambiguously money that should not have moved.
+    const invoices = await stripe.invoices.list({ subscription: sub.id, limit: 10 })
+    for (const inv of invoices.data) {
+      if (inv.amount_paid <= 0) continue
+      const chargeId = (inv as unknown as { charge?: string | null }).charge
+      if (!chargeId) continue
+      await stripe.refunds.create({ charge: chargeId, reason: 'duplicate' })
+      refunded += inv.amount_paid
+      currency = inv.currency.toUpperCase()
+    }
+  } catch (err) {
+    console.error(`[stripe webhook] could not fully undo duplicate ${sub.id}`, err)
+  }
+
+  const trainer = await prisma.trainerProfile.findFirst({
+    where: { stripeCustomerId: customerId },
+    select: { businessName: true },
+  })
+  await sendEmail({
+    to: ['info@pupmanager.com', 'brooke@pupmanager.com'],
+    subject: `🚨 Duplicate subscription auto-cancelled — ${trainer?.businessName ?? customerId}`,
+    html:
+      `<p><strong>${escapeHtml(trainer?.businessName ?? customerId)}</strong> started a second subscription ` +
+      `while one was already live. It has been cancelled automatically.</p>` +
+      `<ul>` +
+      `<li>Cancelled: <code>${escapeHtml(sub.id)}</code></li>` +
+      `<li>Still live: ${otherLive.map(s => `<code>${escapeHtml(s.id)}</code>`).join(', ')}</li>` +
+      `<li>Refunded: ${refunded > 0 ? `${(refunded / 100).toFixed(2)} ${escapeHtml(currency)}` : 'nothing had been charged yet'}</li>` +
+      `</ul>` +
+      `<p>Nothing to do unless the refund failed — check the customer in Stripe if you want to be sure. ` +
+      `Worth knowing WHY they tried to subscribe twice: it usually means the app told them they were not subscribed.</p>`,
+    alwaysSend: true,
+  })
+
+  return true
 }
 
 async function handleSubscriptionChange(sub: Stripe.Subscription, deleted: boolean, sandbox: boolean) {
