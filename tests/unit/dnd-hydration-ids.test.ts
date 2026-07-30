@@ -65,9 +65,11 @@ describe('dnd-kit ids cannot break hydration', () => {
   })
 
   it('the surfaces that reported the fault all go through the wrapper', () => {
-    // The offering lists (packages / classes / drop-ins / events / memberships
-    // all share OfferingCard) and Settings → Fields & forms.
-    for (const rel of ['components/shared/offering-card.tsx', 'app/(trainer)/settings/custom-fields-manager.tsx']) {
+    // The offering lists (packages / classes / drop-ins / events / memberships all
+    // share OfferingCard) and the form question list. Settings → Fields & forms was
+    // the third; its field editor is gone, because a field is now created on the
+    // form that asks it.
+    for (const rel of ['components/shared/offering-card.tsx', 'app/(trainer)/forms/_question-list.tsx']) {
       const src = readFileSync(path.join(ROOT, rel), 'utf8')
       expect(src, rel).toMatch(/<DndArea[\s>]/)
     }

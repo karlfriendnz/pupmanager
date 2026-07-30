@@ -14,8 +14,6 @@ import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { isRichTextEmpty, richTextToPlain } from '@/lib/rich-text'
 import type { FormRow as SessionFormRow } from './session/session-forms-manager'
-import { CustomFieldsManager } from '../settings/custom-fields-manager'
-import { FieldPacksWizard } from '../settings/field-packs-wizard'
 import {
   FORM_INPUT, FORM_QUIET_ACTION, FORM_TEXTAREA,
   FormEditorSection, FormEditorShell, FormField, FormRowGroup, FormSegmented, FormToggleRow,
@@ -662,57 +660,23 @@ export function FormsManager({
 
   return (
     <div className="flex flex-col gap-4">
-      {wizardOpen && (
-        <FieldPacksWizard roles={businessRoles} onClose={() => setWizardOpen(false)} />
-      )}
-
-      {/* Tabs left, the one action right — on a single line. */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-4">
-          {(['forms', 'fields'] as const).map(v => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => selectView(v)}
-              aria-pressed={view === v}
-              className={`-mb-px border-b-2 px-0.5 pb-2 pt-1 text-sm font-medium capitalize transition-colors ${
-                view === v
-                  ? 'border-slate-900 text-slate-900'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-        {view === 'forms' ? (
-          <Button size="sm" onClick={() => router.push('/forms/new')}>
-            <Plus className="h-4 w-4" strokeWidth={1.75} />
-            New form
-          </Button>
-        ) : (
-          <Button size="sm" variant="secondary" onClick={() => setWizardOpen(true)}>
-            <Sparkles className="h-4 w-4" strokeWidth={1.75} />
-            Suggest fields
-          </Button>
-        )}
+      {/* One view now, so no tab strip. The "fields" tab held a switchboard for
+          the built-in client details and an editor for a trainer's own — both of
+          which the form builder does, and better (Karl, 2026-07-30: "the system
+          fields are just a result of the forms"). A field is created on the form
+          that asks it. */}
+      <div className="flex items-center justify-end">
+        <Button size="sm" onClick={() => router.push('/forms/new')}>
+          <Plus className="h-4 w-4" strokeWidth={1.75} />
+          New form
+        </Button>
       </div>
-
-      {/* ── Fields ───────────────────────────────────────────────────────── */}
-      <section className={`flex-col gap-3 ${view === 'fields' ? 'flex' : 'hidden'}`}>
-        <CustomFieldsManager
-          initialFields={intakeCustomFields}
-          initialSectionOrder={intakeSectionOrder}
-          initialSystemFieldSections={intakeSystemFieldSections}
-          showSystemFields
-        />
-      </section>
 
       {/* ── Forms ────────────────────────────────────────────────────────── */}
       {/* Grouped by WHO FILLS IT IN, which is the only distinction a trainer
           actually holds in their head — and the same split the "New form"
           screen offers. */}
-      <section className={`flex-col gap-5 ${view === 'forms' ? 'flex' : 'hidden'}`}>
+      <section className="flex flex-col gap-5">
         <div>
           <SectionLabel>Client forms</SectionLabel>
           <p className="mb-2 px-1 text-xs text-slate-400">

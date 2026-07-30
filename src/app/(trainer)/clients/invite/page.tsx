@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { CreateClientForm, type CustomField } from './create-client-form'
-import { resolveClientFieldConfig } from '@/lib/client-fields'
 import { trainerRegionCode } from '@/lib/country'
 import type { Metadata } from 'next'
 
@@ -17,7 +16,7 @@ export default async function NewClientPage() {
   const [trainerProfile, customFields] = await Promise.all([
     prisma.trainerProfile.findUnique({
       where: { id: trainerId },
-      select: { businessName: true, inviteTemplate: true, clientFieldConfig: true, addressCountry: true, signupCountry: true },
+      select: { businessName: true, inviteTemplate: true, addressCountry: true, signupCountry: true },
     }),
     prisma.customField.findMany({
       where: { trainerId },
@@ -53,7 +52,6 @@ ${trainerProfile?.businessName ?? 'Your Trainer'}`
   // would only be a second title nobody can see.
   return (
     <CreateClientForm
-      config={resolveClientFieldConfig(trainerProfile?.clientFieldConfig)}
       customFields={fields}
       defaultTemplate={defaultTemplate}
       region={trainerProfile ? trainerRegionCode(trainerProfile) : undefined}

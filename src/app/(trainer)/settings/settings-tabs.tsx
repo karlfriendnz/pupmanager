@@ -44,7 +44,9 @@ const ALL_TABS = [
   // Only rendered when the puppyschool add-on is on — the daycare's one home
   // for setting itself up (the board has no controls of its own).
   { id: 'daycare', label: 'Daycare', icon: Dog, section: 'business' },
-  { id: 'forms', label: 'Fields & forms', icon: Pencil, section: 'business' },
+  // Was "Fields & forms": fields aren't a separate thing to manage any more —
+  // one is created on the form that asks it (Karl, 2026-07-30).
+  { id: 'forms', label: 'Forms', icon: Pencil, section: 'business' },
   { id: 'locations', label: 'Locations', icon: MapPin, section: 'business' },
   { id: 'integrations', label: 'Integrations', icon: Plug, section: 'business' },
   // The four below are reached THROUGH Integrations (its cards' Manage links),

@@ -95,10 +95,6 @@ const patchSchema = z.object({
   }).optional(),
   // Per-company required/quick-add flags for the built-in client/dog fields
   // (see src/lib/client-fields.ts). The config UI sends the whole object.
-  clientFieldConfig: z.record(
-    z.string(),
-    z.object({ required: z.boolean().optional(), quickAdd: z.boolean().optional() }),
-  ).optional(),
 })
 
 export async function GET() {

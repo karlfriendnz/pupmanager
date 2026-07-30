@@ -8,7 +8,6 @@ import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { extractLogoColors, type LogoPalette } from '@/lib/logo-colors'
 import { compressImageFile } from '@/lib/compress-image'
 import { type CurrencyCode } from '@/lib/pricing'
-import { type ResolvedFieldConfig } from '@/lib/client-fields'
 import { PERSONAS, WIZ_QUESTIONS, MANAGED_ADDON_IDS, recommendedAddons, coreAddonState, packageOptionsFor, questionApplies, landingViewForRoles, type WizAnswers } from '@/lib/onboarding-recommendations'
 import { ClientFieldsStep } from './client-fields-step'
 
@@ -158,7 +157,6 @@ export function PersonalizationWizard({
   // "Client form" step — the live built-in field config the step hands up, held
   // here so Continue can persist it through the shared field config. null until
   // the step has loaded (so we never PATCH an empty/half-loaded config).
-  const [fieldConfig, setFieldConfig] = useState<ResolvedFieldConfig | null>(null)
 
   // Build the managed on/off map from a set of answers.
   function addonMapFrom(a: WizAnswers): Record<string, boolean> {
@@ -208,18 +206,6 @@ export function PersonalizationWizard({
       )
     }
     await Promise.all(jobs)
-  }
-
-  // Persist the "Client form" choices through the SAME config the quick-add
-  // form, create-client form and Settings → Forms all read (mirrors
-  // client-fields-config.tsx). No-op until the step has loaded its config.
-  async function persistFieldConfig() {
-    if (!fieldConfig) return
-    await fetch('/api/trainer/profile', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientFieldConfig: fieldConfig }),
-    }).catch(() => {})
   }
 
   const [uploading, setUploading] = useState(false)
@@ -341,7 +327,6 @@ export function PersonalizationWizard({
     try {
       await saveProfile()
       // Leaving the "Client form" step commits the field config choices.
-      if (stepKey === 'clientform') await persistFieldConfig()
       const target = step + 1
       if (STEP_KEYS[target] === 'tools') setExtra(0) // entering the sub-flow at the role picker
       setStep(target)
@@ -797,7 +782,7 @@ export function PersonalizationWizard({
             })()}
 
             {stepKey === 'clientform' && (
-              <ClientFieldsStep onConfigChange={setFieldConfig} />
+              <ClientFieldsStep />
             )}
 
             {stepKey === 'preview' && (() => {

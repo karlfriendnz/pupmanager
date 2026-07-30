@@ -37,13 +37,13 @@ describe('GET /api/clients/field-config — auth', () => {
 })
 
 describe('GET /api/clients/field-config — company scoping', () => {
-  it('scopes both lookups to the caller’s own company id', async () => {
+  // It used to serve a per-company config for the built-in details as well; that
+  // is gone, so the only lookup left is the custom fields — and it still has to be
+  // scoped to the caller's own company.
+  it('scopes the lookup to the caller’s own company id', async () => {
     h.getTrainerContext.mockResolvedValue({ companyId: 'company-A', userId: 'u1', membershipId: 'm1', role: 'OWNER', permissions: {} })
     const res = await GET()
     expect(res.status).toBe(200)
-    expect(h.trainerProfileFindUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'company-A' } }),
-    )
     expect(h.customFieldFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { trainerId: 'company-A' } }),
     )
@@ -60,18 +60,6 @@ describe('GET /api/clients/field-config — company scoping', () => {
     expect(h.customFieldFindMany).not.toHaveBeenCalledWith(
       expect.objectContaining({ where: { trainerId: 'company-B' } }),
     )
-  })
-
-  it('returns a complete resolved config merged over defaults', async () => {
-    h.getTrainerContext.mockResolvedValue({ companyId: 'company-A', userId: 'u1', membershipId: 'm1', role: 'OWNER', permissions: {} })
-    h.trainerProfileFindUnique.mockResolvedValue({ clientFieldConfig: { email: { required: true } } })
-    const res = await GET()
-    const body = await res.json()
-    // quickAdd:true is the default (df79ba2 — quick-add captures email); the
-    // stored config only overrides `required` here.
-    expect(body.config.email).toEqual({ required: true, quickAdd: true })
-    expect(body.config.name).toEqual({ required: true, quickAdd: true }) // default kept
-    expect(body.customFields).toEqual([])
   })
 
   it('maps custom fields through with their flags', async () => {

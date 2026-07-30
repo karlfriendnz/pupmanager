@@ -2,6 +2,7 @@ import { NextResponse, after } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission, getTrainerContext, scopeForMember } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
+import { QUICK_ADD_FOLLOW_UP_STATUS } from '@/lib/client-fields'
 import { Prisma } from '@/generated/prisma'
 import { z } from 'zod'
 import crypto from 'crypto'
@@ -9,7 +10,6 @@ import { sendEmail, fromTrainer } from '@/lib/email'
 import { renderClientInviteEmail } from '@/lib/client-invite-email'
 import { ensureTrainerSlug, clientInviteUrl } from '@/lib/slug'
 import { safeEvaluate } from '@/lib/achievements'
-import { CLIENT_FIELDS, resolveClientFieldConfig, QUICK_ADD_FOLLOW_UP_STATUS, type ClientFieldKey } from '@/lib/client-fields'
 import { findOrJoinClient, type DogInput } from '@/lib/client-upsert'
 
 export const runtime = 'nodejs'
@@ -172,38 +172,19 @@ export async function POST(req: Request) {
     assignFormId = form?.id ?? null
   }
 
-  const fieldConfig = resolveClientFieldConfig(trainerProfile.clientFieldConfig)
   const customFields = await prisma.customField.findMany({
     where: { trainerId: trainerProfile.id },
     select: { id: true, label: true, required: true, inQuickAdd: true, appliesTo: true },
   })
 
-  // ── Required validation, per this company's config + the chosen mode ──────
-  const primaryDog = data.dogs?.[0]
-  const present: Record<ClientFieldKey, boolean> = {
-    name: !!data.name?.trim(),
-    email: !!data.email?.trim(),
-    phone: !!data.phone?.trim(),
-    address: !!data.address?.line?.trim(),
-    dogName: !!primaryDog?.name?.trim(),
-    dogBreed: !!primaryDog?.breed?.trim(),
-    dogWeight: primaryDog?.weight != null,
-    dogDob: !!primaryDog?.dob,
-    dogNotes: !!primaryDog?.notes?.trim(),
-  }
-  // quickAdd means "show this field on the quick form"; required means "you
-  // can't save without it". Quick-add validated against quickAdd alone, so
-  // every field shown there was silently mandatory — the moment email joined
-  // the quick form by default, a trainer could no longer jot down a walk-in
-  // they had no email address for. On the quick form a field is required only
-  // when it is both shown AND marked required.
-  for (const f of CLIENT_FIELDS) {
-    const need = isQuick
-      ? fieldConfig[f.key].quickAdd && fieldConfig[f.key].required
-      : fieldConfig[f.key].required
-    if (need && !present[f.key]) {
-      return NextResponse.json({ error: `${f.label} is required` }, { status: 400 })
-    }
+  // ── Required validation ──────────────────────────────────────────────────
+  // Only a name, because a client record without one is unusable. Everything else
+  // is what the trainer happens to know: being blocked for a missing address while
+  // adding a walk-in standing in front of you is the wrong behaviour, and the
+  // per-company "required" config that used to do that is gone — a form's own
+  // questions carry requiredness for whoever fills that form in.
+  if (!data.name?.trim()) {
+    return NextResponse.json({ error: 'Client name is required' }, { status: 400 })
   }
   const customById = new Map(customFields.map(c => [c.id, c]))
   const hasCustom = (fieldId: string) => (data.customValues ?? []).some(v => v.fieldId === fieldId && v.value.trim() !== '')

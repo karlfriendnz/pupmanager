@@ -95,13 +95,13 @@ export const TAB_INTRO: Record<string, TabIntroCopy> = {
     ],
   },
   forms: {
-    title: 'Fields & forms',
+    title: 'Forms',
     blurb:
-      'Fields are what you track about a client and their dog. Forms are where you ask for them — the intake form new clients fill in, and session forms for writing up your sessions.',
+      'Every question you ask, in one place. The intake form a new client fills in, an enquiry form for your website, and session forms for writing up your own sessions.',
     steps: [
-      'On Fields, hit "Suggest fields" and tick the ones you want — we suggest the usual ones for the work you do.',
-      'The columns say where each field is asked: on intake, on quick add, and whether it has to be filled in.',
-      'On Forms, preview your intake form and publish it when it looks right.',
+      'Build a form and drag the questions into the order you want to ask them.',
+      'Add a client detail — their phone, their dog’s breed — and the answer saves onto the record.',
+      'Anything you mark as needed has to be filled in before they can finish.',
     ],
   },
   locations: {

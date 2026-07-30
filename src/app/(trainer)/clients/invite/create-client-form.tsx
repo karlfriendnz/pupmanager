@@ -8,7 +8,6 @@ import { BreedSelect } from '@/components/shared/breed-select'
 import { Alert } from '@/components/ui/alert'
 import { Plus, Trash2, X } from 'lucide-react'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
-import type { ResolvedFieldConfig } from '@/lib/client-fields'
 
 export type CustomField = {
   id: string
@@ -59,9 +58,8 @@ function CustomFieldInput({ field, value, onChange }: { field: CustomField; valu
 // and a phone number shouldn't have to click Next past two screens to save, so
 // "Create client" is live from any tab and the strip is free navigation.
 export function CreateClientForm({
-  config, customFields, defaultTemplate, region,
+  customFields, defaultTemplate, region,
 }: {
-  config: ResolvedFieldConfig
   customFields: CustomField[]
   defaultTemplate: string
   // ISO alpha-2 of the trainer's country — localises address suggestions.
@@ -247,19 +245,19 @@ export function CreateClientForm({
           {/* ── Contact ────────────────────────────────────────────────── */}
           <div className={step === 'contact' ? 'flex flex-col gap-4' : 'hidden'}>
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Client name<Req on={config.name.required} /></label>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Client name<Req on /></label>
               <Input value={name} onChange={e => setName(e.target.value)} placeholder="Jane Smith" />
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Email<Req on={config.email.required} /></label>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Email</label>
               <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="jane@example.com (optional)" />
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Phone<Req on={config.phone.required} /></label>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Phone</label>
               <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="021 234 5678" />
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Address<Req on={config.address.required} /></label>
+              <label className="text-sm font-medium text-slate-700 block mb-1.5">Address</label>
               <PlaceAutocomplete
                 initialValue={address.line}
                 placeholder="Search address…"
@@ -287,25 +285,25 @@ export function CreateClientForm({
                   )}
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Name<Req on={config.dogName.required} /></label>
+                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Name</label>
                   <Input value={dog.name} onChange={e => updateDog(i, { name: e.target.value })} placeholder="Buddy" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-sm font-medium text-slate-700 block mb-1.5">Breed<Req on={config.dogBreed.required} /></label>
+                    <label className="text-sm font-medium text-slate-700 block mb-1.5">Breed</label>
                     <BreedSelect value={dog.breed} onChange={v => updateDog(i, { breed: v })} />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-slate-700 block mb-1.5">Weight (kg)<Req on={config.dogWeight.required} /></label>
+                    <label className="text-sm font-medium text-slate-700 block mb-1.5">Weight (kg)</label>
                     <input type="number" step="0.1" value={dog.weight} onChange={e => updateDog(i, { weight: e.target.value })} className={fieldInput} />
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Date of birth<Req on={config.dogDob.required} /></label>
+                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Date of birth</label>
                   <input type="date" value={dog.dob} onChange={e => updateDog(i, { dob: e.target.value })} className={fieldInput} />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Notes<Req on={config.dogNotes.required} /></label>
+                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Notes</label>
                   <textarea value={dog.notes} onChange={e => updateDog(i, { notes: e.target.value })} rows={2} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent" />
                 </div>
                 {dogFields.map(f => (

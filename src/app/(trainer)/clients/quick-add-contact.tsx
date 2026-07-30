@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button'
 import { UserPlus, X, Loader2 } from 'lucide-react'
 import { BreedSelect } from '@/components/shared/breed-select'
 import { ModalPortal } from '@/components/shared/modal-portal'
-import type { ResolvedFieldConfig, ClientFieldKey } from '@/lib/client-fields'
+import { QUICK_ADD_KEYS } from '@/lib/client-fields'
+import type { ClientFieldKey } from '@/lib/client-fields'
 
 type QuickCustomField = {
   id: string; label: string; type: 'TEXT' | 'NUMBER' | 'DROPDOWN'
   options: string[]; required: boolean; inQuickAdd: boolean; appliesTo: 'OWNER' | 'DOG'
 }
-type FieldConfigResponse = { config: ResolvedFieldConfig; customFields: QuickCustomField[] }
+type FieldConfigResponse = { customFields: QuickCustomField[] }
 
 // Built-in fields that can appear in quick-add, with how to read/write them.
 const QUICK_FIELDS: { key: ClientFieldKey; label: string; type: 'text' | 'email' | 'tel' | 'number' | 'date' | 'textarea'; scope: 'OWNER' | 'DOG' }[] = [
@@ -82,7 +83,11 @@ export function QuickAddModal() {
     }
   }
 
-  const builtinShown = cfg ? QUICK_FIELDS.filter(f => cfg.config[f.key]?.quickAdd) : []
+  // The same three every time. Which built-in details showed here used to be a
+  // per-company setting; quick-add exists to capture a walk-in in ten seconds, and
+  // the configurable version was the one where a trainer couldn't save someone
+  // whose email they didn't have.
+  const builtinShown = QUICK_FIELDS.filter(f => QUICK_ADD_KEYS.includes(f.key))
   const customShown = cfg ? cfg.customFields.filter(f => f.inQuickAdd) : []
 
   async function submit() {
@@ -137,7 +142,13 @@ export function QuickAddModal() {
                 {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
                 {builtinShown.map(f => (
                   <div key={f.key}>
-                    <label htmlFor={f.key} className="text-sm font-medium text-slate-700 block mb-1.5">{f.label}<span className="text-red-500 ml-1">*</span></label>
+                    {/* Only the name. The others were starred while the server
+                        would happily save without them — and the whole point of
+                        quick-add is jotting down a walk-in whose email you don't
+                        have. */}
+                    <label htmlFor={f.key} className="text-sm font-medium text-slate-700 block mb-1.5">
+                      {f.label}{f.key === 'name' && <span className="text-red-500 ml-1">*</span>}
+                    </label>
                     {f.key === 'dogBreed'
                       // Breed gets the canonical type-ahead combobox; value
                       // wiring (values.dogBreed → payload dog.breed) is unchanged.
@@ -149,7 +160,9 @@ export function QuickAddModal() {
                 ))}
                 {customShown.map(f => (
                   <div key={f.id}>
-                    <label htmlFor={`cf_${f.id}`} className="text-sm font-medium text-slate-700 block mb-1.5">{f.label}<span className="text-red-500 ml-1">*</span></label>
+                    <label htmlFor={`cf_${f.id}`} className="text-sm font-medium text-slate-700 block mb-1.5">
+                      {f.label}{f.required && <span className="text-red-500 ml-1">*</span>}
+                    </label>
                     {f.type === 'DROPDOWN'
                       ? <select id={`cf_${f.id}`} value={values[`cf_${f.id}`] ?? ''} onChange={e => setValues(v => ({ ...v, [`cf_${f.id}`]: e.target.value }))} className={inputCls}><option value="">Select…</option>{f.options.map(o => <option key={o} value={o}>{o}</option>)}</select>
                       : <input id={`cf_${f.id}`} type={f.type === 'NUMBER' ? 'number' : 'text'} value={values[`cf_${f.id}`] ?? ''} onChange={e => setValues(v => ({ ...v, [`cf_${f.id}`]: e.target.value }))} className={inputCls} />}

@@ -1,139 +1,96 @@
 import { describe, it, expect } from 'vitest'
 import {
-  resolveClientFieldConfig,
   CLIENT_FIELDS,
+  CLIENT_FIELD_KEYS,
+  QUICK_ADD_KEYS,
   QUICK_ADD_FOLLOW_UP_STATUS,
-  type ResolvedFieldConfig,
+  clientFieldLabel,
+  clientFieldIsDogDetail,
+  clientFieldInputType,
 } from '@/lib/client-fields'
 
-describe('resolveClientFieldConfig — defaults', () => {
-  it('returns the out-of-the-box defaults when given nothing', () => {
-    const cfg = resolveClientFieldConfig(null)
-    // Name required + quick-add; phone quick-add but not required; everything
-    // else off.
-    expect(cfg.name).toEqual({ required: true, quickAdd: true })
-    expect(cfg.phone).toEqual({ required: false, quickAdd: true })
-    // Email is captured by default in quick-add (df79ba2 — name + phone + email).
-    expect(cfg.email).toEqual({ required: false, quickAdd: true })
-    expect(cfg.dogName).toEqual({ required: false, quickAdd: false })
+// The per-company config these fields used to carry — which were required, which
+// showed on quick-add — is gone (Karl, 2026-07-30: "the system fields are just a
+// result of the forms"). What's left is the catalogue: what each detail is called,
+// whose record it belongs to, and what input it wants. These tests hold the shape
+// the form builder and the write path both read.
+
+describe('the catalogue', () => {
+  it('has a unique key for every detail', () => {
+    const keys = CLIENT_FIELDS.map(f => f.key)
+    expect(new Set(keys).size).toBe(keys.length)
   })
 
-  it('produces a complete, well-typed config for every known field key', () => {
-    const cfg = resolveClientFieldConfig(undefined)
-    for (const f of CLIENT_FIELDS) {
-      expect(cfg[f.key]).toBeDefined()
-      expect(typeof cfg[f.key].required).toBe('boolean')
-      expect(typeof cfg[f.key].quickAdd).toBe('boolean')
-    }
-    expect(Object.keys(cfg).sort()).toEqual(CLIENT_FIELDS.map(f => f.key).sort())
+  // A form validates what it may ask for against this list, so a key missing from
+  // it is a detail no form can ever ask for.
+  it('exposes every key for the form API to validate against', () => {
+    expect([...CLIENT_FIELD_KEYS].sort()).toEqual(CLIENT_FIELDS.map(f => f.key).sort())
   })
 
-  it('treats junk input (string / number / array) as empty config', () => {
-    for (const junk of ['nope', 42, [], true]) {
-      const cfg = resolveClientFieldConfig(junk as unknown)
-      expect(cfg.name.required).toBe(true)   // falls back to defaults
-      expect(cfg.email.quickAdd).toBe(true)  // …including email in quick-add
-    }
-  })
-})
-
-describe('resolveClientFieldConfig — overrides', () => {
-  it('lets a stored config override per-field defaults', () => {
-    const cfg = resolveClientFieldConfig({
-      email: { required: true, quickAdd: true },
-      phone: { required: true },
-    })
-    expect(cfg.email).toEqual({ required: true, quickAdd: true })
-    // phone: required overridden to true, quickAdd keeps its default (true).
-    expect(cfg.phone).toEqual({ required: true, quickAdd: true })
-    // untouched field keeps defaults.
-    expect(cfg.dogBreed).toEqual({ required: false, quickAdd: false })
-  })
-
-  it('merges partial per-field config — missing prop falls back to default', () => {
-    const cfg = resolveClientFieldConfig({ email: { quickAdd: true } })
-    expect(cfg.email).toEqual({ required: false, quickAdd: true })
-  })
-
-  it('ignores a non-boolean prop value and uses the default', () => {
-    const cfg = resolveClientFieldConfig({ email: { required: 'yes', quickAdd: 1 } } as unknown)
-    // Non-boolean → default applies (email: not required, but IS in quick-add).
-    expect(cfg.email).toEqual({ required: false, quickAdd: true })
-  })
-
-  it('ignores unknown field keys entirely', () => {
-    const cfg = resolveClientFieldConfig({
-      bogus: { required: true, quickAdd: true },
-      vaccination: { required: true },
-    } as unknown)
-    expect((cfg as Record<string, unknown>).bogus).toBeUndefined()
-    expect((cfg as Record<string, unknown>).vaccination).toBeUndefined()
-    // Real keys unaffected.
-    expect(cfg.name.required).toBe(true)
-  })
-})
-
-describe('resolveClientFieldConfig — always-required enforcement', () => {
-  it('keeps name required even when a config tries to turn it off', () => {
-    const cfg = resolveClientFieldConfig({ name: { required: false, quickAdd: false } })
-    // name has alwaysRequired → required is forced true regardless of config.
-    expect(cfg.name.required).toBe(true)
-    // quickAdd is still freely configurable.
-    expect(cfg.name.quickAdd).toBe(false)
-  })
-
-  it('only "name" is structurally always-required in the catalog', () => {
+  // A client record with no name is unusable, and it's the one thing a trainer
+  // can't switch off.
+  it('marks only the name as structurally required', () => {
     const always = CLIENT_FIELDS.filter(f => f.alwaysRequired).map(f => f.key)
     expect(always).toEqual(['name'])
   })
 })
 
-describe('client-fields constants', () => {
-  it('quick-added contacts land in the NEW follow-up bucket', () => {
-    expect(QUICK_ADD_FOLLOW_UP_STATUS).toBe('NEW')
+describe('quick add', () => {
+  // Fixed, not configurable: quick-add exists to capture a walk-in in ten seconds,
+  // and the configurable version was the one where a trainer couldn't save someone
+  // whose email they didn't have.
+  it('asks for the three you want when you meet someone', () => {
+    expect(QUICK_ADD_KEYS).toEqual(['name', 'phone', 'email'])
   })
 
-  it('covers exactly the nine documented field keys with correct scopes', () => {
-    const keys = CLIENT_FIELDS.map(f => f.key)
-    expect(keys).toEqual([
-      'name', 'email', 'phone', 'address',
-      'dogName', 'dogBreed', 'dogWeight', 'dogDob', 'dogNotes',
-    ])
-    const ownerKeys = CLIENT_FIELDS.filter(f => f.scope === 'OWNER').map(f => f.key)
-    expect(ownerKeys).toEqual(['name', 'email', 'phone', 'address'])
+  it('only names details that exist', () => {
+    const known = new Set(CLIENT_FIELDS.map(f => f.key))
+    for (const k of QUICK_ADD_KEYS) expect(known.has(k), k).toBe(true)
+  })
+
+  // They land in the existing "New" bucket rather than a parallel status.
+  it('files a quick-added contact as needing follow-up', () => {
+    expect(QUICK_ADD_FOLLOW_UP_STATUS).toBe('NEW')
   })
 })
 
-// Mirror the server-side required check in src/app/api/clients/route.ts so the
-// resolution helper is exercised exactly the way the route uses it.
-function missingRequired(cfg: ResolvedFieldConfig, present: Record<string, boolean>, mode: 'full' | 'quick') {
-  for (const f of CLIENT_FIELDS) {
-    const need = mode === 'quick' ? cfg[f.key].quickAdd : cfg[f.key].required
-    if (need && !present[f.key]) return f.key
-  }
-  return null
-}
-
-describe('resolved config drives required-field enforcement', () => {
-  const allEmpty = Object.fromEntries(CLIENT_FIELDS.map(f => [f.key, false]))
-
-  it('full mode with defaults requires only a name', () => {
-    const cfg = resolveClientFieldConfig(null)
-    expect(missingRequired(cfg, { ...allEmpty }, 'full')).toBe('name')
-    expect(missingRequired(cfg, { ...allEmpty, name: true }, 'full')).toBeNull()
+describe('how a detail describes itself on a form', () => {
+  it('gives each one its own words', () => {
+    expect(clientFieldLabel('name')).toBe('Client name')
+    expect(clientFieldLabel('dogDob')).toBe('Date of birth')
   })
 
-  it('quick mode with defaults requires name + phone + email', () => {
-    const cfg = resolveClientFieldConfig(null)
-    // Quick-add captures email as well now, so all three are needed.
-    expect(missingRequired(cfg, { ...allEmpty, name: true }, 'quick')).not.toBeNull()
-    expect(missingRequired(cfg, { ...allEmpty, name: true, phone: true }, 'quick')).toBe('email')
-    expect(missingRequired(cfg, { ...allEmpty, name: true, phone: true, email: true }, 'quick')).toBeNull()
+  // A form authored against a key we later rename should still render something a
+  // trainer recognises and can remove, rather than throwing the page away.
+  it('falls back to the key rather than throwing', () => {
+    expect(clientFieldLabel('nonsense')).toBe('nonsense')
+    expect(clientFieldIsDogDetail('nonsense')).toBe(false)
+    expect(clientFieldInputType('nonsense')).toBe('SHORT_TEXT')
   })
 
-  it('a config making email required is enforced in full mode', () => {
-    const cfg = resolveClientFieldConfig({ email: { required: true } })
-    expect(missingRequired(cfg, { ...allEmpty, name: true }, 'full')).toBe('email')
-    expect(missingRequired(cfg, { ...allEmpty, name: true, email: true }, 'full')).toBeNull()
+  it('knows which details are about the dog', () => {
+    expect(clientFieldIsDogDetail('dogBreed')).toBe(true)
+    expect(clientFieldIsDogDetail('phone')).toBe(false)
+    // Every dog-scoped entry agrees with its own scope.
+    for (const f of CLIENT_FIELDS) {
+      expect(clientFieldIsDogDetail(f.key), f.key).toBe(f.scope === 'DOG')
+    }
+  })
+
+  // The input belongs to the detail, so a trainer never picks it and can't pick
+  // wrong: an email box for an email, a date picker for a birthday.
+  it('brings its own input shape', () => {
+    expect(clientFieldInputType('email')).toBe('EMAIL')
+    expect(clientFieldInputType('phone')).toBe('TEL')
+    expect(clientFieldInputType('dogDob')).toBe('DATE')
+    expect(clientFieldInputType('dogWeight')).toBe('NUMBER')
+    expect(clientFieldInputType('dogNotes')).toBe('LONG_TEXT')
+    expect(clientFieldInputType('name')).toBe('SHORT_TEXT')
+  })
+
+  it('has an input for every detail', () => {
+    for (const f of CLIENT_FIELDS) {
+      expect(clientFieldInputType(f.key), f.key).toBeTruthy()
+    }
   })
 })
