@@ -446,6 +446,10 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
   ].filter(Boolean) as { icon: typeof Globe; href: string; label: string }[]
 
   return (
+    // The trainer's words reach the client app too, so any screen in here can
+    // resolve a renamed label — not just the nav rows (the home quick-action tile
+    // still said "Offerings" while the menu beside it said the trainer's word).
+    <NavLabelProvider labels={navLabels ?? {}}>
     <div className="min-h-[100dvh] bg-surface md:flex">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-64 bg-white border-r border-slate-100 z-30">
@@ -623,6 +627,7 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
         </div>
       )}
     </div>
+    </NavLabelProvider>
   )
 }
 

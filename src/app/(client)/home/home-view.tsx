@@ -18,6 +18,8 @@ interface GalleryMedia {
   thumbnailUrl: string | null
 }
 import { cn } from '@/lib/utils'
+import { clientLabelFor } from '@/lib/nav-labels'
+import { useNavLabelOverrides } from '@/components/shared/page-title'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
 import { effectivePriceCents, isOnSale } from '@/lib/product-price'
@@ -224,6 +226,9 @@ export function ClientHomeView({
   // the section once there's an earned badge or genuine progress to show.
   const hasEarnedBadge = achievements.some(a => a.earned)
   const showAchievements = hasEarnedBadge || !!nextBadge
+  // Their trainer's words for the things they can open. Empty for most trainers,
+  // in which case every label below is ours.
+  const navLabels = useNavLabelOverrides()
 
   return (
     <div className="bg-surface min-h-full">
@@ -274,9 +279,11 @@ export function ClientHomeView({
         {/* ─── Quick actions ─── (Shop hidden when the trainer's shop add-on is off) */}
         <div className={cn('px-4 -mt-7 relative z-20 grid gap-3', shopEnabled ? 'grid-cols-3' : 'grid-cols-2')}>
           {[
-            { label: 'Offerings', icon: CalendarIcon, href: '/my-availability' },
+            // The trainer's own word for these, the same as the menu beside them
+            // uses. This tile said "Offerings" while the menu said "Services".
+            { label: clientLabelFor('/my-availability', 'Offerings', navLabels), icon: CalendarIcon, href: '/my-availability' },
             { label: 'Message', icon: MessageCircle, href: '/my-messages' },
-            ...(shopEnabled ? [{ label: 'Shop', icon: ShoppingBag, href: '/my-shop' }] : []),
+            ...(shopEnabled ? [{ label: clientLabelFor('/my-shop', 'Shop', navLabels), icon: ShoppingBag, href: '/my-shop' }] : []),
           ].map(a => (
             <Link key={a.label} href={a.href} className="rounded-2xl bg-white shadow-[0_4px_16px_rgba(15,31,36,0.10)] py-3.5 flex flex-col items-center gap-1.5 active:scale-[0.98] transition-transform">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent"><a.icon className="h-5 w-5" /></span>
@@ -445,7 +452,7 @@ export function ClientHomeView({
           {shopEnabled && featuredProducts.length > 0 && (
             <section>
               <div className="px-4">
-                <SectionHeader title={`Picked for ${dogName}`} linkHref="/my-shop" linkLabel="Shop" icon={<ShoppingBag className="h-4 w-4" />} />
+                <SectionHeader title={`Picked for ${dogName}`} linkHref="/my-shop" linkLabel={clientLabelFor('/my-shop', 'Shop', navLabels)} icon={<ShoppingBag className="h-4 w-4" />} />
               </div>
               <div className="mt-3 flex gap-3 overflow-x-auto px-5 scroll-pl-5 pb-2 snap-x snap-proximity no-scrollbar">
                 {featuredProducts.map(p => (
@@ -499,7 +506,7 @@ export function ClientHomeView({
           {/* ─── Achievements ─── (kept last — progress/rewards, not a primary action) */}
           {showAchievements && (
             <section className="px-4">
-              <SectionHeader title="Achievements" linkHref="/my-achievements" linkLabel="See all" />
+              <SectionHeader title={clientLabelFor('/my-achievements', 'Achievements', navLabels)} linkHref="/my-achievements" linkLabel="See all" />
               {nextBadge && (
                 <div className="mt-3 rounded-3xl bg-accent-soft p-4 flex items-center gap-4">
                   <BadgeArt imageUrl={nextBadge.imageUrl} icon={nextBadge.icon || '🏅'} name={nextBadge.name} size="lg" />

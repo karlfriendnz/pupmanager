@@ -7,6 +7,8 @@ import {
   Minus, Plus,
 } from 'lucide-react'
 import { openExternal } from '@/lib/external-link'
+import { labelFor } from '@/lib/nav-labels'
+import { useNavLabelOverrides } from '@/components/shared/page-title'
 import { currencySymbol } from '@/lib/money'
 import { MembershipCards } from '@/components/shared/membership-cards'
 import type { ClientMembership } from '@/lib/client-memberships'
@@ -190,6 +192,18 @@ export function BookingWizard(props: {
   previewDays: PreviewDay[]
 }) {
   const { businessName, initials, tz, availability, packages, classes, events, maxTicketQuantity, memberships, dogs, defaultDogId, acceptPayments, currency, previewDays } = props
+
+  // The trainer's own words for what they sell. A trainer who renames "1:1
+  // Sessions" to "Private lessons" was still showing their clients our words in
+  // the one place a client actually chooses between them. labelFor enforces the
+  // locks, so a client can never be shown a word the trainer wasn't allowed to set.
+  const navLabels = useNavLabelOverrides()
+  const term = {
+    oneToOne: labelFor('/packages', '1-on-1 sessions', navLabels),
+    classes: labelFor('/classes', 'Group classes', navLabels),
+    events: labelFor('/events', 'Events', navLabels),
+    memberships: labelFor('/memberships', 'Packages', navLabels),
+  }
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
   // Step 1 is a menu of offering TYPES; picking one drills into that type's list.
@@ -417,28 +431,28 @@ export function BookingWizard(props: {
                   {packages.length > 0 && (
                     <button type="button" onClick={() => setCategory('sessions')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><CalendarPlus className="h-5 w-5" /></span>
-                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">1-on-1 sessions</span><span className="block text-xs text-slate-500">{packages.length} available</span></span>
+                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">{term.oneToOne}</span><span className="block text-xs text-slate-500">{packages.length} available</span></span>
                       <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
                     </button>
                   )}
                   {classes.length > 0 && (
                     <button type="button" onClick={() => setCategory('classes')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><GraduationCap className="h-5 w-5" /></span>
-                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">Group classes</span><span className="block text-xs text-slate-500">{classes.length} available</span></span>
+                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">{term.classes}</span><span className="block text-xs text-slate-500">{classes.length} available</span></span>
                       <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
                     </button>
                   )}
                   {events.length > 0 && (
                     <button type="button" onClick={() => setCategory('events')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><PartyPopper className="h-5 w-5" /></span>
-                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">Events</span><span className="block text-xs text-slate-500">{events.length} coming up</span></span>
+                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">{term.events}</span><span className="block text-xs text-slate-500">{events.length} coming up</span></span>
                       <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
                     </button>
                   )}
                   {memberships.length > 0 && (
                     <button type="button" onClick={() => setCategory('memberships')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><Ticket className="h-5 w-5" /></span>
-                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">Packages</span><span className="block text-xs text-slate-500">{memberships.length} available</span></span>
+                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">{term.memberships}</span><span className="block text-xs text-slate-500">{memberships.length} available</span></span>
                       <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
                     </button>
                   )}
@@ -450,7 +464,7 @@ export function BookingWizard(props: {
 
             {category === 'sessions' && packages.length > 0 && (
               <section>
-                <SectionLabel icon={<CalendarPlus className="h-3.5 w-3.5" />} text="1-on-1 sessions" />
+                <SectionLabel icon={<CalendarPlus className="h-3.5 w-3.5" />} text={term.oneToOne} />
                 <div className="flex flex-col gap-2.5">
                   {packages.map(p => (
                     <button key={p.id} onClick={() => chooseSession(p)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
@@ -483,7 +497,7 @@ export function BookingWizard(props: {
 
             {category === 'classes' && classes.length > 0 && (
               <section>
-                <SectionLabel icon={<GraduationCap className="h-3.5 w-3.5" />} text="Group classes" />
+                <SectionLabel icon={<GraduationCap className="h-3.5 w-3.5" />} text={term.classes} />
                 <div className="flex flex-col gap-2.5">
                   {classes.map(c => {
                     const isFull = c.seatsLeft === 0
@@ -518,7 +532,7 @@ export function BookingWizard(props: {
 
             {category === 'events' && events.length > 0 && (
               <section>
-                <SectionLabel icon={<PartyPopper className="h-3.5 w-3.5" />} text="Events" />
+                <SectionLabel icon={<PartyPopper className="h-3.5 w-3.5" />} text={term.events} />
                 <div className="flex flex-col gap-2.5">
                   {events.map(e => {
                     const isFull = e.seatsLeft === 0
@@ -564,7 +578,7 @@ export function BookingWizard(props: {
 
             {category === 'memberships' && memberships.length > 0 && (
               <section>
-                <SectionLabel icon={<Ticket className="h-3.5 w-3.5" />} text="Packages" />
+                <SectionLabel icon={<Ticket className="h-3.5 w-3.5" />} text={term.memberships} />
                 <p className="text-xs text-slate-500 -mt-1 mb-2.5">Bundles from {businessName} — everything below is included.</p>
                 {/* Checkout is its own flow (Stripe), so these cards buy directly
                     rather than continuing through the wizard's steps 2–3. */}

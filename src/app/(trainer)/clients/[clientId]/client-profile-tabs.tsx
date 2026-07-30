@@ -132,6 +132,8 @@ interface Props {
   // Whether the viewing trainer can see billing — gates the Invoices tab and the
   // Overview "Unpaid invoices" card (both read the new-model Invoice rows).
   canViewBilling: boolean
+  /** The achievements add-on is on. Off means no tab and no panel — not an empty one. */
+  showAchievements: boolean
   // Private trainer-facing notes about the client (Notes tab).
   notes: string | null
   // Client app add-on on — gates the Comms tab (no app + no email = no comms).
@@ -172,6 +174,7 @@ export function ClientProfileTabs({
   status,
   communications,
   canViewBilling,
+  showAchievements,
   notes,
   clientAppEnabled,
   trainingLogs,
@@ -323,7 +326,7 @@ export function ClientProfileTabs({
     ...(showComms ? [{ id: 'communication' as Tab, label: 'Comms', icon: MessageSquare, badge: communications.length > 0 ? communications.length : undefined }] : []),
     { id: 'notes',        label: 'Notes',        icon: StickyNote },
     ...(canViewBilling ? [{ id: 'invoices' as Tab, label: 'Invoices', icon: FileText }] : []),
-    { id: 'achievements', label: 'Achievements', icon: Trophy },
+    ...(showAchievements ? [{ id: 'achievements' as Tab, label: 'Achievements', icon: Trophy }] : []),
     { id: 'details',      label: 'Details',      icon: Info },
   ]
 
@@ -781,7 +784,7 @@ export function ClientProfileTabs({
       )}
 
       {/* ── Achievements ─────────────────────────────────────────────────── */}
-      {tab === 'achievements' && (
+      {tab === 'achievements' && showAchievements && (
         <ClientAchievementsPanel clientId={clientId} canEdit={canEdit} />
       )}
 

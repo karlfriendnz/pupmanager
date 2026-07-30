@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { clientLabelFor, sanitizeNavLabels } from '@/lib/nav-labels'
 import { getEnabledAddons } from '@/lib/billing'
 import { ShopGrid } from './shop-grid'
 import type { Metadata } from 'next'
@@ -31,6 +32,14 @@ export default async function MyShopPage() {
   // The shop is a trainer add-on — bounce direct visits when it's off, matching
   // the hidden nav item + home shortcut.
   if (!(await getEnabledAddons(profile.trainerId)).has('shop')) redirect('/home')
+
+  // The trainer's word for their products, so the client's shop is called what the
+  // trainer calls it. Read server-side here since this heading is rendered on the
+  // server, not inside the shell's context.
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: profile.trainerId }, select: { navLabels: true },
+  })
+  const shopTitle = clientLabelFor('/my-shop', 'Shop', sanitizeNavLabels(trainer?.navLabels))
 
   // Clients can buy (vs request) only when the trainer has switched payments on
   // and their Connect account can actually take charges.
@@ -66,7 +75,7 @@ export default async function MyShopPage() {
 
   return (
     <div className="px-5 lg:px-8 pt-6 max-w-3xl mx-auto w-full">
-      <h1 className="text-2xl font-bold text-slate-900">Shop</h1>
+      <h1 className="text-2xl font-bold text-slate-900">{shopTitle}</h1>
       <p className="text-sm text-slate-500 mt-1">
         From <span className="font-medium text-slate-700">{profile.trainer.businessName}</span>
       </p>

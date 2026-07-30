@@ -245,11 +245,19 @@ export default async function ClientLayout({ children }: { children: React.React
 
   // The client shop is a trainer add-on — hide the Shop nav item (and the home
   // shop shortcut) when the trainer hasn't enabled it.
-  const shopEnabled = (await getEnabledAddons(clientProfile.trainer.id)).has('shop')
+  // Asked once, since two gates read it.
+  const trainerAddons = await getEnabledAddons(clientProfile.trainer.id)
+  const shopEnabled = trainerAddons.has('shop')
+  // Achievements is a trainer add-on too, and its nav entry was never gated — so a
+  // client of a business with achievements switched off still had the menu item and
+  // the home section, showing badges their trainer had turned off.
+  // (Karl, 2026-07-30.)
+  const achievementsEnabled = trainerAddons.has('achievements')
 
   // Build the hidden-nav list from the gates above.
   const hiddenClientNav: string[] = []
   if (!shopEnabled) hiddenClientNav.push('/my-shop')
+  if (!achievementsEnabled) hiddenClientNav.push('/my-achievements')
   // Memberships live INSIDE Offerings now (a type in the booking flow), so they
   // no longer get their own nav entry. The page + buy route stay put — it's the
   // Stripe cancel/return target and still works as a direct link.

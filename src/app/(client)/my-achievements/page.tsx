@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { hasAddon } from '@/lib/billing'
 import { computeAchievementProgress } from '@/lib/achievements'
 import { PageHeader } from '@/components/shared/page-header'
 import { cn } from '@/lib/utils'
@@ -15,6 +16,12 @@ export default async function AchievementsPage() {
 
   const profile = await prisma.clientProfile.findUnique({ where: { id: active.clientId }, select: { id: true, trainerId: true } })
   if (!profile) redirect('/login')
+
+  // Their trainer's add-on decides whether this exists at all. Without this check
+  // a client could open the screen — and see the badges — for a business that had
+  // switched achievements off. Home, not 404: it's a real screen for other
+  // clients, so "nothing here for you" is truer than "no such page".
+  if (!(await hasAddon(profile.trainerId, 'achievements'))) redirect('/home')
 
   const [all, earnedRows, progress] = await Promise.all([
     prisma.achievement.findMany({

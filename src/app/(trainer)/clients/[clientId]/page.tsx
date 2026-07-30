@@ -216,6 +216,10 @@ export default async function ClientDetailPage({
   // planner add-on, which covers all address/distance calculations. One external
   // call after the batch, since it needs both the client's and base's coordinates.
   const clientAppEnabled = await hasAddon(access.trainerId, 'clientapp')
+  // The Achievements tab was unconditional while every other optional tab on this
+  // screen was gated, so a trainer who had switched achievements off still saw the
+  // tab — and its empty panel — on every client. (Karl, 2026-07-30.)
+  const achievementsEnabled = await hasAddon(access.trainerId, 'achievements')
 
   let distanceFromBase: string | null = null
   if (
@@ -381,6 +385,7 @@ export default async function ClientDetailPage({
         actions={actionsPanel}
         communications={communications}
         canViewBilling={canViewBilling}
+        showAchievements={achievementsEnabled}
         stats={{
           complianceRate,
           completedTasks,

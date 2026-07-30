@@ -201,8 +201,11 @@ export default async function ClientHomePage() {
       }
     : null
 
-  // The shop is a trainer add-on — gate the home shop shortcut + product row.
-  const shopEnabled = (await getEnabledAddons(clientProfile.trainer.id)).has('shop')
+  // Both are trainer add-ons — gate the home shop shortcut + product row, and the
+  // achievements section. Asked once.
+  const homeAddons = await getEnabledAddons(clientProfile.trainer.id)
+  const shopEnabled = homeAddons.has('shop')
+  const achievementsEnabled = homeAddons.has('achievements')
 
   return (
     <>
@@ -263,7 +266,10 @@ export default async function ClientHomePage() {
         productId: r.product.id,
         productName: r.product.name,
       }))}
-      achievements={allAchievements.map(a => ({
+      // Empty when the trainer's add-on is off, which hides the whole section —
+      // the badges were showing on a client's home for businesses that had
+      // switched achievements off (Karl, 2026-07-30).
+      achievements={(achievementsEnabled ? allAchievements : []).map(a => ({
         id: a.id,
         name: a.name,
         icon: a.icon,

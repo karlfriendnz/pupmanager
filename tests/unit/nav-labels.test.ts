@@ -316,3 +316,48 @@ describe("a client sees the trainer's words too", () => {
     expect(clientLabelFor('/my-messages', 'Messages', { '/messages': 'Chat' })).toBe('Messages')
   })
 })
+
+// ── The client app speaks the trainer's words too ────────────────────────────
+//
+// A trainer renaming "1:1 Sessions" to "Private lessons" was still showing their
+// clients OUR word in the one place a client chooses between what's on offer. These
+// guard the surfaces, because the way this breaks is a hardcoded string that no
+// type checker will ever complain about.
+
+const clientFile = (rel: string) =>
+  readFileSync(resolve(__dirname, '../../src/app/(client)/' + rel), 'utf8')
+
+describe('the client app asks for the trainer’s words', () => {
+  it('the booking flow names every offering type from the overrides', () => {
+    const src = clientFile('my-availability/booking-wizard.tsx')
+    // One place resolves them, so each use reads the same source.
+    expect(src).toContain('useNavLabelOverrides()')
+    for (const key of ['/packages', '/classes', '/events', '/memberships']) {
+      expect(src, key).toContain(`labelFor('${key}'`)
+    }
+  })
+
+  // The words that were hardcoded. If one comes back as a literal, a rename stops
+  // reaching the screen a client actually books from.
+  it('the booking flow has no hardcoded offering headings left', () => {
+    const src = clientFile('my-availability/booking-wizard.tsx')
+    for (const word of ['>1-on-1 sessions<', '>Group classes<', '>Packages<']) {
+      expect(src, word).not.toContain(word)
+    }
+  })
+
+  it('the home tiles use them as well', () => {
+    const src = clientFile('home/home-view.tsx')
+    expect(src).toContain("clientLabelFor('/my-availability'")
+    expect(src).toContain("clientLabelFor('/my-shop'")
+    // The tile said "Offerings" while the menu beside it said the trainer's word.
+    expect(src).not.toContain("{ label: 'Offerings'")
+  })
+
+  // Without the provider around the client shell, every hook above silently
+  // returns an empty map and every label quietly falls back to ours.
+  it('the client shell provides the overrides its screens read', () => {
+    const shell = readFileSync(resolve(__dirname, '../../src/components/shared/app-shell.tsx'), 'utf8')
+    expect(shell.match(/<NavLabelProvider/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+  })
+})
