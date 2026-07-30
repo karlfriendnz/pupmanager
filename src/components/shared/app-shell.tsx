@@ -22,6 +22,7 @@ import { TopBarControls } from './top-bar-controls'
 import { FloatingCreateButton } from './floating-create-button'
 import { PageTitleProvider, usePageTitle, usePageHasBack, usePageImmersive } from './page-title'
 import { FlatRow, FlatRowGrid } from './flat-list'
+import { shouldShowSectionHeader } from '@/lib/nav-labels'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
 const NAV_GROUPS_KEY = 'k10.trainerNavGroups'
@@ -1121,7 +1122,14 @@ function TrainerShell({
             // Section grouping: emit a small header (expanded) or a divider
             // (collapsed / system group) at each section boundary.
             const sectionChanged = idx === 0 || arr[idx - 1].section !== item.section
-            const sectionHeader = !collapsed && sectionChanged ? NAV_SECTION_LABEL[item.section] : null
+            // A heading over ONE row earns nothing — "Offerings" above a single
+            // "Group Classes" link says what the link already said. Counted from
+            // the RENDERED array, so add-ons hiding a section down to one item
+            // takes its heading with them. (Karl's review note, 2026-07-30.)
+            const sectionHeader = !collapsed && sectionChanged
+              && shouldShowSectionHeader(arr.filter(i => i.section === item.section).length)
+              ? NAV_SECTION_LABEL[item.section]
+              : null
             const showDivider = sectionChanged && idx > 0 && (item.section === 'system' || collapsed)
             // Add-on OFF: render disabled-with-upsell (never active/blue), still
             // keeping the section header/divider so the layout stays intact.
