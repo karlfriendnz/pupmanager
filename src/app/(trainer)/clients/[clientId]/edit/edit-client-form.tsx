@@ -69,18 +69,26 @@ function FieldInput({
   field,
   value,
   onChange,
+  inputId,
 }: {
   field: CustomField
   value: string
   onChange: (v: string) => void
+  /** Ties the label to its control. Must be unique on the page — the same field
+   *  is rendered once per dog, so the caller's `fieldId:dogId` key is used. */
+  inputId: string
 }) {
   return (
     <div>
-      <label className="text-sm font-medium text-slate-700 block mb-1.5">
+      {/* htmlFor/id, not a loose <label>: without the association a screen reader
+          reads an unnamed box, tapping the label doesn't focus it, and the review
+          widget can't name what a comment is pinned to (AGENTS.md). */}
+      <label htmlFor={inputId} className="text-sm font-medium text-slate-700 block mb-1.5">
         {field.label}{field.required && <span className="text-red-500 ml-1">*</span>}
       </label>
       {field.type === 'DROPDOWN' ? (
         <select
+          id={inputId}
           value={value}
           onChange={e => onChange(e.target.value)}
           className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -90,6 +98,7 @@ function FieldInput({
         </select>
       ) : field.type === 'NUMBER' ? (
         <input
+          id={inputId}
           type="number"
           value={value}
           onChange={e => onChange(e.target.value)}
@@ -99,6 +108,7 @@ function FieldInput({
         // Free-text answers are usually sentences/paragraphs — a multi-line,
         // resizable box rather than a cramped single line.
         <textarea
+          id={inputId}
           value={value}
           onChange={e => onChange(e.target.value)}
           rows={2}
@@ -364,6 +374,7 @@ export function EditClientForm({ clientId, initialName, initialEmail, initialPho
                                 <FieldInput
                                   key={field.id}
                                   field={field}
+                                  inputId={`cf-${key}`}
                                   value={fieldValues[key] ?? ''}
                                   onChange={v => setFieldValue(key, v)}
                                 />
@@ -478,6 +489,7 @@ export function EditClientForm({ clientId, initialName, initialEmail, initialPho
                     <FieldInput
                       key={field.id}
                       field={field}
+                      inputId={`cf-${field.id}`}
                       value={fieldValues[field.id] ?? ''}
                       onChange={v => setFieldValue(field.id, v)}
                     />
