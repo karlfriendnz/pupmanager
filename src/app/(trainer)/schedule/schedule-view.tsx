@@ -14,8 +14,7 @@ import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, CalendarDays,
-  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, Users, Check,
-} from 'lucide-react'
+  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, Users, Check, CalendarClock,} from 'lucide-react'
 import {
   AssignPackageFromScheduleModal,
 } from './assign-package-from-schedule'
@@ -3905,9 +3904,22 @@ export function ScheduleView({
             </span>
           ))}
 
-          {/* One control now. Layout, whose calendar, availability hours and
-              the weekly report all used to be their own icon out here — five
-              buttons across a phone, four of them unlabelled. */}
+          {/* Availability back out of the menu (Karl, 2026-07-30): setting when
+              you take bookings is a thing you come to this page TO DO, not a
+              setting you go looking for. It keeps its place in the menu below
+              for phones — the reason everything moved in there was five
+              unlabelled icons across a narrow toolbar, so this one is labelled
+              and only appears where there is room for the word. */}
+          <Button
+            variant="secondary"
+            size="sm"
+            className="hidden sm:inline-flex"
+            onClick={() => setShowAvail(true)}
+          >
+            <CalendarClock className="h-4 w-4" />
+            Availability
+          </Button>
+
           <span className="relative inline-flex">
             <ScheduleSettings
               startHour={scheduleStartHour}
