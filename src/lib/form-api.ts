@@ -95,11 +95,14 @@ export const formPatchSchema = formSchema.partial().extend({
 /**
  * Which of the three stored field types holds this answer.
  *
- * CustomField knows TEXT, NUMBER and DROPDOWN; the builder offers seven answer
- * types. The extra ones are presentation — a rating is a number, radio buttons
- * and tick-boxes are a list of choices — so they map down rather than needing
- * their own storage. The QUESTION keeps the trainer's choice, so the client still
- * sees stars or radio buttons; this only decides how the answer is filed.
+ * CustomField knows TEXT, NUMBER and DROPDOWN. Anything else maps down: a rating
+ * is a number, radio buttons and tick-boxes are a list of choices.
+ *
+ * Note that this is NOT purely about storage. A saved question is normalised to a
+ * bare link, so what the client sees is driven by the STORED type — authoring one
+ * as radio buttons would quietly serve a dropdown. The builder therefore offers
+ * only the three that survive (SAVED_FIELD_TYPES); this stays permissive so an
+ * older or hand-made payload maps down safely rather than being rejected.
  */
 export function customFieldTypeFor(answerType: string): 'TEXT' | 'NUMBER' | 'DROPDOWN' {
   switch (answerType) {

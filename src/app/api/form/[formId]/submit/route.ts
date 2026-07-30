@@ -143,8 +143,12 @@ async function submitUnified(req: Request, id: string) {
 
   // Snapshot linked answers, but only to fields this form's trainer owns — a
   // question referencing someone else's field id must not write into it.
+  // A SAVED question always carries its id — the server writes the field and
+  // normalises the link before storing — so a linked question without one is a
+  // stale row, not something to write into.
   const linked = questions.filter(
-    (q): q is Extract<Question, { type: 'CUSTOM_FIELD' }> => q.type === 'CUSTOM_FIELD',
+    (q): q is Extract<Question, { type: 'CUSTOM_FIELD' }> & { customFieldId: string } =>
+      q.type === 'CUSTOM_FIELD' && !!q.customFieldId,
   )
   const ownedIds = new Set(
     linked.length

@@ -17,7 +17,9 @@ export default async function NewClientFormPage() {
   const customFields = await prisma.customField.findMany({
     where: { trainerId },
     orderBy: { order: 'asc' },
-    select: { id: true, label: true, type: true, appliesTo: true, category: true },
+    // options too: the builder now EDITS a linked field, so a dropdown's
+      // choices have to arrive with it, not just its name.
+      select: { id: true, label: true, type: true, appliesTo: true, category: true, options: true },
   })
 
   return (
@@ -30,6 +32,7 @@ export default async function NewClientFormPage() {
           type: f.type as CustomFieldOption['type'],
           appliesTo: (f.appliesTo ?? 'OWNER') as CustomFieldOption['appliesTo'],
           category: f.category,
+          options: Array.isArray(f.options) ? (f.options as string[]) : [],
         }))}
       />
     </FormEditorPageChrome>

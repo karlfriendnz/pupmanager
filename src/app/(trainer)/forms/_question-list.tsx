@@ -19,10 +19,13 @@ import { Plus, Trash2, GripVertical, Link2, X, Copy } from 'lucide-react'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import {
   NEW_QUESTION_TYPES,
+  SAVED_FIELD_TYPES,
   TYPE_LABELS,
   addQuestion,
   createCustomFieldQuestion,
+  createFieldQuestion,
   createQuestion,
+  fieldSpecFor,
   duplicateQuestion,
   hasOptions,
   newQuestionId,
@@ -31,6 +34,7 @@ import {
   updateQuestion,
   usedCustomFieldIds,
 } from '@/lib/session-form-builder'
+import { isChoiceType as isChoiceAnswer } from '@/lib/session-form-builder'
 import type { CustomFieldOption, Question, QuestionType, ShowIf } from '@/lib/session-form-builder'
 import { FORM_QUIET_ACTION, FormEditorSection } from './_form-editor-shell'
 
@@ -191,9 +195,10 @@ function QuestionCard({
     transition,
     opacity: isDragging ? 0.4 : 1,
   }
-  const linked = question.type === 'CUSTOM_FIELD'
-    ? customFields.find(f => f.id === question.customFieldId)
-    : undefined
+  // What a saved-to-record question is asking. For a field being created here
+  // that's the draft on the question; for an existing link it's read off the
+  // field itself, so a link is EDITABLE rather than a read-only chip.
+  const spec = question.type === 'CUSTOM_FIELD' ? fieldSpecFor(question, customFields) : null
 
   return (
     <div ref={setNodeRef} style={style} data-question-row className="flex gap-2 bg-white p-3">
@@ -209,16 +214,60 @@ function QuestionCard({
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {question.type === 'CUSTOM_FIELD' ? (
+          spec === null ? (
+            // The field it points at is gone. Said plainly rather than shown as a
+            // blank editor that would recreate it under a new id on save.
+            <p className="text-sm text-slate-500">
+              This question pointed at a field that no longer exists. Remove it.
+            </p>
+          ) : (
           <>
-            <div className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
-              <Link2 className="h-3.5 w-3.5 flex-shrink-0 text-slate-500" strokeWidth={1.75} />
-              <span className="truncate">{linked?.label ?? 'Unknown field'}</span>
+            <input
+              type="text"
+              value={spec.label}
+              onChange={e => onPatch({ field: { ...spec, label: e.target.value } })}
+              placeholder="Question text"
+              aria-label={`Question ${index + 1}`}
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={spec.answerType}
+                onChange={e => onPatch({ field: { ...spec, answerType: e.target.value as Exclude<QuestionType, 'CUSTOM_FIELD'> } })}
+                aria-label={`Answer type for question ${index + 1}`}
+                className="h-9 w-fit rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
+              >
+                {SAVED_FIELD_TYPES.map(t => (
+                  <option key={t} value={t}>{TYPE_LABELS[t]}</option>
+                ))}
+              </select>
+              {/* Whose record it lands on. Two choices, so a segmented pair rather
+                  than a dropdown — and it's the one thing about a saved field a
+                  trainer can't work out from the question text. */}
+              <select
+                value={spec.appliesTo}
+                onChange={e => onPatch({ field: { ...spec, appliesTo: e.target.value as 'OWNER' | 'DOG' } })}
+                aria-label={`Saved against for question ${index + 1}`}
+                className="h-9 w-fit rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
+              >
+                <option value="OWNER">Saved on the client</option>
+                <option value="DOG">Saved on the dog</option>
+              </select>
             </div>
-            <p className="text-xs text-slate-400">
-              Linked to a {linked?.appliesTo === 'DOG' ? 'dog' : 'client'} field
-              {linked?.category ? ` · ${linked.category}` : ''}. Filling it in syncs to their record.
+            {isChoiceAnswer(spec.answerType) && (
+              <OptionsEditor
+                options={spec.options ?? []}
+                onChange={opts => onPatch({ field: { ...spec, options: opts } })}
+              />
+            )}
+            <p className="flex items-center gap-1.5 text-xs text-slate-400">
+              <Link2 className="h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.75} />
+              {question.customFieldId
+                ? 'Kept on their record — editing this changes it everywhere it appears.'
+                : 'Kept on their record, so it shows on their profile and in your lists.'}
             </p>
           </>
+          )
         ) : (
           <>
             <input
@@ -445,6 +494,17 @@ export function QuestionsSection({
             >
               <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
               Add question
+            </button>
+            {/* Making a field used to mean leaving the builder, creating it on
+                another screen, and coming back to link it. */}
+            <button
+              type="button"
+              onClick={() => onChange(addQuestion(questions, withStep(createFieldQuestion(newQuestionId()))))}
+              className={FORM_QUIET_ACTION}
+              title="Ask something and keep the answer on their record"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Add a saved field
             </button>
             <button
               type="button"

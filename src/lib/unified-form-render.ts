@@ -25,7 +25,10 @@ export async function renderUnifiedForm(form: {
 
   const linkedIds = questions
     .filter((q): q is Extract<Question, { type: 'CUSTOM_FIELD' }> => q.type === 'CUSTOM_FIELD')
+    // A saved question always carries its id (the server normalises the link on
+    // write), so one without it is a stale row with no field to look up.
     .map(q => q.customFieldId)
+    .filter((id): id is string => !!id)
 
   const linked = linkedIds.length
     ? await prisma.customField.findMany({

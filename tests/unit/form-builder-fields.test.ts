@@ -156,3 +156,65 @@ describe('saving a form writes the fields it authored', () => {
     expect(arg.data.options).toBeUndefined()
   })
 })
+
+// ─── What the builder is allowed to offer ────────────────────────────────────
+
+const builder = await import('@/lib/session-form-builder')
+
+describe('a saved field only offers types the client will actually see', () => {
+  // A saved question is stored as a bare LINK and rendered from the field's own
+  // type, so authoring one as radio buttons or a 1–5 rating would quietly serve a
+  // dropdown or a number box. Offering a choice that doesn't survive is worse than
+  // not offering it.
+  it('offers the three that survive the round trip, and no others', () => {
+    expect(builder.SAVED_FIELD_TYPES).toEqual(['SHORT_TEXT', 'NUMBER', 'DROPDOWN'])
+    for (const t of builder.SAVED_FIELD_TYPES) {
+      expect(customFieldTypeFor(t), t).toBe(
+        t === 'NUMBER' ? 'NUMBER' : t === 'DROPDOWN' ? 'DROPDOWN' : 'TEXT')
+    }
+  })
+
+  // Permissive on the way IN, so an older or hand-made payload maps down safely
+  // rather than 400ing.
+  it('still accepts a type it no longer offers', () => {
+    expect(questionSchema.safeParse({
+      id: 'q1', type: 'CUSTOM_FIELD',
+      field: { label: 'Keenness', answerType: 'RATING_1_5', appliesTo: 'OWNER' },
+    }).success).toBe(true)
+  })
+})
+
+describe('a field being authored survives validation and serialization', () => {
+  // validateForm used to reject any linked question with no id — which is exactly
+  // what a field being created here looks like, so it could never be saved.
+  it('accepts a question that brings its own field', () => {
+    const qs = [builder.createFieldQuestion('q1')]
+    // Blank label first: the definition is what gets checked, not a missing id.
+    expect(builder.validateForm('My form', qs)).toBe('Every question needs a label')
+
+    const named = builder.updateQuestion(qs, 'q1', {
+      field: { label: 'Vet name', answerType: 'SHORT_TEXT', appliesTo: 'DOG' },
+    })
+    expect(builder.validateForm('My form', named)).toBeNull()
+  })
+
+  it('makes a choice field prove it has choices', () => {
+    const qs = builder.updateQuestion([builder.createFieldQuestion('q1')], 'q1', {
+      field: { label: 'Energy', answerType: 'DROPDOWN', options: [], appliesTo: 'OWNER' },
+    })
+    expect(builder.validateForm('My form', qs)).toMatch(/needs at least one option/)
+  })
+
+  // The definition has to reach the server, and customFieldId must be OMITTED
+  // rather than sent as undefined — the API's min(1) would reject it.
+  it('sends the definition and omits the absent id', () => {
+    const qs = builder.updateQuestion([builder.createFieldQuestion('q1')], 'q1', {
+      field: { label: '  Vet name  ', answerType: 'DROPDOWN', options: ['A', ' ', 'B'], appliesTo: 'DOG' },
+    })
+    const [out] = builder.serializeQuestions(qs) as unknown as Array<Record<string, unknown>>
+    expect('customFieldId' in out).toBe(false)
+    expect(out.field).toEqual({
+      label: 'Vet name', answerType: 'DROPDOWN', options: ['A', 'B'], appliesTo: 'DOG',
+    })
+  })
+})

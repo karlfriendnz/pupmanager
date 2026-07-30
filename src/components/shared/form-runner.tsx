@@ -91,15 +91,18 @@ export function FormRunner({
     [form.questions, form.steps, activeStepId, answers],
   )
 
+  // A linked question is looked up by its field id. A saved form always has one
+  // (the server normalises the link on write); the `?? ''` is only so an
+  // in-flight builder question can't index with undefined.
   function label(q: Question): string {
-    return q.type === 'CUSTOM_FIELD' ? (linkedFields[q.customFieldId]?.label ?? 'Field') : q.label
+    return q.type === 'CUSTOM_FIELD' ? (linkedFields[q.customFieldId ?? '']?.label ?? 'Field') : q.label
   }
   function optionsFor(q: Question): string[] {
-    if (q.type === 'CUSTOM_FIELD') return linkedFields[q.customFieldId]?.options ?? []
+    if (q.type === 'CUSTOM_FIELD') return linkedFields[q.customFieldId ?? '']?.options ?? []
     return hasOptions(q) ? q.options : []
   }
   function typeOf(q: Question): string {
-    if (q.type === 'CUSTOM_FIELD') return linkedFields[q.customFieldId]?.type ?? 'TEXT'
+    if (q.type === 'CUSTOM_FIELD') return linkedFields[q.customFieldId ?? '']?.type ?? 'TEXT'
     return q.type
   }
   function set(id: string, v: Answer) {

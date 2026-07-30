@@ -50,8 +50,12 @@ export async function POST(req: Request) {
   // (client profile, reports, exports) reads them the usual way rather than
   // having to know about intakeAnswers. Sequential on purpose: a wide form run
   // in parallel exhausts the pooled connection limit.
+  // A SAVED question always carries its id — the server writes the field and
+  // normalises the link before storing — so one without it is a stale row rather
+  // than a field to mirror into.
   const linked = questions.filter(
-    (q): q is Extract<Question, { type: 'CUSTOM_FIELD' }> => q.type === 'CUSTOM_FIELD',
+    (q): q is Extract<Question, { type: 'CUSTOM_FIELD' }> & { customFieldId: string } =>
+      q.type === 'CUSTOM_FIELD' && !!q.customFieldId,
   )
   const ownedFieldIds = new Set(
     linked.length

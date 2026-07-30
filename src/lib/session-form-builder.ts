@@ -26,7 +26,24 @@ export interface FormStep { id: string; title: string }
 export interface BasicQuestion { id: string; type: BasicType; label: string; required: boolean; isPrivate?: boolean; showIf?: ShowIf; step?: string }
 /** Dropdown / radio / checkbox — the only questions that carry an option list. */
 export interface ChoiceQuestion { id: string; type: ChoiceType; label: string; required: boolean; isPrivate?: boolean; options: string[]; showIf?: ShowIf; step?: string }
-export interface LinkedQuestion { id: string; type: 'CUSTOM_FIELD'; customFieldId: string; required: boolean; isPrivate?: boolean; showIf?: ShowIf; step?: string }
+/**
+ * A question whose answer is kept on the client's record, not just in this form's
+ * answers — so it reaches their profile, the clients-list sorting and the reports.
+ *
+ * `customFieldId` is absent only for a field being CREATED right here in the
+ * builder: `field` carries what to make, the server writes it, and the saved
+ * question comes back as a bare link (see persistLinkedFields in form-api). Both
+ * present = editing that field in place.
+ */
+export interface NewFieldSpec {
+  label: string
+  /** The question's own answer type; the stored field type is derived from it. */
+  answerType: Exclude<QuestionType, 'CUSTOM_FIELD'>
+  options?: string[]
+  appliesTo: 'OWNER' | 'DOG'
+  category?: string | null
+}
+export interface LinkedQuestion { id: string; type: 'CUSTOM_FIELD'; customFieldId?: string; required: boolean; isPrivate?: boolean; showIf?: ShowIf; step?: string; field?: NewFieldSpec }
 
 export type Question = BasicQuestion | ChoiceQuestion | LinkedQuestion
 
@@ -44,6 +61,9 @@ export interface CustomFieldOption {
   type: 'TEXT' | 'NUMBER' | 'DROPDOWN'
   appliesTo: 'OWNER' | 'DOG'
   category: string | null
+  /** Choices, for a DROPDOWN field. Needed so the builder can EDIT a linked
+   *  field's options rather than only display its name. */
+  options?: string[]
 }
 
 const CHOICE_TYPES: ChoiceType[] = ['DROPDOWN', 'RADIO', 'CHECKBOX']
@@ -63,6 +83,16 @@ export const TYPE_LABELS: Record<Exclude<QuestionType, 'CUSTOM_FIELD'>, string> 
 }
 
 /** Palette order for the "New question" group. */
+/**
+ * The answer types a SAVED-to-record question may use.
+ *
+ * Only three, because a saved question is stored as a bare link and rendered from
+ * the field's own type — so a rating or radio group would silently come out as a
+ * number or a dropdown. Offering a choice the client never sees is worse than not
+ * offering it.
+ */
+export const SAVED_FIELD_TYPES: Exclude<QuestionType, 'CUSTOM_FIELD'>[] = ['SHORT_TEXT', 'NUMBER', 'DROPDOWN']
+
 export const NEW_QUESTION_TYPES: Exclude<QuestionType, 'CUSTOM_FIELD'>[] = [
   'SHORT_TEXT', 'LONG_TEXT', 'NUMBER', 'RATING_1_5', 'DROPDOWN', 'RADIO', 'CHECKBOX',
 ]
@@ -88,6 +118,41 @@ export function createCustomFieldQuestion(
   id: string = newQuestionId(),
 ): Question {
   return { id, type: 'CUSTOM_FIELD', customFieldId, required: false }
+}
+
+/**
+ * A brand-new client field, authored right here.
+ *
+ * The point of the whole exercise: making a field used to mean leaving the
+ * builder for another screen, creating it, coming back and linking it. The field
+ * itself is written when the FORM is saved, so abandoning a half-built form leaves
+ * nothing behind.
+ */
+export function createFieldQuestion(id: string = newQuestionId()): Question {
+  return {
+    id,
+    type: 'CUSTOM_FIELD',
+    required: false,
+    field: { label: '', answerType: 'SHORT_TEXT', appliesTo: 'OWNER' },
+  }
+}
+
+/** The definition to show for a linked question — the one being authored, or the
+ *  linked field's own, so an existing link is editable rather than read-only. */
+export function fieldSpecFor(q: LinkedQuestion, fields: CustomFieldOption[]): NewFieldSpec | null {
+  if (q.field) return q.field
+  const linked = fields.find(f => f.id === q.customFieldId)
+  if (!linked) return null
+  return {
+    label: linked.label,
+    // Widen the three stored types back to a question type. A stored DROPDOWN
+    // could have been authored as radio or tick-boxes; the list is what matters
+    // and the trainer can change the presentation.
+    answerType: linked.type === 'NUMBER' ? 'NUMBER' : linked.type === 'DROPDOWN' ? 'DROPDOWN' : 'SHORT_TEXT',
+    options: linked.options ?? [],
+    appliesTo: linked.appliesTo,
+    category: linked.category,
+  }
 }
 
 /** Insert `q` at `index` (default: append). Out-of-range indexes clamp. */
@@ -162,7 +227,10 @@ export function isQuestionVisible(
 export function updateQuestion(
   questions: Question[],
   id: string,
-  patch: Partial<AuthoredQuestion> & { customFieldId?: string },
+  // `field` is the definition of a saved-to-record question being authored here —
+  // see NewFieldSpec. It rides along with the ordinary label/type/options patches
+  // so one editor can drive both kinds of question.
+  patch: Partial<AuthoredQuestion> & { customFieldId?: string; field?: NewFieldSpec },
 ): Question[] {
   return questions.map(q => {
     if (q.id !== id) return q
@@ -204,6 +272,16 @@ export function validateForm(name: string, questions: Question[]): string | null
   if (questions.length === 0) return 'Add at least one question'
   for (const q of questions) {
     if (q.type === 'CUSTOM_FIELD') {
+      // A field being authored HERE has no id yet — its definition is what gets
+      // checked, and the server writes the field on save.
+      if (q.field) {
+        if (!q.field.label.trim()) return 'Every question needs a label'
+        if (isChoiceType(q.field.answerType)) {
+          const opts = (q.field.options ?? []).map(o => o.trim()).filter(Boolean)
+          if (opts.length === 0) return `"${q.field.label.trim()}" needs at least one option`
+        }
+        continue
+      }
       if (!q.customFieldId) return 'A linked field question is missing its field'
       continue
     }
@@ -226,7 +304,29 @@ export function serializeQuestions(questions: Question[]): Question[] {
       ...(q.step ? { step: q.step } : {}),
     }
     if (q.type === 'CUSTOM_FIELD') {
-      return { id: q.id, type: q.type, customFieldId: q.customFieldId, required: q.required, isPrivate: !!q.isPrivate, ...extra }
+      return {
+        id: q.id,
+        type: q.type,
+        // Omitted entirely when absent: sending `customFieldId: undefined` would
+        // fail the API's min(1) check on a field being created here.
+        ...(q.customFieldId ? { customFieldId: q.customFieldId } : {}),
+        // The definition rides along so the server can write the field. Trimmed
+        // and emptied of blank options the same way an authored question is.
+        ...(q.field
+          ? {
+              field: {
+                ...q.field,
+                label: q.field.label.trim(),
+                ...(q.field.options
+                  ? { options: q.field.options.map(o => o.trim()).filter(Boolean) }
+                  : {}),
+              },
+            }
+          : {}),
+        required: q.required,
+        isPrivate: !!q.isPrivate,
+        ...extra,
+      }
     }
     if (hasOptions(q)) {
       return {

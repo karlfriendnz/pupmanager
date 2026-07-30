@@ -57,7 +57,11 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
     const answers = (enquiry.formAnswers ?? {}) as Record<string, string | string[]>
     const linkedIds = questions
       .filter((q): q is Extract<Question, { type: 'CUSTOM_FIELD' }> => q.type === 'CUSTOM_FIELD')
+      // A SAVED question always carries its id — the server writes the field and
+      // normalises the link before storing. Only in-flight builder state can lack
+      // one, so anything without it here is a stale row rather than a real link.
       .map(q => q.customFieldId)
+      .filter((id): id is string => !!id)
     const linkedLabels = linkedIds.length
       ? Object.fromEntries(
           (await prisma.customField.findMany({
@@ -72,7 +76,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
       const raw = answers[q.id]
       const value = Array.isArray(raw) ? raw.join(', ') : (raw ?? '')
       if (!value.trim()) return []
-      const label = q.type === 'CUSTOM_FIELD' ? (linkedLabels[q.customFieldId] ?? 'Field') : q.label
+      const label = q.type === 'CUSTOM_FIELD' ? (linkedLabels[q.customFieldId ?? ''] ?? 'Field') : q.label
       return [{ label, value }]
     })
   }
