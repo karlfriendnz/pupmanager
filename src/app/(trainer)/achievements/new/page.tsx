@@ -5,6 +5,7 @@ import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
 import { AchievementForm, EMPTY_ACHIEVEMENT } from '../achievement-form'
 import type { Metadata } from 'next'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'New achievement' }
 
@@ -16,7 +17,7 @@ export default async function NewAchievementPage() {
 
   const profile = await prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { id: true } })
   if (!profile) redirect('/login')
-  if (!(await hasAddon(profile.id, 'achievements'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(profile.id, 'achievements'))) redirect(addonSettingsHref('achievements'))
 
   return (
     <>

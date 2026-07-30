@@ -7,6 +7,7 @@ import { isClassRunPast, NON_EVENT_PACKAGE } from '@/lib/class-runs'
 import { formatDate } from '@/lib/utils'
 import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Group Classes' }
 
@@ -21,7 +22,7 @@ export default async function ClassesPage({
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
   // Gated by the Group classes add-on (default-on; hidden + blocked when off).
-  if (!(await hasAddon(trainerId, 'classes'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerId, 'classes'))) redirect(addonSettingsHref('classes'))
 
   const [runs, trainer] = await Promise.all([
     prisma.classRun.findMany({

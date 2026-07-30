@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { AchievementForm } from '../achievement-form'
 import type { TriggerType } from '../triggers'
 import type { Metadata } from 'next'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Achievement' }
 
@@ -14,7 +15,7 @@ export default async function AchievementPage({ params }: { params: Promise<{ ac
   if (!session || session.user.role !== 'TRAINER') redirect('/login')
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
-  if (!(await hasAddon(trainerId, 'achievements'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerId, 'achievements'))) redirect(addonSettingsHref('achievements'))
 
   const { achievementId } = await params
 

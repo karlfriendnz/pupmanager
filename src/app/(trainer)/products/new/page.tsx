@@ -5,6 +5,7 @@ import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
 import { ProductForm, EMPTY_PRODUCT } from '../product-form'
 import type { Metadata } from 'next'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'New product' }
 
@@ -13,7 +14,7 @@ export default async function NewProductPage() {
   if (!session || session.user.role !== 'TRAINER') redirect('/login')
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
-  if (!(await hasAddon(trainerId, 'shop'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerId, 'shop'))) redirect(addonSettingsHref('shop'))
 
   const siblings = await prisma.product.findMany({
     where: { trainerId },

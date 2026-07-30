@@ -6,6 +6,7 @@ import type { TriggerType } from './triggers'
 import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Achievements' }
 
@@ -18,7 +19,7 @@ export default async function AchievementsPage() {
     select: { id: true },
   })
   if (!trainerProfile) redirect('/login')
-  if (!(await hasAddon(trainerProfile.id, 'achievements'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerProfile.id, 'achievements'))) redirect(addonSettingsHref('achievements'))
 
   const achievements = await prisma.achievement.findMany({
     where: { trainerId: trainerProfile.id },

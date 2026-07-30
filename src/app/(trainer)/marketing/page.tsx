@@ -5,6 +5,7 @@ import { getTrainerContext, scopeForMember, hasPermission } from '@/lib/membersh
 import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
 import { MarketingView } from './marketing-view'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Marketing' }
 
@@ -22,7 +23,7 @@ export default async function MarketingPage({
   if (!ctx) redirect('/login')
   const trainerId = ctx.companyId
   // Marketing is a paid add-on — send trainers without it to the add-ons tab.
-  if (!(await hasAddon(trainerId, 'marketing'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerId, 'marketing'))) redirect(addonSettingsHref('marketing'))
   const canSend = await hasPermission('messages.send')
   const memberScope = scopeForMember(ctx, 'clients.viewAll')
   const { sent } = await searchParams

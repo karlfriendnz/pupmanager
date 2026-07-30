@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { countPendingMembershipRequests } from '@/lib/membership-requests'
 import { MembershipsView } from './memberships-view'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Packages' }
 
@@ -18,7 +19,7 @@ export default async function MembershipsPage() {
   if (!trainerId) redirect('/login')
   // An add-on: trainers without it are sent to the Add-ons tab (the nav shows a
   // locked "turn it on" row until then), same as Events and Doggy Daycare.
-  if (!(await hasAddon(trainerId, 'memberships'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerId, 'memberships'))) redirect(addonSettingsHref('memberships'))
 
   const [memberships, packages, classRuns, products, trainer, requestCounts] = await Promise.all([
     prisma.membership.findMany({

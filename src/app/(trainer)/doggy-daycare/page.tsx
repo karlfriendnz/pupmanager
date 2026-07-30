@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { hasAddon } from '@/lib/billing'
 import { listPuppySchools, getPuppySchoolWeek } from '@/lib/puppy-school'
 import { PuppySchoolView } from './puppy-school-view'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Doggy Daycare' }
 
@@ -15,7 +16,7 @@ export default async function PuppySchoolPage() {
   if (!session) redirect('/login')
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
-  if (!(await hasAddon(trainerId, 'puppyschool'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerId, 'puppyschool'))) redirect(addonSettingsHref('puppyschool'))
 
   // Which weekdays the board shows comes from the daycare's own day-parts
   // (board.openDays) — not TrainerProfile.scheduleDays, which belongs to the

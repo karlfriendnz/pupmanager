@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 // Shared server helpers for the Library screens (/library, /library/type,
 // /library/theme, /library/item).
@@ -45,7 +46,7 @@ export async function requireLibraryTrainer(): Promise<string> {
   if (!session) redirect('/login')
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
-  if (!(await hasAddon(trainerId, 'library'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerId, 'library'))) redirect(addonSettingsHref('library'))
   return trainerId
 }
 

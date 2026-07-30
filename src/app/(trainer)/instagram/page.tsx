@@ -8,6 +8,7 @@ import { env } from '@/lib/env'
 import { PageHeader } from '@/components/shared/page-header'
 import type { LinkButtonType } from '@/lib/link-page'
 import { InstagramEditor } from './instagram-editor'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Instagram link' }
 
@@ -17,7 +18,7 @@ const DEFAULT_ACCENT = 'var(--pm-brand-600)'
 export default async function InstagramPage() {
   const ctx = await getTrainerContext()
   if (!ctx) redirect('/login')
-  if (!(await hasAddon(ctx.companyId, 'instagram'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(ctx.companyId, 'instagram'))) redirect(addonSettingsHref('instagram'))
 
   // Ensure the trainer has a public slug (lazily generated on first need).
   const slug = await ensureTrainerSlug(ctx.companyId)

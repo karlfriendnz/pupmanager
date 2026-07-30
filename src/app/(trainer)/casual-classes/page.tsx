@@ -6,6 +6,7 @@ import { formatDate } from '@/lib/utils'
 import { isClassRunPast, NON_EVENT_PACKAGE } from '@/lib/class-runs'
 import { DropInsView } from './drop-ins-view'
 import type { Metadata } from 'next'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Casual Classes' }
 
@@ -36,7 +37,10 @@ export default async function DropInsPage() {
     hasAddon(trainerId, 'dropins'),
     hasAddon(trainerId, 'classes'),
   ])
-  if (!dropinsOn || !classesOn) redirect('/settings?tab=addons')
+  // Both are free, so the switch that turns this back on is on Configure — the
+  // Add-ons page doesn't list free features any more, and sending someone there
+  // was a dead end with no way back to what they clicked.
+  if (!dropinsOn || !classesOn) redirect(addonSettingsHref('dropins'))
 
   const now = new Date()
 

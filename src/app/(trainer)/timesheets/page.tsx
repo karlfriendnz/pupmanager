@@ -6,13 +6,14 @@ import { PageHeader } from '@/components/shared/page-header'
 import { TimesheetsView } from './timesheets-view'
 import { canViewAllTimesheets } from '@/app/api/timesheets/_access'
 import type { Metadata } from 'next'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Timesheets' }
 
 export default async function TimesheetsPage() {
   const ctx = await getTrainerContext()
   if (!ctx) redirect('/login')
-  if (!(await hasAddon(ctx.companyId, 'timesheets'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(ctx.companyId, 'timesheets'))) redirect(addonSettingsHref('timesheets'))
 
   // Owners/managers can browse every member's timesheets via tabs; staff only
   // ever see their own, so we don't even load the roster for them.

@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { hasAddon } from '@/lib/billing'
 import { MessagesView, type ClientRow } from './messages-view'
 import type { Metadata } from 'next'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Messages' }
 
@@ -19,7 +20,7 @@ export default async function MessagesPage({
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
   // Messaging is part of the Client app add-on (default-on; blocked when off).
-  if (!(await hasAddon(trainerId, 'clientapp'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerId, 'clientapp'))) redirect(addonSettingsHref('clientapp'))
 
   const sp = await searchParams
   const tab = sp.tab === 'inactive' ? 'inactive' : 'active'

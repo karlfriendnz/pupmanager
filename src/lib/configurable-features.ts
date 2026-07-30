@@ -140,3 +140,22 @@ export function featureIsOn(
   if (explicit !== undefined) return explicit
   return !!ADDONS.find(a => a.id === id)?.defaultOn
 }
+
+/**
+ * Where to send someone who landed on a screen whose feature is switched off.
+ *
+ * It matters which tab: since the split, a FREE feature's switch lives on
+ * Configure and is not on the Add-ons page at all. Every gated page used to
+ * redirect to `?tab=addons`, so turning Casual classes off and clicking it again
+ * dropped the trainer on a page where the switch didn't exist — a dead end with no
+ * way back to the thing they wanted.
+ *
+ * Derived from the catalogue rather than listed per page, so a new add-on gets the
+ * right destination without anyone remembering to add it.
+ */
+export function addonSettingsHref(id: string): string {
+  const def = ADDONS.find(a => a.id === id)
+  // Unknown ids fall to the shop, which is the safer wrong answer: it lists the
+  // paid things and links onward to Configure.
+  return def?.free ? '/settings?tab=configure' : '/settings?tab=addons'
+}

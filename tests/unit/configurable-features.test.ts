@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   configurableFeatures, groupedFeatures, purchasableAddons, featureIsOn,
-  notASwitch, FEATURE_GROUPS,
+  notASwitch, addonSettingsHref, FEATURE_GROUPS,
 } from '@/lib/configurable-features'
 import { ADDONS } from '@/lib/pricing'
 
@@ -152,5 +152,34 @@ describe('1:1 sessions is configurable too', () => {
 
   it('is not something you buy', () => {
     expect(purchasableAddons().map(a => a.id)).not.toContain('onetoone')
+  })
+})
+
+describe('addonSettingsHref — where an off feature sends you', () => {
+  // The dead end Karl hit: Casual classes was off, clicking it redirected to the
+  // Add-ons page, and since the split that page doesn't list free features — so
+  // the switch to turn it back on wasn't there.
+  it('sends a free feature to Configure, where its switch lives', () => {
+    expect(addonSettingsHref('dropins')).toBe('/settings?tab=configure')
+    expect(addonSettingsHref('classes')).toBe('/settings?tab=configure')
+    expect(addonSettingsHref('timesheets')).toBe('/settings?tab=configure')
+    expect(addonSettingsHref('onetoone')).toBe('/settings?tab=configure')
+  })
+
+  it('sends a paid add-on to the shop, where you buy it', () => {
+    expect(addonSettingsHref('marketing')).toBe('/settings?tab=addons')
+    expect(addonSettingsHref('shop')).toBe('/settings?tab=addons')
+    expect(addonSettingsHref('achievements')).toBe('/settings?tab=addons')
+  })
+
+  // Every switchable feature must land somewhere its own switch exists.
+  it('never sends a switchable feature to the page that lacks its switch', () => {
+    for (const f of configurableFeatures(new Set(['puppyschool', 'dropins']))) {
+      expect(addonSettingsHref(f.id), f.id).toBe('/settings?tab=configure')
+    }
+  })
+
+  it('falls back to the shop for an id it doesn’t know', () => {
+    expect(addonSettingsHref('not-a-real-addon')).toBe('/settings?tab=addons')
   })
 })

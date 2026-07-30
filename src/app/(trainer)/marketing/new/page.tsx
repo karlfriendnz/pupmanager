@@ -6,6 +6,7 @@ import { getTrainerContext, scopeForMember, hasPermission } from '@/lib/membersh
 import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
 import { NewEmailView } from './new-email-view'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'New email' }
 
@@ -19,7 +20,7 @@ export default async function NewEmailPage() {
   if (!ctx) redirect('/login')
   const trainerId = ctx.companyId
   // Marketing is a paid add-on — send trainers without it to the add-ons tab.
-  if (!(await hasAddon(trainerId, 'marketing'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerId, 'marketing'))) redirect(addonSettingsHref('marketing'))
   // Composing requires send permission; non-senders go back to the overview.
   if (!(await hasPermission('messages.send'))) redirect('/marketing')
   const memberScope = scopeForMember(ctx, 'clients.viewAll')

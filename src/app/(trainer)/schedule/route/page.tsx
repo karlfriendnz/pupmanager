@@ -8,6 +8,7 @@ import { todayInTz } from '@/lib/timezone'
 import { trainerRegionCode } from '@/lib/country'
 import { PageHeader } from '@/components/shared/page-header'
 import { RouteManager } from './route-manager'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Route' }
 
@@ -15,7 +16,7 @@ export default async function RoutePage({ searchParams }: { searchParams: Promis
   const ctx = await getTrainerContext()
   if (!ctx) redirect('/login')
   // Route planner is a paid add-on.
-  if (!(await hasAddon(ctx.companyId, 'routeplanner'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(ctx.companyId, 'routeplanner'))) redirect(addonSettingsHref('routeplanner'))
 
   const profile = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },

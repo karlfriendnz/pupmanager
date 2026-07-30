@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { isEventPackage } from '@/lib/class-runs'
 import { EventDetail } from './event-detail'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Event' }
 
@@ -26,7 +27,7 @@ export default async function EventPage({
   if (!session) redirect('/login')
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
-  if (!(await hasAddon(trainerId, 'events'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(trainerId, 'events'))) redirect(addonSettingsHref('events'))
 
   const { eventId } = await params
 

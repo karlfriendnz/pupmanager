@@ -6,13 +6,14 @@ import { hasAddon } from '@/lib/billing'
 import { ensureTrainerSlug } from '@/lib/slug'
 import { PageHeader } from '@/components/shared/page-header'
 import { LeadMagnetsManager } from './lead-magnets-manager'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Lead magnets' }
 
 export default async function LeadMagnetsPage() {
   const ctx = await getTrainerContext()
   if (!ctx) redirect('/login')
-  if (!(await hasAddon(ctx.companyId, 'leadmagnets'))) redirect('/settings?tab=addons')
+  if (!(await hasAddon(ctx.companyId, 'leadmagnets'))) redirect(addonSettingsHref('leadmagnets'))
 
   const slug = (await ensureTrainerSlug(ctx.companyId)) ?? ''
 
