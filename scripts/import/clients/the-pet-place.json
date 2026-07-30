@@ -1,0 +1,115 @@
+{
+  "slug": "the-pet-place",
+  "name": "The Pet Place",
+  "root": "~/PupManager Imports/the-pet-place/incoming",
+
+  "_comment_files": "ONE file, and it is a diary rather than a client list: a MoeGo appointment list report for 1 Jul - 31 Aug 2026. It has no email, phone or address column, because MoeGo only exports the columns that were switched on in the view before Download was pressed. So every person here arrives with a placeholder address. This config is deliberately written to be extended rather than replaced: when the Client & Pet List export arrives with the contact columns enabled, it goes in FIRST as the spine and this file matches into it by name.",
+  "files": [
+    {
+      "shape": "moego_appointments",
+      "path": "Appointment list report(2026-07-01 - 2026-08-31).xlsx",
+      "label": "appointments",
+      "options": {
+        "_comment_consultStatuses": "Which appointment statuses become a service record. 'Finished' only: a cancelled, no-showed or still-unconfirmed booking is not a service anybody received, and creating a purchase record for one would be inventing history. Every other row still becomes a note line, and the soonest future booking becomes the 'Next booking' custom field.",
+        "consultStatuses": ["Finished"],
+
+        "_comment_today": "Pinned so the last-visit / next-booking split is reproducible. Without it the same file would produce a different plan tomorrow, and a diff between two runs would stop meaning anything. Move it forward when you re-run against a newer export.",
+        "today": "30/07/2026",
+
+        "clientIdCustomField": "MoeGo client ID",
+        "lastVisitCustomField": "Last groom",
+        "nextBookingCustomField": "Next booking",
+        "groomerCustomField": "Usual groomer"
+      }
+    }
+  ],
+
+  "_comment_priorities": "One file, so nothing can disagree with anything yet. When the client list export lands it goes above this: it is the only file that will know a phone number, and an appointment report must never overwrite one.",
+  "priorities": {
+    "appointments": 10
+  },
+
+  "_comment_classes": "The Pet Place is a grooming salon. It runs no classes and no courses, so there are no course codes - every appointment is a 1:1 service.",
+  "courseCodes": {},
+
+  "_comment_serviceNames": "Their service list, verbatim from the Services column, mapped to the package name PupManager will show. Keys must be UPPERCASE: lib/courses.add_consult upper-cases the code before looking it up. A service missing from here still imports, but under the generic '1:1 / in-home service' name, so the source module lists any it did not recognise in the review.",
+  "serviceNames": {
+    "FULL GROOM - TINY BREED <4KG": "Full Groom — Tiny Breed (under 4kg)",
+    "FULL GROOM - SMALL BREED 4-10KG": "Full Groom — Small Breed (4–10kg)",
+    "FULL GROOM - MEDIUM BREED 11-20KG": "Full Groom — Medium Breed (11–20kg)",
+    "FULL GROOM - LARGE BREED 20-35KG": "Full Groom — Large Breed (20–35kg)",
+    "MINI GROOM - SMALL BREED 4-10KG": "Mini Groom — Small Breed (4–10kg)",
+    "MINI GROOM - LARGE BREED 20-35KG": "Mini Groom — Large Breed (20–35kg)",
+    "BBN - SC - SMALL BREED": "Bath, Brush & Nails — Short Coat, Small Breed",
+    "BBN - SC- LARGE BREED": "Bath, Brush & Nails — Short Coat, Large Breed",
+    "BBN - SC- GIANT BREED": "Bath, Brush & Nails — Short Coat, Giant Breed",
+    "BBN - LC - LARGE BREED": "Bath, Brush & Nails — Long Coat, Large Breed",
+    "NAIL TRIM": "Nail Trim",
+    "CAT GROOM - WITH CLIP": "Cat Groom — with clip"
+  },
+  "servicePhrases": [],
+
+  "_comment_customFields": "None of the generic concepts apply to a grooming salon - no volunteers, no referral professionals, no previous trainer, no account credit - so they are switched off with \"\".",
+  "customFields": {
+    "volunteer": "",
+    "professional": "",
+    "previousTrainer": "",
+    "business": "",
+    "credit": ""
+  },
+
+  "_comment_customFieldsToCreate": "The loader DROPS a value whose custom field does not exist on the trainer, silently. ensure-custom-fields.ts reads this key and creates them first. 'MoeGo client ID' is the important one: it is what lets the next export be reconciled against this import row by row instead of by name.",
+  "customFieldsToCreate": [
+    "MoeGo client ID",
+    "Last groom",
+    "Next booking",
+    "Usual groomer"
+  ],
+
+  "_comment_dogNameBlocklistExtra": "MoeGo requires a pet on every appointment, so ad-hoc walk-in work gets booked against a pet called 'Misc.'. It is not a dog. Named here so it is refused as a dog name and recorded in the junk list rather than imported as somebody's puppy.",
+  "dogNameBlocklistExtra": [
+    "misc",
+    "misc.",
+    "miscellaneous"
+  ],
+
+  "_comment_placeholderNamespace": "Pin it and never change it. A person with no email gets hash(namespace + their MoeGo client ID) as an address, and that derivation is the only thing that lets a re-run recognise them instead of creating a second copy.",
+  "placeholderNamespace": "the-pet-place",
+
+  "phone": {
+    "countryCode": "64",
+    "trunkPrefix": "0",
+    "mobilePrefixes": ["2"],
+    "landlinePrefixes": ["3", "4", "6", "7", "9"],
+    "mobileLength": [9, 11],
+    "landlineLength": [9, 10]
+  },
+
+  "_comment_breedWords": "Only seeds. The report's own Pet breed column supplies the real vocabulary - including this salon's spellings, 'Maltishu', 'Spoodle', 'Low Chen', 'Cavapoo (h)' - and the vocabulary pass reads it before anything is parsed.",
+  "breedWords": [
+    "poodle", "standard poodle", "mini poodle", "toy poodle", "spoodle",
+    "cavoodle", "cavapoo", "goldendoodle", "labradoodle", "schnoodle",
+    "shichon", "maltishu", "maltese", "shih tzu", "lhasa apso", "bichon",
+    "bichon frise", "cavalier king charles spaniel", "cocker spaniel",
+    "spaniel", "border collie", "collie", "german spitz", "spitz",
+    "pomeranian", "papillon", "pekingese", "low chen", "lowchen",
+    "miniature schnauzer", "schnauzer", "west highland white terrier",
+    "westie", "jack russell terrier", "wirehaired fox terrier", "fox terrier",
+    "terrier", "labrador", "retriever", "golden retriever", "husky", "beagle",
+    "boxer", "pug", "french bulldog", "bulldog", "dachshund", "chihuahua",
+    "corgi", "german shepherd", "rottweiler", "whippet", "greyhound",
+    "cross", "mixed", "mix"
+  ],
+
+  "_comment_suburbs": "Empty on purpose. This file has no address column, so there is nothing for a suburb list to disambiguate. Fill it in when the client list export arrives.",
+  "suburbs": [],
+
+  "_comment_csv": "No Business field is in use, so a company has nowhere to go - and a grooming client does not have one. The two long per-person values are written on the first dog row only, so a two-dog household does not repeat them.",
+  "csv": {
+    "companyTo": "",
+    "oncePerPerson": [
+      "MoeGo client ID",
+      "Usual groomer"
+    ]
+  }
+}

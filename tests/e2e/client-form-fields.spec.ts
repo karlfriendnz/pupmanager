@@ -169,7 +169,10 @@ test.describe('the client form, every field', () => {
       })
       expect([200, 201]).toContain(res.status())
 
-      await page.goto('/clients')
+      // Contacts, not the default Current tab: activity is DERIVED from what
+      // someone has booked (see client-activity.ts), and a client created with
+      // just a name and an email has booked nothing yet.
+      await page.goto('/clients?tab=never')
       // Rendered as text: the literal string is visible, and no script ran. The
       // tail is the distinctive part (the markup prefix is shared).
       await expect(page.getByText(payload.split('>')[1]).locator('visible=true').first())

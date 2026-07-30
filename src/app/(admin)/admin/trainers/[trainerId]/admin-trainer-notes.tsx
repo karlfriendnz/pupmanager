@@ -127,7 +127,13 @@ export function AdminTrainerNotes({
             placeholder="Record a note about this trainer's progress…"
             rows={3}
             maxLength={5000}
-            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            // w-full and resize-none: a textarea carries an intrinsic width from
+            // `cols` and is user-resizable by default, so without these it can
+            // spill out of its grid column and sit on top of the To-dos panel
+            // beside it — which made the To-dos "Add" button genuinely
+            // unclickable. Caught by the e2e click failing on "textarea
+            // intercepts pointer events".
+            className="w-full resize-none rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button type="submit" disabled={busy || !noteBody.trim()} className="self-end rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40">
             Add note

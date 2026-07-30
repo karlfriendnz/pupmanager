@@ -191,6 +191,13 @@ describe('the rename catalogue matches the real menu', () => {
     expect(headed.length).toBeGreaterThan(3)
     const inCatalog = new Map(NAV_LABEL_CATALOG.map(e => [e.key, e.defaultLabel]))
     for (const [section, label] of headed) {
+      // A locked heading is deliberately absent from the catalogue — the
+      // editor must not offer a box it would refuse to save. Every OTHER
+      // heading has to be there, or renaming it silently does nothing.
+      if (!isRenameable(sectionKey(section), label)) {
+        expect(inCatalog.has(sectionKey(section)), `locked heading ${section} must not be offered`).toBe(false)
+        continue
+      }
       expect(inCatalog.get(sectionKey(section)), `heading ${section}`).toBe(label)
     }
   })
@@ -236,10 +243,20 @@ describe('a renamed menu item renames its page too', () => {
   })
 
   // /clients is a prefix of /clients/waitlist, and the waitlist has its own name.
-  it('prefers the most specific menu item', () => {
-    const both = { '/clients': 'People', '/clients/waitlist': 'Queue' }
-    expect(pageTitleLabel('/clients/waitlist', 'Waitlist', both)).toBe('Queue')
-    expect(pageTitleLabel('/clients', 'Clients', both)).toBe('People')
+  // This used to compare /clients against /clients/waitlist. Waitlist was
+  // locked on 2026-07-30 and left the catalogue with it, and no nested pair is
+  // renameable any more — so the two-candidate case has no honest example. What
+  // still matters, and is what the sort actually guards, is that a page BELOW a
+  // renamed item inherits that item's label rather than losing it.
+  it('a page under a renamed item keeps that name', () => {
+    const mine = { '/clients': 'People' }
+    expect(pageTitleLabel('/clients', 'Clients', mine)).toBe('People')
+    expect(pageTitleLabel('/clients/abc123', 'Clients', mine)).toBe('People')
+  })
+
+  it('does not reach across to an unrelated item', () => {
+    const mine = { '/clients': 'People' }
+    expect(pageTitleLabel('/library', 'Library', mine)).toBe('Library')
   })
 
   // "/schedule?availability=1" isn't a path; matching it against /schedule would

@@ -35,12 +35,33 @@ const LOCKED: ReadonlySet<NavLabelKey> = new Set([
   // Stripe and Xero are the connected services' own names.
   '/finances/stripe',
   '/settings?tab=xero',
+
+  // Locked 2026-07-30 (Karl). These name things the app itself is built
+  // around, not things a trainer sells. Renaming Schedule or Dashboard makes
+  // support conversations, documentation and every screenshot wrong for that
+  // one account, and the words buy nothing — nobody has a different word for
+  // their calendar. The offerings above stay renameable, because "1:1
+  // Sessions" genuinely is a trainer's own word for their own product.
+  '/dashboard',
+  '/schedule',
+  '/schedule?availability=1',
+  '/schedule/route',
+  '/sessions/draft-notes',
+  '/clients/waitlist',
+  '/marketing',
+  '/help',
+  'section:tools',
+  'section:business',
 ])
 
 /** Locked when the label itself is a proper noun, wherever it sits. Belt and
  *  braces for a nav item that moves house or gets added later. */
 const LOCKED_LABELS: ReadonlySet<string> = new Set([
   'Stripe', 'Xero', 'Instagram link', 'Finances', 'Reports', 'Timesheets', 'Settings',
+  // Same belt and braces for the 2026-07-30 set: if one of these moves to a new
+  // href it stays locked rather than quietly becoming renameable again.
+  'Dashboard', 'Schedule', 'Availability', 'Route', 'Notes', 'Waitlist',
+  'Marketing', 'Help', 'Tools', 'Business',
 ])
 
 export interface RenameableEntry {
@@ -64,8 +85,6 @@ export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
   { key: 'section:clients', defaultLabel: 'Clients', isSection: true },
   { key: '/clients', defaultLabel: 'Clients', isSection: false },
   { key: '/enquiries', defaultLabel: 'Enquiries', isSection: false },
-  { key: '/sessions/draft-notes', defaultLabel: 'Notes', isSection: false },
-  { key: '/clients/waitlist', defaultLabel: 'Waitlist', isSection: false },
 
   { key: 'section:programs', defaultLabel: 'Offerings', isSection: true },
   { key: '/packages', defaultLabel: '1:1 Sessions', isSection: false },
@@ -74,22 +93,14 @@ export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
   { key: '/events', defaultLabel: 'Events', isSection: false },
   { key: '/memberships', defaultLabel: 'Packages', isSection: false },
 
-  { key: 'section:tools', defaultLabel: 'Tools', isSection: true },
-  { key: '/schedule/route', defaultLabel: 'Route', isSection: false },
   { key: '/library', defaultLabel: 'Library', isSection: false },
   { key: '/products', defaultLabel: 'Products', isSection: false },
   { key: '/achievements', defaultLabel: 'Achievements', isSection: false },
 
-  { key: 'section:business', defaultLabel: 'Business', isSection: true },
-  { key: '/marketing', defaultLabel: 'Marketing', isSection: false },
 
   // The daily three sit above the group headings, so they come last in the
   // editor — a trainer scanning for "Offerings" shouldn't wade past them.
-  { key: '/dashboard', defaultLabel: 'Dashboard', isSection: false },
   { key: '/messages', defaultLabel: 'Messages', isSection: false },
-  { key: '/schedule', defaultLabel: 'Schedule', isSection: false },
-  { key: '/schedule?availability=1', defaultLabel: 'Availability', isSection: false },
-  { key: '/help', defaultLabel: 'Help', isSection: false },
 ]
 
 export function isRenameable(key: NavLabelKey, defaultLabel: string): boolean {
