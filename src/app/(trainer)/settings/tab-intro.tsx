@@ -54,6 +54,16 @@ export const TAB_INTRO: Record<string, TabIntroCopy> = {
       'Some need a moment to set up; the link appears once it’s on.',
     ],
   },
+  integrations: {
+    title: 'Integrations',
+    blurb:
+      'The other tools your business already uses — your calendar, your card payments, your accounting, your website. Connect one and PupManager keeps it fed, so you stop typing the same thing twice.',
+    steps: [
+      'Open one to connect it — you sign in to that service, not to us.',
+      '“Finish connecting” means it’s switched on but not linked yet, so it isn’t doing anything.',
+      'Manage takes you to that one’s own settings any time.',
+    ],
+  },
   naming: {
     title: 'What you call things',
     blurb:

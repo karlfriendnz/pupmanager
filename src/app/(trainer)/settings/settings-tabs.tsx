@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette, CalendarDays, Dog, Mail, SlidersHorizontal, Tag } from 'lucide-react'
+import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette, CalendarDays, Dog, Mail, SlidersHorizontal, Tag, Plug } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 import { cn } from '@/lib/utils'
 import { TabIntro } from './tab-intro'
@@ -46,12 +46,17 @@ const ALL_TABS = [
   { id: 'daycare', label: 'Daycare', icon: Dog, section: 'business' },
   { id: 'forms', label: 'Fields & forms', icon: Pencil, section: 'business' },
   { id: 'locations', label: 'Locations', icon: MapPin, section: 'business' },
-  { id: 'integration', label: 'Connect Website', icon: Globe, section: 'business' },
-  { id: 'calendar', label: 'Calendar', icon: CalendarDays, section: 'business' },
+  { id: 'integrations', label: 'Integrations', icon: Plug, section: 'business' },
+  // The four below are reached THROUGH Integrations (its cards' Manage links),
+  // not from this menu: "what am I connected to" had no single answer while
+  // each sat as its own unrelated row. Still listed here so ?tab= keeps working
+  // and each still renders — menuHidden only takes them out of the rail.
+  { id: 'integration', label: 'Connect Website', icon: Globe, section: 'business', menuHidden: true },
+  { id: 'calendar', label: 'Calendar', icon: CalendarDays, section: 'business', menuHidden: true },
   { id: 'emails', label: 'Email templates', icon: Mail, section: 'business' },
   { id: 'team', label: 'Team', icon: Users, section: 'business' },
-  { id: 'payments', label: 'Payments', icon: Wallet, section: 'money' },
-  { id: 'xero', label: 'Xero', icon: Landmark, section: 'money' },
+  { id: 'payments', label: 'Payments', icon: Wallet, section: 'money', menuHidden: true },
+  { id: 'xero', label: 'Xero', icon: Landmark, section: 'money', menuHidden: true },
   { id: 'billing', label: 'Billing', icon: CreditCard, section: 'money' },
   { id: 'activity', label: 'Activity', icon: ShieldCheck, section: 'system' },
 ] as const
@@ -68,6 +73,7 @@ export function SettingsTabs({
   calendar,
   configure,
   naming,
+  integrations,
   addons,
   daycare,
   emails,
@@ -89,6 +95,7 @@ export function SettingsTabs({
   calendar?: React.ReactNode
   configure?: React.ReactNode
   naming?: React.ReactNode
+  integrations?: React.ReactNode
   addons?: React.ReactNode
   daycare?: React.ReactNode
   emails?: React.ReactNode
@@ -99,9 +106,10 @@ export function SettingsTabs({
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, calendar, configure, naming, addons, daycare, emails, team, payments, xero, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, calendar, configure, naming, integrations, addons, daycare, emails, team, payments, xero, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
+  // Every tab that RENDERS — what ?tab= may name, and what gets a hidden div.
   const tabs = ALL_TABS.filter((t) => present[t.id] != null && !(t.id === 'billing' && native))
   const tabIds = tabs.map((t) => t.id) as readonly TabId[]
 
@@ -120,6 +128,12 @@ export function SettingsTabs({
     ? (queryTab as TabId)
     : firstTab
   const [tab, setTab] = useState<TabId>(initialTab)
+
+  // What the menu OFFERS. The integration tabs are reached through the
+  // Integrations board instead, so they render and deep-link but don't sit in
+  // the rail — unless one is the tab you're on, or you'd be reading a page the
+  // menu says you aren't on.
+  const menuTabs = tabs.filter((t) => !('menuHidden' in t && t.menuHidden) || t.id === tab)
 
   // Phones get a landing grid instead of a horizontal tab strip: a strip of
   // twelve items scrolled sideways hides everything past the second one, and
@@ -184,7 +198,7 @@ export function SettingsTabs({
             <ArrowLeft className="h-5 w-5 flex-shrink-0" />
             Back to app
           </Link>
-          {tabs.map((t, idx, arr) => {
+          {menuTabs.map((t, idx, arr) => {
             const Icon = t.icon
             const active = tab === t.id
             const sectionChanged = idx === 0 || arr[idx - 1].section !== t.section
@@ -222,7 +236,7 @@ export function SettingsTabs({
           of buttons. Shown when no tab is picked. */}
       <div className={showMobileMenu ? 'md:hidden' : 'hidden'}>
         {SECTION_ORDER.map(section => {
-          const inSection = tabs.filter(t => t.section === section)
+          const inSection = menuTabs.filter(t => t.section === section)
           if (inSection.length === 0) return null
           return (
             <div key={section} className="mb-5 last:mb-0">
@@ -286,6 +300,7 @@ export function SettingsTabs({
         {calendar != null && <div className={tab === 'calendar' ? 'max-w-2xl' : 'hidden'}>{calendar}</div>}
         {configure != null && <div className={tab === 'configure' ? '' : 'hidden'}>{configure}</div>}
         {naming != null && <div className={tab === 'naming' ? '' : 'hidden'}>{naming}</div>}
+        {integrations != null && <div className={tab === 'integrations' ? '' : 'hidden'}>{integrations}</div>}
         {addons != null && <div className={tab === 'addons' ? '' : 'hidden'}>{addons}</div>}
         {daycare != null && <div className={tab === 'daycare' ? '' : 'hidden'}>{daycare}</div>}
         {emails != null && <div className={tab === 'emails' ? '' : 'hidden'}>{emails}</div>}
