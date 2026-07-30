@@ -141,6 +141,11 @@ export default async function MyAvailabilityPage() {
   }))
 
   // Open group classes the client can join themselves.
+  //
+  // Deliberately NOT filtered by suspendedAt. A membership that has stopped
+  // being paid for has its seats PAUSED, not withdrawn — the client still holds
+  // the place. Hiding a paused seat here would put the class back on the "join
+  // this" list and let them pay a second time for a seat they already have.
   const enrolled = await prisma.classEnrollment.findMany({
     where: { clientId: active.clientId, status: { in: ['ENROLLED', 'WAITLISTED', 'COMPLETED'] } },
     select: { classRunId: true, type: true, dropInSessionId: true },

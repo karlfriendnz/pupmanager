@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { PageHeader } from '@/components/shared/page-header'
 import { resolveCancellationFeeCents } from '@/lib/cancellation'
+import { NOT_SUSPENDED, SESSIONS_NOT_SUSPENDED } from '@/lib/membership-access'
 import { CancelSessionButton } from './cancel-session-button'
 import { LeaveClassButton } from './leave-class-button'
 import type { Metadata } from 'next'
@@ -68,12 +69,16 @@ export default async function MySessionsPage() {
   // enrolments → the run's shared sessions). Merged into one timeline.
   const [oneToOne, enrollments] = await Promise.all([
     prisma.trainingSession.findMany({
-      where: { clientId: active.clientId },
+      // A session granted by a membership whose payment has failed is hidden
+      // while the plan is paused — see SESSIONS_NOT_SUSPENDED. It is not
+      // deleted, and it stays on the TRAINER's calendar; a successful retry
+      // brings it straight back.
+      where: { clientId: active.clientId, ...SESSIONS_NOT_SUSPENDED },
       orderBy: { scheduledAt: 'asc' },
       select: { id: true, title: true, scheduledAt: true, durationMins: true, sessionType: true, location: true, status: true },
     }),
     prisma.classEnrollment.findMany({
-      where: { clientId: active.clientId, status: { not: 'WITHDRAWN' } },
+      where: { clientId: active.clientId, status: { not: 'WITHDRAWN' }, ...NOT_SUSPENDED },
       select: {
         // What the enrolment actually buys. A FULL enrolment attends every
         // session in the run; a DROP_IN is a booking for the ONE session in

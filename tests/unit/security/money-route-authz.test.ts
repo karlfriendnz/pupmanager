@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   paymentFindUnique: vi.fn(),
   trainerProfileFindUnique: vi.fn(),
   trainerProfileUpdate: vi.fn(),
+  membershipPurchaseCount: vi.fn(),
   userFindUnique: vi.fn(),
   isStripeConfigured: vi.fn(() => true),
   isConnectConfigured: vi.fn(() => true),
@@ -30,6 +31,9 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     payment: { findUnique: h.paymentFindUnique },
     trainerProfile: { findUnique: h.trainerProfileFindUnique, update: h.trainerProfileUpdate },
+    // Switching payments OFF is blocked while clients are on ongoing plans —
+    // those live on the trainer's Stripe account and would keep charging.
+    membershipPurchase: { count: h.membershipPurchaseCount },
     user: { findUnique: h.userFindUnique },
   },
 }))
@@ -94,6 +98,7 @@ describe('Stripe Connect account PATCH — OWNER only', () => {
 
   it('lets the OWNER toggle payment settings', async () => {
     h.trainerProfileUpdate.mockResolvedValue({})
+    h.membershipPurchaseCount.mockResolvedValue(0)
     const res = await run('OWNER')
     expect(res.status).toBe(200)
     expect(h.trainerProfileUpdate).toHaveBeenCalled()

@@ -31,11 +31,20 @@ function makeTx(membership: unknown = MEMBERSHIP) {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     productRequest: { create: vi.fn().mockResolvedValue({}) },
-    membershipPurchase: { create: vi.fn().mockResolvedValue({}) },
+    // Returns an id now: the purchase is created FIRST so each grant it makes
+    // can be stamped with it, which is what lets a failed payment find and
+    // pause exactly what this plan gave the client.
+    membershipPurchase: { create: vi.fn().mockResolvedValue({ id: 'purchase1' }) },
+    clientPackage: { update: vi.fn().mockResolvedValue({}) },
   }
 }
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  // materializeBooking returns the assignment it created; membership fulfilment
+  // now reads clientPackageId off it to stamp the grant.
+  h.materializeBooking.mockResolvedValue({ clientPackageId: 'cp1', sessionIds: [] })
+})
 
 describe('fulfilMembershipInTx', () => {
   it('grants each package × qty, each product × qty, records the purchase, defers classes', async () => {

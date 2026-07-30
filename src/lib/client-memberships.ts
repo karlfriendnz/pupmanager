@@ -1,5 +1,9 @@
 import { prisma } from './prisma'
 import { hasAddon } from './billing'
+import { describePlanCommitment } from './membership-consent-copy'
+import { accessPausedReason } from './membership-access'
+import { formatMoney } from './money'
+import type { PlanInterval } from './connect-subscriptions'
 
 // The client-facing shape of a published membership (matches ClientMembershipsView's
 // card): card styling + resolved included-item labels/images/descriptions.
@@ -13,13 +17,24 @@ export interface ClientMembership {
   cadence: 'ONE_OFF' | 'RECURRING'
   /** Billing period of the headline price. Null for a one-off. */
   interval: ClientMembershipInterval | null
-  /** Extra billing options a RECURRING plan offers (e.g. $10/wk OR $35/mo). */
-  plans: { id: string; interval: ClientMembershipInterval; priceCents: number }[]
   /**
-   * Can a client actually check this out right now? Only ONE_OFF can — the buy
-   * route refuses RECURRING with a 409 until the mandate layer ships. The UI
-   * reads this rather than re-deriving the rule, so a listing can never offer a
-   * button the API would reject.
+   * The billing options a RECURRING plan offers (e.g. $10/wk OR $35/mo). Each
+   * carries its own consent copy, because each is a different agreement — a
+   * different price, a different frequency, and possibly a different minimum
+   * term and early-finish fee.
+   */
+  plans: {
+    id: string
+    interval: ClientMembershipInterval
+    priceCents: number
+    priceLabel: string
+    consent: MembershipConsentCopy | null
+  }[]
+  /**
+   * Can a client actually check this out right now? A ONE_OFF needs a price; a
+   * RECURRING one needs a priced plan AND the trainer switched on for recurring
+   * payments. The UI reads this rather than re-deriving the rule, so a listing
+   * can never offer a button the API would reject.
    */
   buyable: boolean
   /**
@@ -29,6 +44,140 @@ export interface ClientMembership {
   blockedReason: 'RECURRING' | 'NO_PRICE' | null
   /** This client already has a PENDING request in for it. */
   requested: boolean
+  /**
+   * RECURRING only: a subscription needs explicit, recorded consent, so the card
+   * opens a confirmation screen instead of going straight to Stripe.
+   */
+  needsConsent: boolean
+  /** The client is already subscribed — the card says so instead of selling again. */
+  subscribed: boolean
+  /**
+   * RECURRING + buyable only: the exact sentences the consent screen must show,
+   * built server-side by the SAME function that writes the stored consent, so
+   * the screen and the record can never disagree.
+   */
+  consent: MembershipConsentCopy | null
+}
+
+/** The sentences a consent screen must show for one billing option. */
+export interface MembershipConsentCopy {
+  text: string
+  priceLabel: string
+  termLabel: string
+  earlyTermFeeLabel: string | null
+  cancelWhereLabel: string
+  nextChargeLabel: string
+}
+
+/** A recurring membership this client is (or was recently) paying for. */
+export interface ClientSubscription {
+  purchaseId: string
+  name: string
+  status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLING' | 'CANCELLED' | 'PAUSED' | 'LAPSED'
+  priceLabel: string | null
+  /** End of the period they have already paid for. */
+  currentPeriodEnd: string | null
+  cancelAtPeriodEnd: boolean
+  /** End of a minimum term, when there is one and it hasn't passed. */
+  committedUntil: string | null
+  /**
+   * Plain words for why this plan isn't giving them anything right now, from
+   * the single access-policy function. Null when it is working normally.
+   */
+  pausedReason: string | null
+  /** The card on file, so "the card ending 4242" means something to them. */
+  cardLast4: string | null
+  /** Stripe's hosted page for an invoice their BANK needs them to approve. */
+  actionRequiredUrl: string | null
+}
+
+/**
+ * The client's own recurring plans, for the "here's what you're paying for"
+ * list and its cancel action.
+ *
+ * CANCELLED rows are deliberately excluded once they have actually ended —
+ * a finished plan is history, not something to show a cancel button beside.
+ */
+export async function loadClientSubscriptions(clientId: string, currency: string): Promise<ClientSubscription[]> {
+  const rows = await prisma.membershipPurchase.findMany({
+    where: {
+      clientId,
+      stripeSubscriptionId: { not: null },
+      status: { in: ['ACTIVE', 'PAST_DUE', 'CANCELLING', 'PAUSED'] },
+    },
+    orderBy: { purchasedAt: 'desc' },
+    select: {
+      id: true, status: true, currentPeriodEnd: true, committedUntil: true, cancelAtPeriodEnd: true,
+      cardLast4: true,
+      membership: { select: { name: true } },
+      plan: { select: { priceCents: true, interval: true } },
+      // An invoice the client's bank wants them to authorise. Nothing in the
+      // app can act for them, so the hosted URL has to be reachable from here.
+      invoices: {
+        where: { actionRequiredAt: { not: null }, status: 'OPEN' },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { hostedInvoiceUrl: true },
+      },
+    },
+  })
+
+  const now = Date.now()
+  return rows.map(r => ({
+    purchaseId: r.id,
+    name: r.membership?.name ?? 'Package',
+    status: r.status as ClientSubscription['status'],
+    priceLabel: r.plan
+      ? `${formatMoney(r.plan.priceCents, currency)} / ${INTERVAL_WORD[r.plan.interval as ClientMembershipInterval]}`
+      : null,
+    currentPeriodEnd: r.currentPeriodEnd ? r.currentPeriodEnd.toISOString() : null,
+    cancelAtPeriodEnd: r.cancelAtPeriodEnd,
+    committedUntil: r.committedUntil && r.committedUntil.getTime() > now ? r.committedUntil.toISOString() : null,
+    pausedReason: accessPausedReason(r.status),
+    cardLast4: r.cardLast4,
+    actionRequiredUrl: r.invoices[0]?.hostedInvoiceUrl ?? null,
+  }))
+}
+
+const INTERVAL_WORD: Record<ClientMembershipInterval, string> = {
+  WEEK: 'week',
+  FORTNIGHT: 'fortnight',
+  MONTH: 'month',
+}
+
+/**
+ * The single rule for whether a card can sell. Extracted so the storefront and
+ * the buy route cannot drift apart — a card offering a button the API then
+ * refuses is the exact failure this shape exists to prevent.
+ *
+ * A RECURRING plan is buyable when the trainer is switched on for recurring
+ * payments and the plan has a price. It still routes through a consent screen
+ * rather than straight to Stripe, which is what `needsConsent` marks.
+ */
+export function resolveBuyability(args: {
+  cadence: 'ONE_OFF' | 'RECURRING'
+  priceCents: number
+  planPriceCents: number | null
+  recurringOn: boolean
+  subscribed: boolean
+}): { buyable: boolean; blockedReason: 'RECURRING' | 'NO_PRICE' | null; needsConsent: boolean } {
+  if (args.cadence === 'ONE_OFF') {
+    return {
+      buyable: args.priceCents > 0,
+      blockedReason: args.priceCents > 0 ? null : 'NO_PRICE',
+      needsConsent: false,
+    }
+  }
+  // Already paying for it — not buyable, but not "blocked" either. The card
+  // shows their plan rather than an explanation of why they can't have it.
+  if (args.subscribed) return { buyable: false, blockedReason: null, needsConsent: false }
+  // Not switched on for this trainer yet: falls back to the existing
+  // "Request this" path, which tells the trainer to set it up.
+  if (!args.recurringOn) return { buyable: false, blockedReason: 'RECURRING', needsConsent: false }
+
+  const price = args.planPriceCents ?? args.priceCents
+  if (price <= 0) return { buyable: false, blockedReason: 'NO_PRICE', needsConsent: false }
+  return { buyable: true, blockedReason: null, needsConsent: true }
 }
 
 /**
@@ -51,7 +200,12 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
   const memberships = await prisma.membership.findMany({
     where: { trainerId, published: true },
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-    include: { items: { orderBy: { order: 'asc' } }, plans: { orderBy: { order: 'asc' } } },
+    include: {
+      items: { orderBy: { order: 'asc' } },
+      // Archived plans still bill their existing subscribers but must never be
+      // OFFERED again — that's what archiving means.
+      plans: { where: { archivedAt: null }, orderBy: { order: 'asc' } },
+    },
   })
   if (memberships.length === 0) return []
 
@@ -76,6 +230,30 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
       })).map(r => r.membershipId))
     : new Set<string>()
 
+  // Recurring is gated per trainer (the old CONNECT_LIVE_ALLOWLIST env var is
+  // gone, so this column is the allowlist). Read once for the whole list.
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { recurringPaymentsEnabled: true, businessName: true, payoutCurrency: true },
+  })
+  const recurringOn = !!trainer?.recurringPaymentsEnabled
+  const businessName = trainer?.businessName ?? 'Your trainer'
+  const currency = trainer?.payoutCurrency ?? 'nzd'
+
+  // Which of these the client is already subscribed to — a card must not sell a
+  // second monthly charge for a plan they are already paying for.
+  const subscribedIds = clientId
+    ? new Set((await prisma.membershipPurchase.findMany({
+        where: {
+          clientId,
+          membershipId: { in: memberships.map(m => m.id) },
+          status: { in: ['ACTIVE', 'PAST_DUE', 'CANCELLING'] },
+          stripeSubscriptionId: { not: null },
+        },
+        select: { membershipId: true },
+      })).map(p => p.membershipId))
+    : new Set<string>()
+
   const nameOf = new Map<string, string>([...pkgs, ...runs, ...prods].map(x => [x.id, x.name]))
   const imgOf = new Map<string, string | null>([...runs, ...prods].map(x => [x.id, x.imageUrl ?? null]))
   const descOf = new Map<string, string | null>([
@@ -84,18 +262,63 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
     ...prods.map(x => [x.id, x.description ?? null] as const),
   ])
 
-  return memberships.map(m => ({
+  return memberships.map(m => {
+    // Defensive: a membership row always carries a plans array from Prisma, but
+    // reading [0] off an undefined here would take the whole storefront down.
+    const plans = m.plans ?? []
+    const buyability = resolveBuyability({
+      cadence: m.cadence as 'ONE_OFF' | 'RECURRING',
+      priceCents: m.priceCents,
+      planPriceCents: plans[0]?.priceCents ?? null,
+      recurringOn,
+      subscribed: subscribedIds.has(m.id),
+    })
+    // Every option gets its OWN consent copy. A weekly and a monthly plan are
+    // two different agreements — different price, different frequency, possibly
+    // a different minimum term — so a picker that showed one set of words for
+    // both would store a consent that did not match what was on screen.
+    const copyFor = (p: { priceCents: number; interval: string; minTermCount: number; earlyTermFeeCents: number | null }) => {
+      const c = describePlanCommitment({
+        businessName,
+        priceCents: p.priceCents,
+        currency,
+        interval: p.interval as PlanInterval,
+        minTermCount: p.minTermCount,
+        earlyTermFeeCents: p.earlyTermFeeCents,
+      })
+      return {
+        text: c.consentText,
+        priceLabel: c.priceLabel,
+        termLabel: c.termLabel,
+        earlyTermFeeLabel: c.earlyTermFeeLabel,
+        cancelWhereLabel: c.cancelWhereLabel,
+        nextChargeLabel: c.nextChargeAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long' }),
+      }
+    }
+    // The card's headline still describes the FIRST option, which is the one the
+    // buy route falls back to when no planId is sent.
+    const plan = plans[0] ?? null
+    const consent = buyability.needsConsent && plan ? copyFor(plan) : null
+
+    return {
     id: m.id, name: m.name, description: m.description, priceCents: m.priceCents,
     imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
     buttonBgColor: m.buttonBgColor, buttonTextColor: m.buttonTextColor, buttonText: m.buttonText,
     cadence: m.cadence as 'ONE_OFF' | 'RECURRING',
     interval: m.cadence === 'RECURRING' ? ((m.interval ?? null) as ClientMembershipInterval | null) : null,
     plans: m.cadence === 'RECURRING'
-      ? m.plans.map(p => ({ id: p.id, interval: p.interval as ClientMembershipInterval, priceCents: p.priceCents }))
+      ? plans.map(p => ({
+          id: p.id,
+          interval: p.interval as ClientMembershipInterval,
+          priceCents: p.priceCents,
+          priceLabel: `${formatMoney(p.priceCents, currency)} / ${INTERVAL_WORD[p.interval as ClientMembershipInterval]}`,
+          consent: buyability.needsConsent ? copyFor(p) : null,
+        }))
       : [],
-    buyable: m.cadence === 'ONE_OFF' && m.priceCents > 0,
-    blockedReason: m.cadence !== 'ONE_OFF' ? 'RECURRING' : m.priceCents <= 0 ? 'NO_PRICE' : null,
+    ...buyability,
     requested: requestedIds.has(m.id),
+    subscribed: subscribedIds.has(m.id),
+    consent,
     items: m.items
       .map(it => {
         const id = it.packageId ?? it.classRunId ?? it.productId
@@ -107,5 +330,6 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
         }
       })
       .filter(x => x.label),
-  }))
+    }
+  })
 }

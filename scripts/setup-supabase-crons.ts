@@ -61,6 +61,14 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   { name: 'pm-weekly-summary', schedule: '0 * * * *', path: 'weekly-summary' },
   { name: 'pm-message-email-fallback', schedule: '*/15 * * * *', path: 'message-email-fallback' },
   { name: 'pm-xero-reconcile', schedule: '25 * * * *', path: 'xero-reconcile' },
+
+  // Nightly at 03:40: confirm Stripe agrees with every recurring membership we
+  // think is live. Catches the silent, dangerous case — a client who cancelled
+  // and is still being charged because the Stripe call failed and nothing
+  // errored. Registered HERE rather than anywhere else precisely because of the
+  // rotation trap described above: a job outside this list gets skipped by the
+  // next rotation and 401s forever with no error anywhere.
+  { name: 'pm-membership-reconcile', schedule: '40 3 * * *', path: 'membership-reconcile' },
 ]
 
 // Every scheduled job that sends a bearer token is in this list. That is the

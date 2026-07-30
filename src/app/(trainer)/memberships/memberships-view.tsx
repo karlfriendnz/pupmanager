@@ -364,7 +364,19 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
               </div>
               {draft.cadence === 'RECURRING' && (
                 <div className="rounded-lg bg-violet-50/60 border border-violet-100 p-3 flex flex-col gap-2.5">
-                  <p className="text-xs text-violet-700">Add one or more billing options — the client picks which one they want. Configurable now; purchasable once automatic billing ships.</p>
+                  <p className="text-xs text-violet-700">Add one or more billing options. Clients are charged on the same date each cycle, starting the day they subscribe, and can cancel themselves at any time.</p>
+                  {/* Say it plainly rather than ignoring the setting. A one-off
+                      checkout can add the card fee as an extra line; on an
+                      ongoing plan that line would only apply to the FIRST
+                      payment, so the trainer would quietly under-recover from
+                      the second one onwards. Better to state the limit than to
+                      silently drop a switch they think is on. */}
+                  <p className="text-xs text-violet-700/80">
+                    Note: the &ldquo;pass the card fee to the client&rdquo; setting doesn&apos;t apply to ongoing plans yet — build the fee into your price if you need to cover it.
+                  </p>
+                  {draft.plans.length === 0 && (
+                    <p className="text-xs text-violet-700/80">Clients can&apos;t subscribe until there&apos;s at least one option here.</p>
+                  )}
                   {draft.plans.map(pl => (
                     <div key={pl.key} className="flex flex-wrap items-center gap-2 text-sm rounded-lg bg-white border border-violet-100 p-2">
                       <div className="relative">

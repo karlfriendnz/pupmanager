@@ -10,6 +10,16 @@ import { materializeBooking } from '@/lib/booking-page'
 import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automations'
 import { enrollInRun } from '@/lib/class-runs'
 import { fulfilMembershipInTx, enrolMembershipClasses } from '@/lib/memberships'
+import { subscriptionIdFromInvoice } from '@/lib/connect-subscriptions'
+import {
+  syncSubscription,
+  recordInvoicePaid,
+  recordInvoicePaymentFailed,
+  recordInvoiceActionRequired,
+  recordInvoiceUpcoming,
+  handleAccountDeauthorized,
+  completeCardUpdateForSubscription,
+} from '@/lib/membership-billing'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { notifyClient } from '@/lib/client-notify'
 import { sendEmail } from '@/lib/email'
@@ -90,6 +100,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Webhook signature verification failed' }, { status: 400 })
   }
 
+  // ─── Idempotency layer 1: the event ledger ────────────────────────────────
+  // Insert Stripe's own event id; if it conflicts we have already processed this
+  // delivery and return 200 immediately.
+  //
+  // This is the only thing that reliably stops REPLAYS. The PENDING→PAID
+  // transition below stops double-FULFILMENT, but it would not stop a
+  // re-delivered invoice.paid creating a second Payment row — and recurring
+  // billing is exposed to that in a way one-off checkout never was, because
+  // Stripe now sends events forever rather than once per checkout.
+  //
+  // Deliberately covers EVERY event type, so the existing one-off flow gets the
+  // same protection. A ledger-write failure is treated as transient: we throw so
+  // Stripe retries, rather than processing an event we could not record.
+  try {
+    await prisma.stripeWebhookEvent.create({
+      data: { id: event.id, type: event.type, accountId: event.account ?? null, sandbox },
+    })
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code
+    if (code === 'P2002') {
+      // Already seen. Ack so Stripe stops retrying.
+      return NextResponse.json({ received: true, duplicate: true })
+    }
+    console.error('[stripe connect webhook] ledger write failed', event.id, err)
+    return NextResponse.json({ error: 'Ledger unavailable' }, { status: 500 })
+  }
+
   try {
     switch (event.type) {
       case 'account.updated': {
@@ -98,6 +135,14 @@ export async function POST(req: Request) {
       }
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
+        // A `setup` session is the update-card flow, not a purchase — it has no
+        // payment_status to wait on. Deliberately handled on THIS event rather
+        // than setup_intent.succeeded, so the Dashboard needs no extra
+        // subscription for the card-update path to work.
+        if (session.mode === 'setup') {
+          await completeCardUpdate(session, sandbox, event.account ?? null)
+          break
+        }
         // Only fulfil once the session's payment is actually captured — async
         // payment methods can complete the session while still 'unpaid'.
         if (session.payment_status !== 'paid') break
@@ -131,12 +176,70 @@ export async function POST(req: Request) {
         await markDisputed((event.data.object as Stripe.Dispute).charge)
         break
       }
+
+      // ─── Recurring memberships ────────────────────────────────────────────
+      // Stripe does NOT guarantee event order, so every one of these is written
+      // to create the rows it needs or safely defer. None of them assumes a
+      // prior event landed.
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted': {
+        await syncSubscription(event.data.object as Stripe.Subscription, sandbox)
+        break
+      }
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice
+        const subId = subscriptionIdFromInvoice(invoice)
+        // A one-off invoice (not subscription-generated) is not ours to handle.
+        if (subId) await recordInvoicePaid(invoice, sandbox, subId)
+        break
+      }
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object as Stripe.Invoice
+        const subId = subscriptionIdFromInvoice(invoice)
+        if (subId) await recordInvoicePaymentFailed(invoice, sandbox, subId)
+        break
+      }
+      case 'invoice.payment_action_required': {
+        // The client's BANK wants them to authenticate a renewal. Nothing here
+        // can act for them — the money does not move until they tap through to
+        // Stripe's hosted page, so this has to reach their phone.
+        const invoice = event.data.object as Stripe.Invoice
+        const subId = subscriptionIdFromInvoice(invoice)
+        if (subId) await recordInvoiceActionRequired(invoice, sandbox, subId)
+        break
+      }
+      case 'invoice.upcoming': {
+        // ~3 days before a renewal: a heads-up, plus a check that the card on
+        // file will still be alive when the charge lands. With access stopping
+        // on the first failure, preventing one is worth a great deal.
+        const invoice = event.data.object as Stripe.Invoice
+        const subId = subscriptionIdFromInvoice(invoice)
+        if (subId) await recordInvoiceUpcoming(invoice, subId)
+        break
+      }
+      case 'account.application.deauthorized': {
+        // The trainer disconnected Stripe. We can no longer bill for them, so
+        // every live subscription is cancelled and every affected client told —
+        // rather than leaving people paying a business we have no relationship
+        // with. event.account is the connected account that left.
+        if (event.account) await handleAccountDeauthorized(event.account, sandbox)
+        break
+      }
       default:
         // Silent ack — handled in later phases or genuinely not ours.
         break
     }
   } catch (err) {
     console.error('[stripe connect webhook]', event.type, err)
+    // Release the ledger claim. We return 500 so Stripe retries, and the retry
+    // must be allowed to actually run — without this, a transient failure (a
+    // dropped DB connection mid-handler) would be recorded as "processed" and
+    // the redelivery skipped as a duplicate, silently losing the event forever.
+    // Losing an invoice.paid means a client is charged and never granted.
+    await prisma.stripeWebhookEvent
+      .delete({ where: { id: event.id } })
+      .catch(e => console.error('[stripe connect webhook] ledger rollback failed', event.id, e))
     return NextResponse.json({ error: 'Handler failed' }, { status: 500 })
   }
 
@@ -622,6 +725,55 @@ async function reconcileRefund(charge: Stripe.Charge) {
   await prisma.payment.update({
     where: { id: payment.id },
     data: { amountRefunded, status, stripeChargeId: charge.id },
+  })
+}
+
+// A `setup` mode Checkout Session is the client finishing the update-card flow.
+// The session carries our purchase id in metadata; the new card is on its
+// SetupIntent, which has to be retrieved from the connected account (that is
+// where the whole flow lives).
+async function completeCardUpdate(
+  session: Stripe.Checkout.Session,
+  sandbox: boolean,
+  eventAccount: string | null,
+) {
+  const purchaseId = session.metadata?.membershipPurchaseId
+  if (!purchaseId || !eventAccount) return
+
+  const purchase = await prisma.membershipPurchase.findUnique({
+    where: { id: purchaseId },
+    select: { trainerId: true, sandbox: true },
+  })
+  if (!purchase) return
+  // Mode and account must match what we recorded, exactly as the payment path
+  // checks — a test-mode session must never re-point a live subscription's card.
+  if (purchase.sandbox !== sandbox) {
+    console.error('[stripe connect webhook] card update mode mismatch — refusing', purchaseId)
+    return
+  }
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: purchase.trainerId },
+    select: { connectAccountId: true },
+  })
+  if (!trainer?.connectAccountId || trainer.connectAccountId !== eventAccount) {
+    console.error('[stripe connect webhook] card update account mismatch — refusing', purchaseId)
+    return
+  }
+
+  const setupIntentId = typeof session.setup_intent === 'string'
+    ? session.setup_intent
+    : session.setup_intent?.id ?? null
+  if (!setupIntentId) return
+
+  const si = await stripeFor(sandbox).setupIntents.retrieve(setupIntentId, undefined, { stripeAccount: eventAccount })
+  const pm = typeof si.payment_method === 'string' ? si.payment_method : si.payment_method?.id ?? null
+  if (!pm) return
+
+  await completeCardUpdateForSubscription({
+    purchaseId,
+    paymentMethodId: pm,
+    connectAccountId: eventAccount,
+    sandbox,
   })
 }
 

@@ -23,6 +23,12 @@ const schema = z.object({
   seatCount: z.number().int().min(1).max(100).optional(),
   // Internal conversion judgement from the admin "Likely" column. null clears it.
   conversionLikelihood: z.union([z.enum(LIKELIHOODS), z.null()]).optional(),
+  // Rollout gate for recurring client→trainer memberships (Stripe Subscriptions
+  // on the trainer's connected account). The old CONNECT_LIVE_ALLOWLIST env var
+  // is gone, so this IS the allowlist — flipped per trainer from here, which is
+  // why it lives on the admin route rather than in trainer settings. A trainer
+  // must not be able to switch their own clients onto a brand-new billing path.
+  recurringPaymentsEnabled: z.boolean().optional(),
 })
 
 async function requireAdmin() {
@@ -42,7 +48,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ traine
   const user = await prisma.user.findUnique({ where: { id: trainerId, role: 'TRAINER' } })
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { name, email, businessName, gracePeriodUntil, isInternal, active, applyTrialDays, seatCount, conversionLikelihood } = parsed.data
+  const { name, email, businessName, gracePeriodUntil, isInternal, active, applyTrialDays, seatCount, conversionLikelihood, recurringPaymentsEnabled } = parsed.data
 
   if (email && email !== user.email) {
     const conflict = await prisma.user.findUnique({ where: { email } })
@@ -75,6 +81,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ traine
     ...(seatCount !== undefined && { seatCount }),
     // Internal-only; null clears the assessment back to "not assessed".
     ...(conversionLikelihood !== undefined && { conversionLikelihood }),
+    // The recurring-memberships pilot gate.
+    ...(recurringPaymentsEnabled !== undefined && { recurringPaymentsEnabled }),
   }
   if (Object.keys(profileData).length > 0) {
     await prisma.trainerProfile.update({

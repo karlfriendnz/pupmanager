@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { getActiveClient } from '@/lib/client-context'
 import { prisma } from '@/lib/prisma'
-import { loadPublishedMemberships } from '@/lib/client-memberships'
+import { loadPublishedMemberships, loadClientSubscriptions } from '@/lib/client-memberships'
 import { PACKAGES_HIDDEN_FROM_CLIENTS } from '@/lib/feature-flags'
 import { ClientMembershipsView } from './memberships-view'
 
@@ -21,14 +21,24 @@ export default async function ClientMembershipsPage() {
   })
   if (!profile) redirect('/login')
 
+  const currency = profile.trainer?.payoutCurrency ?? 'nzd'
+
   const memberships = PACKAGES_HIDDEN_FROM_CLIENTS
     ? []
     : await loadPublishedMemberships(profile.trainerId, profile.id)
 
+  // Deliberately NOT behind PACKAGES_HIDDEN_FROM_CLIENTS. That flag hides the
+  // STOREFRONT — what a client can buy. Someone who is already being charged
+  // every month must always be able to see it and stop it; hiding their cancel
+  // button behind a display kill-switch would be the exact dark pattern the
+  // self-serve cancellation exists to prevent.
+  const subscriptions = await loadClientSubscriptions(profile.id, currency)
+
   return (
     <ClientMembershipsView
-      currency={profile.trainer?.payoutCurrency ?? 'nzd'}
+      currency={currency}
       memberships={memberships}
+      subscriptions={subscriptions}
     />
   )
 }
