@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Package as PackageIcon, Pencil, Trash2, Copy,
+  Package as PackageIcon,
   Repeat, Clock, Video, MapPin, Users, Route,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
@@ -55,36 +55,13 @@ export function PackagesView({
   const router = useRouter()
   const [tab, setTab] = useState<'current' | 'past'>('current')
   // Same drag + saved order as every other offering list.
-  const { rows: packages, setRows: setPackages, reorder, error: reorderError } = useOfferingReorder(initialPackages, 'package')
+  const { rows: packages, reorder, error: reorderError } = useOfferingReorder(initialPackages, 'package')
 
   // Left in the trainer's own arranged order — that's what the drag handle
   // writes and what clients see. See ./past-packages for what "past" means.
   const current = packages.filter(p => !p.isPast)
   const past = packages.filter(p => p.isPast)
   const shown = tab === 'past' ? past : current
-
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this 1:1 session? Existing client assignments stay (but their sessions remain on the schedule).')) return
-    const res = await fetch(`/api/packages/${id}`, { method: 'DELETE' })
-    if (res.ok) setPackages(prev => prev.filter(p => p.id !== id))
-  }
-
-  // Duplicate → straight into the copy's edit form. Copying is almost always
-  // "make one like that but different", so dropping them where they can change
-  // it beats landing back on the list to hunt for the new row.
-  const [duplicating, setDuplicating] = useState<string | null>(null)
-  async function handleDuplicate(id: string) {
-    if (duplicating) return
-    setDuplicating(id)
-    try {
-      const res = await fetch(`/api/packages/${id}/clone`, { method: 'POST' })
-      if (!res.ok) { alert('Could not duplicate that package.'); return }
-      const created = await res.json() as { id: string }
-      router.push(`/packages/${created.id}/edit`)
-    } finally {
-      setDuplicating(null)
-    }
-  }
 
   return (
     <>
@@ -140,11 +117,11 @@ export function PackagesView({
                           facts={packageFacts(p)}
                           dimmed={p.isPast}
                           dragHandle={handle}
-                          actions={[
-                            { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${p.id}/edit`) },
-                            { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => handleDuplicate(p.id), disabled: duplicating === p.id },
-                            { icon: <Trash2 className="h-4 w-4" />, label: 'Delete', onClick: () => handleDelete(p.id), tone: 'danger' },
-                          ]}
+                          /* No row actions. Three icons on every card is a lot
+                             of chrome on a list you mostly read, and the card
+                             already opens the offering — where OfferingActions
+                             carries Edit, Duplicate and Delete. Nothing is lost,
+                             it just takes one click to get to. */
                         />
                       )}
                     </SortableOfferingCard>
