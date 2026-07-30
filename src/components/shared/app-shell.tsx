@@ -22,7 +22,7 @@ import { TopBarControls } from './top-bar-controls'
 import { FloatingCreateButton } from './floating-create-button'
 import { PageTitleProvider, usePageTitle, usePageHasBack, usePageImmersive } from './page-title'
 import { FlatRow, FlatRowGrid } from './flat-list'
-import { shouldShowSectionHeader } from '@/lib/nav-labels'
+import { shouldShowSectionHeader, labelFor, sectionKey } from '@/lib/nav-labels'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
 const NAV_GROUPS_KEY = 'k10.trainerNavGroups'
@@ -239,6 +239,13 @@ interface AppShellProps {
    * Add-ons settings tab so the trainer can turn the feature on. Empty = none.
    */
   addonLockedHrefs?: string[]
+  /**
+   * What this trainer calls their own menu items — nav key to their word
+   * ({"/packages": "Private lessons"}). Missing/empty means our words. Locked
+   * items (Stripe, Finances, Reports…) ignore it, so a stale override can't
+   * rename something it shouldn't.
+   */
+  navLabels?: Record<string, string> | null
   /**
    * Client shell only: the trainer's public contact details, surfaced as
    * icon links in the full-screen menu header. Any null/missing value is
@@ -920,6 +927,7 @@ function TrainerShell({
   currency = 'nzd',
   hiddenNavHrefs = [],
   addonLockedHrefs = [],
+  navLabels = null,
   orgs = [],
   activeCompanyId = null,
   homeHref = '/dashboard',
@@ -928,9 +936,16 @@ function TrainerShell({
   // Nav filtered to what this user's role/permissions allow. Add-on items
   // whose add-on is OFF are hidden entirely (same as permission-hidden items),
   // so the left menu only ever lists features the trainer actually has on.
+  // Their words, not ours, wherever they've chosen one. Applied HERE, once, so
+  // every place a label renders — rail, flyout, phone menu, page titles — reads
+  // the same name without each having to remember to ask.
   const trainerNav = TRAINER_NAV.filter(
     i => !hiddenNavHrefs.includes(i.href) && !addonLockedHrefs.includes(i.href),
-  )
+  ).map(i => ({ ...i, label: labelFor(i.href, i.label, navLabels) }))
+  const sectionLabel = (section: NavSection, fallback: Record<NavSection, string | null>) => {
+    const def = fallback[section]
+    return def === null ? null : labelFor(sectionKey(section), def, navLabels)
+  }
   // Retained for the (now unused) locked-row branches below — left in place so
   // switching back to "show disabled with upsell" is a one-line revert.
   const lockedAddons = new Set<string>()
@@ -1134,7 +1149,7 @@ function TrainerShell({
             // takes its heading with them. (Karl's review note, 2026-07-30.)
             const sectionHeader = !collapsed && sectionChanged
               && shouldShowSectionHeader(arr.filter(i => i.section === item.section).length)
-              ? NAV_SECTION_LABEL[item.section]
+              ? sectionLabel(item.section, NAV_SECTION_LABEL)
               : null
             const showDivider = sectionChanged && idx > 0 && (item.section === 'system' || collapsed)
             // Add-on OFF: render disabled-with-upsell (never active/blue), still
@@ -1445,7 +1460,7 @@ function TrainerShell({
               return (
                 <div key={section} className="mb-5">
                   <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-400">
-                    {MENU_SECTION_LABEL[section]}
+                    {sectionLabel(section, MENU_SECTION_LABEL)}
                   </p>
                   {/* Two across at row height — the sections stay visible
                       without a tile's worth of vertical space per entry. */}

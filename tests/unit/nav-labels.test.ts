@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   isRenameable, sanitizeNavLabels, labelFor, sectionKey, shouldShowSectionHeader,
+  NAV_LABEL_CATALOG,
   type RenameableEntry,
 } from '@/lib/nav-labels'
 
@@ -123,5 +126,84 @@ describe('shouldShowSectionHeader', () => {
 
   it('hides it over none', () => {
     expect(shouldShowSectionHeader(0)).toBe(false)
+  })
+})
+
+// ── The catalogue, and keeping it honest ──────────────────────────────────────
+//
+// NAV_LABEL_CATALOG is a hand-kept COPY of what app-shell declares, because the
+// editor and the API both need the list on the server and app-shell is the whole
+// client-side chrome. A copy drifts, so these tests are the thing that stops it:
+// add a menu item and forget the catalogue, and it silently can't be renamed.
+
+const shell = () => readFileSync(resolve(__dirname, '../../src/components/shared/app-shell.tsx'), 'utf8')
+
+/** Every ACTIVE trainer nav item, as [href, label]. Commented-out items (Doggy
+ *  Daycare, Lead magnets) are deliberately skipped — they aren't in the menu. */
+function navItemsFromShell(): [string, string][] {
+  const src = shell()
+  const block = src.slice(src.indexOf('const TRAINER_NAV'), src.indexOf('// Section headers shown'))
+  return block
+    .split('\n')
+    .filter(l => !l.trim().startsWith('//'))
+    .map(l => /\{\s*href:\s*'([^']+)',\s*label:\s*'([^']+)'/.exec(l))
+    .filter((m): m is RegExpExecArray => m !== null)
+    .map(m => [m[1], m[2]] as [string, string])
+}
+
+describe('the rename catalogue matches the real menu', () => {
+  it('finds the menu it is meant to mirror', () => {
+    // If this fails the parser broke, and every assertion below is vacuous.
+    expect(navItemsFromShell().length).toBeGreaterThan(15)
+  })
+
+  it('lists every menu item a trainer is allowed to rename', () => {
+    const inCatalog = new Set(NAV_LABEL_CATALOG.map(e => e.key))
+    const missing = navItemsFromShell()
+      .filter(([href, label]) => isRenameable(href, label))
+      .filter(([href]) => !inCatalog.has(href))
+    expect(missing).toEqual([])
+  })
+
+  it('lists nothing that isn’t in the menu', () => {
+    const hrefs = new Set(navItemsFromShell().map(([href]) => href))
+    const stale = NAV_LABEL_CATALOG
+      .filter(e => !e.isSection)
+      .filter(e => !hrefs.has(e.key))
+    expect(stale).toEqual([])
+  })
+
+  it('agrees with the menu on what each thing is called', () => {
+    const byHref = new Map(navItemsFromShell())
+    const wrong = NAV_LABEL_CATALOG
+      .filter(e => !e.isSection && byHref.has(e.key))
+      .filter(e => byHref.get(e.key) !== e.defaultLabel)
+      .map(e => [e.key, e.defaultLabel, byHref.get(e.key)])
+    expect(wrong).toEqual([])
+  })
+
+  // A group heading renames a whole run of items, so missing one is worse than
+  // missing a single link.
+  it('lists every group heading the sidebar draws', () => {
+    const src = shell()
+    const block = src.slice(src.indexOf('const NAV_SECTION_LABEL'), src.indexOf('const MENU_SECTION_ORDER'))
+    const headed = [...block.matchAll(/^\s*(\w+):\s*'([^']+)'/gm)].map(m => [m[1], m[2]])
+    expect(headed.length).toBeGreaterThan(3)
+    const inCatalog = new Map(NAV_LABEL_CATALOG.map(e => [e.key, e.defaultLabel]))
+    for (const [section, label] of headed) {
+      expect(inCatalog.get(sectionKey(section)), `heading ${section}`).toBe(label)
+    }
+  })
+
+  // Offered-then-refused is the worst of both: a box that quietly does nothing.
+  it('offers nothing it would then refuse to save', () => {
+    const refused = NAV_LABEL_CATALOG.filter(e => !isRenameable(e.key, e.defaultLabel))
+    expect(refused).toEqual([])
+  })
+
+  it('defaults its own sanitizer to the catalogue', () => {
+    expect(sanitizeNavLabels({ '/library': 'Resources' })).toEqual({ '/library': 'Resources' })
+    // Locked, so dropped even without an explicit allow-list.
+    expect(sanitizeNavLabels({ '/finances': 'Money in' })).toEqual({})
   })
 })

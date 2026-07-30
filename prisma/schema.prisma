@@ -587,6 +587,13 @@ model TrainerProfile {
   // lower-case (Stripe convention). Seeded from signupCountry on first onboard.
   // SEPARATE from the per-checkout currency used by the subscription flow.
   payoutCurrency            String?
+  // What this trainer calls the things in their own left menu — a map of nav key
+  // to their word for it ({"/packages": "Private lessons"}). A groomer says
+  // "Services", a daycare says "Programmes"; the software shouldn't insist.
+  // Only deliberate renames are stored (see sanitizeNavLabels), so null/{} means
+  // "our words", and a menu item we later rename picks up the new default for
+  // everyone who never chose their own.
+  navLabels                 Json?
   // Master switch the trainer flips once onboarded — lets them connect but keep
   // prices display-only until they're ready to actually take payments. Defaults
   // ON (and the connect webhook turns it on at onboarding) so a freshly-

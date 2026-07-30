@@ -6,6 +6,7 @@ import { trainerHasAccess } from '@/lib/access'
 import { getTrainerContext } from '@/lib/membership'
 import { can, type PermissionKey } from '@/lib/permissions'
 import { getEnabledAddons } from '@/lib/billing'
+import { sanitizeNavLabels } from '@/lib/nav-labels'
 import type { AddonId } from '@/lib/pricing'
 import { AppShell } from '@/components/shared/app-shell'
 import { PageHelpProvider } from '@/components/shared/page-title'
@@ -179,6 +180,9 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       logoUrl: true,
       iconUrl: true,
       payoutCurrency: true,
+      // Their words for their own menu — sanitized on the way out, so a rename
+      // that's since been locked or removed quietly reverts to our default.
+      navLabels: true,
       subscriptionStatus: true,
       trialEndsAt: true,
       stripeSubscriptionId: true,
@@ -283,6 +287,7 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       unreadTotal={unreadMessageCount + unreadNotifications}
       hiddenNavHrefs={hiddenNavHrefs}
       addonLockedHrefs={addonLockedHrefs}
+      navLabels={sanitizeNavLabels(tp?.navLabels)}
       canSell={canSell}
       currency={tp?.payoutCurrency ?? 'nzd'}
       orgs={orgs}

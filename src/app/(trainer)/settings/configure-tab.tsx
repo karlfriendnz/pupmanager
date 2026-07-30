@@ -3,7 +3,9 @@ import { can } from '@/lib/permissions'
 import type { PermissionMap } from '@/lib/permissions'
 import type { CompanyRole } from '@/generated/prisma'
 import { configurableFeatures, groupedFeatures, featureIsOn } from '@/lib/configurable-features'
+import { sanitizeNavLabels } from '@/lib/nav-labels'
 import { ConfigurePanel } from './configure-panel'
+import { NavLabelsPanel } from './nav-labels-panel'
 
 /**
  * Settings → Configure. Everything included with the plan, as switches.
@@ -36,13 +38,24 @@ export async function ConfigureTab({
     configurableFeatures(activeIds).map(f => [f.id, featureIsOn(f.id, byId)]),
   )
 
+  // Their words for their own menu. Sanitized on read as well as on write, so a
+  // rename of something since locked or removed quietly reverts to our default
+  // instead of showing them a box that does nothing.
+  const profile = await prisma.trainerProfile.findUnique({
+    where: { id: companyId },
+    select: { navLabels: true },
+  })
+
+  // These cost nothing, so the gate is "can this person change settings", not the
+  // spend permission the paid Add-ons page needs.
+  const canEdit = can('settings.edit', role, permissions)
+
   return (
-    <ConfigurePanel
-      groups={groups}
-      initialOn={initialOn}
-      // These cost nothing, so the gate is "can this person change settings",
-      // not the spend permission the paid Add-ons page needs.
-      canEdit={can('settings.edit', role, permissions)}
-    />
+    <>
+      <ConfigurePanel groups={groups} initialOn={initialOn} canEdit={canEdit} />
+      {/* What things are CALLED, under what's turned on: both are "make this
+          software mine", and Karl asked for them on the one page. */}
+      <NavLabelsPanel initial={sanitizeNavLabels(profile?.navLabels)} canEdit={canEdit} />
+    </>
   )
 }

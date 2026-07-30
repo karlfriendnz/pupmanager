@@ -33,7 +33,7 @@ const LOCKED: ReadonlySet<NavLabelKey> = new Set([
   '/settings',
   '/instagram',
   // Stripe and Xero are the connected services' own names.
-  '/stripe',
+  '/finances/stripe',
   '/settings?tab=xero',
 ])
 
@@ -51,6 +51,47 @@ export interface RenameableEntry {
   isSection: boolean
 }
 
+/**
+ * Everything a trainer may rename, in the order the menu shows it.
+ *
+ * A COPY of what app-shell declares, not a shared import: app-shell is a client
+ * component carrying the whole chrome, and the editor and the API both need this
+ * list on the server. `tests/unit/nav-labels.test.ts` fails if the two drift, so
+ * adding a menu item without listing it here is caught rather than silently
+ * un-renameable.
+ */
+export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
+  { key: 'section:clients', defaultLabel: 'Clients', isSection: true },
+  { key: '/clients', defaultLabel: 'Clients', isSection: false },
+  { key: '/enquiries', defaultLabel: 'Enquiries', isSection: false },
+  { key: '/sessions/draft-notes', defaultLabel: 'Notes', isSection: false },
+  { key: '/clients/waitlist', defaultLabel: 'Waitlist', isSection: false },
+
+  { key: 'section:programs', defaultLabel: 'Offerings', isSection: true },
+  { key: '/packages', defaultLabel: '1:1 Sessions', isSection: false },
+  { key: '/classes', defaultLabel: 'Group Classes', isSection: false },
+  { key: '/casual-classes', defaultLabel: 'Casual Classes', isSection: false },
+  { key: '/events', defaultLabel: 'Events', isSection: false },
+  { key: '/memberships', defaultLabel: 'Packages', isSection: false },
+
+  { key: 'section:tools', defaultLabel: 'Tools', isSection: true },
+  { key: '/schedule/route', defaultLabel: 'Route', isSection: false },
+  { key: '/library', defaultLabel: 'Library', isSection: false },
+  { key: '/products', defaultLabel: 'Products', isSection: false },
+  { key: '/achievements', defaultLabel: 'Achievements', isSection: false },
+
+  { key: 'section:business', defaultLabel: 'Business', isSection: true },
+  { key: '/marketing', defaultLabel: 'Marketing', isSection: false },
+
+  // The daily three sit above the group headings, so they come last in the
+  // editor — a trainer scanning for "Offerings" shouldn't wade past them.
+  { key: '/dashboard', defaultLabel: 'Dashboard', isSection: false },
+  { key: '/messages', defaultLabel: 'Messages', isSection: false },
+  { key: '/schedule', defaultLabel: 'Schedule', isSection: false },
+  { key: '/schedule?availability=1', defaultLabel: 'Availability', isSection: false },
+  { key: '/help', defaultLabel: 'Help', isSection: false },
+]
+
 export function isRenameable(key: NavLabelKey, defaultLabel: string): boolean {
   if (LOCKED.has(key)) return false
   if (LOCKED_LABELS.has(defaultLabel.trim())) return false
@@ -66,7 +107,7 @@ export function isRenameable(key: NavLabelKey, defaultLabel: string): boolean {
  */
 export function sanitizeNavLabels(
   input: unknown,
-  renameable: readonly RenameableEntry[],
+  renameable: readonly RenameableEntry[] = NAV_LABEL_CATALOG,
 ): Record<NavLabelKey, string> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
   const allowed = new Map(renameable.map(r => [r.key, r.defaultLabel]))
