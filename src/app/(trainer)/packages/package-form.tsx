@@ -516,6 +516,8 @@ export function PackageForm({
     // Both cases used to fall through to silence, which read as "nothing happens".
     isGroup,
     runCount: existing?.runCount ?? 1,
+    // What it was saved with, so an untouched form says nothing.
+    previous: existing?.sessionCount,
   })
   const sessionDeltaMessage = sessionCountChangeMessage(sessionDelta, { hasAttendance })
   const perSessionAvailable = kind !== 'oneoff' && canPricePerSession(watchedSessionCount)
@@ -925,22 +927,20 @@ export function PackageForm({
               ))}
               <option value={0}>Ongoing (no fixed end)</option>
             </select>
-            {/* What this change does to the sessions that already exist.
-                DELETING is destructive, so it gets a real warning — a red box with
-                an icon, not a line of coloured text you can read past. Everything
-                else is informational and stays quiet. */}
+            {/* Changing the session count is consequential however it lands —
+                sessions get deleted, or a course quietly becomes a different
+                length for everyone assigned it next. One red warning box for all
+                of it (Karl, 2026-07-30): a quiet grey line got read straight
+                past, which is how the change surprised people. It only appears
+                once the number actually MOVES, so it's never wallpaper. */}
             {sessionDeltaMessage && (
-              sessionDelta.kind === 'remove' ? (
-                <div
-                  role="alert"
-                  className="mt-2 flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800"
-                >
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" strokeWidth={2} />
-                  <span className="font-medium">{sessionDeltaMessage}</span>
-                </div>
-              ) : (
-                <p className="mt-1.5 text-xs text-slate-500">{sessionDeltaMessage}</p>
-              )
+              <div
+                role="alert"
+                className="mt-2 flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800"
+              >
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" strokeWidth={2} />
+                <span className="font-medium">{sessionDeltaMessage}</span>
+              </div>
             )}
           </div>
           {/* Weeks-between only matters once there's more than one session, so it

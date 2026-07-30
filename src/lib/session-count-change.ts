@@ -34,6 +34,7 @@ export type SessionCountChange =
 export function sessionCountChange({
   existingSessions,
   wanted,
+  previous,
   isGroup = true,
   runCount = 1,
 }: {
@@ -41,6 +42,12 @@ export function sessionCountChange({
   existingSessions: number
   /** The count now chosen in the form. 0 means "ongoing, no fixed end". */
   wanted: number
+  /**
+   * What the offering was SAVED with. Without it the message appears the moment
+   * the screen opens, describing a change nobody made — this only ever answers
+   * "what will this edit do", so an untouched form has nothing to say.
+   */
+  previous?: number
   /** A 1:1 package owns no schedule; a class does. */
   isGroup?: boolean
   /** How many cohorts of this class are running. Only one has a schedule we can
@@ -48,6 +55,12 @@ export function sessionCountChange({
   runCount?: number
 }): SessionCountChange {
   if (!Number.isFinite(wanted) || wanted < 0) return { kind: 'none' }
+
+  // Nothing said until something changes. Checked FIRST, before any of the
+  // per-shape branches, so it holds for all of them.
+  if (previous !== undefined && Number.isFinite(previous) && wanted === previous) {
+    return { kind: 'none' }
+  }
 
   // A 1:1 package has no series of its own — sessions are created when it's
   // assigned. Saying "3 will be deleted" would be a lie, but saying nothing left

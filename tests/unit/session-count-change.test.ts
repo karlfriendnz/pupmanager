@@ -112,3 +112,26 @@ describe('offerings that own no single schedule', () => {
       .toEqual({ kind: 'none' })
   })
 })
+
+describe('it only speaks when something changed', () => {
+  // Found on screen: a 1:1 package showed its message the moment the form opened,
+  // describing a change nobody had made. The message answers "what will this edit
+  // do", so an untouched form has nothing to say.
+  it('says nothing when the number matches what was saved', () => {
+    expect(sessionCountChange({ existingSessions: 6, wanted: 6, previous: 6 })).toEqual({ kind: 'none' })
+    expect(sessionCountChange({ existingSessions: 0, wanted: 5, previous: 5, isGroup: false })).toEqual({ kind: 'none' })
+    expect(sessionCountChange({ existingSessions: 0, wanted: 6, previous: 6, runCount: 3 })).toEqual({ kind: 'none' })
+  })
+
+  it('speaks as soon as it moves', () => {
+    expect(sessionCountChange({ existingSessions: 6, wanted: 9, previous: 6 })).toEqual({ kind: 'add', count: 3 })
+    expect(sessionCountChange({ existingSessions: 0, wanted: 8, previous: 5, isGroup: false }))
+      .toEqual({ kind: 'assignments', count: 8 })
+  })
+
+  // Creating an offering has no saved value to compare against, and nothing
+  // scheduled either — so it stays quiet without needing a special case.
+  it('is quiet on a brand-new offering', () => {
+    expect(sessionCountChange({ existingSessions: 0, wanted: 6 })).toEqual({ kind: 'none' })
+  })
+})
