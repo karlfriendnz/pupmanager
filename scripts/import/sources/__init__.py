@@ -26,8 +26,8 @@ which is what keeps a new shape from having to understand precedence.
 from __future__ import annotations
 
 from . import (booking_spreadsheet, doggie_dashboard, doggie_dashboard_reports,
-               moego_appointments, outlook_contacts, simple_contacts,
-               squarespace_profiles)
+               moego_appointments, moego_clients, outlook_contacts,
+               simple_contacts, squarespace_profiles)
 
 REGISTRY = {
     m.SHAPE: m for m in (
@@ -35,6 +35,7 @@ REGISTRY = {
         doggie_dashboard,
         doggie_dashboard_reports,
         moego_appointments,
+        moego_clients,
         outlook_contacts,
         simple_contacts,
         squarespace_profiles,

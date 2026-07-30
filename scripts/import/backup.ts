@@ -27,6 +27,27 @@ import { spawn, spawnSync } from 'child_process'
  *   PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump
  */
 const PG_DUMP = process.env.PG_DUMP ?? 'pg_dump'
+
+/**
+ * Extra pg_dump arguments, space-separated. Opt-in and passed on the command
+ * line rather than baked in, so what a given backup covers is visible in shell
+ * history instead of being quietly narrowed by a default.
+ *
+ * The case this exists for: a managed Postgres carries schemas that are the
+ * PLATFORM's, not the application's, and one of them can break the dump.
+ * Supabase's pg_cron keeps every scheduled-job run in cron.job_run_details,
+ * which grows without bound and dropped the SSL connection mid-COPY:
+ *
+ *   PG_DUMP_EXTRA_ARGS=--exclude-schema=cron
+ *
+ * That is a safe exclusion — a run log is not application data and restoring
+ * one would be meaningless. Excluding anything under `public` is not: that is
+ * where every client record lives.
+ */
+const PG_DUMP_EXTRA_ARGS = (process.env.PG_DUMP_EXTRA_ARGS ?? '')
+  .split(' ')
+  .map(s => s.trim())
+  .filter(Boolean)
 import { createWriteStream, existsSync, mkdirSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -98,9 +119,11 @@ export async function backupDatabase(
   const out = createWriteStream(path)
   // --no-owner / --no-acl keep the dump restorable into a different role, which
   // is what a restore under pressure usually needs.
-  const child = spawn(PG_DUMP, ['--no-owner', '--no-acl', '--format=plain', url], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+  const child = spawn(
+    PG_DUMP,
+    ['--no-owner', '--no-acl', '--format=plain', ...PG_DUMP_EXTRA_ARGS, url],
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  )
   child.stderr.on('data', d => stderr.push(String(d)))
 
   // Both listeners are attached BEFORE anything can fire. pipe() ends the write
@@ -157,6 +180,9 @@ async function main() {
   const target = await resolveTarget({ readOnly: true })
   const { host, database } = describeUrl(target.databaseUrl)
   console.log(`\nDumping ${database} on ${host} …`)
+  if (PG_DUMP_EXTRA_ARGS.length) {
+    console.log(`  extra pg_dump args: ${PG_DUMP_EXTRA_ARGS.join(' ')}`)
+  }
   const result = await backupDatabase(target, arg('out') ?? DEFAULT_BACKUP_DIR)
   printBackup(result, target)
 }

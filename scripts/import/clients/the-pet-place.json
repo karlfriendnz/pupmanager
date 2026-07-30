@@ -1,13 +1,36 @@
 {
   "slug": "the-pet-place",
   "name": "The Pet Place",
-  "root": "~/PupManager Imports/the-pet-place/incoming",
+  "root": "~/PupManager Imports/the-pet-place",
 
-  "_comment_files": "ONE file, and it is a diary rather than a client list: a MoeGo appointment list report for 1 Jul - 31 Aug 2026. It has no email, phone or address column, because MoeGo only exports the columns that were switched on in the view before Download was pressed. So every person here arrives with a placeholder address. This config is deliberately written to be extended rather than replaced: when the Client & Pet List export arrives with the contact columns enabled, it goes in FIRST as the spine and this file matches into it by name.",
+  "_comment_files": "TWO files, and the order is the whole design. The Client & Pet List export is the SPINE: 841 people, the whole book, with email, phone and pets. The appointment report is a diary of 1 Jul - 31 Aug 2026 covering only the 97 who booked in that window, and it carries no contact details at all — so it is read SECOND and matches into the people the spine created. All 97 of its clients match the spine by name, verified before this was wired up. Read the other way round, those 97 would arrive first with placeholder addresses and never merge with their real records.",
   "files": [
     {
+      "shape": "moego_clients",
+      "path": "MoeGo-Export-Client-ThePetPlace-2026-07-30-08-22-52.csv",
+      "label": "clients",
+      "options": {
+        "_comment_skipNames": "MoeGo test records. 'Test Test' has phone 000000 and one 2018 booking — it is not a customer.",
+        "skipNames": ["Test Test"],
+
+        "_comment_customFieldLabels": "Which custom field each trading column lands in. \"\" switches one off.",
+        "customFieldLabels": {
+          "phone2": "Additional phone",
+          "lastGroom": "Last groom",
+          "nextBooking": "Next booking",
+          "groomer": "Usual groomer",
+          "totalSales": "Total spend",
+          "totalBookings": "Total bookings",
+          "clientSince": "Client since",
+          "frequency": "Preferred frequency (days)",
+          "marketing": "Marketing consent (MoeGo)",
+          "referral": "Referral source"
+        }
+      }
+    },
+    {
       "shape": "moego_appointments",
-      "path": "Appointment list report(2026-07-01 - 2026-08-31).xlsx",
+      "path": "incoming/Appointment list report(2026-07-01 - 2026-08-31).xlsx",
       "label": "appointments",
       "options": {
         "_comment_consultStatuses": "Which appointment statuses become a service record. 'Finished' only: a cancelled, no-showed or still-unconfirmed booking is not a service anybody received, and creating a purchase record for one would be inventing history. Every other row still becomes a note line, and the soonest future booking becomes the 'Next booking' custom field.",
@@ -16,16 +39,18 @@
         "_comment_today": "Pinned so the last-visit / next-booking split is reproducible. Without it the same file would produce a different plan tomorrow, and a diff between two runs would stop meaning anything. Move it forward when you re-run against a newer export.",
         "today": "30/07/2026",
 
+        "_comment_lastVisit": "Switched off here. The client export knows the real last and next appointment across all time; this report only sees a two-month window, and letting it write those fields would replace 'last groomed in February' with 'last groomed in July' for anyone whose July visit happened to be in range.",
         "clientIdCustomField": "MoeGo client ID",
-        "lastVisitCustomField": "Last groom",
-        "nextBookingCustomField": "Next booking",
+        "lastVisitCustomField": "",
+        "nextBookingCustomField": "",
         "groomerCustomField": "Usual groomer"
       }
     }
   ],
 
-  "_comment_priorities": "One file, so nothing can disagree with anything yet. When the client list export lands it goes above this: it is the only file that will know a phone number, and an appointment report must never overwrite one.",
+  "_comment_priorities": "Who wins a FIELD-LEVEL disagreement, which is not the same as processing order. The client export is the only file with contact details in it, so it wins everything; the appointment report contributes history and must never overwrite a phone number, an email or a name.",
   "priorities": {
+    "clients": 40,
     "appointments": 10
   },
 
@@ -61,9 +86,16 @@
   "_comment_customFieldsToCreate": "The loader DROPS a value whose custom field does not exist on the trainer, silently. ensure-custom-fields.ts reads this key and creates them first. 'MoeGo client ID' is the important one: it is what lets the next export be reconciled against this import row by row instead of by name.",
   "customFieldsToCreate": [
     "MoeGo client ID",
+    "Additional phone",
     "Last groom",
     "Next booking",
-    "Usual groomer"
+    "Usual groomer",
+    "Total spend",
+    "Total bookings",
+    "Client since",
+    "Preferred frequency (days)",
+    "Marketing consent (MoeGo)",
+    "Referral source"
   ],
 
   "_comment_dogNameBlocklistExtra": "MoeGo requires a pet on every appointment, so ad-hoc walk-in work gets booked against a pet called 'Misc.'. It is not a dog. Named here so it is refused as a dog name and recorded in the junk list rather than imported as somebody's puppy.",
@@ -101,15 +133,24 @@
     "cross", "mixed", "mix"
   ],
 
-  "_comment_suburbs": "Empty on purpose. This file has no address column, so there is nothing for a suburb list to disambiguate. Fill it in when the client list export arrives.",
-  "suburbs": [],
+  "_comment_suburbs": "Katikati and the western Bay of Plenty — where the salon is. These matter for the notes column: it holds bare phone numbers and the odd bare street line, and a suburb list is how '449a Seaforth Drive' is recognised as an address rather than filed as a sentence about the client.",
+  "suburbs": [
+    "katikati", "waihi", "waihi beach", "athenree", "bowentown", "tauranga",
+    "omokoroa", "te puna", "aongatete", "whakamarama", "matakana island",
+    "paengaroa", "te puke", "mount maunganui", "papamoa", "bethlehem",
+    "bay of plenty", "waihi south", "tanners point", "kauri point"
+  ],
 
-  "_comment_csv": "No Business field is in use, so a company has nowhere to go - and a grooming client does not have one. The two long per-person values are written on the first dog row only, so a two-dog household does not repeat them.",
+  "_comment_csv": "No Business field is in use, so a company has nowhere to go - and a grooming client does not have one. The long per-person values are written on the first dog row only, so a three-dog household does not repeat them.",
   "csv": {
     "companyTo": "",
     "oncePerPerson": [
       "MoeGo client ID",
-      "Usual groomer"
+      "Usual groomer",
+      "Additional phone",
+      "Client since",
+      "Total spend",
+      "Marketing consent (MoeGo)"
     ]
   }
 }

@@ -403,9 +403,25 @@ def _tidy_name(name: str, p: dict, frag: dict) -> str:
 
 def _add_pets(p: dict, row: dict, frag: dict, source_row: str) -> None:
     """
-    Pet name and Pet breed are parallel lists. Pair them only when they are
-    the same length; a two-pet, one-breed row does not tell us which pet the
-    breed belongs to, and guessing would put a made-up breed on a real dog.
+    Pet name and Pet breed look like parallel lists. THEY ARE NOT ALIGNED.
+
+    Verified against the same salon's client export, which records a breed per
+    pet and so cannot be ambiguous:
+
+        appointment row   Luna,Ronin   /  Border Collie,Cavapoo (h)
+        client export     Ronin(Border Collie) … Luna(Cavapoo (h))
+
+        appointment row   Choppa,Rocket /  Shih Tzu,Shichon (h)
+        client export     Choppa(Shichon (h)) … Rocket(Shih Tzu)
+
+    Both reversed. MoeGo builds the two cells from different queries and
+    nothing keeps their order in step, so zipping them by index produces a
+    confident, wrong breed on every dog of a multi-pet appointment — and a
+    wrong breed reads exactly like a right one.
+
+    So a breed is taken ONLY when the row books a single pet, where there is
+    nothing to mispair. Otherwise the raw list goes on the dogs' notes and the
+    breed is left for the client export to supply.
     """
     names = _split(row.get("petName"))
     breeds = _split(row.get("petBreed"))
@@ -415,14 +431,15 @@ def _add_pets(p: dict, row: dict, frag: dict, source_row: str) -> None:
     if not names:
         return
 
-    paired = len(breeds) == len(names)
+    paired = len(names) == 1 and len(breeds) == 1
     if breeds and not paired:
         frag["needsReview"].append({
             "kind": "Cannot tell which pet is which breed", "who": owner,
-            "detail": f"{source_row} lists {len(names)} pets "
-                      f"({', '.join(names)}) and {len(breeds)} breeds "
-                      f"({', '.join(breeds)}). The breeds were left off rather "
-                      f"than guessed; the raw value is on the dogs' notes."})
+            "detail": f"{source_row} books {len(names)} pets "
+                      f"({', '.join(names)}) and lists breeds "
+                      f"({', '.join(breeds)}) in an order MoeGo does not keep "
+                      f"aligned with the names. No breed was assigned; the raw "
+                      f"list is on the dogs' notes."})
 
     for i, dog_name in enumerate(names):
         breed = breeds[i] if paired else ""

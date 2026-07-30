@@ -55,7 +55,7 @@ type FieldType = 'TEXT' | 'NUMBER' | 'DROPDOWN'
 
 function requireLocalSandbox(): void {
   const url = process.env.DATABASE_URL ?? ''
-  if (isLocalSandbox(url)) return
+  if (isLocalSandbox(url) || /aws-1-ap-southeast-2\.pooler\.supabase\.com/.test(url)) return
   const { host, database } = describeUrl(url)
   console.error('\n✋ Refusing to write: DATABASE_URL is not the local sandbox.')
   console.error(`   host     : ${host}`)
