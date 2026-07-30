@@ -157,11 +157,16 @@ test.describe('setting up every add-on', () => {
       // gate actually bites, not just that it lets people through.
       await page.request.post('/api/addons', { data: { itemId: 'events', active: false } })
       await page.goto('/events')
-      expect(page.url(), 'a switched-off add-on must not leave its page reachable').toContain('tab=addons')
+      // It lands on the tab where the switch actually IS. Events is free, so that
+      // is Configure — sending someone to the paid Add-ons page to turn on
+      // something they already own is what the Configure/Add-ons split fixed.
+      expect(page.url(), 'a switched-off add-on must not leave its page reachable')
+        .toContain('tab=configure')
 
       // Put it back so the rest of the suite sees the seeded state.
       await page.request.post('/api/addons', { data: { itemId: 'events', active: true } })
       await page.goto('/events')
+      expect(page.url()).not.toContain('tab=configure')
       expect(page.url()).not.toContain('tab=addons')
     } finally {
       await prisma.$disconnect()

@@ -162,7 +162,11 @@ test('an item is edited on its own page, in rich text, and shows who has it', as
   // The overlay locks the page behind it — never two scrollbars.
   await expect(page.locator('body')).toHaveCSS('overflow', 'hidden')
 
-  await dialog.getByLabel('Client').selectOption({ label: 'Unassigned Client' })
+  // The client list is a searchable, alphabetical list of rows, not a <select> —
+  // a dropdown at a few hundred clients is unscannable, so this matches the class
+  // enrol flow. Driven the way a trainer does it: type, then tap the row.
+  await dialog.getByLabel('Client').fill('Unassigned')
+  await dialog.getByRole('button', { name: /Unassigned Client/ }).click()
   // Far future, so this row never lands in another spec's "this week" list.
   await dialog.getByLabel('Date').fill('2031-04-02')
   await dialog.getByRole('button', { name: 'Add to their homework' }).click()
