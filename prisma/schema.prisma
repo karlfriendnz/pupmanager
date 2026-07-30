@@ -1255,6 +1255,10 @@ model TrainingTask {
   videoUrl    String? // trainer-provided instructional link
   trainerNote String?  @db.Text // per-task comment from the trainer
   imageUrls   Json     @default("[]") // string[] of public image URLs
+  /// Whether the client is asked to log sessions against this. Copied from the
+  /// library item at hand-out time (LibraryTask.wantsLog) — homework is a snapshot,
+  /// so changing the item later never changes work already given out.
+  wantsLog    Boolean  @default(true)
   order       Int      @default(0) // display order within a session
   // Which library item this homework was created from, when it came from the
   // Library. The row stays a SNAPSHOT (title/description are copied, so editing
@@ -1934,6 +1938,15 @@ model ClassEnrollment {
   // that existed before this.
   ticketGroupId    String?
   source           String           @default("TRAINER") // "TRAINER" | "SELF_SERVE"
+
+  /// THIS CLIENT's write-up form for this class. Null = whatever the session or
+  /// the class default says (see resolveSessionForm in lib/session-form).
+  ///
+  /// A class is one group but not one kind of client: a puppy on foundations and a
+  /// dog in for reactivity need different questions answered, in the same room, on
+  /// the same night. The session-level form couldn't express that — everyone got
+  /// the same one.
+  sessionFormId    String?
   // Mirrors ClientPackage.invoicedAt — manual until billing is wired.
   invoicedAt       DateTime?
   enrolledAt       DateTime         @default(now())
@@ -1961,6 +1974,9 @@ model ClassEnrollment {
   @@index([ticketTierId])
   @@index([ticketGroupId])
   @@map("class_enrollments")
+  sessionForm SessionForm? @relation("EnrollmentSessionForm", fields: [sessionFormId], references: [id], onDelete: SetNull)
+
+  @@index([sessionFormId])
 }
 
 // Per-enrollee record for one shared class session: the roster grid AND
@@ -2178,6 +2194,8 @@ model SessionForm {
   trainer            TrainerProfile        @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   responses          SessionFormResponse[]
   defaultForPackages Package[]             @relation("PackageDefaultSessionForm")
+  /// Clients whose write-up on a class uses THIS form rather than the class default.
+  forEnrollments     ClassEnrollment[]     @relation("EnrollmentSessionForm")
 
   @@index([trainerId])
   @@map("session_forms")
@@ -2773,6 +2791,13 @@ model LibraryTask {
   imageUrl    String?
   fileUrl     String?
   fileName    String? // original filename, for the download link's label
+  /// Does the client log a session against this, or just read it?
+  ///
+  /// The library isn't only a homework source — plenty of it is reference a client
+  /// looks at ("how to fit a harness"), where asking them to record reps and rate
+  /// how it went is noise. True = the training log appears; false = it's reading
+  /// material. (Karl, 2026-07-30.)
+  wantsLog    Boolean  @default(true)
   order       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

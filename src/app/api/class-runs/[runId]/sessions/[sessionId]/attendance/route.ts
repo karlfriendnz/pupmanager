@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { resolveSessionForm } from '@/lib/session-form'
 
 // GET  — the roster for one shared class session (every live enrolment
 //        plus its attendance row if marked yet).
@@ -33,12 +34,20 @@ export async function GET(
   if (!sess) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Effective form for this session: per-session override, else the class default.
-  const effectiveFormId = sess.sessionFormId ?? sess.classRun?.package?.defaultSessionFormId ?? null
+  const classDefaultFormId = sess.classRun?.package?.defaultSessionFormId ?? null
+  // The session's own answer, for the roster rows that don't have their own.
+  const effectiveFormId = resolveSessionForm({
+    sessionFormId: sess.sessionFormId,
+    classDefaultFormId,
+  }).formId
 
   const [effectiveForm, availableForms, enrollments] = await Promise.all([
     effectiveFormId
       ? prisma.sessionForm.findFirst({ where: { id: effectiveFormId, trainerId }, select: { id: true, name: true, questions: true } })
       : Promise.resolve(null),
+    // Every form the trainer has. The roster resolves per row, so a client on a
+    // different form needs ITS questions available too — loading only the
+    // session's form would leave their write-up with nothing to ask.
     prisma.sessionForm.findMany({ where: { trainerId }, orderBy: [{ order: 'asc' }, { createdAt: 'desc' }], select: { id: true, name: true, questions: true } }),
     prisma.classEnrollment.findMany({
       // The roster for THIS session: every full-course enrolee (they attend
@@ -76,6 +85,18 @@ export async function GET(
       note: e.attendance[0]?.note ?? '',
       hasReport: !!e.attendance[0]?.report,
       report: (e.attendance[0]?.report ?? null) as { answers?: Record<string, string>; intro?: string | null; closing?: string | null } | null,
+      // THIS client's form. A class is one group but not one kind of client — a
+      // puppy on foundations and a dog in for reactivity need different questions
+      // answered on the same night. `formSource` says which level decided, so the
+      // roster can mark the ones that differ from everyone else.
+      ...(() => {
+        const r = resolveSessionForm({
+          enrollmentFormId: e.sessionFormId,
+          sessionFormId: sess.sessionFormId,
+          classDefaultFormId,
+        })
+        return { formId: r.formId, formSource: r.from, ownFormId: e.sessionFormId }
+      })(),
     })),
   })
 }
@@ -88,6 +109,13 @@ const putSchema = z.object({
     .array(
       z.object({
         enrollmentId: z.string().min(1),
+        /**
+         * THIS CLIENT's form for the whole class, not just this session. A string
+         * sets it; null clears it back to whatever the session or class says; OMIT
+         * leaves it alone — which matters because attendance saves send a record
+         * per person and must not wipe an override nobody touched.
+         */
+        ownFormId: z.string().nullable().optional(),
         // Attendance phase (taken at the session). All optional so the notes
         // phase can save a report later without resending these.
         status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'MAKEUP']).optional(),
@@ -147,6 +175,21 @@ export async function PUT(
   )
 
   const rows = parsed.data.records.filter(r => valid.has(r.enrollmentId))
+
+  // A client's own form lives on the ENROLMENT, not on this session's attendance —
+  // it's "Rex is in for reactivity", which is true every week, not just tonight.
+  // Only rows that actually said something are touched: `undefined` means "leave
+  // it alone", and an attendance save sends a record per person, so treating
+  // omission as null would wipe every override on the register.
+  const formChanges = rows.filter(r => r.ownFormId !== undefined)
+  if (formChanges.length > 0) {
+    await prisma.$transaction(
+      formChanges.map(r => prisma.classEnrollment.update({
+        where: { id: r.enrollmentId },
+        data: { sessionFormId: r.ownFormId ?? null },
+      })),
+    )
+  }
 
   // Saving a report only ever writes a DRAFT — it never notifies the client and
   // never stamps reportSentAt. The client sees nothing until the trainer sends
