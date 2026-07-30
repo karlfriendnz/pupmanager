@@ -36,6 +36,50 @@ describe('the attendance API resolves a form per client', () => {
   })
 })
 
+const view = () => readFileSync(resolve(
+  __dirname, '../../src/app/(trainer)/classes/[runId]/sessions/[sessionId]/session-view.tsx'), 'utf8')
+
+describe('the session screen writes each client up on their own form', () => {
+  // The whole point of the feature: the questions on screen have to come from
+  // THIS client's resolved form. Rendering the session's form for everyone is
+  // exactly the behaviour the override was added to replace.
+  it('renders the questions from the row’s form, not the session’s', () => {
+    expect(view()).toContain('data?.availableForms.find(f => f.id === notesRow.formId)')
+    expect(view()).toContain('notesForm?.questions.map')
+  })
+
+  // An override is otherwise invisible until you open someone's write-up and
+  // wonder why it looks different from the rest of the register.
+  it('marks the roster row when a client is on their own', () => {
+    expect(view()).toContain("r.formSource === 'enrollment'")
+    expect(view()).toContain('Own form')
+  })
+
+  // It belongs to the enrolment, so a trainer who sets it and closes the screen
+  // expects it to have stuck — not to be waiting on a Save they never made.
+  it('saves the choice on the spot', () => {
+    expect(view()).toContain('async function setOwnForm')
+    expect(view()).toContain("put({ records: [{ enrollmentId, ownFormId: id }] })")
+  })
+
+  // Regression: saveNotes used to send the RESOLVED form as sessionFormId, which
+  // copied the class default down onto the session — so later changing the class
+  // default silently stopped reaching a session someone had been written up on.
+  it('writing up one client doesn’t reassign the whole session’s form', () => {
+    const notes = view().slice(view().indexOf('async function saveNotes'))
+    // The KEY, not the word — the comment above the call explains the omission.
+    expect(notes.slice(0, notes.indexOf('async function setOwnForm')))
+      .not.toContain('sessionFormId:')
+  })
+
+  // The override is the exception, so the picker leads with the way back to
+  // everyone else's form rather than presenting a blank to fill in.
+  it('offers the way back to the class default', () => {
+    expect(view()).toContain('Same as the rest of the class')
+    expect(view()).toContain("id === 'default' ? null : id")
+  })
+})
+
 describe('the resolution the API relies on', () => {
   it('gives Karl’s example the right answers', () => {
     const classDefault = 'formX'

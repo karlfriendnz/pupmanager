@@ -10,6 +10,7 @@ import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { SuggestedHomework } from '@/components/trainer/suggested-homework'
 import { SessionSeriesStep } from '@/components/trainer/session-series-step'
 import { formatDate, formatTime } from '@/lib/utils'
+import { sessionFormSourceLabel, type SessionFormSource } from '@/lib/session-form'
 import {
   ClipboardCheck, ChevronLeft, ChevronRight, Check, X, StickyNote,
   GraduationCap, Calendar, FileText, ListChecks, CheckSquare,
@@ -58,6 +59,12 @@ type RosterRow = {
   note: string
   hasReport: boolean
   report: { answers?: Record<string, string>; closing?: string | null } | null
+  /** The form THIS client gets, already resolved (enrolment → session → class). */
+  formId: string | null
+  /** Which level decided it, so the roster can mark the ones that differ. */
+  formSource: SessionFormSource
+  /** Their own override, if they have one — what the per-client picker edits. */
+  ownFormId: string | null
 }
 type AttendanceData = {
   sessionFormId: string | null
@@ -193,6 +200,8 @@ export function SessionView({
   const [noteOpen, setNoteOpen] = useState<Set<string>>(new Set())
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [formPicker, setFormPicker] = useState(false)
+  // Which client's own form is being picked (an enrollmentId), if any.
+  const [ownFormPicker, setOwnFormPicker] = useState<string | null>(null)
   const [bulkPicker, setBulkPicker] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -238,11 +247,35 @@ export function SessionView({
 
   async function saveNotes(enrollmentId: string) {
     const d = draft[enrollmentId]
+    const row = data?.roster.find(r => r.enrollmentId === enrollmentId)
     setSaving(true); setError(null)
     try {
-      const ok = await put({ sessionFormId: formId || null, records: [{ enrollmentId, report: { formId: formId || null, answers: d.answers, closing: d.recap.trim() || null } }] })
+      // The report records the form THIS client was written up on, not the
+      // session's — they may be on their own. And sessionFormId is deliberately
+      // omitted: writing up one person must not reassign the whole session's
+      // form, which is what sending the resolved value used to do (it copied the
+      // class default down onto the session, so later changing the class default
+      // silently stopped reaching it).
+      const ok = await put({ records: [{ enrollmentId, report: { formId: row?.formId ?? null, answers: d.answers, closing: d.recap.trim() || null } }] })
       if (!ok) { setError('Could not save the notes.'); return }
       setNotesFor(null); setSaved('Notes saved'); await load(); setTimeout(() => setSaved(null), 2000)
+    } finally { setSaving(false) }
+  }
+
+  /**
+   * Put one client on their own form — or back on everyone else's.
+   *
+   * Saved on the spot rather than with the write-up, because it belongs to the
+   * ENROLMENT ("Rex is in for reactivity"), which is true every week, not to
+   * tonight's notes. A trainer who sets it and closes the screen expects it to
+   * have stuck.
+   */
+  async function setOwnForm(enrollmentId: string, id: string | null) {
+    setSaving(true); setError(null)
+    try {
+      const ok = await put({ records: [{ enrollmentId, ownFormId: id }] })
+      if (!ok) { setError('Could not change their form.'); return }
+      await load()
     } finally { setSaving(false) }
   }
 
@@ -284,6 +317,9 @@ export function SessionView({
   }
 
   const notesRow = notesFor ? data?.roster.find(r => r.enrollmentId === notesFor) ?? null : null
+  // The write-up uses THIS client's form, which is not always the session's.
+  const notesForm = notesRow ? data?.availableForms.find(f => f.id === notesRow.formId) ?? null : null
+  const pickerRow = ownFormPicker ? data?.roster.find(r => r.enrollmentId === ownFormPicker) ?? null : null
   const presentCount = data ? data.roster.filter(r => draft[r.enrollmentId]?.status === 'PRESENT').length : 0
   // "Reactive Rover Group — session 1/6" → "Session 1/6" (class name lives in the title).
   const sessionLabel = sessionTitle.includes('—') ? sessionTitle.split('—').pop()!.trim().replace(/^session/i, 'Session') : null
@@ -332,11 +368,34 @@ export function SessionView({
                     )}
                   </span>
                 </div>
+
+                {/* Which form THIS client is written up on. A class is one group
+                    but not one kind of client — a puppy on foundations and a dog
+                    in for reactivity need different questions answered on the
+                    same night. Sits here, on the person, because that's where the
+                    trainer is when they notice. */}
+                <button
+                  type="button"
+                  onClick={() => setOwnFormPicker(notesRow.enrollmentId)}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+                >
+                  <FileText className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-900">
+                      {notesForm ? notesForm.name : 'No form — recap only'}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                      {sessionFormSourceLabel(notesRow.formSource) ?? 'Same as the rest of the class'}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
+                </button>
+
                 <div className="flex flex-col gap-3 px-4 py-4">
-                  {!selectedForm && (
-                    <p className="text-[13px] text-slate-500">No form set for this session — pick one on the attendance screen, or just write a recap below.</p>
+                  {!notesForm && (
+                    <p className="text-[13px] text-slate-500">No form set — pick one above, or just write a recap below.</p>
                   )}
-                  {selectedForm?.questions.map(q => {
+                  {notesForm?.questions.map(q => {
                     const label = q.label ?? 'Field'
                     const val = draft[notesRow.enrollmentId].answers[q.id] ?? ''
                     const isLong = q.type === 'LONG_TEXT'
@@ -499,6 +558,11 @@ export function SessionView({
                                 <span className="mt-0.5 block truncate text-[13px] text-slate-500">
                                   {r.dogName ?? '—'}
                                   {!present && <> · {STATUS_LABEL[d.status]}</>}
+                                  {/* Said plainly, in the row's own subtitle: an
+                                      override is otherwise invisible until you
+                                      open their write-up and wonder why it looks
+                                      different from everyone else's. */}
+                                  {r.formSource === 'enrollment' && <> · Own form</>}
                                 </span>
                               </span>
                             </button>
@@ -595,6 +659,35 @@ export function SessionView({
           ]}
           onPick={id => { setFormId(id === 'none' ? '' : id); setFormPicker(false) }}
           onClose={() => setFormPicker(false)}
+        />
+      )}
+
+      {/* One client's own form. "Same as the class" is the first choice and the
+          usual answer — the override is the exception, so it reads as stepping
+          away from the default rather than as a blank to fill in. */}
+      {pickerRow && data && (
+        <ChoiceScreen
+          title={pickerRow.clientName}
+          sub="Which form their notes use"
+          activeId={pickerRow.ownFormId ?? 'default'}
+          options={[
+            {
+              id: 'default',
+              label: 'Same as the rest of the class',
+              sub: data.effectiveForm ? data.effectiveForm.name : 'No form — recap only',
+            },
+            ...data.availableForms.map(f => ({
+              id: f.id,
+              label: f.name,
+              sub: `${f.questions.length} question${f.questions.length === 1 ? '' : 's'}`,
+            })),
+          ]}
+          onPick={id => {
+            const enrollmentId = pickerRow.enrollmentId
+            setOwnFormPicker(null)
+            void setOwnForm(enrollmentId, id === 'default' ? null : id)
+          }}
+          onClose={() => setOwnFormPicker(null)}
         />
       )}
 
