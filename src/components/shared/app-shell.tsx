@@ -20,7 +20,7 @@ import { VersionGuard } from './version-guard'
 import { NotificationToaster } from './notification-toaster'
 import { TopBarControls } from './top-bar-controls'
 import { FloatingCreateButton } from './floating-create-button'
-import { PageTitleProvider, usePageTitle, usePageHasBack, usePageImmersive } from './page-title'
+import { PageTitleProvider, NavLabelProvider, usePageTitle, usePageHasBack, usePageImmersive } from './page-title'
 import { FlatRow, FlatRowGrid } from './flat-list'
 import { shouldShowSectionHeader, labelFor, sectionKey } from '@/lib/nav-labels'
 
@@ -1063,6 +1063,9 @@ function TrainerShell({
 
   return (
     <PageTitleProvider>
+    {/* Their menu words reach page TITLES too, so a renamed "Library" doesn't
+        open a page still headed "Library". */}
+    <NavLabelProvider labels={navLabels ?? {}}>
     <div className="flex min-h-screen flex-col md:flex-row">
       <TrainerTopBar
         collapsed={collapsed}
@@ -1513,6 +1516,7 @@ function TrainerShell({
         {children}
       </main>
     </div>
+    </NavLabelProvider>
     </PageTitleProvider>
   )
 }

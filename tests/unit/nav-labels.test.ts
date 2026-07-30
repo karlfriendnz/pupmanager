@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   isRenameable, sanitizeNavLabels, labelFor, sectionKey, shouldShowSectionHeader,
-  NAV_LABEL_CATALOG,
+  NAV_LABEL_CATALOG, pageTitleLabel,
   type RenameableEntry,
 } from '@/lib/nav-labels'
 
@@ -205,5 +205,47 @@ describe('the rename catalogue matches the real menu', () => {
     expect(sanitizeNavLabels({ '/library': 'Resources' })).toEqual({ '/library': 'Resources' })
     // Locked, so dropped even without an explicit allow-list.
     expect(sanitizeNavLabels({ '/finances': 'Money in' })).toEqual({})
+  })
+})
+
+describe('a renamed menu item renames its page too', () => {
+  const mine = { '/library': 'Resources', '/packages': 'Private lessons' }
+
+  it('uses their word on the page that IS that menu item', () => {
+    expect(pageTitleLabel('/library', 'Library', mine)).toBe('Resources')
+    expect(pageTitleLabel('/packages', '1:1 Sessions', mine)).toBe('Private lessons')
+  })
+
+  it('follows them into the pages underneath', () => {
+    expect(pageTitleLabel('/library/item/abc123', 'Library', mine)).toBe('Resources')
+  })
+
+  // The condition that keeps this safe: most page titles aren't menu labels.
+  it('leaves a page titled something else alone', () => {
+    expect(pageTitleLabel('/library/item/abc123', 'Settle on mat', mine)).toBe('Settle on mat')
+    expect(pageTitleLabel('/clients/abc123', 'Sarah Scott', mine)).toBe('Sarah Scott')
+  })
+
+  it('does nothing when they haven’t renamed anything', () => {
+    expect(pageTitleLabel('/library', 'Library', {})).toBe('Library')
+    expect(pageTitleLabel('/library', 'Library', null)).toBe('Library')
+  })
+
+  it('never renames a locked page', () => {
+    expect(pageTitleLabel('/finances', 'Finances', { '/finances': 'Money in' })).toBe('Finances')
+  })
+
+  // /clients is a prefix of /clients/waitlist, and the waitlist has its own name.
+  it('prefers the most specific menu item', () => {
+    const both = { '/clients': 'People', '/clients/waitlist': 'Queue' }
+    expect(pageTitleLabel('/clients/waitlist', 'Waitlist', both)).toBe('Queue')
+    expect(pageTitleLabel('/clients', 'Clients', both)).toBe('People')
+  })
+
+  // "/schedule?availability=1" isn't a path; matching it against /schedule would
+  // rename the schedule to whatever they called Availability.
+  it('ignores the query-string menu entries', () => {
+    expect(pageTitleLabel('/schedule', 'Schedule', { '/schedule?availability=1': 'Free time' }))
+      .toBe('Schedule')
   })
 })

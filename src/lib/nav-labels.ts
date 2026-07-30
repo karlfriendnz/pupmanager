@@ -141,6 +141,38 @@ export function labelFor(
   return custom && custom.trim() ? custom : defaultLabel
 }
 
+/**
+ * Their word for a PAGE's own title, when that page is a menu destination.
+ *
+ * Renaming "Library" to "Resources" in the menu and then landing on a page headed
+ * "Library" reads as a bug — the rename looks half-applied. So a page title gets
+ * the same treatment, under two deliberately strict conditions:
+ *
+ *   • the path is (or sits under) a renameable menu destination, longest match
+ *     first, so /library/item/xyz still resolves via /library; and
+ *   • the title EXACTLY matches what we call that item.
+ *
+ * The second is what keeps this safe. Page titles are mostly not menu labels —
+ * /clients/[id] is headed with a person's name — and a page that titles itself
+ * anything else is left alone rather than guessed at.
+ */
+export function pageTitleLabel(
+  pathname: string,
+  title: string,
+  overrides: Record<NavLabelKey, string> | null | undefined,
+): string {
+  if (!overrides || Object.keys(overrides).length === 0) return title
+  const match = NAV_LABEL_CATALOG
+    // Query-string keys ("/schedule?availability=1") aren't paths and would
+    // match their own bare route by accident.
+    .filter(e => !e.isSection && !e.key.includes('?'))
+    .filter(e => pathname === e.key || pathname.startsWith(e.key + '/'))
+    .sort((a, b) => b.key.length - a.key.length)[0]
+  if (!match) return title
+  if (title.trim() !== match.defaultLabel) return title
+  return labelFor(match.key, match.defaultLabel, overrides)
+}
+
 /** Key for a section heading. */
 export function sectionKey(section: string): NavLabelKey {
   return `${SECTION_KEY_PREFIX}${section}`

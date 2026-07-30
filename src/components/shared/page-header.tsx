@@ -1,8 +1,10 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { SetPageTitle, SetPageHasBack, useHasPageTitleShell, usePageHelp } from './page-title'
+import { pageTitleLabel } from '@/lib/nav-labels'
+import { SetPageTitle, SetPageHasBack, useHasPageTitleShell, usePageHelp, useNavLabelOverrides } from './page-title'
 import { PageHeaderTopBarPortal } from './page-header-portal'
 
 // Either a Link (href) or a click handler (onClick — e.g. router.back() so
@@ -36,11 +38,17 @@ interface PageHeaderProps {
 //     <PageHeader … />
 //     <div className="p-4 md:p-8 w-full max-w-… mx-auto">…</div>
 //   </>
-export function PageHeader({ title, subtitle, back, actions, descriptionActions }: PageHeaderProps) {
+export function PageHeader({ title: rawTitle, subtitle, back, actions, descriptionActions }: PageHeaderProps) {
   // In the trainer shell the phone top bar renders the title + back itself, so
   // the in-page mobile header below would duplicate it — skip it there.
   const shellOwnsMobileHeader = useHasPageTitleShell()
   const showHelp = usePageHelp()
+  // A trainer who renames "Library" to "Resources" in their menu shouldn't then
+  // land on a page headed "Library". Only substituted when this page IS that menu
+  // destination and its title is exactly our word for it — a page headed with a
+  // client's name is left alone. No renames (the usual case) means no change.
+  const pathname = usePathname()
+  const title = pageTitleLabel(pathname, rawTitle, useNavLabelOverrides())
   return (
     <>
       <SetPageTitle title={title} />

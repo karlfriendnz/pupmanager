@@ -98,6 +98,30 @@ export function usePageHelp(): boolean {
   return useContext(HelpCtx)
 }
 
+/**
+ * What this trainer calls their own menu items, so a PAGE can use their word too.
+ *
+ * Renaming "Library" to "Resources" in the menu and then landing on a page headed
+ * "Library" reads as a bug, so PageHeader resolves its title through this. Empty
+ * when nobody has renamed anything (and for the client app, which has no such
+ * setting), which is the overwhelmingly common case.
+ */
+const NavLabelCtx = createContext<Record<string, string>>({})
+
+export function NavLabelProvider({
+  labels,
+  children,
+}: {
+  labels: Record<string, string>
+  children: ReactNode
+}) {
+  return <NavLabelCtx.Provider value={labels}>{children}</NavLabelCtx.Provider>
+}
+
+export function useNavLabelOverrides(): Record<string, string> {
+  return useContext(NavLabelCtx)
+}
+
 // Drop into any page to set the top-bar title. `title` is a string so the
 // effect dependency is stable — no render loop. Clears on unmount.
 export function SetPageTitle({ title }: { title: string }) {
