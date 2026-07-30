@@ -70,6 +70,7 @@ export function TopBarControls({
   const [saleOpen, setSaleOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<Scope>('all')
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [highlighted, setHighlighted] = useState(-1)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -144,14 +145,22 @@ export function TopBarControls({
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/clients?q=${encodeURIComponent(q)}&scope=${scope}`)
-        const body = await res.json().catch(() => ({ items: [] }))
+        const body = await res.json().catch(() => null) as { items?: unknown[] } | null
         if (cancelled) return
-        setSuggestions(body.items ?? [])
+        if (!res.ok || !body) {
+          // "No matches" and "the lookup broke" used to look identical, so a
+          // failing search read as an empty club. Say which it is.
+          setSearchError(res.status === 401 ? 'Signed out — reload the page.' : `Search is not responding (${res.status}).`)
+          setSuggestions([])
+          return
+        }
+        setSearchError(null)
+        setSuggestions((body.items ?? []) as typeof suggestions)
         setHighlighted(-1)
       } catch {
-        // A failed lookup just means no suggestions — Enter still runs the full
-        // search, so the search box never becomes unusable.
-        if (!cancelled) setSuggestions([])
+        // Enter still runs the full search, so the box never becomes unusable —
+        // but don't pretend the club is empty.
+        if (!cancelled) { setSearchError('Search is not responding.'); setSuggestions([]) }
       }
     }, SUGGEST_DEBOUNCE_MS)
 
@@ -460,7 +469,9 @@ export function TopBarControls({
             className="absolute right-0 top-11 z-50 w-[19rem] lg:w-[22rem] overflow-hidden rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
           >
             {visible.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-slate-400">No matches.</p>
+              <p className={`px-4 py-3 text-sm ${searchError ? 'text-amber-700' : 'text-slate-400'}`}>
+                {searchError ?? 'No matches.'}
+              </p>
             ) : (
               visible.map((s, i) => (
                 <button
