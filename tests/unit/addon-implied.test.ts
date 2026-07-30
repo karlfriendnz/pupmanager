@@ -83,3 +83,46 @@ describe('getEnabledAddonsBatch', () => {
     expect(map.get('b')!.has('pos')).toBe(false)
   })
 })
+
+describe('the client app is not a choice', () => {
+  // It's how a client sees anything at all — their sessions, homework, invoices.
+  // Switching it off wasn't configuration, it was turning the product off for the
+  // people it's for. And it took MESSAGING with it, because that was the gate
+  // messages happened to hang on. (Karl, 2026-07-30.)
+  it('is on with no row at all', async () => {
+    expect(await hasAddon('t1', 'clientapp')).toBe(true)
+  })
+
+  // The important one: a stored `false` from before the change must not still
+  // switch it off.
+  it('is on even when a row says otherwise', async () => {
+    h.findUnique.mockResolvedValue({ active: false, expiresAt: null })
+    expect(await hasAddon('t1', 'clientapp')).toBe(true)
+  })
+
+  it('is in the enabled set for everyone', async () => {
+    expect((await getEnabledAddons('t1')).has('clientapp')).toBe(true)
+    h.findMany.mockResolvedValue([{ itemId: 'clientapp', active: false, expiresAt: null }])
+    expect((await getEnabledAddons('t1')).has('clientapp')).toBe(true)
+  })
+
+  it('is on for every trainer in a batch', async () => {
+    const map = await getEnabledAddonsBatch(['a', 'b'])
+    expect(map.get('a')!.has('clientapp')).toBe(true)
+    expect(map.get('b')!.has('clientapp')).toBe(true)
+  })
+})
+
+describe('messaging is its own switch', () => {
+  it('is on by default', async () => {
+    expect(await hasAddon('t1', 'messaging')).toBe(true)
+  })
+
+  // The whole point: you can close the inbox without closing the app.
+  it('can be turned off without touching the client app', async () => {
+    h.findUnique.mockImplementation(async ({ where }: { where: { trainerId_itemId: { itemId: string } } }) =>
+      where.trainerId_itemId.itemId === 'messaging' ? { active: false, expiresAt: null } : null)
+    expect(await hasAddon('t1', 'messaging')).toBe(false)
+    expect(await hasAddon('t1', 'clientapp')).toBe(true)
+  })
+})

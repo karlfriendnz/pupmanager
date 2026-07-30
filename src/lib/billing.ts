@@ -33,11 +33,26 @@ const IMPLIED_BY: Record<string, string> = {
   pos: 'shop',
 }
 
-/** Add the add-ons that ride along with what's already enabled. */
+/**
+ * On for everyone, whatever the rows say.
+ *
+ * `clientapp` is how a client sees ANYTHING — their sessions, their homework,
+ * their invoices. Switching it off wasn't a configuration, it was turning the
+ * product off for the people it's for, and it also took messaging with it because
+ * that was the gate messages happened to hang on. Messaging is now its own switch;
+ * the app itself isn't a question. (Karl, 2026-07-30.)
+ *
+ * Forced here rather than by deleting the add-on, because onboarding and several
+ * screens still ask about it — they now all get the same answer.
+ */
+const ALWAYS_ON: ReadonlySet<string> = new Set(['clientapp'])
+
+/** Add what rides along with what's enabled, plus what's on for everyone. */
 function withImplied(enabled: Set<string>): Set<string> {
   for (const [rider, owner] of Object.entries(IMPLIED_BY)) {
     if (enabled.has(owner)) enabled.add(rider)
   }
+  for (const id of ALWAYS_ON) enabled.add(id)
   return enabled
 }
 
@@ -222,6 +237,9 @@ function isExpired(expiresAt: Date | null, now = Date.now()): boolean {
  * EXCEPT default-on add-ons (core features), which are on unless turned off.
  */
 export async function hasAddon(trainerId: string, addonId: string): Promise<boolean> {
+  // Asked before the row, because a stored `false` must not switch off something
+  // that is no longer a choice.
+  if (ALWAYS_ON.has(addonId)) return true
   const row = await prisma.trainerAddon.findUnique({
     where: { trainerId_itemId: { trainerId, itemId: addonId } },
     select: { active: true, expiresAt: true },

@@ -154,7 +154,9 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // "turn it on in Add-ons" row would advertise a feature nobody can enable.
   if (!enabledAddons.has('puppyschool')) hiddenNavHrefs.push('/doggy-daycare')
   // No client app → no client↔trainer messaging.
-  if (!enabledAddons.has('clientapp')) hiddenNavHrefs.push('/messages')
+  // Messaging, not the client app — switching off an inbox must not switch off the
+  // whole client-facing app.
+  if (!enabledAddons.has('messaging')) hiddenNavHrefs.push('/messages')
   // "Link in bio" is a free, off-by-default add-on — its nav entry only appears
   // once the trainer switches Instagram on (enable-to-reveal).
   if (!enabledAddons.has('instagram')) hiddenNavHrefs.push('/instagram')

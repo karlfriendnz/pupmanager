@@ -211,3 +211,20 @@ describe('casual classes stands on its own', () => {
     expect(ids).toContain('classes')
   })
 })
+
+describe('messaging replaced the client app on the switchboard', () => {
+  it('offers messaging as a switch', () => {
+    expect(configurableFeatures().map(f => f.id)).toContain('messaging')
+  })
+
+  it('no longer offers the client app as a switch', () => {
+    expect(configurableFeatures().map(f => f.id)).not.toContain('clientapp')
+    expect(notASwitch()).toContain('clientapp')
+  })
+
+  it('doesn’t try to sell either of them', () => {
+    const ids = purchasableAddons().map(a => a.id)
+    expect(ids).not.toContain('messaging')
+    expect(ids).not.toContain('clientapp')
+  })
+})

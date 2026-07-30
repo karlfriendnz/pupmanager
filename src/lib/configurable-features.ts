@@ -44,6 +44,7 @@ const GROUP_BY_ID: Partial<Record<AddonId, FeatureGroup>> = {
   memberships: 'offerings',
   payments: 'money',
   notes: 'tools',
+  messaging: 'tools',
   todos: 'tools',
   timesheets: 'tools',
   library: 'tools',
@@ -87,8 +88,12 @@ function toFeature(a: AddonDef): ConfigurableFeature {
  * `pos` (Instant sale) — comes WITH the shop (see IMPLIED_BY in lib/billing).
  * Selling to a client on the spot is the same job as selling to them online, from
  * the other side of the counter, so it isn't a separate decision to make.
+ *
+ * `clientapp` — on for everyone (ALWAYS_ON in lib/billing). It's how a client sees
+ * anything at all, so switching it off isn't configuration, it's turning the
+ * product off. Messaging, which used to hang off it, is its own switch now.
  */
-const NOT_A_SWITCH: ReadonlySet<AddonId> = new Set<AddonId>(['payments', 'pos'])
+const NOT_A_SWITCH: ReadonlySet<AddonId> = new Set<AddonId>(['payments', 'pos', 'clientapp'])
 
 /**
  * Everything the Configure page can switch.

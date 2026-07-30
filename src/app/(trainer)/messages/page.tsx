@@ -20,7 +20,7 @@ export default async function MessagesPage({
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
   // Messaging is part of the Client app add-on (default-on; blocked when off).
-  if (!(await hasAddon(trainerId, 'clientapp'))) redirect(addonSettingsHref('clientapp'))
+  if (!(await hasAddon(trainerId, 'messaging'))) redirect(addonSettingsHref('messaging'))
 
   const sp = await searchParams
   const tab = sp.tab === 'inactive' ? 'inactive' : 'active'

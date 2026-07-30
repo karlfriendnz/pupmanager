@@ -65,7 +65,7 @@ export const SEAT_PRICE: Record<CurrencyCode, number> = {
   ZAR: 519,
 }
 
-export type AddonId = 'onetoone' | 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins' | 'events' | 'puppyschool' | 'memberships'
+export type AddonId = 'messaging' | 'onetoone' | 'achievements' | 'shop' | 'ai' | 'marketing' | 'routeplanner' | 'timesheets' | 'todos' | 'leadmagnets' | 'xero' | 'googlecalendar' | 'clientapp' | 'notes' | 'classes' | 'library' | 'payments' | 'instagram' | 'pos' | 'dropins' | 'events' | 'puppyschool' | 'memberships'
 
 export interface AddonDef {
   id: AddonId
@@ -95,6 +95,17 @@ export interface AddonDef {
 
 // Toggleable add-ons. Prices mirror the website (all six currencies).
 export const ADDONS: AddonDef[] = [
+  {
+    id: 'messaging',
+    name: 'Messaging',
+    description: 'Two-way messages between you and your clients, in the app and on their phone. Turn it off if you\u2019d rather they emailed or texted you — the client app keeps working, it just has no inbox.',
+    // On by default, and the real reason this exists: it was the CLIENT APP add-on
+    // that gated messages, which meant switching off an inbox switched off the
+    // whole client-facing app. Those are different decisions (Karl, 2026-07-30).
+    free: true,
+    defaultOn: true,
+    price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
+  },
   {
     id: 'onetoone',
     name: '1:1 sessions',
@@ -175,6 +186,10 @@ export const ADDONS: AddonDef[] = [
   },
   {
     id: 'clientapp',
+    // NOT SWITCHABLE any more (Karl, 2026-07-30): the client app is how a client
+    // sees anything at all, so turning it off isn't a configuration, it's turning
+    // the product off. Kept in the catalogue because code and onboarding still ask
+    // about it — lib/billing forces it on for everyone (ALWAYS_ON).
     name: 'Client app',
     description: 'Give your clients a branded app to see sessions, message you, and follow their dog’s progress. Turn off if you just want the admin side.',
     free: true,
