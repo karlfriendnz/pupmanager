@@ -14,7 +14,7 @@ import { ADDONS } from '@/lib/pricing'
 type Props = {
   id: string
   name: string | null
-  email: string
+  email: string | null
   businessName: string | null
   subscriptionStatus: string | null
   trialEndsAt: string | null
@@ -160,7 +160,7 @@ export function TrainerDetailActions(props: Props) {
           </label>
           <label className="flex flex-col gap-1.5 text-sm">
             <span className="text-slate-400">Email</span>
-            <input value={email} onChange={e => setEmail(e.target.value)}
+            <input value={email ?? ''} onChange={e => setEmail(e.target.value)}
               className="h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </label>
           <label className="flex flex-col gap-1.5 text-sm">

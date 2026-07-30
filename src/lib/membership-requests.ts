@@ -10,6 +10,7 @@
 // The client-safe shapes and wording live in ./membership-request-shape, which
 // has no prisma import so the panel can use them too.
 import { prisma } from './prisma'
+import { personLabel } from '@/lib/utils'
 import type { Prisma } from '@/generated/prisma'
 import type { MembershipInterval, MembershipRequestReasonValue, PendingMembershipRequest } from './membership-request-shape'
 
@@ -49,7 +50,7 @@ export async function loadPendingMembershipRequests(trainerId: string): Promise<
     id: r.id,
     createdAt: r.createdAt.toISOString(),
     reason: r.reason as MembershipRequestReasonValue,
-    client: { id: r.client.id, name: r.client.user.name ?? r.client.user.email },
+    client: { id: r.client.id, name: personLabel(r.client.user) },
     membership: {
       id: r.membership.id,
       name: r.membership.name,

@@ -18,7 +18,7 @@ type FormData = z.infer<typeof schema>
 
 interface Client {
   id: string
-  user: { name: string | null; email: string }
+  user: { name: string | null; email: string | null }
   dog: { name: string } | null
 }
 

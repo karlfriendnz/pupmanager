@@ -1,0 +1,17 @@
+-- A person can have no email address.
+--
+-- Until now email was mandatory and unique, so a client who never gave one was
+-- handed a synthetic address on @no-email.pupmanager.app (or, older,
+-- @pupmanager.test). Those addresses resolve nowhere: every message sent to one
+-- is a hard bounce, and a run of hard bounces is what costs a sending domain
+-- its reputation. They also read as real addresses everywhere in the UI.
+--
+-- Dropping NOT NULL lets the column say "we do not know" instead of inventing
+-- something. UNIQUE is kept and still means what it meant: Postgres does not
+-- treat two NULLs as equal, so uniqueness continues to hold for every user who
+-- actually has an address.
+--
+-- Safe on live data: existing values are untouched by this statement, and no
+-- user is required to acquire a NULL. The placeholders are converted in a
+-- separate, reversible step so this migration stays a pure schema change.
+ALTER TABLE "users" ALTER COLUMN "email" DROP NOT NULL;

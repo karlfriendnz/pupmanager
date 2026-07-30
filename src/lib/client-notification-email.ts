@@ -15,7 +15,7 @@ export interface ClientNotificationEmailArgs {
     businessName: string
     logoUrl: string | null
     emailAccentColor: string | null
-    user: { name: string | null; email: string }
+    user: { name: string | null; email: string | null }
   }
   /** Bold headline, e.g. "You're booked in" / "Your recap is ready". */
   title: string
@@ -42,7 +42,10 @@ export interface RenderedClientNotification {
   html: string
   text: string
   displayName: string
-  trainerEmail: string
+  /** Reply-to address for the send, or undefined when the trainer has no
+   *  email on file — the caller then omits reply-to rather than pointing
+   *  replies at nothing. */
+  trainerEmail: string | undefined
 }
 
 export function renderClientNotificationEmail(args: ClientNotificationEmailArgs): RenderedClientNotification {
@@ -137,6 +140,6 @@ export function renderClientNotificationEmail(args: ClientNotificationEmailArgs)
     html,
     text: `${title}\n\n${body}${detail ? `\n${detail}` : ''}${richDescription ? `\n\n${richTextToPlain(description)}` : ''}\n\n${ctaLabel}: ${ctaHref}`,
     displayName,
-    trainerEmail: trainer.user.email,
+    trainerEmail: trainer.user.email ?? undefined,
   }
 }

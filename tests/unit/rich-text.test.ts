@@ -115,8 +115,22 @@ describe('sanitizeRichHtml', () => {
     expect(richTextToPlain('<p><span style="color:#ef4444">Bring treats</span></p>')).toBe('Bring treats')
   })
 
-  it('passes plain text through unchanged (legacy descriptions stay safe)', () => {
-    expect(sanitizeRichHtml('Just a plain description')).toBe('Just a plain description')
+  it('wraps plain text in a paragraph, preserving the breaks the author typed', () => {
+    // Plain text used to pass through untouched, which meant it was handed to
+    // innerHTML as-is and HTML collapsed every newline — a class blurb written
+    // as a list of lines arrived as one run-on block. These descriptions
+    // predate the rich editor and are still all over the database.
+    expect(sanitizeRichHtml('Just a plain description')).toBe('<p>Just a plain description</p>')
+    expect(sanitizeRichHtml('Line one\nLine two')).toBe('<p>Line one<br />Line two</p>')
+    expect(sanitizeRichHtml('Para one\n\nPara two')).toBe('<p>Para one</p><p>Para two</p>')
+  })
+
+  it('escapes a plain-text description before wrapping it', () => {
+    // The conversion builds HTML, so anything angle-bracketed in the source has
+    // to be escaped first — otherwise turning plain text into markup would be a
+    // way to inject it.
+    expect(sanitizeRichHtml('5 < 6 & 7 > 2')).toBe('<p>5 &lt; 6 &amp; 7 &gt; 2</p>')
+    expect(sanitizeRichHtml('<script>alert(1)</script>')).not.toContain('<script>')
   })
 
   it('handles null/undefined', () => {

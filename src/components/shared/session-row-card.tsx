@@ -24,11 +24,11 @@ export interface SessionRowSession {
   // card shows the class name + a "Class" badge and links to the class session.
   classRunId?: string | null
   classRun?: { name: string } | null
-  client?: { user: { name: string | null; email: string } } | null
+  client?: { user: { name: string | null; email: string | null } } | null
   dog?: {
     name: string
     photoUrl?: string | null
-    primaryFor?: { user: { name: string | null; email: string } }[]
+    primaryFor?: { user: { name: string | null; email: string | null } }[]
   } | null
 }
 

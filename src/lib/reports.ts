@@ -5,6 +5,7 @@
 // All record counts include sample/demo records (no isSample filter) so the
 // page is never mysteriously empty on a fresh or demo account.
 import { prisma } from './prisma'
+import { personLabel } from '@/lib/utils'
 
 // ─── Shared bucketing helpers ────────────────────────────────────────────────
 
@@ -339,7 +340,7 @@ export async function getBusinessReports(
         select: { id: true, user: { select: { name: true, email: true } } },
       })
     : []
-  const nameById = new Map(topNames.map(c => [c.id, c.user.name ?? c.user.email]))
+  const nameById = new Map(topNames.map(c => [c.id, personLabel(c.user, 'Unknown')]))
   const topClients: LabelCount[] = topClientGroups.map(g => ({
     label: nameById.get(g.clientId!) ?? 'Unknown',
     count: g._count._all,
@@ -361,7 +362,7 @@ export async function getBusinessReports(
     ? []
     : memberships
         .map(m => ({
-          name: m.user.name ?? m.user.email,
+          name: personLabel(m.user),
           sessions: sessionsByMemberMap.get(m.id) ?? 0,
           hoursTracked: Math.round(((minutesByMember.get(m.id) ?? 0) / 60) * 10) / 10,
         }))
@@ -458,7 +459,7 @@ export async function getReportFilterOptions(trainerId: string): Promise<{
   ])
   const breeds = [...new Set(dogs.map(d => (d.breed ?? '').trim()).filter(Boolean))].sort()
   return {
-    members: members.map(m => ({ id: m.id, name: m.user.name ?? m.user.email })),
+    members: members.map(m => ({ id: m.id, name: personLabel(m.user) })),
     breeds,
     customFields: fields.map(f => ({
       id: f.id,

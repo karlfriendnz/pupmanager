@@ -19,7 +19,7 @@ export function BookingRequestPreviewBanner({
   focusDate,
 }: {
   requestId: string
-  clientName: string
+  clientName: string | null
   packageName: string
   sessionCount: number
   /** Proposed times that overlap an existing session in the visible week. */

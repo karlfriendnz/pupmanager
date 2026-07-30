@@ -53,7 +53,7 @@ export function TrainerSettingsForm({
   profile,
   section = 'both',
 }: {
-  user: { name: string | null; email: string; timezone: string; landingPage: string; showPageHelp: boolean }
+  user: { name: string | null; email: string | null; timezone: string; landingPage: string; showPageHelp: boolean }
   profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[]; payoutCurrency: string | null }
   /** Which half to render — the two live on separate Settings tabs now.
    *  'both' keeps the original single-page layout for any other caller. */
@@ -72,7 +72,7 @@ export function TrainerSettingsForm({
     resolver: zodResolver(businessSchema),
     defaultValues: {
       name: user.name ?? '',
-      email: user.email,
+      email: user.email ?? '',
       businessName: profile.businessName,
       phone: profile.phone ?? '',
       showPhoneToClients: profile.showPhoneToClients,

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Trash2, Ban, RotateCcw, Loader2 } from 'lucide-react'
+import { personLabel } from '@/lib/utils'
 
 // Deactivate / reactivate / permanently delete — split out of
 // TrainerDetailActions so the page can put it at the very bottom, below the
@@ -16,7 +17,7 @@ import { AlertTriangle, Trash2, Ban, RotateCcw, Loader2 } from 'lucide-react'
 type Props = {
   id: string
   name: string | null
-  email: string
+  email: string | null
   deactivatedAt: string | null
 }
 
@@ -29,6 +30,11 @@ export function TrainerDangerZone(props: Props) {
   const [showHardDelete, setShowHardDelete] = useState(false)
   const [confirmText, setConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
+
+  // Deleting is gated on typing something you can't hit by accident. That's the
+  // email when there is one — but User.email is nullable now, and a null gate
+  // is one nobody could ever satisfy, so those accounts confirm on "DELETE".
+  const confirmPhrase = props.email?.trim() || 'DELETE'
 
   async function setActive(active: boolean) {
     setTogglingActive(true)
@@ -107,22 +113,22 @@ export function TrainerDangerZone(props: Props) {
               <div>
                 <h2 className="text-base font-semibold text-white">Permanently delete this account?</h2>
                 <p className="text-sm text-slate-400 mt-1">
-                  This erases <span className="text-slate-200">{props.name ?? props.email}</span> and all of their data —
+                  This erases <span className="text-slate-200">{personLabel(props, 'this account')}</span> and all of their data —
                   clients, dogs, sessions, packages, and history.
                   <span className="text-red-300"> This cannot be undone.</span>
                 </p>
               </div>
             </div>
             <label className="block text-xs text-slate-400 mt-5 mb-1.5">
-              Type <span className="text-slate-200 font-medium select-all">{props.email}</span> to confirm
+              Type <span className="text-slate-200 font-medium select-all">{confirmPhrase}</span> to confirm
             </label>
-            <input autoFocus value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder={props.email}
+            <input autoFocus value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder={confirmPhrase}
               className="w-full h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500" />
             {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
             <div className="flex justify-end gap-2 mt-5">
               <button onClick={() => setShowHardDelete(false)} disabled={deleting}
                 className="text-sm text-slate-300 hover:text-white px-4 h-9 rounded-lg border border-slate-600 disabled:opacity-50">Cancel</button>
-              <button onClick={handleHardDelete} disabled={deleting || confirmText.trim() !== props.email}
+              <button onClick={handleHardDelete} disabled={deleting || confirmText.trim() !== confirmPhrase}
                 className="inline-flex items-center gap-1.5 text-sm bg-red-600 hover:bg-red-700 text-white px-4 h-9 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
                 {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                 {deleting ? 'Deleting…' : 'Delete permanently'}

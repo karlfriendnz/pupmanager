@@ -10,7 +10,7 @@ import { GoogleCalendarNudge } from './google-calendar-nudge'
 import { extendOngoingPackages } from '@/lib/extend-ongoing-packages'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { todayInTz, startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
-import { dateParts, ymdInTz } from '@/lib/utils'
+import { dateParts, ymdInTz, personLabel } from '@/lib/utils'
 import { buildPreviewBlocks } from '@/lib/booking-request-preview'
 import { mergeClientDogs, extraClientDogs } from '@/lib/dogs'
 import type { Metadata } from 'next'
@@ -350,7 +350,7 @@ export default async function SchedulePage({
       : Promise.resolve([] as Array<{
           id: string
           dogId: string | null
-          user: { email: string }
+          user: { email: string | null }
           dogs: { id: string; name: string }[]
           diaryEntries?: { id: string; completion: { id: string } | null }[]
         }>),
@@ -363,7 +363,7 @@ export default async function SchedulePage({
   ])
 
   const clientExtras: Record<string, {
-    email: string
+    email: string | null
     extraDogNames: string[]
     taskCount: number
     completedCount: number
@@ -424,7 +424,7 @@ export default async function SchedulePage({
       }))}
       members={teamMembers.map(m => ({
         id: m.id,
-        name: m.user.name ?? m.user.email,
+        name: personLabel(m.user),
         role: m.role,
         title: m.title,
       }))}
@@ -444,7 +444,7 @@ export default async function SchedulePage({
       }))}
       clients={clients.map(c => ({
         id: c.id,
-        name: c.user.name ?? c.user.email,
+        name: personLabel(c.user),
         dogs: mergeClientDogs(c.dog, c.dogs),
       }))}
       packages={packages.map(p => ({

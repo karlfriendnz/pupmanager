@@ -144,7 +144,7 @@ export async function GET(req: Request) {
       : Promise.resolve([] as Array<{
           id: string
           dogId: string | null
-          user: { email: string }
+          user: { email: string | null }
           dogs: { id: string; name: string }[]
           diaryEntries?: { id: string; completion: { id: string } | null }[]
         }>),
@@ -163,7 +163,7 @@ export async function GET(req: Request) {
   ])
 
   const clientExtras: Record<string, {
-    email: string
+    email: string | null
     extraDogNames: string[]
     taskCount: number
     completedCount: number

@@ -43,8 +43,36 @@ const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
  * dangerouslySetInnerHTML. Plain text passes through unchanged (it's valid HTML
  * text), so legacy plain-text descriptions keep rendering correctly.
  */
+/**
+ * True when the value carries no HTML at all — a legacy description typed into
+ * a plain <textarea> before the rich editor existed.
+ */
+const HAS_MARKUP = /<\/?[a-z][a-z0-9]*(\s[^<>]*)?>/i
+
+/**
+ * Plain text -> minimal HTML, preserving the line breaks the author typed.
+ * Escaped FIRST, so a description containing "<3" or "a < b" can never become
+ * markup; blank lines become paragraphs and single newlines become <br>.
+ */
+function plainTextToHtml(text: string): string {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  return escaped
+    .split(/\n{2,}/)
+    .map(block => `<p>${block.replace(/\n/g, '<br />')}</p>`)
+    .join('')
+}
+
 export function sanitizeRichHtml(html: string | null | undefined): string {
   if (!html) return ''
+  // A plain-text description rendered straight into innerHTML loses every line
+  // break — HTML collapses whitespace — so a carefully laid out class blurb
+  // arrives as one unreadable run-on block. These predate the rich editor and
+  // are still all over the database, so they are converted rather than
+  // "rendered unchanged" as this file used to claim.
+  if (!HAS_MARKUP.test(html)) return plainTextToHtml(html)
   return sanitizeHtml(html, SANITIZE_OPTIONS)
 }
 

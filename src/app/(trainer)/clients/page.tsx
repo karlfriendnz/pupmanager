@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { AddonNudge } from '@/components/shared/addon-nudge'
 import { isNudgeDismissed } from '@/lib/nudge-dismissals'
 import { addonNudge } from '@/components/shared/addon-nudge-registry'
+import { personLabel } from '@/lib/utils'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Clients' }
@@ -147,10 +148,12 @@ export default async function ClientsPage({
     })),
   ]
 
-  // Locale-aware case-insensitive sort by display label.
+  // Locale-aware case-insensitive sort by display label. Same label the row
+  // renders — a client with neither name nor a real email sorts under the
+  // "Unnamed" stand-in rather than blowing up on a null.
   flatClients.sort((a, b) =>
-    (a.name ?? a.email).toLocaleLowerCase('en-NZ')
-      .localeCompare((b.name ?? b.email).toLocaleLowerCase('en-NZ'))
+    personLabel(a).toLocaleLowerCase('en-NZ')
+      .localeCompare(personLabel(b).toLocaleLowerCase('en-NZ'))
   )
 
   // Custom-field columns. The picker shows every custom field defined by the

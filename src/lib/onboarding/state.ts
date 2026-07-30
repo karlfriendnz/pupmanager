@@ -11,6 +11,7 @@
 import { cache } from 'react'
 import { prisma } from '@/lib/prisma'
 import { getEnabledAddons } from '@/lib/billing'
+import { personLabel } from '@/lib/utils'
 import type { OnboardingState, OnboardingStepView, StepStatus } from './types'
 
 // Steps with no live-state signal — completion only flips when the trainer
@@ -263,7 +264,7 @@ async function getOnboardingStateImpl(trainerId: string): Promise<OnboardingStat
   const limboClient = showLimbo
     ? {
         id: limbo!.id,
-        name: limbo!.user.name ?? limbo!.user.email,
+        name: personLabel(limbo!.user),
         dogName: limbo!.dog?.name ?? null,
       }
     : null

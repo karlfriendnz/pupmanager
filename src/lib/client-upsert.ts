@@ -31,7 +31,7 @@ export interface DogInput {
 }
 
 export interface FindOrJoinClientInput {
-  email: string
+  email: string | null
   trainerId: string
   name: string
   phone?: string | null
@@ -77,7 +77,15 @@ export async function findOrJoinClient(
   tx: TxClient,
   input: FindOrJoinClientInput,
 ): Promise<FindOrJoinClientResult> {
-  const email = input.email.trim()
+  // A real address is what this helper dedupes on, so it is a precondition, not
+  // something to paper over: User.email is nullable now (a client can be known
+  // by phone alone), but a null here would create a second nameless User on
+  // every call. Callers that have no email must mint a placeholder and create
+  // the profile directly — see src/app/api/clients/route.ts.
+  const email = input.email?.trim()
+  if (!email) {
+    throw new Error('findOrJoinClient requires a real email address (callers gate on one first)')
+  }
   const name = input.name.trim() || 'New contact'
 
   // 1. Reuse the person if the email already exists; otherwise create them.

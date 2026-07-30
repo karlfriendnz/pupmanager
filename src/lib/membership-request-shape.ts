@@ -11,7 +11,7 @@ export interface PendingProductRequest {
   id: string
   createdAt: string
   note: string | null
-  client: { id: string; name: string }
+  client: { id: string; name: string | null }
   product: { id: string; name: string }
 }
 
@@ -20,7 +20,7 @@ export interface PendingMembershipRequest {
   id: string
   createdAt: string
   reason: MembershipRequestReasonValue
-  client: { id: string; name: string }
+  client: { id: string; name: string | null }
   membership: {
     id: string
     name: string

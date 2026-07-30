@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
 import { runKindLabel, runHref } from '@/lib/run-kind'
+import { personLabel } from '@/lib/utils'
 
 // Everything a trainer drives to in a day.
 //
@@ -224,7 +225,7 @@ export async function getDayStops(
       kind: 'client' as const,
       clientId: c.id,
       classRunId: null,
-      name: c.user.name ?? c.user.email,
+      name: personLabel(c.user),
       kindLabel: '1:1',
       href: `/clients/${c.id}/edit?tab=details`,
       address: c.addressLine,

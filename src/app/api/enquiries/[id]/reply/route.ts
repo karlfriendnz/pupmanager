@@ -49,6 +49,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!enquiry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const displayName = clientFacingTrainerName(enquiry.trainer)
+  // Reply-To is what makes this one-way send feel like a conversation. A
+  // trainer with no address on file still gets their reply delivered — it just
+  // goes out without a Reply-To, and the footer drops the "hit reply" promise
+  // rather than pointing the enquirer at our unmonitored noreply address.
   const trainerEmail = enquiry.trainer.user.email
   const businessName = enquiry.trainer.businessName
   const logoUrl = enquiry.trainer.logoUrl
@@ -106,9 +110,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                   <strong style="color:#0f172a;">${safeDisplay}</strong>
                   <span style="color:#94a3b8;"> · ${safeBusiness}</span>
                 </p>
-                <p style="margin:6px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">
+                ${trainerEmail
+                  ? `<p style="margin:6px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">
                   Hit reply to this email to reach ${safeDisplay} directly.
-                </p>
+                </p>`
+                  : ''}
               </div>
             </td>
           </tr>
@@ -131,7 +137,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       to: enquiry.email,
       subject: parsed.data.subject,
       from: fromTrainer(displayName),
-      replyTo: trainerEmail,
+      ...(trainerEmail ? { replyTo: trainerEmail } : {}),
       text: textBody,
       html,
     })

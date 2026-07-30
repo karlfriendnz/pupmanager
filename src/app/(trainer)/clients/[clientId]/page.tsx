@@ -10,7 +10,7 @@ import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
 import { routeDistance } from '@/lib/routing'
 import { mergeClientDogs } from '@/lib/dogs'
-import { formatDate } from '@/lib/utils'
+import { formatDate, personLabel } from '@/lib/utils'
 import { ClientProfileTabs } from './client-profile-tabs'
 import { ClientSummaryCard } from './client-summary-card'
 import { ClientActionsPanel } from './client-actions-panel'
@@ -259,7 +259,7 @@ export default async function ClientDetailPage({
   const actionsPanel = (
     <ClientActionsPanel
       clientId={client.id}
-      clientName={client.user.name ?? client.user.email}
+      clientName={personLabel(client.user)}
       clientEmail={client.user.email ?? ''}
       canEdit={canEdit}
       isPrimaryTrainer={isPrimaryTrainer}
@@ -267,7 +267,7 @@ export default async function ClientDetailPage({
       needsInvite={!client.user.emailVerified}
       members={teamMembers.map(m => ({
         id: m.id,
-        name: m.user.name ?? m.user.email,
+        name: personLabel(m.user),
         role: m.role,
       }))}
       currentMembershipId={trainerCtx?.membershipId ?? null}
@@ -352,7 +352,7 @@ export default async function ClientDetailPage({
               initialMembershipId={client.assignedMembershipId}
               members={teamMembers.map(m => ({
                 id: m.id,
-                name: m.user.name ?? m.user.email,
+                name: personLabel(m.user),
                 role: m.role,
               }))}
             />

@@ -6,6 +6,7 @@ import { getTrainerContext } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { todayInTz } from '@/lib/timezone'
 import { trainerRegionCode } from '@/lib/country'
+import { personLabel } from '@/lib/utils'
 import { PageHeader } from '@/components/shared/page-header'
 import { RouteManager } from './route-manager'
 import { addonSettingsHref } from '@/lib/configurable-features'
@@ -38,7 +39,7 @@ export default async function RoutePage({ searchParams }: { searchParams: Promis
   const base = profile?.baseLat != null && profile?.baseLng != null
     ? { address: profile.baseAddress, lat: profile.baseLat, lng: profile.baseLng }
     : null
-  const members = memberRows.map(m => ({ id: m.id, name: m.user.name ?? m.user.email }))
+  const members = memberRows.map(m => ({ id: m.id, name: personLabel(m.user) }))
 
   return (
     <>

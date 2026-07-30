@@ -47,9 +47,18 @@ export async function POST(req: Request) {
     },
   })
   if (!client) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (!client.user.email) return NextResponse.json({ error: 'This client has no email address on file' }, { status: 422 })
+  const clientEmail = client.user.email
+  if (!clientEmail) {
+    return NextResponse.json(
+      { error: 'This client has no email address, so there is nothing to send to. Add one to their profile first.' },
+      { status: 422 },
+    )
+  }
 
   const displayName = clientFacingTrainerName(client.trainer)
+  // The trainer's own address becomes Reply-To so replies reach their inbox. A
+  // trainer with none on file still sends — the message just has no Reply-To
+  // rather than being blocked.
   const trainerEmail = client.trainer.user.email
   const businessName = client.trainer.businessName
 
@@ -68,10 +77,10 @@ export async function POST(req: Request) {
 
   try {
     await sendEmail({
-      to: client.user.email,
+      to: clientEmail,
       subject,
       from: fromTrainer(displayName),
-      replyTo: trainerEmail,
+      ...(trainerEmail ? { replyTo: trainerEmail } : {}),
       text: textBody,
       html,
     })

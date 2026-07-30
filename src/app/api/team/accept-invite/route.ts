@@ -34,7 +34,9 @@ export async function POST(req: Request) {
     where: { id: session.user.id },
     select: { email: true },
   })
-  if (!user || user.email.toLowerCase() !== record.identifier.toLowerCase()) {
+  // An account with no email address on file can never match: the invite was
+  // issued TO an address, so there is nothing to compare it against.
+  if (!user?.email || user.email.toLowerCase() !== record.identifier.toLowerCase()) {
     return NextResponse.json(
       { error: 'This invite was sent to a different email address. Sign in as that account to accept it.' },
       { status: 403 },

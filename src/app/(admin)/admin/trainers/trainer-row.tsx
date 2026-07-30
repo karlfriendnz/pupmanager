@@ -30,7 +30,7 @@ type EmailReport = {
 type Trainer = {
   id: string
   name: string | null
-  email: string
+  email: string | null
   businessName: string | null
   subscriptionPlanName: string | null
   // Internal sales judgement, edited inline from the "Likely" column.
@@ -533,7 +533,7 @@ export function TrainerRow({ trainer, hiddenColumns = [] }: { trainer: Trainer; 
                 autoFocus
                 value={confirmText}
                 onChange={e => setConfirmText(e.target.value)}
-                placeholder={trainer.email}
+                placeholder={trainer.email ?? undefined}
                 className="w-full h-10 rounded-lg bg-slate-900 border border-slate-600 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500"
               />
 

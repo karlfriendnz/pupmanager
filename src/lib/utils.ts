@@ -93,12 +93,35 @@ export function formatSessionTitle(title: string): string {
   return title.replace(/\s*[—-]\s*session(\s+1\s*\/\s*1)?\s*$/i, '')
 }
 
-// Synthetic client emails (seeded demo clients, or clients added without a real
-// address) live on the `@pupmanager.test` domain. They're a placeholder, never a
-// real inbox, so anything client-facing should treat them as "no email".
+// Synthetic client emails — a placeholder, never a real inbox, so anything
+// client-facing treats them as "no email".
+//
+// TWO domains, because they were minted by two different generations of the
+// code: `@pupmanager.test` (seeded demo clients, the original scheme) and
+// `@no-email.pupmanager.app` (the add-client form and the import toolkit).
+// Only the first was ever listed here, which is why 404 imported clients
+// showed a raw `noemail-2f6fb3d667c54d42@no-email.pup…` on screen instead of a
+// muted "No email".
+//
+// Both are legacy now: email is nullable, so a client with no address simply
+// has none. This stays because the rows minted before that change are still in
+// the database and must keep reading as "no email" wherever they survive.
 export function isPlaceholderEmail(email: string | null | undefined): boolean {
   const trimmed = email?.trim()
-  return !trimmed || /@pupmanager\.test$/i.test(trimmed)
+  if (!trimmed) return true
+  return /@pupmanager\.test$/i.test(trimmed) || /@no-email\.pupmanager\.app$/i.test(trimmed)
+}
+
+// What to call a person on screen: their name, else their email, else a plain
+// stand-in. The name-or-email idiom is used in ~75 places and used to be safe
+// because email could not be null. Now that a client can genuinely have no
+// address, the chain needs a real end — otherwise a nameless, emailless person
+// renders as an empty string and the row looks broken.
+export function personLabel(
+  person: { name?: string | null; email?: string | null },
+  fallback = 'Unnamed',
+): string {
+  return person.name?.trim() || displayEmail(person.email) || fallback
 }
 
 // The email to show in the UI, or null when it's a placeholder. Callers render

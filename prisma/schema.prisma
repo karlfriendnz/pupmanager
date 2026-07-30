@@ -89,7 +89,16 @@ enum ProductRequestStatus {
 
 model User {
   id            String    @id @default(cuid())
-  email         String    @unique
+  // NULL when the person has no email address — a groomer's book is full of
+  // people known only by a mobile number. It used to be mandatory, so those
+  // clients were given a synthetic address on a domain with no MX record; that
+  // made every one of them look mailable, and only a guard in sendEmail stopped
+  // 550 guaranteed hard bounces. NULL says the true thing instead.
+  //
+  // Postgres allows many NULLs in a UNIQUE index, so uniqueness still holds for
+  // everyone who HAS an address. A user with no email simply cannot sign in —
+  // which was already true of every one of them, none having a login row.
+  email         String?   @unique
   name          String?
   // Defaults to TRAINER so PrismaAdapter can create rows for OAuth (Apple/Google)
   // sign-ins which don't supply a role. Existing flows (Credentials sign-up,

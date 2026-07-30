@@ -63,9 +63,11 @@ async function main() {
     select: { id: true, user: { select: { email: true } } },
     take: 60,
   })
-  const pool = clients
-    .filter(c => c.user.email && !c.user.email.endsWith('@no-email.pupmanager.app'))
-    .map(c => ({ email: c.user.email, clientProfileId: c.id }))
+  const pool = clients.flatMap(c => {
+    const email = c.user.email
+    if (!email || email.endsWith('@no-email.pupmanager.app')) return []
+    return [{ email, clientProfileId: c.id }]
+  })
   const emailFor = (i: number) =>
     pool.length > 0 ? pool[i % pool.length] : { email: `demo-client-${i}@example.com`, clientProfileId: null }
 

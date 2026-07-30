@@ -111,6 +111,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   // users who opted out and placeholder (no-real-email) addresses. Never fails
   // the request: the bell/push already went out and mustn't roll back.
   let emailRecipientCount = 0
+  let emailSkippedNoEmail = 0
   if (announcement.sendEmail && userIds.length > 0) {
     try {
       const recipients = await prisma.user.findMany({
@@ -123,14 +124,26 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       })
       const subject = announcement.emailSubject?.trim() || announcement.title
       const bodyHtml = announcement.emailHtml?.trim() || announcement.body
-      const messages = recipients.map((u) => {
+      // A recipient with no email address on file is dropped from the batch —
+      // they still got the bell row and the push, there is simply nowhere to
+      // post the email to. Counted so the admin sees why the email count is
+      // lower than the recipient count, and so one such user can't take the
+      // whole fan-out down (sendEmailBatch refuses an unsendable entry).
+      const messages = recipients.flatMap((u) => {
+        if (!u.email) {
+          emailSkippedNoEmail++
+          return []
+        }
         const { html } = renderAnnouncementEmail({
           subject,
           bodyHtml,
           unsubscribeUrl: productUnsubscribeUrl(u.id),
         })
-        return { to: u.email, subject, html, from: PLATFORM_FROM }
+        return [{ to: u.email, subject, html, from: PLATFORM_FROM }]
       })
+      if (emailSkippedNoEmail > 0) {
+        console.info(`[announcement email] skipped ${emailSkippedNoEmail} recipient(s) with no email address`)
+      }
       for (let i = 0; i < messages.length; i += 100) {
         await sendEmailBatch(messages.slice(i, i + 100))
       }
@@ -141,5 +154,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
-  return NextResponse.json({ ok: true, recipientCount: userIds.length, emailRecipientCount })
+  return NextResponse.json({
+    ok: true,
+    recipientCount: userIds.length,
+    emailRecipientCount,
+    emailSkippedNoEmail,
+  })
 }

@@ -137,7 +137,9 @@ export const MEMBERSHIP_STARTER_STEPS = [
 interface RecipientUser {
   id: string
   name: string | null
-  email: string
+  // Null when the client has no address. The EMAIL channel already checks it
+  // before sending; push and in-app notifications do not need one.
+  email: string | null
   notifyPush: boolean
   productEmailOptOut: boolean
 }
@@ -148,7 +150,7 @@ interface TrainerBrand {
   emailAccentColor: string | null
   // timezone comes back from TRAINER_BRAND_SELECT and is what dates are
   // formatted in; optional because the email renderer doesn't need it.
-  user: { name: string | null; email: string; timezone?: string | null }
+  user: { name: string | null; email: string | null; timezone?: string | null }
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? 'https://app.pupmanager.com'

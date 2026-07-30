@@ -29,7 +29,8 @@ interface PrefRow {
 // not yourself). Empty/undefined → the panel is self-only, exactly as before.
 export interface ManageableMember {
   userId: string
-  name: string
+  // Fed by name-or-email upstream, and a team member could have neither.
+  name: string | null
   role: string
 }
 

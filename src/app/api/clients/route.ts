@@ -46,12 +46,14 @@ const schema = z.object({
   formId: z.string().nullable().optional(),
 })
 
-// A blank email still needs a unique, non-deliverable address (email is the
-// login key + unique). The @no-email.pupmanager.app domain marks it as a
-// placeholder the trainer can replace later; we never send to it.
-function placeholderEmail(): string {
-  return `noemail-${crypto.randomBytes(8).toString('hex')}@no-email.pupmanager.app`
-}
+// A client with no email now stores NULL, not an invented address.
+//
+// This used to mint `noemail-<hex>@no-email.pupmanager.app` because email was
+// the login key and NOT NULL. That made every such client look mailable: the
+// domain has no MX record, so each one was a guaranteed hard bounce, and the
+// "we never send to it" promise was enforced in only four of the places that
+// send. Email is nullable as of 20260730230000_user_email_nullable, so the
+// column can say "we do not know" instead.
 
 // Searchable client list. Backs both the instant-sale composer's "who's this
 // for?" step and the top bar's search autocomplete.
@@ -202,7 +204,10 @@ export async function POST(req: Request) {
   // addresses are random per-create and must never be deduped, so they take the
   // raw-create path below.
   const realEmail = data.email?.trim() || null
-  const email = realEmail ?? placeholderEmail()
+  // NULL when they have not given one. Postgres does not treat two NULLs as
+  // equal, so uniqueness still holds for everyone who has an address, and any
+  // number of clients can have none.
+  const email = realEmail
   const sendInvite = !isQuick && data.sendInvite && !!realEmail
   const inviteToken = crypto.randomBytes(32).toString('hex')
 
@@ -254,9 +259,13 @@ export async function POST(req: Request) {
           data: { intakeFormId: assignFormId, intakeCompletedAt: null, intakeAnswers: Prisma.DbNull },
         })
       }
-      if (sendInvite) {
+      // sendInvite already implies realEmail — a token is keyed on the address
+      // the link is sent to, so there is nothing to key on without one — but
+      // say so explicitly rather than leaning on a boolean the compiler cannot
+      // follow.
+      if (sendInvite && realEmail) {
         await tx.verificationToken.create({
-          data: { identifier: email, token: inviteToken, expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+          data: { identifier: realEmail, token: inviteToken, expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
         })
       }
       return { clientProfileId: result.clientProfileId, dogIds: result.createdDogIds }

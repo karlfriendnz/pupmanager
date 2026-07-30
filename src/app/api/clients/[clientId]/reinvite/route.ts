@@ -49,6 +49,18 @@ export async function POST(
   })
   if (!client) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  // No address, nothing to send to. A client can legitimately have none — the
+  // trainer knows them by phone — so this is an ordinary state to report, not
+  // an error to log. 422 rather than 400: the request was well-formed, the
+  // record just cannot satisfy it.
+  const clientEmail = client.user.email
+  if (!clientEmail) {
+    return NextResponse.json(
+      { error: 'This client has no email address, so there is nothing to send an invite to. Add one to their profile first.' },
+      { status: 422 },
+    )
+  }
+
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
     select: {
@@ -64,23 +76,23 @@ export async function POST(
   // Replace any stale tokens for this email so the new link is the
   // only working one — an old token landing in the trainer's chase
   // text wouldn't surprise them with a stale "expired" page.
-  await prisma.verificationToken.deleteMany({ where: { identifier: client.user.email } })
+  await prisma.verificationToken.deleteMany({ where: { identifier: clientEmail } })
 
   const inviteToken = crypto.randomBytes(32).toString('hex')
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
   await prisma.verificationToken.create({
-    data: { identifier: client.user.email, token: inviteToken, expires },
+    data: { identifier: clientEmail, token: inviteToken, expires },
   })
 
   const slug = await ensureTrainerSlug(trainerId)
-  const inviteUrl = clientInviteUrl(process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com', slug, inviteToken, client.user.email)
+  const inviteUrl = clientInviteUrl(process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.pupmanager.com', slug, inviteToken, clientEmail)
 
   const dogNames = mergeClientDogs(client.dog, client.dogs)
     .map(d => d.name)
     .filter((n): n is string => !!n)
 
   const rendered = renderClientInviteEmail({
-    clientName: client.user.name ?? client.user.email,
+    clientName: client.user.name ?? clientEmail,
     dogNames: dogNames.length > 0 ? dogNames : ['your dog'],
     trainer: {
       businessName: trainer.businessName,
@@ -94,7 +106,7 @@ export async function POST(
 
   try {
     const result = await sendEmail({
-      to: client.user.email,
+      to: clientEmail,
       subject: rendered.subject,
       from: fromTrainer(rendered.displayName),
       replyTo: rendered.trainerEmail ?? undefined,
@@ -119,5 +131,5 @@ export async function POST(
     data: { invitedAt: new Date() },
   })
 
-  return NextResponse.json({ ok: true, sentTo: client.user.email })
+  return NextResponse.json({ ok: true, sentTo: clientEmail })
 }

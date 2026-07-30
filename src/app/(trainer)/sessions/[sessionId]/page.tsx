@@ -2,7 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Calendar, ChevronDown, Video, User, Clock, History, Paperclip, PawPrint, Eye, ListChecks } from 'lucide-react'
-import { formatSessionTitle } from '@/lib/utils'
+import { formatSessionTitle, personLabel } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
 import { runSessionHref } from '@/lib/run-kind'
 import { SessionFormReport } from '@/components/session-form-report'
@@ -210,7 +210,7 @@ export default async function SessionPage({
     orderBy: { acceptedAt: 'asc' },
     select: { id: true, user: { select: { name: true, email: true } } },
   })
-  const timeMembers = members.map(m => ({ id: m.id, name: m.user.name ?? m.user.email }))
+  const timeMembers = members.map(m => ({ id: m.id, name: personLabel(m.user) }))
   const timeEntries = trainingSession.timeEntries.map(e => ({
     id: e.id,
     membershipId: e.membershipId,

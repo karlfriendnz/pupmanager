@@ -63,10 +63,20 @@ export async function GET(req: Request) {
   const errors: string[] = []
 
   let skippedLapsed = 0
+  let skippedNoEmail = 0
 
   for (const client of clients) {
     const pendingTasks = client.diaryEntries.filter(t => !t.completion)
     if (pendingTasks.length === 0) continue
+
+    // A client with no email address on file simply isn't part of an email
+    // run. Count and move on — one unreachable owner must never stop the rest
+    // of the night's reminders going out.
+    const clientEmail = client.user.email
+    if (!clientEmail) {
+      skippedNoEmail++
+      continue
+    }
 
     // Karl's call (2026-07-27): when a trainer's subscription lapses, their
     // clients stop getting these too. The homework is the trainer's programme —
@@ -82,7 +92,7 @@ export async function GET(req: Request) {
     try {
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL!,
-        to: client.user.email,
+        to: clientEmail,
         subject: `🐕 Don't forget — ${pendingTasks.length} training task${pendingTasks.length > 1 ? 's' : ''} to complete today`,
         html: `
           <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
@@ -105,11 +115,11 @@ export async function GET(req: Request) {
       })
       sent++
     } catch (err) {
-      errors.push(client.user.email)
+      errors.push(clientEmail)
     }
   }
 
-  // skippedLapsed is reported so a sudden drop in `sent` is explainable rather
-  // than looking like the cron silently breaking.
-  return NextResponse.json({ sent, skippedLapsed, errors })
+  // skippedLapsed / skippedNoEmail are reported so a sudden drop in `sent` is
+  // explainable rather than looking like the cron silently breaking.
+  return NextResponse.json({ sent, skippedLapsed, skippedNoEmail, errors })
 }

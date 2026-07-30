@@ -37,7 +37,7 @@ export function ClientProfileForm({
   view = 'profile',
 }: {
   clientId: string
-  user: { name: string | null; email: string; timezone: string; notifyEmail: boolean; notifyPush: boolean }
+  user: { name: string | null; email: string | null; timezone: string; notifyEmail: boolean; notifyPush: boolean }
   dogs: Dog[]
   // Which section to show — the page tabs this between 'profile' and 'dogs'
   // (same form instance + one save).
@@ -152,7 +152,7 @@ export function ClientProfileForm({
         <CardBody className="pt-5 flex flex-col gap-4">
           <h2 className="font-semibold text-slate-900">My details</h2>
           <Input label="Your name" value={name} onChange={e => setName(e.target.value)} />
-          <Input label="Email" type="email" disabled defaultValue={user.email} />
+          <Input label="Email" type="email" disabled defaultValue={user.email ?? ''} placeholder="No email address" />
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">Timezone</label>
             <select

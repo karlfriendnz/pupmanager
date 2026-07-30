@@ -20,7 +20,7 @@ type Role = 'OWNER' | 'MANAGER' | 'STAFF'
 interface Member {
   id: string
   name: string | null
-  email: string
+  email: string | null
   role: Role
   title: string | null
   permissions: Partial<Record<PermissionKey, boolean>>

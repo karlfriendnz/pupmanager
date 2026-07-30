@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { mergeClientDogs } from '@/lib/dogs'
+import { personLabel } from '@/lib/utils'
 import { PageHeader } from '@/components/shared/page-header'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
@@ -62,7 +63,7 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
     }
     byClient.set(a.client.id, {
       clientId: a.client.id,
-      name: a.client.user.name ?? a.client.user.email,
+      name: personLabel(a.client.user),
       dogName: a.dog?.name ?? null,
       latestDate: a.date.toISOString(),
       count: 1,
@@ -115,7 +116,7 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
           holders={holders}
           clients={clients.map(c => ({
             id: c.id,
-            name: c.user.name ?? c.user.email,
+            name: personLabel(c.user),
             dogs: mergeClientDogs(c.dog, c.dogs),
           }))}
         />

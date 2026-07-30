@@ -24,7 +24,7 @@ export interface LoginLinkTrainer {
   businessName: string
   logoUrl: string | null
   emailAccentColor: string | null
-  user: { name: string | null; email: string }
+  user: { name: string | null; email: string | null }
 }
 
 export interface LoginLinkEmailArgs {

@@ -19,7 +19,7 @@ type EmailTemplate = { id: string; name: string; category: string | null; subjec
 export type EmailCandidate = {
   id: string
   name: string | null
-  email: string
+  email: string | null
   dogName?: string | null
   breed?: string | null
   classIds?: string[]

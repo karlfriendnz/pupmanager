@@ -42,7 +42,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 export interface EmailTarget {
   id: string
   name: string | null
-  email: string
+  email: string | null
   dogName: string | null
 }
 
@@ -105,7 +105,7 @@ interface CustomFieldMeta {
 interface ClientRow {
   id: string
   name: string | null
-  email: string
+  email: string | null
   dogName: string | null
   dogBreed: string | null
   dogPhotoUrl: string | null   // primary dog photo, else first additional dog's

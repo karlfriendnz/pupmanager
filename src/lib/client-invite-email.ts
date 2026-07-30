@@ -15,7 +15,7 @@ export interface ClientInviteEmailArgs {
     businessName: string
     logoUrl: string | null
     emailAccentColor: string | null
-    user: { name: string | null; email: string }
+    user: { name: string | null; email: string | null }
   }
   /** Plain-text body. Supports {{clientName}} + {{dogName}} placeholders. */
   bodyTemplate: string
@@ -31,7 +31,10 @@ export interface RenderedClientInvite {
    *  rendered by fromTrainer at the call site; surfaced here so the
    *  caller can pass it through unchanged. */
   displayName: string
-  trainerEmail: string
+  /** Reply-to address for the send, or undefined when the trainer has no
+   *  email on file — the caller then omits reply-to rather than pointing
+   *  replies at nothing. */
+  trainerEmail: string | undefined
 }
 
 const DEFAULT_ACCENT = DEFAULT_BRAND_COLOR
@@ -50,7 +53,7 @@ export function renderClientInviteEmail(args: ClientInviteEmailArgs): RenderedCl
 
   // The business fronts client mail, not the owner's own name — see lib/trainer-name.
   const displayName = clientFacingTrainerName(trainer)
-  const trainerEmail = trainer.user.email
+  const trainerEmail = trainer.user.email ?? undefined
   const businessName = trainer.businessName
   const logoUrl = trainer.logoUrl
   const bgColor = '#F8FAFC'

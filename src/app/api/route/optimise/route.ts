@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { optimiseRoute, type Waypoint } from '@/lib/routing'
+import { personLabel } from '@/lib/utils'
 
 // Optimise the visit order for a day's stops, starting and ending at the
 // trainer's base. Pure distance/time optimisation (TSP) for now; time-anchored
@@ -101,7 +102,9 @@ export async function POST(req: Request) {
     if (s.kind === 'client') {
       const c = clientById.get(s.id)
       if (!c) continue // not this trainer's client — drop it silently
-      const name = c.user.name ?? c.user.email
+      // A client may have no email, so it can't stand in for a missing name —
+      // personLabel falls back to "Unnamed" rather than a blank run-sheet stop.
+      const name = personLabel(c.user)
       if (c.addressLat == null || c.addressLng == null) { unlocated.push({ key, name }); continue }
       located.push({
         key, kind: 'client', id: c.id, name,

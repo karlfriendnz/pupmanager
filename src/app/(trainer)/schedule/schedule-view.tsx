@@ -76,7 +76,7 @@ interface Buddy {
   id: string
   clientId: string
   dogId: string | null
-  client: { id: string; user: { name: string | null; email: string } }
+  client: { id: string; user: { name: string | null; email: string | null } }
   dog: { id: string; name: string } | null
 }
 
@@ -105,11 +105,11 @@ interface Session {
   // multi-trainer businesses.
   assignedMembershipId: string | null
   assignedTrainerName?: string | null
-  client: { id: string; user: { name: string | null; email: string } } | null
+  client: { id: string; user: { name: string | null; email: string | null } } | null
   dog: {
     name: string
     photoUrl?: string | null
-    primaryFor: { id: string; user: { name: string | null; email: string } }[]
+    primaryFor: { id: string; user: { name: string | null; email: string | null } }[]
   } | null
   buddies: Buddy[]
   // Session on a RUN: shared, no single client. Clicking routes to the run's
@@ -435,7 +435,7 @@ type SessionFieldId = 'location' | 'description' | 'sessionType' | 'duration' | 
 type ClientFieldId  = 'email' | 'extraDogs' | 'compliance'
 
 interface ClientExtra {
-  email: string
+  email: string | null
   extraDogNames: string[]
   taskCount: number
   completedCount: number
@@ -3181,7 +3181,7 @@ export function ScheduleView({
   // proposed sessions on the grid. Ghost blocks + an Approve/Decline banner.
   previewRequest?: {
     id: string
-    clientName: string
+    clientName: string | null
     packageName: string
     blocks: RequestPreviewBlock[]
   } | null

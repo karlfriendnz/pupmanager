@@ -48,7 +48,7 @@ async function memberInCompany(membershipId: string, companyId: string) {
 function serialise(e: {
   id: string; membershipId: string; minutes: number; rateCents: number | null
   note: string | null; createdAt: Date
-  membership: { user: { name: string | null; email: string } }
+  membership: { user: { name: string | null; email: string | null } }
 }) {
   return {
     id: e.id,

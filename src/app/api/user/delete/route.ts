@@ -79,7 +79,9 @@ export async function DELETE(req: Request) {
     await notifyTrainerDeletion({
       name: user.name ?? '(no name)',
       businessName: user.trainerProfile?.businessName || '(no business name)',
-      email: user.email,
+      // Display row in the founders' email, not a recipient — it goes to
+      // FOUNDER_RECIPIENTS. Reads like the name/business fallbacks beside it.
+      email: user.email ?? '(no email)',
       phone: user.trainerProfile?.phone ?? null,
       reason: parsed.data.reason ?? null,
       okToCall: parsed.data.okToCall ?? false,
