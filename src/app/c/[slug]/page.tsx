@@ -102,11 +102,15 @@ export default async function TrainerClientLoginPage({
                   : `Welcome to ${businessName}`
                 : businessName}
             </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              {activation
-                ? 'Set a password to finish setting up your account.'
-                : 'Sign in to your training space'}
-            </p>
+            {/* Only the activation line survives — it tells someone what to do
+                next. "Sign in to your training space" sat under a heading that
+                already said the business name, above a form with an email box
+                and a Sign in button: three ways of saying the same thing. */}
+            {activation && (
+              <p className="mt-1 text-sm text-slate-500">
+                Set a password to finish setting up your account.
+              </p>
+            )}
           </div>
         </div>
 
