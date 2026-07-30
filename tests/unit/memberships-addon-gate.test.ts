@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { ADDONS, type AddonId } from '@/lib/pricing'
+import { addonSettingsHref } from '@/lib/configurable-features'
 
 // Memberships became a trainer add-on (free, off until switched on) alongside
 // Events and Doggy Daycare. Gating has to hold at all three layers — nav, page
@@ -34,10 +35,15 @@ describe('memberships add-on gating', () => {
     expect(read('src/app/(trainer)/layout.tsx')).toContain("'/memberships': 'memberships'")
   })
 
-  it('the page bounces to the Add-ons tab', () => {
+  // Memberships is FREE, so its switch lives on Configure — the Add-ons page
+  // stopped listing free features, and bouncing there left no way to turn it back
+  // on. The page asks addonSettingsHref rather than naming a tab, so the
+  // destination follows the catalogue.
+  it('the page bounces to where its switch actually is', () => {
     const page = read('src/app/(trainer)/memberships/page.tsx')
     expect(page).toContain("hasAddon(trainerId, 'memberships')")
-    expect(page).toContain("redirect('/settings?tab=addons')")
+    expect(page).toContain("redirect(addonSettingsHref('memberships'))")
+    expect(addonSettingsHref('memberships')).toBe('/settings?tab=configure')
   })
 
   it('creating a membership through the API is refused while it is off', () => {

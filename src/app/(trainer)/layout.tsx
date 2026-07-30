@@ -144,6 +144,9 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // Casual classes are their own offering type now — gated only by the dropins
   // add-on, independent of Group Classes (a trainer can run casual classes
   // without turning group classes on).
+  // Its own switch, nothing else. The menu condition and the page guard have to
+  // stay identical — when they drifted, the row showed and then bounced, which is
+  // the one thing a menu must never do.
   if (!enabledAddons.has('dropins')) hiddenNavHrefs.push('/casual-classes')
   if (!enabledAddons.has('library')) hiddenNavHrefs.push('/library')
   // Doggy Daycare is HIDDEN rather than locked when the add-on is off. The

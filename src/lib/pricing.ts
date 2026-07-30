@@ -192,12 +192,11 @@ export const ADDONS: AddonDef[] = [
   {
     id: 'dropins',
     name: 'Casual classes',
-    // Its own switch, separate from Group classes (Karl, 2026-07-30). It used to
-    // be hidden on the reasoning that drop-ins are just part of running group
-    // classes and so not a thing to opt into — true of the old Add-ons GRID, where
-    // another card meant another advert to read past. On the Configure switchboard
-    // the cost of a row is one line, and a trainer who runs courses but no casual
-    // sessions had no way to take the nav item away.
+    // Its own switch AND its own feature (Karl, 2026-07-30). It used to be hidden,
+    // and its page used to require the group-classes add-on too, both on the
+    // reasoning that a drop-in is just a single session of a course. They're
+    // different products: a trainer can sell casual sessions without running a
+    // fixed-length course at all. Nothing here depends on 'classes'.
     //
     // Still defaultOn, so nobody loses it in the change: it's on unless they turn
     // it off. (Without defaultOn, hasAddon() returned false with no way to flip

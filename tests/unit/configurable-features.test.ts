@@ -4,6 +4,8 @@ import {
   notASwitch, addonSettingsHref, FEATURE_GROUPS,
 } from '@/lib/configurable-features'
 import { ADDONS } from '@/lib/pricing'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 // Configure is the switchboard, Add-ons is the shop. The split has to be total and
 // non-overlapping: a feature listed on neither page can't be turned on, and one
@@ -181,5 +183,31 @@ describe('addonSettingsHref — where an off feature sends you', () => {
 
   it('falls back to the shop for an id it doesn’t know', () => {
     expect(addonSettingsHref('not-a-real-addon')).toBe('/settings?tab=addons')
+  })
+})
+
+describe('casual classes stands on its own', () => {
+  const layout = () => readFileSync(resolve(__dirname, '../../src/app/(trainer)/layout.tsx'), 'utf8')
+  const page = () => readFileSync(resolve(__dirname, '../../src/app/(trainer)/casual-classes/page.tsx'), 'utf8')
+
+  // They're different products: a trainer can sell casual sessions without running
+  // a fixed-length course. Coupling them meant switching one off broke the other.
+  it('does not require the group-classes add-on', () => {
+    expect(page()).toContain("hasAddon(trainerId, 'dropins')")
+    expect(page()).not.toContain("hasAddon(trainerId, 'classes')")
+  })
+
+  // The bug behind all of this: the menu showed the row while the page bounced.
+  // A row you can see must never send you to Settings, so the two conditions have
+  // to stay identical — this is what catches them drifting apart again.
+  it('hides in the menu on exactly the condition its page guards on', () => {
+    expect(layout()).toContain("!enabledAddons.has('dropins')) hiddenNavHrefs.push('/casual-classes')")
+    expect(layout()).not.toMatch(/hiddenNavHrefs\.push\('\/casual-classes'\)[\s\S]{0,40}classes'\)/)
+  })
+
+  it('is its own switch on Configure', () => {
+    const ids = configurableFeatures(new Set(['dropins'])).map(f => f.id)
+    expect(ids).toContain('dropins')
+    expect(ids).toContain('classes')
   })
 })

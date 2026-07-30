@@ -32,15 +32,13 @@ export default async function DropInsPage() {
   if (!session) redirect('/login')
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
-  // Drop-ins ride on top of group classes — both add-ons have to be on.
-  const [dropinsOn, classesOn] = await Promise.all([
-    hasAddon(trainerId, 'dropins'),
-    hasAddon(trainerId, 'classes'),
-  ])
-  // Both are free, so the switch that turns this back on is on Configure — the
-  // Add-ons page doesn't list free features any more, and sending someone there
-  // was a dead end with no way back to what they clicked.
-  if (!dropinsOn || !classesOn) redirect(addonSettingsHref('dropins'))
+  // Casual classes stands on its own (Karl, 2026-07-30). It used to require the
+  // group-classes add-on as well, on the reasoning that a drop-in is a single
+  // session of a course — but they're different products: a trainer can sell
+  // casual sessions without running a single fixed-length course, and this screen
+  // loads its own runs (package.allowDropIn) rather than anything the classes
+  // feature provides. Coupling them meant switching one off broke the other.
+  if (!(await hasAddon(trainerId, 'dropins'))) redirect(addonSettingsHref('dropins'))
 
   const now = new Date()
 
